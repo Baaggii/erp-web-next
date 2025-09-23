@@ -42,6 +42,7 @@ Two SQL utilities assist with default module permissions:
 * `db/migrations/2025-06-14_role_module_permissions_company_id.sql` – adds a `company_id` column so permissions are scoped per company.
 * `db/migrations/2025-07-24_proc_fix.sql` – recreates `resolve_inventory_metadata` and `calculate_stock_per_branch` as read‑only procedures so triggers no longer attempt to update their source tables.
 * `db/migrations/2025-07-25_inventory_triggers.sql` – recreates inventory and expense triggers so they call the read‑only procedures without modifying their own tables.
+* `db/migrations/2025-09-02_standardize_audit_columns.sql` – normalizes `created_at`, `created_by`, `updated_at`, `updated_by`, and `deleted_at` across every base table and backfills existing rows with a fallback `created_by = 'system'`. Re-run this migration after pulling to align live databases with the schema.
 
 Run the script after applying the migration to initialize permissions for all roles.
 

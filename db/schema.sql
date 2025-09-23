@@ -7,7 +7,12 @@ CREATE TABLE `audit_log` (
   `row_id` varchar(100) DEFAULT NULL,
   `old_data` text,
   `new_data` text,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_abhuvaari` (
   `id` int NOT NULL,
@@ -16,14 +21,24 @@ CREATE TABLE `code_abhuvaari` (
   `Hbaitsaagch_id2` int NOT NULL,
   `less_100_2` int DEFAULT NULL,
   `more_100_2` int DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_bayarodor` (
   `id` int NOT NULL,
   `fest_year` int NOT NULL,
   `fest_month` int NOT NULL,
   `fest_day` int DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_bkod` (
   `id` int NOT NULL,
@@ -35,7 +50,12 @@ CREATE TABLE `code_bkod` (
   `bkod_date` date NOT NULL,
   `bkod_SKU` varchar(100) DEFAULT NULL,
   `category` int NOT NULL DEFAULT '2',
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_bkodprim` (
   `id` int NOT NULL,
@@ -61,28 +81,53 @@ CREATE TABLE `code_bkodprim` (
   `bkod_Tk_type` int DEFAULT NULL,
   `bkod_Tk_where` varchar(50) DEFAULT NULL,
   `category` int NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_branches` (
   `branch_id` int NOT NULL,
   `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_cashier` (
   `id` int NOT NULL,
   `name` varchar(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_chiglel` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_department` (
   `id` int NOT NULL,
   `department_id` int DEFAULT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_edhorongo` (
   `id` int NOT NULL,
@@ -108,7 +153,12 @@ CREATE TABLE `code_edhorongo` (
   `ehkod_zoriulalt` varchar(255) DEFAULT NULL,
   `ehkod_type` varchar(1) DEFAULT NULL,
   `ehkod_angilal` varchar(1) DEFAULT NULL,
-  `category` int DEFAULT NULL
+  `category` int DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_edhorongo_other` (
   `id` int NOT NULL,
@@ -134,17 +184,32 @@ CREATE TABLE `code_edhorongo_other` (
   `ehkod_zoriulalt` varchar(255) DEFAULT NULL,
   `ehkod_type` varchar(1) DEFAULT NULL,
   `ehkod_angilal` varchar(1) DEFAULT NULL,
-  `error_description` varchar(255) DEFAULT NULL
+  `error_description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_expenseangilal` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_expensebalancetype` (
   `id` int NOT NULL,
   `name` varchar(255) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_expensebaltype` (
   `id` int NOT NULL,
@@ -154,39 +219,74 @@ CREATE TABLE `code_expensebaltype` (
   `k4` int NOT NULL,
   `k5` int NOT NULL,
   `k6_` int NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_expensetype` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_expenseutga` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_frequency` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_huvaari` (
   `id` int NOT NULL,
   `position_id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_incometype` (
   `id` int NOT NULL,
   `name` varchar(255) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_initiator` (
   `id` int NOT NULL,
   `initiator` int NOT NULL,
   `description` varchar(255) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_material` (
   `id` int NOT NULL,
@@ -204,7 +304,12 @@ CREATE TABLE `code_material` (
   `xmkod_obtainer` varchar(200) DEFAULT NULL,
   `xmkod_SKU` varchar(50) DEFAULT NULL,
   `category` int NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_materialprim` (
   `id` int NOT NULL,
@@ -222,14 +327,24 @@ CREATE TABLE `code_materialprim` (
   `xmkodtk_angil` varchar(50) DEFAULT NULL,
   `xmkodtk_repid` int NOT NULL,
   `category` int NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_position` (
   `id` int NOT NULL,
   `position_id` int NOT NULL,
   `position_name` varchar(30) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `position_amcode` varchar(7) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_position_other` (
   `id` int NOT NULL,
@@ -237,28 +352,53 @@ CREATE TABLE `code_position_other` (
   `workplace_ner` varchar(28) DEFAULT NULL,
   `workplace_position_id` int DEFAULT NULL,
   `error_description` varchar(255) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_room` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_status` (
   `id` int NOT NULL,
   `status` varchar(64) NOT NULL,
   `description` varchar(255) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_talbai` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_torol` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_transaction` (
   `id` int NOT NULL,
@@ -281,7 +421,12 @@ CREATE TABLE `code_transaction` (
   `image_benchmark` tinyint(1) DEFAULT NULL,
   `image_before` tinyint(1) NOT NULL DEFAULT '0',
   `image_after` tinyint(1) NOT NULL DEFAULT '0',
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_unit` (
   `id` int NOT NULL,
@@ -289,7 +434,12 @@ CREATE TABLE `code_unit` (
   `unit` varchar(10) DEFAULT NULL,
   `Unitcode_wood` int DEFAULT NULL,
   `Unitcode_nonwood` int DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_userlevel_settings` (
   `id` int NOT NULL,
@@ -315,39 +465,74 @@ CREATE TABLE `code_userlevel_settings` (
   `ai` tinyint(1) NOT NULL DEFAULT '0',
   `dashboard` tinyint(1) NOT NULL DEFAULT '0',
   `ai_dashboard` tinyint(1) NOT NULL DEFAULT '0',
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_valut` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_violation` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_woodprocctype` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_woodsort` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_woodtype` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_workplace` (
   `id` int NOT NULL,
   `workplace_id` int NOT NULL,
   `workplace_ner` varchar(28) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `workplace_position_id` int DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_workplace_other` (
   `id` int NOT NULL,
@@ -355,7 +540,12 @@ CREATE TABLE `code_workplace_other` (
   `workplace_position_id` int DEFAULT NULL,
   `workplace_ner` varchar(28) DEFAULT NULL,
   `error_description` varchar(255) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `companies` (
   `id` int NOT NULL,
@@ -367,9 +557,10 @@ CREATE TABLE `companies` (
   `website` varchar(255) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `created_by` varchar(50) DEFAULT NULL,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `updated_by` varchar(50) DEFAULT NULL,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `company_licenses` (
   `id` int NOT NULL,
@@ -377,67 +568,111 @@ CREATE TABLE `company_licenses` (
   `plan_id` int DEFAULT NULL,
   `start_date` datetime DEFAULT NULL,
   `end_date` datetime DEFAULT NULL,
-  `status` enum('active','expired','cancelled') DEFAULT NULL
+  `status` enum('active','expired','cancelled') DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `company_module_licenses` (
   `company_id` int NOT NULL,
   `module_key` varchar(50) NOT NULL,
-  `licensed` tinyint(1) DEFAULT '0'
+  `licensed` tinyint(1) DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `forms` (
   `id` int NOT NULL,
   `name` varchar(100) NOT NULL,
   `schema_json` json NOT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `form_submissions` (
   `id` int NOT NULL,
   `form_id` varchar(100) NOT NULL,
   `data` json NOT NULL,
   `submitted_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `company_id` int DEFAULT NULL
+  `company_id` int DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `InventoryStockPerBranch` (
-`company_id` int
-,`branch_id` int
-,`item_code` varchar(255)
-,`pm_name` varchar(255)
-,`total_in_qty` double(19,2)
-,`total_out_qty` double(19,2)
-,`total_in_value` double(19,2)
-,`on_hand_qty` double(22,2)
-,`avg_cost` double(22,6)
-,`inventory_value` double
+`company_id` int,
+,`branch_id` int,
+,`item_code` varchar(255),
+,`pm_name` varchar(255),
+,`total_in_qty` double(19,2),
+,`total_out_qty` double(19,2),
+,`total_in_value` double(19,2),
+,`on_hand_qty` double(22,2),
+,`avg_cost` double(22,6),
+,`inventory_value` double,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 );
 CREATE TABLE `InventoryStockPerCompany` (
-`company_id` int
-,`fifo_lifo_qty` double(19,2)
-,`fifo_lifo_value` double(19,2)
-,`item_code` varchar(100)
-,`pm_name` varchar(255)
-,`total_in_qty` double(19,2)
-,`total_out_qty` double(19,2)
-,`total_in_value` double(19,2)
-,`on_hand_qty` double(22,2)
-,`avg_cost` double(22,6)
-,`inventory_value` double
+`company_id` int,
+,`fifo_lifo_qty` double(19,2),
+,`fifo_lifo_value` double(19,2),
+,`item_code` varchar(100),
+,`pm_name` varchar(255),
+,`total_in_qty` double(19,2),
+,`total_out_qty` double(19,2),
+,`total_in_value` double(19,2),
+,`on_hand_qty` double(22,2),
+,`avg_cost` double(22,6),
+,`inventory_value` double,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 );
 CREATE TABLE `InventoryTransactionView` (
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 );
 CREATE TABLE `license_plans` (
   `id` int NOT NULL,
   `name` varchar(50) DEFAULT NULL,
   `modules` json DEFAULT NULL,
   `price` decimal(10,2) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `modules` (
   `module_key` varchar(50) NOT NULL,
   `label` varchar(100) NOT NULL,
   `parent_key` varchar(50) DEFAULT NULL,
   `show_in_sidebar` tinyint(1) DEFAULT '1',
-  `show_in_header` tinyint(1) DEFAULT '0'
+  `show_in_header` tinyint(1) DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `notifications` (
   `notification_id` bigint NOT NULL,
@@ -446,8 +681,12 @@ CREATE TABLE `notifications` (
   `related_id` bigint NOT NULL,
   `message` text NOT NULL,
   `is_read` tinyint(1) NOT NULL DEFAULT '0',
+  `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `company_id` int NOT NULL DEFAULT '0'
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `payments` (
   `id` int NOT NULL,
@@ -457,8 +696,12 @@ CREATE TABLE `payments` (
   `amount` decimal(10,2) DEFAULT NULL,
   `currency` varchar(10) DEFAULT NULL,
   `status` varchar(30) DEFAULT NULL,
-  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `pending_request` (
   `request_id` bigint NOT NULL,
@@ -471,12 +714,16 @@ CREATE TABLE `pending_request` (
   `proposed_data` json DEFAULT NULL,
   `original_data` json DEFAULT NULL,
   `status` enum('pending','accepted','declined') NOT NULL DEFAULT 'pending',
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `responded_at` timestamp NULL DEFAULT NULL,
   `response_empid` varchar(10) DEFAULT NULL,
   `response_notes` text,
   `is_pending` tinyint(1) GENERATED ALWAYS AS ((case when (`status` = _utf8mb4'pending') then 1 else NULL end)) STORED,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `report_definitions` (
   `id` int NOT NULL,
@@ -486,10 +733,12 @@ CREATE TABLE `report_definitions` (
   `query_definition` json NOT NULL,
   `parameter_definitions` json NOT NULL,
   `roles_allowed` json DEFAULT NULL,
-  `created_by` int DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `request_seen_counts` (
   `emp_id` varchar(10) NOT NULL,
@@ -498,33 +747,57 @@ CREATE TABLE `request_seen_counts` (
   `incoming_declined` int NOT NULL DEFAULT '0',
   `outgoing_accepted` int NOT NULL DEFAULT '0',
   `outgoing_declined` int NOT NULL DEFAULT '0',
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `company_id` int NOT NULL DEFAULT '0'
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `role_default_modules` (
   `role_id` int NOT NULL,
   `module_key` varchar(50) NOT NULL,
   `allowed` tinyint(1) DEFAULT '1',
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `role_module_permissions` (
   `company_id` int NOT NULL,
   `position_id` int NOT NULL,
   `module_key` varchar(50) NOT NULL,
-  `allowed` tinyint(1) DEFAULT '1'
+  `allowed` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_beltgenniiluulegch` (
   `id` int NOT NULL,
   `manuf_id` varchar(10) NOT NULL,
   `manuf_agrdate` date DEFAULT NULL,
   `manuf_agrenddate` date DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_bhuvaari` (
   `BH_id` int NOT NULL,
   `bh_YM` int NOT NULL,
   `bh_empid` varchar(10) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_contracter` (
   `id` int NOT NULL,
@@ -543,14 +816,24 @@ CREATE TABLE `tbl_contracter` (
   `manuf_products` varchar(255) DEFAULT NULL,
   `manuf_agrdate` date DEFAULT NULL,
   `manuf_agrenddate` date DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_currate` (
   `Valutid` int NOT NULL,
   `CurDate` date NOT NULL,
   `ratenum` int NOT NULL,
   `Crate` decimal(10,2) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_discount` (
   `id` int NOT NULL,
@@ -592,7 +875,12 @@ CREATE TABLE `tbl_discount` (
   `sp_company_discount` decimal(18,4) DEFAULT NULL,
   `sp_supplier_discount` decimal(18,4) DEFAULT NULL,
   `sp_coupon_discount` decimal(18,4) DEFAULT NULL,
-  `sp_total_discount` decimal(18,4) DEFAULT NULL
+  `sp_total_discount` decimal(18,4) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_discount_other` (
   `id` int NOT NULL,
@@ -617,7 +905,12 @@ CREATE TABLE `tbl_discount_other` (
   `discount_reason` varchar(255) DEFAULT NULL,
   `description` varchar(255) DEFAULT NULL,
   `discount_campain` varchar(255) DEFAULT NULL,
-  `error_description` varchar(255) DEFAULT NULL
+  `error_description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_employee` (
   `id` int NOT NULL,
@@ -643,7 +936,12 @@ CREATE TABLE `tbl_employee` (
   `emp_xacacc` varchar(20) DEFAULT NULL,
   `emp_xacloan` int DEFAULT NULL,
   `emp_unitnumber` int DEFAULT NULL,
-  `emp_TTD` varchar(20) DEFAULT NULL
+  `emp_TTD` varchar(20) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_employment` (
   `id` int NOT NULL,
@@ -656,7 +954,12 @@ CREATE TABLE `tbl_employment` (
   `employment_date` date NOT NULL,
   `employment_user_level` int DEFAULT NULL,
   `employment_senior_empid` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_employment_other` (
   `id` int NOT NULL,
@@ -668,12 +971,22 @@ CREATE TABLE `tbl_employment_other` (
   `employment_department_id` int DEFAULT NULL,
   `employment_branch_id` int DEFAULT NULL,
   `error_description` varchar(255) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_expenseorg` (
   `id` int NOT NULL,
   `z_org_id` varchar(10) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_hongololt` (
   `hon_g_id` int NOT NULL,
@@ -684,7 +997,12 @@ CREATE TABLE `tbl_hongololt` (
   `tushaalnum` varchar(255) DEFAULT NULL,
   `decidedby` varchar(255) DEFAULT NULL,
   `description` varchar(255) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_sale` (
   `id` int NOT NULL,
@@ -719,7 +1037,12 @@ CREATE TABLE `tbl_sale` (
   `sp_cost` decimal(18,4) DEFAULT NULL,
   `sp_cost_date` date DEFAULT NULL,
   `sp_source_table` varchar(50) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_sellingprice` (
   `id` int NOT NULL,
@@ -737,7 +1060,12 @@ CREATE TABLE `tbl_sellingprice` (
   `sp_manufacturer_id` int DEFAULT NULL,
   `sp_cost` decimal(18,4) DEFAULT NULL,
   `sp_cost_date` date DEFAULT NULL,
-  `sp_source_table` varchar(50) DEFAULT NULL
+  `sp_source_table` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_sellingprice_other` (
   `id` int NOT NULL,
@@ -746,7 +1074,12 @@ CREATE TABLE `tbl_sellingprice_other` (
   `company_id` varchar(1) NOT NULL,
   `selling_price` double(10,2) DEFAULT NULL,
   `whole` double(10,2) DEFAULT NULL,
-  `prod` double(10,2) DEFAULT NULL
+  `prod` double(10,2) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_workplace_schedule` (
   `id` int NOT NULL,
@@ -754,7 +1087,12 @@ CREATE TABLE `tbl_workplace_schedule` (
   `ws_workplace_id` int NOT NULL,
   `ws_emp_id` varchar(4) NOT NULL,
   `ws_date` date NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tbl_workplace_schedule_other` (
   `id` int NOT NULL,
@@ -763,12 +1101,22 @@ CREATE TABLE `tbl_workplace_schedule_other` (
   `ws_emp_id` varchar(4) DEFAULT NULL,
   `ws_date` date DEFAULT NULL,
   `error_description` varchar(255) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `tenant_tables` (
   `table_name` varchar(100) NOT NULL,
   `is_shared` tinyint(1) DEFAULT '0',
-  `seed_on_create` tinyint(1) DEFAULT '0'
+  `seed_on_create` tinyint(1) DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_contract` (
   `id` int NOT NULL,
@@ -822,7 +1170,12 @@ CREATE TABLE `transactions_contract` (
   `check_cause` varchar(1000) DEFAULT NULL,
   `g_ab_tur` int DEFAULT NULL,
   `g_ab_huviin` int DEFAULT NULL,
-  `pos_session_id` varchar(64) DEFAULT NULL
+  `pos_session_id` varchar(64) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_contract_other` (
   `id` int NOT NULL,
@@ -876,7 +1229,12 @@ CREATE TABLE `transactions_contract_other` (
   `check_cause` varchar(1000) DEFAULT NULL,
   `g_ab_tur` int DEFAULT NULL,
   `g_ab_huviin` int DEFAULT NULL,
-  `error_description` varchar(255) DEFAULT NULL
+  `error_description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_expense` (
   `id` int NOT NULL,
@@ -949,7 +1307,12 @@ CREATE TABLE `transactions_expense` (
   `sp_manufacturer_id` int DEFAULT NULL,
   `sp_cost` decimal(18,4) DEFAULT NULL,
   `sp_cost_date` date DEFAULT NULL,
-  `sp_source_table` varchar(50) DEFAULT NULL
+  `sp_source_table` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_expense_other` (
   `id` int NOT NULL,
@@ -1012,7 +1375,12 @@ CREATE TABLE `transactions_expense_other` (
   `ztr_check_emp` varchar(50) DEFAULT NULL,
   `ztr_check_cause` varchar(1000) DEFAULT NULL,
   `department_id` int DEFAULT NULL,
-  `error_description` varchar(255) DEFAULT NULL
+  `error_description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_income` (
   `id` int NOT NULL,
@@ -1082,7 +1450,12 @@ CREATE TABLE `transactions_income` (
   `sp_manufacturer_id` int DEFAULT NULL,
   `sp_cost` decimal(18,4) DEFAULT NULL,
   `sp_cost_date` date DEFAULT NULL,
-  `sp_source_table` varchar(50) DEFAULT NULL
+  `sp_source_table` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_income_other` (
   `id` int NOT NULL,
@@ -1143,7 +1516,12 @@ CREATE TABLE `transactions_income_other` (
   `ortr_check_emp` varchar(10) DEFAULT NULL,
   `ortr_check_cause` varchar(500) DEFAULT NULL,
   `department_id` varchar(1) DEFAULT NULL,
-  `error_description` varchar(255) DEFAULT NULL
+  `error_description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_inventory` (
   `id` int NOT NULL,
@@ -1231,7 +1609,12 @@ CREATE TABLE `transactions_inventory` (
   `sp_total_discount` decimal(18,2) DEFAULT NULL,
   `sp_current_company_stock` decimal(18,2) DEFAULT NULL,
   `sp_current_branch_stock` decimal(18,4) DEFAULT NULL,
-  `transaction_datetime` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP
+  `transaction_datetime` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_inventory_other` (
   `id` int NOT NULL,
@@ -1299,7 +1682,12 @@ CREATE TABLE `transactions_inventory_other` (
   `bmtr_Saleap` int DEFAULT NULL,
   `bmtr_idname` varchar(100) DEFAULT NULL,
   `department_id` int DEFAULT NULL,
-  `error_description` varchar(255) DEFAULT NULL
+  `error_description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_order` (
   `id` int NOT NULL,
@@ -1397,7 +1785,12 @@ CREATE TABLE `transactions_order` (
   `sp_supplier_discount` decimal(18,4) DEFAULT NULL,
   `sp_total_discount` decimal(18,4) DEFAULT NULL,
   `sp_current_company_stock` decimal(18,2) DEFAULT NULL,
-  `sp_current_branch_stock` decimal(18,4) DEFAULT NULL
+  `sp_current_branch_stock` decimal(18,4) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_order_other` (
   `id` int NOT NULL,
@@ -1476,7 +1869,12 @@ CREATE TABLE `transactions_order_other` (
   `ordrnum` varchar(19) DEFAULT NULL,
   `department_id` int DEFAULT NULL,
   `TransType` int DEFAULT NULL,
-  `error_description` varchar(255) DEFAULT NULL
+  `error_description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_plan` (
   `id` int NOT NULL,
@@ -1541,7 +1939,12 @@ CREATE TABLE `transactions_plan` (
   `sp_manufacturer_id` int DEFAULT NULL,
   `sp_cost` decimal(18,4) DEFAULT NULL,
   `sp_cost_date` date DEFAULT NULL,
-  `sp_source_table` varchar(50) DEFAULT NULL
+  `sp_source_table` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_plan_other` (
   `id` int NOT NULL,
@@ -1597,7 +2000,12 @@ CREATE TABLE `transactions_plan_other` (
   `check_cause` varchar(500) DEFAULT NULL,
   `planid` varchar(50) DEFAULT NULL,
   `departmen_id` int DEFAULT NULL,
-  `error_description` varchar(255) DEFAULT NULL
+  `error_description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `transactions_pos` (
   `id` int NOT NULL,
@@ -1618,45 +2026,62 @@ CREATE TABLE `transactions_pos` (
   `deposit_amount` decimal(18,0) DEFAULT NULL,
   `payment_type` int DEFAULT NULL,
   `remarks` text,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `status` int NOT NULL DEFAULT '1',
   `sub_transaction_ids` json DEFAULT NULL,
   `transport_price` decimal(18,0) DEFAULT NULL,
   `assembly_price` decimal(18,0) NOT NULL,
   `TRTYPENAME` varchar(255) NOT NULL,
   `trtype` varchar(4) NOT NULL,
-  `TransType` int NOT NULL
+  `TransType` int NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `UnifiedInventoryCode` (
-`cost_code` varchar(100)
-,`cost` decimal(18,2)
-,`cost_date` date
-,`primary_code` varchar(100)
-,`selling_code` varchar(100)
-,`pm_name` varchar(255)
-,`pm_unit_id` int
-,`categories` int
-,`manufacturer_id` bigint
-,`source_table` varchar(13)
+`cost_code` varchar(100),
+,`cost` decimal(18,2),
+,`cost_date` date,
+,`primary_code` varchar(100),
+,`selling_code` varchar(100),
+,`pm_name` varchar(255),
+,`pm_unit_id` int,
+,`categories` int,
+,`manufacturer_id` bigint,
+,`source_table` varchar(13),
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 );
 CREATE TABLE `unified_lookup` (
-`cost_code` varchar(100)
-,`cost` decimal(18,2)
-,`primary_code` varchar(100)
-,`selling_code` varchar(100)
-,`pm_name` varchar(255)
-,`pm_unit_id` int
-,`categories` int
-,`manufacturer_id` bigint
-,`source_table` varchar(13)
+`cost_code` varchar(100),
+,`cost` decimal(18,2),
+,`primary_code` varchar(100),
+,`selling_code` varchar(100),
+,`pm_name` varchar(255),
+,`pm_unit_id` int,
+,`categories` int,
+,`manufacturer_id` bigint,
+,`source_table` varchar(13),
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 );
 CREATE TABLE `users` (
   `id` int NOT NULL,
   `password` varchar(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL DEFAULT '$2a$10$OyIyhW8VD6/4X2A/2IA3mOvwvx.a4spsEteH9tjqf69hq70jFnNmu',
-  `created_by` varchar(50) NOT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `empid` varchar(50) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `user_activity_log` (
   `log_id` bigint NOT NULL,
@@ -1667,95 +2092,120 @@ CREATE TABLE `user_activity_log` (
   `details` json DEFAULT NULL,
   `request_id` bigint DEFAULT NULL,
   `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `user_levels` (
   `id` int NOT NULL,
   `userlevel_id` int NOT NULL,
   `name` varchar(100) NOT NULL,
   `Description` varchar(255) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `user_level_permissions` (
   `id` int NOT NULL,
   `userlevel_id` int NOT NULL,
   `action` varchar(20) DEFAULT NULL,
   `action_key` varchar(255) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '0'
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `view_inventory_report_summary` (
-`primary_code` varchar(50)
-,`pm_name` varchar(255)
-,`pm_unit_id` int
-,`opening_acc` double(19,2)
-,`opening_sub` double(19,2)
-,`increase_acc` double(19,2)
-,`increase_sub` double(19,2)
-,`decrease_acc` double(19,2)
-,`decrease_sub` double(19,2)
-,`closing_acc` double(19,2)
-,`closing_sub` double(19,2)
-,`calculated_closing_acc` double(22,2)
-,`diff_vs_actual_closing_sub` double(22,2)
+`primary_code` varchar(50),
+,`pm_name` varchar(255),
+,`pm_unit_id` int,
+,`opening_acc` double(19,2),
+,`opening_sub` double(19,2),
+,`increase_acc` double(19,2),
+,`increase_sub` double(19,2),
+,`decrease_acc` double(19,2),
+,`decrease_sub` double(19,2),
+,`closing_acc` double(19,2),
+,`closing_sub` double(19,2),
+,`calculated_closing_acc` double(22,2),
+,`diff_vs_actual_closing_sub` double(22,2),
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 );
 CREATE TABLE `view_transactions_income` (
-`id` int
-,`or_num` varchar(50)
-,`ortr_transbranch` int
-,`or_o_barimt` varchar(50)
-,`company_id` int
-,`branch_id` int
-,`or_g_id` int
-,`or_burtgel` int
-,`or_chig` int
-,`or_torol` int
-,`or_type_id` int
-,`or_av_now` int
-,`or_av_time` varchar(50)
-,`or_date` date
-,`orcash_or_id` int
-,`or_or` double(15,2)
-,`or_vallut_id` int
-,`or_valut_choice` int
-,`or_bar_suu` varchar(17)
-,`or_bcode` varchar(50)
-,`or_orderid` varchar(102)
-,`or_tailbar1` varchar(65)
-,`orBurtgel_rd` varchar(27)
-,`or_eb` int
-,`or_bank` varchar(7)
-,`or_uglug_id` varchar(15)
-,`or_emp_receiver` varchar(10)
-,`or_tur_receiver` varchar(10)
-,`or_other_receiver` varchar(100)
-,`or_org_id` varchar(10)
-,`TRTYPENAME` varchar(100)
-,`trtype` varchar(4)
-,`TransType` int
-,`ORGANIZATION` varchar(50)
-,`ROOMID` varchar(10)
-,`USERID` varchar(10)
-,`LOCATION` varchar(50)
-,`deviceid` varchar(50)
-,`devicename` varchar(50)
-,`rawdata` varchar(500)
-,`actime` date
-,`rectime` date
-,`ortr_state` int
-,`ortr_id` varchar(50)
-,`ortr_confirm` int
-,`ortr_confirm_date` date
-,`ortr_confirm_emp` varchar(10)
-,`ortr_edit_date` date
-,`ortr_edit_emp` varchar(10)
-,`ortr_edit_cause` varchar(500)
-,`ortr_del_date` date
-,`ortr_del_emp` varchar(10)
-,`ortr_del_cause` varchar(500)
-,`ortr_check_date` date
-,`ortr_checkyn` varchar(500)
-,`ortr_check_emp` varchar(10)
-,`ortr_check_cause` varchar(500)
+`id` int,
+,`or_num` varchar(50),
+,`ortr_transbranch` int,
+,`or_o_barimt` varchar(50),
+,`company_id` int,
+,`branch_id` int,
+,`or_g_id` int,
+,`or_burtgel` int,
+,`or_chig` int,
+,`or_torol` int,
+,`or_type_id` int,
+,`or_av_now` int,
+,`or_av_time` varchar(50),
+,`or_date` date,
+,`orcash_or_id` int,
+,`or_or` double(15,2),
+,`or_vallut_id` int,
+,`or_valut_choice` int,
+,`or_bar_suu` varchar(17),
+,`or_bcode` varchar(50),
+,`or_orderid` varchar(102),
+,`or_tailbar1` varchar(65),
+,`orBurtgel_rd` varchar(27),
+,`or_eb` int,
+,`or_bank` varchar(7),
+,`or_uglug_id` varchar(15),
+,`or_emp_receiver` varchar(10),
+,`or_tur_receiver` varchar(10),
+,`or_other_receiver` varchar(100),
+,`or_org_id` varchar(10),
+,`TRTYPENAME` varchar(100),
+,`trtype` varchar(4),
+,`TransType` int,
+,`ORGANIZATION` varchar(50),
+,`ROOMID` varchar(10),
+,`USERID` varchar(10),
+,`LOCATION` varchar(50),
+,`deviceid` varchar(50),
+,`devicename` varchar(50),
+,`rawdata` varchar(500),
+,`actime` date,
+,`rectime` date,
+,`ortr_state` int,
+,`ortr_id` varchar(50),
+,`ortr_confirm` int,
+,`ortr_confirm_date` date,
+,`ortr_confirm_emp` varchar(10),
+,`ortr_edit_date` date,
+,`ortr_edit_emp` varchar(10),
+,`ortr_edit_cause` varchar(500),
+,`ortr_del_date` date,
+,`ortr_del_emp` varchar(10),
+,`ortr_del_cause` varchar(500),
+,`ortr_check_date` date,
+,`ortr_checkyn` varchar(500),
+,`ortr_check_emp` varchar(10),
+,`ortr_check_cause` varchar(500),
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `created_by` varchar(50) NOT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `deleted_at` timestamp NULL DEFAULT NULL
 );
 ALTER TABLE `audit_log`
   ADD PRIMARY KEY (`company_id`, `id`);
