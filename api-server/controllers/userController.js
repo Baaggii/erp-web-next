@@ -54,7 +54,7 @@ export async function updateUser(req, res, next) {
 
 export async function deleteUser(req, res, next) {
   try {
-    await dbDeleteUser(req.params.id);
+    await dbDeleteUser(req.params.id, req.user?.empid ?? null);
     res.sendStatus(204);
   } catch (err) {
     next(err);

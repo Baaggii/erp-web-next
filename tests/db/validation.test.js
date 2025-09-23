@@ -63,10 +63,10 @@ test('deleteTableRow uses primary key when no id column', async () => {
     }
     called = true;
     assert.equal(sql, 'DELETE FROM ?? WHERE `module_key` = ?');
-    assert.deepEqual(params, ['modules', 'sales']);
+    assert.deepEqual(params, ['modules_pk', 'sales']);
     return [{}];
   };
-  await db.deleteTableRow('modules', 'sales');
+  await db.deleteTableRow('modules_pk', 'sales');
   db.pool.query = original;
   assert.ok(called);
 });
@@ -82,7 +82,12 @@ test('deleteTableRow uses soft delete column when configured', async () => {
       return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
-      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'is_deleted' }]];
+      return [[
+        { COLUMN_NAME: 'id' },
+        { COLUMN_NAME: 'is_deleted' },
+        { COLUMN_NAME: 'deleted_by' },
+        { COLUMN_NAME: 'deleted_at' },
+      ]];
     }
     called = true;
     assert.equal(
@@ -122,17 +127,97 @@ test('deleteTableRow auto-detects soft delete column when config missing', async
     called = true;
     assert.equal(
       sql,
-      'UPDATE ?? SET `deleted_at` = 1, `deleted_by` = ?, `deleted_at` = ? WHERE id = ?',
+      'UPDATE ?? SET `deleted_at` = ?, `deleted_by` = ? WHERE id = ?',
     );
     assert.equal(params[0], 'auto_softdelete');
-    assert.equal(params[1], 'EMP2');
-    assert.match(params[2], /^\d{4}-\d{2}-\d{2} /);
+    assert.match(params[1], /^\d{4}-\d{2}-\d{2} /);
+    assert.equal(params[2], 'EMP2');
     assert.equal(params[3], '7');
     return [{}];
   };
   await db.deleteTableRow('auto_softdelete', '7', undefined, undefined, 'EMP2');
   db.pool.query = original;
   assert.ok(called);
+});
+
+test('deleteUserById soft deletes user with deletedBy metadata', async () => {
+  const calls = [];
+  const originalQuery = db.pool.query;
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'id' },
+        { COLUMN_NAME: 'company_id' },
+        { COLUMN_NAME: 'password' },
+        { COLUMN_NAME: 'is_deleted' },
+        { COLUMN_NAME: 'deleted_by' },
+        { COLUMN_NAME: 'deleted_at' },
+      ]];
+    }
+    if (sql.startsWith('UPDATE ?? SET `is_deleted` = 1')) {
+      return [{}];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  };
+  try {
+    const result = await db.deleteUserById(5, 'EMP9');
+    assert.deepEqual(result, { id: 5 });
+  } finally {
+    db.pool.query = originalQuery;
+  }
+  const update = calls.find((c) =>
+    c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1'),
+  );
+  assert.ok(update);
+  assert.equal(update.params[0], 'users');
+  assert.equal(update.params[1], 'EMP9');
+  assert.match(String(update.params[2]), /^\d{4}-\d{2}-\d{2} /);
+  assert.equal(String(update.params[3]), '5');
+});
+
+test('deleteModule soft deletes module rows when supported', async () => {
+  const original = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (
+      sql.includes('information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'module_key', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'module_key' },
+        { COLUMN_NAME: 'label' },
+        { COLUMN_NAME: 'is_deleted' },
+        { COLUMN_NAME: 'deleted_by' },
+        { COLUMN_NAME: 'deleted_at' },
+      ]];
+    }
+    if (sql.startsWith('UPDATE ?? SET `is_deleted` = 1')) {
+      return [{}];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  };
+  const result = await db.deleteModule('sales', 'EMP7');
+  db.pool.query = original;
+  const update = calls.find((c) =>
+    c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1'),
+  );
+  assert.ok(update);
+  assert.equal(update.params[0], 'modules');
+  assert.equal(update.params[1], 'EMP7');
+  assert.match(String(update.params[2]), /^\d{4}-\d{2}-\d{2} /);
+  assert.equal(update.params[3], 'sales');
+  assert.deepEqual(result, { moduleKey: 'sales' });
 });
 
 test('deleteTableRow rejects when no primary or unique key', async () => {

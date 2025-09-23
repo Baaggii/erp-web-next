@@ -163,6 +163,7 @@ export async function deleteCompanyHandler(req, res, next) {
         // transaction so they cannot block the cascade via FK constraints.
         beforeDelete: (conn) =>
           deleteUserLevelPermissionsForCompany(company.id, conn),
+        deletedBy: req.user?.empid ?? null,
       },
     );
     res.status(200).json({
