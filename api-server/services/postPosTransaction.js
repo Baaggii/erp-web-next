@@ -458,6 +458,18 @@ export async function postPosTransaction(
     }
   }
 
+  const statusCfg = cfg.statusField || {};
+  const statusTable =
+    typeof statusCfg.table === 'string' ? statusCfg.table.trim() : '';
+  const statusField =
+    typeof statusCfg.field === 'string' ? statusCfg.field.trim() : '';
+  const statusCreated = statusCfg.created ?? null;
+  const statusBeforePost = statusCfg.beforePost ?? null;
+  const statusPosted = statusCfg.posted ?? null;
+  if (statusTable && !tableTypeMap.has(statusTable)) {
+    tableTypeMap.set(statusTable, 'single');
+  }
+
   const rawData = data && typeof data === 'object' ? data : {};
   const inputMasterId = rawData.masterId ?? null;
   const singleEntries =
@@ -509,6 +521,17 @@ export async function postPosTransaction(
     }
   }
 
+  if (statusTable) {
+    const expectedStatusType = tableTypeMap.get(statusTable);
+    if (expectedStatusType === 'multi') {
+      if (!Array.isArray(mergedData[statusTable])) {
+        mergedData[statusTable] = [];
+      }
+    } else if (!isPlainObject(mergedData[statusTable])) {
+      mergedData[statusTable] = {};
+    }
+  }
+
   const posDataEntry = mergedData[masterTable];
   const posData = isPlainObject(posDataEntry) ? posDataEntry : {};
   mergedData[masterTable] = posData;
@@ -541,22 +564,83 @@ export async function postPosTransaction(
     }
   }
 
-  const statusCfg = cfg.statusField || {};
-  if (statusCfg.field && statusCfg.created != null) {
-    posData[statusCfg.field] = statusCfg.created;
-  }
-
   const conn = await pool.getConnection();
+  const statusRowsForPosted = [];
+  let shouldUpdateMasterToPosted = false;
+  let committed = false;
   try {
     await conn.beginTransaction();
     const fkMap = await getMasterForeignKeyMap(conn, masterTable);
+    const useStatusTable =
+      statusTable && statusTable !== masterTable && fkMap.has(statusTable);
+
+    if (!useStatusTable && statusField && statusCreated !== null) {
+      posData[statusField] = statusCreated;
+    }
+
     const masterId = await upsertRow(conn, masterTable, posData);
     if (masterId !== null && masterId !== undefined) {
       posData.id = masterId;
     }
 
+    if (useStatusTable) {
+      const statusData = mergedData[statusTable];
+      const statusRows = [];
+      if (Array.isArray(statusData)) {
+        for (const row of statusData) {
+          if (isPlainObject(row)) statusRows.push(row);
+        }
+        if (statusRows.length === 0) {
+          const createdRow = {};
+          statusData.push(createdRow);
+          statusRows.push(createdRow);
+        }
+      } else if (isPlainObject(statusData)) {
+        statusRows.push(statusData);
+      } else {
+        const createdRow = {};
+        mergedData[statusTable] = createdRow;
+        statusRows.push(createdRow);
+      }
+
+      for (const row of statusRows) {
+        applyMasterForeignKeys(statusTable, row, fkMap, posData);
+        if (statusField && statusBeforePost !== null) {
+          row[statusField] = statusBeforePost;
+        }
+        if (!isPlainObject(row) || Object.keys(row).length === 0) continue;
+        let rowForPosted = null;
+        if (statusField && statusPosted !== null) {
+          rowForPosted = { ...row, [statusField]: statusPosted };
+        }
+        const insertedId = await upsertRow(conn, statusTable, row);
+        if (
+          insertedId !== null &&
+          insertedId !== undefined &&
+          insertedId !== 0 &&
+          !('id' in row)
+        ) {
+          row.id = insertedId;
+          if (rowForPosted && !('id' in rowForPosted)) {
+            rowForPosted.id = insertedId;
+          }
+        }
+        if (rowForPosted) {
+          statusRowsForPosted.push(rowForPosted);
+        }
+      }
+    } else if (statusField && statusBeforePost !== null && masterId !== null && masterId !== undefined) {
+      await conn.query(
+        `UPDATE ${masterTable} SET ${statusField}=? WHERE id=?`,
+        [statusBeforePost, masterId],
+      );
+      shouldUpdateMasterToPosted = statusPosted !== null;
+    } else if (statusField && statusPosted !== null) {
+      shouldUpdateMasterToPosted = true;
+    }
+
     const tablesToPersist = Object.keys(mergedData).filter(
-      (table) => table && table !== masterTable,
+      (table) => table && table !== masterTable && table !== statusTable,
     );
     for (const table of tablesToPersist) {
       const tData = mergedData[table];
@@ -573,23 +657,32 @@ export async function postPosTransaction(
       }
     }
 
-    if (statusCfg.field && statusCfg.beforePost != null) {
+    await conn.commit();
+    committed = true;
+
+    if (useStatusTable && statusRowsForPosted.length) {
+      for (const row of statusRowsForPosted) {
+        await upsertRow(conn, statusTable, row);
+      }
+    } else if (
+      !useStatusTable &&
+      shouldUpdateMasterToPosted &&
+      statusField &&
+      statusPosted !== null &&
+      posData.id !== null &&
+      posData.id !== undefined
+    ) {
       await conn.query(
-        `UPDATE ${masterTable} SET ${statusCfg.field}=? WHERE id=?`,
-        [statusCfg.beforePost, masterId],
-      );
-    }
-    if (statusCfg.field && statusCfg.posted != null) {
-      await conn.query(
-        `UPDATE ${masterTable} SET ${statusCfg.field}=? WHERE id=?`,
-        [statusCfg.posted, masterId],
+        `UPDATE ${masterTable} SET ${statusField}=? WHERE id=?`,
+        [statusPosted, posData.id],
       );
     }
 
-    await conn.commit();
     return masterId;
   } catch (err) {
-    await conn.rollback();
+    if (!committed) {
+      await conn.rollback();
+    }
     throw err;
   } finally {
     conn.release();
