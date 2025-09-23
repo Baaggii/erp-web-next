@@ -106,7 +106,7 @@ test('createCompanyHandler allows system admin with companyId=0', async () => {
 test('createCompanyHandler forwards seedRecords and overwrite', async () => {
   const orig = db.pool.query;
   const inserts = [];
-  let deleteCalled = false;
+  const softDeletes = [];
   db.pool.query = async (sql, params) => {
     if (/information_schema\.COLUMNS/.test(sql) && params[0] === 'companies') {
       return [[
@@ -128,13 +128,19 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
       return [[{ cnt: 2 }]];
     }
     if (/information_schema\.COLUMNS/.test(sql) && params[0] === 'posts') {
-      return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+      return [[
+        { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
+      ]];
     }
     if (/table_column_labels/.test(sql)) {
       return [[]];
     }
-    if (sql.startsWith('DELETE FROM ??') && params[0] === 'posts') {
-      deleteCalled = true;
+    if (sql.startsWith('UPDATE ?? SET `is_deleted` = 1') && params[0] === 'posts') {
+      softDeletes.push(params);
       return [{}];
     }
     if (sql.startsWith('INSERT INTO ??') && params[0] === 'posts') {
@@ -162,7 +168,12 @@ test('createCompanyHandler forwards seedRecords and overwrite', async () => {
   const res = createRes();
   await createCompanyHandler(req, res, () => {});
   db.pool.query = orig;
-  assert.equal(deleteCalled, true);
+  assert.equal(softDeletes.length, 1);
+  const softDeleteParams = softDeletes[0];
+  assert.equal(softDeleteParams[0], 'posts');
+  assert.equal(softDeleteParams[1], 1);
+  assert.match(String(softDeleteParams[2]), /^\d{4}-\d{2}-\d{2} /);
+  assert.deepEqual(softDeleteParams.slice(3), [9]);
   assert.deepEqual(inserts, [
     ['posts', 9, 1],
     ['posts', 9, 2],
@@ -608,6 +619,9 @@ test('deleteCompanyHandler cascades through employment and users tables', async 
           { COLUMN_NAME: 'created_at' },
           { COLUMN_NAME: 'empid' },
           { COLUMN_NAME: 'company_id' },
+          { COLUMN_NAME: 'is_deleted' },
+          { COLUMN_NAME: 'deleted_by' },
+          { COLUMN_NAME: 'deleted_at' },
         ]];
       }
       if (params?.[0] === 'tbl_employment') {
@@ -620,6 +634,9 @@ test('deleteCompanyHandler cascades through employment and users tables', async 
           { COLUMN_NAME: 'employment_department_id' },
           { COLUMN_NAME: 'employment_branch_id' },
           { COLUMN_NAME: 'employment_company_id' },
+          { COLUMN_NAME: 'is_deleted' },
+          { COLUMN_NAME: 'deleted_by' },
+          { COLUMN_NAME: 'deleted_at' },
         ]];
       }
       if (params?.[0] === 'companies') {
@@ -640,6 +657,12 @@ test('deleteCompanyHandler cascades through employment and users tables', async 
     if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'tbl_employment') {
       return [{}];
     }
+    if (
+      sql.startsWith('UPDATE ?? SET `is_deleted` = 1') &&
+      (params?.[0] === 'users' || params?.[0] === 'tbl_employment')
+    ) {
+      return [{}];
+    }
     if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'companies') {
       return [{}];
     }
@@ -654,37 +677,62 @@ test('deleteCompanyHandler cascades through employment and users tables', async 
   const res = createRes();
   await deleteCompanyHandler(req, res, () => {});
   restore();
-  const deletes = calls.filter((c) => c.sql.startsWith('DELETE FROM'));
-  assert.equal(deletes.length, 4);
-  const permissionDelete = deletes.find((c) =>
-    c.sql.startsWith('DELETE FROM user_level_permissions'),
-  );
+  const deletes = calls.filter((c) => c.sql.startsWith('DELETE FROM user_level_permissions'));
+  assert.equal(deletes.length, 1);
+  const permissionDelete = deletes[0];
   assert.ok(permissionDelete);
   assert.deepEqual(permissionDelete?.params, [companyId]);
-  const userDelete = deletes.find((c) => c.params?.[0] === 'users');
-  assert.deepEqual(
-    userDelete ? userDelete.params.map((p) => String(p)) : null,
-    ['users', '99', String(companyId)],
+  const updates = calls.filter((c) =>
+    c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1'),
   );
-  const employmentDelete = deletes.find((c) => c.params?.[0] === 'tbl_employment');
+  const userUpdate = updates.find((c) => c.params?.[0] === 'users');
+  assert.ok(userUpdate);
+  assert.equal(userUpdate.params[1], employeeCode);
+  assert.match(String(userUpdate.params[2]), /^\d{4}-\d{2}-\d{2} /);
   assert.deepEqual(
-    employmentDelete ? employmentDelete.params.map((p) => String(p)) : null,
-    [
-      'tbl_employment',
-      employmentRow.company_id,
-      employmentRow.employment_emp_id,
-      employmentRow.employment_position_id,
-      employmentRow.employment_workplace_id,
-      employmentRow.employment_date,
-      employmentRow.employment_department_id,
-      employmentRow.employment_branch_id,
-    ],
+    userUpdate.params.slice(3).map((v) => String(v)),
+    ['99', String(companyId)],
   );
-  const companyDelete = deletes.find((c) => c.params?.[0] === 'companies');
-  assert.deepEqual(
-    companyDelete ? companyDelete.params.map((p) => String(p)) : null,
-    ['companies', String(tenantCompanyId), String(companyId)],
-  );
+  const employmentUpdate = updates.find((c) => c.params?.[0] === 'tbl_employment');
+  if (employmentUpdate) {
+    assert.equal(employmentUpdate.params[1], employeeCode);
+    assert.match(String(employmentUpdate.params[2]), /^\d{4}-\d{2}-\d{2} /);
+    assert.deepEqual(
+      employmentUpdate.params.slice(3).map((v) => String(v)),
+      [
+        employmentRow.company_id,
+        employmentRow.employment_emp_id,
+        employmentRow.employment_position_id,
+        employmentRow.employment_workplace_id,
+        employmentRow.employment_date,
+        employmentRow.employment_department_id,
+        employmentRow.employment_branch_id,
+      ].map((v) => String(v)),
+    );
+  } else {
+    const employmentDelete = calls.find(
+      (c) =>
+        c.sql.startsWith('DELETE FROM ?? WHERE') &&
+        c.params?.[0] === 'tbl_employment',
+    );
+    assert.ok(employmentDelete);
+  }
+  const companyUpdate = updates.find((c) => c.params?.[0] === 'companies');
+  if (companyUpdate) {
+    assert.equal(companyUpdate.params[1], employeeCode);
+    assert.match(String(companyUpdate.params[2]), /^\d{4}-\d{2}-\d{2} /);
+    assert.deepEqual(
+      companyUpdate.params.slice(3).map((v) => String(v)),
+      [String(tenantCompanyId), String(companyId)],
+    );
+  } else {
+    const companyDelete = calls.find(
+      (c) =>
+        c.sql.startsWith('DELETE FROM ?? WHERE') &&
+        c.params?.[0] === 'companies',
+    );
+    assert.ok(companyDelete);
+  }
   assert.equal(res.code, 200);
   assert.deepEqual(res.body, {
     backup: null,

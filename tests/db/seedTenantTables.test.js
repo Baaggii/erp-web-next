@@ -73,6 +73,9 @@ await test('seedTenantTables returns summary for provided rows', async () => {
         { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
         { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
         { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
       ]];
     }
     if (sql.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
@@ -154,6 +157,9 @@ await test('seedTenantTables creates backup metadata before overwrite', async ()
         { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
         { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
         { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
       ]];
     }
     if (sql.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
@@ -165,7 +171,7 @@ await test('seedTenantTables creates backup metadata before overwrite', async ()
         { id: 11, company_id: companyId, title: 'World' },
       ]];
     }
-    if (sql.startsWith('DELETE FROM ?? WHERE company_id = ?')) {
+    if (sql.startsWith('UPDATE ?? SET `is_deleted` = 1')) {
       return [{ affectedRows: 2 }];
     }
     if (sql.startsWith('INSERT INTO ?? (`company_id`, `id`, `title`)')) {
@@ -192,6 +198,17 @@ await test('seedTenantTables creates backup metadata before overwrite', async ()
   );
   db.pool.query = origQuery;
 
+  const updateCall = calls.find((c) => c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1'));
+  assert.ok(updateCall);
+  assert.match(
+    updateCall.sql,
+    /SET `is_deleted` = 1, `deleted_by` = \?, `deleted_at` = \? WHERE company_id = \?/,
+  );
+  assert.equal(updateCall.params[0], 'posts');
+  assert.equal(updateCall.params[1], 5);
+  assert.match(String(updateCall.params[2]), /^\d{4}-\d{2}-\d{2} /);
+  assert.equal(updateCall.params[3], companyId);
+
   assert.ok(result.backup);
   assert.equal(result.backup.companyId, companyId);
   assert.equal(result.backup.originalName, 'Manual Backup');
@@ -214,7 +231,10 @@ await test('seedTenantTables creates backup metadata before overwrite', async ()
   const backupPath = path.join(backupDir, result.backup.fileName);
   const sql = await fs.readFile(backupPath, 'utf8');
   assert.match(sql, /DELETE FROM `posts` WHERE `company_id` = 77;/);
-  assert.match(sql, /INSERT INTO `posts` \(`id`, `company_id`, `title`\)/);
+  assert.match(
+    sql,
+    /INSERT INTO `posts` \(`id`, `company_id`, `title`(?:, `is_deleted`, `deleted_by`, `deleted_at`)?\)/,
+  );
 
   await fs.rm(companyConfigDir, { recursive: true, force: true });
 });

@@ -301,6 +301,9 @@ test('deleteTableRowCascade removes dependent rows with non-primary referenced c
           { COLUMN_NAME: 'company_id' },
           { COLUMN_NAME: 'empid' },
           { COLUMN_NAME: 'password' },
+          { COLUMN_NAME: 'is_deleted' },
+          { COLUMN_NAME: 'deleted_by' },
+          { COLUMN_NAME: 'deleted_at' },
         ]];
       }
       if (params?.[0] === 'tbl_employment') {
@@ -313,39 +316,51 @@ test('deleteTableRowCascade removes dependent rows with non-primary referenced c
           { COLUMN_NAME: 'employment_department_id' },
           { COLUMN_NAME: 'employment_branch_id' },
           { COLUMN_NAME: 'employment_company_id' },
+          { COLUMN_NAME: 'is_deleted' },
+          { COLUMN_NAME: 'deleted_by' },
+          { COLUMN_NAME: 'deleted_at' },
         ]];
       }
     }
-    if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'users') {
+    if (sql.startsWith('UPDATE ?? SET `is_deleted` = 1') && params?.[0] === 'users') {
       return [{}];
     }
-    if (sql.startsWith('DELETE FROM ?? WHERE') && params?.[0] === 'tbl_employment') {
+    if (sql.startsWith('UPDATE ?? SET `is_deleted` = 1') && params?.[0] === 'tbl_employment') {
       return [{}];
     }
     throw new Error(`unexpected query: ${sql}`);
   });
   await db.deleteTableRowCascade('tbl_employment', identifier, targetRow.company_id);
   restore();
-  const deletes = calls.filter((c) => c.sql.startsWith('DELETE FROM'));
-  assert.equal(deletes.length, 2);
-  const userDelete = deletes.find((c) => c.params?.[0] === 'users');
-  assert.deepEqual(
-    userDelete ? userDelete.params.map((p) => String(p)) : null,
-    ['users', '99', targetRow.company_id],
+  const updates = calls.filter((c) => c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1'));
+  assert.equal(updates.length, 2);
+  const userUpdate = updates.find(
+    (c) => c.params?.[0] === 'users' && c.params.length === 5,
   );
-  const employmentDelete = deletes.find((c) => c.params?.[0] === 'tbl_employment');
+  assert.ok(userUpdate);
+  assert.equal(userUpdate.params[1], null);
+  assert.match(String(userUpdate.params[2]), /^\d{4}-\d{2}-\d{2} /);
   assert.deepEqual(
-    employmentDelete ? employmentDelete.params.map((p) => String(p)) : null,
+    userUpdate.params.slice(3).map((v) => String(v)),
+    ['99', String(targetRow.company_id)],
+  );
+  const employmentUpdate = updates.find(
+    (c) => c.params?.[0] === 'tbl_employment',
+  );
+  assert.ok(employmentUpdate);
+  assert.equal(employmentUpdate.params[1], null);
+  assert.match(String(employmentUpdate.params[2]), /^\d{4}-\d{2}-\d{2} /);
+  assert.deepEqual(
+    employmentUpdate.params.slice(3).map((v) => String(v)),
     [
-      'tbl_employment',
-      targetRow.company_id,
+      String(targetRow.company_id),
       targetRow.employment_emp_id,
       targetRow.employment_position_id,
       targetRow.employment_workplace_id,
       targetRow.employment_date,
       targetRow.employment_department_id,
       targetRow.employment_branch_id,
-    ],
+    ].map((v) => String(v)),
   );
 });
 
@@ -362,7 +377,12 @@ test('deleteTableRowCascade deletes related rows first', async () => {
       return [[{ TABLE_NAME: 'orders', COLUMN_NAME: 'user_id', REFERENCED_COLUMN_NAME: 'id' }]];
     }
     if (sql.includes('information_schema.COLUMNS')) {
-      return [[{ COLUMN_NAME: 'id' }]];
+      return [[
+        { COLUMN_NAME: 'id' },
+        { COLUMN_NAME: 'is_deleted' },
+        { COLUMN_NAME: 'deleted_by' },
+        { COLUMN_NAME: 'deleted_at' },
+      ]];
     }
     if (sql.startsWith('SELECT COUNT(*)')) {
       return [[{ count: 1 }]];
@@ -370,15 +390,15 @@ test('deleteTableRowCascade deletes related rows first', async () => {
     if (sql.startsWith('SELECT `id` FROM')) {
       return [[{ id: 3 }]];
     }
-    if (sql.startsWith('DELETE FROM')) {
+    if (sql.startsWith('UPDATE ?? SET `is_deleted` = 1')) {
       return [{}];
     }
     throw new Error('unexpected query');
   });
   await db.deleteTableRowCascade('users', '7');
   restore();
-  const deletes = calls.filter(c => c.sql.startsWith('DELETE FROM'));
-  assert.equal(deletes.length, 2);
-  assert.ok(deletes[0].params.includes('orders'));
-  assert.ok(deletes[1].params.includes('users'));
+  const updates = calls.filter((c) => c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1'));
+  assert.equal(updates.length, 2);
+  assert.ok(updates[0].params.includes('orders'));
+  assert.ok(updates[1].params.includes('users'));
 });

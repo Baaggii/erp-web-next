@@ -170,6 +170,30 @@ const SOFT_DELETE_CANDIDATES = [
   "deletedAt",
 ];
 
+function pickSoftDeleteColumn(columns, cfgVal) {
+  if (!Array.isArray(columns) || columns.length === 0) {
+    return null;
+  }
+  const normalized = columns.map((c) => String(c));
+  const lower = normalized.map((c) => c.toLowerCase());
+  if (typeof cfgVal === "string") {
+    const idx = lower.indexOf(cfgVal.toLowerCase());
+    if (idx !== -1) return normalized[idx];
+  } else if (
+    cfgVal &&
+    typeof cfgVal === "object" &&
+    typeof cfgVal.column === "string"
+  ) {
+    const idx = lower.indexOf(cfgVal.column.toLowerCase());
+    if (idx !== -1) return normalized[idx];
+  }
+  for (const cand of SOFT_DELETE_CANDIDATES) {
+    const idx = lower.indexOf(cand.toLowerCase());
+    if (idx !== -1) return normalized[idx];
+  }
+  return null;
+}
+
 async function getSoftDeleteColumn(tableName, companyId = GLOBAL_COMPANY_ID) {
   const softDeleteConfig = await loadSoftDeleteConfig(companyId);
   const hasExplicitConfig = Object.prototype.hasOwnProperty.call(
@@ -181,23 +205,120 @@ async function getSoftDeleteColumn(tableName, companyId = GLOBAL_COMPANY_ID) {
     return null;
   }
   const columns = await getTableColumnsSafe(tableName);
-  const lower = columns.map((c) => c.toLowerCase());
-  if (typeof cfgVal === "string") {
-    const idx = lower.indexOf(cfgVal.toLowerCase());
-    if (idx !== -1) return columns[idx];
-  } else if (
-    cfgVal &&
-    typeof cfgVal === "object" &&
-    typeof cfgVal.column === "string"
-  ) {
-    const idx = lower.indexOf(cfgVal.column.toLowerCase());
-    if (idx !== -1) return columns[idx];
+  const resolved = pickSoftDeleteColumn(columns, cfgVal);
+  if (resolved) {
+    return resolved;
   }
-  for (const cand of SOFT_DELETE_CANDIDATES) {
-    const idx = lower.indexOf(cand.toLowerCase());
-    if (idx !== -1) return columns[idx];
+  try {
+    const fresh = await listTableColumns(tableName);
+    if (Array.isArray(fresh) && fresh.length) {
+      const normalizedFresh = fresh.map((c) => String(c));
+      tableColumnsCache.set(tableName, normalizedFresh);
+      const refreshed = pickSoftDeleteColumn(normalizedFresh, cfgVal);
+      if (refreshed) {
+        return refreshed;
+      }
+    }
+  } catch {}
+  return null;
+}
+
+const DELETED_AT_COLUMN_CANDIDATES = ["deleted_at", "deletedat", "deletedAt"];
+const DELETED_BY_COLUMN_CANDIDATES = ["deleted_by", "deletedby", "deletedBy"];
+
+function resolveColumnName(columns, lowerColumns, candidates) {
+  for (const cand of candidates) {
+    const idx = lowerColumns.indexOf(String(cand).toLowerCase());
+    if (idx !== -1) {
+      return columns[idx];
+    }
   }
   return null;
+}
+
+function buildSoftDeleteUpdateClause(
+  columns,
+  softDeleteColumn,
+  deletedBy,
+  { now } = {},
+) {
+  const normalized = Array.isArray(columns)
+    ? columns.map((col) => String(col))
+    : [];
+  const lowerColumns = normalized.map((col) => col.toLowerCase());
+  const resolvedSoftDeleteColumn = softDeleteColumn
+    ? resolveColumnName(normalized, lowerColumns, [softDeleteColumn])
+    : null;
+  const resolvedDeletedAtColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    DELETED_AT_COLUMN_CANDIDATES,
+  );
+  const resolvedDeletedByColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    DELETED_BY_COLUMN_CANDIDATES,
+  );
+
+  let timestamp = now;
+  const ensureTimestamp = () => {
+    if (!timestamp) {
+      timestamp = formatDateForDb(new Date());
+    }
+    return timestamp;
+  };
+
+  const assignments = [];
+  const params = [];
+
+  if (resolvedSoftDeleteColumn) {
+    const softLower = resolvedSoftDeleteColumn.toLowerCase();
+    if (
+      resolvedDeletedAtColumn &&
+      softLower === resolvedDeletedAtColumn.toLowerCase()
+    ) {
+      assignments.push(`\`${resolvedSoftDeleteColumn}\` = ?`);
+      params.push(ensureTimestamp());
+    } else if (
+      resolvedDeletedByColumn &&
+      softLower === resolvedDeletedByColumn.toLowerCase()
+    ) {
+      assignments.push(`\`${resolvedSoftDeleteColumn}\` = ?`);
+      params.push(deletedBy ?? null);
+    } else {
+      assignments.push(`\`${resolvedSoftDeleteColumn}\` = 1`);
+    }
+  }
+
+  if (
+    resolvedDeletedByColumn &&
+    (!resolvedSoftDeleteColumn ||
+      resolvedDeletedByColumn.toLowerCase() !==
+        resolvedSoftDeleteColumn.toLowerCase())
+  ) {
+    assignments.push(`\`${resolvedDeletedByColumn}\` = ?`);
+    params.push(deletedBy ?? null);
+  }
+
+  if (
+    resolvedDeletedAtColumn &&
+    (!resolvedSoftDeleteColumn ||
+      resolvedDeletedAtColumn.toLowerCase() !==
+        resolvedSoftDeleteColumn.toLowerCase())
+  ) {
+    assignments.push(`\`${resolvedDeletedAtColumn}\` = ?`);
+    params.push(ensureTimestamp());
+  }
+
+  if (assignments.length === 0) {
+    return { clause: '', params: [], supported: false };
+  }
+
+  return {
+    clause: assignments.join(', '),
+    params,
+    supported: true,
+  };
 }
 
 async function getTableColumnsSafe(tableName) {
@@ -696,9 +817,8 @@ export async function updateUserPassword(id, hashedPassword, updatedBy) {
 /**
  * Delete a user by ID
  */
-export async function deleteUserById(id) {
-  const [result] = await pool.query("DELETE FROM users WHERE id = ?", [id]);
-  return result;
+export async function deleteUserById(id, deletedBy = null) {
+  return deleteTableRow('users', id, null, undefined, deletedBy);
 }
 
 /**
@@ -844,10 +964,16 @@ export async function upsertModule(
   return { moduleKey, label, parentKey, showInSidebar, showInHeader };
 }
 
-export async function deleteModule(moduleKey) {
+export async function deleteModule(moduleKey, deletedBy = null) {
   logDb(`deleteModule ${moduleKey}`);
-  await pool.query('DELETE FROM modules WHERE module_key = ?', [moduleKey]);
-  return { moduleKey };
+  const result = await deleteTableRow(
+    'modules',
+    moduleKey,
+    null,
+    undefined,
+    deletedBy,
+  );
+  return { moduleKey: result?.module_key ?? moduleKey };
 }
 export async function populateDefaultModules() {
   for (const m of defaultModules) {
@@ -1177,6 +1303,7 @@ export async function seedTenantTables(
 
     const meta = await listTableColumnMeta(table_name);
     const columns = meta.map((c) => c.name);
+    const softDeleteColumn = await getSoftDeleteColumn(table_name, companyId);
     const otherCols = meta
       .filter(
         (c) =>
@@ -1205,6 +1332,7 @@ export async function seedTenantTables(
       manualRecords,
       ids,
       existingCount,
+      softDeleteColumn,
     });
   }
 
@@ -1234,11 +1362,29 @@ export async function seedTenantTables(
       manualRecords,
       ids,
       existingCount,
+      softDeleteColumn,
     } = info;
 
     if (existingCount > 0) {
-      await pool.query('DELETE FROM ?? WHERE company_id = ?', [
+      const { clause, params: softParams, supported } =
+        buildSoftDeleteUpdateClause(
+          columns,
+          softDeleteColumn,
+          updatedBy ?? createdBy ?? null,
+        );
+      if (!supported) {
+        logDb(
+          `seedTenantTables abort: ${tableName} lacks soft delete columns for company ${companyId}`,
+        );
+        const err = new Error(
+          `Table ${tableName} does not support soft delete overwrites`,
+        );
+        err.status = 400;
+        throw err;
+      }
+      await pool.query(`UPDATE ?? SET ${clause} WHERE company_id = ?`, [
         tableName,
+        ...softParams,
         companyId,
       ]);
     }
@@ -3842,16 +3988,9 @@ export async function deleteTableRow(
     return { company_id: companyId, module_key: moduleKey };
   }
 
-  const columns = await getTableColumnsSafe(tableName);
+  let columns = await getTableColumnsSafe(tableName);
   const pkCols = await getPrimaryKeyColumns(tableName);
   const pkLower = pkCols.map((c) => c.toLowerCase());
-  const hasCompanyId = columns.some(
-    (c) => c.toLowerCase() === 'company_id',
-  );
-  const addCompanyFilter =
-    effectiveCompanyIdForFilter != null &&
-    hasCompanyId &&
-    !pkLower.includes('company_id');
   logDb(`deleteTableRow(${tableName}, id=${id}) using keys: ${pkCols.join(', ')}`);
   if (pkCols.length === 0) {
     const err = new Error(`Table ${tableName} has no primary or unique key`);
@@ -3863,7 +4002,15 @@ export async function deleteTableRow(
     tableName,
     effectiveCompanyIdForSoftDelete,
   );
-  const now = formatDateForDb(new Date());
+
+  columns = await getTableColumnsSafe(tableName);
+  const hasCompanyId = columns.some(
+    (c) => c.toLowerCase() === 'company_id',
+  );
+  const addCompanyFilter =
+    effectiveCompanyIdForFilter != null &&
+    hasCompanyId &&
+    !pkLower.includes('company_id');
 
   if (pkCols.length === 1) {
     const col = pkCols[0];
@@ -3873,11 +4020,14 @@ export async function deleteTableRow(
       where += ' AND `company_id` = ?';
       whereParams.push(effectiveCompanyIdForFilter);
     }
-    if (softCol) {
-      await conn.query(
-        `UPDATE ?? SET \`${softCol}\` = 1, \`deleted_by\` = ?, \`deleted_at\` = ? WHERE ${where}`,
-        [tableName, userId, now, ...whereParams],
-      );
+    const { clause, params: softParams, supported } =
+      buildSoftDeleteUpdateClause(columns, softCol, userId);
+    if (supported) {
+      await conn.query(`UPDATE ?? SET ${clause} WHERE ${where}`, [
+        tableName,
+        ...softParams,
+        ...whereParams,
+      ]);
     } else {
       await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...whereParams]);
     }
@@ -3891,11 +4041,14 @@ export async function deleteTableRow(
     where += ' AND `company_id` = ?';
     whereParams.push(effectiveCompanyIdForFilter);
   }
-  if (softCol) {
-    await conn.query(
-      `UPDATE ?? SET \`${softCol}\` = 1, \`deleted_by\` = ?, \`deleted_at\` = ? WHERE ${where}`,
-      [tableName, userId, now, ...whereParams],
-    );
+  const { clause, params: softParams, supported } =
+    buildSoftDeleteUpdateClause(columns, softCol, userId);
+  if (supported) {
+    await conn.query(`UPDATE ?? SET ${clause} WHERE ${where}`, [
+      tableName,
+      ...softParams,
+      ...whereParams,
+    ]);
   } else {
     await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...whereParams]);
   }
@@ -4190,9 +4343,9 @@ async function deleteCascade(conn, tableName, id, visited, context) {
   for (const r of refs) {
     const pkCols = await getPrimaryKeyColumns(r.table);
     const whereClause = r.columns.map(() => '?? = ?').join(' AND ');
-    const params = [];
+    const whereParams = [];
     const queryVals = r.queryValues ?? r.values;
-    r.columns.forEach((col, i) => params.push(col, queryVals[i]));
+    r.columns.forEach((col, i) => whereParams.push(col, queryVals[i]));
 
     if (pkCols.length === 0) {
       const refSoftDeleteCompanyId = resolveCascadeCompanyId(
@@ -4200,25 +4353,39 @@ async function deleteCascade(conn, tableName, id, visited, context) {
         r.table,
         'softDeleteCompanyIds',
       );
-      const softCol = await getSoftDeleteColumn(r.table, refSoftDeleteCompanyId);
-      if (softCol) {
-        await conn.query(
-          `UPDATE ?? SET \`${softCol}\` = 1 WHERE ${whereClause}`,
-          [r.table, ...params],
+      const softCol = await getSoftDeleteColumn(
+        r.table,
+        refSoftDeleteCompanyId,
+      );
+      const columns = await getTableColumnsSafe(r.table);
+      const { clause, params: softParams, supported } =
+        buildSoftDeleteUpdateClause(
+          columns,
+          softCol,
+          context?.deletedBy ?? null,
         );
-      } else {
-        await conn.query(
-          `DELETE FROM ?? WHERE ${whereClause}`,
-          [r.table, ...params],
+      if (!supported) {
+        logDb(
+          `deleteCascade abort: ${r.table} lacks soft delete columns when referenced from ${tableName}`,
         );
+        const err = new Error(
+          `Table ${r.table} does not support soft delete cascading`,
+        );
+        err.status = 400;
+        throw err;
       }
+      await conn.query(`UPDATE ?? SET ${clause} WHERE ${whereClause}`, [
+        r.table,
+        ...softParams,
+        ...whereParams,
+      ]);
       continue;
     }
 
     const colList = pkCols.map((c) => `\`${c}\``).join(', ');
     const [rows] = await conn.query(
       `SELECT ${colList} FROM ?? WHERE ${whereClause}`,
-      [r.table, ...params],
+      [r.table, ...whereParams],
     );
     for (const row of rows) {
       const refId =
@@ -4228,7 +4395,7 @@ async function deleteCascade(conn, tableName, id, visited, context) {
       await deleteCascade(conn, r.table, refId, visited, context);
     }
   }
-  await deleteTableRow(tableName, id, baseCompanyId, conn, undefined, {
+  await deleteTableRow(tableName, id, baseCompanyId, conn, context?.deletedBy ?? null, {
     companyIdFilter: filterCompanyId,
     softDeleteCompanyId,
   });
@@ -4241,7 +4408,12 @@ export async function deleteTableRowCascade(
   options = {},
 ) {
   const conn = await pool.getConnection();
-  const { beforeDelete, companyIdOverrides, tenantCompanyId } = options ?? {};
+  const {
+    beforeDelete,
+    companyIdOverrides,
+    tenantCompanyId,
+    deletedBy = null,
+  } = options ?? {};
   const tableCompanyIds = {
     ...(companyIdOverrides || options?.tableCompanyIds || {}),
   };
@@ -4257,6 +4429,7 @@ export async function deleteTableRowCascade(
     softDeleteCompanyIds: options?.softDeleteCompanyIds
       ? { ...options.softDeleteCompanyIds }
       : {},
+    deletedBy,
   };
   try {
     await conn.beginTransaction();
