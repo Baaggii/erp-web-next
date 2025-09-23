@@ -112,18 +112,41 @@ function isInvalidString(str) {
 }
 
 const LATIN_LANGS = new Set(['en']);
-const CJK_LANGS = new Set(['zh', 'ja']);
+const KANA_REGEX = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
+const NON_LETTER_HAN_STRIP_REGEX = /[\p{P}\p{S}\p{Number}\s]/gu;
 
-function isDetectedLangMatch(detected, targetLang) {
+function hasKana(text) {
+  return typeof text === 'string' && KANA_REGEX.test(text);
+}
+
+function hasOnlyHan(text) {
+  if (typeof text !== 'string') return false;
+  const cleaned = text.replace(NON_LETTER_HAN_STRIP_REGEX, '');
+  if (!cleaned) return false;
+  return /^[\p{Script=Han}]+$/u.test(cleaned);
+}
+
+function isDetectedLangMatch(detected, targetLang, text = '') {
   if (!detected) return false;
+
+  if (targetLang === 'ja') {
+    if (!hasKana(text)) return false;
+    return detected === 'ja' || detected === 'cjk';
+  }
+
+  if (targetLang === 'zh') {
+    if (hasKana(text)) return false;
+    return detected === 'zh' || detected === 'cjk';
+  }
+
   if (detected === targetLang) return true;
   if (detected === 'latin') return LATIN_LANGS.has(targetLang);
-  if (detected === 'cjk') return CJK_LANGS.has(targetLang);
+  if (detected === 'cjk') return targetLang === 'zh';
   return false;
 }
 
-function shouldFlagLangMismatch(detected, targetLang) {
-  return !!detected && !isDetectedLangMatch(detected, targetLang);
+function shouldFlagLangMismatch(detected, targetLang, text = '') {
+  return !!detected && !isDetectedLangMatch(detected, targetLang, text);
 }
 
 function describeDetectedLang(code) {
@@ -145,10 +168,21 @@ function describeDetectedLang(code) {
   }
 }
 
-function resolveDetectedLocale(code) {
+function resolveDetectedLocale(code, text = '') {
   if (!code) return null;
   if (code === 'latin') return 'en';
-  if (code === 'cjk') return 'zh';
+  if (code === 'cjk') {
+    if (hasKana(text)) return 'ja';
+    if (hasOnlyHan(text)) return 'zh';
+    return null;
+  }
+  if (code === 'ja' && !hasKana(text)) {
+    // Avoid forcing relocations when the text no longer signals Japanese.
+    return null;
+  }
+  if (code === 'zh' && hasKana(text)) {
+    return 'ja';
+  }
   return code;
 }
 
@@ -172,7 +206,7 @@ function validateTranslatedText(value, targetLang, options = {}) {
   if (!detected) {
     return { ok: false, text: '', reason: 'unable to detect language' };
   }
-  if (!isDetectedLangMatch(detected, targetLang)) {
+  if (!isDetectedLangMatch(detected, targetLang, text)) {
     return {
       ok: false,
       text: '',
@@ -656,8 +690,11 @@ export async function generateTranslations({
           continue;
         }
         const detectedLang = detectLang(v);
-        const relocationLang = resolveDetectedLocale(detectedLang);
-        if (relocationLang && shouldFlagLangMismatch(detectedLang, lang)) {
+        const relocationLang = resolveDetectedLocale(detectedLang, v);
+        if (
+          relocationLang &&
+          shouldFlagLangMismatch(detectedLang, lang, v)
+        ) {
           const originalValue = v;
           let targetLocale = locales[relocationLang];
           if (!targetLocale || typeof targetLocale !== 'object') {
@@ -807,6 +844,15 @@ export async function generateTranslations({
 
   for (const lng of ['en', 'mn']) {
     if (locales[lng]) await saveLocale(lng);
+  }
+
+  for (const cleanupLang of ['ja', 'zh']) {
+    const locale = locales[cleanupLang];
+    if (!locale) continue;
+    await ensureLanguage(locale, cleanupLang, '', ['tooltip']);
+    if (locale.tooltip) {
+      await ensureLanguage(locale.tooltip, cleanupLang, 'tooltip');
+    }
   }
 
   // Generate missing English and Mongolian tooltips
@@ -961,10 +1007,13 @@ export async function generateTranslations({
         const prefix = `[gen-i18n]${origin ? `[${origin}]` : ''}`;
         const trimmedExisting = existing.trim();
         const detectedExisting = detectLang(trimmedExisting);
-        const resolvedExisting = resolveDetectedLocale(detectedExisting);
+        const resolvedExisting = resolveDetectedLocale(
+          detectedExisting,
+          trimmedExisting,
+        );
         const shouldClearExisting =
           resolvedExisting === 'en' &&
-          shouldFlagLangMismatch(detectedExisting, lang);
+          shouldFlagLangMismatch(detectedExisting, lang, trimmedExisting);
 
         if (shouldClearExisting) {
           locales[lang][key] = '';
@@ -1436,8 +1485,11 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
         continue;
       }
       const detectedLang = detectLang(v);
-      const relocationLang = resolveDetectedLocale(detectedLang);
-      if (relocationLang && shouldFlagLangMismatch(detectedLang, lang)) {
+      const relocationLang = resolveDetectedLocale(detectedLang, v);
+      if (
+        relocationLang &&
+        shouldFlagLangMismatch(detectedLang, lang, v)
+      ) {
         const originalValue = v;
         let targetTips = tipData[relocationLang];
         if (!targetTips || typeof targetTips !== 'object') {
@@ -1498,6 +1550,11 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
 
   if (tipData.en) await ensureTooltipLanguage(tipData.en, 'en');
   if (tipData.mn) await ensureTooltipLanguage(tipData.mn, 'mn');
+  for (const cleanupLang of ['ja', 'zh']) {
+    if (tipData[cleanupLang]) {
+      await ensureTooltipLanguage(tipData[cleanupLang], cleanupLang);
+    }
+  }
 
   for (const lang of languages) {
     checkAbort();
