@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 
-function mockPool(flagsMap = {}, rows = [{ id: 1, name: 'Bob Smith' }]) {
+function mockPool(
+  flagsMap = {},
+  rows = [{ id: 1, name: 'Bob Smith' }],
+  columns = ['company_id', 'id', 'name'],
+) {
   const originalQuery = db.pool.query;
   const originalGetConn = db.pool.getConnection;
   const calls = [];
@@ -14,11 +18,7 @@ function mockPool(flagsMap = {}, rows = [{ id: 1, name: 'Bob Smith' }]) {
       return [flags ? [flags] : []];
     }
     if (sql.includes('information_schema.COLUMNS')) {
-      return [[
-        { COLUMN_NAME: 'company_id' },
-        { COLUMN_NAME: 'id' },
-        { COLUMN_NAME: 'name' },
-      ]];
+      return [columns.map((name) => ({ COLUMN_NAME: name }))];
     }
     return [rows];
   };
@@ -118,4 +118,49 @@ test('listTableRows skips company_id for global tables', async () => {
   const calls = restore();
   const count = calls.find((c) => c.sql.includes('COUNT(*)'));
   assert.ok(!/company_id/i.test(count.sql));
+});
+
+test('listTableRows filters soft-deleted rows by default', async () => {
+  const restore = mockPool(
+    {},
+    [{ id: 1, name: 'Active User', is_deleted: 0 }],
+    ['company_id', 'id', 'name', 'is_deleted'],
+  );
+  await db.listTableRows('soft_users', {
+    filters: { company_id: 5 },
+  });
+  const calls = restore();
+  const main = calls.find((c) => c.sql.startsWith('SELECT *'));
+  assert.ok(
+    main.sql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"),
+    'soft delete filter should be applied',
+  );
+  const count = calls.find((c) => c.sql.includes('COUNT(*)'));
+  assert.ok(
+    count.sql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"),
+    'count query should include soft delete filter',
+  );
+});
+
+test('listTableRows can include soft-deleted rows when requested', async () => {
+  const restore = mockPool(
+    {},
+    [{ id: 2, name: 'Deleted User', is_deleted: 1 }],
+    ['company_id', 'id', 'name', 'is_deleted'],
+  );
+  await db.listTableRows('soft_users', {
+    filters: { company_id: 5 },
+    includeDeleted: true,
+  });
+  const calls = restore();
+  const main = calls.find((c) => c.sql.startsWith('SELECT *'));
+  assert.ok(
+    !main.sql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"),
+    'soft delete filter should be omitted when includeDeleted is true',
+  );
+  const count = calls.find((c) => c.sql.includes('COUNT(*)'));
+  assert.ok(
+    !count.sql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"),
+    'count query should omit soft delete filter when includeDeleted is true',
+  );
 });

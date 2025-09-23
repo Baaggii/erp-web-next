@@ -98,6 +98,72 @@ test('getTableRows falls back to user companyId when missing', async () => {
   restore();
 });
 
+test('getTableRows applies soft delete filter by default', async () => {
+  let selectSql = '';
+  let countSql = '';
+  const restore = mockPool(async (sql) => {
+    if (sql.includes('tenant_tables')) {
+      return [[]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'company_id' }, { COLUMN_NAME: 'is_deleted' }]];
+    }
+    if (sql.startsWith('SELECT *')) {
+      selectSql = sql;
+      return [[{ id: 1 }]];
+    }
+    if (sql.includes('COUNT(*)')) {
+      countSql = sql;
+      return [[{ count: 1 }]];
+    }
+    return [[{ id: 1 }]];
+  });
+  const req = {
+    params: { table: 'soft_users' },
+    query: {},
+    user: { companyId: 3 },
+    on() {},
+  };
+  const res = { json() {} };
+  await controller.getTableRows(req, res, (e) => { if (e) throw e; });
+  restore();
+  assert.ok(selectSql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"));
+  assert.ok(countSql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"));
+});
+
+test('getTableRows can include soft deleted rows when requested', async () => {
+  let selectSql = '';
+  let countSql = '';
+  const restore = mockPool(async (sql) => {
+    if (sql.includes('tenant_tables')) {
+      return [[]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'company_id' }, { COLUMN_NAME: 'is_deleted' }]];
+    }
+    if (sql.startsWith('SELECT *')) {
+      selectSql = sql;
+      return [[{ id: 1 }]];
+    }
+    if (sql.includes('COUNT(*)')) {
+      countSql = sql;
+      return [[{ count: 1 }]];
+    }
+    return [[{ id: 1 }]];
+  });
+  const req = {
+    params: { table: 'soft_users' },
+    query: { includeDeleted: 'true' },
+    user: { companyId: 3 },
+    on() {},
+  };
+  const res = { json() {} };
+  await controller.getTableRows(req, res, (e) => { if (e) throw e; });
+  restore();
+  assert.ok(!selectSql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"));
+  assert.ok(!countSql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"));
+});
+
 test('getTableRows aborts request and destroys connection', async () => {
   const restoreQuery = mockPool(async (sql) => {
     if (sql.includes('information_schema.COLUMNS')) {

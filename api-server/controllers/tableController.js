@@ -57,9 +57,12 @@ export async function getTableRows(req, res, next) {
       search,
       searchColumns,
       company_id, // eslint-disable-line camelcase
+      includeDeleted,
       ...filters
     } = req.query;
     const rowsPerPage = Math.min(Number(perPage) || 50, 500);
+    const includeDeletedFlag =
+      includeDeleted === '1' || includeDeleted === 'true';
     const result = await listTableRows(
       req.params.table,
       {
@@ -76,6 +79,7 @@ export async function getTableRows(req, res, next) {
         searchColumns: typeof searchColumns === 'string' ? searchColumns.split(',') : [],
         sort: { column: sort, dir },
         debug: debug === '1' || debug === 'true',
+        ...(includeDeletedFlag ? { includeDeleted: true } : {}),
       },
       controller.signal,
     );
