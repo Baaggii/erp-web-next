@@ -3,6 +3,8 @@ import path from 'path';
 import { pool } from '../../db/index.js';
 import { getConfigPath } from '../utils/configPaths.js';
 
+const masterForeignKeyCache = new Map();
+
 function getValue(row, field) {
   const val = row?.[field];
   return val !== undefined && val !== null ? val : undefined;
@@ -91,6 +93,69 @@ function evalPosFormulas(cfg, data) {
   }
 }
 
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeSingleEntry(value) {
+  if (isPlainObject(value)) return { ...value };
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (isPlainObject(item)) return { ...item };
+    }
+  }
+  return {};
+}
+
+function normalizeMultiEntry(value) {
+  if (Array.isArray(value)) {
+    return value.filter((item) => isPlainObject(item)).map((item) => ({ ...item }));
+  }
+  if (isPlainObject(value)) {
+    return [{ ...value }];
+  }
+  return [];
+}
+
+async function getMasterForeignKeyMap(conn, masterTable) {
+  if (!masterTable) return new Map();
+  if (masterForeignKeyCache.has(masterTable)) {
+    return masterForeignKeyCache.get(masterTable);
+  }
+  const [rows] = await conn.query(
+    `SELECT TABLE_NAME, COLUMN_NAME, REFERENCED_COLUMN_NAME
+       FROM information_schema.KEY_COLUMN_USAGE
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND REFERENCED_TABLE_NAME = ?`,
+    [masterTable],
+  );
+  const map = new Map();
+  for (const row of rows) {
+    if (!row?.TABLE_NAME || !row?.COLUMN_NAME) continue;
+    if (!map.has(row.TABLE_NAME)) map.set(row.TABLE_NAME, []);
+    map.get(row.TABLE_NAME).push({
+      column: row.COLUMN_NAME,
+      referencedColumn: row.REFERENCED_COLUMN_NAME,
+    });
+  }
+  masterForeignKeyCache.set(masterTable, map);
+  return map;
+}
+
+function applyMasterForeignKeys(table, row, fkMap, masterRow) {
+  if (!isPlainObject(row)) return;
+  const refs = fkMap.get(table);
+  if (!Array.isArray(refs) || refs.length === 0) return;
+  for (const ref of refs) {
+    const refCol = ref?.referencedColumn;
+    if (!ref?.column || !refCol) continue;
+    const value = masterRow?.[refCol];
+    if (value !== undefined && value !== null) {
+      row[ref.column] = value;
+    }
+  }
+}
+
 async function upsertRow(conn, table, row) {
   const cols = Object.keys(row);
   if (!cols.length) return null;
@@ -116,14 +181,85 @@ export async function postPosTransaction(
   const cfg = json['POS_Modmarket'];
   if (!cfg) throw new Error('POS_Modmarket config not found');
 
+  const masterTable = cfg.masterTable || 'transactions_pos';
+  const masterType = cfg.masterType === 'multi' ? 'multi' : 'single';
+  const tableTypeMap = new Map();
+  if (masterTable) tableTypeMap.set(masterTable, masterType);
+  for (const entry of Array.isArray(cfg.tables) ? cfg.tables : []) {
+    const tableName = entry?.table;
+    if (!tableName) continue;
+    const type = entry.type === 'multi' ? 'multi' : 'single';
+    if (type === 'multi') {
+      tableTypeMap.set(tableName, 'multi');
+    } else if (!tableTypeMap.has(tableName)) {
+      tableTypeMap.set(tableName, 'single');
+    }
+  }
+
+  const rawData = data && typeof data === 'object' ? data : {};
+  const inputMasterId = rawData.masterId ?? null;
+  const singleEntries =
+    rawData.single && typeof rawData.single === 'object' && !Array.isArray(rawData.single)
+      ? rawData.single
+      : {};
+  const multiEntries =
+    rawData.multi && typeof rawData.multi === 'object' && !Array.isArray(rawData.multi)
+      ? rawData.multi
+      : {};
+
+  const mergedData = {};
+  const assignNormalized = (table, value) => {
+    if (!table || value === undefined || value === null) return;
+    const expectedType = tableTypeMap.get(table);
+    if (expectedType === 'multi') {
+      mergedData[table] = normalizeMultiEntry(value);
+    } else if (expectedType === 'single') {
+      mergedData[table] = normalizeSingleEntry(value);
+    } else if (Array.isArray(value)) {
+      mergedData[table] = value
+        .filter((item) => isPlainObject(item))
+        .map((item) => ({ ...item }));
+    } else if (isPlainObject(value)) {
+      mergedData[table] = { ...value };
+    } else {
+      mergedData[table] = value;
+    }
+  };
+
+  for (const [table, value] of Object.entries(rawData)) {
+    if (table === 'masterId' || table === 'single' || table === 'multi') continue;
+    assignNormalized(table, value);
+  }
+  for (const [table, value] of Object.entries(singleEntries)) {
+    assignNormalized(table, value);
+  }
+  for (const [table, value] of Object.entries(multiEntries)) {
+    assignNormalized(table, value);
+  }
+
+  for (const [table, type] of tableTypeMap.entries()) {
+    if (type === 'multi') {
+      if (!Array.isArray(mergedData[table])) {
+        mergedData[table] = [];
+      }
+    } else if (!isPlainObject(mergedData[table])) {
+      mergedData[table] = {};
+    }
+  }
+
+  const posDataEntry = mergedData[masterTable];
+  const posData = isPlainObject(posDataEntry) ? posDataEntry : {};
+  mergedData[masterTable] = posData;
+  if (inputMasterId !== null && inputMasterId !== undefined && inputMasterId !== '') {
+    posData.id = inputMasterId;
+  }
+
   // Propagate mapped values
-  propagateCalcFields(cfg, data);
+  propagateCalcFields(cfg, mergedData);
 
   // Evaluate formulas
-  evalPosFormulas(cfg, data);
+  evalPosFormulas(cfg, mergedData);
 
-  const masterTable = 'transactions_pos';
-  const posData = data[masterTable] || {};
   Object.assign(posData, sessionInfo);
 
   const required = ['pos_date', 'total_amount', 'total_quantity', 'payment_type'];
@@ -141,23 +277,26 @@ export async function postPosTransaction(
   const conn = await pool.getConnection();
   try {
     await conn.beginTransaction();
+    const fkMap = await getMasterForeignKeyMap(conn, masterTable);
     const masterId = await upsertRow(conn, masterTable, posData);
+    if (masterId !== null && masterId !== undefined) {
+      posData.id = masterId;
+    }
 
-    const tables = [
-      'transactions_plan',
-      'transactions_expense',
-      'transactions_order',
-      'transactions_inventory',
-      'transactions_income',
-    ];
-    for (const table of tables) {
-      const tData = data[table];
+    const tablesToPersist = Object.keys(mergedData).filter(
+      (table) => table && table !== masterTable,
+    );
+    for (const table of tablesToPersist) {
+      const tData = mergedData[table];
       if (!tData) continue;
       if (Array.isArray(tData)) {
         for (const row of tData) {
+          if (!isPlainObject(row) || Object.keys(row).length === 0) continue;
+          applyMasterForeignKeys(table, row, fkMap, posData);
           await upsertRow(conn, table, row);
         }
-      } else {
+      } else if (isPlainObject(tData) && Object.keys(tData).length > 0) {
+        applyMasterForeignKeys(table, tData, fkMap, posData);
         await upsertRow(conn, table, tData);
       }
     }
