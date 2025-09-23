@@ -113,6 +113,20 @@ function getNested(obj, keyPath) {
   return keyPath.split('.').reduce((o, k) => (o && o[k] !== undefined ? o[k] : undefined), obj);
 }
 
+function setNested(obj, keyPath, value) {
+  if (!obj || !keyPath) return;
+  const keys = keyPath.split('.');
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const key = keys[i];
+    if (!current[key] || typeof current[key] !== 'object') {
+      current[key] = {};
+    }
+    current = current[key];
+  }
+  current[keys[keys.length - 1]] = value;
+}
+
 function writeLocaleFile(lang, obj) {
   const file = path.join(localesDir, `${lang}.json`);
   const ordered = sortObj(obj);
@@ -217,6 +231,46 @@ async function translateWithOpenAI(text, from, to) {
     clearTimeout(timer);
     throw err;
   }
+}
+
+async function translateWithPreferredProviders(text, from, to, keyPath, context = 'gen-i18n') {
+  if (!text || !from || !to || from === to) return null;
+  const label = keyPath || '(root)';
+  const providers = [
+    {
+      name: 'OpenAI',
+      exec: async () => {
+        const { translation } = await translateWithOpenAI(text, from, to);
+        return translation;
+      },
+    },
+    {
+      name: 'Google',
+      exec: async () => translateWithGoogle(text, to, from, label),
+    },
+  ];
+
+  for (const provider of providers) {
+    try {
+      const raw = await provider.exec();
+      const candidate = typeof raw === 'string' ? raw.trim() : '';
+      if (!candidate) continue;
+      const detected = detectLang(candidate);
+      if (isInvalidString(candidate) || (detected && detected !== to)) {
+        console.warn(
+          `[${context}] rejected ${provider.name} ${from}->${to} for ${label}: invalid output`,
+        );
+        continue;
+      }
+      return { text: candidate, provider: provider.name };
+    } catch (err) {
+      console.warn(
+        `[${context}] ${provider.name} translation failed ${from}->${to} for ${label}: ${err.message}`,
+      );
+    }
+  }
+
+  return null;
 }
 
 /* ---------------- Main ---------------- */
@@ -491,8 +545,51 @@ export async function generateTranslations({
           continue;
         }
         const sourceLang = detectLang(v);
-        const needsFix = (sourceLang && sourceLang !== lang) || isInvalidString(v);
-        if (needsFix) {
+        if (sourceLang && sourceLang !== lang) {
+          const originalValue = v;
+          let targetLocale = locales[sourceLang];
+          if (!targetLocale || typeof targetLocale !== 'object') {
+            targetLocale = {};
+            locales[sourceLang] = targetLocale;
+          }
+          const existingTarget = getNested(targetLocale, keyPath);
+          if (
+            existingTarget == null ||
+            (typeof existingTarget === 'string' && !existingTarget.trim())
+          ) {
+            setNested(targetLocale, keyPath, originalValue);
+          } else if (
+            typeof existingTarget === 'string' &&
+            existingTarget.trim() !== originalValue.trim()
+          ) {
+            console.warn(
+              `[gen-i18n] relocation skipped overriding existing ${sourceLang}.${keyPath}`,
+            );
+          }
+
+          const translated = await translateWithPreferredProviders(
+            originalValue,
+            sourceLang,
+            lang,
+            keyPath,
+            'gen-i18n',
+          );
+          if (translated) {
+            localeObj[k] = translated.text;
+            console.warn(
+              `[gen-i18n] relocated ${lang}.${keyPath} -> ${sourceLang}.${keyPath}; filled with ${translated.provider}`,
+            );
+          } else {
+            localeObj[k] = '';
+            console.warn(
+              `[gen-i18n] relocated ${lang}.${keyPath} -> ${sourceLang}.${keyPath}; no valid translation`,
+            );
+          }
+          fixedKeys.add(`${lang}.${keyPath}`);
+          continue;
+        }
+
+        if (isInvalidString(v)) {
           const candidates = [];
           const enVal = lang !== 'en' ? getNested(locales.en, keyPath) : undefined;
           const mnVal = lang !== 'mn' ? getNested(locales.mn, keyPath) : undefined;
@@ -875,18 +972,46 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
       }
       const sourceLang = detectLang(v);
       if (sourceLang && sourceLang !== lang) {
-        try {
-          const translated = await translateWithGoogle(v, lang, sourceLang, k);
-          obj[k] = translated;
+        const originalValue = v;
+        let targetTips = tipData[sourceLang];
+        if (!targetTips || typeof targetTips !== 'object') {
+          targetTips = {};
+          tipData[sourceLang] = targetTips;
+        }
+        const existingTarget = targetTips[k];
+        if (
+          existingTarget == null ||
+          (typeof existingTarget === 'string' && !existingTarget.trim())
+        ) {
+          targetTips[k] = originalValue;
+        } else if (
+          typeof existingTarget === 'string' &&
+          existingTarget.trim() !== originalValue.trim()
+        ) {
           console.warn(
-            `[gen-tooltips] WARNING: corrected ${lang}.${k}: "${v}" -> "${translated}"`,
-          );
-          changed = true;
-        } catch (err) {
-          console.warn(
-            `[gen-tooltips] ensureLanguage failed for ${lang}.${k}: ${err.message}`,
+            `[gen-tooltips] relocation skipped overriding existing ${sourceLang}.${k}`,
           );
         }
+
+        const translated = await translateWithPreferredProviders(
+          originalValue,
+          sourceLang,
+          lang,
+          `tooltip.${k}`,
+          'gen-tooltips',
+        );
+        if (translated) {
+          obj[k] = translated.text;
+          console.warn(
+            `[gen-tooltips] relocated ${lang}.${k} -> ${sourceLang}.${k}; filled with ${translated.provider}`,
+          );
+        } else {
+          obj[k] = '';
+          console.warn(
+            `[gen-tooltips] relocated ${lang}.${k} -> ${sourceLang}.${k}; no valid translation`,
+          );
+        }
+        changed = true;
       }
     }
     return changed;
