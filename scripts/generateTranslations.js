@@ -111,7 +111,7 @@ function isInvalidString(str) {
   );
 }
 
-const LATIN_LANGS = new Set(['en', 'es', 'de', 'fr']);
+const LATIN_LANGS = new Set(['en']);
 const CJK_LANGS = new Set(['zh', 'ja']);
 
 function isDetectedLangMatch(detected, targetLang) {
@@ -129,9 +129,17 @@ function shouldFlagLangMismatch(detected, targetLang) {
 function describeDetectedLang(code) {
   switch (code) {
     case 'latin':
-      return 'Latin script';
+      return 'Latin script text (likely English)';
     case 'cjk':
       return 'CJK characters';
+    case 'en':
+      return 'English text';
+    case 'es':
+      return 'Spanish text';
+    case 'de':
+      return 'German text';
+    case 'fr':
+      return 'French text';
     default:
       return code || 'unknown language';
   }
@@ -947,12 +955,26 @@ export async function generateTranslations({
       if (sourceLang === 'mn' && !/[\u0400-\u04FF]/.test(sourceText)) continue;
       if (sourceLang === 'en' && !/[A-Za-z]/.test(sourceText)) continue;
 
-      const existing = locales[lang][key];
+      let existing = locales[lang][key];
 
-      if (lang !== sourceLang && existing && existing.trim()) {
+      if (lang !== sourceLang && typeof existing === 'string' && existing.trim()) {
         const prefix = `[gen-i18n]${origin ? `[${origin}]` : ''}`;
-        log(`${prefix} Skipping ${lang}.${key}, already translated`);
-        continue;
+        const trimmedExisting = existing.trim();
+        const detectedExisting = detectLang(trimmedExisting);
+        const resolvedExisting = resolveDetectedLocale(detectedExisting);
+        const shouldClearExisting =
+          resolvedExisting === 'en' &&
+          shouldFlagLangMismatch(detectedExisting, lang);
+
+        if (shouldClearExisting) {
+          locales[lang][key] = '';
+          console.warn(
+            `${prefix} cleared stale English ${lang}.${key}: "${trimmedExisting}" -> ""`,
+          );
+        } else {
+          log(`${prefix} Skipping ${lang}.${key}, already translated`);
+          continue;
+        }
       }
 
       if (lang === 'mn' && sourceLang === 'en') {
