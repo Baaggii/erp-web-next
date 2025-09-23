@@ -3594,6 +3594,7 @@ export async function listTableRows(
     search = '',
     searchColumns = [],
     debug = false,
+    includeDeleted = false,
   } = {},
   signal,
 ) {
@@ -3645,6 +3646,22 @@ export async function listTableRows(
       ')';
     filterClauses.push(clause);
     searchColumns.forEach(() => params.push(`%${search}%`));
+  }
+  if (!includeDeleted) {
+    const softDeleteCompanyId =
+      filters?.company_id !== undefined && filters?.company_id !== ''
+        ? filters.company_id
+        : undefined;
+    const softDeleteColumn = await getSoftDeleteColumn(
+      tableName,
+      softDeleteCompanyId,
+    );
+    if (softDeleteColumn) {
+      const identifier = escapeIdentifier(softDeleteColumn);
+      filterClauses.push(
+        `(${identifier} IS NULL OR ${identifier} IN (0,''))`,
+      );
+    }
   }
   const where = filterClauses.length > 0 ? `WHERE ${filterClauses.join(' AND ')}` : '';
   let order = '';
