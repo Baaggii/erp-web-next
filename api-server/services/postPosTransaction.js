@@ -11,49 +11,116 @@ function getValue(row, field) {
 }
 
 function setValue(target, field, value) {
-  if (target && field && (target[field] === undefined || target[field] === null)) {
+  if (target && field) {
     target[field] = value;
   }
 }
 
-function propagateCalcFields(cfg, data) {
+function sumCellValue(source, field) {
+  if (Array.isArray(source)) {
+    let sum = 0;
+    let hasData = false;
+    for (const row of source) {
+      if (!row || typeof row !== 'object') continue;
+      const raw = getValue(row, field);
+      if (raw === undefined) continue;
+      const num = Number(raw);
+      if (!Number.isFinite(num)) continue;
+      sum += num;
+      hasData = true;
+    }
+    if (!hasData && source.length === 0) {
+      hasData = true;
+    }
+    return { sum, hasValue: hasData };
+  }
+  if (isPlainObject(source)) {
+    const raw = getValue(source, field);
+    if (raw === undefined) {
+      return { sum: 0, hasValue: false };
+    }
+    const num = Number(raw);
+    if (!Number.isFinite(num)) {
+      return { sum: 0, hasValue: false };
+    }
+    return { sum: num, hasValue: true };
+  }
+  return { sum: 0, hasValue: false };
+}
+
+export function propagateCalcFields(cfg, data) {
   if (!Array.isArray(cfg.calcFields)) return;
   for (const map of cfg.calcFields) {
-    let value;
-    for (const cell of map.cells || []) {
-      const { table, field } = cell;
-      if (!table || !field) continue;
-      const tData = data[table];
-      if (!tData) continue;
-      if (Array.isArray(tData)) {
-        for (const row of tData) {
-          const v = getValue(row, field);
-          if (v !== undefined) {
-            value = v;
-            break;
-          }
-        }
-        if (value !== undefined) break;
-      } else {
-        const v = getValue(tData, field);
-        if (v !== undefined) {
-          value = v;
-          break;
-        }
+    const cells = Array.isArray(map?.cells) ? map.cells : [];
+    if (!cells.length) continue;
+
+    let computedValue;
+    let hasComputedValue = false;
+
+    let sumValue = 0;
+    let hasSum = false;
+
+    for (const cell of cells) {
+      const { table, field, agg } = cell || {};
+      if (!table || !field || agg !== 'SUM') continue;
+      const source = data[table];
+      const { sum, hasValue } = sumCellValue(source, field);
+      if (hasValue) {
+        sumValue += sum;
+        hasSum = true;
       }
     }
-    if (value === undefined) continue;
-    for (const cell of map.cells || []) {
-      const { table, field } = cell;
-      if (!table || !field) continue;
-      const tData = data[table];
-      if (!tData) continue;
-      if (Array.isArray(tData)) {
-        for (const row of tData) {
-          setValue(row, field, value);
+
+    if (hasSum) {
+      computedValue = sumValue;
+      hasComputedValue = true;
+    }
+
+    if (!hasComputedValue) {
+      for (const cell of cells) {
+        const { table, field } = cell || {};
+        if (!table || !field) continue;
+        const source = data[table];
+        if (Array.isArray(source)) {
+          for (const row of source) {
+            if (!row || typeof row !== 'object') continue;
+            const v = getValue(row, field);
+            if (v !== undefined) {
+              computedValue = v;
+              hasComputedValue = true;
+              break;
+            }
+          }
+        } else if (isPlainObject(source)) {
+          const v = getValue(source, field);
+          if (v !== undefined) {
+            computedValue = v;
+            hasComputedValue = true;
+          }
         }
-      } else {
-        setValue(tData, field, value);
+        if (hasComputedValue) break;
+      }
+    }
+
+    if (!hasComputedValue) continue;
+
+    for (const cell of cells) {
+      const { table, field, agg } = cell || {};
+      if (!table || !field) continue;
+      const target = data[table];
+      if (!target) continue;
+
+      if (agg === 'SUM' && Array.isArray(target)) {
+        continue;
+      }
+
+      if (Array.isArray(target)) {
+        for (const row of target) {
+          if (!row || typeof row !== 'object') continue;
+          setValue(row, field, computedValue);
+        }
+      } else if (isPlainObject(target)) {
+        setValue(target, field, computedValue);
       }
     }
   }
