@@ -430,18 +430,32 @@ async function upsertRow(conn, table, row) {
 }
 
 export async function postPosTransaction(
+  name,
   data,
   sessionInfo = {},
   companyId = 0,
 ) {
-    const { path: cfgPath } = await getConfigPath(
-      'posTransactionConfig.json',
-      companyId,
-    );
+  const layoutName = typeof name === 'string' ? name.trim() : '';
+  if (!layoutName) {
+    const err = new Error('POS transaction layout name is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const { path: cfgPath } = await getConfigPath(
+    'posTransactionConfig.json',
+    companyId,
+  );
   const cfgRaw = await fs.readFile(cfgPath, 'utf8');
   const json = JSON.parse(cfgRaw);
-  const cfg = json['POS_Modmarket'];
-  if (!cfg) throw new Error('POS_Modmarket config not found');
+  const cfg = json?.[layoutName];
+  if (!cfg) {
+    const err = new Error(
+      `POS transaction config not found for layout "${layoutName}"`,
+    );
+    err.status = 400;
+    throw err;
+  }
 
   const masterTable = cfg.masterTable || 'transactions_pos';
   const masterType = cfg.masterType === 'multi' ? 'multi' : 'single';
