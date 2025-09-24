@@ -65,6 +65,95 @@ await test('seedTenantTables filters by record ids', async () => {
   assert.deepEqual(result.summary, { posts: { count: 2, ids: [1, 2] } });
 });
 
+await test(
+  'seedTenantTables filters composite primary keys by non-tenant columns',
+  async () => {
+    const companyId = 23;
+    const origQuery = db.pool.query;
+    const calls = [];
+    db.pool.query = async (sql, params = []) => {
+      calls.push({ sql, params });
+      if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+        return [[{ table_name: 'status_codes', is_shared: 0 }]];
+      }
+      if (sql.startsWith('SELECT COUNT(*)')) {
+        return [[{ cnt: 3 }]];
+      }
+      if (sql.startsWith('SELECT COLUMN_NAME')) {
+        return [[
+          { COLUMN_NAME: 'company_id', COLUMN_KEY: 'PRI', EXTRA: '' },
+          { COLUMN_NAME: 'code', COLUMN_KEY: 'PRI', EXTRA: '' },
+          { COLUMN_NAME: 'label', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
+        ]];
+      }
+      if (
+        sql.startsWith(
+          'SELECT column_name, mn_label FROM table_column_labels',
+        )
+      ) {
+        return [[]];
+      }
+      if (sql.startsWith('UPDATE ?? SET')) {
+        return [{ affectedRows: 3 }];
+      }
+      if (sql.startsWith('INSERT INTO user_level_permissions')) {
+        return [{ affectedRows: 0 }];
+      }
+      if (sql.startsWith('INSERT INTO ??')) {
+        return [{ affectedRows: 2 }];
+      }
+      return [[], []];
+    };
+
+    try {
+      await fs.rm(
+        path.join(process.cwd(), 'config', String(companyId)),
+        { recursive: true, force: true },
+      );
+      const result = await db.seedTenantTables(
+        companyId,
+        null,
+        { status_codes: ['A', 'C'] },
+        true,
+        99,
+      );
+      const insertCall = calls.find(
+        (c) => c.sql.startsWith('INSERT INTO ??') && c.params?.[0] === 'status_codes',
+      );
+      assert.ok(insertCall);
+      assert.ok(
+        insertCall.sql.includes('src.`code` IN (?, ?)'),
+        'should filter by the non-tenant primary key column',
+      );
+      assert.deepEqual(
+        insertCall.params.slice(0, 5),
+        ['status_codes', companyId, 'status_codes', 'A', 'C'],
+      );
+      assert.deepEqual(result.summary, {
+        status_codes: { count: 2, ids: ['A', 'C'] },
+      });
+      assert.ok(
+        calls.some(
+          (c) =>
+            c.sql.startsWith('UPDATE ?? SET') &&
+            Array.isArray(c.params) &&
+            c.params[c.params.length - 1] === companyId,
+        ),
+        'should soft delete existing rows before reseeding',
+      );
+    } finally {
+      db.pool.query = origQuery;
+      await fs.rm(
+        path.join(process.cwd(), 'config', String(companyId)),
+        { recursive: true, force: true },
+      );
+    }
+  },
+);
+
 await test('seedTenantTables returns summary for provided rows', async () => {
   const orig = db.pool.query;
   const calls = [];

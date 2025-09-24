@@ -1397,6 +1397,7 @@ export async function seedTenantTables(
     recordMap && typeof recordMap === 'object' && !Array.isArray(recordMap)
       ? recordMap
       : {};
+  const tenantKeyOverrides = await loadTenantTableKeyConfig(companyId);
   if (Array.isArray(selectedTables)) {
     if (selectedTables.length === 0) {
       return { summary, backup: null };
@@ -1466,6 +1467,30 @@ export async function seedTenantTables(
 
     const records = normalizedRecordMap?.[table_name];
     const pkCols = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
+    const columnLookup = new Map();
+    for (const col of meta) {
+      const normalized = String(col?.name || '').toLowerCase();
+      if (!normalized) continue;
+      columnLookup.set(normalized, col.name);
+    }
+    let tenantKeys = [];
+    const override = tenantKeyOverrides?.[table_name];
+    if (Array.isArray(override)) {
+      tenantKeys = override
+        .map((key) => columnLookup.get(String(key || '').toLowerCase()))
+        .filter(Boolean);
+    }
+    if (tenantKeys.length === 0) {
+      for (const { aliases } of DEFAULT_TENANT_KEY_ALIASES) {
+        for (const alias of aliases) {
+          const actual = columnLookup.get(alias.toLowerCase());
+          if (actual && !tenantKeys.includes(actual)) {
+            tenantKeys.push(actual);
+            break;
+          }
+        }
+      }
+    }
     const manualRecords =
       Array.isArray(records) &&
       records.length > 0 &&
@@ -1481,6 +1506,7 @@ export async function seedTenantTables(
       columns,
       otherCols,
       pkCols,
+      tenantKeys,
       manualRecords,
       ids,
       existingCount,
@@ -1511,6 +1537,7 @@ export async function seedTenantTables(
       columns,
       otherCols,
       pkCols,
+      tenantKeys,
       manualRecords,
       ids,
       existingCount,
@@ -1622,9 +1649,24 @@ export async function seedTenantTables(
     params.push(tableName);
 
     const idList = Array.isArray(ids) ? ids : [];
-    if (idList.length > 0 && pkCols.length === 1) {
+    let idFilterColumn = null;
+    if (idList.length > 0 && Array.isArray(pkCols) && pkCols.length > 0) {
+      const tenantKeySet = new Set(
+        (Array.isArray(tenantKeys) ? tenantKeys : []).map((key) =>
+          String(key || '').toLowerCase(),
+        ),
+      );
+      for (const pk of pkCols) {
+        const normalized = String(pk || '').toLowerCase();
+        if (!tenantKeySet.has(normalized)) {
+          idFilterColumn = pk;
+          break;
+        }
+      }
+    }
+    if (idList.length > 0 && idFilterColumn) {
       const placeholders = idList.map(() => '?').join(', ');
-      sql += ` AND ${sourceAlias}.${escapeIdentifier(pkCols[0])} IN (${placeholders})`;
+      sql += ` AND ${sourceAlias}.${escapeIdentifier(idFilterColumn)} IN (${placeholders})`;
       params.push(...idList);
     }
 
