@@ -648,6 +648,81 @@ const LANGUAGE_HEURISTICS = [
 ];
 
 const MONGOLIAN_EXTRA_CYRILLIC = new Set([0x0401, 0x0451, 0x04ae, 0x04af, 0x04e8, 0x04e9]);
+const MONGOLIAN_SPECIFIC_CYRILLIC = new Set([0x04ae, 0x04af, 0x04e8, 0x04e9]);
+
+const MONGOLIAN_POSITIVE_SEQUENCES = [
+  ' САЙН ',
+  ' БАЙН',
+  ' БАЙХ',
+  ' БАЙГ',
+  ' БАЙГУ',
+  ' АЖИЛ',
+  ' АЖИГ',
+  ' ХЭРЭГ',
+  ' ХОЛБ',
+  ' БАРИХ',
+  ' ТОВЧ',
+  ' ДАНС',
+  ' ХАЯГ',
+  ' МОНГОЛ',
+  ' НЭГ ',
+  ' ОЛОН ',
+  ' ВЭ ',
+  ' ГАРЫН',
+  ' АВЛАГ',
+  ' ТОХИРГ',
+  ' ГҮЙЛ',
+  ' ҮЙЛГ',
+  ' ЛЭГЧ',
+  ' ГЧИЙ',
+  ' ЧИЙН',
+  ' ЛГЭЭ',
+  ' ЙЛГЭ',
+  ' ГЭЭ ',
+  ' ГЭЖ',
+  ' ЗАХИ',
+  ' АХИА',
+  ' ХИАЛ',
+  ' ЛБАР',
+  ' УГАА',
+  ' ГААР',
+  ' ХЯМД',
+  ' ОГНО',
+  ' ЛЫН ',
+  ' ИЙН ',
+  ' ГУУЛ',
+  ' УУЛЛ',
+  ' УЛЛА',
+  ' ТАЛБ',
+  ' ТАЛХ',
+  ' ХОЙЛ',
+  ' ХИЙХ',
+  ' ХИЙД',
+  ' ХИЙЖ',
+  ' АМЖИ',
+  'ОМЖ',
+  ' УТАС',
+  ' МЭДЭ',
+];
+
+const MONGOLIAN_POSITIVE_BIGRAMS = new Set([
+  'ЙЛ',
+  'ТГ',
+  'ГЧ',
+  'МЖ',
+  'ХЯ',
+  'ЛБ',
+  'ЛЭ',
+  'ЙХ',
+  'РХ',
+  'НЭ',
+  'ЭГ',
+  'ЭН',
+  'ЭР',
+  'ЭХ',
+  'СЭ',
+  'УУ',
+]);
 
 function isAllowedMongolianCyrillicCodePoint(codePoint) {
   return (
@@ -658,7 +733,10 @@ function isAllowedMongolianCyrillicCodePoint(codePoint) {
 
 function isLikelyMongolianCyrillic(value) {
   if (typeof value !== 'string') return false;
+
   let hasCyrillic = false;
+  let hasMongolianSpecificLetter = false;
+
   for (const char of value) {
     const codePoint = char.codePointAt(0);
     if (typeof codePoint !== 'number') continue;
@@ -667,9 +745,49 @@ function isLikelyMongolianCyrillic(value) {
       if (!isAllowedMongolianCyrillicCodePoint(codePoint)) {
         return false;
       }
+      if (MONGOLIAN_SPECIFIC_CYRILLIC.has(codePoint)) {
+        hasMongolianSpecificLetter = true;
+      }
     }
   }
-  return hasCyrillic;
+
+  if (!hasCyrillic) return false;
+  if (hasMongolianSpecificLetter) return true;
+
+  const normalized = value
+    .toUpperCase()
+    .replace(/[^\u0400-\u04FF]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) return false;
+
+  const padded = ` ${normalized} `;
+  let signalScore = 0;
+
+  const sequenceMatches = new Set();
+  for (const seq of MONGOLIAN_POSITIVE_SEQUENCES) {
+    if (padded.includes(seq)) {
+      sequenceMatches.add(seq);
+    }
+  }
+  if (sequenceMatches.size) {
+    signalScore += sequenceMatches.size * 2;
+  }
+
+  const lettersOnly = normalized.replace(/\s+/g, '');
+  const bigramMatches = new Set();
+  for (let i = 0; i < lettersOnly.length - 1; i++) {
+    const bigram = lettersOnly.slice(i, i + 2);
+    if (MONGOLIAN_POSITIVE_BIGRAMS.has(bigram)) {
+      bigramMatches.add(bigram);
+    }
+  }
+  if (bigramMatches.size) {
+    signalScore += Math.min(bigramMatches.size, 3);
+  }
+
+  return signalScore >= 2;
 }
 
 export function isValidMongolianCyrillic(value) {
