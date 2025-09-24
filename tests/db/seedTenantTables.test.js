@@ -134,9 +134,15 @@ await test(
         return [[]];
       }
       if (sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?')) {
-        assert.ok(
-          sql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"),
+        assert.match(
+          sql,
+          /\(`is_deleted` IS NULL OR `is_deleted` IN \(0,''\) OR LOWER\(`is_deleted`\) IN \(\?, \?, \?, \?, \?\)\)/,
           'count query should exclude soft deleted rows',
+        );
+        assert.deepEqual(
+          (params ?? []).slice(2),
+          ['0', 'n', 'no', 'false', 'f'],
+          'count query should include common active soft delete markers',
         );
         return [[{ cnt: 0 }]];
       }
@@ -161,12 +167,117 @@ await test(
       c.sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?'),
     );
     assert.ok(countCall);
-    assert.ok(
-      countCall.sql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"),
+    assert.match(
+      countCall.sql,
+      /\(`is_deleted` IS NULL OR `is_deleted` IN \(0,''\) OR LOWER\(`is_deleted`\) IN \(\?, \?, \?, \?, \?\)\)/,
     );
+    assert.deepEqual((countCall.params ?? []).slice(2), ['0', 'n', 'no', 'false', 'f']);
     assert.ok(
       !calls.some((c) => c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1')),
     );
+  },
+);
+
+await test(
+  'seedTenantTables soft deletes rows when active markers use text values',
+  async () => {
+    const companyId = 12;
+    const companyConfigDir = path.join(
+      process.cwd(),
+      'config',
+      String(companyId),
+    );
+    await fs.rm(companyConfigDir, { recursive: true, force: true });
+
+    const orig = db.pool.query;
+    const calls = [];
+    db.pool.query = async (sql, params = []) => {
+      calls.push({ sql, params });
+      if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+        return [[{ table_name: 'posts', is_shared: 0 }]];
+      }
+      if (sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?')) {
+        const hasLower = /LOWER\(`is_deleted`\) IN/.test(sql);
+        if (!hasLower) {
+          return [[{ cnt: 0 }]];
+        }
+        assert.deepEqual(
+          params.slice(2),
+          ['0', 'n', 'no', 'false', 'f'],
+          'count query should include textual active markers',
+        );
+        return [[{ cnt: 3 }]];
+      }
+      if (sql.startsWith('SELECT COLUMN_NAME')) {
+        return [[
+          { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+          { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
+        ]];
+      }
+      if (sql.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
+        return [[]];
+      }
+      if (sql.startsWith('SELECT * FROM ?? WHERE company_id = ?')) {
+        return [[
+          { id: 1, company_id: companyId, title: 'Alpha', is_deleted: 'N' },
+          { id: 2, company_id: companyId, title: 'Beta', is_deleted: 'N' },
+          { id: 3, company_id: companyId, title: 'Gamma', is_deleted: 'N' },
+        ]];
+      }
+      if (sql.startsWith('UPDATE ?? SET `is_deleted` = 1')) {
+        return [{ affectedRows: 3 }];
+      }
+      if (sql.startsWith('INSERT INTO ??')) {
+        return [{ affectedRows: 1 }];
+      }
+      if (sql.startsWith('INSERT INTO user_level_permissions')) {
+        return [{ affectedRows: 0 }];
+      }
+      return [[], []];
+    };
+
+    try {
+      const result = await db.seedTenantTables(
+        companyId,
+        null,
+        { posts: [2] },
+        true,
+        5,
+      );
+      assert.deepEqual(result.summary.posts, { count: 1, ids: [2] });
+    } finally {
+      db.pool.query = orig;
+      await fs.rm(companyConfigDir, { recursive: true, force: true });
+    }
+
+    const countCall = calls.find((c) =>
+      c.sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?'),
+    );
+    assert.ok(countCall);
+
+    const updateIndex = calls.findIndex((c) =>
+      c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1'),
+    );
+    const insertIndex = calls.findIndex((c) => c.sql.startsWith('INSERT INTO ??'));
+    assert.notEqual(updateIndex, -1, 'soft delete should run before reinserting rows');
+    assert.notEqual(insertIndex, -1, 'insert should run for selected ids');
+    assert.ok(
+      updateIndex < insertIndex,
+      'soft delete should occur before inserting replacement rows',
+    );
+
+    const updateCall = calls[updateIndex];
+    assert.equal(updateCall.params[0], 'posts');
+    assert.equal(updateCall.params.at(-1), companyId);
+
+    const insertCall = calls[insertIndex];
+    assert.ok(insertCall.sql.includes('IN (?)'), 'id filter should be applied');
+    assert.deepEqual(insertCall.params.slice(0, 3), ['posts', companyId, 'posts']);
+    assert.ok(insertCall.params.includes(2));
   },
 );
 
