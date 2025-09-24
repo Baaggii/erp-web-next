@@ -1431,7 +1431,15 @@ export async function seedTenantTables(
     const countParams = [table_name, companyId];
     if (softDeleteColumn) {
       const identifier = escapeIdentifier(softDeleteColumn);
-      countSql += ` AND (${identifier} IS NULL OR ${identifier} IN (0,''))`;
+      const normalizedIdentifier = `LOWER(${identifier})`;
+      const activeMarkers = ['0', 'n', 'no', 'false', 'f'];
+      const markerPlaceholders = activeMarkers.map(() => '?').join(', ');
+      countSql += ` AND (${identifier} IS NULL OR ${identifier} IN (0,'')`;
+      if (markerPlaceholders) {
+        countSql += ` OR ${normalizedIdentifier} IN (${markerPlaceholders})`;
+        countParams.push(...activeMarkers);
+      }
+      countSql += ')';
     }
     const [[{ cnt }]] = await pool.query(countSql, countParams);
     const existingCount = Number(cnt) || 0;
