@@ -16,6 +16,7 @@ import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
 import { syncCalcFields } from '../utils/syncCalcFields.js';
+import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 
 export { syncCalcFields };
 
@@ -139,6 +140,7 @@ export function findCalcFieldMismatch(data, calcFields) {
 
   return null;
 }
+
 
 function isEqual(a, b) {
   try {
@@ -481,11 +483,14 @@ export default function PosTransactionsPage() {
   const relationCacheRef = useRef(new Map());
   const loadingTablesRef = useRef(new Set());
   const loadedTablesRef = useRef(new Set());
+  const procTriggerFetchesRef = useRef(new Map());
+  const procTriggerLoadedRef = useRef(new Set());
   const viewCacheRef = useRef(new Map());
   // Tracks in-flight view fetch promises so multiple tables can share them
   const viewFetchesRef = useRef(new Map());
   // Records view names that finished loading to avoid repeated network calls
   const viewLoadedRef = useRef(new Set());
+  const unmountedRef = useRef(false);
   const abortControllersRef = useRef(new Set());
 
   const fetchWithAbort = (url, options = {}) => {
@@ -503,6 +508,12 @@ export default function PosTransactionsPage() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
+
   // Abort pending requests and reset caches when the transaction name changes
   // to avoid leaking state between sessions.
   useEffect(() => {
@@ -514,6 +525,8 @@ export default function PosTransactionsPage() {
       viewCacheRef.current.clear();
       viewFetchesRef.current.clear();
       viewLoadedRef.current.clear();
+      procTriggerFetchesRef.current.clear();
+      procTriggerLoadedRef.current.clear();
     };
   }, [name]);
 
@@ -779,6 +792,17 @@ export default function PosTransactionsPage() {
     [memoFormConfigs],
   );
 
+  const configVersionRef = useRef(configVersion);
+
+  useEffect(() => {
+    configVersionRef.current = configVersion;
+  }, [configVersion]);
+
+  useEffect(() => {
+    procTriggerFetchesRef.current.clear();
+    procTriggerLoadedRef.current.clear();
+  }, [configVersion]);
+
   useEffect(() => {
     loadedTablesRef.current.clear();
     loadingTablesRef.current.clear();
@@ -799,6 +823,41 @@ export default function PosTransactionsPage() {
       const relMap = {};
       const relCfgMap = {};
       const relDataMap = {};
+
+      const uniqueTables = Array.from(
+        new Set(tables.filter((tbl) => typeof tbl === 'string' && tbl)),
+      );
+      const versionAtStart = configVersionRef.current;
+
+      fetchTriggersForTables({
+        tables: uniqueTables,
+        fetcher: async (tbl) => {
+          try {
+            const res = await fetchWithAbort(
+              `/api/proc_triggers?table=${encodeURIComponent(tbl)}`,
+              { credentials: 'include' },
+            );
+            if (!res.ok) return {};
+            const js = await res.json().catch(() => ({}));
+            return js || {};
+          } catch {
+            return {};
+          }
+        },
+        fetchesRef: procTriggerFetchesRef,
+        loadedRef: procTriggerLoadedRef,
+        applyResult: (tbl, data) => {
+          if (unmountedRef.current) return false;
+          if (configVersionRef.current !== versionAtStart) return false;
+          setProcTriggersMap((prev) => {
+            const prevData = prev[tbl];
+            const nextData = isPlainRecord(data) ? data : {};
+            if (isEqual(prevData, nextData)) return prev;
+            return { ...prev, [tbl]: nextData };
+          });
+          return true;
+        },
+      });
 
       await Promise.all(
         tables.map(async (tbl, idx) => {
@@ -841,17 +900,6 @@ export default function PosTransactionsPage() {
             } finally {
               loadedTablesRef.current.add(tbl);
             }
-
-            fetchWithAbort(
-              `/api/proc_triggers?table=${encodeURIComponent(tbl)}`,
-              { credentials: 'include' },
-            )
-              .then((res) => (res.ok ? res.json() : {}))
-              .then((data) => {
-                if (!cancelled)
-                  setProcTriggersMap((m) => ({ ...m, [tbl]: data || {} }));
-              })
-              .catch(() => {});
           }
         }),
       );
