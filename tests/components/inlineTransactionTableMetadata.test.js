@@ -309,4 +309,102 @@ if (typeof mock?.import !== 'function') {
       global.fetch = originalFetch;
     }
   });
+
+  test('InlineTransactionTable applies procedure results to header fields', async () => {
+    const reactMock = createReactMock();
+    const originalFetch = global.fetch;
+    global.fetch = mock.fn(async () => ({ ok: true, json: async () => ({}) }));
+    const callProcedureMock = mock.fn(async () => ({ HeaderField: 'HDR-001' }));
+
+    const tableRef = { current: null };
+    const onRowsChange = mock.fn(() => {});
+
+    const { default: InlineTransactionTable } = await mock.import(
+      '../../src/erp.mgt.mn/components/InlineTransactionTable.jsx',
+      {
+        react: reactMock.module,
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        '../utils/buildImageName.js': { default: () => ({ name: '' }) },
+        '../utils/slugify.js': { default: (value) => String(value) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/callProcedure.js': { default: callProcedureMock },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    try {
+      reactMock.render(InlineTransactionTable, {
+        ref: tableRef,
+        fields: ['ItemCode'],
+        allFields: ['HeaderField', 'ItemCode'],
+        labels: { ItemCode: 'Item' },
+        rows: [{ ItemCode: '' }],
+        defaultValues: {},
+        onRowsChange,
+        minRows: 1,
+        relations: {},
+        relationConfigs: {},
+        relationData: {},
+        fieldTypeMap: {},
+        totalAmountFields: [],
+        totalCurrencyFields: [],
+        columnCaseMap: { itemcode: 'ItemCode', headerfield: 'HeaderField' },
+        viewSource: {},
+        viewDisplays: {},
+        viewColumns: {},
+        loadView: noop,
+        procTriggers: {
+          itemcode: {
+            name: 'set_header',
+            params: ['$current'],
+            outMap: { '$current': 'HeaderField' },
+          },
+        },
+        user: {},
+        collectRows: false,
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      const initialTree = reactMock.getTree();
+      let inputNode = findByType(initialTree, 'input');
+      assert.ok(inputNode, 'input element should be rendered');
+
+      inputNode.props.onChange({ target: { value: 'ITEM-01' } });
+      await flushPromises();
+
+      const updatedTree = reactMock.getTree();
+      inputNode = findByType(updatedTree, 'input');
+      assert.ok(inputNode, 'input element should be rendered after update');
+
+      const event = {
+        key: 'Enter',
+        preventDefault: () => {},
+        target: {
+          value: 'ITEM-01',
+          focus: () => {},
+          select: () => {},
+        },
+      };
+      inputNode.props.onKeyDown(event);
+
+      await flushPromises();
+      await flushPromises();
+
+      assert.equal(callProcedureMock.mock.callCount(), 1);
+      const [procName, params] = callProcedureMock.mock.calls[0].arguments;
+      assert.equal(procName, 'set_header');
+      assert.deepEqual(params, ['ITEM-01']);
+
+      assert.ok(tableRef.current, 'table ref should be populated');
+      const rows = tableRef.current.getRows();
+      assert.equal(rows[0].HeaderField, 'HDR-001');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 }

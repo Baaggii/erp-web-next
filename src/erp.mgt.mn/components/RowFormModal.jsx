@@ -563,6 +563,13 @@ const RowFormModal = function RowFormModal({
     mainFields.length > 0
       ? columns.filter((c) => mainSet.has(c))
       : columns.filter((c) => !headerSet.has(c) && !footerSet.has(c));
+  const allSectionFields = Array.from(
+    new Set([
+      ...headerCols,
+      ...mainCols,
+      ...footerCols,
+    ].filter(Boolean)),
+  );
 
   const inputFontSize = Math.max(10, labelFontSize);
   const formGridClass = fitted ? 'grid' : 'grid gap-2';
@@ -1368,6 +1375,7 @@ const RowFormModal = function RowFormModal({
           <InlineTransactionTable
             ref={useGrid ? tableRef : undefined}
             fields={cols}
+            allFields={allSectionFields}
             relations={relations}
             relationConfigs={relationConfigMap}
             relationData={relationData}
