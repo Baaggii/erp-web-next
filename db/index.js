@@ -1432,7 +1432,15 @@ export async function seedTenantTables(
     if (softDeleteColumn) {
       const identifier = escapeIdentifier(softDeleteColumn);
       const normalizedIdentifier = `LOWER(${identifier})`;
-      const activeMarkers = ['0', 'n', 'no', 'false', 'f'];
+      const activeMarkers = [
+        '0',
+        'n',
+        'no',
+        'false',
+        'f',
+        '0000-00-00 00:00:00',
+        '0000-00-00',
+      ];
       const markerPlaceholders = activeMarkers.map(() => '?').join(', ');
       countSql += ` AND (${identifier} IS NULL OR ${identifier} IN (0,'')`;
       if (markerPlaceholders) {

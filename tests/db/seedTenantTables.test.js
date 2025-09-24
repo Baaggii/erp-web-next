@@ -136,12 +136,12 @@ await test(
       if (sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?')) {
         assert.match(
           sql,
-          /\(`is_deleted` IS NULL OR `is_deleted` IN \(0,''\) OR LOWER\(`is_deleted`\) IN \(\?, \?, \?, \?, \?\)\)/,
+          /\(`is_deleted` IS NULL OR `is_deleted` IN \(0,''\) OR LOWER\(`is_deleted`\) IN \((\?,\s*)+\?\)\)/,
           'count query should exclude soft deleted rows',
         );
         assert.deepEqual(
           (params ?? []).slice(2),
-          ['0', 'n', 'no', 'false', 'f'],
+          ['0', 'n', 'no', 'false', 'f', '0000-00-00 00:00:00', '0000-00-00'],
           'count query should include common active soft delete markers',
         );
         return [[{ cnt: 0 }]];
@@ -169,9 +169,12 @@ await test(
     assert.ok(countCall);
     assert.match(
       countCall.sql,
-      /\(`is_deleted` IS NULL OR `is_deleted` IN \(0,''\) OR LOWER\(`is_deleted`\) IN \(\?, \?, \?, \?, \?\)\)/,
+      /\(`is_deleted` IS NULL OR `is_deleted` IN \(0,''\) OR LOWER\(`is_deleted`\) IN \((\?,\s*)+\?\)\)/,
     );
-    assert.deepEqual((countCall.params ?? []).slice(2), ['0', 'n', 'no', 'false', 'f']);
+    assert.deepEqual(
+      (countCall.params ?? []).slice(2),
+      ['0', 'n', 'no', 'false', 'f', '0000-00-00 00:00:00', '0000-00-00'],
+    );
     assert.ok(
       !calls.some((c) => c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1')),
     );
@@ -203,7 +206,7 @@ await test(
         }
         assert.deepEqual(
           params.slice(2),
-          ['0', 'n', 'no', 'false', 'f'],
+          ['0', 'n', 'no', 'false', 'f', '0000-00-00 00:00:00', '0000-00-00'],
           'count query should include textual active markers',
         );
         return [[{ cnt: 3 }]];
@@ -278,6 +281,245 @@ await test(
     assert.ok(insertCall.sql.includes('IN (?)'), 'id filter should be applied');
     assert.deepEqual(insertCall.params.slice(0, 3), ['posts', companyId, 'posts']);
     assert.ok(insertCall.params.includes(2));
+  },
+);
+
+await test(
+  'seedTenantTables treats zero-date timestamps as active soft delete markers',
+  async () => {
+    const companyId = 96;
+    const createdBy = 7;
+    const updatedBy = 8;
+    const companyConfigDir = path.join(process.cwd(), 'config', String(companyId));
+    await fs.rm(companyConfigDir, { recursive: true, force: true });
+
+    const zeroTimestamp = '0000-00-00 00:00:00';
+    const zeroDateOnly = '0000-00-00';
+
+    const data = {
+      posts: {
+        [GLOBAL_COMPANY_ID]: new Map([
+          [
+            1,
+            {
+              id: 1,
+              company_id: GLOBAL_COMPANY_ID,
+              title: 'Default 1',
+              deleted_at: zeroTimestamp,
+              deleted_by: null,
+            },
+          ],
+          [
+            2,
+            {
+              id: 2,
+              company_id: GLOBAL_COMPANY_ID,
+              title: 'Default 2',
+              deleted_at: zeroTimestamp,
+              deleted_by: null,
+            },
+          ],
+        ]),
+        [companyId]: new Map([
+          [
+            1,
+            {
+              id: 1,
+              company_id: companyId,
+              title: 'Tenant 1',
+              deleted_at: zeroTimestamp,
+              deleted_by: null,
+            },
+          ],
+          [
+            2,
+            {
+              id: 2,
+              company_id: companyId,
+              title: 'Tenant 2',
+              deleted_at: zeroDateOnly,
+              deleted_by: null,
+            },
+          ],
+        ]),
+      },
+    };
+
+    const calls = [];
+    let softDeleteTimestamp = null;
+    const origQuery = db.pool.query;
+
+    db.pool.query = async (sql, params = []) => {
+      calls.push({ sql, params });
+      const trimmed = sql.trim();
+      if (trimmed.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+        return [[{ table_name: 'posts', is_shared: 0 }]];
+      }
+      if (trimmed.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?')) {
+        const [tableName, company] = params;
+        const markers = new Set(
+          params.slice(2).map((value) =>
+            typeof value === 'string' ? value.toLowerCase() : String(value),
+          ),
+        );
+        assert.ok(
+          markers.has(zeroTimestamp.toLowerCase()),
+          'count query should include zero-date timestamp marker',
+        );
+        assert.ok(
+          markers.has(zeroDateOnly.toLowerCase()),
+          'count query should include zero-date date marker',
+        );
+        const table = data[tableName] ?? {};
+        const companyRows = table[company] ?? new Map();
+        let count = 0;
+        for (const row of companyRows.values()) {
+          const value = row.deleted_at;
+          if (
+            value === null ||
+            value === undefined ||
+            value === '' ||
+            value === 0 ||
+            value === '0' ||
+            (typeof value === 'string' && markers.has(value.toLowerCase()))
+          ) {
+            count += 1;
+          }
+        }
+        return [[{ cnt: count }]];
+      }
+      if (trimmed.startsWith('SELECT COLUMN_NAME')) {
+        return [[
+          { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+          { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '' },
+        ]];
+      }
+      if (trimmed.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
+        return [[]];
+      }
+      if (trimmed.startsWith('SELECT * FROM ?? WHERE company_id = ?')) {
+        const [tableName, company] = params;
+        const table = data[tableName] ?? {};
+        const companyRows = table[company] ?? new Map();
+        return [Array.from(companyRows.values())];
+      }
+      if (trimmed.startsWith('UPDATE ?? SET')) {
+        const [tableName] = params;
+        const targetCompany = params.at(-1);
+        const clause = trimmed.slice(
+          trimmed.indexOf('SET ') + 4,
+          trimmed.lastIndexOf(' WHERE'),
+        );
+        const assignments = clause.split(',').map((part) => part.trim());
+        const table = data[tableName] ?? {};
+        const targetMap = table[targetCompany] ?? new Map();
+        let paramIdx = 1;
+        for (const assignment of assignments) {
+          const match = assignment.match(/`([^`]+)`\s*=\s*\?/);
+          if (match) {
+            const column = match[1];
+            const value = params[paramIdx++];
+            if (column === 'deleted_at') {
+              softDeleteTimestamp = value;
+            }
+            for (const row of targetMap.values()) {
+              row[column] = value;
+            }
+          } else {
+            const literal = assignment.match(/`([^`]+)`\s*=\s*(\d+)/);
+            if (literal) {
+              const column = literal[1];
+              const value = Number(literal[2]);
+              for (const row of targetMap.values()) {
+                row[column] = value;
+              }
+            }
+          }
+        }
+        table[targetCompany] = targetMap;
+        data[tableName] = table;
+        return [{ affectedRows: targetMap.size }];
+      }
+      if (trimmed.startsWith('INSERT INTO ??')) {
+        const [tableName, targetCompany, sourceTable] = params;
+        const idFilter = params.slice(3);
+        const idSet = idFilter.length > 0 ? new Set(idFilter) : null;
+        const table = data[tableName] ?? {};
+        const targetMap = table[targetCompany] ?? new Map();
+        const sourceBucket = data[sourceTable] ?? {};
+        const sourceMap = sourceBucket[GLOBAL_COMPANY_ID] ?? new Map();
+        let affected = 0;
+        for (const [id, sourceRow] of sourceMap.entries()) {
+          if (idSet && !idSet.has(id)) continue;
+          affected += 1;
+          const merged = { ...sourceRow, company_id: targetCompany };
+          targetMap.set(id, { ...targetMap.get(id), ...merged });
+        }
+        table[targetCompany] = targetMap;
+        data[tableName] = table;
+        return [{ affectedRows: affected }];
+      }
+      if (trimmed.startsWith('INSERT INTO user_level_permissions')) {
+        return [{ affectedRows: 0 }];
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    };
+
+    try {
+      const result = await db.seedTenantTables(
+        companyId,
+        null,
+        { posts: [1] },
+        true,
+        createdBy,
+        updatedBy,
+      );
+      assert.deepEqual(result.summary.posts, { count: 1, ids: [1] });
+
+      const countCall = calls.find((c) =>
+        c.sql.trim().startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?'),
+      );
+      assert.ok(countCall);
+      assert.ok(countCall.params.includes(zeroTimestamp));
+      assert.ok(countCall.params.includes(zeroDateOnly));
+
+      const updateIndex = calls.findIndex((c) =>
+        c.sql.trim().startsWith('UPDATE ?? SET'),
+      );
+      const insertIndex = calls.findIndex(
+        (c) => c.sql.trim().startsWith('INSERT INTO ??') && c.sql.includes('SELECT'),
+      );
+      assert.notEqual(updateIndex, -1, 'soft delete should run before reinserting rows');
+      assert.notEqual(insertIndex, -1, 'insert should run for selected ids');
+      assert.ok(updateIndex < insertIndex, 'soft delete should occur before inserting rows');
+
+      const insertCall = calls[insertIndex];
+      assert.deepEqual(insertCall.params.slice(0, 3), ['posts', companyId, 'posts']);
+      assert.ok(insertCall.params.includes(1));
+      assert.ok(!insertCall.params.includes(2));
+
+      const table = data.posts ?? {};
+      const tenantMap = table[companyId];
+      assert.ok(tenantMap);
+      const row1 = tenantMap.get(1);
+      assert.ok(row1);
+      assert.equal(row1.deleted_at, zeroTimestamp);
+      assert.equal(row1.deleted_by, null);
+
+      const row2 = tenantMap.get(2);
+      assert.ok(row2);
+      assert.equal(row2.deleted_by, updatedBy);
+      assert.notEqual(row2.deleted_at, zeroTimestamp);
+      assert.notEqual(row2.deleted_at, zeroDateOnly);
+      assert.ok(softDeleteTimestamp);
+      assert.equal(row2.deleted_at, softDeleteTimestamp);
+    } finally {
+      db.pool.query = origQuery;
+      await fs.rm(companyConfigDir, { recursive: true, force: true });
+    }
   },
 );
 
