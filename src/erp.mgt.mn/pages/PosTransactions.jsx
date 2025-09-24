@@ -15,6 +15,9 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
+import { syncCalcFields } from '../utils/syncCalcFields.js';
+
+export { syncCalcFields };
 
 function isEqual(a, b) {
   try {
@@ -920,45 +923,6 @@ export default function PosTransactionsPage() {
     };
     setValues(updateSessionValues);
   }, [masterSessionValue, visibleTablesKey, configVersion, sessionFieldsKey]);
-
-  function syncCalcFields(vals, mapConfig) {
-    if (!Array.isArray(mapConfig)) return vals;
-    let next = { ...vals };
-    for (const map of mapConfig) {
-      const cells = Array.isArray(map.cells) ? map.cells : [];
-      if (!cells.length) continue;
-      let value;
-      for (const cell of cells) {
-        const { table, field } = cell;
-        if (!table || !field) continue;
-        const data = next[table];
-        if (Array.isArray(data)) {
-          for (const row of data) {
-            const v = row?.[field];
-            if (v !== undefined && v !== null) {
-              value = v;
-              break;
-            }
-          }
-        } else if (data && data[field] !== undefined && data[field] !== null) {
-          value = data[field];
-        }
-        if (value !== undefined) break;
-      }
-      if (value === undefined) continue;
-      for (const cell of cells) {
-        const { table, field } = cell;
-        if (!table || !field) continue;
-        const data = next[table];
-        if (Array.isArray(data)) {
-          next[table] = data.map((r) => ({ ...r, [field]: value }));
-        } else {
-          next[table] = { ...(data || {}), [field]: value };
-        }
-      }
-    }
-    return next;
-  }
 
   function applyPosFields(vals, posFieldConfig) {
     if (!Array.isArray(posFieldConfig)) return vals;
