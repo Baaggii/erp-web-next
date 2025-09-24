@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { promises as fs } from 'fs';
 import path from 'path';
 import * as db from '../../db/index.js';
+import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
 
 await test('seedTenantTables copies user level permissions', async () => {
   const orig = db.pool.query;
@@ -420,9 +421,9 @@ await test('seedTenantTables overwrites existing rows with upsert', async () => 
     );
     assert.ok(insertCall);
     assert.match(insertCall.sql, /ON DUPLICATE KEY UPDATE/);
-    assert.match(insertCall.sql, /`is_deleted` = DEFAULT\(`is_deleted`\)/);
-    assert.match(insertCall.sql, /`deleted_by` = DEFAULT\(`deleted_by`\)/);
-    assert.match(insertCall.sql, /`deleted_at` = DEFAULT\(`deleted_at`\)/);
+    assert.match(insertCall.sql, /`is_deleted` = VALUES\(`is_deleted`\)/);
+    assert.match(insertCall.sql, /`deleted_by` = VALUES\(`deleted_by`\)/);
+    assert.match(insertCall.sql, /`deleted_at` = VALUES\(`deleted_at`\)/);
     assert.match(insertCall.sql, /`updated_at` = NOW\(\)/);
     assert.match(insertCall.sql, /`updated_by` = VALUES\(`updated_by`\)/);
   } finally {
@@ -430,6 +431,178 @@ await test('seedTenantTables overwrites existing rows with upsert', async () => 
     await fs.rm(companyConfigDir, { recursive: true, force: true });
   }
 });
+
+await test(
+  'seedTenantTables revives soft-deleted rows without duplicate errors',
+  async () => {
+    const companyId = 91;
+    const createdBy = 10;
+    const updatedBy = 11;
+
+    const data = {
+      posts: {
+        [GLOBAL_COMPANY_ID]: new Map([
+          [
+            1,
+            {
+              id: 1,
+              company_id: GLOBAL_COMPANY_ID,
+              title: 'Default Title',
+              is_deleted: 0,
+              deleted_by: null,
+              deleted_at: null,
+              updated_by: 99,
+              updated_at: '2024-01-01 00:00:00',
+            },
+          ],
+        ]),
+        [companyId]: new Map([
+          [
+            1,
+            {
+              id: 1,
+              company_id: companyId,
+              title: 'Soft deleted',
+              is_deleted: 1,
+              deleted_by: 22,
+              deleted_at: '2023-12-31 23:59:59',
+              updated_by: 33,
+              updated_at: '2023-12-31 23:59:59',
+            },
+          ],
+        ]),
+      },
+    };
+
+    const calls = [];
+    const origQuery = db.pool.query;
+    db.pool.query = async (sql, params = []) => {
+      calls.push({ sql, params });
+      const trimmed = sql.trim();
+      if (trimmed.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+        return [[{ table_name: 'posts', is_shared: 0 }]];
+      }
+      if (trimmed.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?')) {
+        const [tableName, company] = params;
+        const table = data[tableName] ?? {};
+        const companyRows = table[company] ?? new Map();
+        let count = 0;
+        for (const row of companyRows.values()) {
+          const value = row?.is_deleted;
+          if (value === null || value === undefined || value === 0 || value === '') {
+            count += 1;
+          }
+        }
+        return [[{ cnt: count }]];
+      }
+      if (trimmed.startsWith('SELECT COLUMN_NAME, COLUMN_KEY, EXTRA')) {
+        return [[
+          { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+          { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'updated_by', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'updated_at', COLUMN_KEY: '', EXTRA: '' },
+        ]];
+      }
+      if (trimmed.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
+        return [[]];
+      }
+      if (trimmed.startsWith('INSERT INTO ??')) {
+        if (!trimmed.includes('ON DUPLICATE KEY')) {
+          const err = new Error('Duplicate entry');
+          err.code = 'ER_DUP_ENTRY';
+          throw err;
+        }
+        if (!data.posts) data.posts = {};
+        const [tableName, targetCompany] = params;
+        const columnMatch = trimmed.match(/INSERT INTO \?\? \(([^)]+)\)/);
+        const columns = columnMatch[1]
+          .split(',')
+          .map((col) => col.trim().replace(/^`|`$/g, ''));
+        let paramIdx = 2;
+        const explicitValues = {};
+        for (const column of columns) {
+          if (column === 'company_id') {
+            explicitValues[column] = targetCompany;
+          } else if (column === 'created_by' || column === 'updated_by') {
+            explicitValues[column] = params[paramIdx++];
+          } else if (column === 'created_at' || column === 'updated_at') {
+            explicitValues[column] = 'NOW()';
+          }
+        }
+        const sourceTable = params[paramIdx++];
+        const idFilter = params.slice(paramIdx);
+        if (!data[sourceTable]) data[sourceTable] = {};
+        const sourceMap = data[sourceTable]?.[GLOBAL_COMPANY_ID] ?? new Map();
+        const tableBucket = data[tableName] ?? {};
+        const targetMap = tableBucket[targetCompany] ?? new Map();
+        for (const [pk, sourceRow] of sourceMap.entries()) {
+          if (idFilter.length > 0 && !idFilter.includes(pk)) continue;
+          const merged = { ...sourceRow };
+          for (const column of columns) {
+            if (column === 'company_id') {
+              merged[column] = targetCompany;
+            } else if (explicitValues[column] !== undefined) {
+              merged[column] = explicitValues[column];
+            } else {
+              merged[column] = sourceRow[column];
+            }
+          }
+          const existing = targetMap.get(pk);
+          if (existing) {
+            for (const column of columns) {
+              existing[column] = merged[column];
+            }
+            if (!columns.includes('deleted_by')) existing.deleted_by = null;
+            if (!columns.includes('deleted_at')) existing.deleted_at = null;
+            if (!columns.includes('is_deleted')) existing.is_deleted = 0;
+          } else {
+            targetMap.set(pk, { ...sourceRow, ...merged, company_id: targetCompany });
+          }
+        }
+        tableBucket[targetCompany] = targetMap;
+        data[tableName] = tableBucket;
+        return [{ affectedRows: sourceMap.size }];
+      }
+      if (trimmed.startsWith('INSERT INTO user_level_permissions')) {
+        return [{ affectedRows: 0 }];
+      }
+      throw new Error(`Unexpected query: ${sql}`);
+    };
+
+    try {
+      const result = await db.seedTenantTables(
+        companyId,
+        null,
+        {},
+        false,
+        createdBy,
+        updatedBy,
+      );
+      const insertCall = calls.find((c) => c.sql.startsWith('INSERT INTO ??'));
+      assert.ok(insertCall);
+      assert.match(insertCall.sql, /ON DUPLICATE KEY UPDATE/);
+      assert.match(insertCall.sql, /`deleted_by` = VALUES\(`deleted_by`\)/);
+      assert.match(insertCall.sql, /`deleted_at` = VALUES\(`deleted_at`\)/);
+      const revivedMap = data.posts?.[companyId];
+      assert.ok(revivedMap);
+      const revived = revivedMap.get(1);
+      assert.ok(revived);
+      assert.equal(revived.is_deleted ?? 0, 0);
+      assert.equal(revived.deleted_by, null);
+      assert.equal(revived.deleted_at, null);
+      assert.equal(revived.title, 'Default Title');
+      assert.equal(revived.updated_by, updatedBy);
+      assert.equal(revived.updated_at, 'NOW()');
+      assert.deepEqual(result.summary.posts, { count: 1 });
+    } finally {
+      db.pool.query = origQuery;
+    }
+  },
+);
 
 await test('seedTenantTables throws when table has data and overwrite false', async () => {
   const orig = db.pool.query;
