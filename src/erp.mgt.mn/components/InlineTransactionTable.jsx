@@ -567,6 +567,7 @@ function InlineTransactionTable(
     if (!rowData || typeof rowData !== 'object') return;
     setRows((r) => {
       if (!Array.isArray(r)) return r;
+      const arrayUpdates = new Map();
       const next = r.map((row, i) => {
         if (i !== rowIdx) return row;
         const baseRow = row && typeof row === 'object' ? row : {};
@@ -589,12 +590,17 @@ function InlineTransactionTable(
             updated[mappedKey] = rawValue;
             keyLookup[lower] = mappedKey;
           }
+          arrayUpdates.set(mappedKey, rawValue);
         });
         return updated;
       });
-      assignArrayMetadata(next, r);
-      onRowsChange(next);
-      return next;
+      const withMetadata = assignArrayMetadata(next, r);
+      arrayUpdates.forEach((value, key) => {
+        if (!key && key !== 0) return;
+        withMetadata[key] = value;
+      });
+      onRowsChange(withMetadata);
+      return withMetadata;
     });
   }
 
