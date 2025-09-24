@@ -363,7 +363,7 @@ if (!haveReact) {
             fieldTypeMap: { SessionDate: 'date' },
             disabledFields: [],
             labels: { SessionDate: 'Session Date', ItemCode: 'Item' },
-            requiredFields: ['SessionDate'],
+            requiredFields: [],
             onChange: () => {},
             onRowsChange: () => {},
             headerFields: [],
@@ -414,6 +414,11 @@ if (!haveReact) {
       });
 
       assert.equal(callProcedureMock.mock.callCount(), 0, 'procedure should not run with empty date');
+      assert.equal(
+        document.activeElement,
+        dateInput,
+        'missing session date should receive focus',
+      );
 
       await act(async () => {
         dateInput.value = '2024-02-01';
