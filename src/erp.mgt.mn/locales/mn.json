@@ -812,7 +812,7 @@
   "ztr_id": "Гүйлгээний нийлмэл код",
   "ztr_state": "Гүйлгээний төлөв",
   "ztr_transbranch": "Гүйлгээ хийсэн салбар",
-  "delete_related_records": "Delete Related Records?",
+  "delete_related_records": "Холбоотой бичлэгүүдийг устгах уу?",
   "ai_suggestions": "AI Suggestions",
   "no_suggestions": "No suggestions.",
   "use": "Use",

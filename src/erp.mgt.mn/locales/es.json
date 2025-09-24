@@ -1128,7 +1128,7 @@
   "ztr_id": "Código Compuesto de Transacción",
   "ztr_state": "Estado de Transacción",
   "ztr_transbranch": "Sucursal de Transacción",
-  "delete_related_records": "Delete Related Records?",
+  "delete_related_records": "¿Eliminar registros relacionados?",
   "ai_suggestions": "AI Suggestions",
   "no_suggestions": "No suggestions.",
   "use": "Use",

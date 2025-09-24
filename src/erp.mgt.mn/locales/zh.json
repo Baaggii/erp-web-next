@@ -805,7 +805,7 @@
   "ztr_id": "交易复合代码",
   "ztr_state": "交易状态",
   "ztr_transbranch": "交易分支",
-  "delete_related_records": "Delete Related Records?",
+  "delete_related_records": "删除关联记录？",
   "ai_suggestions": "AI Suggestions",
   "no_suggestions": "No suggestions.",
   "use": "Use",

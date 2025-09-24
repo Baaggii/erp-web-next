@@ -805,7 +805,7 @@
   "ztr_id": "거래 복합 코드",
   "ztr_state": "거래 상태",
   "ztr_transbranch": "거래 지점",
-  "delete_related_records": "Delete Related Records?",
+  "delete_related_records": "관련 레코드를 삭제하시겠습니까?",
   "ai_suggestions": "AI Suggestions",
   "no_suggestions": "No suggestions.",
   "use": "Use",

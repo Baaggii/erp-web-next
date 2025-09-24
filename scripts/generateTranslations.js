@@ -58,6 +58,37 @@ function isNormalizedKeyMatch(key, value) {
   return normalizedKey === normalizedValue;
 }
 
+function isMixedCaseIdentifier(str) {
+  if (typeof str !== 'string') return false;
+  const trimmed = str.trim();
+  if (!trimmed || /\s/.test(trimmed)) return false;
+  const lettersAndDigits = trimmed.replace(/[^A-Za-z0-9]/g, '');
+  if (!lettersAndDigits) return false;
+  return /[a-z]/.test(lettersAndDigits) && /[A-Z]/.test(lettersAndDigits);
+}
+
+function lacksLatinVowels(str) {
+  if (typeof str !== 'string') return false;
+  const letters = str.match(/[A-Za-z]/g);
+  if (!letters || letters.length === 0) return false;
+  return !/[aeiou]/i.test(letters.join(''));
+}
+
+function looksCodeLike(str) {
+  if (typeof str !== 'string') return false;
+  return (
+    /\d/.test(str) ||
+    isMixedCaseIdentifier(str) ||
+    lacksLatinVowels(str)
+  );
+}
+
+function shouldSkipNormalizedMatch(key, value) {
+  if (typeof value !== 'string') return false;
+  if (!isNormalizedKeyMatch(key, value)) return false;
+  return looksCodeLike(String(key)) || looksCodeLike(value);
+}
+
 /* ---------------- Utilities ---------------- */
 
 function syncKeys(targetA, targetB, label) {
@@ -439,7 +470,7 @@ export async function generateTranslations({
     if (
       typeof sourceText !== 'string' ||
       (!/[\u0400-\u04FF]/.test(sourceText) && !/[A-Za-z]/.test(sourceText)) ||
-      isNormalizedKeyMatch(key, sourceText) ||
+      shouldSkipNormalizedMatch(key, sourceText) ||
       entryMap.has(key)
     ) {
       return;
@@ -684,8 +715,8 @@ export async function generateTranslations({
       const keyPath = prefix ? `${prefix}.${k}` : k;
       if (typeof v === 'string') {
         if (
-          isNormalizedKeyMatch(keyPath, v) ||
-          isNormalizedKeyMatch(k, v)
+          shouldSkipNormalizedMatch(keyPath, v) ||
+          shouldSkipNormalizedMatch(k, v)
         ) {
           continue;
         }
@@ -1479,8 +1510,8 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     for (const [k, v] of Object.entries(obj)) {
       if (typeof v !== 'string') continue;
       if (
-        isNormalizedKeyMatch(k, v) ||
-        isNormalizedKeyMatch(`tooltip.${k}`, v)
+        shouldSkipNormalizedMatch(k, v) ||
+        shouldSkipNormalizedMatch(`tooltip.${k}`, v)
       ) {
         continue;
       }

@@ -784,5 +784,6 @@
   "assembly_price": "Assembly price",
   "reports": "Reports",
   "edit_delete_request": "Edit or delete request",
-  "system_settings": "System settings"
+  "system_settings": "System settings",
+  "delete_related_records": "관련 레코드를 삭제합니다."
 }

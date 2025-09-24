@@ -805,7 +805,7 @@
   "ztr_id": "トランザクション複合コード",
   "ztr_state": "取引状況",
   "ztr_transbranch": "取引ブランチ",
-  "delete_related_records": "Delete Related Records?",
+  "delete_related_records": "関連レコードを削除しますか？",
   "ai_suggestions": "AI Suggestions",
   "no_suggestions": "No suggestions.",
   "use": "Use",
