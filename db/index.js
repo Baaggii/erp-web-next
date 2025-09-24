@@ -1577,9 +1577,12 @@ export async function seedTenantTables(
     const colsClause = ['company_id', ...otherCols]
       .map((c) => `\`${c}\``)
       .join(', ');
+    const sourceAlias = 'src';
+    const companyIdIdentifier = escapeIdentifier('company_id');
     const selectParts = ['? AS company_id'];
     const params = [tableName, companyId];
     for (const col of otherCols) {
+      const colIdentifier = escapeIdentifier(col);
       if (col === 'created_by') {
         selectParts.push('?');
         params.push(createdBy);
@@ -1589,18 +1592,18 @@ export async function seedTenantTables(
       } else if (col === 'created_at' || col === 'updated_at') {
         selectParts.push('NOW()');
       } else {
-        selectParts.push(`\`${col}\``);
+        selectParts.push(`${sourceAlias}.${colIdentifier}`);
       }
     }
     const selectClause = selectParts.join(', ');
     let sql =
-      `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = ${GLOBAL_COMPANY_ID}`;
+      `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? AS ${sourceAlias} WHERE ${sourceAlias}.${companyIdIdentifier} = ${GLOBAL_COMPANY_ID}`;
     params.push(tableName);
 
     const idList = Array.isArray(ids) ? ids : [];
     if (idList.length > 0 && pkCols.length === 1) {
       const placeholders = idList.map(() => '?').join(', ');
-      sql += ` AND \`${pkCols[0]}\` IN (${placeholders})`;
+      sql += ` AND ${sourceAlias}.${escapeIdentifier(pkCols[0])} IN (${placeholders})`;
       params.push(...idList);
     }
 
