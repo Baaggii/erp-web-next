@@ -239,6 +239,24 @@ export function shouldLoadRelations(formConfig, cols = []) {
   return hasView || hasForeignKey(cols);
 }
 
+const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+
+function copyArrayMetadata(target, source) {
+  if (!Array.isArray(target) || !Array.isArray(source)) return;
+  Object.keys(source).forEach((key) => {
+    if (!arrayIndexPattern.test(key)) {
+      target[key] = source[key];
+    }
+  });
+}
+
+function cloneArrayWithMetadata(source) {
+  if (!Array.isArray(source)) return [];
+  const clone = source.slice();
+  copyArrayMetadata(clone, source);
+  return clone;
+}
+
 export function applySessionIdToTables(
   values,
   sessionId,
@@ -254,32 +272,68 @@ export function applySessionIdToTables(
     if (!Array.isArray(fields) || fields.length === 0) return;
     const type = tableTypeMap[tbl] === 'multi' ? 'multi' : 'single';
     if (type === 'multi') {
-      const currentRows = Array.isArray(nextVals[tbl]) ? nextVals[tbl] : [];
-      if (currentRows.length === 0) return;
+      const existingContainer = nextVals[tbl];
+      const currentRows = Array.isArray(existingContainer) ? existingContainer : [];
+      let targetRows = currentRows;
       let tableChanged = false;
-      const updatedRows = currentRows.map((row) => {
-        const baseRow =
-          row && typeof row === 'object' && !Array.isArray(row) ? row : {};
-        let newRow = baseRow;
-        let rowChanged = row === null || row === undefined;
-        fields.forEach((field) => {
-          if ((newRow?.[field] ?? undefined) !== sessionId) {
-            if (newRow === baseRow && !rowChanged) {
-              newRow = { ...baseRow };
+
+      if (currentRows.length > 0) {
+        let rowsMutated = false;
+        const updatedRows = currentRows.map((row) => {
+          const baseRow =
+            row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+          let newRow = baseRow;
+          let rowChanged = row === null || row === undefined;
+          fields.forEach((field) => {
+            if ((newRow?.[field] ?? undefined) !== sessionId) {
+              if (newRow === baseRow && !rowChanged) {
+                newRow = { ...baseRow };
+              }
+              newRow[field] = sessionId;
+              rowChanged = true;
             }
-            newRow[field] = sessionId;
-            rowChanged = true;
+          });
+          if (rowChanged) {
+            rowsMutated = true;
+            return newRow;
           }
+          return row;
         });
-        if (rowChanged) tableChanged = true;
-        return rowChanged ? newRow : row;
+        if (rowsMutated) {
+          targetRows = updatedRows;
+          tableChanged = true;
+          if (Array.isArray(existingContainer)) {
+            copyArrayMetadata(targetRows, existingContainer);
+          }
+        }
+      }
+
+      const ensureTargetArray = () => {
+        if (!Array.isArray(targetRows)) {
+          targetRows = [];
+          tableChanged = true;
+        } else if (!tableChanged && targetRows === currentRows) {
+          targetRows = cloneArrayWithMetadata(currentRows);
+          tableChanged = true;
+        }
+      };
+
+      let metadataChanged = false;
+      fields.forEach((field) => {
+        const currentVal = targetRows?.[field];
+        if (currentVal !== sessionId) {
+          ensureTargetArray();
+          targetRows[field] = sessionId;
+          metadataChanged = true;
+        }
       });
-      if (tableChanged) {
+
+      if (tableChanged || metadataChanged) {
         if (!mutated) {
           nextVals = { ...nextVals };
           mutated = true;
         }
-        nextVals[tbl] = updatedRows;
+        nextVals[tbl] = targetRows;
       }
     } else {
       const currentRow = nextVals[tbl];

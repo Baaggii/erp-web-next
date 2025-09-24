@@ -57,6 +57,7 @@ if (typeof mock.import !== 'function') {
     assert.equal(populated.master_tbl.pos_session_id, sid);
     assert.equal(populated.detail_tbl[0].session_id, sid);
     assert.equal(populated.detail_tbl[1].session_id, sid);
+    assert.equal(populated.detail_tbl.session_id, sid);
     assert.equal(initial.detail_tbl[1].session_id, 'old_session');
 
     const secondPass = applySessionIdToTables(
@@ -66,6 +67,40 @@ if (typeof mock.import !== 'function') {
       tableTypeMap,
     );
     assert.strictEqual(secondPass, populated);
+  });
+
+  test('new transactions seed session metadata for multi tables', async () => {
+    const { applySessionIdToTables } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const sessionFieldsByTable = {
+      detail_tbl: ['session_id', 'pos_session_id'],
+    };
+    const tableTypeMap = { detail_tbl: 'multi' };
+    const initial = { detail_tbl: [] };
+    initial.detail_tbl.header_note = 'keep-me';
+    initial.detail_tbl.session_id = 'old_session';
+    const sid = 'pos_new';
+
+    const populated = applySessionIdToTables(
+      initial,
+      sid,
+      sessionFieldsByTable,
+      tableTypeMap,
+    );
+
+    assert.notStrictEqual(populated, initial);
+    assert.notStrictEqual(populated.detail_tbl, initial.detail_tbl);
+    assert.ok(Array.isArray(populated.detail_tbl));
+    assert.equal(populated.detail_tbl.length, 0);
+    sessionFieldsByTable.detail_tbl.forEach((field) => {
+      assert.equal(populated.detail_tbl[field], sid);
+    });
+    assert.equal(populated.detail_tbl.header_note, 'keep-me');
+    assert.equal(initial.detail_tbl.session_id, 'old_session');
+    assert.equal(initial.detail_tbl.pos_session_id, undefined);
   });
 
   test('session field extraction includes grouped calc fields', async () => {
