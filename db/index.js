@@ -382,13 +382,18 @@ function buildSeedUpsertUpdateClause(
     assignments.push(`\`${columnName}\` = VALUES(\`${columnName}\`)`);
   }
 
-  const pushDefaultAssignment = (columnName) => {
+  const pushResetAssignment = (columnName) => {
     if (!columnName) return;
-    assignments.push(`\`${columnName}\` = DEFAULT(\`${columnName}\`)`);
+    const lower = columnName.toLowerCase();
+    if (insertLower.has(lower)) {
+      assignments.push(`\`${columnName}\` = VALUES(\`${columnName}\`)`);
+    } else {
+      assignments.push(`\`${columnName}\` = DEFAULT(\`${columnName}\`)`);
+    }
   };
 
   if (resolvedSoftDeleteColumn) {
-    pushDefaultAssignment(resolvedSoftDeleteColumn);
+    pushResetAssignment(resolvedSoftDeleteColumn);
   }
   if (
     resolvedDeletedAtColumn &&
@@ -396,7 +401,7 @@ function buildSeedUpsertUpdateClause(
       resolvedDeletedAtColumn.toLowerCase() !==
         resolvedSoftDeleteColumn.toLowerCase())
   ) {
-    pushDefaultAssignment(resolvedDeletedAtColumn);
+    pushResetAssignment(resolvedDeletedAtColumn);
   }
   if (
     resolvedDeletedByColumn &&
@@ -404,7 +409,7 @@ function buildSeedUpsertUpdateClause(
       resolvedDeletedByColumn.toLowerCase() !==
         resolvedSoftDeleteColumn.toLowerCase())
   ) {
-    pushDefaultAssignment(resolvedDeletedByColumn);
+    pushResetAssignment(resolvedDeletedByColumn);
   }
 
   if (resolvedUpdatedAtColumn) {
