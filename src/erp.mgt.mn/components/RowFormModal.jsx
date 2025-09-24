@@ -109,6 +109,26 @@ const RowFormModal = function RowFormModal({
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
   const companyIdSet = new Set(companyIdFields);
+  const requiredFieldSet = React.useMemo(
+    () => new Set((requiredFields || []).map((f) => f.toLowerCase())),
+    [requiredFields],
+  );
+  const branchIdLowerSet = React.useMemo(
+    () => new Set((branchIdFields || []).map((f) => f.toLowerCase())),
+    [branchIdFields],
+  );
+  const companyIdLowerSet = React.useMemo(
+    () => new Set((companyIdFields || []).map((f) => f.toLowerCase())),
+    [companyIdFields],
+  );
+  const departmentIdLowerSet = React.useMemo(
+    () => new Set((departmentIdFields || []).map((f) => f.toLowerCase())),
+    [departmentIdFields],
+  );
+  const userIdLowerSet = React.useMemo(
+    () => new Set((userIdFields || []).map((f) => f.toLowerCase())),
+    [userIdFields],
+  );
   const disabledSet = React.useMemo(
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
@@ -765,6 +785,134 @@ const RowFormModal = function RowFormModal({
         return getVal(p);
       };
       const paramValues = params.map(getParam);
+      const getFieldName = (p) => {
+        if (!p) return null;
+        if (p === '$current') return tCol;
+        if (p === '$branchId') return branchIdFields?.[0] || null;
+        if (p === '$companyId') return companyIdFields?.[0] || null;
+        if (p === '$employeeId') return userIdFields?.[0] || null;
+        if (p === '$date') return dateField?.[0] || null;
+        const lower = String(p).toLowerCase();
+        return (
+          columnCaseMap[lower] ||
+          columns.find((c) => c.toLowerCase() === lower) ||
+          p
+        );
+      };
+      const missingLabels = [];
+      const missingFields = [];
+      params.forEach((param, idx) => {
+        const value = paramValues[idx];
+        const fieldName = getFieldName(param);
+        const lower = fieldName ? String(fieldName).toLowerCase() : '';
+        const isRequiredParam =
+          param === '$current' ||
+          param === '$branchId' ||
+          param === '$companyId' ||
+          param === '$employeeId' ||
+          param === '$date' ||
+          (lower &&
+            (requiredFieldSet.has(lower) ||
+              branchIdLowerSet.has(lower) ||
+              companyIdLowerSet.has(lower) ||
+              departmentIdLowerSet.has(lower) ||
+              userIdLowerSet.has(lower)));
+        const isEmptyValue =
+          value === undefined ||
+          value === null ||
+          (typeof value === 'string' && value.trim() === '');
+        if (!isRequiredParam || !isEmptyValue) return;
+        if (fieldName) missingFields.push(fieldName);
+        if (param === '$branchId') {
+          const branchField = branchIdFields?.[0];
+          const label =
+            (branchField && (labels[branchField] || branchField)) ||
+            'Branch';
+          missingLabels.push(label);
+          return;
+        }
+        if (param === '$companyId') {
+          const companyField = companyIdFields?.[0];
+          const label =
+            (companyField && (labels[companyField] || companyField)) ||
+            'Company';
+          missingLabels.push(label);
+          return;
+        }
+        if (param === '$employeeId') {
+          const empField = userIdFields?.[0];
+          const label =
+            (empField && (labels[empField] || empField)) ||
+            'Employee';
+          missingLabels.push(label);
+          return;
+        }
+        if (param === '$date') {
+          const dateFieldName = dateField?.[0];
+          const label =
+            (dateFieldName && (labels[dateFieldName] || dateFieldName)) ||
+            'Огноо';
+          missingLabels.push(label);
+          return;
+        }
+        if (param === '$current') {
+          missingLabels.push(labels[tCol] || tCol);
+          return;
+        }
+        missingLabels.push((fieldName && (labels[fieldName] || fieldName)) || param);
+      });
+      if (missingLabels.length > 0) {
+        const uniqueLabels = [...new Set(missingLabels.filter(Boolean))];
+        const message =
+          uniqueLabels.length > 0
+            ? `Дараах талбаруудыг бөглөнө үү: ${uniqueLabels.join(', ')}`
+            : 'Шаардлагатай талбаруудыг бөглөнө үү.';
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message, type: 'warning' },
+          }),
+        );
+        const formFieldNames = missingFields
+          .map((name) => {
+            if (!name) return null;
+            const lower = String(name).toLowerCase();
+            return columns.find((c) => c.toLowerCase() === lower) || null;
+          })
+          .filter(Boolean);
+        if (formFieldNames.length > 0) {
+          setErrors((prev) => {
+            const next = { ...prev };
+            formFieldNames.forEach((field) => {
+              next[field] = 'Утга оруулна уу';
+            });
+            return next;
+          });
+          const focusField = formFieldNames.find((field) => inputRefs.current[field]);
+          if (focusField && inputRefs.current[focusField]) {
+            const el = inputRefs.current[focusField];
+            el.focus();
+            if (el.select) el.select();
+          }
+        }
+        continue;
+      }
+      if (params.length > 0) {
+        setErrors((prev) => {
+          let changed = false;
+          const next = { ...prev };
+          params.forEach((param) => {
+            const fieldName = getFieldName(param);
+            if (!fieldName) return;
+            const lower = String(fieldName).toLowerCase();
+            const columnName = columns.find((c) => c.toLowerCase() === lower);
+            if (columnName && next[columnName]) {
+              next[columnName] = undefined;
+              changed = true;
+            }
+          });
+          return changed ? next : prev;
+        });
+      }
       const aliases = params.map((p) => outMap[p] || null);
       const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
       if (procCache.current[cacheKey]) {

@@ -195,6 +195,15 @@ function findByType(node, type) {
   return null;
 }
 
+function findAllByType(node, type, result = []) {
+  if (!node || typeof node !== 'object') return result;
+  if (node.type === type) result.push(node);
+  if (Array.isArray(node.children)) {
+    node.children.forEach((child) => findAllByType(child, type, result));
+  }
+  return result;
+}
+
 async function flushPromises() {
   await new Promise((resolve) => setImmediate(resolve));
 }
@@ -403,6 +412,115 @@ if (typeof mock?.import !== 'function') {
       assert.ok(tableRef.current, 'table ref should be populated');
       const rows = tableRef.current.getRows();
       assert.equal(rows[0].HeaderField, 'HDR-001');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('InlineTransactionTable blocks procedure call when required parameters are empty', async () => {
+    const reactMock = createReactMock();
+    const originalFetch = global.fetch;
+    global.fetch = mock.fn(async () => ({ ok: true, json: async () => ({}) }));
+    const callProcedureMock = mock.fn(async () => ({ HeaderField: 'HDR-001' }));
+
+    const { default: InlineTransactionTable } = await mock.import(
+      '../../src/erp.mgt.mn/components/InlineTransactionTable.jsx',
+      {
+        react: reactMock.module,
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        '../utils/buildImageName.js': { default: () => ({ name: '' }) },
+        '../utils/slugify.js': { default: (value) => String(value) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/callProcedure.js': { default: callProcedureMock },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    try {
+      reactMock.render(InlineTransactionTable, {
+        fields: ['SessionDate', 'ItemCode'],
+        allFields: ['SessionDate', 'ItemCode'],
+        labels: { SessionDate: 'Session Date', ItemCode: 'Item' },
+        rows: [{ SessionDate: '', ItemCode: '' }],
+        defaultValues: {},
+        onRowsChange: () => {},
+        minRows: 1,
+        relations: {},
+        relationConfigs: {},
+        relationData: {},
+        fieldTypeMap: { SessionDate: 'date' },
+        totalAmountFields: [],
+        totalCurrencyFields: [],
+        columnCaseMap: { sessiondate: 'SessionDate', itemcode: 'ItemCode' },
+        viewSource: {},
+        viewDisplays: {},
+        viewColumns: {},
+        loadView: noop,
+        procTriggers: {
+          itemcode: {
+            name: 'set_header',
+            params: ['$current', 'SessionDate'],
+            outMap: { '$current': 'ItemCode' },
+          },
+        },
+        user: {},
+        collectRows: false,
+        requiredFields: ['SessionDate'],
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      let tree = reactMock.getTree();
+      let inputs = findAllByType(tree, 'input');
+      assert.ok(inputs.length >= 2, 'should render session and item inputs');
+      const dateInput = inputs[0];
+      const itemInput = inputs[1];
+
+      itemInput.props.onChange({ target: { value: 'ITEM-01' } });
+      await flushPromises();
+
+      itemInput.props.onKeyDown({
+        key: 'Enter',
+        preventDefault: () => {},
+        target: {
+          value: 'ITEM-01',
+          focus: () => {},
+          select: () => {},
+        },
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      assert.equal(callProcedureMock.mock.callCount(), 0, 'procedure should not be called when date missing');
+
+      dateInput.props.onChange({ target: { value: '2024-02-01' } });
+      await flushPromises();
+
+      tree = reactMock.getTree();
+      inputs = findAllByType(tree, 'input');
+      const updatedItemInput = inputs[1];
+      updatedItemInput.props.onKeyDown({
+        key: 'Enter',
+        preventDefault: () => {},
+        target: {
+          value: 'ITEM-01',
+          focus: () => {},
+          select: () => {},
+        },
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      assert.equal(callProcedureMock.mock.callCount(), 1, 'procedure should run after filling required fields');
+      const [procName, params] = callProcedureMock.mock.calls[0].arguments;
+      assert.equal(procName, 'set_header');
+      assert.deepEqual(params, ['ITEM-01', '2024-02-01']);
     } finally {
       global.fetch = originalFetch;
     }

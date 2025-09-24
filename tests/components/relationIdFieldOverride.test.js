@@ -313,4 +313,128 @@ if (!haveReact) {
       global.fetch = origFetch;
     }
   });
+
+  test('RowFormModal skips procedure call until required parameters are filled', async (t) => {
+    const origFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+    const callProcedureMock = t.mock.fn(async () => ({ HeaderField: 'HDR-001' }));
+
+    const { default: RowFormModal } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/RowFormModal.jsx',
+      {
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './InlineTransactionTable.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './TooltipWrapper.jsx': { default: (p) => React.createElement('div', p) },
+        './Modal.jsx': { default: ({ children }) => React.createElement('div', null, children) },
+        '../context/AuthContext.jsx': {
+          AuthContext: React.createContext({
+            user: { empid: 'EMP-1' },
+            company: 'COMP-1',
+            branch: 'BR-1',
+            department: 'DEP-1',
+            userSettings: {},
+          }),
+        },
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
+        '../utils/normalizeDateInput.js': { default: (v) => v },
+        '../utils/apiBase.js': { API_BASE: '' },
+        '../utils/callProcedure.js': { default: callProcedureMock },
+      },
+    );
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(RowFormModal, {
+            visible: true,
+            onCancel: () => {},
+            onSubmit: () => {},
+            columns: ['SessionDate', 'ItemCode'],
+            row: { SessionDate: '', ItemCode: '' },
+            relations: {},
+            relationConfigs: {},
+            relationData: {},
+            fieldTypeMap: { SessionDate: 'date' },
+            disabledFields: [],
+            labels: { SessionDate: 'Session Date', ItemCode: 'Item' },
+            requiredFields: ['SessionDate'],
+            onChange: () => {},
+            onRowsChange: () => {},
+            headerFields: [],
+            footerFields: [],
+            mainFields: [],
+            userIdFields: [],
+            branchIdFields: [],
+            departmentIdFields: [],
+            companyIdFields: [],
+            totalAmountFields: [],
+            totalCurrencyFields: [],
+            defaultValues: {},
+            dateField: ['SessionDate'],
+            inline: false,
+            useGrid: false,
+            fitted: false,
+            table: '',
+            imagenameField: [],
+            imageIdField: '',
+            scope: 'forms',
+            procTriggers: {
+              itemcode: {
+                name: 'set_header',
+                params: ['$current', 'SessionDate'],
+                outMap: { '$current': 'ItemCode' },
+              },
+            },
+          }),
+        );
+      });
+
+      await act(async () => {});
+
+      const inputs = container.querySelectorAll('input');
+      assert.ok(inputs.length >= 2, 'should render inputs for session date and item');
+      const dateInput = inputs[0];
+      const itemInput = inputs[1];
+
+      await act(async () => {
+        itemInput.value = 'ITEM-01';
+        itemInput.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+
+      await act(async () => {
+        const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        itemInput.dispatchEvent(event);
+        await Promise.resolve();
+      });
+
+      assert.equal(callProcedureMock.mock.callCount(), 0, 'procedure should not run with empty date');
+
+      await act(async () => {
+        dateInput.value = '2024-02-01';
+        dateInput.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+
+      await act(async () => {
+        const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        itemInput.dispatchEvent(event);
+        await Promise.resolve();
+      });
+
+      assert.equal(callProcedureMock.mock.callCount(), 1, 'procedure should run after filling date');
+      const [procName, params] = callProcedureMock.mock.calls[0].arguments;
+      assert.equal(procName, 'set_header');
+      assert.deepEqual(params, ['ITEM-01', '2024-02-01']);
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      global.fetch = origFetch;
+    }
+  });
 }
