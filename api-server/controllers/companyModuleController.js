@@ -32,7 +32,12 @@ export async function updateLicense(req, res, next) {
     if (!companies.some((c) => c.id === Number(companyId))) {
       return res.sendStatus(403);
     }
-    await setCompanyModuleLicense(companyId, moduleKey, licensed);
+    await setCompanyModuleLicense(
+      companyId,
+      moduleKey,
+      licensed,
+      req.user.empid,
+    );
     res.sendStatus(200);
   } catch (err) {
     next(err);

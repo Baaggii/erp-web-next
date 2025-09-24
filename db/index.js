@@ -937,8 +937,8 @@ export async function upsertModule(
   );
   const now = formatDateForDb(new Date());
   await pool.query(
-    `INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_header, updated_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_header, created_by, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        label = VALUES(label),
        parent_key = VALUES(parent_key),
@@ -946,7 +946,16 @@ export async function upsertModule(
        show_in_header = VALUES(show_in_header),
        updated_by = VALUES(updated_by),
        updated_at = VALUES(updated_at)`,
-    [moduleKey, label, parentKey, showInSidebar ? 1 : 0, showInHeader ? 1 : 0, empid, now],
+    [
+      moduleKey,
+      label,
+      parentKey,
+      showInSidebar ? 1 : 0,
+      showInHeader ? 1 : 0,
+      empid,
+      empid,
+      now,
+    ],
   );
   await pool.query(
     `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
@@ -975,7 +984,7 @@ export async function deleteModule(moduleKey, deletedBy = null) {
   );
   return { moduleKey: result?.module_key ?? moduleKey };
 }
-export async function populateDefaultModules() {
+export async function populateDefaultModules(createdBy = null) {
   for (const m of defaultModules) {
     await upsertModule(
       m.moduleKey,
@@ -983,7 +992,7 @@ export async function populateDefaultModules() {
       m.parentKey,
       m.showInSidebar,
       m.showInHeader,
-      null,
+      createdBy,
     );
   }
 }
@@ -1062,12 +1071,19 @@ export async function listCompanyModuleLicenses(companyId, createdBy = null) {
 /**
  * Set a company's module license flag
  */
-export async function setCompanyModuleLicense(companyId, moduleKey, licensed) {
+export async function setCompanyModuleLicense(
+  companyId,
+  moduleKey,
+  licensed,
+  actor = null,
+) {
   await pool.query(
-    `INSERT INTO company_module_licenses (company_id, module_key, licensed)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE licensed = VALUES(licensed)`,
-    [companyId, moduleKey, licensed ? 1 : 0],
+    `INSERT INTO company_module_licenses (company_id, module_key, licensed, created_by, updated_by)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       licensed = VALUES(licensed),
+       updated_by = VALUES(updated_by)`,
+    [companyId, moduleKey, licensed ? 1 : 0, actor, actor],
   );
   return { companyId, moduleKey, licensed: !!licensed };
 }
