@@ -1418,20 +1418,23 @@ export async function seedTenantTables(
     if (is_shared) continue;
     const tableSummary = { count: 0 };
     summary[table_name] = tableSummary;
-    const [[{ cnt }]] = await pool.query(
-      'SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?',
-      [table_name, companyId],
-    );
+    const meta = await listTableColumnMeta(table_name);
+    const columns = meta.map((c) => c.name);
+    tableColumnsCache.set(table_name, columns);
+    const softDeleteColumn = await getSoftDeleteColumn(table_name, companyId);
+    let countSql = 'SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?';
+    const countParams = [table_name, companyId];
+    if (softDeleteColumn) {
+      const identifier = escapeIdentifier(softDeleteColumn);
+      countSql += ` AND (${identifier} IS NULL OR ${identifier} IN (0,''))`;
+    }
+    const [[{ cnt }]] = await pool.query(countSql, countParams);
     const existingCount = Number(cnt) || 0;
     if (existingCount > 0 && !overwrite) {
       const err = new Error(`Table ${table_name} already contains data`);
       err.status = 400;
       throw err;
     }
-
-    const meta = await listTableColumnMeta(table_name);
-    const columns = meta.map((c) => c.name);
-    const softDeleteColumn = await getSoftDeleteColumn(table_name, companyId);
     const otherCols = meta
       .filter(
         (c) =>
