@@ -104,6 +104,64 @@ await test('seedTenantTables returns summary for provided rows', async () => {
   assert.ok(insert);
 });
 
+await test(
+  'seedTenantTables ignores soft-deleted rows when checking for existing data',
+  async () => {
+    const orig = db.pool.query;
+    const calls = [];
+    db.pool.query = async (sql, params) => {
+      calls.push({ sql, params });
+      if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+        return [[{ table_name: 'posts', is_shared: 0 }]];
+      }
+      if (sql.startsWith('SELECT COLUMN_NAME')) {
+        return [[
+          { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+          { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+          { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '' },
+        ]];
+      }
+      if (sql.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
+        return [[]];
+      }
+      if (sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?')) {
+        assert.ok(
+          sql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"),
+          'count query should exclude soft deleted rows',
+        );
+        return [[{ cnt: 0 }]];
+      }
+      if (sql.startsWith('INSERT INTO ?? (`company_id`')) {
+        return [{ affectedRows: 1 }];
+      }
+      if (sql.startsWith('INSERT INTO user_level_permissions')) {
+        return [{ affectedRows: 0 }];
+      }
+      return [[], []];
+    };
+
+    try {
+      const result = await db.seedTenantTables(5, null, {}, false, 1);
+      assert.ok(result.summary.posts);
+      assert.equal(result.summary.posts.count, 1);
+    } finally {
+      db.pool.query = orig;
+    }
+
+    const countCall = calls.find((c) =>
+      c.sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?'),
+    );
+    assert.ok(countCall);
+    assert.ok(
+      countCall.sql.includes("(`is_deleted` IS NULL OR `is_deleted` IN (0,''))"),
+    );
+    assert.ok(
+      !calls.some((c) => c.sql.startsWith('UPDATE ?? SET `is_deleted` = 1')),
+    );
+  },
+);
+
 await test('seedTenantTables overrides audit columns', async () => {
   const orig = db.pool.query;
   const calls = [];
