@@ -239,6 +239,87 @@ await test('seedTenantTables creates backup metadata before overwrite', async ()
   await fs.rm(companyConfigDir, { recursive: true, force: true });
 });
 
+await test('seedTenantTables overwrites existing rows with upsert', async () => {
+  const companyId = 88;
+  const companyConfigDir = path.join(process.cwd(), 'config', String(companyId));
+  await fs.rm(companyConfigDir, { recursive: true, force: true });
+
+  const origQuery = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+      return [[{ table_name: 'posts', is_shared: 0 }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?')) {
+      return [[{ cnt: 1 }]];
+    }
+    if (sql.startsWith('SELECT COLUMN_NAME')) {
+      return [[
+        { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'is_deleted', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'deleted_by', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'updated_by', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'updated_at', COLUMN_KEY: '', EXTRA: '' },
+      ]];
+    }
+    if (sql.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
+      return [[]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE company_id = ?')) {
+      return [[
+        {
+          id: 1,
+          company_id: companyId,
+          title: 'Old title',
+          is_deleted: 1,
+          deleted_by: 22,
+          deleted_at: '2021-01-01 00:00:00',
+          updated_by: 33,
+          updated_at: '2021-01-01 00:00:00',
+        },
+      ]];
+    }
+    if (sql.startsWith('UPDATE ?? SET `is_deleted` = 1')) {
+      return [{ affectedRows: 1 }];
+    }
+    if (sql.startsWith('INSERT INTO ??')) {
+      return [{ affectedRows: 1 }];
+    }
+    if (sql.startsWith('INSERT INTO user_level_permissions')) {
+      return [{ affectedRows: 0 }];
+    }
+    return [[], []];
+  };
+
+  try {
+    const result = await db.seedTenantTables(companyId, null, {}, true, 5, 6, {
+      backupName: 'Upsert Backup',
+    });
+    assert.ok(result.summary.posts);
+    assert.equal(result.summary.posts.count, 1);
+
+    const insertCall = calls.find((c) =>
+      c.sql.startsWith(
+        'INSERT INTO ?? (`company_id`, `id`, `title`, `is_deleted`, `deleted_by`, `deleted_at`, `updated_by`, `updated_at`)',
+      ),
+    );
+    assert.ok(insertCall);
+    assert.match(insertCall.sql, /ON DUPLICATE KEY UPDATE/);
+    assert.match(insertCall.sql, /`is_deleted` = DEFAULT\(`is_deleted`\)/);
+    assert.match(insertCall.sql, /`deleted_by` = DEFAULT\(`deleted_by`\)/);
+    assert.match(insertCall.sql, /`deleted_at` = DEFAULT\(`deleted_at`\)/);
+    assert.match(insertCall.sql, /`updated_at` = NOW\(\)/);
+    assert.match(insertCall.sql, /`updated_by` = VALUES\(`updated_by`\)/);
+  } finally {
+    db.pool.query = origQuery;
+    await fs.rm(companyConfigDir, { recursive: true, force: true });
+  }
+});
+
 await test('seedTenantTables throws when table has data and overwrite false', async () => {
   const orig = db.pool.query;
   db.pool.query = async (sql, params) => {

@@ -225,6 +225,8 @@ async function getSoftDeleteColumn(tableName, companyId = GLOBAL_COMPANY_ID) {
 
 const DELETED_AT_COLUMN_CANDIDATES = ["deleted_at", "deletedat", "deletedAt"];
 const DELETED_BY_COLUMN_CANDIDATES = ["deleted_by", "deletedby", "deletedBy"];
+const UPDATED_AT_COLUMN_CANDIDATES = ["updated_at", "updatedat", "updatedAt"];
+const UPDATED_BY_COLUMN_CANDIDATES = ["updated_by", "updatedby", "updatedBy"];
 
 function resolveColumnName(columns, lowerColumns, candidates) {
   for (const cand of candidates) {
@@ -318,6 +320,116 @@ function buildSoftDeleteUpdateClause(
     clause: assignments.join(', '),
     params,
     supported: true,
+  };
+}
+
+function buildSeedUpsertUpdateClause(
+  columns,
+  insertColumns,
+  softDeleteColumn,
+  { updatedByFallback = null } = {},
+) {
+  const normalized = Array.isArray(columns)
+    ? columns.map((col) => String(col))
+    : [];
+  const lowerColumns = normalized.map((col) => col.toLowerCase());
+  const insertList = Array.isArray(insertColumns)
+    ? insertColumns.map((col) => String(col))
+    : [];
+  const insertLower = new Set(insertList.map((col) => col.toLowerCase()));
+
+  const resolvedSoftDeleteColumn = softDeleteColumn
+    ? resolveColumnName(normalized, lowerColumns, [softDeleteColumn])
+    : null;
+  const resolvedDeletedAtColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    DELETED_AT_COLUMN_CANDIDATES,
+  );
+  const resolvedDeletedByColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    DELETED_BY_COLUMN_CANDIDATES,
+  );
+  const resolvedUpdatedAtColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    UPDATED_AT_COLUMN_CANDIDATES,
+  );
+  const resolvedUpdatedByColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    UPDATED_BY_COLUMN_CANDIDATES,
+  );
+
+  const specialLower = new Set(
+    [
+      resolvedSoftDeleteColumn,
+      resolvedDeletedAtColumn,
+      resolvedDeletedByColumn,
+      resolvedUpdatedAtColumn,
+      resolvedUpdatedByColumn,
+    ]
+      .filter(Boolean)
+      .map((name) => name.toLowerCase()),
+  );
+
+  const assignments = [];
+  const params = [];
+
+  for (const columnName of insertList) {
+    if (specialLower.has(columnName.toLowerCase())) continue;
+    assignments.push(`\`${columnName}\` = VALUES(\`${columnName}\`)`);
+  }
+
+  const pushDefaultAssignment = (columnName) => {
+    if (!columnName) return;
+    assignments.push(`\`${columnName}\` = DEFAULT(\`${columnName}\`)`);
+  };
+
+  if (resolvedSoftDeleteColumn) {
+    pushDefaultAssignment(resolvedSoftDeleteColumn);
+  }
+  if (
+    resolvedDeletedAtColumn &&
+    (!resolvedSoftDeleteColumn ||
+      resolvedDeletedAtColumn.toLowerCase() !==
+        resolvedSoftDeleteColumn.toLowerCase())
+  ) {
+    pushDefaultAssignment(resolvedDeletedAtColumn);
+  }
+  if (
+    resolvedDeletedByColumn &&
+    (!resolvedSoftDeleteColumn ||
+      resolvedDeletedByColumn.toLowerCase() !==
+        resolvedSoftDeleteColumn.toLowerCase())
+  ) {
+    pushDefaultAssignment(resolvedDeletedByColumn);
+  }
+
+  if (resolvedUpdatedAtColumn) {
+    assignments.push(`\`${resolvedUpdatedAtColumn}\` = NOW()`);
+  }
+
+  if (resolvedUpdatedByColumn) {
+    if (insertLower.has(resolvedUpdatedByColumn.toLowerCase())) {
+      assignments.push(
+        `\`${resolvedUpdatedByColumn}\` = VALUES(\`${resolvedUpdatedByColumn}\`)`,
+      );
+    } else {
+      assignments.push(`\`${resolvedUpdatedByColumn}\` = ?`);
+      params.push(updatedByFallback);
+    }
+  }
+
+  if (assignments.length === 0 && insertList.length > 0) {
+    const first = insertList[0];
+    assignments.push(`\`${first}\` = VALUES(\`${first}\`)`);
+  }
+
+  return {
+    clause: assignments.join(', '),
+    params,
   };
 }
 
@@ -1413,12 +1525,17 @@ export async function seedTenantTables(
         const colNames = ['company_id', ...rowCols];
         const colsClause = colNames.map((c) => `\`${c}\``).join(', ');
         const placeholders = colNames.map(() => '?').join(', ');
+        const { clause: upsertClause, params: upsertParams } =
+          buildSeedUpsertUpdateClause(columns, colNames, softDeleteColumn, {
+            updatedByFallback: updatedBy ?? createdBy ?? null,
+          });
         const params = [
           tableName,
           ...colNames.map((c) => (c === 'company_id' ? companyId : row[c])),
+          ...upsertParams,
         ];
         const [result] = await pool.query(
-          `INSERT INTO ?? (${colsClause}) VALUES (${placeholders})`,
+          `INSERT INTO ?? (${colsClause}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${upsertClause}`,
           params,
         );
         const inserted = Number(result?.affectedRows);
@@ -1483,6 +1600,16 @@ export async function seedTenantTables(
       sql += ` AND \`${pkCols[0]}\` IN (${placeholders})`;
       params.push(...idList);
     }
+
+    const { clause: upsertClause, params: upsertParams } =
+      buildSeedUpsertUpdateClause(
+        columns,
+        ['company_id', ...otherCols],
+        softDeleteColumn,
+        { updatedByFallback: updatedBy ?? createdBy ?? null },
+      );
+    sql += ` ON DUPLICATE KEY UPDATE ${upsertClause}`;
+    params.push(...upsertParams);
 
     const [result] = await pool.query(sql, params);
     const inserted = Number(result?.affectedRows);
