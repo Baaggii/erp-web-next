@@ -50,6 +50,7 @@ function assignArrayMetadata(target, source) {
 function InlineTransactionTable(
   {
     fields = [],
+    allFields = null,
     relations = {},
     relationConfigs = {},
     relationData = {},
@@ -246,6 +247,36 @@ function InlineTransactionTable(
     [fieldTypeMap],
   );
   const fieldsKey = React.useMemo(() => fields.join(','), [fields]);
+  const allFieldsList = React.useMemo(() => {
+    const seen = new Set();
+    const merged = [];
+    fields.forEach((f) => {
+      if (!f || seen.has(f)) return;
+      seen.add(f);
+      merged.push(f);
+    });
+    if (Array.isArray(allFields)) {
+      allFields.forEach((f) => {
+        if (!f || seen.has(f)) return;
+        seen.add(f);
+        merged.push(f);
+      });
+    }
+    return merged;
+  }, [fieldsKey, allFields]);
+  const allFieldsKey = React.useMemo(() => allFieldsList.join(','), [allFieldsList]);
+  const writableColumns = React.useMemo(() => {
+    const set = new Set();
+    allFieldsList.forEach((f) => {
+      if (!f) return;
+      const key = columnCaseMap[f.toLowerCase()] || f;
+      if (typeof key === 'string') set.add(key);
+    });
+    Object.values(columnCaseMap || {}).forEach((name) => {
+      if (typeof name === 'string') set.add(name);
+    });
+    return set;
+  }, [allFieldsKey, columnCaseMapKey, columnCaseMap]);
 
   const columnTypeMap = React.useMemo(() => {
     const map = {};
@@ -512,6 +543,41 @@ function InlineTransactionTable(
     }
   }
 
+  function applyProcedureResult(rowIdx, rowData) {
+    if (!rowData || typeof rowData !== 'object') return;
+    setRows((r) => {
+      if (!Array.isArray(r)) return r;
+      const next = r.map((row, i) => {
+        if (i !== rowIdx) return row;
+        const baseRow = row && typeof row === 'object' ? row : {};
+        const updated = { ...baseRow };
+        const keyLookup = {};
+        Object.keys(baseRow).forEach((key) => {
+          keyLookup[key.toLowerCase()] = key;
+        });
+        Object.entries(rowData).forEach(([rawKey, rawValue]) => {
+          if (!rawKey && rawKey !== 0) return;
+          const mappedKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
+          if (typeof mappedKey !== 'string') return;
+          const lower = mappedKey.toLowerCase();
+          const existingKey = keyLookup[lower];
+          const shouldWrite = writableColumns.has(mappedKey) || existingKey;
+          if (!shouldWrite) return;
+          if (existingKey) {
+            updated[existingKey] = rawValue;
+          } else {
+            updated[mappedKey] = rawValue;
+            keyLookup[lower] = mappedKey;
+          }
+        });
+        return updated;
+      });
+      assignArrayMetadata(next, r);
+      onRowsChange(next);
+      return next;
+    });
+  }
+
   async function runProcTrigger(rowIdx, col, rowOverride = null) {
     const showToast = general.procToastEnabled;
     const direct = getDirectTriggers(col);
@@ -547,11 +613,20 @@ function InlineTransactionTable(
       const targetCols = Object.values(outMap || {}).map((c) =>
         columnCaseMap[c.toLowerCase()] || c,
       );
-      const hasTarget = targetCols.some((c) => fields.includes(c));
+      const hasTarget = targetCols.some((c) => writableColumns.has(c));
       if (!hasTarget) continue;
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
-        let val = (rowOverride || rows[rowIdx] || {})[key];
+        const source = (rowOverride || rows[rowIdx] || {});
+        let val = source ? source[key] : undefined;
+        if (val === undefined && source && typeof source === 'object') {
+          const matchKey = Object.keys(source).find(
+            (existing) => existing.toLowerCase() === String(key).toLowerCase(),
+          );
+          if (matchKey !== undefined) {
+            val = source[matchKey];
+          }
+        }
         if (val && typeof val === 'object' && 'value' in val) {
           val = val.value;
         }
@@ -576,20 +651,7 @@ function InlineTransactionTable(
       const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
       if (procCache.current[cacheKey]) {
         const rowData = procCache.current[cacheKey];
-        setRows((r) => {
-          const next = r.map((row, i) => {
-            if (i !== rowIdx) return row;
-            const updated = { ...row };
-            Object.entries(rowData).forEach(([k, v]) => {
-              const key = columnCaseMap[k.toLowerCase()];
-              if (key) updated[key] = v;
-            });
-            return updated;
-          });
-          assignArrayMetadata(next, r);
-          onRowsChange(next);
-          return next;
-        });
+        applyProcedureResult(rowIdx, rowData);
         if (showToast) {
           window.dispatchEvent(
             new CustomEvent('toast', {
@@ -617,20 +679,7 @@ function InlineTransactionTable(
         );
         if (rowData && typeof rowData === 'object') {
           procCache.current[cacheKey] = rowData;
-          setRows((r) => {
-            const next = r.map((row, i) => {
-              if (i !== rowIdx) return row;
-              const updated = { ...row };
-              Object.entries(rowData).forEach(([k, v]) => {
-                const key = columnCaseMap[k.toLowerCase()];
-                if (key) updated[key] = v;
-              });
-              return updated;
-            });
-            assignArrayMetadata(next, r);
-            onRowsChange(next);
-            return next;
-          });
+          applyProcedureResult(rowIdx, rowData);
           if (showToast) {
             window.dispatchEvent(
               new CustomEvent('toast', {
