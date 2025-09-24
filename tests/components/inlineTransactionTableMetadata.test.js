@@ -412,6 +412,14 @@ if (typeof mock?.import !== 'function') {
       assert.ok(tableRef.current, 'table ref should be populated');
       const rows = tableRef.current.getRows();
       assert.equal(rows[0].HeaderField, 'HDR-001');
+      assert.equal(rows.HeaderField, 'HDR-001');
+
+      assert.ok(onRowsChange.mock.callCount() > 0, 'onRowsChange should be called');
+      const lastCall = onRowsChange.mock.calls[onRowsChange.mock.calls.length - 1];
+      assert.ok(lastCall, 'onRowsChange should record the latest call');
+      const [changedRows] = lastCall.arguments;
+      assert.ok(changedRows, 'onRowsChange should provide rows data');
+      assert.equal(changedRows.HeaderField, 'HDR-001');
     } finally {
       global.fetch = originalFetch;
     }
