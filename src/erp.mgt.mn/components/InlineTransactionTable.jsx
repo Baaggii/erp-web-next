@@ -25,6 +25,28 @@ function normalizeNumberInput(value) {
   return value.replace(',', '.');
 }
 
+const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+
+function extractArrayMetadata(value) {
+  if (!value || typeof value !== 'object') return null;
+  const metadata = {};
+  let hasMetadata = false;
+  Object.keys(value).forEach((key) => {
+    if (!arrayIndexPattern.test(key)) {
+      metadata[key] = value[key];
+      hasMetadata = true;
+    }
+  });
+  return hasMetadata ? metadata : null;
+}
+
+function assignArrayMetadata(target, source) {
+  if (!Array.isArray(target)) return target;
+  const metadata = extractArrayMetadata(source);
+  if (metadata) Object.assign(target, metadata);
+  return target;
+}
+
 function InlineTransactionTable(
   {
     fields = [],
@@ -205,9 +227,11 @@ function InlineTransactionTable(
   }, []);
   const [rows, setRows] = useState(() => {
     if (Array.isArray(initRows) && initRows.length > 0) {
-      return initRows.map((r) => fillSessionDefaults(r));
+      const next = initRows.map((r) => fillSessionDefaults(r));
+      return assignArrayMetadata(next, initRows);
     }
-    return Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
+    const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
+    return assignArrayMetadata(next, initRows);
   });
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -300,8 +324,12 @@ function InlineTransactionTable(
       });
       return updated;
     });
-    if (JSON.stringify(normalized) !== JSON.stringify(rows)) {
-      setRows(normalized);
+    const metadata = extractArrayMetadata(initRows) || {};
+    const currentMetadata = extractArrayMetadata(rows) || {};
+    const metadataChanged = JSON.stringify(metadata) !== JSON.stringify(currentMetadata);
+    const withMetadata = assignArrayMetadata(normalized, initRows);
+    if (metadataChanged || JSON.stringify(withMetadata) !== JSON.stringify(rows)) {
+      setRows(withMetadata);
     }
   }, [initRows, minRows, defaultValues, placeholders]);
   const inputRefs = useRef({});
@@ -368,6 +396,7 @@ function InlineTransactionTable(
       setRows((r) => {
         const next = [...r];
         while (next.length < minRows) next.push({});
+        assignArrayMetadata(next, r);
         return next;
       });
     }
@@ -406,15 +435,17 @@ function InlineTransactionTable(
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
     clearRows: () =>
-      setRows(() => {
+      setRows((prev) => {
         const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
+        assignArrayMetadata(next, prev);
         onRowsChange(next);
         return next;
       }),
     replaceRows: (newRows) =>
-      setRows(() => {
+      setRows((prev) => {
         const base = Array.isArray(newRows) ? newRows : [];
         const next = base.map((r) => fillSessionDefaults(r));
+        assignArrayMetadata(next, Array.isArray(newRows) ? newRows : prev);
         onRowsChange(next);
         return next;
       }),
@@ -555,6 +586,7 @@ function InlineTransactionTable(
             });
             return updated;
           });
+          assignArrayMetadata(next, r);
           onRowsChange(next);
           return next;
         });
@@ -595,6 +627,7 @@ function InlineTransactionTable(
               });
               return updated;
             });
+            assignArrayMetadata(next, r);
             onRowsChange(next);
             return next;
           });
@@ -715,6 +748,7 @@ function InlineTransactionTable(
       const row = fillSessionDefaults(defaultValues);
       const next = [...r, row];
       focusRow.current = next.length - 1;
+      assignArrayMetadata(next, r);
       onRowsChange(next);
       return next;
     });
@@ -723,6 +757,7 @@ function InlineTransactionTable(
   function removeRow(idx) {
     setRows((r) => {
       const next = r.filter((_, i) => i !== idx);
+      assignArrayMetadata(next, r);
       onRowsChange(next);
       return next;
     });
@@ -735,6 +770,7 @@ function InlineTransactionTable(
   function handleUploaded(idx, name) {
     setRows((r) => {
       const next = r.map((row, i) => (i === idx ? { ...row, _imageName: name } : row));
+      assignArrayMetadata(next, r);
       onRowsChange(next);
       return next;
     });
@@ -752,6 +788,7 @@ function InlineTransactionTable(
         if (qtyField && item.qty !== undefined) updated[qtyField] = item.qty;
         return updated;
       });
+      assignArrayMetadata(next, r);
       onRowsChange(next);
       return next;
     });
@@ -794,6 +831,7 @@ function InlineTransactionTable(
         }
         return updated;
       });
+      assignArrayMetadata(next, r);
       onRowsChange(next);
       return next;
     });
@@ -856,6 +894,7 @@ function InlineTransactionTable(
               });
               return updated;
             });
+            assignArrayMetadata(next, r);
             onRowsChange(next);
             return next;
           });
@@ -967,6 +1006,7 @@ function InlineTransactionTable(
       }
       setRows((r) => {
         const next = r.map((row, i) => (i === idx ? updated : row));
+        assignArrayMetadata(next, r);
         onRowsChange(next);
         return next;
       });
