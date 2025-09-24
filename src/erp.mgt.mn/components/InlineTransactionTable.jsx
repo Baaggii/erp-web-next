@@ -635,6 +635,21 @@ function InlineTransactionTable(
       );
       const hasTarget = targetCols.some((c) => writableColumns.has(c));
       if (!hasTarget) continue;
+      const optionalParamSet = new Set(
+        Array.isArray(cfg.optionalParams)
+          ? cfg.optionalParams.map((p) => String(p).toLowerCase())
+          : [],
+      );
+      const optionalPlaceholdersRaw = Array.isArray(cfg.optionalPlaceholders)
+        ? cfg.optionalPlaceholders
+        : cfg.optionalPlaceholders && typeof cfg.optionalPlaceholders === 'object'
+          ? Object.values(cfg.optionalPlaceholders)
+          : [];
+      const optionalPlaceholderSet = new Set(
+        (optionalPlaceholdersRaw || [])
+          .map((p) => (p === undefined || p === null ? '' : String(p).toLowerCase()))
+          .filter(Boolean),
+      );
       const getVal = (name) => {
         const key = columnCaseMap[name.toLowerCase()] || name;
         const source = (rowOverride || rows[rowIdx] || {});
@@ -687,12 +702,16 @@ function InlineTransactionTable(
         const value = paramValues[idx];
         const fieldName = getFieldName(param);
         const fieldLower = fieldName ? String(fieldName).toLowerCase() : '';
-        const isRequiredParam =
+        const normalizedField =
+          fieldLower && fields.find((f) => f.toLowerCase() === fieldLower);
+        const paramLower = typeof param === 'string' ? param.toLowerCase() : '';
+        const shouldValidate =
           param === '$current' ||
           param === '$branchId' ||
           param === '$companyId' ||
           param === '$employeeId' ||
           param === '$date' ||
+          Boolean(normalizedField) ||
           (fieldLower &&
             (requiredFieldSet.has(fieldLower) ||
               branchIdLowerSet.has(fieldLower) ||
@@ -703,8 +722,24 @@ function InlineTransactionTable(
           value === undefined ||
           value === null ||
           (typeof value === 'string' && value.trim() === '');
-        if (!isRequiredParam || !isEmptyValue) return;
-        if (fieldName) missingFields.push(fieldName);
+        if (!shouldValidate || !isEmptyValue) return;
+        const optionalValueTokens = [];
+        if (value === undefined) optionalValueTokens.push('undefined');
+        if (value === null) optionalValueTokens.push('null');
+        if (typeof value === 'string') {
+          optionalValueTokens.push(value.trim().toLowerCase());
+        }
+        const isOptional =
+          optionalParamSet.has(paramLower) ||
+          optionalParamSet.has(fieldLower) ||
+          (normalizedField && optionalParamSet.has(normalizedField.toLowerCase())) ||
+          optionalPlaceholderSet.has(paramLower) ||
+          optionalPlaceholderSet.has(fieldLower) ||
+          (normalizedField && optionalPlaceholderSet.has(normalizedField.toLowerCase())) ||
+          optionalValueTokens.some((token) => optionalPlaceholderSet.has(token));
+        if (isOptional) return;
+        if (normalizedField) missingFields.push(normalizedField);
+        else if (fieldName) missingFields.push(fieldName);
         if (param === '$branchId') {
           const branchField = branchIdFields?.[0];
           const label =
@@ -741,7 +776,8 @@ function InlineTransactionTable(
           missingLabels.push(labels[tCol] || tCol);
           return;
         }
-        missingLabels.push((fieldName && (labels[fieldName] || fieldName)) || param);
+        const labelField = normalizedField || fieldName;
+        missingLabels.push((labelField && (labels[labelField] || labelField)) || param);
       });
       if (missingLabels.length > 0) {
         const uniqueLabels = [...new Set(missingLabels.filter(Boolean))];

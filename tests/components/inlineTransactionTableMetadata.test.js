@@ -468,7 +468,7 @@ if (typeof mock?.import !== 'function') {
         },
         user: {},
         collectRows: false,
-        requiredFields: ['SessionDate'],
+        requiredFields: [],
       });
 
       await flushPromises();
