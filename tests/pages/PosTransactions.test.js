@@ -1,5 +1,6 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
+import { fetchTriggersForTables } from '../../src/erp.mgt.mn/utils/fetchTriggersForTables.js';
 import { syncCalcFields } from '../../src/erp.mgt.mn/utils/syncCalcFields.js';
 
 if (typeof mock.import !== 'function') {
@@ -211,6 +212,65 @@ if (typeof mock.import !== 'function') {
   });
 
 }
+
+test('fetchTriggersForTables caches trigger metadata for hidden tables', async () => {
+  const fetchesRef = { current: new Map() };
+  const loadedRef = { current: new Set() };
+
+  let resolveFetch;
+  const pending = new Promise((resolve) => {
+    resolveFetch = resolve;
+  });
+  const fetcher = mock.fn(() => pending);
+  const updates = [];
+  const applyResult = mock.fn((tbl, data) => {
+    updates.push({ tbl, data });
+    return true;
+  });
+
+  const [firstPromise] = fetchTriggersForTables({
+    tables: ['hidden_tbl'],
+    fetcher,
+    fetchesRef,
+    loadedRef,
+    applyResult,
+  });
+
+  await Promise.resolve();
+  assert.equal(fetcher.mock.calls.length, 1);
+
+  const [secondPromise] = fetchTriggersForTables({
+    tables: ['hidden_tbl'],
+    fetcher,
+    fetchesRef,
+    loadedRef,
+    applyResult,
+  });
+
+  await Promise.resolve();
+  assert.equal(fetcher.mock.calls.length, 1);
+  assert.strictEqual(firstPromise, secondPromise);
+
+  resolveFetch({ triggers: [{ id: 1 }] });
+  await firstPromise;
+
+  assert.equal(applyResult.mock.calls.length, 1);
+  assert.deepEqual(updates[0], {
+    tbl: 'hidden_tbl',
+    data: { triggers: [{ id: 1 }] },
+  });
+  assert.equal(loadedRef.current.has('hidden_tbl'), true);
+
+  const thirdBatch = fetchTriggersForTables({
+    tables: ['hidden_tbl'],
+    fetcher,
+    fetchesRef,
+    loadedRef,
+    applyResult,
+  });
+
+  assert.equal(thirdBatch.length, 0);
+});
 
 test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
   const calcFields = [
