@@ -14,6 +14,49 @@ if (typeof pool.getConnection !== 'function') {
   };
 }
 
+function mockMasterColumns(t, overrides = {}) {
+  const base = {
+    transactions_pos: [
+      'id',
+      'session_id',
+      'company_id',
+      'branch_id',
+      'department_id',
+      'emp_id',
+      'pos_date',
+      'total_quantity',
+      'total_amount',
+      'total_discount',
+      'payment_type',
+    ],
+    transactions_pos_online: [
+      'id',
+      'session_id',
+      'company_id',
+      'branch_id',
+      'department_id',
+      'emp_id',
+      'pos_date',
+      'total_quantity',
+      'total_amount',
+      'total_discount',
+      'payment_type',
+    ],
+  };
+  const tables = { ...base, ...overrides };
+  t.mock.method(pool, 'query', async (sql, params) => {
+    if (
+      typeof sql === 'string' &&
+      sql.includes('FROM information_schema.COLUMNS')
+    ) {
+      const table = Array.isArray(params) ? params[0] : null;
+      const cols = tables[table] || [];
+      return [cols.map((name) => ({ COLUMN_NAME: name }))];
+    }
+    return [[]];
+  });
+}
+
 const TEST_CFG = {
   calcFields: [
     {
@@ -300,11 +343,12 @@ test('postPosTransaction uses POS_Modmarket layout config', async (t) => {
   const conn = createMockConnection('transactions_pos', 501, queries);
   t.mock.method(pool, 'getConnection', async () => conn);
   t.mock.method(fs, 'readFile', async () => SIMPLE_POS_CONFIG);
+  mockMasterColumns(t);
 
   const id = await postPosTransaction(
     'POS_Modmarket',
     createPostTransactionData('transactions_pos'),
-    { userId: 'EMP-1' },
+    { employeeId: 'EMP-1' },
     0,
   );
 
@@ -323,11 +367,12 @@ test('postPosTransaction uses ONLINE_POS layout config', async (t) => {
   const conn = createMockConnection('transactions_pos_online', 777, queries);
   t.mock.method(pool, 'getConnection', async () => conn);
   t.mock.method(fs, 'readFile', async () => SIMPLE_POS_CONFIG);
+  mockMasterColumns(t);
 
   const id = await postPosTransaction(
     'ONLINE_POS',
     createPostTransactionData('transactions_pos_online'),
-    { userId: 'EMP-2' },
+    { employeeId: 'EMP-2' },
     0,
   );
 
@@ -369,4 +414,38 @@ test('postPosTransaction throws 400 when layout config is missing', async (t) =>
   );
 
   assert.equal(getConnectionMock.mock.callCount(), 0);
+});
+
+test('postPosTransaction normalizes session info before persisting', async (t) => {
+  const queries = [];
+  const conn = createMockConnection('transactions_pos', 910, queries);
+  t.mock.method(pool, 'getConnection', async () => conn);
+  t.mock.method(fs, 'readFile', async () => SIMPLE_POS_CONFIG);
+  mockMasterColumns(t);
+
+  const id = await postPosTransaction(
+    'POS_Modmarket',
+    createPostTransactionData('transactions_pos'),
+    {
+      employeeId: 'EMP-99',
+      companyId: 42,
+      branchId: 7,
+      date: '2024-03-15',
+      ignoredField: 'ignore me',
+    },
+    0,
+  );
+
+  assert.equal(id, 910);
+  const insertSql = queries.find(
+    (sql) =>
+      typeof sql === 'string' &&
+      sql.startsWith('INSERT INTO transactions_pos'),
+  );
+  assert.ok(insertSql, 'insert query executed for master table');
+  assert.ok(insertSql.includes('emp_id'), 'uses normalized emp_id column');
+  assert.ok(insertSql.includes('company_id'), 'includes company_id column');
+  assert.ok(insertSql.includes('branch_id'), 'includes branch_id column');
+  assert.ok(!insertSql.includes('ignoredField'), 'drops unknown session keys');
+  assert.ok(!insertSql.includes('employeeId'), 'does not use camelCase key');
 });
