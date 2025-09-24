@@ -2693,3 +2693,24 @@ ALTER TABLE `users`
 ALTER TABLE `user_level_permissions`
   ADD CONSTRAINT `user_level_permissions_ibfk_1` FOREIGN KEY (`userlevel_id`) REFERENCES `user_levels` (`userlevel_id`),
   ADD CONSTRAINT `user_level_permissions_ibfk_2` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+DROP TRIGGER IF EXISTS `users_bi`;
+DELIMITER $$
+CREATE TRIGGER `users_bi`
+BEFORE INSERT ON `users`
+FOR EACH ROW
+BEGIN
+  IF NEW.created_at IS NULL THEN
+    SET NEW.created_at = NOW();
+  END IF;
+  IF NEW.created_by IS NULL OR NEW.created_by = '' THEN
+    SET NEW.created_by = CURRENT_USER();
+  END IF;
+  IF NEW.updated_at IS NULL THEN
+    SET NEW.updated_at = NOW();
+  END IF;
+  IF NEW.updated_by IS NULL OR NEW.updated_by = '' THEN
+    SET NEW.updated_by = NEW.created_by;
+  END IF;
+END$$
+DELIMITER ;
