@@ -17,7 +17,7 @@ import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
 import { syncCalcFields } from '../utils/syncCalcFields.js';
 
-export { syncCalcFields, findCalcFieldMismatch };
+export { syncCalcFields };
 
 function isPlainRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
