@@ -1,4 +1,4 @@
--- Ensure the users table automatically stamps audit metadata on insert
+-- Recreate users_bi trigger to default audit actors to the system sentinel
 DROP TRIGGER IF EXISTS users_bi;
 DELIMITER $$
 CREATE TRIGGER users_bi

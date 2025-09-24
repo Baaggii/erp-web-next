@@ -2704,7 +2704,7 @@ BEGIN
     SET NEW.created_at = NOW();
   END IF;
   IF NEW.created_by IS NULL OR NEW.created_by = '' THEN
-    SET NEW.created_by = CURRENT_USER();
+    SET NEW.created_by = 'system';
   END IF;
   IF NEW.updated_at IS NULL THEN
     SET NEW.updated_at = NOW();
