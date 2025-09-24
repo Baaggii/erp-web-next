@@ -38,6 +38,52 @@ function hash(obj) {
   return h.toString(36);
 }
 
+export function extractSessionFieldsFromConfig(config) {
+  if (!config) return [];
+  const fields = [];
+  const seen = new Set();
+  const addField = (table, field) => {
+    if (!table || !field) return;
+    const tableName = String(table);
+    const fieldName = String(field);
+    const key = `${tableName}::${fieldName}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    fields.push({ table: tableName, field: fieldName });
+  };
+  const isSessionField = (name) =>
+    typeof name === 'string' && name.toLowerCase().includes('session');
+  (config.calcFields || []).forEach((row = {}) => {
+    const cells = Array.isArray(row.cells) ? row.cells : [];
+    if (cells.length === 0) return;
+    const hasSessionField = cells.some((cell) => isSessionField(cell?.field));
+    cells.forEach((cell = {}) => {
+      if (!cell.table || !cell.field) return;
+      if (hasSessionField || isSessionField(cell.field)) {
+        addField(cell.table, cell.field);
+      }
+    });
+  });
+  (config.posFields || []).forEach((p = {}) => {
+    const parts = Array.isArray(p.parts) ? p.parts : [];
+    parts.forEach((part = {}) => {
+      if (!part.table || !part.field) return;
+      if (isSessionField(part.field)) {
+        addField(part.table, part.field);
+      }
+    });
+  });
+  fields.sort((a, b) => {
+    const tableA = a.table;
+    const tableB = b.table;
+    if (tableA === tableB) {
+      return a.field.localeCompare(b.field);
+    }
+    return tableA.localeCompare(tableB);
+  });
+  return fields;
+}
+
 function parseErrorField(msg) {
   if (!msg) return null;
   let m = msg.match(/FOREIGN KEY \(`([^`]*)`\)/i);
@@ -797,22 +843,7 @@ export default function PosTransactionsPage() {
       setSessionFields(null);
       return;
     }
-    const fields = [];
-    const check = (tbl, field) => {
-      if (!tbl || !field) return;
-      if (field.toLowerCase().includes('session')) fields.push({ table: tbl, field });
-    };
-    (config.calcFields || []).forEach((row) => {
-      (row.cells || []).forEach((c) => check(c.table, c.field));
-    });
-    (config.posFields || []).forEach((p) => {
-      (p.parts || []).forEach((pt) => check(pt.table, pt.field));
-    });
-    fields.sort((a, b) => {
-      if (a.table === b.table) return a.field.localeCompare(b.field);
-      return a.table.localeCompare(b.table);
-    });
-    setSessionFields(fields);
+    setSessionFields(extractSessionFieldsFromConfig(config));
   }, [visibleTablesKey, configVersion, config]);
 
   const masterSessionValue = React.useMemo(() => {
