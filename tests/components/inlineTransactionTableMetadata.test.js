@@ -425,6 +425,115 @@ if (typeof mock?.import !== 'function') {
     }
   });
 
+  test('InlineTransactionTable cascades procedure triggers sequentially', async () => {
+    const reactMock = createReactMock();
+    const originalFetch = global.fetch;
+    global.fetch = mock.fn(async () => ({ ok: true, json: async () => ({}) }));
+
+    const callProcedureMock = mock.fn(async (name, params) => {
+      if (name === 'fill_intermediate') {
+        return { IntermediateField: 'MID-100' };
+      }
+      if (name === 'fill_final') {
+        return { FinalField: `FIN-${params[0]}` };
+      }
+      return {};
+    });
+
+    const tableRef = { current: null };
+
+    const { default: InlineTransactionTable } = await mock.import(
+      '../../src/erp.mgt.mn/components/InlineTransactionTable.jsx',
+      {
+        react: reactMock.module,
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        '../utils/buildImageName.js': { default: () => ({ name: '' }) },
+        '../utils/slugify.js': { default: (value) => String(value) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/callProcedure.js': { default: callProcedureMock },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    try {
+      reactMock.render(InlineTransactionTable, {
+        ref: tableRef,
+        fields: ['ItemCode', 'IntermediateField', 'FinalField'],
+        allFields: ['ItemCode', 'IntermediateField', 'FinalField'],
+        labels: { ItemCode: 'Item', IntermediateField: 'Intermediate', FinalField: 'Final' },
+        rows: [{ ItemCode: '', IntermediateField: '', FinalField: '' }],
+        defaultValues: {},
+        onRowsChange: () => {},
+        minRows: 1,
+        relations: {},
+        relationConfigs: {},
+        relationData: {},
+        fieldTypeMap: {},
+        totalAmountFields: [],
+        totalCurrencyFields: [],
+        columnCaseMap: {
+          itemcode: 'ItemCode',
+          intermediatefield: 'IntermediateField',
+          finalfield: 'FinalField',
+        },
+        viewSource: {},
+        viewDisplays: {},
+        viewColumns: {},
+        loadView: noop,
+        procTriggers: {
+          itemcode: {
+            name: 'fill_intermediate',
+            params: ['$current'],
+            outMap: { '$current': 'IntermediateField' },
+          },
+          intermediatefield: {
+            name: 'fill_final',
+            params: ['$current'],
+            outMap: { '$current': 'FinalField' },
+          },
+        },
+        user: {},
+        collectRows: false,
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      const tree = reactMock.getTree();
+      const inputs = findAllByType(tree, 'input');
+      assert.ok(inputs.length >= 1, 'should render at least one input');
+      const itemInput = inputs[0];
+
+      itemInput.props.onChange({ target: { value: 'ITEM-01' } });
+      await flushPromises();
+
+      const event = {
+        key: 'Enter',
+        preventDefault: () => {},
+        target: { value: 'ITEM-01', focus: () => {}, select: () => {} },
+      };
+      itemInput.props.onKeyDown(event);
+
+      await flushPromises();
+      await flushPromises();
+
+      assert.equal(callProcedureMock.mock.callCount(), 2);
+      const [firstCall, secondCall] = callProcedureMock.mock.calls.map((c) => c.arguments[0]);
+      assert.equal(firstCall, 'fill_intermediate');
+      assert.equal(secondCall, 'fill_final');
+
+      assert.ok(tableRef.current, 'table ref should be available');
+      const rows = tableRef.current.getRows();
+      assert.equal(rows[0].IntermediateField, 'MID-100');
+      assert.equal(rows[0].FinalField, 'FIN-MID-100');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   test('InlineTransactionTable blocks procedure call when required parameters are empty', async () => {
     const reactMock = createReactMock();
     const originalFetch = global.fetch;

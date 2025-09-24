@@ -442,4 +442,132 @@ if (!haveReact) {
       global.fetch = origFetch;
     }
   });
+
+  test('RowFormModal cascades procedure triggers sequentially', async (t) => {
+    const origFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+    const callProcedureMock = t.mock.fn(async (name, params) => {
+      if (name === 'fill_intermediate') {
+        return { IntermediateField: 'MID-200' };
+      }
+      if (name === 'fill_final') {
+        return { FinalField: `FIN-${params[0]}` };
+      }
+      return {};
+    });
+
+    const { default: RowFormModal } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/RowFormModal.jsx',
+      {
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './InlineTransactionTable.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './TooltipWrapper.jsx': { default: (p) => React.createElement('div', p) },
+        './Modal.jsx': { default: ({ children }) => React.createElement('div', null, children) },
+        '../context/AuthContext.jsx': {
+          AuthContext: React.createContext({
+            user: { empid: 'EMP-1' },
+            company: 'COMP-1',
+            branch: 'BR-1',
+            department: 'DEP-1',
+            userSettings: {},
+          }),
+        },
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
+        '../utils/normalizeDateInput.js': { default: (v) => v },
+        '../utils/apiBase.js': { API_BASE: '' },
+        '../utils/callProcedure.js': { default: callProcedureMock },
+      },
+    );
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(RowFormModal, {
+            visible: true,
+            onCancel: () => {},
+            onSubmit: () => {},
+            columns: ['ItemCode', 'IntermediateField', 'FinalField'],
+            row: { ItemCode: '', IntermediateField: '', FinalField: '' },
+            relations: {},
+            relationConfigs: {},
+            relationData: {},
+            fieldTypeMap: {},
+            disabledFields: [],
+            labels: {
+              ItemCode: 'Item',
+              IntermediateField: 'Intermediate',
+              FinalField: 'Final',
+            },
+            requiredFields: [],
+            onChange: () => {},
+            onRowsChange: () => {},
+            headerFields: [],
+            footerFields: [],
+            mainFields: [],
+            userIdFields: [],
+            branchIdFields: [],
+            departmentIdFields: [],
+            companyIdFields: [],
+            totalAmountFields: [],
+            totalCurrencyFields: [],
+            defaultValues: {},
+            dateField: [],
+            inline: false,
+            useGrid: false,
+            fitted: false,
+            table: '',
+            imagenameField: [],
+            imageIdField: '',
+            scope: 'forms',
+            procTriggers: {
+              itemcode: {
+                name: 'fill_intermediate',
+                params: ['$current'],
+                outMap: { '$current': 'IntermediateField' },
+              },
+              intermediatefield: {
+                name: 'fill_final',
+                params: ['$current'],
+                outMap: { '$current': 'FinalField' },
+              },
+            },
+          }),
+        );
+      });
+
+      await act(async () => {});
+
+      const inputs = container.querySelectorAll('input');
+      assert.ok(inputs.length >= 3, 'should render inputs for all fields');
+      const itemInput = inputs[0];
+      const intermediateInput = inputs[1];
+      const finalInput = inputs[2];
+
+      await act(async () => {
+        itemInput.value = 'ITEM-02';
+        itemInput.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+
+      await act(async () => {
+        const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+        itemInput.dispatchEvent(event);
+        await Promise.resolve();
+      });
+
+      assert.equal(callProcedureMock.mock.callCount(), 2);
+      assert.equal(intermediateInput.value, 'MID-200');
+      assert.equal(finalInput.value, 'FIN-MID-200');
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      global.fetch = origFetch;
+    }
+  });
 }

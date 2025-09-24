@@ -254,6 +254,10 @@ function InlineTransactionTable(
     const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
     return assignArrayMetadata(next, initRows);
   });
+  const rowsRef = useRef(rows);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
@@ -563,268 +567,428 @@ function InlineTransactionTable(
     }
   }
 
-  function applyProcedureResult(rowIdx, rowData) {
-    if (!rowData || typeof rowData !== 'object') return;
-    setRows((r) => {
-      if (!Array.isArray(r)) return r;
-      const arrayUpdates = new Map();
-      const next = r.map((row, i) => {
-        if (i !== rowIdx) return row;
-        const baseRow = row && typeof row === 'object' ? row : {};
-        const updated = { ...baseRow };
-        const keyLookup = {};
-        Object.keys(baseRow).forEach((key) => {
-          keyLookup[key.toLowerCase()] = key;
-        });
-        Object.entries(rowData).forEach(([rawKey, rawValue]) => {
-          if (!rawKey && rawKey !== 0) return;
-          const mappedKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
-          if (typeof mappedKey !== 'string') return;
-          const lower = mappedKey.toLowerCase();
-          const existingKey = keyLookup[lower];
-          const shouldWrite = writableColumns.has(mappedKey) || existingKey;
-          if (!shouldWrite) return;
-          if (existingKey) {
-            updated[existingKey] = rawValue;
-          } else {
-            updated[mappedKey] = rawValue;
-            keyLookup[lower] = mappedKey;
-          }
-          arrayUpdates.set(mappedKey, rawValue);
-        });
-        return updated;
+  function valuesEqual(a, b) {
+    if (Object.is(a, b)) return true;
+    if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
+      return false;
+    }
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b)) return false;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i += 1) {
+        if (!valuesEqual(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+      if (!valuesEqual(a[key], b[key])) return false;
+    }
+    return true;
+  }
+
+  function applyProcedureResult(rowIdx, rowData, baseRows = rowsRef.current) {
+    if (!rowData || typeof rowData !== 'object') {
+      return {
+        rows: Array.isArray(baseRows) ? [...baseRows] : baseRows,
+        changedColumns: new Set(),
+      };
+    }
+    const sourceRows = Array.isArray(baseRows) ? baseRows : [];
+    const arrayUpdates = new Map();
+    const changedColumns = new Set();
+    const next = sourceRows.map((row, i) => {
+      if (i !== rowIdx) return row;
+      const baseRow = row && typeof row === 'object' ? row : {};
+      const updated = { ...baseRow };
+      const keyLookup = {};
+      Object.keys(baseRow).forEach((key) => {
+        keyLookup[key.toLowerCase()] = key;
       });
-      const withMetadata = assignArrayMetadata(next, r);
-      arrayUpdates.forEach((value, key) => {
-        if (!key && key !== 0) return;
-        withMetadata[key] = value;
+      Object.entries(rowData).forEach(([rawKey, rawValue]) => {
+        if (!rawKey && rawKey !== 0) return;
+        const mappedKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
+        if (typeof mappedKey !== 'string') return;
+        const lower = mappedKey.toLowerCase();
+        const existingKey = keyLookup[lower];
+        const shouldWrite = writableColumns.has(mappedKey) || existingKey;
+        if (!shouldWrite) return;
+        const targetKey = existingKey || mappedKey;
+        const previousValue = existingKey ? updated[existingKey] : undefined;
+        if (existingKey) {
+          updated[existingKey] = rawValue;
+        } else {
+          updated[mappedKey] = rawValue;
+          keyLookup[lower] = mappedKey;
+        }
+        arrayUpdates.set(mappedKey, rawValue);
+        if (!valuesEqual(previousValue, rawValue)) {
+          changedColumns.add(targetKey);
+        }
       });
-      onRowsChange(withMetadata);
-      return withMetadata;
+      return updated;
     });
+    const withMetadata = assignArrayMetadata(next, sourceRows);
+    arrayUpdates.forEach((value, key) => {
+      if (!key && key !== 0) return;
+      withMetadata[key] = value;
+    });
+    return { rows: withMetadata, changedColumns };
   }
 
   async function runProcTrigger(rowIdx, col, rowOverride = null) {
     const showToast = general.procToastEnabled;
-    const direct = getDirectTriggers(col);
-    const paramTrigs = getParamTriggers(col);
+    const baseRows = Array.isArray(rowsRef.current) ? rowsRef.current : [];
+    let workingRows = assignArrayMetadata(
+      baseRows.map((row) => (row && typeof row === 'object' ? { ...row } : row)),
+      baseRows,
+    );
 
-    const map = new Map();
-    const keyFor = (cfg) => {
-      const out = Object.keys(cfg.outMap || {})
-        .sort()
-        .reduce((m, k) => {
-          m[k] = cfg.outMap[k];
-          return m;
-        }, {});
-      return JSON.stringify([cfg.name, cfg.params, out]);
-    };
-    direct.forEach((cfg) => {
-      if (!cfg || !cfg.name) return;
-      const key = keyFor(cfg);
-      const rec = map.get(key) || { cfg, cols: new Set() };
-      rec.cols.add(col.toLowerCase());
-      map.set(key, rec);
-    });
-    paramTrigs.forEach(([tCol, cfg]) => {
-      if (!cfg || !cfg.name) return;
-      const key = keyFor(cfg);
-      const rec = map.get(key) || { cfg, cols: new Set() };
-      rec.cols.add(tCol.toLowerCase());
-      map.set(key, rec);
-    });
-    for (const { cfg, cols } of map.values()) {
-      const tCol = [...cols][0];
-      const { name: procName, params = [], outMap = {} } = cfg;
-      const targetCols = Object.values(outMap || {}).map((c) =>
-        columnCaseMap[c.toLowerCase()] || c,
-      );
-      const hasTarget = targetCols.some((c) => writableColumns.has(c));
-      if (!hasTarget) continue;
-      const optionalParamSet = new Set(
-        Array.isArray(cfg.optionalParams)
-          ? cfg.optionalParams.map((p) => String(p).toLowerCase())
-          : [],
-      );
-      const optionalPlaceholdersRaw = Array.isArray(cfg.optionalPlaceholders)
-        ? cfg.optionalPlaceholders
-        : cfg.optionalPlaceholders && typeof cfg.optionalPlaceholders === 'object'
-          ? Object.values(cfg.optionalPlaceholders)
-          : [];
-      const optionalPlaceholderSet = new Set(
-        (optionalPlaceholdersRaw || [])
-          .map((p) => (p === undefined || p === null ? '' : String(p).toLowerCase()))
-          .filter(Boolean),
-      );
-      const getVal = (name) => {
-        const key = columnCaseMap[name.toLowerCase()] || name;
-        const source = (rowOverride || rows[rowIdx] || {});
-        let val = source ? source[key] : undefined;
-        if (val === undefined && source && typeof source === 'object') {
-          const matchKey = Object.keys(source).find(
-            (existing) => existing.toLowerCase() === String(key).toLowerCase(),
-          );
-          if (matchKey !== undefined) {
-            val = source[matchKey];
-          }
-        }
-        if (val && typeof val === 'object' && 'value' in val) {
-          val = val.value;
-        }
-        if (placeholders[key]) {
-          val = normalizeDateInput(val, placeholders[key]);
-        }
-        if (totalCurrencySet.has(key) || totalAmountSet.has(key)) {
-          val = normalizeNumberInput(val);
-        }
-        return val;
-      };
-      const getParam = (p) => {
-        if (p === '$current') return getVal(tCol);
-        if (p === '$branchId') return branch;
-        if (p === '$companyId') return company;
-        if (p === '$employeeId') return user?.empid;
-        if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
-        return getVal(p);
-      };
-      const paramValues = params.map(getParam);
-      const getFieldName = (p) => {
-        if (!p) return null;
-        if (p === '$current') return tCol;
-        if (p === '$branchId') return branchIdFields?.[0] || null;
-        if (p === '$companyId') return companyIdFields?.[0] || null;
-        if (p === '$employeeId') return userIdFields?.[0] || null;
-        if (p === '$date') return dateField?.[0] || null;
-        const lower = String(p).toLowerCase();
-        return (
-          columnCaseMap[lower] ||
-          fields.find((f) => f.toLowerCase() === lower) ||
-          p
-        );
-      };
-      const missingLabels = [];
-      const missingFields = [];
-      params.forEach((param, idx) => {
-        const value = paramValues[idx];
-        const fieldName = getFieldName(param);
-        const fieldLower = fieldName ? String(fieldName).toLowerCase() : '';
-        const normalizedField =
-          fieldLower && fields.find((f) => f.toLowerCase() === fieldLower);
-        const paramLower = typeof param === 'string' ? param.toLowerCase() : '';
-        const shouldValidate =
-          param === '$current' ||
-          param === '$branchId' ||
-          param === '$companyId' ||
-          param === '$employeeId' ||
-          param === '$date' ||
-          Boolean(normalizedField) ||
-          (fieldLower &&
-            (requiredFieldSet.has(fieldLower) ||
-              branchIdLowerSet.has(fieldLower) ||
-              companyIdLowerSet.has(fieldLower) ||
-              departmentIdLowerSet.has(fieldLower) ||
-              userIdLowerSet.has(fieldLower)));
-        const isEmptyValue =
-          value === undefined ||
-          value === null ||
-          (typeof value === 'string' && value.trim() === '');
-        if (!shouldValidate || !isEmptyValue) return;
-        const optionalValueTokens = [];
-        if (value === undefined) optionalValueTokens.push('undefined');
-        if (value === null) optionalValueTokens.push('null');
-        if (typeof value === 'string') {
-          optionalValueTokens.push(value.trim().toLowerCase());
-        }
-        const isOptional =
-          optionalParamSet.has(paramLower) ||
-          optionalParamSet.has(fieldLower) ||
-          (normalizedField && optionalParamSet.has(normalizedField.toLowerCase())) ||
-          optionalPlaceholderSet.has(paramLower) ||
-          optionalPlaceholderSet.has(fieldLower) ||
-          (normalizedField && optionalPlaceholderSet.has(normalizedField.toLowerCase())) ||
-          optionalValueTokens.some((token) => optionalPlaceholderSet.has(token));
-        if (isOptional) return;
-        if (normalizedField) missingFields.push(normalizedField);
-        else if (fieldName) missingFields.push(fieldName);
-        if (param === '$branchId') {
-          const branchField = branchIdFields?.[0];
-          const label =
-            (branchField && (labels[branchField] || branchField)) ||
-            'Branch';
-          missingLabels.push(label);
-          return;
-        }
-        if (param === '$companyId') {
-          const companyField = companyIdFields?.[0];
-          const label =
-            (companyField && (labels[companyField] || companyField)) ||
-            'Company';
-          missingLabels.push(label);
-          return;
-        }
-        if (param === '$employeeId') {
-          const empField = userIdFields?.[0];
-          const label =
-            (empField && (labels[empField] || empField)) ||
-            'Employee';
-          missingLabels.push(label);
-          return;
-        }
-        if (param === '$date') {
-          const dateFieldName = dateField?.[0];
-          const label =
-            (dateFieldName && (labels[dateFieldName] || dateFieldName)) ||
-            'Огноо';
-          missingLabels.push(label);
-          return;
-        }
-        if (param === '$current') {
-          missingLabels.push(labels[tCol] || tCol);
-          return;
-        }
-        const labelField = normalizedField || fieldName;
-        missingLabels.push((labelField && (labels[labelField] || labelField)) || param);
+    if (
+      rowOverride &&
+      typeof rowIdx === 'number' &&
+      rowIdx >= 0 &&
+      rowIdx < workingRows.length &&
+      workingRows[rowIdx] &&
+      typeof workingRows[rowIdx] === 'object'
+    ) {
+      const originalRow = workingRows[rowIdx];
+      const updatedRow = { ...originalRow };
+      const keyLookup = {};
+      Object.keys(originalRow).forEach((key) => {
+        keyLookup[key.toLowerCase()] = key;
       });
-      if (missingLabels.length > 0) {
-        const uniqueLabels = [...new Set(missingLabels.filter(Boolean))];
-        const message =
-          uniqueLabels.length > 0
-            ? `Дараах талбаруудыг бөглөнө үү: ${uniqueLabels.join(', ')}`
-            : 'Шаардлагатай талбаруудыг бөглөнө үү.';
-        setErrorMsg(message);
-        const focusFieldName = missingFields.find((name) => {
-          if (!name) return false;
-          const lower = String(name).toLowerCase();
-          return fields.some((f) => f.toLowerCase() === lower);
+      Object.entries(rowOverride).forEach(([rawKey, rawValue]) => {
+        if (!rawKey && rawKey !== 0) return;
+        const mappedKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
+        if (typeof mappedKey !== 'string') return;
+        const lower = mappedKey.toLowerCase();
+        const existingKey = keyLookup[lower];
+        if (existingKey) {
+          updatedRow[existingKey] = rawValue;
+        } else {
+          updatedRow[mappedKey] = rawValue;
+          keyLookup[lower] = mappedKey;
+        }
+      });
+      workingRows = workingRows.map((row, idx) => (idx === rowIdx ? updatedRow : row));
+      workingRows = assignArrayMetadata(workingRows, baseRows);
+    }
+
+    const updates = [];
+    const processed = new Set();
+    const queued = new Set();
+    const queue = [];
+
+    const normalizeColumn = (name) => {
+      if (!name && name !== 0) return null;
+      const mapped = columnCaseMap[String(name).toLowerCase()] || name;
+      return typeof mapped === 'string' ? mapped : null;
+    };
+
+    const enqueue = (name) => {
+      const normalized = normalizeColumn(name);
+      if (!normalized) return;
+      const lower = normalized.toLowerCase();
+      if (processed.has(lower) || queued.has(lower)) return;
+      queue.push(normalized);
+      queued.add(lower);
+    };
+
+    enqueue(col);
+
+    const getRowValue = (row, key) => {
+      if (!row || typeof row !== 'object' || !key) return undefined;
+      if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+      const matchKey = Object.keys(row).find(
+        (existing) => existing.toLowerCase() === String(key).toLowerCase(),
+      );
+      if (matchKey !== undefined) return row[matchKey];
+      return undefined;
+    };
+
+    while (queue.length > 0) {
+      const currentCol = queue.shift();
+      if (!currentCol) continue;
+      const lowerCol = currentCol.toLowerCase();
+      queued.delete(lowerCol);
+      if (processed.has(lowerCol)) continue;
+      processed.add(lowerCol);
+
+      const direct = getDirectTriggers(currentCol);
+      const paramTrigs = getParamTriggers(currentCol);
+
+      const map = new Map();
+      const keyFor = (cfg) => {
+        const out = Object.keys(cfg.outMap || {})
+          .sort()
+          .reduce((m, k) => {
+            m[k] = cfg.outMap[k];
+            return m;
+          }, {});
+        return JSON.stringify([cfg.name, cfg.params, out]);
+      };
+      const addCfg = (targetCol, cfg) => {
+        if (!cfg || !cfg.name) return;
+        const key = keyFor(cfg);
+        const rec = map.get(key) || { cfg, cols: new Set() };
+        const normalizedTarget = normalizeColumn(targetCol);
+        if (normalizedTarget) {
+          rec.cols.add(normalizedTarget);
+        }
+        map.set(key, rec);
+      };
+      direct.forEach((cfg) => addCfg(currentCol, cfg));
+      paramTrigs.forEach(([tCol, cfg]) => addCfg(tCol, cfg));
+
+      for (const { cfg, cols } of map.values()) {
+        if (!cfg || !cfg.name) continue;
+        const colList = [...cols];
+        if (colList.length === 0) continue;
+        const targetColumn = colList[0];
+        const normalizedTarget = normalizeColumn(targetColumn);
+        if (!normalizedTarget) continue;
+
+        const { name: procName, params = [], outMap = {} } = cfg;
+        const targetCols = Object.values(outMap || {})
+          .map((c) => normalizeColumn(c))
+          .filter(Boolean);
+        const hasTarget = targetCols.some((c) => writableColumns.has(c));
+        if (!hasTarget) continue;
+
+        const optionalParamSet = new Set(
+          Array.isArray(cfg.optionalParams)
+            ? cfg.optionalParams.map((p) => String(p).toLowerCase())
+            : [],
+        );
+        const optionalPlaceholdersRaw = Array.isArray(cfg.optionalPlaceholders)
+          ? cfg.optionalPlaceholders
+          : cfg.optionalPlaceholders && typeof cfg.optionalPlaceholders === 'object'
+            ? Object.values(cfg.optionalPlaceholders)
+            : [];
+        const optionalPlaceholderSet = new Set(
+          (optionalPlaceholdersRaw || [])
+            .map((p) => (p === undefined || p === null ? '' : String(p).toLowerCase()))
+            .filter(Boolean),
+        );
+
+        const getVal = (name) => {
+          const key = normalizeColumn(name) || name;
+          const row = workingRows[rowIdx] || {};
+          let val = getRowValue(row, key);
+          if (val === undefined && key !== name) {
+            val = getRowValue(row, name);
+          }
+          if (val && typeof val === 'object' && 'value' in val) {
+            val = val.value;
+          }
+          if (placeholders[key]) {
+            val = normalizeDateInput(val, placeholders[key]);
+          }
+          if (totalCurrencySet.has(key) || totalAmountSet.has(key)) {
+            val = normalizeNumberInput(val);
+          }
+          return val;
+        };
+
+        const getParam = (p) => {
+          if (p === '$current') return getVal(normalizedTarget);
+          if (p === '$branchId') return branch;
+          if (p === '$companyId') return company;
+          if (p === '$employeeId') return user?.empid;
+          if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
+          return getVal(p);
+        };
+
+        const paramValues = params.map(getParam);
+
+        const getFieldName = (p) => {
+          if (!p) return null;
+          if (p === '$current') return normalizedTarget;
+          if (p === '$branchId') return branchIdFields?.[0] || null;
+          if (p === '$companyId') return companyIdFields?.[0] || null;
+          if (p === '$employeeId') return userIdFields?.[0] || null;
+          if (p === '$date') return dateField?.[0] || null;
+          const lower = String(p).toLowerCase();
+          return (
+            columnCaseMap[lower] ||
+            fields.find((f) => f.toLowerCase() === lower) ||
+            p
+          );
+        };
+
+        const missingLabels = [];
+        const missingFields = [];
+        params.forEach((param, idx) => {
+          const value = paramValues[idx];
+          const fieldName = getFieldName(param);
+          const fieldLower = fieldName ? String(fieldName).toLowerCase() : '';
+          const normalizedField =
+            fieldLower && fields.find((f) => f.toLowerCase() === fieldLower);
+          const paramLower = typeof param === 'string' ? param.toLowerCase() : '';
+          const shouldValidate =
+            param === '$current' ||
+            param === '$branchId' ||
+            param === '$companyId' ||
+            param === '$employeeId' ||
+            param === '$date' ||
+            Boolean(normalizedField) ||
+            (fieldLower &&
+              (requiredFieldSet.has(fieldLower) ||
+                branchIdLowerSet.has(fieldLower) ||
+                companyIdLowerSet.has(fieldLower) ||
+                departmentIdLowerSet.has(fieldLower) ||
+                userIdLowerSet.has(fieldLower)));
+          const isEmptyValue =
+            value === undefined ||
+            value === null ||
+            (typeof value === 'string' && value.trim() === '');
+          if (!shouldValidate || !isEmptyValue) return;
+          const optionalValueTokens = [];
+          if (value === undefined) optionalValueTokens.push('undefined');
+          if (value === null) optionalValueTokens.push('null');
+          if (typeof value === 'string') {
+            optionalValueTokens.push(value.trim().toLowerCase());
+          }
+          const isOptional =
+            optionalParamSet.has(paramLower) ||
+            optionalParamSet.has(fieldLower) ||
+            (normalizedField && optionalParamSet.has(normalizedField.toLowerCase())) ||
+            optionalPlaceholderSet.has(paramLower) ||
+            optionalPlaceholderSet.has(fieldLower) ||
+            (normalizedField && optionalPlaceholderSet.has(normalizedField.toLowerCase())) ||
+            optionalValueTokens.some((token) => optionalPlaceholderSet.has(token));
+          if (isOptional) return;
+          if (normalizedField) missingFields.push(normalizedField);
+          else if (fieldName) missingFields.push(fieldName);
+          if (param === '$branchId') {
+            const branchField = branchIdFields?.[0];
+            const label =
+              (branchField && (labels[branchField] || branchField)) ||
+              'Branch';
+            missingLabels.push(label);
+            return;
+          }
+          if (param === '$companyId') {
+            const companyField = companyIdFields?.[0];
+            const label =
+              (companyField && (labels[companyField] || companyField)) ||
+              'Company';
+            missingLabels.push(label);
+            return;
+          }
+          if (param === '$employeeId') {
+            const empField = userIdFields?.[0];
+            const label =
+              (empField && (labels[empField] || empField)) ||
+              'Employee';
+            missingLabels.push(label);
+            return;
+          }
+          if (param === '$date') {
+            const dateFieldName = dateField?.[0];
+            const label =
+              (dateFieldName && (labels[dateFieldName] || dateFieldName)) ||
+              'Огноо';
+            missingLabels.push(label);
+            return;
+          }
+          if (param === '$current') {
+            missingLabels.push(labels[normalizedTarget] || normalizedTarget);
+            return;
+          }
+          const labelField = normalizedField || fieldName;
+          missingLabels.push(
+            (labelField && (labels[labelField] || labelField)) || param,
+          );
         });
-        if (focusFieldName) {
-          const normalized =
-            fields.find((f) => f.toLowerCase() === focusFieldName.toLowerCase()) ||
-            focusFieldName;
-          setInvalidCell({ row: rowIdx, field: normalized });
-          const el =
-            inputRefs.current[
-              `${rowIdx}-${fields.indexOf(normalized)}`
-            ];
-          if (el) {
-            el.focus();
-            if (el.select) el.select();
+
+        if (missingLabels.length > 0) {
+          const uniqueLabels = [...new Set(missingLabels.filter(Boolean))];
+          const message =
+            uniqueLabels.length > 0
+              ? `Дараах талбаруудыг бөглөнө үү: ${uniqueLabels.join(', ')}`
+              : 'Шаардлагатай талбаруудыг бөглөнө үү.';
+          setErrorMsg(message);
+          const focusFieldName = missingFields.find((name) => {
+            if (!name) return false;
+            const lower = String(name).toLowerCase();
+            return fields.some((f) => f.toLowerCase() === lower);
+          });
+          if (focusFieldName) {
+            const normalized =
+              fields.find((f) => f.toLowerCase() === focusFieldName.toLowerCase()) ||
+              focusFieldName;
+            setInvalidCell({ row: rowIdx, field: normalized });
+            const el =
+              inputRefs.current[
+                `${rowIdx}-${fields.indexOf(normalized)}`
+              ];
+            if (el) {
+              el.focus();
+              if (el.select) el.select();
+            }
+          }
+          if (showToast) {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: { message, type: 'warning' },
+              }),
+            );
+          }
+          continue;
+        }
+
+        const aliases = params.map((p) => outMap[p] || null);
+        const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
+        let rowData = procCache.current[cacheKey];
+        if (!rowData) {
+          if (showToast) {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: {
+                  message: `${normalizedTarget} -> ${procName}(${paramValues.join(', ')})`,
+                  type: 'info',
+                },
+              }),
+            );
+          }
+          try {
+            rowData = await callProcedure(procName, paramValues, aliases);
+            if (rowData && typeof rowData === 'object') {
+              procCache.current[cacheKey] = rowData;
+            }
+          } catch (err) {
+            console.error('Procedure call failed', err);
+            if (showToast) {
+              window.dispatchEvent(
+                new CustomEvent('toast', {
+                  detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
+                }),
+              );
+            }
+            continue;
           }
         }
-        if (showToast) {
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message, type: 'warning' },
-            }),
-          );
+
+        if (!rowData || typeof rowData !== 'object') continue;
+
+        const { rows: updatedRows, changedColumns } = applyProcedureResult(
+          rowIdx,
+          rowData,
+          workingRows,
+        );
+        workingRows = updatedRows;
+        if (changedColumns.size > 0) {
+          updates.push({ rowIdx, rowData });
+          changedColumns.forEach((changedCol) => {
+            const normalizedChanged = normalizeColumn(changedCol) || changedCol;
+            if (hasTrigger(normalizedChanged)) enqueue(normalizedChanged);
+          });
         }
-        continue;
-      }
-      const aliases = params.map((p) => outMap[p] || null);
-      const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
-      if (procCache.current[cacheKey]) {
-        const rowData = procCache.current[cacheKey];
-        applyProcedureResult(rowIdx, rowData);
         if (showToast) {
           window.dispatchEvent(
             new CustomEvent('toast', {
@@ -832,44 +996,23 @@ function InlineTransactionTable(
             }),
           );
         }
-        continue;
       }
-      if (showToast) {
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
-              type: 'info',
-            },
-          }),
-        );
-      }
-      try {
-        const rowData = await callProcedure(
-          procName,
-          paramValues,
-          aliases,
-        );
-        if (rowData && typeof rowData === 'object') {
-          procCache.current[cacheKey] = rowData;
-          applyProcedureResult(rowIdx, rowData);
-          if (showToast) {
-            window.dispatchEvent(
-              new CustomEvent('toast', {
-                detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
-              }),
-            );
-          }
-        }
-      } catch (err) {
-        console.error('Procedure call failed', err);
-        if (showToast) {
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
-            }),
-          );
-        }
+    }
+
+    if (updates.length > 0) {
+      let finalRows = null;
+      setRows((currentRows) => {
+        let next = currentRows;
+        updates.forEach(({ rowIdx: idx, rowData }) => {
+          const result = applyProcedureResult(idx, rowData, next);
+          next = result.rows;
+        });
+        finalRows = next;
+        return next;
+      });
+      if (finalRows) {
+        rowsRef.current = finalRows;
+        onRowsChange(finalRows);
       }
     }
   }
