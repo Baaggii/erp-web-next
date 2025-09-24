@@ -52,7 +52,14 @@ await test('seedTenantTables filters by record ids', async () => {
   db.pool.query = orig;
   const insertCall = calls.find((c) => c.sql.startsWith('INSERT INTO ??'));
   assert.ok(insertCall);
-  assert.match(insertCall.sql, /IN \(\?, \?\)/);
+  assert.ok(
+    insertCall.sql.includes('FROM ?? AS src'),
+    'source table should be aliased as src',
+  );
+  assert.ok(
+    insertCall.sql.includes('src.`id` IN (?, ?)'),
+    'primary key filter should reference the aliased column',
+  );
   assert.deepEqual(insertCall.params, ['posts', 7, 'posts', 1, 2]);
   assert.deepEqual(result.summary, { posts: { count: 2, ids: [1, 2] } });
 });
@@ -190,9 +197,55 @@ await test('seedTenantTables overrides audit columns', async () => {
   assert.ok(insertCall);
   assert.match(
     insertCall.sql,
-    /SELECT \? AS company_id, `id`, \?, NOW\(\), \?, NOW\(\)/,
+    /SELECT \? AS company_id, src\.`id`, \?, NOW\(\), \?, NOW\(\)/,
   );
+  assert.ok(insertCall.sql.includes('FROM ?? AS src'));
   assert.deepEqual(insertCall.params, ['posts', 7, 123, 456, 'posts']);
+});
+
+await test('seedTenantTables populates columns including deleted_at', async () => {
+  const orig = db.pool.query;
+  const calls = [];
+  db.pool.query = async (sql, params) => {
+    calls.push({ sql, params });
+    if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+      return [[{ table_name: 'posts', is_shared: 0 }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      return [[{ cnt: 0 }]];
+    }
+    if (sql.startsWith('SELECT COLUMN_NAME')) {
+      return [[
+        { COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' },
+        { COLUMN_NAME: 'company_id', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'title', COLUMN_KEY: '', EXTRA: '' },
+        { COLUMN_NAME: 'deleted_at', COLUMN_KEY: '', EXTRA: '' },
+      ]];
+    }
+    if (sql.startsWith('SELECT column_name, mn_label FROM table_column_labels')) {
+      return [[]];
+    }
+    if (sql.startsWith('INSERT INTO ??')) {
+      return [{ affectedRows: 3 }];
+    }
+    if (sql.startsWith('INSERT INTO user_level_permissions')) {
+      return [{ affectedRows: 0 }];
+    }
+    return [[], []];
+  };
+
+  try {
+    const result = await db.seedTenantTables(3, null, {}, false, 11);
+    const insertCall = calls.find((c) => c.sql.startsWith('INSERT INTO ??'));
+    assert.ok(insertCall);
+    assert.ok(
+      insertCall.sql.includes('src.`deleted_at`'),
+      'deleted_at column should be selected from the source alias',
+    );
+    assert.deepEqual(result.summary, { posts: { count: 3 } });
+  } finally {
+    db.pool.query = orig;
+  }
 });
 
 await test('seedTenantTables creates backup metadata before overwrite', async () => {
