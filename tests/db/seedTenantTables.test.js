@@ -154,6 +154,83 @@ await test(
   },
 );
 
+await test(
+  'seedTenantTables filters tenant-only composite primary keys',
+  async () => {
+    const companyId = 31;
+    const origQuery = db.pool.query;
+    const calls = [];
+    db.pool.query = async (sql, params = []) => {
+      calls.push({ sql, params });
+      if (sql.startsWith('SELECT table_name, is_shared FROM tenant_tables')) {
+        return [[{ table_name: 'branches', is_shared: 0 }]];
+      }
+      if (sql.startsWith('SELECT COUNT(*)')) {
+        return [[{ cnt: 0 }]];
+      }
+      if (sql.startsWith('SELECT COLUMN_NAME')) {
+        return [[
+          { COLUMN_NAME: 'company_id', COLUMN_KEY: 'PRI', EXTRA: '' },
+          { COLUMN_NAME: 'branch_id', COLUMN_KEY: 'PRI', EXTRA: '' },
+          { COLUMN_NAME: 'name', COLUMN_KEY: '', EXTRA: '' },
+        ]];
+      }
+      if (
+        sql.startsWith(
+          'SELECT column_name, mn_label FROM table_column_labels',
+        )
+      ) {
+        return [[]];
+      }
+      if (sql.startsWith('INSERT INTO ??')) {
+        return [{ affectedRows: 2 }];
+      }
+      if (sql.startsWith('INSERT INTO user_level_permissions')) {
+        return [{ affectedRows: 0 }];
+      }
+      return [[], []];
+    };
+
+    try {
+      await fs.rm(
+        path.join(process.cwd(), 'config', String(companyId)),
+        { recursive: true, force: true },
+      );
+      const result = await db.seedTenantTables(
+        companyId,
+        null,
+        { branches: [3, 7] },
+        false,
+        12,
+      );
+      const insertCall = calls.find(
+        (c) => c.sql.startsWith('INSERT INTO ??') && c.params?.[0] === 'branches',
+      );
+      assert.ok(insertCall);
+      assert.ok(
+        insertCall.sql.includes('src.`branch_id` IN (?, ?)'),
+        'should filter by branch_id even when it is a tenant key',
+      );
+      assert.deepEqual(insertCall.params.slice(0, 5), [
+        'branches',
+        companyId,
+        'branches',
+        3,
+        7,
+      ]);
+      assert.deepEqual(result.summary, {
+        branches: { count: 2, ids: [3, 7] },
+      });
+    } finally {
+      db.pool.query = origQuery;
+      await fs.rm(
+        path.join(process.cwd(), 'config', String(companyId)),
+        { recursive: true, force: true },
+      );
+    }
+  },
+);
+
 await test('seedTenantTables returns summary for provided rows', async () => {
   const orig = db.pool.query;
   const calls = [];

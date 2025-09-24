@@ -1650,24 +1650,71 @@ export async function seedTenantTables(
 
     const idList = Array.isArray(ids) ? ids : [];
     let idFilterColumn = null;
+    let idFilterValues = [];
     if (idList.length > 0 && Array.isArray(pkCols) && pkCols.length > 0) {
       const tenantKeySet = new Set(
         (Array.isArray(tenantKeys) ? tenantKeys : []).map((key) =>
           String(key || '').toLowerCase(),
         ),
       );
-      for (const pk of pkCols) {
-        const normalized = String(pk || '').toLowerCase();
-        if (!tenantKeySet.has(normalized)) {
-          idFilterColumn = pk;
-          break;
+      const primitiveIds = [];
+      const structuredIds = [];
+      for (const rawId of idList) {
+        if (rawId && typeof rawId === 'object' && !Array.isArray(rawId)) {
+          structuredIds.push(rawId);
+        } else if (rawId !== undefined && rawId !== null) {
+          primitiveIds.push(rawId);
+        }
+      }
+      const getValuesForColumn = (column) => {
+        const normalized = String(column || '').toLowerCase();
+        if (primitiveIds.length > 0) {
+          return [...primitiveIds];
+        }
+        if (structuredIds.length > 0) {
+          const values = [];
+          for (const obj of structuredIds) {
+            const matchKey = Object.keys(obj || {}).find(
+              (key) => String(key || '').toLowerCase() === normalized,
+            );
+            if (matchKey) {
+              const value = obj[matchKey];
+              if (value !== undefined && value !== null) {
+                values.push(value);
+              }
+            }
+          }
+          return values;
+        }
+        return [];
+      };
+      const tryColumns = (candidates) => {
+        for (const pk of candidates) {
+          const values = getValuesForColumn(pk);
+          if (values.length > 0) {
+            idFilterColumn = pk;
+            idFilterValues = values;
+            return true;
+          }
+        }
+        return false;
+      };
+      const nonTenantColumns = pkCols.filter(
+        (pk) => !tenantKeySet.has(String(pk || '').toLowerCase()),
+      );
+      if (!tryColumns(nonTenantColumns)) {
+        const nonCompanyColumns = pkCols.filter(
+          (pk) => String(pk || '').toLowerCase() !== 'company_id',
+        );
+        if (!tryColumns(nonCompanyColumns)) {
+          tryColumns(pkCols);
         }
       }
     }
-    if (idList.length > 0 && idFilterColumn) {
-      const placeholders = idList.map(() => '?').join(', ');
+    if (idList.length > 0 && idFilterColumn && idFilterValues.length > 0) {
+      const placeholders = idFilterValues.map(() => '?').join(', ');
       sql += ` AND ${sourceAlias}.${escapeIdentifier(idFilterColumn)} IN (${placeholders})`;
-      params.push(...idList);
+      params.push(...idFilterValues);
     }
 
     const { clause: upsertClause, params: upsertParams } =
@@ -1686,7 +1733,11 @@ export async function seedTenantTables(
       tableSummary.count += inserted;
     }
     if (idList.length > 0) {
-      tableSummary.ids = [...idList];
+      const summaryIds =
+        idFilterColumn && idFilterValues.length > 0 ? idFilterValues : idList;
+      if (summaryIds.length > 0) {
+        tableSummary.ids = [...summaryIds];
+      }
     }
   }
 
