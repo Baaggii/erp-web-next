@@ -17,7 +17,128 @@ import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
 import { syncCalcFields } from '../utils/syncCalcFields.js';
 
-export { syncCalcFields };
+export { syncCalcFields, findCalcFieldMismatch };
+
+function isPlainRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeValueForComparison(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return undefined;
+    return value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    const num = Number(trimmed);
+    if (Number.isFinite(num)) return num;
+    return trimmed;
+  }
+  if (typeof value === 'boolean') return value;
+  if (value instanceof Date) return value.getTime();
+  return value;
+}
+
+function valuesApproximatelyEqual(a, b) {
+  if (a === undefined && b === undefined) return true;
+  const normA = normalizeValueForComparison(a);
+  const normB = normalizeValueForComparison(b);
+  if (normA === undefined && normB === undefined) return true;
+  if (normA === undefined || normB === undefined) return false;
+  if (typeof normA === 'number' && typeof normB === 'number') {
+    return Math.abs(normA - normB) <= 1e-6;
+  }
+  return normA === normB;
+}
+
+function compareCellValues(actualContainer, expectedContainer, field) {
+  const actualIsArray = Array.isArray(actualContainer);
+  const expectedIsArray = Array.isArray(expectedContainer);
+
+  if (actualIsArray || expectedIsArray) {
+    const actualRows = actualIsArray ? actualContainer : [];
+    const expectedRows = expectedIsArray ? expectedContainer : [];
+    const max = Math.max(actualRows.length, expectedRows.length);
+
+    for (let idx = 0; idx < max; idx += 1) {
+      const actualRow = actualRows[idx];
+      const expectedRow = expectedRows[idx];
+      const actualValue = isPlainRecord(actualRow)
+        ? actualRow[field]
+        : undefined;
+      const expectedValue = isPlainRecord(expectedRow)
+        ? expectedRow[field]
+        : undefined;
+
+      if (!valuesApproximatelyEqual(actualValue, expectedValue)) {
+        return {
+          rowIndex: idx,
+          actual: actualValue,
+          expected: expectedValue,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  if (isPlainRecord(actualContainer) || isPlainRecord(expectedContainer)) {
+    const actualValue = isPlainRecord(actualContainer)
+      ? actualContainer[field]
+      : undefined;
+    const expectedValue = isPlainRecord(expectedContainer)
+      ? expectedContainer[field]
+      : undefined;
+
+    if (!valuesApproximatelyEqual(actualValue, expectedValue)) {
+      return { actual: actualValue, expected: expectedValue };
+    }
+  }
+
+  return null;
+}
+
+export function findCalcFieldMismatch(data, calcFields) {
+  if (!Array.isArray(calcFields) || calcFields.length === 0) return null;
+
+  const base = data && typeof data === 'object' ? data : {};
+  const expected = syncCalcFields(base, calcFields);
+
+  for (const map of calcFields) {
+    const cells = Array.isArray(map?.cells)
+      ? map.cells.filter(
+          (cell) =>
+            cell &&
+            typeof cell.table === 'string' &&
+            cell.table &&
+            typeof cell.field === 'string' &&
+            cell.field,
+        )
+      : [];
+
+    if (cells.length < 2) continue;
+
+    for (const cell of cells) {
+      const actualContainer = base[cell.table];
+      const expectedContainer = expected[cell.table];
+      const mismatch = compareCellValues(actualContainer, expectedContainer, cell.field);
+
+      if (mismatch) {
+        return {
+          map,
+          table: cell.table,
+          field: cell.field,
+          ...mismatch,
+        };
+      }
+    }
+  }
+
+  return null;
+}
 
 function isEqual(a, b) {
   try {
@@ -1314,16 +1435,10 @@ export default function PosTransactionsPage() {
         if (payload[tbl][k] === undefined) payload[tbl][k] = v;
       });
     });
-    for (const map of config.calcFields || []) {
-      if (!Array.isArray(map.cells) || map.cells.length < 2) continue;
-      const [first, ...rest] = map.cells;
-      const base = payload[first.table]?.[first.field];
-      for (const c of rest) {
-        if (payload[c.table]?.[c.field] !== base) {
-          addToast('Mapping mismatch', 'error');
-          return;
-        }
-      }
+    const mismatch = findCalcFieldMismatch(payload, config.calcFields);
+    if (mismatch) {
+      addToast('Mapping mismatch', 'error');
+      return;
     }
     const single = {};
     const multi = {};

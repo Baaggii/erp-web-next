@@ -5,6 +5,7 @@ import { syncCalcFields } from '../../src/erp.mgt.mn/utils/syncCalcFields.js';
 if (typeof mock.import !== 'function') {
   test('shouldLoadRelations helper', { skip: true }, () => {});
   test('applySessionIdToTables helper', { skip: true }, () => {});
+  test('calc field preflight respects SUM aggregators and multi rows', { skip: true }, () => {});
 } else {
   test('shouldLoadRelations helper', async () => {
     const { shouldLoadRelations } = await mock.import(
@@ -150,6 +151,63 @@ if (typeof mock.import !== 'function') {
     assert.equal(populated.transactions_inventory[1].bmtr_session_id, sid);
     assert.equal(initialValues.transactions_inventory[1].bmtr_pid, 'legacy');
     assert.equal(populated.transactions_payments[0].pos_session_id, sid);
+  });
+
+  test('calc field preflight respects SUM aggregators and multi rows', async () => {
+    const { findCalcFieldMismatch } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const calcFields = [
+      {
+        cells: [
+          { table: 'transactions_pos', field: 'total_amount' },
+          { table: 'transactions_order', field: 'ordrap', agg: 'SUM' },
+          { table: 'transactions_inventory', field: 'bmtr_ap', agg: 'SUM' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'transactions_order', field: 'pos_session_id' },
+          { table: 'transactions_inventory', field: 'pos_session_id' },
+        ],
+      },
+    ];
+
+    const baseData = {
+      transactions_pos: { total_amount: 300 },
+      transactions_order: [
+        { ordrap: 100, pos_session_id: 'session-1' },
+        { ordrap: 200, pos_session_id: 'session-1' },
+      ],
+      transactions_inventory: [
+        { bmtr_ap: 150, pos_session_id: 'session-1' },
+        { bmtr_ap: 150, pos_session_id: 'session-1' },
+      ],
+    };
+
+    assert.equal(findCalcFieldMismatch(baseData, calcFields), null);
+
+    const mismatchTotals = findCalcFieldMismatch(
+      {
+        ...baseData,
+        transactions_pos: { total_amount: 400 },
+      },
+      calcFields,
+    );
+    assert.ok(mismatchTotals, 'should detect mismatched SUM totals');
+
+    const mismatchSession = findCalcFieldMismatch(
+      {
+        ...baseData,
+        transactions_inventory: baseData.transactions_inventory.map((row, idx) =>
+          idx === 0 ? { ...row, pos_session_id: 'session-2' } : { ...row },
+        ),
+      },
+      calcFields,
+    );
+    assert.ok(mismatchSession, 'should detect mismatched multi-row values');
   });
 
 }
