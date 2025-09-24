@@ -1,9 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'fs/promises';
+import { pool } from '../../db/index.js';
 import {
+  postPosTransaction,
   propagateCalcFields,
   validateConfiguredFields,
 } from '../../api-server/services/postPosTransaction.js';
+
+if (typeof pool.getConnection !== 'function') {
+  pool.getConnection = async () => {
+    throw new Error('pool.getConnection must be mocked in tests');
+  };
+}
 
 const TEST_CFG = {
   calcFields: [
@@ -90,6 +99,53 @@ function createBaseData() {
     transactions_inventory: [],
     transactions_income: { total_quantity: 0, or_or: 0, total_discount: 0 },
     transactions_expense: { z: 0 },
+  };
+}
+
+const SIMPLE_POS_CONFIG = JSON.stringify({
+  POS_Modmarket: { masterTable: 'transactions_pos' },
+  ONLINE_POS: { masterTable: 'transactions_pos_online' },
+});
+
+function createMockConnection(expectedMasterTable, insertId, queries) {
+  return {
+    beginTransaction: async () => {},
+    commit: async () => {},
+    rollback: async () => {},
+    release: () => {},
+    query: async (sql) => {
+      queries.push(sql);
+      if (
+        typeof sql === 'string' &&
+        sql.includes('information_schema.KEY_COLUMN_USAGE')
+      ) {
+        return [[]];
+      }
+      if (
+        typeof sql === 'string' &&
+        sql.startsWith(`INSERT INTO ${expectedMasterTable}`)
+      ) {
+        return [{ insertId }];
+      }
+      if (typeof sql === 'string' && sql.startsWith('INSERT INTO')) {
+        return [{ insertId: 0 }];
+      }
+      if (typeof sql === 'string' && sql.startsWith('UPDATE')) {
+        return [{ affectedRows: 1 }];
+      }
+      return [[]];
+    },
+  };
+}
+
+function createPostTransactionData(table) {
+  return {
+    [table]: {
+      pos_date: '2024-02-01',
+      total_amount: 100,
+      total_quantity: 2,
+      payment_type: 'Cash',
+    },
   };
 }
 
@@ -237,4 +293,80 @@ test('validateConfiguredFields rejects invalid dates', () => {
   data.transactions_pos.pos_date = '2024-02-30';
   const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);
   assert.ok(errors.some((msg) => msg.includes('Invalid date for transactions_pos.pos_date')));
+});
+
+test('postPosTransaction uses POS_Modmarket layout config', async (t) => {
+  const queries = [];
+  const conn = createMockConnection('transactions_pos', 501, queries);
+  t.mock.method(pool, 'getConnection', async () => conn);
+  t.mock.method(fs, 'readFile', async () => SIMPLE_POS_CONFIG);
+
+  const id = await postPosTransaction(
+    'POS_Modmarket',
+    createPostTransactionData('transactions_pos'),
+    { userId: 'EMP-1' },
+    0,
+  );
+
+  assert.equal(id, 501);
+  assert.ok(
+    queries.some(
+      (sql) =>
+        typeof sql === 'string' && sql.startsWith('INSERT INTO transactions_pos'),
+    ),
+    'inserts into transactions_pos table',
+  );
+});
+
+test('postPosTransaction uses ONLINE_POS layout config', async (t) => {
+  const queries = [];
+  const conn = createMockConnection('transactions_pos_online', 777, queries);
+  t.mock.method(pool, 'getConnection', async () => conn);
+  t.mock.method(fs, 'readFile', async () => SIMPLE_POS_CONFIG);
+
+  const id = await postPosTransaction(
+    'ONLINE_POS',
+    createPostTransactionData('transactions_pos_online'),
+    { userId: 'EMP-2' },
+    0,
+  );
+
+  assert.equal(id, 777);
+  assert.ok(
+    queries.some(
+      (sql) =>
+        typeof sql === 'string' &&
+        sql.startsWith('INSERT INTO transactions_pos_online'),
+    ),
+    'inserts into transactions_pos_online table',
+  );
+});
+
+test('postPosTransaction throws 400 when layout config is missing', async (t) => {
+  const getConnectionMock = t.mock.method(
+    pool,
+    'getConnection',
+    async () => createMockConnection('transactions_pos', 123, []),
+  );
+  t.mock.method(fs, 'readFile', async () => JSON.stringify({}));
+
+  await assert.rejects(
+    () =>
+      postPosTransaction(
+        'UNKNOWN_LAYOUT',
+        createPostTransactionData('transactions_pos'),
+        {},
+        0,
+      ),
+    (err) => {
+      assert.equal(err.status, 400);
+      assert.equal(
+        err.message,
+        'POS transaction config not found for layout "UNKNOWN_LAYOUT"',
+      );
+      return true;
+    },
+  );
+
+  assert.equal(getConnectionMock.mock.callCount(), 0);
 });
