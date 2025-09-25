@@ -24,6 +24,36 @@ function isPlainRecord(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+
+function extractArrayMetadata(value) {
+  if (!value || typeof value !== 'object') return null;
+  const metadata = {};
+  let hasMetadata = false;
+  Object.keys(value).forEach((key) => {
+    if (!arrayIndexPattern.test(key)) {
+      metadata[key] = value[key];
+      hasMetadata = true;
+    }
+  });
+  return hasMetadata ? metadata : null;
+}
+
+function assignArrayMetadata(target, source) {
+  if (!Array.isArray(target) || !source || typeof source !== 'object') {
+    return target;
+  }
+  const metadata = extractArrayMetadata(source);
+  if (metadata) Object.assign(target, metadata);
+  return target;
+}
+
+function cloneArrayWithMetadata(source) {
+  if (!Array.isArray(source)) return source;
+  const clone = source.map((row) => (isPlainRecord(row) ? { ...row } : row));
+  return assignArrayMetadata(clone, source);
+}
+
 function normalizeValueForComparison(value) {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -1341,7 +1371,32 @@ export default function PosTransactionsPage() {
       if (!target.table || !target.field) continue;
       const tgt = next[target.table];
       if (Array.isArray(tgt)) {
-        next[target.table] = tgt.map((r) => ({ ...r, [target.field]: val }));
+        let resultRows = tgt;
+        let tableChanged = false;
+
+        const ensureClone = () => {
+          if (resultRows === tgt) {
+            resultRows = cloneArrayWithMetadata(tgt);
+          }
+        };
+
+        tgt.forEach((row, index) => {
+          if (!isPlainRecord(row)) return;
+          if ((row?.[target.field] ?? undefined) === val) return;
+          ensureClone();
+          resultRows[index] = { ...row, [target.field]: val };
+          tableChanged = true;
+        });
+
+        if ((resultRows?.[target.field] ?? undefined) !== val) {
+          ensureClone();
+          resultRows[target.field] = val;
+          tableChanged = true;
+        }
+
+        if (tableChanged) {
+          next = { ...next, [target.table]: resultRows };
+        }
       } else {
         next[target.table] = { ...(tgt || {}), [target.field]: val };
       }
