@@ -1226,6 +1226,29 @@ export async function listDatabaseViews(prefix = '') {
     );
 }
 
+export async function getViewSql(name) {
+  if (!name) return null;
+  try {
+    const [rows] = await pool.query('SHOW CREATE VIEW ??', [name]);
+    const text = rows?.[0]?.['Create View'];
+    if (text) return text;
+  } catch {}
+  try {
+    const [rows] = await pool.query(
+      `SELECT VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [name],
+    );
+    return rows?.[0]?.VIEW_DEFINITION || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteView(name) {
+  if (!name) return;
+  await pool.query(`DROP VIEW IF EXISTS \`${name}\``);
+}
+
 export async function listTableColumns(tableName) {
   const [rows] = await pool.query(
     `SELECT COLUMN_NAME
