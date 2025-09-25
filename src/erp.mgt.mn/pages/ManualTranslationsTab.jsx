@@ -40,6 +40,30 @@ function getTranslatorLabel(source) {
   return fallback || TRANSLATOR_LABELS.unknown;
 }
 
+const BASE_COLUMN_DEFAULT_WIDTHS = {
+  key: 240,
+  type: 140,
+  module: 200,
+  context: 200,
+  page: 220,
+  translatedBy: 240,
+  actions: 160,
+};
+
+const DEFAULT_LANGUAGE_COLUMN_WIDTH = 220;
+const MIN_COLUMN_WIDTH = 80;
+
+function getLanguageColumnKey(lang) {
+  return `lang:${lang}`;
+}
+
+function getDefaultColumnWidth(columnKey) {
+  if (columnKey.startsWith('lang:')) {
+    return DEFAULT_LANGUAGE_COLUMN_WIDTH;
+  }
+  return BASE_COLUMN_DEFAULT_WIDTHS[columnKey] ?? 160;
+}
+
 function normalizeEnMnPair(en, mn) {
   let normalizedEn = en;
   let normalizedMn = mn;
@@ -129,9 +153,11 @@ export default function ManualTranslationsTab() {
   const [activeRow, setActiveRow] = useState(null);
   const [savingLanguage, setSavingLanguage] = useState(null);
   const [translationSources, setTranslationSources] = useState([]);
+  const [columnWidths, setColumnWidths] = useState({});
   const abortRef = useRef(false);
   const processingRef = useRef(false);
   const activeRowRef = useRef(null);
+  const columnWidthsRef = useRef(columnWidths);
   const loadStateRef = useRef({
     promise: null,
     retryCount: 0,
@@ -261,6 +287,185 @@ export default function ManualTranslationsTab() {
       state.cooldown = false;
     };
   }, [load]);
+
+  useEffect(() => {
+    columnWidthsRef.current = columnWidths;
+  }, [columnWidths]);
+
+  useEffect(() => {
+    setColumnWidths((prev) => {
+      const next = {};
+      let changed = false;
+
+      const ensureColumn = (key, defaultWidth) => {
+        const existing = prev[key];
+        const width =
+          typeof existing === 'number' && !Number.isNaN(existing)
+            ? existing
+            : defaultWidth;
+        next[key] = width;
+        if (existing !== width) {
+          changed = true;
+        }
+      };
+
+      Object.entries(BASE_COLUMN_DEFAULT_WIDTHS).forEach(([key, defaultWidth]) => {
+        ensureColumn(key, defaultWidth);
+      });
+
+      for (const lang of languages) {
+        ensureColumn(getLanguageColumnKey(lang), DEFAULT_LANGUAGE_COLUMN_WIDTH);
+      }
+
+      if (!changed) {
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(next);
+        if (prevKeys.length !== nextKeys.length) {
+          changed = true;
+        } else {
+          for (const key of prevKeys) {
+            if (!Object.prototype.hasOwnProperty.call(next, key)) {
+              changed = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!changed) {
+        return prev;
+      }
+
+      return next;
+    });
+  }, [languages]);
+
+  const getColumnWidth = useCallback(
+    (columnKey) => {
+      const width = columnWidths[columnKey];
+      if (typeof width === 'number' && !Number.isNaN(width)) {
+        return width;
+      }
+      return getDefaultColumnWidth(columnKey);
+    },
+    [columnWidths],
+  );
+
+  const handleResizeStart = useCallback(
+    (event, columnKey) => {
+      event.preventDefault();
+      event.stopPropagation();
+
+      const pointerId = event.pointerId ?? null;
+      const target = event.currentTarget;
+      const th = target.closest('th');
+      const initialWidth = th
+        ? th.getBoundingClientRect().width
+        : columnWidthsRef.current[columnKey] ?? getDefaultColumnWidth(columnKey);
+      const startX = event.clientX;
+
+      const onPointerMove = (moveEvent) => {
+        if (pointerId != null && moveEvent.pointerId != null && moveEvent.pointerId !== pointerId) {
+          return;
+        }
+        const delta = moveEvent.clientX - startX;
+        const newWidth = Math.max(MIN_COLUMN_WIDTH, initialWidth + delta);
+        setColumnWidths((prev) => {
+          const current = prev[columnKey];
+          if (typeof current === 'number' && Math.abs(current - newWidth) < 0.5) {
+            return prev;
+          }
+          return {
+            ...prev,
+            [columnKey]: newWidth,
+          };
+        });
+      };
+
+      const cleanup = () => {
+        window.removeEventListener('pointermove', onPointerMove);
+        window.removeEventListener('pointerup', onPointerUp);
+        window.removeEventListener('pointercancel', onPointerUp);
+        if (typeof target.releasePointerCapture === 'function' && pointerId != null) {
+          try {
+            target.releasePointerCapture(pointerId);
+          } catch {
+            // ignore release errors
+          }
+        }
+      };
+
+      const onPointerUp = (endEvent) => {
+        if (pointerId != null && endEvent.pointerId != null && endEvent.pointerId !== pointerId) {
+          return;
+        }
+        cleanup();
+      };
+
+      window.addEventListener('pointermove', onPointerMove);
+      window.addEventListener('pointerup', onPointerUp);
+      window.addEventListener('pointercancel', onPointerUp);
+
+      if (typeof target.setPointerCapture === 'function' && pointerId != null) {
+        try {
+          target.setPointerCapture(pointerId);
+        } catch {
+          // ignore capture errors
+        }
+      }
+    },
+    [setColumnWidths],
+  );
+
+  const renderResizeHandle = useCallback(
+    (columnKey) => (
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        onPointerDown={(event) => handleResizeStart(event, columnKey)}
+        style={{
+          position: 'absolute',
+          top: 0,
+          right: -4,
+          width: 8,
+          height: '100%',
+          cursor: 'col-resize',
+          userSelect: 'none',
+          touchAction: 'none',
+          zIndex: 1,
+        }}
+      />
+    ),
+    [handleResizeStart],
+  );
+
+  const getHeaderStyle = useCallback(
+    (columnKey) => {
+      const width = getColumnWidth(columnKey);
+      return {
+        border: '1px solid #d1d5db',
+        padding: '0.25rem',
+        paddingRight: '0.75rem',
+        position: 'relative',
+        width,
+        minWidth: width,
+      };
+    },
+    [getColumnWidth],
+  );
+
+  const getCellStyle = useCallback(
+    (columnKey) => {
+      const width = getColumnWidth(columnKey);
+      return {
+        border: '1px solid #d1d5db',
+        padding: '0.25rem',
+        width,
+        minWidth: width,
+      };
+    },
+    [getColumnWidth],
+  );
 
   useEffect(() => {
     setPage(1);
@@ -743,40 +948,61 @@ export default function ManualTranslationsTab() {
         <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
-              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Key</th>
-              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Type</th>
-              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Module</th>
-              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Context</th>
-              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+              <th style={getHeaderStyle('key')}>
+                Key
+                {renderResizeHandle('key')}
+              </th>
+              <th style={getHeaderStyle('type')}>
+                Type
+                {renderResizeHandle('type')}
+              </th>
+              <th style={getHeaderStyle('module')}>
+                Module
+                {renderResizeHandle('module')}
+              </th>
+              <th style={getHeaderStyle('context')}>
+                Context
+                {renderResizeHandle('context')}
+              </th>
+              <th style={getHeaderStyle('page')}>
                 {t('pageName', 'Page name')}
+                {renderResizeHandle('page')}
               </th>
-              {languages.map((l) => (
-                <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: '0.25rem',
-                    }}
-                  >
-                    <span>{l}</span>
-                    <button
-                      type="button"
-                      onClick={() => saveLanguage(l)}
-                      disabled={savingLanguage !== null}
+              {languages.map((l) => {
+                const columnKey = getLanguageColumnKey(l);
+                return (
+                  <th key={l} style={getHeaderStyle(columnKey)}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: '0.25rem',
+                      }}
                     >
-                      {savingLanguage === l
-                        ? t('saving', 'Saving...')
-                        : t('save', 'Save')}
-                    </button>
-                  </div>
-                </th>
-              ))}
-              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                      <span>{l}</span>
+                      <button
+                        type="button"
+                        onClick={() => saveLanguage(l)}
+                        disabled={savingLanguage !== null}
+                      >
+                        {savingLanguage === l
+                          ? t('saving', 'Saving...')
+                          : t('save', 'Save')}
+                      </button>
+                    </div>
+                    {renderResizeHandle(columnKey)}
+                  </th>
+                );
+              })}
+              <th style={getHeaderStyle('translatedBy')}>
                 {t('translatedBy', 'Translated by')}
+                {renderResizeHandle('translatedBy')}
               </th>
-              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }} />
+              <th style={getHeaderStyle('actions')}>
+                <span aria-hidden="true">&nbsp;</span>
+                {renderResizeHandle('actions')}
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -790,13 +1016,13 @@ export default function ManualTranslationsTab() {
                   style={rowStyle}
                   ref={entryIdx === activeRow ? activeRowRef : null}
                 >
-                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                  <td style={getCellStyle('key')}>
                     <input
                       value={entry.key}
                       onChange={(e) => updateEntry(entryIdx, 'key', e.target.value)}
                     />
                   </td>
-                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                  <td style={getCellStyle('type')}>
                     <select
                       value={entry.type}
                       onChange={(e) => updateEntry(entryIdx, 'type', e.target.value)}
@@ -806,17 +1032,17 @@ export default function ManualTranslationsTab() {
                       <option value="exported">exported</option>
                     </select>
                   </td>
-                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                  <td style={getCellStyle('module')}>
                     <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
                       {String(entry.module ?? '')}
                     </div>
                   </td>
-                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                  <td style={getCellStyle('context')}>
                     <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
                       {String(entry.context ?? '')}
                     </div>
                   </td>
-                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                  <td style={getCellStyle('page')}>
                     <input
                       value={entry.page ?? ''}
                       onChange={(e) => updateEntry(entryIdx, 'page', e.target.value)}
@@ -824,17 +1050,24 @@ export default function ManualTranslationsTab() {
                       style={{ width: '100%' }}
                     />
                   </td>
-                  {languages.map((l) => (
-                    <td key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
-                      <textarea
-                        value={entry.values[l] || ''}
-                        onChange={(e) => updateValue(entryIdx, l, e.target.value)}
-                        style={{ width: '100%', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}
-                        rows={2}
-                      />
-                    </td>
-                  ))}
-                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                  {languages.map((l) => {
+                    const columnKey = getLanguageColumnKey(l);
+                    return (
+                      <td key={l} style={getCellStyle(columnKey)}>
+                        <textarea
+                          value={entry.values[l] || ''}
+                          onChange={(e) => updateValue(entryIdx, l, e.target.value)}
+                          style={{
+                            width: '100%',
+                            overflowWrap: 'anywhere',
+                            whiteSpace: 'pre-wrap',
+                          }}
+                          rows={2}
+                        />
+                      </td>
+                    );
+                  })}
+                  <td style={getCellStyle('translatedBy')}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       {languages.map((l) => {
                         const rawLabel = entry.translatedBy?.[l];
@@ -853,7 +1086,7 @@ export default function ManualTranslationsTab() {
                       })}
                     </div>
                   </td>
-                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                  <td style={{ ...getCellStyle('actions'), whiteSpace: 'nowrap' }}>
                     <button onClick={() => save(entryIdx)}>{t('save', 'Save')}</button>
                     <button
                       onClick={() => remove(entryIdx)}
