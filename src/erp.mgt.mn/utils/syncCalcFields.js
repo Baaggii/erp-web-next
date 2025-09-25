@@ -2,6 +2,18 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+
+function assignArrayMetadata(target, source) {
+  if (!Array.isArray(target) || !Array.isArray(source)) return target;
+  Object.keys(source).forEach((key) => {
+    if (!arrayIndexPattern.test(key)) {
+      target[key] = source[key];
+    }
+  });
+  return target;
+}
+
 function pickFirstDefinedFieldValue(source, field) {
   if (!field) return undefined;
   if (Array.isArray(source)) {
@@ -146,12 +158,15 @@ export function syncCalcFields(vals, mapConfig) {
 
       if (Array.isArray(target)) {
         let changed = false;
-        const updated = target.map((row) => {
-          if (!isPlainObject(row)) return row;
-          if (row[field] === computedValue) return row;
-          changed = true;
-          return { ...row, [field]: computedValue };
-        });
+        const updated = assignArrayMetadata(
+          target.map((row) => {
+            if (!isPlainObject(row)) return row;
+            if (row[field] === computedValue) return row;
+            changed = true;
+            return { ...row, [field]: computedValue };
+          }),
+          target,
+        );
         if (changed) {
           next = { ...next, [table]: updated };
         }
