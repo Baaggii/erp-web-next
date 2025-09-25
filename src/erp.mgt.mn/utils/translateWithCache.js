@@ -84,25 +84,36 @@ function createCacheRecord(record, fallbackSource) {
   if (!record) return null;
   const normalized = normalizeTranslationRecord(record);
   if (!normalized) return null;
+
+  const fallback =
+    typeof fallbackSource === 'string' && fallbackSource.trim()
+      ? fallbackSource.trim()
+      : null;
+
   let source = normalized.source || null;
   if (typeof source === 'string') {
     const trimmed = source.trim();
     if (trimmed) {
       const lower = trimmed.toLowerCase();
+      const legacyTags = new Set([
+        'cache-node',
+        'cache-localstorage',
+        'cache-indexeddb',
+      ]);
       const storageIndicators = [
         'localstorage',
         'indexeddb',
         'node-cache',
         'server-cache',
       ];
+      const isLegacyTag = legacyTags.has(lower);
       const isStorageSource =
         lower.startsWith('cache-') ||
         lower.endsWith('-cache') ||
-        storageIndicators.some((indicator) =>
-          lower.includes(indicator),
-        );
-      if (isStorageSource) {
-        source = null;
+        storageIndicators.some((indicator) => lower.includes(indicator));
+
+      if (isLegacyTag || isStorageSource) {
+        source = fallback;
       } else {
         source = trimmed;
       }
@@ -110,8 +121,8 @@ function createCacheRecord(record, fallbackSource) {
       source = null;
     }
   }
-  if (!source && fallbackSource) {
-    source = fallbackSource;
+  if (!source && fallback) {
+    source = fallback;
   }
   const cacheRecord = { text: normalized.text, source };
   if (normalized.metadata) cacheRecord.metadata = normalized.metadata;
@@ -710,3 +721,5 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
     candidate: translatedText,
   });
 }
+
+export { createCacheRecord };
