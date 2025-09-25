@@ -3120,14 +3120,14 @@ function ReportBuilderInner() {
           </button>
         ))}
       </div>
-      <div className="tab-panels">
+      <React.Fragment>
         <div style={{ display: activeTab === 'builder' ? 'block' : 'none' }}>
           <ReportBuilderWorkspace key="builder" />
         </div>
         <div style={{ display: activeTab === 'code' ? 'block' : 'none' }}>
           <ReportBuilderWorkspace key="code" />
         </div>
-      </div>
+      </React.Fragment>
     </div>
   );
 }
