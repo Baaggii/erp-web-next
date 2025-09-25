@@ -1060,20 +1060,27 @@ export default function PosTransactionsPage() {
 
       await Promise.all(
         tables.map(async (tbl, idx) => {
-          const form = forms[idx];
-          if (!tbl || !form || !visibleTables.has(tbl)) return;
+          if (!tbl) return;
 
+          const form = forms[idx];
           let cfg = null;
-          try {
-            const res = await fetch(
-              `/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`,
-              { credentials: 'include' },
-            );
-            cfg = res.ok ? await res.json().catch(() => null) : null;
-          } catch {
-            cfg = null;
+          if (form) {
+            try {
+              const res = await fetch(
+                `/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`,
+                { credentials: 'include' },
+              );
+              cfg = res.ok ? await res.json().catch(() => null) : null;
+            } catch {
+              cfg = null;
+            }
           }
-          fcMap[tbl] = cfg || {};
+
+          if (form) {
+            fcMap[tbl] = cfg || {};
+          } else if (!(tbl in fcMap)) {
+            fcMap[tbl] = {};
+          }
 
           if (!loadedTablesRef.current.has(tbl)) {
             try {
