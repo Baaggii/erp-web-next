@@ -58,6 +58,73 @@ function isNormalizedKeyMatch(key, value) {
   return normalizedKey === normalizedValue;
 }
 
+const METADATA_LABELS = {
+  module: 'Module',
+  context: 'Context',
+  form: 'Form',
+  fieldPath: 'Field Path',
+  page: 'Page',
+  source: 'Source',
+};
+
+function pushMetadataValue(target, field, value) {
+  if (!value) return;
+  const values = Array.isArray(value) ? value : [value];
+  for (const val of values) {
+    if (val == null) continue;
+    const normalized = String(val).trim();
+    if (!normalized) continue;
+    if (!target[field]) target[field] = [];
+    if (!target[field].includes(normalized)) {
+      target[field].push(normalized);
+    }
+  }
+}
+
+function mergeMetadataValues(target = {}, updates = {}) {
+  for (const [field, value] of Object.entries(updates)) {
+    pushMetadataValue(target, field, value);
+  }
+  return target;
+}
+
+function deriveModuleFromKey(key) {
+  if (typeof key !== 'string') return '';
+  if (!key.includes('.')) return '';
+  const [firstSegment] = key.split('.');
+  if (!firstSegment || /^\d+$/.test(firstSegment)) return '';
+  return firstSegment;
+}
+
+function buildEntryMetadata(key, origin, extra = {}) {
+  const metadata = {};
+  if (origin) {
+    pushMetadataValue(metadata, 'context', origin);
+    pushMetadataValue(metadata, 'source', origin);
+  }
+  if (extra && typeof extra === 'object') {
+    const { context, ...rest } = extra;
+    if (context) pushMetadataValue(metadata, 'context', context);
+    mergeMetadataValues(metadata, rest);
+  }
+  const guessedModule = deriveModuleFromKey(key);
+  if (guessedModule) {
+    pushMetadataValue(metadata, 'module', guessedModule);
+  }
+  return metadata;
+}
+
+function formatMetadataForPrompt(metadata) {
+  if (!metadata || typeof metadata !== 'object') return '';
+  const lines = [];
+  for (const [field, values] of Object.entries(metadata)) {
+    if (!Array.isArray(values) || values.length === 0) continue;
+    const label = METADATA_LABELS[field] || field;
+    lines.push(`- ${label}: ${values.join(', ')}`);
+  }
+  return lines.join('\n');
+}
+
 /* ---------------- Utilities ---------------- */
 
 function syncKeys(targetA, targetB, label) {
@@ -332,13 +399,39 @@ async function translateWithGoogle(text, to, from, key) {
   );
 }
 
-async function translateWithOpenAI(text, from, to) {
+async function translateWithOpenAI(text, from, to, options = {}) {
   if (!OpenAI) throw new Error('missing OpenAI API key');
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const sourceLang = from === 'mn' ? 'Mongolian' : 'English';
-  const targetLang = languageNames[to] || to;
-  const prompt = `Translate this ${sourceLang} ERP term into ${targetLang}. Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary. The text is ${sourceLang}, not Russian.\n\n${text}`;
+  const sourceLang = languageNames[from] || from || 'English';
+  const targetLang = languageNames[to] || to || 'English';
+  const {
+    metadata = null,
+    baseEnglish = '',
+    key = '',
+    purpose = '',
+  } = options || {};
+  let prompt;
+  if (purpose === 'tooltip') {
+    const normalizedBaseEnglish =
+      typeof baseEnglish === 'string' ? baseEnglish.trim() : '';
+    const metadataText = formatMetadataForPrompt(metadata);
+    const sections = [
+      'You are an ERP localization expert creating helpful tooltips for end users.',
+      `Provide the ${targetLang} translation of the label in the "translation" field.`,
+      `Use the available metadata to write a concise tooltip in ${targetLang} that explains how the field is used within the ERP. Do not simply repeat the label; add meaningful guidance or context for users.`,
+      'Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary.',
+      `Base label (${sourceLang}): ${text}`,
+    ];
+    if (normalizedBaseEnglish) {
+      sections.push(`English UI label: ${normalizedBaseEnglish}`);
+    }
+    if (key) sections.push(`Translation key: ${key}`);
+    if (metadataText) sections.push(`Context:\n${metadataText}`);
+    prompt = sections.join('\n\n');
+  } else {
+    prompt = `Translate this ${sourceLang} ERP term into ${targetLang}. Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary. The text is ${sourceLang}, not Russian.\n\n${text}`;
+  }
   try {
     const completion = await OpenAI.chat.completions.create(
       {
@@ -435,25 +528,59 @@ export async function generateTranslations({
     let headerMappingsUpdated = false;
     const entryMap = new Map();
 
-  function addEntry(key, sourceText, sourceLang, origin) {
+  function addEntry(key, sourceText, sourceLang, origin, metadataInput = {}) {
     if (
       typeof sourceText !== 'string' ||
       (!/[\u0400-\u04FF]/.test(sourceText) && !/[A-Za-z]/.test(sourceText)) ||
-      isNormalizedKeyMatch(key, sourceText) ||
-      entryMap.has(key)
+      isNormalizedKeyMatch(key, sourceText)
     ) {
       return;
     }
-    entryMap.set(key, { key, sourceText, sourceLang, origin });
+
+    const metadata = buildEntryMetadata(key, origin, metadataInput);
+    const existing = entryMap.get(key);
+    if (existing) {
+      if (
+        !existing.baseEnglish &&
+        sourceLang === 'en' &&
+        typeof sourceText === 'string' &&
+        sourceText.trim()
+      ) {
+        existing.baseEnglish = sourceText;
+      }
+      existing.metadata = mergeMetadataValues(existing.metadata || {}, metadata);
+      if (origin) {
+        const origins = Array.isArray(existing.origins)
+          ? existing.origins
+          : [existing.origin].filter(Boolean);
+        if (!origins.includes(origin)) origins.push(origin);
+        existing.origins = origins;
+      }
+      return;
+    }
+
+    entryMap.set(key, {
+      key,
+      sourceText,
+      sourceLang,
+      origin,
+      metadata,
+      origins: origin ? [origin] : [],
+      baseEnglish: sourceLang === 'en' ? sourceText : '',
+    });
   }
 
   if (textsPath) {
     base = JSON.parse(fs.readFileSync(textsPath, 'utf8'));
+    const customFileLabel = path.basename(textsPath);
     for (const [key, value] of Object.entries(base)) {
       const sourceText =
         typeof value === 'string' ? value : value?.mn || value?.en;
       const sourceLang = /[\u0400-\u04FF]/.test(sourceText) ? 'mn' : 'en';
-      addEntry(key, sourceText, sourceLang, 'file');
+      addEntry(key, sourceText, sourceLang, 'file', {
+        context: 'custom text file',
+        source: customFileLabel,
+      });
     }
   } else {
     base = JSON.parse(fs.readFileSync(headerMappingsPath, 'utf8'));
@@ -465,7 +592,11 @@ export async function generateTranslations({
         headerMappingsUpdated = true;
       }
       const sourceLang = /[\u0400-\u04FF]/.test(label) ? 'mn' : 'en';
-      addEntry(moduleKey, label, sourceLang, 'module');
+      addEntry(moduleKey, label, sourceLang, 'module', {
+        module: moduleKey,
+        context: 'module label',
+        source: 'modules',
+      });
     }
 
     for (const key of Object.keys(base)) {
@@ -480,18 +611,26 @@ export async function generateTranslations({
         sourceText = value;
         sourceLang = /[\u0400-\u04FF]/.test(sourceText) ? 'mn' : 'en';
       }
-      addEntry(key, sourceText, sourceLang, 'table');
+      addEntry(key, sourceText, sourceLang, 'table', {
+        context: 'header mapping',
+        source: 'headerMappings',
+      });
     }
 
     const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
-    for (const { key, text } of tPairs) {
+    for (const { key, text, module: moduleId, context: pageContext, page } of tPairs) {
       checkAbort();
       const sourceLang = /[\u0400-\u04FF]/.test(text) ? 'mn' : 'en';
       if (base[key] === undefined) {
         base[key] = text;
         headerMappingsUpdated = true;
       }
-      addEntry(key, text, sourceLang, 'page');
+      addEntry(key, text, sourceLang, 'page', {
+        module: moduleId,
+        context: pageContext || 'page snippet',
+        page: page || '',
+        source: 'page-scan',
+      });
     }
 
     try {
@@ -505,7 +644,12 @@ export async function generateTranslations({
           checkAbort();
           const formSlug = slugify(formName);
           const sourceLang = /[\u0400-\u04FF]/.test(formName) ? 'mn' : 'en';
-          addEntry(`form.${formSlug}`, formName, sourceLang, 'form');
+          addEntry(`form.${formSlug}`, formName, sourceLang, 'form', {
+            form: formName,
+            context: 'form name',
+            fieldPath: formSlug,
+            source: 'transactionForms',
+          });
 
           function walk(obj, pathSegs) {
             if (!obj || typeof obj !== 'object') return;
@@ -514,18 +658,32 @@ export async function generateTranslations({
               if (typeof v === 'string') {
                 if (/^[a-z0-9_.]+$/.test(v)) continue;
                 const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
-                addEntry(`form.${segs.join('.')}`, v, lang, 'form');
+                const fieldPath = segs.join('.');
+                addEntry(`form.${fieldPath}`, v, lang, 'form', {
+                  form: formName,
+                  context: 'form field',
+                  fieldPath,
+                  source: `transactionForms:${formSlug}`,
+                });
               } else if (Array.isArray(v)) {
                 for (const item of v) {
                   if (item && typeof item === 'object') {
                     walk(item, segs);
                   } else if (typeof item === 'string' && !/^[a-z0-9_.]+$/.test(item)) {
                     const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
+                    const itemSlug = slugify(item);
+                    const optionPath = `${segs.join('.')}.${itemSlug}`;
                     addEntry(
-                      `form.${segs.join('.')}.${slugify(item)}`,
+                      `form.${optionPath}`,
                       item,
                       lang,
                       'form',
+                      {
+                        form: formName,
+                        context: 'form option',
+                        fieldPath: optionPath,
+                        source: `transactionForms:${formSlug}`,
+                      },
                     );
                   }
                 }
@@ -553,38 +711,52 @@ export async function generateTranslations({
       function walkUla(obj, pathSegs) {
         if (!obj || typeof obj !== 'object') return;
         if (Array.isArray(obj)) {
-          for (const item of obj) {
-            if (item && typeof item === 'object') {
-              walkUla(item, pathSegs);
-            } else if (typeof item === 'string' && !skipString.test(item)) {
-              const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
-              const baseKey = pathSegs.length
-                ? `userLevelActions.${pathSegs.join('.')}`
-                : 'userLevelActions';
-              addEntry(
-                `${baseKey}.${slugify(item)}`,
-                item,
-                lang,
-                'userLevelActions',
-              );
+            for (const item of obj) {
+              if (item && typeof item === 'object') {
+                walkUla(item, pathSegs);
+              } else if (typeof item === 'string' && !skipString.test(item)) {
+                const lang = /[\u0400-\u04FF]/.test(item) ? 'mn' : 'en';
+                const baseKey = pathSegs.length
+                  ? `userLevelActions.${pathSegs.join('.')}`
+                  : 'userLevelActions';
+                const itemSlug = slugify(item);
+                const fullKey = `${baseKey}.${itemSlug}`;
+                const relativePath = fullKey.replace(/^userLevelActions\.?/, '');
+                addEntry(
+                  fullKey,
+                  item,
+                  lang,
+                  'userLevelActions',
+                  {
+                    context: 'user level action',
+                    fieldPath: relativePath || itemSlug,
+                    source: 'userLevelActions',
+                  },
+                );
+              }
             }
-          }
-        } else {
-          for (const [k, v] of Object.entries(obj)) {
-            const segs = [...pathSegs, slugify(k)];
-            if (typeof v === 'string') {
-              if (skipString.test(v)) continue;
-              const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
-              addEntry(
-                `userLevelActions.${segs.join('.')}`,
-                v,
-                lang,
-                'userLevelActions',
-              );
-            } else {
-              walkUla(v, segs);
+          } else {
+            for (const [k, v] of Object.entries(obj)) {
+              const segs = [...pathSegs, slugify(k)];
+              if (typeof v === 'string') {
+                if (skipString.test(v)) continue;
+                const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
+                const fieldPath = segs.join('.');
+                addEntry(
+                  `userLevelActions.${segs.join('.')}`,
+                  v,
+                  lang,
+                  'userLevelActions',
+                  {
+                    context: 'user level action',
+                    fieldPath,
+                    source: 'userLevelActions',
+                  },
+                );
+              } else {
+                walkUla(v, segs);
+              }
             }
-          }
         }
       }
       walkUla(ulaConfig, []);
@@ -613,11 +785,20 @@ export async function generateTranslations({
               const baseKey = pathSegs.length
                 ? `posTransactionConfig.${pathSegs.join('.')}`
                 : 'posTransactionConfig';
+              const itemSlug = slugify(item);
+              const fullKey = `${baseKey}.${itemSlug}`;
+              const relativePath = fullKey.replace(/^posTransactionConfig\.?/, '');
               addEntry(
-                `${baseKey}.${slugify(item)}`,
+                fullKey,
                 item,
                 lang,
                 'posTransactionConfig',
+                {
+                  module: 'posTransactionConfig',
+                  context: 'POS transaction config',
+                  fieldPath: relativePath || itemSlug,
+                  source: 'posTransactionConfig',
+                },
               );
             }
           }
@@ -627,11 +808,18 @@ export async function generateTranslations({
             if (typeof v === 'string') {
               if (skipString.test(v)) continue;
               const lang = /[\u0400-\u04FF]/.test(v) ? 'mn' : 'en';
+              const fieldPath = segs.join('.');
               addEntry(
                 `posTransactionConfig.${segs.join('.')}`,
                 v,
                 lang,
                 'posTransactionConfig',
+                {
+                  module: 'posTransactionConfig',
+                  context: 'POS transaction config',
+                  fieldPath,
+                  source: 'posTransactionConfig',
+                },
               );
             } else {
               walkPos(v, segs);
@@ -865,38 +1053,92 @@ export async function generateTranslations({
       checkAbort();
       // Ensure English tooltip
       if (!locales.en.tooltip[key]) {
-        try {
-          const { tooltip } = await translateWithOpenAI(
-            locales.en[key] || locales.mn[key],
-            'en',
-            'en',
-          );
-          const validation = validateTranslatedText(tooltip, 'en');
-          if (validation.ok) {
-            locales.en.tooltip[key] = validation.text;
-          } else {
-            locales.en.tooltip[key] = '';
-            manualReview.track(
-              'tooltip',
-              'en',
-              key,
-              validation.reason,
-            );
-            console.warn(
-              `[gen-i18n] rejected English tooltip for key="${key}": ${validation.reason}`,
-            );
-          }
-        } catch (err) {
-          console.warn(
-            `[gen-i18n] failed to generate English tooltip for key="${key}": ${err.message}`,
-          );
+        const entry = entryMap.get(key);
+        const rawEnglishValue = locales.en && locales.en[key];
+        const englishLabel =
+          typeof rawEnglishValue === 'string' && rawEnglishValue.trim()
+            ? rawEnglishValue.trim()
+            : typeof entry?.baseEnglish === 'string' && entry.baseEnglish.trim()
+            ? entry.baseEnglish.trim()
+            : '';
+        const rawFallbackValue = locales.mn && locales.mn[key];
+        const fallbackLabel =
+          typeof rawFallbackValue === 'string' && rawFallbackValue.trim()
+            ? rawFallbackValue.trim()
+            : typeof entry?.sourceText === 'string' && entry.sourceText.trim()
+            ? entry.sourceText.trim()
+            : '';
+        const tooltipRequestText = englishLabel || fallbackLabel;
+        if (!tooltipRequestText) {
+          locales.en.tooltip[key] = '';
           manualReview.track(
             'tooltip',
             'en',
             key,
-            err.message,
+            'missing base text for tooltip generation',
           );
-          locales.en.tooltip[key] = '';
+          console.warn(
+            `[gen-i18n] missing base text for tooltip key="${key}"`,
+          );
+        } else {
+          const requestSourceLang = englishLabel
+            ? 'en'
+            : entry?.sourceLang ||
+              (/[\u0400-\u04FF]/.test(tooltipRequestText) ? 'mn' : 'en');
+          try {
+            const { tooltip } = await translateWithOpenAI(
+              tooltipRequestText,
+              requestSourceLang,
+              'en',
+              {
+                purpose: 'tooltip',
+                metadata: entry?.metadata,
+                baseEnglish: englishLabel,
+                key,
+              },
+            );
+            const validation = validateTranslatedText(tooltip, 'en');
+            if (validation.ok) {
+              const comparisonLabel =
+                englishLabel ||
+                (requestSourceLang === 'en' ? tooltipRequestText : '');
+              if (
+                comparisonLabel &&
+                normalizeForComparison(comparisonLabel) ===
+                  normalizeForComparison(validation.text)
+              ) {
+                locales.en.tooltip[key] = '';
+                manualReview.track(
+                  'tooltip',
+                  'en',
+                  key,
+                  'tooltip matches label and lacks explanation',
+                );
+                console.warn(
+                  `[gen-i18n] rejected English tooltip for key="${key}": tooltip matches label`,
+                );
+              } else {
+                locales.en.tooltip[key] = validation.text;
+              }
+            } else {
+              locales.en.tooltip[key] = '';
+              manualReview.track(
+                'tooltip',
+                'en',
+                key,
+                validation.reason,
+              );
+              console.warn(
+                `[gen-i18n] rejected English tooltip for key="${key}": ${validation.reason}`,
+              );
+            }
+          } catch (err) {
+            console.warn(
+              `[gen-i18n] failed to generate English tooltip for key="${key}": ${err.message}`,
+            );
+            manualReview.track('tooltip', 'en', key, err.message);
+            locales.en.tooltip[key] = '';
+          }
         }
       }
 
