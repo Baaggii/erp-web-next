@@ -65,6 +65,7 @@ function ReportBuilderInner() {
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
+  const [activeTab, setActiveTab] = useState('builder');
   const { addToast } = useToast();
   const { company, permissions, session } = useContext(AuthContext);
   const { t: i18nextT } = useTranslation(['translation', 'tooltip']);
@@ -1777,596 +1778,245 @@ function ReportBuilderInner() {
   return (
     <div>
       <h2>{t('reportBuilder.title', 'Report Builder')}</h2>
-      <div style={{ marginBottom: '0.5rem' }}>
-        <button onClick={handleImport}>
-          {t('reportBuilder.importDefaults', 'Import Defaults')}
-        </button>
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          borderBottom: '1px solid #ccc',
+          marginBottom: '1rem',
+        }}
+      >
+        {[
+          { key: 'builder', label: t('reportBuilder.tabBuilder', 'Visual builder') },
+          { key: 'code', label: t('reportBuilder.tabCodeDevelopment', 'Code development') },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '0.5rem 1rem',
+              border: 'none',
+              borderBottom:
+                activeTab === tab.key ? '2px solid #000' : '2px solid transparent',
+              background: 'transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === tab.key ? 'bold' : 'normal',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <section>
-        <h3>{t('reportBuilder.primaryTable', 'Primary Table')}</h3>
-        <select value={fromTable} onChange={(e) => setFromTable(e.target.value)}>
-          {tables.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </section>
+      {activeTab === 'builder' && (
+        <div style={{ marginBottom: '1rem' }}>
+          {t(
+            'reportBuilder.builderTabComingSoon',
+            'Visual builder tools coming soon.',
+          )}
+        </div>
+      )}
 
-      <section>
-        <h3>{t('reportBuilder.primaryTableFilters', 'Primary Table Filters')}</h3>
-        {fromFilters.map((f, i) => (
-          <div
-            key={i}
-            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => handleDrop('fromFilters', i)}
-          >
-            <span
-              draggable
-              onDragStart={() => setDragItem({ type: 'fromFilters', index: i })}
-              style={{ cursor: 'move', marginRight: '0.5rem' }}
-            >
-              ☰
-            </span>
-            {i > 0 && (
-              <select
-                value={f.connector}
-                onChange={(e) => updateFromFilter(i, 'connector', e.target.value)}
-                style={{ marginRight: '0.5rem' }}
-              >
-                <option value="AND">AND</option>
-                <option value="OR">OR</option>
-              </select>
-            )}
-            {renderParenSelect(
-              f.open,
-              (v) => updateFromFilter(i, 'open', v),
-              'open',
-            )}
-            <select
-              value={f.field}
-              onChange={(e) => updateFromFilter(i, 'field', e.target.value)}
-            >
-              {(tableFields[fromTable] || []).map((col) => (
-                <option key={col} value={col}>
-                  {col}
-                </option>
-              ))}
-            </select>
-            <select
-              value={f.operator}
-              onChange={(e) => updateFromFilter(i, 'operator', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {OPERATORS.map((op) => (
-                <option key={op} value={op}>
-                  {op}
-                </option>
-              ))}
-            </select>
-            <select
-              value={f.valueType}
-              onChange={(e) => updateFromFilter(i, 'valueType', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="param">{paramLabel}</option>
-              <option value="value">{valueLabel}</option>
-            </select>
-            {f.valueType === 'param' ? (
-              <select
-                value={f.param}
-                onChange={(e) => updateFromFilter(i, 'param', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                {params.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            ) : fieldEnums[fromTable]?.[f.field]?.length ? (
-              <select
-                value={f.value}
-                onChange={(e) => updateFromFilter(i, 'value', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value=""></option>
-                {fieldEnums[fromTable][f.field].map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={f.value}
-                onChange={(e) => updateFromFilter(i, 'value', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              />
-            )}
-            {renderParenSelect(
-              f.close,
-              (v) => updateFromFilter(i, 'close', v),
-              'close',
-            )}
-            <button
-              onClick={() => removeFromFilter(i)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-        <button onClick={addFromFilter}>{addFilterLabel}</button>
-      </section>
+      <div style={{ display: activeTab === 'code' ? 'block' : 'none' }}>
+        <div style={{ marginBottom: '0.5rem' }}>
+          <button onClick={handleImport}>
+            {t('reportBuilder.importDefaults', 'Import Defaults')}
+          </button>
+        </div>
 
-      <section>
-        <h3>{t('reportBuilder.joins', 'Joins')}</h3>
-        {joins.map((j, i) => {
-          const targets = [fromTable, ...joins.slice(0, i).map((jn) => jn.table)];
-          return (
+        <section>
+          <h3>{t('reportBuilder.primaryTable', 'Primary Table')}</h3>
+          <select value={fromTable} onChange={(e) => setFromTable(e.target.value)}>
+            {tables.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </section>
+
+        <section>
+          <h3>{t('reportBuilder.primaryTableFilters', 'Primary Table Filters')}</h3>
+          {fromFilters.map((f, i) => (
             <div
               key={i}
               style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
               onDragOver={(e) => e.preventDefault()}
-              onDrop={() => handleDrop('joins', i)}
+              onDrop={() => handleDrop('fromFilters', i)}
             >
               <span
                 draggable
-                onDragStart={() => setDragItem({ type: 'joins', index: i })}
+                onDragStart={() => setDragItem({ type: 'fromFilters', index: i })}
                 style={{ cursor: 'move', marginRight: '0.5rem' }}
               >
                 ☰
               </span>
-              <select
-                value={j.type}
-                onChange={(e) => updateJoin(i, 'type', e.target.value)}
-              >
-                {[
-                  'JOIN',
-                  'INNER JOIN',
-                  'LEFT JOIN',
-                  'RIGHT JOIN',
-                  'FULL JOIN',
-                  'FULL OUTER JOIN',
-                  'CROSS JOIN',
-                ].map((jt) => (
-                  <option key={jt} value={jt}>
-                    {jt}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={j.table}
-                onChange={(e) => updateJoin(i, 'table', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                {tables.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              {' '}
-              <span>{t('reportBuilder.with', 'with')} </span>
-              <select
-                value={j.targetTable}
-                onChange={(e) => updateJoin(i, 'targetTable', e.target.value)}
-              >
-                {targets.map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-              {j.conditions.map((c, k) => (
-                <div
-                  key={k}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    marginLeft: '0.5rem',
-                  }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleDrop('joinConditions', k, i)}
+              {i > 0 && (
+                <select
+                  value={f.connector}
+                  onChange={(e) => updateFromFilter(i, 'connector', e.target.value)}
+                  style={{ marginRight: '0.5rem' }}
                 >
-                  <span
-                    draggable
-                    onDragStart={() =>
-                      setDragItem({ type: 'joinConditions', joinIndex: i, index: k })
-                    }
-                    style={{ cursor: 'move', marginRight: '0.5rem' }}
-                  >
-                    ☰
-                  </span>
-                  {k > 0 && (
-                    <select
-                      value={c.connector}
-                      onChange={(e) =>
-                        updateJoinCondition(i, k, 'connector', e.target.value)
-                      }
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      <option value="AND">AND</option>
-                      <option value="OR">OR</option>
-                    </select>
-                  )}
-                  {renderParenSelect(
-                    c.open,
-                    (v) => updateJoinCondition(i, k, 'open', v),
-                    'open',
-                  )}
-                  <select
-                    value={c.fromField}
-                    onChange={(e) =>
-                      updateJoinCondition(i, k, 'fromField', e.target.value)
-                    }
-                  >
-                    {(tableFields[j.targetTable] || []).map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                  <span> = </span>
-                  <select
-                    value={c.toField}
-                    onChange={(e) =>
-                      updateJoinCondition(i, k, 'toField', e.target.value)
-                    }
-                  >
-                    {(tableFields[j.table] || []).map((f) => (
-                      <option key={f} value={f}>
-                        {f}
-                      </option>
-                    ))}
-                  </select>
-                  {renderParenSelect(
-                    c.close,
-                    (v) => updateJoinCondition(i, k, 'close', v),
-                    'close',
-                  )}
-                  <button
-                    onClick={() => removeJoinCondition(i, k)}
-                    style={{ marginLeft: '0.5rem' }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
-              <button
-                onClick={() => addJoinCondition(i)}
+                  <option value="AND">AND</option>
+                  <option value="OR">OR</option>
+                </select>
+              )}
+              {renderParenSelect(
+                f.open,
+                (v) => updateFromFilter(i, 'open', v),
+                'open',
+              )}
+              <select
+                value={f.field}
+                onChange={(e) => updateFromFilter(i, 'field', e.target.value)}
+              >
+                {(tableFields[fromTable] || []).map((col) => (
+                  <option key={col} value={col}>
+                    {col}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={f.operator}
+                onChange={(e) => updateFromFilter(i, 'operator', e.target.value)}
                 style={{ marginLeft: '0.5rem' }}
               >
-                {addConditionLabel}
-              </button>
-              {j.filters && j.filters.length > 0 && <span> | </span>}
-              {j.filters?.map((f, k) => (
-                <div
-                  key={k}
-                  style={{ display: 'flex', alignItems: 'center', marginTop: '0.25rem' }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={() => handleDrop('joinFilters', k, i)}
+                {OPERATORS.map((op) => (
+                  <option key={op} value={op}>
+                    {op}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={f.valueType}
+                onChange={(e) => updateFromFilter(i, 'valueType', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <option value="param">{paramLabel}</option>
+                <option value="value">{valueLabel}</option>
+              </select>
+              {f.valueType === 'param' ? (
+                <select
+                  value={f.param}
+                  onChange={(e) => updateFromFilter(i, 'param', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
                 >
-                  <span
-                    draggable
-                    onDragStart={() =>
-                      setDragItem({ type: 'joinFilters', joinIndex: i, index: k })
-                    }
-                    style={{ cursor: 'move', marginRight: '0.5rem' }}
-                  >
-                    ☰
-                  </span>
-                  {k > 0 && (
-                    <select
-                      value={f.connector}
-                      onChange={(e) =>
-                        updateJoinFilter(i, k, 'connector', e.target.value)
-                      }
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      <option value="AND">AND</option>
-                      <option value="OR">OR</option>
-                    </select>
-                  )}
-                  {renderParenSelect(
-                    f.open,
-                    (v) => updateJoinFilter(i, k, 'open', v),
-                    'open',
-                  )}
-                  <select
-                    value={f.field}
-                    onChange={(e) => updateJoinFilter(i, k, 'field', e.target.value)}
-                  >
-                    {(tableFields[j.table] || []).map((col) => (
-                      <option key={col} value={col}>
-                        {col}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={f.operator}
-                    onChange={(e) => updateJoinFilter(i, k, 'operator', e.target.value)}
-                    style={{ marginLeft: '0.5rem' }}
-                  >
-                    {OPERATORS.map((op) => (
-                      <option key={op} value={op}>
-                        {op}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    value={f.valueType}
-                    onChange={(e) => updateJoinFilter(i, k, 'valueType', e.target.value)}
-                    style={{ marginLeft: '0.5rem' }}
-                  >
-                    <option value="param">{paramLabel}</option>
-                    <option value="value">{valueLabel}</option>
-                  </select>
-                  {f.valueType === 'param' ? (
-                    <select
-                      value={f.param}
-                      onChange={(e) => updateJoinFilter(i, k, 'param', e.target.value)}
-                      style={{ marginLeft: '0.5rem' }}
-                    >
-                      {params.map((p) => (
-                        <option key={p.name} value={p.name}>
-                          {p.name}
-                        </option>
-                      ))}
-                    </select>
-                  ) : fieldEnums[j.table]?.[f.field]?.length ? (
-                    <select
-                      value={f.value}
-                      onChange={(e) => updateJoinFilter(i, k, 'value', e.target.value)}
-                      style={{ marginLeft: '0.5rem' }}
-                    >
-                      <option value=""></option>
-                      {fieldEnums[j.table][f.field].map((v) => (
-                        <option key={v} value={v}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      value={f.value}
-                      onChange={(e) => updateJoinFilter(i, k, 'value', e.target.value)}
-                      style={{ marginLeft: '0.5rem' }}
-                    />
-                  )}
-                  {renderParenSelect(
-                    f.close,
-                    (v) => updateJoinFilter(i, k, 'close', v),
-                    'close',
-                  )}
-                  <button
-                    onClick={() => removeJoinFilter(i, k)}
-                    style={{ marginLeft: '0.5rem' }}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                  {params.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+              ) : fieldEnums[fromTable]?.[f.field]?.length ? (
+                <select
+                  value={f.value}
+                  onChange={(e) => updateFromFilter(i, 'value', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  <option value=""></option>
+                  {fieldEnums[fromTable][f.field].map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={f.value}
+                  onChange={(e) => updateFromFilter(i, 'value', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                />
+              )}
+              {renderParenSelect(
+                f.close,
+                (v) => updateFromFilter(i, 'close', v),
+                'close',
+              )}
               <button
-                onClick={() => addJoinFilter(i)}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                {addFilterLabel}
-              </button>
-              <button
-                onClick={() => removeJoin(i)}
+                onClick={() => removeFromFilter(i)}
                 style={{ marginLeft: '0.5rem' }}
               >
                 ✕
               </button>
             </div>
-          );
-        })}
-        <button onClick={addJoin}>
-          {t('reportBuilder.addJoin', 'Add Join')}
-        </button>
-      </section>
+          ))}
+          <button onClick={addFromFilter}>{addFilterLabel}</button>
+        </section>
 
-      <section>
-        <h3>{t('reportBuilder.selectFields', 'Select Fields')}</h3>
-        {fields.map((f, i) => (
-          <div
-            key={i}
-            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => handleDrop('fields', i)}
-          >
-            <span
-              draggable
-              onDragStart={() => setDragItem({ type: 'fields', index: i })}
-              style={{ cursor: 'move', marginRight: '0.5rem' }}
-            >
-              ☰
-            </span>
-            <button
-              onClick={() => removeField(i)}
-              style={{ marginRight: '0.5rem' }}
-            >
-              ✕
-            </button>
-            <select
-              value={f.source}
-              onChange={(e) => updateField(i, 'source', e.target.value)}
-            >
-              <option value="none">{noneLabel}</option>
-              <option value="field">{fieldLabel}</option>
-              <option value="alias">{aliasLabel}</option>
-            </select>
-            {f.source === 'alias' ? (
-              <select
-                value={f.baseAlias}
-                onChange={(e) => updateField(i, 'baseAlias', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
+        <section>
+          <h3>{t('reportBuilder.joins', 'Joins')}</h3>
+          {joins.map((j, i) => {
+            const targets = [fromTable, ...joins.slice(0, i).map((jn) => jn.table)];
+            return (
+              <div
+                key={i}
+                style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => handleDrop('joins', i)}
               >
-                <option value="">{noneLabel}</option>
-                {fields.slice(0, i).map((pf) =>
-                  pf.alias ? (
-                    <option key={pf.alias} value={pf.alias}>
-                      {pf.alias}
-                    </option>
-                  ) : null,
-                )}
-              </select>
-            ) : f.source === 'field' ? (
-              <>
+                <span
+                  draggable
+                  onDragStart={() => setDragItem({ type: 'joins', index: i })}
+                  style={{ cursor: 'move', marginRight: '0.5rem' }}
+                >
+                  ☰
+                </span>
                 <select
-                  value={f.table}
-                  onChange={(e) => updateField(i, 'table', e.target.value)}
+                  value={j.type}
+                  onChange={(e) => updateJoin(i, 'type', e.target.value)}
+                >
+                  {[
+                    'JOIN',
+                    'INNER JOIN',
+                    'LEFT JOIN',
+                    'RIGHT JOIN',
+                    'FULL JOIN',
+                    'FULL OUTER JOIN',
+                    'CROSS JOIN',
+                  ].map((jt) => (
+                    <option key={jt} value={jt}>
+                      {jt}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={j.table}
+                  onChange={(e) => updateJoin(i, 'table', e.target.value)}
                   style={{ marginLeft: '0.5rem' }}
                 >
-                  {availableTables.map((t) => (
+                  {tables.map((t) => (
                     <option key={t} value={t}>
                       {t}
                     </option>
                   ))}
                 </select>
+                {' '}
+                <span>{t('reportBuilder.with', 'with')} </span>
                 <select
-                  value={f.field}
-                  onChange={(e) => updateField(i, 'field', e.target.value)}
-                  style={{ marginLeft: '0.5rem' }}
+                  value={j.targetTable}
+                  onChange={(e) => updateJoin(i, 'targetTable', e.target.value)}
                 >
-                  {(tableFields[f.table] || []).map((col) => (
-                    <option key={col} value={col}>
-                      {col}
+                  {targets.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
                     </option>
                   ))}
                 </select>
-                <select
-                  value={f.aggregate}
-                  onChange={(e) => updateField(i, 'aggregate', e.target.value)}
-                  style={{ marginLeft: '0.5rem' }}
-                >
-                  {AGGREGATES.map((ag) => (
-                    <option key={ag} value={ag}>
-                      {ag}
-                    </option>
-                  ))}
-                </select>
-              </>
-            ) : null}
-            <input
-              placeholder={t('reportBuilder.aliasPlaceholder', 'alias')}
-              value={f.alias}
-              onChange={(e) => updateField(i, 'alias', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            />
-            {(f.calcParts || []).map((p, k) => (
-              <span key={k} style={{ marginLeft: '0.5rem' }}>
-                {k > 0 && (
-                  <select
-                    value={p.operator}
-                    onChange={(e) =>
-                      updateCalcPart(i, k, 'operator', e.target.value)
-                    }
-                    style={{ marginRight: '0.5rem' }}
-                  >
-                    {CALC_OPERATORS.map((op) => (
-                      <option key={op} value={op}>
-                        {op}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                  <select
-                    value={p.source}
-                    onChange={(e) =>
-                      updateCalcPart(i, k, 'source', e.target.value)
-                    }
-                  >
-                    <option value="none">{noneLabel}</option>
-                    <option value="field">{fieldLabel}</option>
-                    <option value="alias">{aliasLabel}</option>
-                  </select>
-                {p.source === 'alias' ? (
-                  <select
-                    value={p.alias}
-                    onChange={(e) =>
-                      updateCalcPart(i, k, 'alias', e.target.value)
-                    }
-                    style={{ marginLeft: '0.5rem' }}
-                  >
-                    <option value="">{noneLabel}</option>
-                    {fields.slice(0, i).map((pf) =>
-                      pf.alias ? (
-                        <option key={pf.alias} value={pf.alias}>
-                          {pf.alias}
-                        </option>
-                      ) : null,
-                    )}
-                  </select>
-                ) : p.source === 'field' ? (
-                  <>
-                    <select
-                      value={p.table}
-                      onChange={(e) =>
-                        updateCalcPart(i, k, 'table', e.target.value)
-                      }
-                      style={{ marginLeft: '0.5rem' }}
-                    >
-                      {availableTables.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={p.field}
-                      onChange={(e) =>
-                        updateCalcPart(i, k, 'field', e.target.value)
-                      }
-                      style={{ marginLeft: '0.5rem' }}
-                    >
-                      {(tableFields[p.table] || []).map((col) => (
-                        <option key={col} value={col}>
-                          {col}
-                        </option>
-                      ))}
-                    </select>
-                  </>
-                ) : null}
-                <button
-                  onClick={() => removeCalcPart(i, k)}
-                  style={{ marginLeft: '0.5rem' }}
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-            <button
-              onClick={() => addCalcPart(i)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {t('reportBuilder.addPart', 'Add Part')}
-            </button>
-            {f.source === 'field' && f.aggregate !== 'NONE' && (
-              <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
-                {(f.conditions || []).map((c, k) => (
+                {j.conditions.map((c, k) => (
                   <div
                     key={k}
                     style={{
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
-                      marginTop: '0.25rem',
+                      marginLeft: '0.5rem',
                     }}
                     onDragOver={(e) => e.preventDefault()}
-                    onDrop={() => handleDrop('fieldConditions', k, i)}
+                    onDrop={() => handleDrop('joinConditions', k, i)}
                   >
                     <span
                       draggable
                       onDragStart={() =>
-                        setDragItem({
-                          type: 'fieldConditions',
-                          fieldIndex: i,
-                          index: k,
-                        })
+                        setDragItem({ type: 'joinConditions', joinIndex: i, index: k })
                       }
                       style={{ cursor: 'move', marginRight: '0.5rem' }}
                     >
@@ -2376,7 +2026,7 @@ function ReportBuilderInner() {
                       <select
                         value={c.connector}
                         onChange={(e) =>
-                          updateFieldCondition(i, k, 'connector', e.target.value)
+                          updateJoinCondition(i, k, 'connector', e.target.value)
                         }
                         style={{ marginRight: '0.5rem' }}
                       >
@@ -2386,39 +2036,100 @@ function ReportBuilderInner() {
                     )}
                     {renderParenSelect(
                       c.open,
-                      (v) => updateFieldCondition(i, k, 'open', v),
+                      (v) => updateJoinCondition(i, k, 'open', v),
                       'open',
                     )}
                     <select
-                      value={c.table}
+                      value={c.fromField}
                       onChange={(e) =>
-                        updateFieldCondition(i, k, 'table', e.target.value)
+                        updateJoinCondition(i, k, 'fromField', e.target.value)
                       }
                     >
-                      {availableTables.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
+                      {(tableFields[j.targetTable] || []).map((f) => (
+                        <option key={f} value={f}>
+                          {f}
                         </option>
                       ))}
                     </select>
+                    <span> = </span>
                     <select
-                      value={c.field}
+                      value={c.toField}
                       onChange={(e) =>
-                        updateFieldCondition(i, k, 'field', e.target.value)
+                        updateJoinCondition(i, k, 'toField', e.target.value)
                       }
+                    >
+                      {(tableFields[j.table] || []).map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </select>
+                    {renderParenSelect(
+                      c.close,
+                      (v) => updateJoinCondition(i, k, 'close', v),
+                      'close',
+                    )}
+                    <button
+                      onClick={() => removeJoinCondition(i, k)}
                       style={{ marginLeft: '0.5rem' }}
                     >
-                      {(tableFields[c.table] || []).map((col) => (
+                      ✕
+                    </button>
+                  </div>
+                ))}
+                <button
+                  onClick={() => addJoinCondition(i)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {addConditionLabel}
+                </button>
+                {j.filters && j.filters.length > 0 && <span> | </span>}
+                {j.filters?.map((f, k) => (
+                  <div
+                    key={k}
+                    style={{ display: 'flex', alignItems: 'center', marginTop: '0.25rem' }}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={() => handleDrop('joinFilters', k, i)}
+                  >
+                    <span
+                      draggable
+                      onDragStart={() =>
+                        setDragItem({ type: 'joinFilters', joinIndex: i, index: k })
+                      }
+                      style={{ cursor: 'move', marginRight: '0.5rem' }}
+                    >
+                      ☰
+                    </span>
+                    {k > 0 && (
+                      <select
+                        value={f.connector}
+                        onChange={(e) =>
+                          updateJoinFilter(i, k, 'connector', e.target.value)
+                        }
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        <option value="AND">AND</option>
+                        <option value="OR">OR</option>
+                      </select>
+                    )}
+                    {renderParenSelect(
+                      f.open,
+                      (v) => updateJoinFilter(i, k, 'open', v),
+                      'open',
+                    )}
+                    <select
+                      value={f.field}
+                      onChange={(e) => updateJoinFilter(i, k, 'field', e.target.value)}
+                    >
+                      {(tableFields[j.table] || []).map((col) => (
                         <option key={col} value={col}>
                           {col}
                         </option>
                       ))}
                     </select>
                     <select
-                      value={c.operator}
-                      onChange={(e) =>
-                        updateFieldCondition(i, k, 'operator', e.target.value)
-                      }
+                      value={f.operator}
+                      onChange={(e) => updateJoinFilter(i, k, 'operator', e.target.value)}
                       style={{ marginLeft: '0.5rem' }}
                     >
                       {OPERATORS.map((op) => (
@@ -2428,21 +2139,17 @@ function ReportBuilderInner() {
                       ))}
                     </select>
                     <select
-                      value={c.valueType}
-                      onChange={(e) =>
-                        updateFieldCondition(i, k, 'valueType', e.target.value)
-                      }
+                      value={f.valueType}
+                      onChange={(e) => updateJoinFilter(i, k, 'valueType', e.target.value)}
                       style={{ marginLeft: '0.5rem' }}
                     >
                       <option value="param">{paramLabel}</option>
                       <option value="value">{valueLabel}</option>
                     </select>
-                    {c.valueType === 'param' ? (
+                    {f.valueType === 'param' ? (
                       <select
-                        value={c.param}
-                        onChange={(e) =>
-                          updateFieldCondition(i, k, 'param', e.target.value)
-                        }
+                        value={f.param}
+                        onChange={(e) => updateJoinFilter(i, k, 'param', e.target.value)}
                         style={{ marginLeft: '0.5rem' }}
                       >
                         {params.map((p) => (
@@ -2451,16 +2158,14 @@ function ReportBuilderInner() {
                           </option>
                         ))}
                       </select>
-                    ) : fieldEnums[c.table]?.[c.field]?.length ? (
+                    ) : fieldEnums[j.table]?.[f.field]?.length ? (
                       <select
-                        value={c.value}
-                        onChange={(e) =>
-                          updateFieldCondition(i, k, 'value', e.target.value)
-                        }
+                        value={f.value}
+                        onChange={(e) => updateJoinFilter(i, k, 'value', e.target.value)}
                         style={{ marginLeft: '0.5rem' }}
                       >
                         <option value=""></option>
-                        {fieldEnums[c.table][c.field].map((v) => (
+                        {fieldEnums[j.table][f.field].map((v) => (
                           <option key={v} value={v}>
                             {v}
                           </option>
@@ -2468,375 +2173,537 @@ function ReportBuilderInner() {
                       </select>
                     ) : (
                       <input
-                        value={c.value}
-                        onChange={(e) =>
-                          updateFieldCondition(i, k, 'value', e.target.value)
-                        }
+                        value={f.value}
+                        onChange={(e) => updateJoinFilter(i, k, 'value', e.target.value)}
                         style={{ marginLeft: '0.5rem' }}
                       />
                     )}
                     {renderParenSelect(
-                      c.close,
-                      (v) => updateFieldCondition(i, k, 'close', v),
+                      f.close,
+                      (v) => updateJoinFilter(i, k, 'close', v),
                       'close',
                     )}
                     <button
-                      onClick={() => removeFieldCondition(i, k)}
+                      onClick={() => removeJoinFilter(i, k)}
                       style={{ marginLeft: '0.5rem' }}
                     >
                       ✕
                     </button>
                   </div>
                 ))}
-                <button onClick={() => addFieldCondition(i)}>
-                  {addConditionLabel}
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
-        <button onClick={addField}>
-          {t('reportBuilder.addField', 'Add Field')}
-        </button>
-      </section>
-
-      <section>
-        <h3>{t('reportBuilder.groupBy', 'Group By')}</h3>
-        {groups.map((g, i) => (
-          <div
-            key={i}
-            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => handleDrop('groups', i)}
-          >
-            <span
-              draggable
-              onDragStart={() => setDragItem({ type: 'groups', index: i })}
-              style={{ cursor: 'move', marginRight: '0.5rem' }}
-            >
-              ☰
-            </span>
-            <select
-              value={g.table}
-              onChange={(e) => updateGroup(i, 'table', e.target.value)}
-            >
-              {availableTables.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
-            <select
-              value={g.field}
-              onChange={(e) => updateGroup(i, 'field', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {(tableFields[g.table] || []).map((f) => (
-                <option key={f} value={f}>
-                  {f}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => removeGroup(i)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-        <button onClick={addGroup}>
-          {t('reportBuilder.addGroup', 'Add Group')}
-        </button>
-      </section>
-
-      <section>
-        <h3>{t('reportBuilder.having', 'Having')}</h3>
-        {having.map((h, i) => (
-          <div
-            key={i}
-            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => handleDrop('having', i)}
-          >
-            <span
-              draggable
-              onDragStart={() => setDragItem({ type: 'having', index: i })}
-              style={{ cursor: 'move', marginRight: '0.5rem' }}
-            >
-              ☰
-            </span>
-            {i > 0 && (
-              <select
-                value={h.connector}
-                onChange={(e) => updateHaving(i, 'connector', e.target.value)}
-                style={{ marginRight: '0.5rem' }}
-              >
-                <option value="AND">AND</option>
-                <option value="OR">OR</option>
-              </select>
-            )}
-            {renderParenSelect(
-              h.open,
-              (v) => updateHaving(i, 'open', v),
-              'open',
-            )}
-            <select
-              value={h.source}
-              onChange={(e) => updateHaving(i, 'source', e.target.value)}
-            >
-              <option value="field">{fieldLabel}</option>
-              <option value="alias">{aliasLabel}</option>
-            </select>
-            {h.source === 'field' ? (
-              <>
-                <select
-                  value={h.aggregate}
-                  onChange={(e) => updateHaving(i, 'aggregate', e.target.value)}
-                  style={{ marginLeft: '0.5rem' }}
-                >
-                  {AGGREGATES.filter((a) => a !== 'NONE').map((ag) => (
-                    <option key={ag} value={ag}>
-                      {ag}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={h.table}
-                  onChange={(e) => updateHaving(i, 'table', e.target.value)}
-                  style={{ marginLeft: '0.5rem' }}
-                >
-                  {availableTables.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={h.field}
-                  onChange={(e) => updateHaving(i, 'field', e.target.value)}
-                  style={{ marginLeft: '0.5rem' }}
-                >
-                  {(tableFields[h.table] || []).map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
-                </select>
-              </>
-            ) : (
-              <select
-                value={h.alias}
-                onChange={(e) => updateHaving(i, 'alias', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                {fields
-                  .filter((f) => f.alias)
-                  .map((f) => (
-                    <option key={f.alias} value={f.alias}>
-                      {f.alias}
-                    </option>
-                  ))}
-              </select>
-            )}
-            <select
-              value={h.operator}
-              onChange={(e) => updateHaving(i, 'operator', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              {OPERATORS.map((op) => (
-                <option key={op} value={op}>
-                  {op}
-                </option>
-              ))}
-            </select>
-            <select
-              value={h.valueType}
-              onChange={(e) => updateHaving(i, 'valueType', e.target.value)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              <option value="param">{paramLabel}</option>
-              <option value="value">{valueLabel}</option>
-            </select>
-            {h.valueType === 'param' ? (
-              <select
-                value={h.param}
-                onChange={(e) => updateHaving(i, 'param', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                {params.map((p) => (
-                  <option key={p.name} value={p.name}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-            ) : h.source === 'field' && fieldEnums[h.table]?.[h.field]?.length ? (
-              <select
-                value={h.value}
-                onChange={(e) => updateHaving(i, 'value', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              >
-                <option value=""></option>
-                {fieldEnums[h.table][h.field].map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <input
-                value={h.value}
-                onChange={(e) => updateHaving(i, 'value', e.target.value)}
-                style={{ marginLeft: '0.5rem' }}
-              />
-            )}
-            {renderParenSelect(
-              h.close,
-              (v) => updateHaving(i, 'close', v),
-              'close',
-            )}
-            <button
-              onClick={() => removeHaving(i)}
-              style={{ marginLeft: '0.5rem' }}
-            >
-              ✕
-            </button>
-          </div>
-        ))}
-        <button onClick={addHaving}>
-          {t('reportBuilder.addHaving', 'Add Having')}
-        </button>
-      </section>
-
-      <section>
-        <h3>{t('reportBuilder.parameters', 'Parameters')}</h3>
-        <div>
-          {SESSION_PARAMS.map((p) => (
-            <label key={p.name} style={{ marginRight: '1rem' }}>
-              <input
-                type="checkbox"
-                checked={params.some((x) => x.name === p.name)}
-                onChange={(e) => toggleSessionParam(p, e.target.checked)}
-              />
-              {p.name}
-            </label>
-          ))}
-        </div>
-        <div style={{ marginTop: '0.5rem' }}>
-          <input
-            placeholder={t('reportBuilder.paramNamePlaceholder', 'name')}
-            value={customParamName}
-            onChange={(e) => setCustomParamName(e.target.value)}
-          />
-          <select
-            value={customParamType}
-            onChange={(e) => setCustomParamType(e.target.value)}
-            style={{ marginLeft: '0.5rem' }}
-          >
-            {PARAM_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <button onClick={addCustomParam} style={{ marginLeft: '0.5rem' }}>
-            {t('reportBuilder.addParam', 'Add')}
-          </button>
-        </div>
-        <ul>
-          {params
-            .filter((p) => p.source === 'custom')
-            .map((p) => (
-              <li key={p.name}>
-                {p.name} {p.type}{' '}
-                <button onClick={() => removeParam(p.name)}>✕</button>
-              </li>
-            ))}
-        </ul>
-      </section>
-
-      <section>
-        <h3>{t('reportBuilder.conditions', 'Conditions')}</h3>
-        {conditions.map((c, i) => (
-          <div
-            key={i}
-            style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
-            onDragOver={(e) => e.preventDefault()}
-            onDrop={() => handleDrop('conditions', i)}
-          >
-            <span
-              draggable
-              onDragStart={() => setDragItem({ type: 'conditions', index: i })}
-              style={{ cursor: 'move', marginRight: '0.5rem' }}
-            >
-              ☰
-            </span>
-            {i > 0 && (
-              <select
-                value={c.connector}
-                onChange={(e) => updateCondition(i, 'connector', e.target.value)}
-                style={{ marginRight: '0.5rem' }}
-              >
-                <option value="AND">AND</option>
-                <option value="OR">OR</option>
-              </select>
-            )}
-            {c.raw ? (
-              <>
-                {renderParenSelect(
-                  c.open,
-                  (v) => updateCondition(i, 'open', v),
-                  'open',
-                )}
-                <input
-                  value={c.raw}
-                  onChange={(e) => updateCondition(i, 'raw', e.target.value)}
-                  style={{ width: '50%' }}
-                />
-                {renderParenSelect(
-                  c.close,
-                  (v) => updateCondition(i, 'close', v),
-                  'close',
-                )}
                 <button
-                  onClick={() => removeCondition(i)}
+                  onClick={() => addJoinFilter(i)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {addFilterLabel}
+                </button>
+                <button
+                  onClick={() => removeJoin(i)}
                   style={{ marginLeft: '0.5rem' }}
                 >
                   ✕
                 </button>
-              </>
-            ) : (
-              <>
-                {renderParenSelect(
-                  c.open,
-                  (v) => updateCondition(i, 'open', v),
-                  'open',
-                )}
+              </div>
+            );
+          })}
+          <button onClick={addJoin}>
+            {t('reportBuilder.addJoin', 'Add Join')}
+          </button>
+        </section>
+
+        <section>
+          <h3>{t('reportBuilder.selectFields', 'Select Fields')}</h3>
+          {fields.map((f, i) => (
+            <div
+              key={i}
+              style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleDrop('fields', i)}
+            >
+              <span
+                draggable
+                onDragStart={() => setDragItem({ type: 'fields', index: i })}
+                style={{ cursor: 'move', marginRight: '0.5rem' }}
+              >
+                ☰
+              </span>
+              <button
+                onClick={() => removeField(i)}
+                style={{ marginRight: '0.5rem' }}
+              >
+                ✕
+              </button>
+              <select
+                value={f.source}
+                onChange={(e) => updateField(i, 'source', e.target.value)}
+              >
+                <option value="none">{noneLabel}</option>
+                <option value="field">{fieldLabel}</option>
+                <option value="alias">{aliasLabel}</option>
+              </select>
+              {f.source === 'alias' ? (
                 <select
-                  value={c.table}
-                  onChange={(e) => updateCondition(i, 'table', e.target.value)}
-                >
-                  {availableTables.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={c.field}
-                  onChange={(e) => updateCondition(i, 'field', e.target.value)}
+                  value={f.baseAlias}
+                  onChange={(e) => updateField(i, 'baseAlias', e.target.value)}
                   style={{ marginLeft: '0.5rem' }}
                 >
-                  {(tableFields[c.table] || []).map((f) => (
-                    <option key={f} value={f}>
-                      {f}
-                    </option>
-                  ))}
+                  <option value="">{noneLabel}</option>
+                  {fields.slice(0, i).map((pf) =>
+                    pf.alias ? (
+                      <option key={pf.alias} value={pf.alias}>
+                        {pf.alias}
+                      </option>
+                    ) : null,
+                  )}
                 </select>
-                <span> = </span>
+              ) : f.source === 'field' ? (
+                <>
+                  <select
+                    value={f.table}
+                    onChange={(e) => updateField(i, 'table', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {availableTables.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={f.field}
+                    onChange={(e) => updateField(i, 'field', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {(tableFields[f.table] || []).map((col) => (
+                      <option key={col} value={col}>
+                        {col}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={f.aggregate}
+                    onChange={(e) => updateField(i, 'aggregate', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {AGGREGATES.map((ag) => (
+                      <option key={ag} value={ag}>
+                        {ag}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : null}
+              <input
+                placeholder={t('reportBuilder.aliasPlaceholder', 'alias')}
+                value={f.alias}
+                onChange={(e) => updateField(i, 'alias', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              />
+              {(f.calcParts || []).map((p, k) => (
+                <span key={k} style={{ marginLeft: '0.5rem' }}>
+                  {k > 0 && (
+                    <select
+                      value={p.operator}
+                      onChange={(e) =>
+                        updateCalcPart(i, k, 'operator', e.target.value)
+                      }
+                      style={{ marginRight: '0.5rem' }}
+                    >
+                      {CALC_OPERATORS.map((op) => (
+                        <option key={op} value={op}>
+                          {op}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                    <select
+                      value={p.source}
+                      onChange={(e) =>
+                        updateCalcPart(i, k, 'source', e.target.value)
+                      }
+                    >
+                      <option value="none">{noneLabel}</option>
+                      <option value="field">{fieldLabel}</option>
+                      <option value="alias">{aliasLabel}</option>
+                    </select>
+                  {p.source === 'alias' ? (
+                    <select
+                      value={p.alias}
+                      onChange={(e) =>
+                        updateCalcPart(i, k, 'alias', e.target.value)
+                      }
+                      style={{ marginLeft: '0.5rem' }}
+                    >
+                      <option value="">{noneLabel}</option>
+                      {fields.slice(0, i).map((pf) =>
+                        pf.alias ? (
+                          <option key={pf.alias} value={pf.alias}>
+                            {pf.alias}
+                          </option>
+                        ) : null,
+                      )}
+                    </select>
+                  ) : p.source === 'field' ? (
+                    <>
+                      <select
+                        value={p.table}
+                        onChange={(e) =>
+                          updateCalcPart(i, k, 'table', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        {availableTables.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={p.field}
+                        onChange={(e) =>
+                          updateCalcPart(i, k, 'field', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        {(tableFields[p.table] || []).map((col) => (
+                          <option key={col} value={col}>
+                            {col}
+                          </option>
+                        ))}
+                      </select>
+                    </>
+                  ) : null}
+                  <button
+                    onClick={() => removeCalcPart(i, k)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+              <button
+                onClick={() => addCalcPart(i)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {t('reportBuilder.addPart', 'Add Part')}
+              </button>
+              {f.source === 'field' && f.aggregate !== 'NONE' && (
+                <div style={{ display: 'inline-block', marginLeft: '0.5rem' }}>
+                  {(f.conditions || []).map((c, k) => (
+                    <div
+                      key={k}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        marginTop: '0.25rem',
+                      }}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={() => handleDrop('fieldConditions', k, i)}
+                    >
+                      <span
+                        draggable
+                        onDragStart={() =>
+                          setDragItem({
+                            type: 'fieldConditions',
+                            fieldIndex: i,
+                            index: k,
+                          })
+                        }
+                        style={{ cursor: 'move', marginRight: '0.5rem' }}
+                      >
+                        ☰
+                      </span>
+                      {k > 0 && (
+                        <select
+                          value={c.connector}
+                          onChange={(e) =>
+                            updateFieldCondition(i, k, 'connector', e.target.value)
+                          }
+                          style={{ marginRight: '0.5rem' }}
+                        >
+                          <option value="AND">AND</option>
+                          <option value="OR">OR</option>
+                        </select>
+                      )}
+                      {renderParenSelect(
+                        c.open,
+                        (v) => updateFieldCondition(i, k, 'open', v),
+                        'open',
+                      )}
+                      <select
+                        value={c.table}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'table', e.target.value)
+                        }
+                      >
+                        {availableTables.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={c.field}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'field', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        {(tableFields[c.table] || []).map((col) => (
+                          <option key={col} value={col}>
+                            {col}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={c.operator}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'operator', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        {OPERATORS.map((op) => (
+                          <option key={op} value={op}>
+                            {op}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        value={c.valueType}
+                        onChange={(e) =>
+                          updateFieldCondition(i, k, 'valueType', e.target.value)
+                        }
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        <option value="param">{paramLabel}</option>
+                        <option value="value">{valueLabel}</option>
+                      </select>
+                      {c.valueType === 'param' ? (
+                        <select
+                          value={c.param}
+                          onChange={(e) =>
+                            updateFieldCondition(i, k, 'param', e.target.value)
+                          }
+                          style={{ marginLeft: '0.5rem' }}
+                        >
+                          {params.map((p) => (
+                            <option key={p.name} value={p.name}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      ) : fieldEnums[c.table]?.[c.field]?.length ? (
+                        <select
+                          value={c.value}
+                          onChange={(e) =>
+                            updateFieldCondition(i, k, 'value', e.target.value)
+                          }
+                          style={{ marginLeft: '0.5rem' }}
+                        >
+                          <option value=""></option>
+                          {fieldEnums[c.table][c.field].map((v) => (
+                            <option key={v} value={v}>
+                              {v}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          value={c.value}
+                          onChange={(e) =>
+                            updateFieldCondition(i, k, 'value', e.target.value)
+                          }
+                          style={{ marginLeft: '0.5rem' }}
+                        />
+                      )}
+                      {renderParenSelect(
+                        c.close,
+                        (v) => updateFieldCondition(i, k, 'close', v),
+                        'close',
+                      )}
+                      <button
+                        onClick={() => removeFieldCondition(i, k)}
+                        style={{ marginLeft: '0.5rem' }}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                  <button onClick={() => addFieldCondition(i)}>
+                    {addConditionLabel}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+          <button onClick={addField}>
+            {t('reportBuilder.addField', 'Add Field')}
+          </button>
+        </section>
+
+        <section>
+          <h3>{t('reportBuilder.groupBy', 'Group By')}</h3>
+          {groups.map((g, i) => (
+            <div
+              key={i}
+              style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleDrop('groups', i)}
+            >
+              <span
+                draggable
+                onDragStart={() => setDragItem({ type: 'groups', index: i })}
+                style={{ cursor: 'move', marginRight: '0.5rem' }}
+              >
+                ☰
+              </span>
+              <select
+                value={g.table}
+                onChange={(e) => updateGroup(i, 'table', e.target.value)}
+              >
+                {availableTables.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={g.field}
+                onChange={(e) => updateGroup(i, 'field', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {(tableFields[g.table] || []).map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => removeGroup(i)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+          <button onClick={addGroup}>
+            {t('reportBuilder.addGroup', 'Add Group')}
+          </button>
+        </section>
+
+        <section>
+          <h3>{t('reportBuilder.having', 'Having')}</h3>
+          {having.map((h, i) => (
+            <div
+              key={i}
+              style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleDrop('having', i)}
+            >
+              <span
+                draggable
+                onDragStart={() => setDragItem({ type: 'having', index: i })}
+                style={{ cursor: 'move', marginRight: '0.5rem' }}
+              >
+                ☰
+              </span>
+              {i > 0 && (
                 <select
-                  value={c.param}
-                  onChange={(e) => updateCondition(i, 'param', e.target.value)}
+                  value={h.connector}
+                  onChange={(e) => updateHaving(i, 'connector', e.target.value)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  <option value="AND">AND</option>
+                  <option value="OR">OR</option>
+                </select>
+              )}
+              {renderParenSelect(
+                h.open,
+                (v) => updateHaving(i, 'open', v),
+                'open',
+              )}
+              <select
+                value={h.source}
+                onChange={(e) => updateHaving(i, 'source', e.target.value)}
+              >
+                <option value="field">{fieldLabel}</option>
+                <option value="alias">{aliasLabel}</option>
+              </select>
+              {h.source === 'field' ? (
+                <>
+                  <select
+                    value={h.aggregate}
+                    onChange={(e) => updateHaving(i, 'aggregate', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {AGGREGATES.filter((a) => a !== 'NONE').map((ag) => (
+                      <option key={ag} value={ag}>
+                        {ag}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={h.table}
+                    onChange={(e) => updateHaving(i, 'table', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {availableTables.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={h.field}
+                    onChange={(e) => updateHaving(i, 'field', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {(tableFields[h.table] || []).map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              ) : (
+                <select
+                  value={h.alias}
+                  onChange={(e) => updateHaving(i, 'alias', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                >
+                  {fields
+                    .filter((f) => f.alias)
+                    .map((f) => (
+                      <option key={f.alias} value={f.alias}>
+                        {f.alias}
+                      </option>
+                    ))}
+                </select>
+              )}
+              <select
+                value={h.operator}
+                onChange={(e) => updateHaving(i, 'operator', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {OPERATORS.map((op) => (
+                  <option key={op} value={op}>
+                    {op}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={h.valueType}
+                onChange={(e) => updateHaving(i, 'valueType', e.target.value)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                <option value="param">{paramLabel}</option>
+                <option value="value">{valueLabel}</option>
+              </select>
+              {h.valueType === 'param' ? (
+                <select
+                  value={h.param}
+                  onChange={(e) => updateHaving(i, 'param', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
                 >
                   {params.map((p) => (
                     <option key={p.name} value={p.name}>
@@ -2844,239 +2711,414 @@ function ReportBuilderInner() {
                     </option>
                   ))}
                 </select>
-                {renderParenSelect(
-                  c.close,
-                  (v) => updateCondition(i, 'close', v),
-                  'close',
-                )}
-                <button
-                  onClick={() => removeCondition(i)}
+              ) : h.source === 'field' && fieldEnums[h.table]?.[h.field]?.length ? (
+                <select
+                  value={h.value}
+                  onChange={(e) => updateHaving(i, 'value', e.target.value)}
                   style={{ marginLeft: '0.5rem' }}
                 >
-                  ✕
-                </button>
-              </>
-            )}
-          </div>
-        ))}
-        <button onClick={addCondition} disabled={!params.length}>
-          {addConditionLabel}
-        </button>
-        <button onClick={addRawCondition} style={{ marginLeft: '0.5rem' }}>
-          {t('reportBuilder.addRawCondition', 'Add Raw Condition')}
-        </button>
-        <div style={{ marginTop: '0.5rem' }}>
-          <span style={{ marginRight: '0.5rem' }}>
-            {t('reportBuilder.unionAddedCount', 'Added: {{count}}', {
-              count: Math.max(0, unionQueries.length - 1),
-            })}
-          </span>
-          <select
-            value={unionType}
-            onChange={(e) => setUnionType(e.target.value)}
-            style={{ marginRight: '0.5rem' }}
-          >
-            <option value="UNION">UNION</option>
-            <option value="UNION ALL">UNION ALL</option>
-          </select>
-          <button onClick={addUnionQuery} style={{ marginRight: '0.5rem' }}>
-            {t('reportBuilder.addUnion', 'Add UNION')}
-          </button>
-          {unionQueries.map((_, idx) => (
-            <button
-              key={idx}
-              onClick={() => switchUnionQuery(idx)}
-              style={{
-                marginRight: '0.25rem',
-                fontWeight: currentUnionIndex === idx ? 'bold' : undefined,
-              }}
-            >
-              {idx + 1}
-            </button>
+                  <option value=""></option>
+                  {fieldEnums[h.table][h.field].map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  value={h.value}
+                  onChange={(e) => updateHaving(i, 'value', e.target.value)}
+                  style={{ marginLeft: '0.5rem' }}
+                />
+              )}
+              {renderParenSelect(
+                h.close,
+                (v) => updateHaving(i, 'close', v),
+                'close',
+              )}
+              <button
+                onClick={() => removeHaving(i)}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                ✕
+              </button>
+            </div>
           ))}
-        </div>
-      </section>
-
-      <section style={{ marginTop: '1rem' }}>
-        <label>
-          {t('reportBuilder.procedureName', 'Procedure Name')}:
-          <div>
-            {`${generalConfig?.general?.reportProcPrefix || ''}${company ? `${company}_` : ''}`}
-            <input
-              value={procName}
-              onChange={(e) => setProcName(e.target.value)}
-              style={{ width: '50%' }}
-            />
-            {generalConfig?.general?.reportProcSuffix || ''}
-          </div>
-        </label>
-      </section>
-
-      <section style={{ marginTop: '1rem' }}>
-        <h3>{t('reportBuilder.generate', 'Generate')}</h3>
-        <button onClick={handleGenerateSql}>
-          {t('reportBuilder.createSql', 'Create SQL')}
-        </button>
-        <button onClick={handleGenerateView} style={{ marginLeft: '0.5rem' }}>
-          {t('reportBuilder.createView', 'Create View')}
-        </button>
-        <button onClick={handleGenerateProc} style={{ marginLeft: '0.5rem' }}>
-          {t('reportBuilder.createProcedure', 'Create Procedure')}
-        </button>
-      </section>
-
-      {viewSql && (
-        <section style={{ marginTop: '1rem' }}>
-          <h3>{t('reportBuilder.viewHeading', 'View')}</h3>
-          <button onClick={handlePostView}>
-            {t('reportBuilder.postView', 'POST View')}
+          <button onClick={addHaving}>
+            {t('reportBuilder.addHaving', 'Add Having')}
           </button>
         </section>
-      )}
 
-      <section style={{ marginTop: '1rem' }}>
-        <h3>{t('reportBuilder.storedProcedure', 'Stored Procedure')}</h3>
-        {procSql && (
-          <button onClick={handlePostProc} disabled={procFileIsDefault}>
-            {t('reportBuilder.postProcedure', 'POST Procedure')}
-          </button>
-        )}
-        <button
-          onClick={handleSaveProcFile}
-          style={{ marginLeft: '0.5rem' }}
-          disabled={procFileIsDefault}
-        >
-          {t('reportBuilder.saveToHost', 'Save to Host')}
-        </button>
-        <select
-          value={selectedProcFile}
-          onChange={(e) => {
-            const val = e.target.value;
-            setSelectedProcFile(val);
-            const item = procFiles.find((f) => f.name === val);
-            setProcFileIsDefault(item?.isDefault || false);
-          }}
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {procFiles.map((f) => (
-            <option key={f.name} value={f.name}>
-              {f.isDefault ? `${f.name} ${defaultTag}` : f.name}
-            </option>
-          ))}
-        </select>
-        <button onClick={handleLoadProcFile} style={{ marginLeft: '0.5rem' }}>
-          {t('reportBuilder.loadFromHost', 'Load from Host')}
-        </button>
-        {procFileIsDefault && (
-          <button
-            onClick={handleImportProcFile}
-            style={{ marginLeft: '0.5rem' }}
-          >
-            {t('reportBuilder.importDefaultProcedure', 'Import default procedure')}
-          </button>
-        )}
-        <select
-          value={selectedDbProcedure}
-          onChange={(e) => {
-            const val = e.target.value;
-            setSelectedDbProcedure(val);
-            const item = dbProcedures.find((p) => p.name === val);
-            setDbProcIsDefault(item?.isDefault || false);
-          }}
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {displayProcedures.map((p) => (
-            <option key={p.name} value={p.name}>
-              {p.name}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={handleLoadDbProcedure}
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {t('reportBuilder.loadScript', 'Load Script')}
-        </button>
-        <button
-          onClick={handleLoadConfigFromProcedure}
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {t(
-            'reportBuilder.loadConfigFromProcedure',
-            'Load config from stored procedure',
-          )}
-        </button>
-        <button
-          onClick={handleDeleteProcedure}
-          style={{ marginLeft: '0.5rem' }}
-          disabled={dbProcIsDefault}
-        >
-          {t('reportBuilder.deleteProcedure', 'Delete Procedure')}
-        </button>
-      </section>
+        <section>
+          <h3>{t('reportBuilder.parameters', 'Parameters')}</h3>
+          <div>
+            {SESSION_PARAMS.map((p) => (
+              <label key={p.name} style={{ marginRight: '1rem' }}>
+                <input
+                  type="checkbox"
+                  checked={params.some((x) => x.name === p.name)}
+                  onChange={(e) => toggleSessionParam(p, e.target.checked)}
+                />
+                {p.name}
+              </label>
+            ))}
+          </div>
+          <div style={{ marginTop: '0.5rem' }}>
+            <input
+              placeholder={t('reportBuilder.paramNamePlaceholder', 'name')}
+              value={customParamName}
+              onChange={(e) => setCustomParamName(e.target.value)}
+            />
+            <select
+              value={customParamType}
+              onChange={(e) => setCustomParamType(e.target.value)}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {PARAM_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+            <button onClick={addCustomParam} style={{ marginLeft: '0.5rem' }}>
+              {t('reportBuilder.addParam', 'Add')}
+            </button>
+          </div>
+          <ul>
+            {params
+              .filter((p) => p.source === 'custom')
+              .map((p) => (
+                <li key={p.name}>
+                  {p.name} {p.type}{' '}
+                  <button onClick={() => removeParam(p.name)}>✕</button>
+                </li>
+              ))}
+          </ul>
+        </section>
 
-      {procFileText && (
-        <section style={{ marginTop: '1rem' }}>
-          <h3>{t('reportBuilder.editLoadedSql', 'Edit Loaded SQL')}</h3>
-          <textarea
-            value={procFileText}
-            onChange={(e) => setProcFileText(e.target.value)}
-            rows={8}
-            style={{ width: '100%' }}
-            readOnly={procFileIsDefault}
-          />
-          {procFileIsDefault && (
-            <div style={{ marginTop: '0.25rem', color: 'red' }}>
-              {t(
-                'reportBuilder.defaultFileReadonly',
-                'Default file is read-only. Import to edit.',
+        <section>
+          <h3>{t('reportBuilder.conditions', 'Conditions')}</h3>
+          {conditions.map((c, i) => (
+            <div
+              key={i}
+              style={{ display: 'flex', alignItems: 'center', marginBottom: '0.5rem' }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => handleDrop('conditions', i)}
+            >
+              <span
+                draggable
+                onDragStart={() => setDragItem({ type: 'conditions', index: i })}
+                style={{ cursor: 'move', marginRight: '0.5rem' }}
+              >
+                ☰
+              </span>
+              {i > 0 && (
+                <select
+                  value={c.connector}
+                  onChange={(e) => updateCondition(i, 'connector', e.target.value)}
+                  style={{ marginRight: '0.5rem' }}
+                >
+                  <option value="AND">AND</option>
+                  <option value="OR">OR</option>
+                </select>
+              )}
+              {c.raw ? (
+                <>
+                  {renderParenSelect(
+                    c.open,
+                    (v) => updateCondition(i, 'open', v),
+                    'open',
+                  )}
+                  <input
+                    value={c.raw}
+                    onChange={(e) => updateCondition(i, 'raw', e.target.value)}
+                    style={{ width: '50%' }}
+                  />
+                  {renderParenSelect(
+                    c.close,
+                    (v) => updateCondition(i, 'close', v),
+                    'close',
+                  )}
+                  <button
+                    onClick={() => removeCondition(i)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    ✕
+                  </button>
+                </>
+              ) : (
+                <>
+                  {renderParenSelect(
+                    c.open,
+                    (v) => updateCondition(i, 'open', v),
+                    'open',
+                  )}
+                  <select
+                    value={c.table}
+                    onChange={(e) => updateCondition(i, 'table', e.target.value)}
+                  >
+                    {availableTables.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={c.field}
+                    onChange={(e) => updateCondition(i, 'field', e.target.value)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    {(tableFields[c.table] || []).map((f) => (
+                      <option key={f} value={f}>
+                        {f}
+                      </option>
+                    ))}
+                  </select>
+                  <span> = </span>
+                  <select
+                    value={c.param}
+                    onChange={(e) => updateCondition(i, 'param', e.target.value)}
+                  >
+                    {params.map((p) => (
+                      <option key={p.name} value={p.name}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  {renderParenSelect(
+                    c.close,
+                    (v) => updateCondition(i, 'close', v),
+                    'close',
+                  )}
+                  <button
+                    onClick={() => removeCondition(i)}
+                    style={{ marginLeft: '0.5rem' }}
+                  >
+                    ✕
+                  </button>
+                </>
               )}
             </div>
-          )}
-          <button onClick={handleParseSql} style={{ marginTop: '0.5rem' }}>
-            {t('reportBuilder.parseSql', 'Parse SQL')}
+          ))}
+          <button onClick={addCondition} disabled={!params.length}>
+            {addConditionLabel}
           </button>
-          <button
-            onClick={handleReplaceProcedure}
-            style={{ marginTop: '0.5rem', marginLeft: '0.5rem' }}
-            disabled={procFileIsDefault}
-          >
-            {t('reportBuilder.replaceProcedure', 'Replace Procedure')}
+          <button onClick={addRawCondition} style={{ marginLeft: '0.5rem' }}>
+            {t('reportBuilder.addRawCondition', 'Add Raw Condition')}
+          </button>
+          <div style={{ marginTop: '0.5rem' }}>
+            <span style={{ marginRight: '0.5rem' }}>
+              {t('reportBuilder.unionAddedCount', 'Added: {{count}}', {
+                count: Math.max(0, unionQueries.length - 1),
+              })}
+            </span>
+            <select
+              value={unionType}
+              onChange={(e) => setUnionType(e.target.value)}
+              style={{ marginRight: '0.5rem' }}
+            >
+              <option value="UNION">UNION</option>
+              <option value="UNION ALL">UNION ALL</option>
+            </select>
+            <button onClick={addUnionQuery} style={{ marginRight: '0.5rem' }}>
+              {t('reportBuilder.addUnion', 'Add UNION')}
+            </button>
+            {unionQueries.map((_, idx) => (
+              <button
+                key={idx}
+                onClick={() => switchUnionQuery(idx)}
+                style={{
+                  marginRight: '0.25rem',
+                  fontWeight: currentUnionIndex === idx ? 'bold' : undefined,
+                }}
+              >
+                {idx + 1}
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section style={{ marginTop: '1rem' }}>
+          <label>
+            {t('reportBuilder.procedureName', 'Procedure Name')}:
+            <div>
+              {`${generalConfig?.general?.reportProcPrefix || ''}${company ? `${company}_` : ''}`}
+              <input
+                value={procName}
+                onChange={(e) => setProcName(e.target.value)}
+                style={{ width: '50%' }}
+              />
+              {generalConfig?.general?.reportProcSuffix || ''}
+            </div>
+          </label>
+        </section>
+
+        <section style={{ marginTop: '1rem' }}>
+          <h3>{t('reportBuilder.generate', 'Generate')}</h3>
+          <button onClick={handleGenerateSql}>
+            {t('reportBuilder.createSql', 'Create SQL')}
+          </button>
+          <button onClick={handleGenerateView} style={{ marginLeft: '0.5rem' }}>
+            {t('reportBuilder.createView', 'Create View')}
+          </button>
+          <button onClick={handleGenerateProc} style={{ marginLeft: '0.5rem' }}>
+            {t('reportBuilder.createProcedure', 'Create Procedure')}
           </button>
         </section>
-      )}
 
-      <section style={{ marginTop: '1rem' }}>
-        <h3>{t('reportBuilder.config', 'Config')}</h3>
-        <button onClick={handleSaveConfig}>
-          {t('reportBuilder.saveConfig', 'Save Config')}
-        </button>
-        <select
-          value={selectedReport}
-          onChange={(e) => setSelectedReport(e.target.value)}
-          style={{ marginLeft: '0.5rem' }}
-        >
-          {savedReports.map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <button onClick={() => handleLoadConfig()} style={{ marginLeft: '0.5rem' }}>
-          {t('reportBuilder.loadConfig', 'Load Config')}
-        </button>
-      </section>
+        {viewSql && (
+          <section style={{ marginTop: '1rem' }}>
+            <h3>{t('reportBuilder.viewHeading', 'View')}</h3>
+            <button onClick={handlePostView}>
+              {t('reportBuilder.postView', 'POST View')}
+            </button>
+          </section>
+        )}
 
-      {error && <p style={{ color: 'red' }}>{error}</p>}
-      {selectSql && (
-        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{selectSql}</pre>
-      )}
-      {viewSql && (
-        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{viewSql}</pre>
-      )}
-      {procSql && (
-        <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{procSql}</pre>
-      )}
+        <section style={{ marginTop: '1rem' }}>
+          <h3>{t('reportBuilder.storedProcedure', 'Stored Procedure')}</h3>
+          {procSql && (
+            <button onClick={handlePostProc} disabled={procFileIsDefault}>
+              {t('reportBuilder.postProcedure', 'POST Procedure')}
+            </button>
+          )}
+          <button
+            onClick={handleSaveProcFile}
+            style={{ marginLeft: '0.5rem' }}
+            disabled={procFileIsDefault}
+          >
+            {t('reportBuilder.saveToHost', 'Save to Host')}
+          </button>
+          <select
+            value={selectedProcFile}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSelectedProcFile(val);
+              const item = procFiles.find((f) => f.name === val);
+              setProcFileIsDefault(item?.isDefault || false);
+            }}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            {procFiles.map((f) => (
+              <option key={f.name} value={f.name}>
+                {f.isDefault ? `${f.name} ${defaultTag}` : f.name}
+              </option>
+            ))}
+          </select>
+          <button onClick={handleLoadProcFile} style={{ marginLeft: '0.5rem' }}>
+            {t('reportBuilder.loadFromHost', 'Load from Host')}
+          </button>
+          {procFileIsDefault && (
+            <button
+              onClick={handleImportProcFile}
+              style={{ marginLeft: '0.5rem' }}
+            >
+              {t('reportBuilder.importDefaultProcedure', 'Import default procedure')}
+            </button>
+          )}
+          <select
+            value={selectedDbProcedure}
+            onChange={(e) => {
+              const val = e.target.value;
+              setSelectedDbProcedure(val);
+              const item = dbProcedures.find((p) => p.name === val);
+              setDbProcIsDefault(item?.isDefault || false);
+            }}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            {displayProcedures.map((p) => (
+              <option key={p.name} value={p.name}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+          <button
+            onClick={handleLoadDbProcedure}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            {t('reportBuilder.loadScript', 'Load Script')}
+          </button>
+          <button
+            onClick={handleLoadConfigFromProcedure}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            {t(
+              'reportBuilder.loadConfigFromProcedure',
+              'Load config from stored procedure',
+            )}
+          </button>
+          <button
+            onClick={handleDeleteProcedure}
+            style={{ marginLeft: '0.5rem' }}
+            disabled={dbProcIsDefault}
+          >
+            {t('reportBuilder.deleteProcedure', 'Delete Procedure')}
+          </button>
+        </section>
+
+        {procFileText && (
+          <section style={{ marginTop: '1rem' }}>
+            <h3>{t('reportBuilder.editLoadedSql', 'Edit Loaded SQL')}</h3>
+            <textarea
+              value={procFileText}
+              onChange={(e) => setProcFileText(e.target.value)}
+              rows={8}
+              style={{ width: '100%' }}
+              readOnly={procFileIsDefault}
+            />
+            {procFileIsDefault && (
+              <div style={{ marginTop: '0.25rem', color: 'red' }}>
+                {t(
+                  'reportBuilder.defaultFileReadonly',
+                  'Default file is read-only. Import to edit.',
+                )}
+              </div>
+            )}
+            <button onClick={handleParseSql} style={{ marginTop: '0.5rem' }}>
+              {t('reportBuilder.parseSql', 'Parse SQL')}
+            </button>
+            <button
+              onClick={handleReplaceProcedure}
+              style={{ marginTop: '0.5rem', marginLeft: '0.5rem' }}
+              disabled={procFileIsDefault}
+            >
+              {t('reportBuilder.replaceProcedure', 'Replace Procedure')}
+            </button>
+          </section>
+        )}
+
+        <section style={{ marginTop: '1rem' }}>
+          <h3>{t('reportBuilder.config', 'Config')}</h3>
+          <button onClick={handleSaveConfig}>
+            {t('reportBuilder.saveConfig', 'Save Config')}
+          </button>
+          <select
+            value={selectedReport}
+            onChange={(e) => setSelectedReport(e.target.value)}
+            style={{ marginLeft: '0.5rem' }}
+          >
+            {savedReports.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+          <button onClick={() => handleLoadConfig()} style={{ marginLeft: '0.5rem' }}>
+            {t('reportBuilder.loadConfig', 'Load Config')}
+          </button>
+        </section>
+
+        {error && <p style={{ color: 'red' }}>{error}</p>}
+        {selectSql && (
+          <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{selectSql}</pre>
+        )}
+        {viewSql && (
+          <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{viewSql}</pre>
+        )}
+        {procSql && (
+          <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{procSql}</pre>
+        )}
+      </div>
     </div>
   );
 }
