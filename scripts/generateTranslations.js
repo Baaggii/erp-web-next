@@ -362,7 +362,193 @@ function writeLocaleFile(lang, obj) {
 
 /* ---------------- Providers ---------------- */
 
-async function translateWithGoogle(text, to, from, key) {
+async function getOpenAIJsonResponse(prompt) {
+  if (!OpenAI) throw new Error('missing OpenAI API key');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const completion = await OpenAI.chat.completions.create(
+      {
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+      },
+      { signal: controller.signal },
+    );
+    const content = completion.choices?.[0]?.message?.content?.trim();
+    if (!content) throw new Error('empty response');
+    const json = content.replace(/```json|```/g, '').trim();
+    try {
+      return JSON.parse(json);
+    } catch (err) {
+      throw new Error(`invalid JSON response: ${err.message}`);
+    }
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function verifyTranslationWithOpenAI({
+  sourceText,
+  sourceLang,
+  targetLang,
+  translation,
+  tooltip,
+  metadata,
+  purpose,
+  key,
+  baseEnglish,
+  tooltipSourceText,
+  tooltipSourceLang,
+  providerName,
+}) {
+  const sourceLangName = languageNames[sourceLang] || sourceLang || 'English';
+  const targetLangName = languageNames[targetLang] || targetLang || 'English';
+  const tooltipLangName =
+    languageNames[tooltipSourceLang] || tooltipSourceLang || 'English';
+  const metadataText = formatMetadataForPrompt(metadata);
+  const sections = [
+    'You are an ERP localization QA assistant.',
+    `Confirm that the proposed ${targetLangName} output is meaningful, professional, and written in ${targetLangName}.`,
+    'Ensure the text fits ERP product terminology and avoids literal or nonsensical translations.',
+    'Respond only with JSON like {"ok":true|false,"feedback":"...","correctedTranslation":"...","correctedTooltip":"..."}.',
+    `If ok is false, provide concise feedback (under 120 characters). Include correctedTranslation and/or correctedTooltip only when you can confidently supply a better ${targetLangName} result.`,
+    `Source text (${sourceLangName}): ${sourceText || '(empty)'}`,
+    `Proposed translation (${targetLangName}): ${translation || '(empty)'}`,
+  ];
+  if (purpose === 'tooltip' || (tooltip && tooltip.trim())) {
+    sections.push(
+      `Proposed tooltip (${targetLangName}): ${tooltip || '(empty)'}`,
+    );
+  }
+  if (baseEnglish) {
+    sections.push(`Base English label: ${baseEnglish}`);
+  }
+  if (tooltipSourceText) {
+    sections.push(
+      `Reference tooltip (${tooltipLangName}): ${tooltipSourceText}`,
+    );
+  }
+  if (key) sections.push(`Translation key: ${key}`);
+  if (metadataText) sections.push(`Metadata:\n${metadataText}`);
+  if (providerName) sections.push(`Provider attempt: ${providerName}`);
+
+  const prompt = sections.join('\n\n');
+  try {
+    const result = await getOpenAIJsonResponse(prompt);
+    const ok = Boolean(result?.ok);
+    const feedback =
+      typeof result?.feedback === 'string' ? result.feedback.trim() : '';
+    const correctedTranslation =
+      result?.correctedTranslation !== undefined &&
+      result?.correctedTranslation !== null
+        ? String(result.correctedTranslation).trim()
+        : undefined;
+    const correctedTooltip =
+      result?.correctedTooltip !== undefined &&
+      result?.correctedTooltip !== null
+        ? String(result.correctedTooltip).trim()
+        : undefined;
+    const response = { ok, feedback };
+    if (correctedTranslation !== undefined) {
+      response.correctedTranslation = correctedTranslation;
+    }
+    if (correctedTooltip !== undefined) {
+      response.correctedTooltip = correctedTooltip;
+    }
+    return response;
+  } catch (err) {
+    throw new Error(`verification request failed: ${err.message}`);
+  }
+}
+
+async function applyVerificationCorrections({
+  sourceText,
+  sourceLang,
+  targetLang,
+  translation,
+  tooltip,
+  metadata,
+  purpose,
+  key,
+  baseEnglish,
+  tooltipSourceText,
+  tooltipSourceLang,
+  providerName,
+}) {
+  let currentTranslation = typeof translation === 'string' ? translation : '';
+  let currentTooltip = typeof tooltip === 'string' ? tooltip : '';
+  let correctionsApplied = false;
+  let attempts = 0;
+  let lastFeedback = '';
+
+  while (attempts < 3) {
+    const verification = await verifyTranslationWithOpenAI({
+      sourceText,
+      sourceLang,
+      targetLang,
+      translation: currentTranslation,
+      tooltip: currentTooltip,
+      metadata,
+      purpose,
+      key,
+      baseEnglish,
+      tooltipSourceText,
+      tooltipSourceLang,
+      providerName,
+    });
+
+    const feedback = verification.feedback || '';
+
+    if (verification.ok) {
+      return {
+        ok: true,
+        value: {
+          translation: currentTranslation.trim(),
+          tooltip: currentTooltip.trim(),
+        },
+        correctionsApplied,
+        feedback,
+      };
+    }
+
+    lastFeedback = feedback || 'verification rejected output';
+
+    const hasTranslationUpdate =
+      verification.correctedTranslation !== undefined;
+    const hasTooltipUpdate =
+      verification.correctedTooltip !== undefined;
+
+    if (hasTranslationUpdate || hasTooltipUpdate) {
+      if (hasTranslationUpdate) {
+        currentTranslation = String(
+          verification.correctedTranslation ?? currentTranslation,
+        ).trim();
+      }
+      if (hasTooltipUpdate) {
+        currentTooltip = String(
+          verification.correctedTooltip ?? currentTooltip,
+        ).trim();
+      }
+      correctionsApplied = true;
+      attempts++;
+      continue;
+    }
+
+    return { ok: false, feedback: lastFeedback };
+  }
+
+  return { ok: false, feedback: lastFeedback || 'verification rejected output' };
+}
+
+async function translateWithGoogle(text, to, from, key, options = {}) {
+  const {
+    metadata = null,
+    purpose = '',
+    baseEnglish = '',
+    tooltipSourceText = '',
+    tooltipSourceLang = 'en',
+    resultType = 'translation',
+  } = options || {};
   const params = new URLSearchParams({
     client: 'gtx',
     sl: from,
@@ -404,7 +590,31 @@ async function translateWithGoogle(text, to, from, key) {
           `unexpected response for key="${key}" (${from}->${to})`,
         );
       }
-      return data[0].map((seg) => seg[0]).join('');
+      const rawValue = data[0].map((seg) => seg[0]).join('');
+      const mode = resultType === 'tooltip' ? 'tooltip' : 'translation';
+      const verification = await applyVerificationCorrections({
+        sourceText: text,
+        sourceLang: from,
+        targetLang: to,
+        translation: mode === 'translation' ? rawValue : '',
+        tooltip: mode === 'tooltip' ? rawValue : '',
+        metadata,
+        purpose: purpose || (mode === 'tooltip' ? 'tooltip' : ''),
+        key,
+        baseEnglish,
+        tooltipSourceText,
+        tooltipSourceLang,
+        providerName: 'Google',
+      });
+      if (!verification.ok) {
+        throw new Error(`verification failed: ${verification.feedback}`);
+      }
+      const { translation, tooltip } = verification.value;
+      return {
+        translation: mode === 'translation' ? translation : tooltip,
+        tooltip,
+        correctionsApplied: verification.correctionsApplied,
+      };
     } catch (err) {
       clearTimeout(timer);
       if (attempt === 0 && err.name === 'AbortError') {
@@ -419,10 +629,8 @@ async function translateWithGoogle(text, to, from, key) {
   );
 }
 
-async function translateWithOpenAI(text, from, to, options = {}) {
+async function requestOpenAITranslation(text, from, to, options = {}) {
   if (!OpenAI) throw new Error('missing OpenAI API key');
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const sourceLang = languageNames[from] || from || 'English';
   const targetLang = languageNames[to] || to || 'English';
   const {
@@ -432,6 +640,7 @@ async function translateWithOpenAI(text, from, to, options = {}) {
     purpose = '',
     tooltipSourceText = '',
     tooltipSourceLang = 'en',
+    retryFeedback = '',
   } = options || {};
   let prompt;
   if (purpose === 'tooltip') {
@@ -445,6 +654,11 @@ async function translateWithOpenAI(text, from, to, options = {}) {
       'Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary.',
       `Base label (${sourceLang}): ${text}`,
     ];
+    if (retryFeedback) {
+      sections.push(
+        `Address the following QA feedback from the previous attempt and correct any issues: ${retryFeedback}`,
+      );
+    }
     if (normalizedBaseEnglish) {
       sections.push(`English UI label: ${normalizedBaseEnglish}`);
     }
@@ -477,6 +691,11 @@ async function translateWithOpenAI(text, from, to, options = {}) {
         'Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary.',
         `Label (${sourceLang}): ${text}`,
       );
+      if (retryFeedback) {
+        sections.push(
+          `Address the following QA feedback from the previous attempt and correct any issues: ${retryFeedback}`,
+        );
+      }
       if (normalizedBaseEnglish) {
         sections.push(`English UI label: ${normalizedBaseEnglish}`);
       }
@@ -487,36 +706,64 @@ async function translateWithOpenAI(text, from, to, options = {}) {
       if (metadataText) sections.push(`Context:\n${metadataText}`);
       prompt = sections.join('\n\n');
     } else {
-      prompt = `Translate this ${sourceLang} ERP term into ${targetLang}. Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary. The text is ${sourceLang}, not Russian.\n\n${text}`;
+      const feedbackInstruction = retryFeedback
+        ? `\n\nAddress the following QA feedback from the previous attempt and correct any issues: ${retryFeedback}`
+        : '';
+      prompt = `Translate this ${sourceLang} ERP term into ${targetLang}. Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary. The text is ${sourceLang}, not Russian.${feedbackInstruction}\n\n${text}`;
     }
   }
-  try {
-    const completion = await OpenAI.chat.completions.create(
-      {
-        model: 'gpt-4o-mini',
-        messages: [{ role: 'user', content: prompt }],
-      },
-      { signal: controller.signal }
-    );
-    clearTimeout(timer);
-    const content = completion.choices?.[0]?.message?.content?.trim();
-    if (!content) throw new Error('empty response');
-    let parsed;
-    try {
-      const json = content.replace(/```json|```/g, '').trim();
-      parsed = JSON.parse(json);
-    } catch (err) {
-      throw new Error(`invalid JSON response: ${err.message}`);
-    }
-    const { translation, tooltip } = parsed;
-    if (typeof translation !== 'string' || typeof tooltip !== 'string') {
-      throw new Error('missing fields in response');
-    }
-    return { translation: translation.trim(), tooltip: tooltip.trim() };
-  } catch (err) {
-    clearTimeout(timer);
-    throw err;
+  const parsed = await getOpenAIJsonResponse(prompt);
+  const { translation, tooltip } = parsed;
+  if (typeof translation !== 'string' || typeof tooltip !== 'string') {
+    throw new Error('missing fields in response');
   }
+  return { translation: translation.trim(), tooltip: tooltip.trim() };
+}
+
+async function translateWithOpenAI(text, from, to, options = {}) {
+  if (!OpenAI) throw new Error('missing OpenAI API key');
+  const maxAttempts = 3;
+  let attempt = 0;
+  let feedback = '';
+
+  while (attempt < maxAttempts) {
+    const result = await requestOpenAITranslation(text, from, to, {
+      ...options,
+      retryFeedback: feedback,
+    });
+
+    const verification = await applyVerificationCorrections({
+      sourceText: text,
+      sourceLang: from,
+      targetLang: to,
+      translation: result.translation,
+      tooltip: result.tooltip,
+      metadata: options?.metadata,
+      purpose: options?.purpose,
+      key: options?.key,
+      baseEnglish: options?.baseEnglish,
+      tooltipSourceText: options?.tooltipSourceText,
+      tooltipSourceLang: options?.tooltipSourceLang,
+      providerName: 'OpenAI',
+    });
+
+    if (verification.ok) {
+      return {
+        translation: verification.value.translation,
+        tooltip: verification.value.tooltip,
+        correctionsApplied: verification.correctionsApplied,
+      };
+    }
+
+    feedback = verification.feedback || 'translation failed verification';
+    attempt++;
+  }
+
+  throw new Error(
+    feedback
+      ? `verification failed after ${maxAttempts} attempts: ${feedback}`
+      : 'verification failed after multiple attempts',
+  );
 }
 
 async function translateWithPreferredProviders(
@@ -529,25 +776,48 @@ async function translateWithPreferredProviders(
 ) {
   if (!text || !from || !to || from === to) return null;
   const label = keyPath || '(root)';
-  const { validator, invalidReason } = options || {};
+  const {
+    validator,
+    invalidReason,
+    metadata = null,
+    baseEnglish = '',
+    purpose = '',
+    tooltipSourceText = '',
+    tooltipSourceLang = 'en',
+  } = options || {};
   const providers = [
     {
       name: 'OpenAI',
       exec: async () => {
-        const { translation } = await translateWithOpenAI(text, from, to);
-        return translation;
+        return translateWithOpenAI(text, from, to, {
+          metadata,
+          baseEnglish,
+          key: keyPath,
+          purpose,
+          tooltipSourceText,
+          tooltipSourceLang,
+        });
       },
     },
     {
       name: 'Google',
-      exec: async () => translateWithGoogle(text, to, from, label),
+      exec: async () =>
+        translateWithGoogle(text, to, from, label, {
+          metadata,
+          baseEnglish,
+          key: keyPath,
+          purpose,
+          tooltipSourceText,
+          tooltipSourceLang,
+          resultType: 'translation',
+        }),
     },
   ];
 
   for (const provider of providers) {
     try {
-      const raw = await provider.exec();
-      const validation = validateTranslatedText(raw, to, {
+      const result = await provider.exec();
+      const validation = validateTranslatedText(result.translation, to, {
         validator,
         invalidReason,
       });
@@ -557,7 +827,10 @@ async function translateWithPreferredProviders(
         );
         continue;
       }
-      return { text: validation.text, provider: provider.name };
+      const providerLabel = result.correctionsApplied
+        ? `${provider.name} (QA corrected)`
+        : provider.name;
+      return { text: validation.text, provider: providerLabel };
     } catch (err) {
       console.warn(
         `[${context}] ${provider.name} translation failed ${from}->${to} for ${label}: ${err.message}`,
@@ -962,19 +1235,22 @@ export async function generateTranslations({
             );
           }
 
+          const relocationOptions = {
+            metadata: entry?.metadata,
+            baseEnglish: englishLabel,
+          };
+          if (lang === 'mn') {
+            relocationOptions.validator = isValidMongolianCyrillic;
+            relocationOptions.invalidReason =
+              'contains Cyrillic characters outside the Mongolian range';
+          }
           const translated = await translateWithPreferredProviders(
             originalValue,
             relocationLang,
             lang,
             keyPath,
             'gen-i18n',
-            lang === 'mn'
-              ? {
-                  validator: isValidMongolianCyrillic,
-                  invalidReason:
-                    'contains Cyrillic characters outside the Mongolian range',
-                }
-              : undefined,
+            relocationOptions,
           );
           if (translated) {
             localeObj[k] = translated.text;
@@ -1010,11 +1286,12 @@ export async function generateTranslations({
           let translated = null;
           for (const src of candidates) {
             try {
-              const res = await translateWithGoogle(
+              const { translation: res } = await translateWithGoogle(
                 src.text,
                 lang,
                 src.lang,
                 keyPath,
+                { key: keyPath },
               );
               const validation = validateTranslatedText(res, lang, {
                 validator:
@@ -1248,11 +1525,18 @@ export async function generateTranslations({
 
         if (translationText == null) {
           try {
-            const googleTooltip = await translateWithGoogle(
+            const { translation: googleTooltip } = await translateWithGoogle(
               locales.en.tooltip[key],
               'mn',
               'en',
               key,
+              {
+                key: `${key}.tooltip`,
+                purpose: 'tooltip',
+                tooltipSourceText: locales.en.tooltip[key],
+                tooltipSourceLang: 'en',
+                resultType: 'tooltip',
+              },
             );
             const validation = validateTranslatedText(googleTooltip, 'mn', {
               validator: isValidMongolianCyrillic,
@@ -1417,12 +1701,20 @@ export async function generateTranslations({
 
         if (translationText == null) {
           try {
-            const googleResult = await translateWithGoogle(
-              sourceText,
-              'mn',
-              'en',
-              key,
-            );
+            const { translation: googleResult, correctionsApplied } =
+              await translateWithGoogle(
+                sourceText,
+                'mn',
+                'en',
+                key,
+                {
+                  key,
+                  metadata: entry?.metadata,
+                  baseEnglish: baseEnglish || sourceText,
+                  tooltipSourceText: tooltipSource,
+                  tooltipSourceLang: 'en',
+                },
+              );
             const validation = validateTranslatedText(googleResult, 'mn', {
               validator: isValidMongolianCyrillic,
               invalidReason:
@@ -1430,7 +1722,9 @@ export async function generateTranslations({
             });
             if (validation.ok) {
               translationText = validation.text;
-              translationProvider = 'Google';
+              translationProvider = correctionsApplied
+                ? 'Google (QA corrected)'
+                : 'Google';
             } else {
               translationFailure = translationFailure || validation.reason;
               console.warn(
@@ -1447,12 +1741,22 @@ export async function generateTranslations({
 
         if (tooltipText == null && tooltipSource) {
           try {
-            const googleTooltip = await translateWithGoogle(
-              tooltipSource,
-              'mn',
-              'en',
-              `${key}.tooltip`,
-            );
+            const { translation: googleTooltip, correctionsApplied } =
+              await translateWithGoogle(
+                tooltipSource,
+                'mn',
+                'en',
+                `${key}.tooltip`,
+                {
+                  key: `${key}.tooltip`,
+                  metadata: entry?.metadata,
+                  baseEnglish: baseEnglish || sourceText,
+                  purpose: 'tooltip',
+                  tooltipSourceText: tooltipSource,
+                  tooltipSourceLang: 'en',
+                  resultType: 'tooltip',
+                },
+              );
             const validation = validateTranslatedText(googleTooltip, 'mn', {
               validator: isValidMongolianCyrillic,
               invalidReason:
@@ -1460,7 +1764,9 @@ export async function generateTranslations({
             });
             if (validation.ok) {
               tooltipText = validation.text;
-              tooltipProvider = 'Google';
+              tooltipProvider = correctionsApplied
+                ? 'Google (QA corrected)'
+                : 'Google';
             } else {
               tooltipFailure = tooltipFailure || validation.reason;
               console.warn(
@@ -1620,16 +1926,20 @@ export async function generateTranslations({
 
         if (translationText == null) {
           try {
-            const googleResult = await translateWithGoogle(
-              baseText,
-              lang,
-              fromLang,
-              key,
-            );
+            const { translation: googleResult, correctionsApplied } =
+              await translateWithGoogle(baseText, lang, fromLang, key, {
+                key,
+                metadata,
+                baseEnglish: baseEnglish || locales.en?.[key] || '',
+                tooltipSourceText: tooltipSource,
+                tooltipSourceLang: tooltipSource ? 'en' : fromLang,
+              });
             const validation = validateTranslatedText(googleResult, lang);
             if (validation.ok) {
               translationText = validation.text;
-              translationProvider = 'Google';
+              translationProvider = correctionsApplied
+                ? 'Google (QA corrected)'
+                : 'Google';
             } else {
               translationFailure = translationFailure || validation.reason;
               console.warn(
@@ -1646,16 +1956,28 @@ export async function generateTranslations({
 
         if (tooltipText == null && tooltipSource) {
           try {
-            const googleTooltip = await translateWithGoogle(
-              tooltipSource,
-              lang,
-              fromLang,
-              `${key}.tooltip`,
-            );
+            const { translation: googleTooltip, correctionsApplied } =
+              await translateWithGoogle(
+                tooltipSource,
+                lang,
+                fromLang,
+                `${key}.tooltip`,
+                {
+                  key: `${key}.tooltip`,
+                  metadata,
+                  baseEnglish: baseEnglish || locales.en?.[key] || '',
+                  purpose: 'tooltip',
+                  tooltipSourceText: tooltipSource,
+                  tooltipSourceLang: tooltipSource ? 'en' : fromLang,
+                  resultType: 'tooltip',
+                },
+              );
             const validation = validateTranslatedText(googleTooltip, lang);
             if (validation.ok) {
               tooltipText = validation.text;
-              tooltipProvider = 'Google';
+              tooltipProvider = correctionsApplied
+                ? 'Google (QA corrected)'
+                : 'Google';
             } else {
               tooltipFailure = tooltipFailure || validation.reason;
               console.warn(
@@ -1966,19 +2288,19 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
           );
         }
 
+        const tooltipOptions = { purpose: 'tooltip' };
+        if (lang === 'mn') {
+          tooltipOptions.validator = isValidMongolianCyrillic;
+          tooltipOptions.invalidReason =
+            'contains Cyrillic characters outside the Mongolian range';
+        }
         const translated = await translateWithPreferredProviders(
           originalValue,
           relocationLang,
           lang,
           `tooltip.${k}`,
           'gen-tooltips',
-          lang === 'mn'
-            ? {
-                validator: isValidMongolianCyrillic,
-                invalidReason:
-                  'contains Cyrillic characters outside the Mongolian range',
-              }
-            : undefined,
+          tooltipOptions,
         );
         if (translated) {
           obj[k] = translated.text;
@@ -2078,11 +2400,18 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
       }
       if (translationText == null) {
         try {
-          const google = await translateWithGoogle(
+          const { translation: google } = await translateWithGoogle(
             sourceText,
             lang,
             sourceLang,
-            key,
+            `${key}.tooltip`,
+            {
+              key: `${key}.tooltip`,
+              purpose: 'tooltip',
+              tooltipSourceText: sourceText,
+              tooltipSourceLang: sourceLang,
+              resultType: 'tooltip',
+            },
           );
           const validation = validateTranslatedText(google, lang, {
             validator: lang === 'mn' ? isValidMongolianCyrillic : undefined,
