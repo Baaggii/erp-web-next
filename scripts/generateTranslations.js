@@ -329,6 +329,26 @@ function setNested(obj, keyPath, value) {
   current[keys[keys.length - 1]] = value;
 }
 
+function getEnglishTooltipSource(locales, key, fallbackLangs = []) {
+  const candidate = locales?.en?.tooltip?.[key];
+  if (typeof candidate === 'string') {
+    const trimmed = candidate.trim();
+    if (trimmed) return trimmed;
+  }
+
+  const seen = new Set();
+  for (const lang of fallbackLangs || []) {
+    if (!lang || seen.has(lang)) continue;
+    seen.add(lang);
+    const value = locales?.[lang]?.tooltip?.[key];
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    if (/[A-Za-z]/.test(trimmed)) return trimmed;
+  }
+  return '';
+}
+
 function writeLocaleFile(lang, obj) {
   const file = path.join(localesDir, `${lang}.json`);
   const ordered = sortObj(obj);
@@ -410,6 +430,8 @@ async function translateWithOpenAI(text, from, to, options = {}) {
     baseEnglish = '',
     key = '',
     purpose = '',
+    tooltipSourceText = '',
+    tooltipSourceLang = 'en',
   } = options || {};
   let prompt;
   if (purpose === 'tooltip') {
@@ -430,7 +452,43 @@ async function translateWithOpenAI(text, from, to, options = {}) {
     if (metadataText) sections.push(`Context:\n${metadataText}`);
     prompt = sections.join('\n\n');
   } else {
-    prompt = `Translate this ${sourceLang} ERP term into ${targetLang}. Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary. The text is ${sourceLang}, not Russian.\n\n${text}`;
+    const normalizedBaseEnglish =
+      typeof baseEnglish === 'string' ? baseEnglish.trim() : '';
+    const normalizedTooltip =
+      typeof tooltipSourceText === 'string' ? tooltipSourceText.trim() : '';
+    const metadataText = formatMetadataForPrompt(metadata);
+    if (normalizedTooltip || normalizedBaseEnglish || metadataText) {
+      const tooltipLangName =
+        languageNames[tooltipSourceLang] || tooltipSourceLang || 'English';
+      const sections = [
+        'You are an ERP localization expert creating localized UI strings.',
+        `Provide the ${targetLang} translation of the label in the "translation" field.`,
+      ];
+      if (normalizedTooltip) {
+        sections.push(
+          `Translate the following ${tooltipLangName} tooltip into ${targetLang} and place the result in the "tooltip" field while preserving its guidance for end users.`,
+        );
+      } else {
+        sections.push(
+          `Write a concise tooltip in ${targetLang} that helps end users understand the field. Do not simply repeat the label.`,
+        );
+      }
+      sections.push(
+        'Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary.',
+        `Label (${sourceLang}): ${text}`,
+      );
+      if (normalizedBaseEnglish) {
+        sections.push(`English UI label: ${normalizedBaseEnglish}`);
+      }
+      if (normalizedTooltip) {
+        sections.push(`${tooltipLangName} tooltip: ${normalizedTooltip}`);
+      }
+      if (key) sections.push(`Translation key: ${key}`);
+      if (metadataText) sections.push(`Context:\n${metadataText}`);
+      prompt = sections.join('\n\n');
+    } else {
+      prompt = `Translate this ${sourceLang} ERP term into ${targetLang}. Respond only with a JSON object like {"translation":"...", "tooltip":"..."} and no additional commentary. The text is ${sourceLang}, not Russian.\n\n${text}`;
+    }
   }
   try {
     const completion = await OpenAI.chat.completions.create(
@@ -1254,7 +1312,14 @@ export async function generateTranslations({
     checkAbort();
     let counter = 0;
 
-    for (const { key, sourceText, sourceLang, origin } of entries) {
+    for (const {
+      key,
+      sourceText,
+      sourceLang,
+      origin,
+      metadata,
+      baseEnglish,
+    } of entries) {
       checkAbort();
       if (sourceLang === 'mn' && !/[\u0400-\u04FF]/.test(sourceText)) continue;
       if (sourceLang === 'en' && !/[A-Za-z]/.test(sourceText)) continue;
@@ -1287,7 +1352,12 @@ export async function generateTranslations({
       if (lang === 'mn' && sourceLang === 'en') {
         const prefix = `[gen-i18n]${origin ? `[${origin}]` : ''}`;
         log(`${prefix} Translating "${sourceText}" (en -> mn)`);
-        const tooltipSource = locales.en?.tooltip?.[key];
+        const englishTooltip = getEnglishTooltipSource(locales, key, [
+          sourceLang,
+          'en-US',
+          'en-GB',
+        ]);
+        const tooltipSource = englishTooltip;
         let translationText = null;
         let translationProvider = '';
         let translationFailure = '';
@@ -1300,6 +1370,13 @@ export async function generateTranslations({
             sourceText,
             'en',
             'mn',
+            {
+              key,
+              metadata,
+              baseEnglish: baseEnglish || sourceText,
+              tooltipSourceText: tooltipSource,
+              tooltipSourceLang: 'en',
+            },
           );
           const translationCheck = validateTranslatedText(result.translation, 'mn', {
             validator: isValidMongolianCyrillic,
@@ -1398,6 +1475,11 @@ export async function generateTranslations({
           }
         }
 
+        if (tooltipText == null && !tooltipSource && translationText) {
+          tooltipText = translationText;
+          tooltipProvider = tooltipProvider || translationProvider || 'label';
+        }
+
         const finalTranslation = translationText ?? '';
         const finalTooltip = tooltipText ?? '';
         const trimmedExisting =
@@ -1480,9 +1562,12 @@ export async function generateTranslations({
           fromLang = 'en';
         }
 
-        const tooltipSource =
-          locales[fromLang]?.tooltip?.[key] ??
-          locales[sourceLang]?.tooltip?.[key];
+        const tooltipSource = getEnglishTooltipSource(locales, key, [
+          fromLang,
+          sourceLang,
+          'en-US',
+          'en-GB',
+        ]);
 
         log(`Translating "${baseText}" (${fromLang} -> ${lang})`);
         let translationText = null;
@@ -1496,6 +1581,13 @@ export async function generateTranslations({
             baseText,
             fromLang,
             lang,
+            {
+              key,
+              metadata,
+              baseEnglish: baseEnglish || locales.en?.[key] || '',
+              tooltipSourceText: tooltipSource,
+              tooltipSourceLang: tooltipSource ? 'en' : fromLang,
+            },
           );
           const translationCheck = validateTranslatedText(result.translation, lang);
           if (translationCheck.ok) {
@@ -1576,6 +1668,11 @@ export async function generateTranslations({
               `[gen-i18n] Google tooltip translation failed key="${key}" (${fromLang}->${lang}): ${err.message}`,
             );
           }
+        }
+
+        if (tooltipText == null && !tooltipSource && translationText) {
+          tooltipText = translationText;
+          tooltipProvider = tooltipProvider || translationProvider || 'label';
         }
 
         const finalTranslation = translationText ?? '';
