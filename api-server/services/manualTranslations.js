@@ -9,6 +9,12 @@ const projectRoot = path.resolve(__dirname, '../../');
 
 const localesDir = path.join(projectRoot, 'src', 'erp.mgt.mn', 'locales');
 const tooltipDir = path.join(localesDir, 'tooltips');
+const translationsMetaFile = path.join(
+  projectRoot,
+  'docs',
+  'manuals',
+  'manual-translation-sources.json',
+);
 
 const NORMALIZE_MEANING_REGEX = /[\s\p{P}\p{S}_]+/gu;
 
@@ -33,8 +39,58 @@ async function listLangs(dir) {
   }
 }
 
+async function loadTranslatedByStore() {
+  try {
+    const raw = await fs.readFile(translationsMetaFile, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const normalized = {};
+    for (const [entryId, entryValue] of Object.entries(parsed)) {
+      if (!entryValue || typeof entryValue !== 'object') continue;
+      const translatedBy = {};
+      for (const [lang, label] of Object.entries(entryValue)) {
+        if (typeof label !== 'string') continue;
+        const trimmed = label.trim();
+        if (trimmed) {
+          translatedBy[lang] = trimmed;
+        }
+      }
+      if (Object.keys(translatedBy).length) {
+        normalized[entryId] = translatedBy;
+      }
+    }
+    return normalized;
+  } catch {
+    return {};
+  }
+}
+
+async function saveTranslatedByStore(store) {
+  try {
+    await fs.mkdir(path.dirname(translationsMetaFile), { recursive: true });
+    await fs.writeFile(
+      translationsMetaFile,
+      JSON.stringify(store, null, 2) + '\n',
+      'utf8',
+    );
+  } catch {}
+}
+
+function cloneTranslatedBy(entryId, store) {
+  const record = store[entryId];
+  if (!record || typeof record !== 'object') return {};
+  const clone = {};
+  for (const [lang, label] of Object.entries(record)) {
+    if (typeof label !== 'string') continue;
+    const trimmed = label.trim();
+    if (trimmed) clone[lang] = trimmed;
+  }
+  return clone;
+}
+
 export async function loadTranslations() {
   const entries = {};
+  const translatedByStore = await loadTranslatedByStore();
 
   function ensureEntry(id, key, type) {
     if (!entries[id]) {
@@ -46,6 +102,7 @@ export async function loadTranslations() {
         context: '',
         page: '',
         pageEditable: true,
+        translatedBy: cloneTranslatedBy(id, translatedByStore),
       };
     }
     return entries[id];
@@ -166,6 +223,13 @@ export async function loadTranslations() {
   for (const entry of Object.values(entries)) {
     for (const lang of langs) {
       if (entry.values[lang] == null) entry.values[lang] = '';
+      if (!entry.translatedBy || typeof entry.translatedBy !== 'object') {
+        entry.translatedBy = {};
+      }
+      const label = entry.translatedBy[lang];
+      if (typeof label !== 'string') {
+        entry.translatedBy[lang] = '';
+      }
     }
     if (entry.module == null) entry.module = '';
     if (entry.context == null) entry.context = '';
@@ -176,8 +240,38 @@ export async function loadTranslations() {
   return { languages: Array.from(langs), entries: Object.values(entries) };
 }
 
-export async function saveTranslation({ key, type = 'locale', values = {} }) {
+function normalizeTranslatedByMap(map) {
+  if (!map || typeof map !== 'object') return {};
+  const normalized = {};
+  for (const [lang, label] of Object.entries(map)) {
+    if (typeof label !== 'string') continue;
+    const trimmed = label.trim();
+    if (trimmed) normalized[lang] = trimmed;
+  }
+  return normalized;
+}
+
+function translatedByEqual(a, b) {
+  const aKeys = Object.keys(a);
+  const bKeys = Object.keys(b);
+  if (aKeys.length !== bKeys.length) return false;
+  for (const key of aKeys) {
+    if (a[key] !== b[key]) return false;
+  }
+  return true;
+}
+
+export async function saveTranslation({
+  key,
+  type = 'locale',
+  values = {},
+  translatedBy = {},
+}) {
   if (!key) return;
+  const entryId = `${type}:${key}`;
+  const translatedByStore = await loadTranslatedByStore();
+  const existingTranslatedBy = { ...(translatedByStore[entryId] || {}) };
+
   for (const [lang, val] of Object.entries(values)) {
     const dir = type === 'tooltip' ? tooltipDir : localesDir;
     const file = path.join(dir, `${lang}.json`);
@@ -187,11 +281,36 @@ export async function saveTranslation({ key, type = 'locale', values = {} }) {
     } catch {}
     if (val == null || val === '') {
       delete obj[key];
+      if (existingTranslatedBy[lang] != null) {
+        delete existingTranslatedBy[lang];
+      }
     } else {
       obj[key] = val;
     }
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, JSON.stringify(obj, null, 2) + '\n', 'utf8');
+  }
+
+  const incomingTranslatedBy = normalizeTranslatedByMap(translatedBy);
+  for (const [lang, label] of Object.entries(incomingTranslatedBy)) {
+    existingTranslatedBy[lang] = label;
+  }
+
+  const normalizedExisting = normalizeTranslatedByMap(existingTranslatedBy);
+  const previous = translatedByStore[entryId] || {};
+  const hasExisting = Object.keys(normalizedExisting).length > 0;
+  const hasPrevious = Object.keys(previous).length > 0;
+  const changed = hasExisting
+    ? !translatedByEqual(previous, normalizedExisting)
+    : hasPrevious;
+
+  if (changed) {
+    if (hasExisting) {
+      translatedByStore[entryId] = normalizedExisting;
+    } else {
+      delete translatedByStore[entryId];
+    }
+    await saveTranslatedByStore(translatedByStore);
   }
 }
 
@@ -207,5 +326,12 @@ export async function deleteTranslation(key, type = 'locale') {
         await fs.writeFile(file, JSON.stringify(obj, null, 2) + '\n', 'utf8');
       }
     } catch {}
+  }
+
+  const entryId = `${type}:${key}`;
+  const translatedByStore = await loadTranslatedByStore();
+  if (translatedByStore[entryId]) {
+    delete translatedByStore[entryId];
+    await saveTranslatedByStore(translatedByStore);
   }
 }
