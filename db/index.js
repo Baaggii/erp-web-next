@@ -3923,7 +3923,7 @@ export async function saveTableColumnLabels(
 
 export async function listTableColumnMeta(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA
+    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA, GENERATION_EXPRESSION
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = ?
@@ -3949,6 +3949,7 @@ export async function listTableColumnMeta(tableName) {
     key: r.COLUMN_KEY,
     extra: r.EXTRA,
     label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
+    generationExpression: r.GENERATION_EXPRESSION ?? null,
   }));
 }
 

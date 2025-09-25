@@ -408,7 +408,14 @@ const TableManager = forwardRef(function TableManager({
         .then((res) => (res.ok ? res.json() : []))
         .then((cols) => {
           if (canceled) return;
-          setViewColumns((m) => ({ ...m, [v]: cols.map((c) => c.name) }));
+          const list = Array.isArray(cols)
+            ? cols.map((c) => ({
+                ...c,
+                generationExpression:
+                  c?.generationExpression ?? c?.GENERATION_EXPRESSION ?? null,
+              }))
+            : [];
+          setViewColumns((m) => ({ ...m, [v]: list }));
         })
         .catch(() => {});
     });
@@ -1241,11 +1248,12 @@ const TableManager = forwardRef(function TableManager({
       if (!view || val === '') return;
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
       const cols = viewColumns[view] || [];
-      if (company != null && cols.includes('company_id'))
+      const colNames = cols.map((c) => (typeof c === 'string' ? c : c.name));
+      if (company != null && colNames.includes('company_id'))
         params.set('company_id', company);
       Object.entries(viewSourceMap).forEach(([f, v]) => {
         if (v !== view) return;
-        if (!cols.includes(f)) return;
+        if (!colNames.includes(f)) return;
         let pv = changes[f];
         if (pv === undefined) pv = editing?.[f];
         if (pv === undefined || pv === '') return;
@@ -2761,6 +2769,7 @@ const TableManager = forwardRef(function TableManager({
         procTriggers={procTriggers}
         columnCaseMap={columnCaseMap}
         table={table}
+        tableColumns={columnMeta}
         imagenameField={formConfig?.imagenameField || []}
         imageIdField={formConfig?.imageIdField || ''}
         viewSource={viewSourceMap}

@@ -61,6 +61,7 @@ const RowFormModal = function RowFormModal({
   loadView = () => {},
   procTriggers = {},
   autoFillSession = true,
+  tableColumns = [],
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -1737,6 +1738,7 @@ const RowFormModal = function RowFormModal({
             boxMaxWidth={boxMaxWidth}
             scope={scope}
             configHash={configHash}
+            tableColumns={tableColumns}
           />
         </div>
       );
