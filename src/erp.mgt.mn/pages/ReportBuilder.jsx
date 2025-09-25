@@ -23,7 +23,7 @@ const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
 const CALC_OPERATORS = ['+', '-', '*', '/'];
 const PAREN_OPTIONS = [0, 1, 2, 3];
 
-function ReportBuilderWorkspace() {
+function ReportBuilderInner() {
   const [tables, setTables] = useState([]); // list of table names
   const [tableFields, setTableFields] = useState({}); // { tableName: [field, ...] }
   const [fieldEnums, setFieldEnums] = useState({}); // { tableName: { field: [enum] } }
@@ -65,6 +65,7 @@ function ReportBuilderWorkspace() {
 
   const [customParamName, setCustomParamName] = useState('');
   const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
+  const [activeTab, setActiveTab] = useState('builder');
   const { addToast } = useToast();
   const { company, permissions, session } = useContext(AuthContext);
   const { t: i18nextT } = useTranslation(['translation', 'tooltip']);
@@ -1776,24 +1777,65 @@ function ReportBuilderWorkspace() {
 
   return (
     <div>
-      <div style={{ marginBottom: '0.5rem' }}>
-        <button onClick={handleImport}>
-          {t('reportBuilder.importDefaults', 'Import Defaults')}
-        </button>
+      <h2>{t('reportBuilder.title', 'Report Builder')}</h2>
+      <div
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          borderBottom: '1px solid #ccc',
+          marginBottom: '1rem',
+        }}
+      >
+        {[
+          { key: 'builder', label: t('reportBuilder.tabBuilder', 'Visual builder') },
+          { key: 'code', label: t('reportBuilder.tabCodeDevelopment', 'Code development') },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key)}
+            style={{
+              padding: '0.5rem 1rem',
+              border: 'none',
+              borderBottom:
+                activeTab === tab.key ? '2px solid #000' : '2px solid transparent',
+              background: 'transparent',
+              cursor: 'pointer',
+              fontWeight: activeTab === tab.key ? 'bold' : 'normal',
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <section>
-        <h3>{t('reportBuilder.primaryTable', 'Primary Table')}</h3>
-        <select value={fromTable} onChange={(e) => setFromTable(e.target.value)}>
-          {tables.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </section>
+      {activeTab === 'builder' && (
+        <div style={{ marginBottom: '1rem' }}>
+          {t(
+            'reportBuilder.builderTabComingSoon',
+            'Visual builder tools coming soon.',
+          )}
+        </div>
+      )}
 
-      <section>
+      <div style={{ display: activeTab === 'code' ? 'block' : 'none' }}>
+        <div style={{ marginBottom: '0.5rem' }}>
+          <button onClick={handleImport}>
+            {t('reportBuilder.importDefaults', 'Import Defaults')}
+          </button>
+        </div>
+
+        <section>
+          <h3>{t('reportBuilder.primaryTable', 'Primary Table')}</h3>
+          <select value={fromTable} onChange={(e) => setFromTable(e.target.value)}>
+            {tables.map((t) => (
+              <option key={t} value={t}>
+                {t}
+              </option>
+            ))}
+          </select>
+        </section>
+
+        <section>
           <h3>{t('reportBuilder.primaryTableFilters', 'Primary Table Filters')}</h3>
           {fromFilters.map((f, i) => (
             <div
@@ -3076,55 +3118,6 @@ function ReportBuilderWorkspace() {
         {procSql && (
           <pre style={{ whiteSpace: 'pre-wrap', marginTop: '1rem' }}>{procSql}</pre>
         )}
-      </div>
-    </div>
-  );
-}
-
-
-function ReportBuilderInner() {
-  const [activeTab, setActiveTab] = useState('builder');
-  const { t: i18nextT } = useTranslation(['translation', 'tooltip']);
-  const { t: contextT } = useContext(I18nContext);
-  const t = i18nextT || contextT;
-
-  return (
-    <div>
-      <h2>{t('reportBuilder.title', 'Report Builder')}</h2>
-      <div
-        style={{
-          display: 'flex',
-          gap: '0.5rem',
-          borderBottom: '1px solid #ccc',
-          marginBottom: '1rem',
-        }}
-      >
-        {[
-          { key: 'builder', label: t('reportBuilder.tabBuilder', 'Visual builder') },
-          { key: 'code', label: t('reportBuilder.tabCodeDevelopment', 'Code development') },
-        ].map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            style={{
-              padding: '0.5rem 1rem',
-              border: 'none',
-              borderBottom:
-                activeTab === tab.key ? '2px solid #000' : '2px solid transparent',
-              background: 'transparent',
-              cursor: 'pointer',
-              fontWeight: activeTab === tab.key ? 'bold' : 'normal',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-      <div style={{ display: activeTab === 'builder' ? 'block' : 'none' }}>
-        <ReportBuilderWorkspace key="builder" />
-      </div>
-      <div style={{ display: activeTab === 'code' ? 'block' : 'none' }}>
-        <ReportBuilderWorkspace key="code" />
       </div>
     </div>
   );
