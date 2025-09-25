@@ -1,7 +1,11 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { CYRILLIC_REGEX, detectLang } from '../utils/translationHelpers.js';
+import {
+  CYRILLIC_REGEX,
+  detectLang,
+  isValidMongolianCyrillic,
+} from '../utils/translationHelpers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +36,23 @@ function analyzeMeaning(key, value) {
   const normalizedValue = normalizeForMeaning(value);
   const isMeaningful = normalizedValue.length > 0 && normalizedValue !== normalizedKey;
   return { normalizedKey, normalizedValue, isMeaningful };
+}
+
+function flagMongolianNeedsReview(entry, reason) {
+  if (!entry || typeof entry !== 'object') return;
+  if (!reason) return;
+  if (!entry.translatedBy || typeof entry.translatedBy !== 'object') {
+    entry.translatedBy = {};
+  }
+  const note = `[QA] ${reason}`;
+  const current = typeof entry.translatedBy.mn === 'string' ? entry.translatedBy.mn.trim() : '';
+  if (!current) {
+    entry.translatedBy.mn = note;
+    return;
+  }
+  if (!current.includes(note)) {
+    entry.translatedBy.mn = `${current}; ${note}`;
+  }
 }
 
 async function listLangs(dir) {
@@ -159,25 +180,53 @@ export async function loadTranslations() {
           const localeEntry = ensureEntry(localeId, k, 'locale');
           const tooltipEntry = ensureEntry(tooltipId, k, 'tooltip');
           const hasCyrillic = typeof v === 'string' && CYRILLIC_REGEX.test(v);
-          const initialLangKey = hasCyrillic ? 'mn' : 'en';
           const detectedLang = detectLang(v);
-          const langKey =
-            detectedLang === 'mn' || detectedLang === 'en'
-              ? detectedLang
-              : initialLangKey;
-          if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;
+          let langKey;
+          let qaReason = '';
+
+          if (detectedLang === 'mn') {
+            if (isValidMongolianCyrillic(v)) {
+              langKey = 'mn';
+            } else {
+              qaReason =
+                'Detected Mongolian but failed Cyrillic validation; requires manual review';
+            }
+          } else if (detectedLang === 'ru' || detectedLang === 'en') {
+            langKey = detectedLang;
+            qaReason =
+              detectedLang === 'ru'
+                ? 'Auto-detected Russian text moved to RU column; Mongolian translation required'
+                : 'Auto-detected English text kept in EN column; Mongolian translation required';
+          } else if (detectedLang && SUPPORTED_LANGS.includes(detectedLang)) {
+            langKey = detectedLang;
+          } else if (!hasCyrillic) {
+            langKey = 'en';
+          } else {
+            qaReason = 'Cyrillic text could not be validated as Mongolian; requires manual review';
+          }
+
+          if (langKey && localeEntry.values[langKey] == null) {
+            localeEntry.values[langKey] = v;
+          }
+          if (!langKey || langKey !== 'mn') {
+            flagMongolianNeedsReview(localeEntry, qaReason);
+          }
 
           const tooltipSources = [meta.tooltip, meta.tooltipValue, meta.tooltipText];
           const tooltipContent = tooltipSources.find(
             (value) => typeof value === 'string' && value.trim(),
           );
 
-          if (tooltipContent) {
-            if (tooltipEntry.values[langKey] == null) {
-              tooltipEntry.values[langKey] = tooltipContent;
+          if (langKey) {
+            if (tooltipContent) {
+              if (tooltipEntry.values[langKey] == null) {
+                tooltipEntry.values[langKey] = tooltipContent;
+              }
+            } else if (tooltipEntry.values[langKey] == null) {
+              tooltipEntry.values[langKey] = '';
             }
-          } else if (tooltipEntry.values[langKey] == null) {
-            tooltipEntry.values[langKey] = '';
+          } else {
+            flagMongolianNeedsReview(tooltipEntry, qaReason);
           }
           if (!localeEntry.module && meta.module) localeEntry.module = meta.module;
           if (!tooltipEntry.module && meta.module) tooltipEntry.module = meta.module;
