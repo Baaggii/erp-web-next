@@ -101,17 +101,9 @@ export async function loadTranslations() {
           const localeEntry = ensureEntry(localeId, k, 'locale');
           const tooltipEntry = ensureEntry(tooltipId, k, 'tooltip');
           const detectedLang = detectLang(v);
-          let targetLangs = ['en'];
-          if (detectedLang) {
-            if (detectedLang === 'latin') targetLangs = ['en'];
-            else if (detectedLang === 'cjk') targetLangs = ['zh'];
-            else targetLangs = [detectedLang];
-          }
-          for (const langKey of targetLangs) {
-            langs.add(langKey);
-            if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;
-            if (tooltipEntry.values[langKey] == null) tooltipEntry.values[langKey] = v;
-          }
+          const targetLang = detectedLang === 'mn' ? 'mn' : 'en';
+          if (localeEntry.values[targetLang] == null) localeEntry.values[targetLang] = v;
+          if (tooltipEntry.values[targetLang] == null) tooltipEntry.values[targetLang] = v;
           if (!localeEntry.module && meta.module) localeEntry.module = meta.module;
           if (!tooltipEntry.module && meta.module) tooltipEntry.module = meta.module;
           if (!localeEntry.context && meta.context) localeEntry.context = meta.context;
