@@ -1716,6 +1716,106 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     ]),
   );
 
+  const englishLocalePath = path.join(localesDir, 'en.json');
+  let englishLocale = {};
+  if (fs.existsSync(englishLocalePath)) {
+    try {
+      englishLocale = JSON.parse(fs.readFileSync(englishLocalePath, 'utf8'));
+    } catch (err) {
+      console.warn(
+        `[gen-tooltips] failed to parse English locale file: ${err.message}`,
+      );
+    }
+  }
+
+  function getEnglishLabelForKey(key) {
+    const raw = englishLocale?.[key];
+    if (typeof raw === 'string') return raw;
+    if (raw && typeof raw === 'object') {
+      if (typeof raw.en === 'string') return raw.en;
+      if (typeof raw.value === 'string') return raw.value;
+    }
+    return '';
+  }
+
+  function buildEnglishMetadataForKey(key) {
+    const moduleName = deriveModuleFromKey(key);
+    if (!moduleName) return null;
+    return { module: [moduleName] };
+  }
+
+  const englishTooltips = tipData.en || {};
+  tipData.en = englishTooltips;
+  for (const key of baseKeys) {
+    checkAbort();
+    const existing = englishTooltips[key];
+    const hasExisting = typeof existing === 'string' && existing.trim();
+    if (hasExisting) continue;
+
+    const englishLabel = getEnglishLabelForKey(key).trim();
+    if (!englishLabel) {
+      if (existing !== '') {
+        englishTooltips[key] = '';
+      }
+      manualReview.track(
+        'tooltip',
+        'en',
+        key,
+        'missing base text for tooltip generation',
+      );
+      console.warn(
+        `[gen-tooltips] missing base text for English tooltip key="${key}"`,
+      );
+      continue;
+    }
+
+    try {
+      const { tooltip } = await translateWithOpenAI(
+        englishLabel,
+        'en',
+        'en',
+        {
+          purpose: 'tooltip',
+          metadata: buildEnglishMetadataForKey(key),
+          baseEnglish: englishLabel,
+          key,
+        },
+      );
+      const validation = validateTranslatedText(tooltip, 'en');
+      if (validation.ok) {
+        if (
+          normalizeForComparison(englishLabel) ===
+          normalizeForComparison(validation.text)
+        ) {
+          englishTooltips[key] = '';
+          manualReview.track(
+            'tooltip',
+            'en',
+            key,
+            'tooltip matches label and lacks explanation',
+          );
+          console.warn(
+            `[gen-tooltips] rejected English tooltip for key="${key}": tooltip matches label`,
+          );
+        } else {
+          englishTooltips[key] = validation.text;
+        }
+      } else {
+        englishTooltips[key] = '';
+        manualReview.track('tooltip', 'en', key, validation.reason);
+        console.warn(
+          `[gen-tooltips] rejected English tooltip for key="${key}": ${validation.reason}`,
+        );
+      }
+    } catch (err) {
+      englishTooltips[key] = '';
+      manualReview.track('tooltip', 'en', key, err.message);
+      console.warn(
+        `[gen-tooltips] failed to generate English tooltip for key="${key}": ${err.message}`,
+      );
+    }
+  }
+
   async function ensureTooltipLanguage(obj, lang) {
     let changed = false;
     for (const [k, v] of Object.entries(obj)) {
@@ -1809,11 +1909,37 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     let updated = lang === 'en' || lang === 'mn';
 
     for (const key of baseKeys) {
+      if (lang === 'en') {
+        const englishValue = tipData.en?.[key] ?? '';
+        if (current[key] !== englishValue) {
+          current[key] = englishValue;
+          updated = true;
+        }
+        continue;
+      }
+
       if (current[key]) continue;
       checkAbort();
-      const sourceText =
-        (tipData.en && tipData.en[key]) || (tipData.mn && tipData.mn[key]);
-      const sourceLang = tipData.en && tipData.en[key] ? 'en' : 'mn';
+      const sourceText = tipData.en?.[key];
+      const trimmedSource =
+        typeof sourceText === 'string' ? sourceText.trim() : '';
+      if (!trimmedSource) {
+        if (current[key] !== '') {
+          current[key] = '';
+          updated = true;
+        }
+        manualReview.track(
+          'tooltip',
+          lang,
+          key,
+          'missing English base tooltip',
+        );
+        console.warn(
+          `[gen-tooltips] skipped ${lang} tooltip for key="${key}": missing English base tooltip`,
+        );
+        continue;
+      }
+      const sourceLang = 'en';
       let translationText = null;
       let failureReason = '';
       try {
