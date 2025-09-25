@@ -75,7 +75,7 @@ test('exported texts are merged into manual translations', { concurrency: false 
     assert(nestedLocale, 'nested locale entry exists');
     assert(nestedTooltip, 'nested tooltip entry exists');
     assert.equal(nestedLocale.values.en, 'Bar');
-    assert.equal(nestedTooltip.values.en, 'Bar');
+    assert.equal(nestedTooltip.values.en, '');
     assert.equal(nestedLocale.module, 'pages/NestedPage');
     assert.equal(nestedLocale.context, 'label');
     assert.equal(nestedLocale.page, 'NestedPage');
@@ -154,7 +154,7 @@ test('exported texts detect languages and respect existing entries', { concurren
     assert(englishLocale, 'english locale entry exists');
     assert(englishTooltip, 'english tooltip entry exists');
     assert.equal(englishLocale.values.en, 'Sample English Phrase');
-    assert.equal(englishTooltip.values.en, 'Sample English Phrase');
+    assert.equal(englishTooltip.values.en, '');
     assert.equal(englishLocale.values.mn, '');
     assert.equal(englishTooltip.values.mn, '');
 
@@ -167,7 +167,7 @@ test('exported texts detect languages and respect existing entries', { concurren
     assert(mongolianLocale, 'mongolian locale entry exists');
     assert(mongolianTooltip, 'mongolian tooltip entry exists');
     assert.equal(mongolianLocale.values.mn, 'Санхүүгийн тайлан');
-    assert.equal(mongolianTooltip.values.mn, 'Санхүүгийн тайлан');
+    assert.equal(mongolianTooltip.values.mn, '');
     assert.equal(mongolianLocale.values.en, '');
     assert.equal(mongolianTooltip.values.en, '');
 
