@@ -639,6 +639,7 @@ export default function ManualTranslationsTab() {
         context: newEntry.context,
         key: newEntry.key,
         page: newEntry.page,
+        type: newEntry.type,
       };
       const translateEntry = (targetLang, text) =>
         translateWithCache(targetLang, text, undefined, entryMetadata);
