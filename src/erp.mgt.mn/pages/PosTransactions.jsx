@@ -544,6 +544,7 @@ export default function PosTransactionsPage() {
   const viewFetchesRef = useRef(new Map());
   // Records view names that finished loading to avoid repeated network calls
   const viewLoadedRef = useRef(new Set());
+  const contextReadyRef = useRef({ branch, company });
   const unmountedRef = useRef(false);
   const abortControllersRef = useRef(new Set());
 
@@ -583,6 +584,130 @@ export default function PosTransactionsPage() {
       procTriggerLoadedRef.current.clear();
     };
   }, [name]);
+
+  useEffect(() => {
+    const prev = contextReadyRef.current;
+    const branchReady = branch != null && prev.branch == null;
+    const companyReady = company != null && prev.company == null;
+    contextReadyRef.current = { branch, company };
+    if (!branchReady && !companyReady) return;
+
+    const tables = Object.entries(memoFormConfigs);
+    if (tables.length === 0) return;
+
+    setValues((currentValues) => {
+      if (!currentValues || typeof currentValues !== 'object') return currentValues;
+      let mutated = false;
+      let nextValues = currentValues;
+
+      const fillRecord = (record, branchFields, companyFields) => {
+        const base =
+          record && typeof record === 'object' && !Array.isArray(record)
+            ? record
+            : {};
+        let updated = base;
+        let changed = false;
+        const maybeAssign = (field, value) => {
+          if (!field) return;
+          const current = updated[field];
+          if (current !== undefined && current !== null && current !== '') return;
+          if (updated === base) {
+            updated = { ...base };
+          }
+          updated[field] = value;
+          changed = true;
+        };
+        if (branchReady && Array.isArray(branchFields) && branchFields.length > 0) {
+          branchFields.forEach((field) => maybeAssign(field, branch));
+        }
+        if (companyReady && Array.isArray(companyFields) && companyFields.length > 0) {
+          companyFields.forEach((field) => maybeAssign(field, company));
+        }
+        return { updated, changed };
+      };
+
+      tables.forEach(([tbl, fc]) => {
+        if (!fc) return;
+        const branchFields = Array.isArray(fc.branchIdFields)
+          ? fc.branchIdFields
+          : [];
+        const companyFields = Array.isArray(fc.companyIdFields)
+          ? fc.companyIdFields
+          : [];
+        if (
+          (!branchReady || branchFields.length === 0) &&
+          (!companyReady || companyFields.length === 0)
+        ) {
+          return;
+        }
+
+        const container = nextValues[tbl];
+        const type = tableTypeMap[tbl] === 'multi' ? 'multi' : 'single';
+
+        if (type === 'multi') {
+          const currentRows = Array.isArray(container) ? container : [];
+          let targetRows = currentRows;
+          let tableChanged = false;
+          const ensureClone = () => {
+            if (!tableChanged) {
+              targetRows = currentRows.slice();
+              copyArrayMetadata(targetRows, currentRows);
+              tableChanged = true;
+            }
+          };
+          currentRows.forEach((row, idx) => {
+            const { updated, changed } = fillRecord(row, branchFields, companyFields);
+            if (changed) {
+              ensureClone();
+              targetRows[idx] = updated;
+            }
+          });
+          if (Array.isArray(container)) {
+            Object.keys(container).forEach((key) => {
+              if (arrayIndexPattern.test(key)) return;
+              const meta = container[key];
+              if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return;
+              const { updated, changed } = fillRecord(
+                meta,
+                branchFields,
+                companyFields,
+              );
+              if (changed) {
+                ensureClone();
+                targetRows[key] = updated;
+              }
+            });
+          }
+          if (tableChanged) {
+            if (nextValues === currentValues) {
+              nextValues = { ...currentValues };
+            }
+            nextValues[tbl] = targetRows;
+            mutated = true;
+          }
+        } else {
+          const source =
+            container && typeof container === 'object' && !Array.isArray(container)
+              ? container
+              : {};
+          const { updated, changed } = fillRecord(
+            source,
+            branchFields,
+            companyFields,
+          );
+          if (changed) {
+            if (nextValues === currentValues) {
+              nextValues = { ...currentValues };
+            }
+            nextValues[tbl] = updated;
+            mutated = true;
+          }
+        }
+      });
+
+      return mutated ? nextValues : currentValues;
+    });
+  }, [branch, company, memoFormConfigs, tableTypeMap]);
 
   async function loadRelations(tbl) {
     if (loadingTablesRef.current.has(tbl)) {
@@ -1320,12 +1445,12 @@ export default function PosTransactionsPage() {
           if (next[tbl][f] === undefined) next[tbl][f] = user.empid;
         });
       }
-      if (fc.branchIdFields && branch !== undefined) {
+      if (fc.branchIdFields && branch != null) {
         fc.branchIdFields.forEach((f) => {
           if (next[tbl][f] === undefined) next[tbl][f] = branch;
         });
       }
-      if (fc.companyIdFields && company !== undefined) {
+      if (fc.companyIdFields && company != null) {
         fc.companyIdFields.forEach((f) => {
           if (next[tbl][f] === undefined) next[tbl][f] = company;
         });
@@ -1378,12 +1503,12 @@ export default function PosTransactionsPage() {
             if (updated[f] === undefined) updated[f] = user.empid;
           });
         }
-        if (fc.branchIdFields && branch !== undefined) {
+        if (fc.branchIdFields && branch != null) {
           fc.branchIdFields.forEach((f) => {
             if (updated[f] === undefined) updated[f] = branch;
           });
         }
-        if (fc.companyIdFields && company !== undefined) {
+        if (fc.companyIdFields && company != null) {
           fc.companyIdFields.forEach((f) => {
             if (updated[f] === undefined) updated[f] = company;
           });

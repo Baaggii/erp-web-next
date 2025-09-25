@@ -203,31 +203,39 @@ function InlineTransactionTable(
   }, [viewSourceMap, autoSelectConfigs]);
 
   function fillSessionDefaults(obj) {
-    const row = { ...obj };
+    const base =
+      obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {};
+    let row = base;
+    let changed = false;
+    const ensureRow = () => {
+      if (!changed) {
+        row = { ...base };
+        changed = true;
+      }
+    };
+    const maybeSet = (field, value) => {
+      if (!field) return;
+      const current = row[field];
+      if (current !== undefined && current !== null && current !== '') return;
+      ensureRow();
+      row[field] = value;
+    };
     if (user?.empid !== undefined) {
-      userIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = user.empid;
-      });
+      userIdSet.forEach((f) => maybeSet(f, user.empid));
     }
-    if (branch !== undefined) {
-      branchIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = branch;
-      });
+    if (branch != null) {
+      branchIdSet.forEach((f) => maybeSet(f, branch));
     }
     if (department !== undefined) {
-      departmentIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = department;
-      });
+      departmentIdSet.forEach((f) => maybeSet(f, department));
     }
-    if (company !== undefined) {
-      companyIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company;
-      });
+    if (company != null) {
+      companyIdSet.forEach((f) => maybeSet(f, company));
     }
-    const now = formatTimestamp(new Date()).slice(0, 10);
-    dateField.forEach((f) => {
-      if (row[f] === undefined || row[f] === '') row[f] = now;
-    });
+    if (dateField.length > 0) {
+      const now = formatTimestamp(new Date()).slice(0, 10);
+      dateField.forEach((f) => maybeSet(f, now));
+    }
     return row;
   }
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
@@ -255,6 +263,7 @@ function InlineTransactionTable(
     return assignArrayMetadata(next, initRows);
   });
   const rowsRef = useRef(rows);
+  const contextDefaultsRef = useRef({ branch, company });
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
@@ -387,6 +396,48 @@ function InlineTransactionTable(
       setRows(withMetadata);
     }
   }, [initRows, minRows, defaultValues, placeholders]);
+
+  useEffect(() => {
+    const prev = contextDefaultsRef.current;
+    const branchReady = branch != null && prev.branch == null;
+    const companyReady = company != null && prev.company == null;
+    contextDefaultsRef.current = { branch, company };
+    if (!branchReady && !companyReady) return;
+
+    setRows((currentRows) => {
+      if (!Array.isArray(currentRows)) return currentRows;
+      let changed = false;
+      let nextRows = currentRows;
+      const ensureClone = () => {
+        if (!changed) {
+          nextRows = currentRows.slice();
+          assignArrayMetadata(nextRows, currentRows);
+          changed = true;
+        }
+      };
+
+      currentRows.forEach((row, idx) => {
+        const updated = fillSessionDefaults(row);
+        if (updated !== row) {
+          ensureClone();
+          nextRows[idx] = updated;
+        }
+      });
+
+      Object.keys(currentRows).forEach((key) => {
+        if (arrayIndexPattern.test(key)) return;
+        const meta = currentRows[key];
+        if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return;
+        const updated = fillSessionDefaults(meta);
+        if (updated !== meta) {
+          ensureClone();
+          nextRows[key] = updated;
+        }
+      });
+
+      return changed ? nextRows : currentRows;
+    });
+  }, [branch, company, fillSessionDefaults]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
