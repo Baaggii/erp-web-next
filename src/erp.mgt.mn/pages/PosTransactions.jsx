@@ -31,6 +31,7 @@ function extractArrayMetadata(value) {
   const metadata = {};
   let hasMetadata = false;
   Object.keys(value).forEach((key) => {
+    if (key === 'rows' || key === 'meta') return;
     if (!arrayIndexPattern.test(key)) {
       metadata[key] = value[key];
       hasMetadata = true;
@@ -52,6 +53,73 @@ function cloneArrayWithMetadata(source) {
   if (!Array.isArray(source)) return source;
   const clone = source.map((row) => (isPlainRecord(row) ? { ...row } : row));
   return assignArrayMetadata(clone, source);
+}
+
+function serializeRowsWithMetadata(container) {
+  if (isPlainRecord(container) && Array.isArray(container.rows)) {
+    const rows = container.rows.map((row) => (isPlainRecord(row) ? { ...row } : row));
+    const meta = extractArrayMetadata(container.meta);
+    return meta ? { rows, meta } : { rows };
+  }
+  const rows = Array.isArray(container)
+    ? container.map((row) => (isPlainRecord(row) ? { ...row } : row))
+    : [];
+  const meta = extractArrayMetadata(container);
+  return meta ? { rows, meta } : { rows };
+}
+
+function restoreRowsWithMetadata(entry) {
+  if (Array.isArray(entry)) {
+    return cloneArrayWithMetadata(entry);
+  }
+  if (isPlainRecord(entry) && Array.isArray(entry.rows)) {
+    const rows = entry.rows.map((row) => (isPlainRecord(row) ? { ...row } : row));
+    return assignArrayMetadata(rows, entry.meta || {});
+  }
+  if (isPlainRecord(entry)) {
+    return [
+      {
+        ...entry,
+      },
+    ];
+  }
+  return [];
+}
+
+function serializeValuesForTransport(values, multiTableSet) {
+  const result = {};
+  Object.entries(values || {}).forEach(([table, value]) => {
+    if (multiTableSet.has(table)) {
+      const serialized = serializeRowsWithMetadata(value);
+      result[table] = serialized.meta
+        ? { rows: serialized.rows, meta: serialized.meta }
+        : { rows: serialized.rows };
+    } else if (Array.isArray(value)) {
+      result[table] = value.map((row) => (isPlainRecord(row) ? { ...row } : row));
+    } else if (isPlainRecord(value)) {
+      result[table] = { ...value };
+    } else {
+      result[table] = value;
+    }
+  });
+  return result;
+}
+
+function restoreValuesFromTransport(values, multiTableSet) {
+  if (!values || typeof values !== 'object') return {};
+  const result = {};
+  Object.entries(values).forEach(([table, value]) => {
+    if (multiTableSet.has(table)) {
+      result[table] = restoreRowsWithMetadata(value);
+    } else if (Array.isArray(value)) {
+      result[table] = value.map((row) => (isPlainRecord(row) ? { ...row } : row));
+    } else if (isPlainRecord(value)) {
+      result[table] = { ...value };
+    } else {
+      result[table] = value;
+    }
+  });
+  return result;
 }
 
 function normalizeValueForComparison(value) {
@@ -990,6 +1058,16 @@ export default function PosTransactionsPage() {
     };
   }, [config]);
 
+  const multiTableSet = React.useMemo(() => {
+    const set = new Set();
+    formList.forEach((t) => {
+      if (t?.type === 'multi' && t.table) {
+        set.add(t.table);
+      }
+    });
+    return set;
+  }, [formList]);
+
   // Stable key used for effect dependencies that care about visible table set
   const visibleTablesKey = React.useMemo(
     () => [...visibleTables].sort().join(','),
@@ -1610,11 +1688,12 @@ export default function PosTransactionsPage() {
       date: formatTimestamp(new Date()),
     };
     try {
+      const transportData = serializeValuesForTransport(next, multiTableSet);
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: sid, name, data: next, masterId: mid, session }),
+        body: JSON.stringify({ id: sid, name, data: transportData, masterId: mid, session }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
@@ -1655,7 +1734,8 @@ export default function PosTransactionsPage() {
       .then((res) => (res.ok ? res.json() : null))
       .catch(() => null);
     if (rec && rec.data) {
-      setValues(rec.data);
+      const restoredData = restoreValuesFromTransport(rec.data, multiTableSet);
+      setValues(restoredData);
       setPendingId(String(id).trim());
       setMasterId(rec.masterId || null);
       masterIdRef.current = rec.masterId || null;
@@ -1663,7 +1743,7 @@ export default function PosTransactionsPage() {
         (f) => f.table === config?.masterTable,
       );
       if (masterSf) {
-        const sid = rec.data?.[config.masterTable]?.[masterSf.field];
+        const sid = restoredData?.[config.masterTable]?.[masterSf.field];
         setCurrentSessionId(sid || null);
       }
       addToast('Loaded', 'success');
@@ -1733,8 +1813,16 @@ export default function PosTransactionsPage() {
     const single = {};
     const multi = {};
     formList.forEach((t) => {
-      if (t.type === 'multi') multi[t.table] = payload[t.table];
-      else single[t.table] = payload[t.table];
+      if (!t?.table) return;
+      const value = payload[t.table];
+      if (t.type === 'multi') {
+        const serialized = serializeRowsWithMetadata(value);
+        multi[t.table] = serialized.meta
+          ? { rows: serialized.rows, meta: serialized.meta }
+          : { rows: serialized.rows };
+      } else {
+        single[t.table] = value;
+      }
     });
     const postData = { masterId: masterIdRef.current, single, multi };
     const session = {
