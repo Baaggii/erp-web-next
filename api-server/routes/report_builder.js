@@ -98,6 +98,8 @@ router.get('/procedures', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
     const prefix = req.query.prefix || '';
+    const includeAllRaw = (req.query.includeAll || '').toString().toLowerCase();
+    const includeAll = ['1', 'true', 'yes'].includes(includeAllRaw);
 
     const session =
       req.session || (await getEmploymentSession(req.user.empid, companyId));
@@ -108,7 +110,7 @@ router.get('/procedures', requireAuth, async (req, res, next) => {
     }
 
     let names = await listReportProcedures(prefix);
-    if (!isAdmin) {
+    if (!isAdmin && !includeAll) {
       names = names.filter((n) => {
         const parts = n.split('_');
         return parts[1] === '0' || parts[1] === String(companyId);

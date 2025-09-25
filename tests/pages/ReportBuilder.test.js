@@ -330,4 +330,198 @@ if (typeof mock.import !== 'function') {
 
     delete global.fetch;
   });
+
+  test('ReportBuilder shows full procedures list with trimmed labels', async () => {
+    const states = [];
+    const optionCalls = [];
+    const overrides = {
+      27: [
+        { name: 'dynrep_0_proc1', isDefault: true },
+        { name: 'dynrep_custom', isDefault: false },
+        { name: 'legacy_proc', isDefault: false },
+      ],
+    };
+    const reactMock = {
+      useState(initial) {
+        const idx = states.length;
+        const value = Object.prototype.hasOwnProperty.call(overrides, idx)
+          ? overrides[idx]
+          : initial;
+        states.push(value);
+        return [states[idx], (v) => (states[idx] = v)];
+      },
+      useEffect() {},
+      useContext() {
+        return {
+          company: 0,
+          permissions: { permissions: { system_settings: true } },
+          session: {},
+        };
+      },
+      createElement(type, props, ...children) {
+        if (typeof type === 'function') {
+          return type({ ...props, children });
+        }
+        const text = children.flat ? children.flat().join('') : children.join('');
+        if (type === 'option') {
+          optionCalls.push({ value: props?.value, label: text });
+        }
+        return null;
+      },
+    };
+
+    global.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+    const { default: ReportBuilder } = await mock.import(
+      '../../src/erp.mgt.mn/pages/ReportBuilder.jsx',
+      {
+        react: {
+          default: reactMock,
+          useState: reactMock.useState,
+          useEffect: reactMock.useEffect,
+          useContext: reactMock.useContext,
+          createElement: reactMock.createElement,
+        },
+        '../utils/buildStoredProcedure.js': { default: () => '' },
+        '../utils/buildReportSql.js': { default: () => '' },
+        '../components/ErrorBoundary.jsx': { default: (p) => p.children },
+        '../hooks/useGeneralConfig.js': {
+          default: () => ({ general: { reportProcPrefix: 'dynrep_' } }),
+        },
+        '../utils/formatSqlValue.js': { default: (v) => v },
+        '../context/ToastContext.jsx': {
+          useToast: () => ({ addToast() {} }),
+        },
+        '../context/AuthContext.jsx': { AuthContext: {} },
+      },
+    );
+
+    ReportBuilder();
+
+    const relevant = optionCalls.filter((opt) =>
+      ['dynrep_0_proc1', 'dynrep_custom', 'legacy_proc'].includes(opt.value),
+    );
+
+    assert.deepEqual(relevant, [
+      { value: 'dynrep_0_proc1', label: '0_proc1' },
+      { value: 'dynrep_custom', label: 'custom' },
+      { value: 'legacy_proc', label: 'legacy_proc' },
+    ]);
+
+    delete global.fetch;
+  });
+
+  test('handlePostProc keeps unfiltered procedures when reloading', async () => {
+    const states = [];
+    let postHandler;
+    const overrides = {
+      4: 'proc1',
+      19: 'SQL',
+      27: [{ name: 'dynrep_0_proc1', isDefault: true }],
+    };
+    const reactMock = {
+      useState(initial) {
+        const idx = states.length;
+        const value = Object.prototype.hasOwnProperty.call(overrides, idx)
+          ? overrides[idx]
+          : initial;
+        states.push(value);
+        return [states[idx], (v) => (states[idx] = v)];
+      },
+      useEffect() {},
+      useContext() {
+        return {
+          company: 0,
+          permissions: { permissions: { system_settings: true } },
+          session: {},
+        };
+      },
+      createElement(type, props, ...children) {
+        if (typeof type === 'function') {
+          return type({ ...props, children });
+        }
+        const text = children.flat ? children.flat().join('') : children.join('');
+        if (type === 'button' && text.includes('POST Procedure')) {
+          postHandler = props.onClick;
+        }
+        return null;
+      },
+    };
+
+    const fetchCalls = [];
+    global.fetch = async (url, opts) => {
+      fetchCalls.push({ url, opts });
+      if (opts?.method === 'POST') {
+        return { ok: true, json: async () => ({}) };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          names: [
+            { name: 'dynrep_0_proc1', isDefault: true },
+            { name: 'dynrep_custom', isDefault: false },
+          ],
+        }),
+      };
+    };
+
+    const originalWindow = global.window;
+    const originalCustomEvent = global.CustomEvent;
+    global.window = {
+      confirm: () => true,
+      dispatchEvent() {},
+    };
+    global.CustomEvent = function CustomEvent() {};
+
+    const { default: ReportBuilder } = await mock.import(
+      '../../src/erp.mgt.mn/pages/ReportBuilder.jsx',
+      {
+        react: {
+          default: reactMock,
+          useState: reactMock.useState,
+          useEffect: reactMock.useEffect,
+          useContext: reactMock.useContext,
+          createElement: reactMock.createElement,
+        },
+        '../utils/buildStoredProcedure.js': { default: () => '' },
+        '../utils/buildReportSql.js': { default: () => '' },
+        '../components/ErrorBoundary.jsx': { default: (p) => p.children },
+        '../hooks/useGeneralConfig.js': {
+          default: () => ({ general: { reportProcPrefix: 'dynrep_' } }),
+        },
+        '../utils/formatSqlValue.js': { default: (v) => v },
+        '../context/ToastContext.jsx': {
+          useToast: () => ({ addToast() {} }),
+        },
+        '../context/AuthContext.jsx': { AuthContext: {} },
+      },
+    );
+
+    ReportBuilder();
+    await postHandler?.();
+
+    assert.deepEqual(
+      fetchCalls.map((c) => c.url),
+      [
+        '/api/report_builder/procedures',
+        '/api/report_builder/procedures?prefix=dynrep_&includeAll=true',
+      ],
+    );
+    assert.deepEqual(states[27], [
+      { name: 'dynrep_0_proc1', isDefault: true },
+      { name: 'dynrep_custom', isDefault: false },
+    ]);
+
+    delete global.fetch;
+    if (originalWindow === undefined) {
+      delete global.window;
+    } else {
+      global.window = originalWindow;
+    }
+    if (originalCustomEvent === undefined) {
+      delete global.CustomEvent;
+    } else {
+      global.CustomEvent = originalCustomEvent;
+    }
+  });
 }

@@ -11,6 +11,19 @@ import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
 
+export function formatProcedureLabel(name = '', prefix = '') {
+  if (!prefix) return name;
+  return name.startsWith(prefix) ? name.slice(prefix.length) : name;
+}
+
+function buildProceduresQuery(prefix = '', { includeAll = false } = {}) {
+  const params = new URLSearchParams();
+  if (prefix) params.set('prefix', prefix);
+  if (includeAll) params.set('includeAll', 'true');
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
+
 const SESSION_PARAMS = [
   { name: 'session_branch_id', type: 'INT' },
   { name: 'session_user_id', type: 'VARCHAR(10)' },
@@ -75,8 +88,7 @@ function ReportBuilderInner() {
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
 
-  const tenantProcedures = dbProcedures.filter((p) => !p.isDefault);
-  const displayProcedures = isAdmin ? dbProcedures : tenantProcedures;
+  const basePrefix = generalConfig?.general?.reportProcPrefix || '';
 
   const addFilterLabel = t('reportBuilder.addFilter', 'Add Filter');
   const addConditionLabel = t('reportBuilder.addCondition', 'Add Condition');
@@ -88,10 +100,10 @@ function ReportBuilderInner() {
   const defaultTag = t('reportBuilder.defaultTag', '(default)');
 
   useEffect(() => {
-    const first = displayProcedures[0];
+    const first = dbProcedures[0];
     setSelectedDbProcedure(first?.name || '');
     setDbProcIsDefault(first?.isDefault || false);
-  }, [dbProcedures, isAdmin]);
+  }, [dbProcedures]);
 
   useEffect(() => {
     setUnionQueries((prev) => {
@@ -141,11 +153,8 @@ function ReportBuilderInner() {
   }, []);
 
   useEffect(() => {
-    const basePrefix = generalConfig?.general?.reportProcPrefix || '';
     if (!generalConfig) return;
-    const procQuery = basePrefix
-      ? `?prefix=${encodeURIComponent(basePrefix)}`
-      : '';
+    const procQuery = buildProceduresQuery(basePrefix, { includeAll: true });
     async function fetchSaved() {
       try {
         const res = await fetch('/api/report_builder/configs');
@@ -170,20 +179,14 @@ function ReportBuilderInner() {
       try {
         const res = await fetch(`/api/report_builder/procedures${procQuery}`);
         const data = await res.json();
-        const list = (data.names || []).filter(({ name }) =>
-          isAdmin
-            ? name.startsWith(basePrefix)
-            : name.startsWith(`${basePrefix}0_`) ||
-              (company != null &&
-                name.startsWith(`${basePrefix}${company}_`)),
-        );
+        const list = data.names || [];
         setDbProcedures(list);
       } catch (err) {
         console.error(err);
       }
     }
     fetchSaved();
-  }, [generalConfig?.general?.reportProcPrefix, company, isAdmin]);
+  }, [generalConfig?.general?.reportProcPrefix]);
 
   async function handleImport() {
     if (
@@ -206,10 +209,7 @@ function ReportBuilderInner() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.message || 'failed');
       }
-      const basePrefix = generalConfig?.general?.reportProcPrefix || '';
-      const procQuery = basePrefix
-        ? `?prefix=${encodeURIComponent(basePrefix)}`
-        : '';
+      const procQuery = buildProceduresQuery(basePrefix, { includeAll: true });
       try {
         const resCfg = await fetch('/api/report_builder/configs');
         const dataCfg = await resCfg.json();
@@ -231,13 +231,7 @@ function ReportBuilderInner() {
           `/api/report_builder/procedures${procQuery}`,
         );
         const dataProcs = await resProcs.json();
-        const list = (dataProcs.names || []).filter(({ name }) =>
-          isAdmin
-            ? name.startsWith(basePrefix)
-            : name.startsWith(`${basePrefix}0_`) ||
-              (company != null &&
-                name.startsWith(`${basePrefix}${company}_`)),
-        );
+        const list = dataProcs.names || [];
         setDbProcedures(list);
       } catch {}
       addToast('Imported', 'success');
@@ -1233,9 +1227,7 @@ function ReportBuilderInner() {
     if (!sqlToPost) return;
     if (!window.confirm('POST stored procedure to database?')) return;
     const basePrefix = generalConfig?.general?.reportProcPrefix || '';
-    const procQuery = basePrefix
-      ? `?prefix=${encodeURIComponent(basePrefix)}`
-      : '';
+    const procQuery = buildProceduresQuery(basePrefix, { includeAll: true });
     try {
       const res = await fetch(`/api/report_builder/procedures`, {
         method: 'POST',
@@ -1251,10 +1243,7 @@ function ReportBuilderInner() {
         throw new Error('Failed to fetch procedures');
       }
       const data = await listRes.json();
-      const list = (data.names || []).filter(({ name }) =>
-        name.startsWith(`${basePrefix}0_`) ||
-        (company != null && name.startsWith(`${basePrefix}${company}_`)),
-      );
+      const list = data.names || [];
       const expectedName = `${basePrefix}${
         company != null ? `${company}_` : ''
       }${name}`;
@@ -3026,11 +3015,14 @@ function ReportBuilderInner() {
             }}
             style={{ marginLeft: '0.5rem' }}
           >
-            {displayProcedures.map((p) => (
-              <option key={p.name} value={p.name}>
-                {p.name}
-              </option>
-            ))}
+            {dbProcedures.map((p) => {
+              const label = formatProcedureLabel(p.name, basePrefix);
+              return (
+                <option key={p.name} value={p.name}>
+                  {label}
+                </option>
+              );
+            })}
           </select>
           <button
             onClick={handleLoadDbProcedure}
