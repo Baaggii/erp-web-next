@@ -1051,23 +1051,39 @@ export async function generateTranslations({
     ]);
     for (const key of allKeys) {
       checkAbort();
+      const entry = entryMap.get(key);
+      const rawEnglishValue = locales.en && locales.en[key];
+      const englishLabel =
+        typeof rawEnglishValue === 'string' && rawEnglishValue.trim()
+          ? rawEnglishValue.trim()
+          : typeof entry?.baseEnglish === 'string' && entry.baseEnglish.trim()
+          ? entry.baseEnglish.trim()
+          : '';
+      const rawFallbackValue = locales.mn && locales.mn[key];
+      const fallbackLabel =
+        typeof rawFallbackValue === 'string' && rawFallbackValue.trim()
+          ? rawFallbackValue.trim()
+          : typeof entry?.sourceText === 'string' && entry.sourceText.trim()
+          ? entry.sourceText.trim()
+          : '';
+      const existingTooltipValue = locales.en.tooltip[key];
+      const existingTooltip =
+        typeof existingTooltipValue === 'string' ? existingTooltipValue.trim() : '';
+      if (existingTooltip) {
+        const normalizedTooltip = normalizeForComparison(existingTooltip);
+        const normalizedEnglishLabel = normalizeForComparison(englishLabel);
+        const normalizedFallbackLabel = normalizeForComparison(fallbackLabel);
+        if (
+          (normalizedEnglishLabel && normalizedTooltip === normalizedEnglishLabel) ||
+          (!normalizedEnglishLabel &&
+            normalizedFallbackLabel &&
+            normalizedTooltip === normalizedFallbackLabel)
+        ) {
+          locales.en.tooltip[key] = '';
+        }
+      }
       // Ensure English tooltip
       if (!locales.en.tooltip[key]) {
-        const entry = entryMap.get(key);
-        const rawEnglishValue = locales.en && locales.en[key];
-        const englishLabel =
-          typeof rawEnglishValue === 'string' && rawEnglishValue.trim()
-            ? rawEnglishValue.trim()
-            : typeof entry?.baseEnglish === 'string' && entry.baseEnglish.trim()
-            ? entry.baseEnglish.trim()
-            : '';
-        const rawFallbackValue = locales.mn && locales.mn[key];
-        const fallbackLabel =
-          typeof rawFallbackValue === 'string' && rawFallbackValue.trim()
-            ? rawFallbackValue.trim()
-            : typeof entry?.sourceText === 'string' && entry.sourceText.trim()
-            ? entry.sourceText.trim()
-            : '';
         const tooltipRequestText = englishLabel || fallbackLabel;
         if (!tooltipRequestText) {
           locales.en.tooltip[key] = '';
