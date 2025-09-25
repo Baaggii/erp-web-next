@@ -84,7 +84,35 @@ function createCacheRecord(record, fallbackSource) {
   if (!record) return null;
   const normalized = normalizeTranslationRecord(record);
   if (!normalized) return null;
-  const source = normalized.source || fallbackSource || null;
+  let source = normalized.source || null;
+  if (typeof source === 'string') {
+    const trimmed = source.trim();
+    if (trimmed) {
+      const lower = trimmed.toLowerCase();
+      const storageIndicators = [
+        'localstorage',
+        'indexeddb',
+        'node-cache',
+        'server-cache',
+      ];
+      const isStorageSource =
+        lower.startsWith('cache-') ||
+        lower.endsWith('-cache') ||
+        storageIndicators.some((indicator) =>
+          lower.includes(indicator),
+        );
+      if (isStorageSource) {
+        source = null;
+      } else {
+        source = trimmed;
+      }
+    } else {
+      source = null;
+    }
+  }
+  if (!source && fallbackSource) {
+    source = fallbackSource;
+  }
   const cacheRecord = { text: normalized.text, source };
   if (normalized.metadata) cacheRecord.metadata = normalized.metadata;
   return cacheRecord;
