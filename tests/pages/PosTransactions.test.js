@@ -378,3 +378,60 @@ test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
   assert.equal(cleared.transactions_pos.total_amount, 0);
   assert.equal(cleared.transactions_income.or_or, 0);
 });
+
+test('syncCalcFields updates multi table metadata for header fields', () => {
+  const calcFields = [
+    {
+      tableSections: {
+        transactions_order: { headerFields: ['pos_session_id'], footerFields: [] },
+      },
+      cells: [
+        { table: 'transactions_pos', field: 'pos_session_id' },
+        { table: 'transactions_order', field: 'pos_session_id' },
+      ],
+    },
+  ];
+
+  const initial = {
+    transactions_pos: { pos_session_id: 'sess-100' },
+    transactions_order: [
+      { line: 1, qty: 2 },
+      { line: 2, qty: 1 },
+    ],
+  };
+  initial.transactions_order.header_note = 'keep-me';
+
+  const synced = syncCalcFields(initial, calcFields);
+
+  assert.notStrictEqual(synced.transactions_order, initial.transactions_order);
+  assert.equal(synced.transactions_order[0].pos_session_id, 'sess-100');
+  assert.equal(synced.transactions_order[1].pos_session_id, 'sess-100');
+  assert.equal(synced.transactions_order.pos_session_id, 'sess-100');
+  assert.equal(synced.transactions_order.header_note, 'keep-me');
+  assert.equal(initial.transactions_order.pos_session_id, undefined);
+});
+
+test('syncCalcFields seeds metadata when rows omit multi table field', () => {
+  const calcFields = [
+    {
+      cells: [
+        { table: 'transactions_pos', field: 'pos_session_id' },
+        { table: 'transactions_order', field: 'pos_session_id' },
+      ],
+    },
+  ];
+
+  const initial = {
+    transactions_pos: { pos_session_id: 'sess-200' },
+    transactions_order: [],
+  };
+  initial.transactions_order.footer_note = 'persist';
+
+  const synced = syncCalcFields(initial, calcFields);
+
+  assert.notStrictEqual(synced.transactions_order, initial.transactions_order);
+  assert.equal(synced.transactions_order.length, 0);
+  assert.equal(synced.transactions_order.pos_session_id, 'sess-200');
+  assert.equal(synced.transactions_order.footer_note, 'persist');
+  assert.equal(initial.transactions_order.pos_session_id, undefined);
+});
