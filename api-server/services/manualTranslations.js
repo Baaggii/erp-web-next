@@ -166,7 +166,19 @@ export async function loadTranslations() {
               ? detectedLang
               : initialLangKey;
           if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;
-          if (tooltipEntry.values[langKey] == null) tooltipEntry.values[langKey] = v;
+
+          const tooltipSources = [meta.tooltip, meta.tooltipValue, meta.tooltipText];
+          const tooltipContent = tooltipSources.find(
+            (value) => typeof value === 'string' && value.trim(),
+          );
+
+          if (tooltipContent) {
+            if (tooltipEntry.values[langKey] == null) {
+              tooltipEntry.values[langKey] = tooltipContent;
+            }
+          } else if (tooltipEntry.values[langKey] == null) {
+            tooltipEntry.values[langKey] = '';
+          }
           if (!localeEntry.module && meta.module) localeEntry.module = meta.module;
           if (!tooltipEntry.module && meta.module) tooltipEntry.module = meta.module;
           if (!localeEntry.context && meta.context) localeEntry.context = meta.context;
