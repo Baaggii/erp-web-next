@@ -510,11 +510,11 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
 
   let cached;
   for (const cacheId of cacheKeys) {
-    cached = createCacheRecord(getLS(cacheId), null);
+    cached = createCacheRecord(getLS(cacheId), 'ai');
     if (cached) {
       return createResult(cached.text, {
         base,
-        source: cached.source || 'cache-localStorage',
+        source: cached.source,
         fromCache: true,
       });
     }
@@ -522,17 +522,17 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
 
   for (const cacheId of cacheKeys) {
     const idbValue = await idbGet(cacheId);
-    cached = createCacheRecord(idbValue, null);
+    cached = createCacheRecord(idbValue, 'ai');
     if (cached) {
       const existingRaw = getLS(cacheId);
-      const existingRecord = createCacheRecord(existingRaw, null);
+      const existingRecord = createCacheRecord(existingRaw, 'ai');
       if (!existingRecord || existingRecord.text !== cached.text || existingRecord.source !== cached.source) {
         setLS(cacheId, JSON.stringify(cached));
       }
       if (typeof idbValue === 'string') await idbSet(cacheId, cached);
       return createResult(cached.text, {
         base,
-        source: cached.source || 'cache-indexedDB',
+        source: cached.source,
         fromCache: true,
       });
     }
@@ -541,10 +541,10 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
   const cacheStore = await loadNodeCache();
   for (const cacheId of cacheKeys) {
     const nodeValue = cacheStore[cacheId];
-    cached = createCacheRecord(nodeValue, null);
+    cached = createCacheRecord(nodeValue, 'ai');
     if (cached) {
       const existingRaw = getLS(cacheId);
-      const existingRecord = createCacheRecord(existingRaw, null);
+      const existingRecord = createCacheRecord(existingRaw, 'ai');
       if (!existingRecord || existingRecord.text !== cached.text || existingRecord.source !== cached.source) {
         setLS(cacheId, JSON.stringify(cached));
       }
@@ -554,7 +554,7 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
       }
       return createResult(cached.text, {
         base,
-        source: cached.source || 'cache-node',
+        source: cached.source,
         fromCache: true,
       });
     }
