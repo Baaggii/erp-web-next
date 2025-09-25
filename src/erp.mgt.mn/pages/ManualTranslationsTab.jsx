@@ -43,28 +43,19 @@ function getTranslatorLabel(source) {
 
 const MANUAL_ENTRY_LABEL = 'Manual entry';
 
-const BASE_COLUMN_DEFAULT_WIDTHS = {
-  key: 240,
-  type: 140,
-  module: 200,
-  context: 200,
-  page: 220,
-  translatedBy: 240,
-  actions: 160,
-};
-
-const DEFAULT_LANGUAGE_COLUMN_WIDTH = 220;
+const BASE_COLUMN_KEYS = [
+  'key',
+  'type',
+  'module',
+  'context',
+  'page',
+  'translatedBy',
+  'actions',
+];
 const MIN_COLUMN_WIDTH = 80;
 
 function getLanguageColumnKey(lang) {
   return `lang:${lang}`;
-}
-
-function getDefaultColumnWidth(columnKey) {
-  if (columnKey.startsWith('lang:')) {
-    return DEFAULT_LANGUAGE_COLUMN_WIDTH;
-  }
-  return BASE_COLUMN_DEFAULT_WIDTHS[columnKey] ?? 160;
 }
 
 function normalizeEnMnPair(en, mn) {
@@ -310,45 +301,23 @@ export default function ManualTranslationsTab() {
 
   useEffect(() => {
     setColumnWidths((prev) => {
+      const allowedKeys = new Set([
+        ...BASE_COLUMN_KEYS,
+        ...languages.map((lang) => getLanguageColumnKey(lang)),
+      ]);
+
       const next = {};
       let changed = false;
 
-      const ensureColumn = (key, defaultWidth) => {
-        const existing = prev[key];
-        const width =
-          typeof existing === 'number' && !Number.isNaN(existing)
-            ? existing
-            : defaultWidth;
-        next[key] = width;
-        if (existing !== width) {
-          changed = true;
-        }
-      };
-
-      Object.entries(BASE_COLUMN_DEFAULT_WIDTHS).forEach(([key, defaultWidth]) => {
-        ensureColumn(key, defaultWidth);
-      });
-
-      for (const lang of languages) {
-        ensureColumn(getLanguageColumnKey(lang), DEFAULT_LANGUAGE_COLUMN_WIDTH);
-      }
-
-      if (!changed) {
-        const prevKeys = Object.keys(prev);
-        const nextKeys = Object.keys(next);
-        if (prevKeys.length !== nextKeys.length) {
-          changed = true;
+      for (const [key, value] of Object.entries(prev)) {
+        if (allowedKeys.has(key)) {
+          next[key] = value;
         } else {
-          for (const key of prevKeys) {
-            if (!Object.prototype.hasOwnProperty.call(next, key)) {
-              changed = true;
-              break;
-            }
-          }
+          changed = true;
         }
       }
 
-      if (!changed) {
+      if (!changed && Object.keys(prev).length === Object.keys(next).length) {
         return prev;
       }
 
@@ -362,9 +331,20 @@ export default function ManualTranslationsTab() {
       if (typeof width === 'number' && !Number.isNaN(width)) {
         return width;
       }
-      return getDefaultColumnWidth(columnKey);
+      return undefined;
     },
     [columnWidths],
+  );
+
+  const getColumnWidthStyle = useCallback(
+    (columnKey) => {
+      const width = getColumnWidth(columnKey);
+      if (typeof width === 'number') {
+        return { width, minWidth: width };
+      }
+      return { width: 'auto', minWidth: 0 };
+    },
+    [getColumnWidth],
   );
 
   const handleResizeStart = useCallback(
@@ -375,9 +355,14 @@ export default function ManualTranslationsTab() {
       const pointerId = event.pointerId ?? null;
       const target = event.currentTarget;
       const th = target.closest('th');
-      const initialWidth = th
-        ? th.getBoundingClientRect().width
-        : columnWidthsRef.current[columnKey] ?? getDefaultColumnWidth(columnKey);
+      const measuredWidth = th ? th.getBoundingClientRect().width : null;
+      const storedWidth = columnWidthsRef.current[columnKey];
+      const initialWidth =
+        typeof measuredWidth === 'number' && !Number.isNaN(measuredWidth)
+          ? measuredWidth
+          : typeof storedWidth === 'number' && !Number.isNaN(storedWidth)
+            ? storedWidth
+            : MIN_COLUMN_WIDTH;
       const startX = event.clientX;
 
       const onPointerMove = (moveEvent) => {
@@ -455,33 +440,27 @@ export default function ManualTranslationsTab() {
     [handleResizeStart],
   );
 
-  const getHeaderStyle = useCallback(
-    (columnKey) => {
-      const width = getColumnWidth(columnKey);
-      return {
-        border: '1px solid #d1d5db',
-        padding: '0.25rem',
-        paddingRight: '0.75rem',
-        position: 'relative',
-        width,
-        minWidth: width,
-      };
-    },
-    [getColumnWidth],
-  );
+  const getHeaderStyle = useCallback(() => {
+    return {
+      border: '1px solid #d1d5db',
+      padding: '0.25rem',
+      paddingRight: '0.75rem',
+      position: 'relative',
+      width: 'auto',
+      textAlign: 'left',
+      verticalAlign: 'top',
+    };
+  }, []);
 
-  const getCellStyle = useCallback(
-    (columnKey) => {
-      const width = getColumnWidth(columnKey);
-      return {
-        border: '1px solid #d1d5db',
-        padding: '0.25rem',
-        width,
-        minWidth: width,
-      };
-    },
-    [getColumnWidth],
-  );
+  const getCellStyle = useCallback(() => {
+    return {
+      border: '1px solid #d1d5db',
+      padding: '0.25rem',
+      width: 'auto',
+      verticalAlign: 'top',
+      textAlign: 'left',
+    };
+  }, []);
 
   useEffect(() => {
     setPage(1);
@@ -960,40 +939,56 @@ export default function ManualTranslationsTab() {
           placeholder={t('search', 'Search')}
         />
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+      <div style={{ overflowX: 'hidden' }}>
+        <table
+          style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}
+        >
+          <colgroup>
+            <col style={getColumnWidthStyle('key')} />
+            <col style={getColumnWidthStyle('type')} />
+            <col style={getColumnWidthStyle('module')} />
+            <col style={getColumnWidthStyle('context')} />
+            <col style={getColumnWidthStyle('page')} />
+            {languages.map((l) => {
+              const columnKey = getLanguageColumnKey(l);
+              return <col key={columnKey} style={getColumnWidthStyle(columnKey)} />;
+            })}
+            <col style={getColumnWidthStyle('translatedBy')} />
+            <col style={getColumnWidthStyle('actions')} />
+          </colgroup>
           <thead>
             <tr>
-              <th style={getHeaderStyle('key')}>
+              <th style={getHeaderStyle()}>
                 Key
                 {renderResizeHandle('key')}
               </th>
-              <th style={getHeaderStyle('type')}>
+              <th style={getHeaderStyle()}>
                 Type
                 {renderResizeHandle('type')}
               </th>
-              <th style={getHeaderStyle('module')}>
+              <th style={getHeaderStyle()}>
                 Module
                 {renderResizeHandle('module')}
               </th>
-              <th style={getHeaderStyle('context')}>
+              <th style={getHeaderStyle()}>
                 Context
                 {renderResizeHandle('context')}
               </th>
-              <th style={getHeaderStyle('page')}>
+              <th style={getHeaderStyle()}>
                 {t('pageName', 'Page name')}
                 {renderResizeHandle('page')}
               </th>
               {languages.map((l) => {
                 const columnKey = getLanguageColumnKey(l);
                 return (
-                  <th key={l} style={getHeaderStyle(columnKey)}>
+                  <th key={l} style={getHeaderStyle()}>
                     <div
                       style={{
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         gap: '0.25rem',
+                        width: '100%',
                       }}
                     >
                       <span>{l}</span>
@@ -1011,11 +1006,11 @@ export default function ManualTranslationsTab() {
                   </th>
                 );
               })}
-              <th style={getHeaderStyle('translatedBy')}>
+              <th style={getHeaderStyle()}>
                 {t('translatedBy', 'Translated by')}
                 {renderResizeHandle('translatedBy')}
               </th>
-              <th style={getHeaderStyle('actions')}>
+              <th style={getHeaderStyle()}>
                 <span aria-hidden="true">&nbsp;</span>
                 {renderResizeHandle('actions')}
               </th>
@@ -1032,33 +1027,47 @@ export default function ManualTranslationsTab() {
                   style={rowStyle}
                   ref={entryIdx === activeRow ? activeRowRef : null}
                 >
-                  <td style={getCellStyle('key')}>
+                  <td style={getCellStyle()}>
                     <input
                       value={entry.key}
                       onChange={(e) => updateEntry(entryIdx, 'key', e.target.value)}
+                      style={{ width: '100%' }}
                     />
                   </td>
-                  <td style={getCellStyle('type')}>
+                  <td style={getCellStyle()}>
                     <select
                       value={entry.type}
                       onChange={(e) => updateEntry(entryIdx, 'type', e.target.value)}
+                      style={{ width: '100%' }}
                     >
                       <option value="locale">locale</option>
                       <option value="tooltip">tooltip</option>
                       <option value="exported">exported</option>
                     </select>
                   </td>
-                  <td style={getCellStyle('module')}>
-                    <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                  <td style={getCellStyle()}>
+                    <div
+                      style={{
+                        overflowWrap: 'anywhere',
+                        whiteSpace: 'pre-wrap',
+                        width: '100%',
+                      }}
+                    >
                       {String(entry.module ?? '')}
                     </div>
                   </td>
-                  <td style={getCellStyle('context')}>
-                    <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
+                  <td style={getCellStyle()}>
+                    <div
+                      style={{
+                        overflowWrap: 'anywhere',
+                        whiteSpace: 'pre-wrap',
+                        width: '100%',
+                      }}
+                    >
                       {String(entry.context ?? '')}
                     </div>
                   </td>
-                  <td style={getCellStyle('page')}>
+                  <td style={getCellStyle()}>
                     <input
                       value={entry.page ?? ''}
                       onChange={(e) => updateEntry(entryIdx, 'page', e.target.value)}
@@ -1069,7 +1078,7 @@ export default function ManualTranslationsTab() {
                   {languages.map((l) => {
                     const columnKey = getLanguageColumnKey(l);
                     return (
-                      <td key={l} style={getCellStyle(columnKey)}>
+                      <td key={l} style={getCellStyle()}>
                         <textarea
                           value={entry.values[l] || ''}
                           onChange={(e) => updateValue(entryIdx, l, e.target.value)}
@@ -1077,13 +1086,14 @@ export default function ManualTranslationsTab() {
                             width: '100%',
                             overflowWrap: 'anywhere',
                             whiteSpace: 'pre-wrap',
+                            display: 'block',
                           }}
                           rows={2}
                         />
                       </td>
                     );
                   })}
-                  <td style={getCellStyle('translatedBy')}>
+                  <td style={getCellStyle()}>
                     <div style={getProviderGridStyle(languages.length)}>
                       {languages.map((l) => {
                         const rawLabel = entry.translatedBy?.[l];
@@ -1102,7 +1112,7 @@ export default function ManualTranslationsTab() {
                       })}
                     </div>
                   </td>
-                  <td style={{ ...getCellStyle('actions'), whiteSpace: 'nowrap' }}>
+                  <td style={{ ...getCellStyle(), whiteSpace: 'nowrap' }}>
                     <button onClick={() => save(entryIdx)}>{t('save', 'Save')}</button>
                     <button
                       onClick={() => remove(entryIdx)}
