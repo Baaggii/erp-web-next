@@ -69,14 +69,14 @@ if (typeof mock.import !== 'function') {
     activateCodeTab?.();
 
     // selectedDbProcedure
-    states[66] = 'proc1';
-    states[67] = '';
-    states[68] = '';
+    states[28] = 'proc1';
+    states[29] = '';
+    states[30] = '';
 
     await loadConfigHandler();
 
     assert.equal(fetchUrl, '/api/report_builder/procedures/proc1');
-    assert.equal(states[42], 'abc');
+    assert.equal(states[4], 'abc');
     assert.deepEqual(addToastCalls, [
       { msg: 'Loaded config from embedded block', type: 'success' },
     ]);
@@ -151,12 +151,12 @@ if (typeof mock.import !== 'function') {
     activateCodeTab?.();
 
     // selectedReport
-    states[62] = 'cfg1';
+    states[24] = 'cfg1';
 
     await loadConfigHandler({});
 
     assert.equal(fetchUrl, '/api/report_builder/configs/cfg1');
-    assert.equal(states[42], 'abc');
+    assert.equal(states[4], 'abc');
 
     delete global.fetch;
   });
@@ -233,9 +233,9 @@ if (typeof mock.import !== 'function') {
     activateCodeTab?.();
 
     // selectedDbProcedure
-    states[66] = 'proc1';
-    states[67] = '';
-    states[68] = '';
+    states[28] = 'proc1';
+    states[29] = '';
+    states[30] = '';
 
     await loadConfigHandler();
 
@@ -243,7 +243,7 @@ if (typeof mock.import !== 'function') {
       '/api/report_builder/procedures/proc1',
       '/api/report_builder/procedures/proc1/config',
     ]);
-    assert.equal(states[42], 'abc');
+    assert.equal(states[4], 'abc');
     assert.deepEqual(addToastCalls, [
       { msg: 'Generated config from SQL', type: 'success' },
     ]);
@@ -317,9 +317,9 @@ if (typeof mock.import !== 'function') {
     activateCodeTab?.();
 
     // selectedDbProcedure
-    states[66] = 'proc1';
-    states[67] = '';
-    states[68] = '';
+    states[28] = 'proc1';
+    states[29] = '';
+    states[30] = '';
 
     await loadConfigHandler();
 
