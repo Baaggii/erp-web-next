@@ -1,6 +1,17 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useContext,
+  useCallback,
+  useLayoutEffect,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { getTenantKeyList } from '../utils/tenantKeys.js';
+
+const useIsomorphicLayoutEffect =
+  typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 export default function AsyncSearchSelect({
   table,
@@ -40,7 +51,38 @@ export default function AsyncSearchSelect({
   const displayLabel = match ? match.label : label;
   const internalRef = useRef(null);
   const chosenRef = useRef(null);
+  const actionRef = useRef(null);
   const [tenantMeta, setTenantMeta] = useState(null);
+  const [menuRect, setMenuRect] = useState(null);
+
+  const updateMenuPosition = useCallback(() => {
+    if (!show || !internalRef.current || typeof window === 'undefined') return;
+    const rect = internalRef.current.getBoundingClientRect();
+    setMenuRect({
+      top: rect.bottom,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, [show]);
+
+  useIsomorphicLayoutEffect(() => {
+    if (!show) {
+      setMenuRect(null);
+      return;
+    }
+    updateMenuPosition();
+  }, [show, options.length, input, updateMenuPosition]);
+
+  useEffect(() => {
+    if (!show) return;
+    const handler = () => updateMenuPosition();
+    window.addEventListener('resize', handler);
+    window.addEventListener('scroll', handler, true);
+    return () => {
+      window.removeEventListener('resize', handler);
+      window.removeEventListener('scroll', handler, true);
+    };
+  }, [show, updateMenuPosition]);
 
   async function fetchPage(p = 1, q = '', append = false, signal) {
     const cols =
@@ -171,41 +213,166 @@ export default function AsyncSearchSelect({
   ]);
 
   function handleSelectKeyDown(e) {
+    actionRef.current = null;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (!show) setShow(true);
       setHighlight((h) => Math.min(h + 1, options.length - 1));
-    } else if (e.key === 'ArrowUp') {
+      return;
+    }
+    if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (!show) setShow(true);
       setHighlight((h) => Math.max(h - 1, 0));
-    } else if (e.key === 'Enter') {
-      let idx = highlight;
-      if (idx < 0 && options.length > 0) idx = 0;
-      if (idx >= 0 && idx < options.length) {
-        e.preventDefault();
-        const opt = options[idx];
-        onChange(opt.value, opt.label);
-        if (onSelect) onSelect(opt);
-        setInput(String(opt.value));
-        setLabel(opt.label || '');
-        if (internalRef.current) internalRef.current.value = String(opt.value);
-        e.target.value = String(opt.value);
-        e.selectedOption = opt;
-        chosenRef.current = opt;
-        setShow(false);
+      return;
+    }
+    if (e.key !== 'Enter') return;
+
+    const query = String(input || '').trim();
+    if (loading || !show) {
+      actionRef.current = { type: 'enter', matched: false, query };
+      return;
+    }
+
+    let idx = highlight;
+    let opt = null;
+    if (idx >= 0 && idx < options.length) {
+      opt = options[idx];
+    } else if (options.length > 0) {
+      const lowerQuery = query.toLowerCase();
+      if (lowerQuery) {
+        opt = options.find(
+          (o) => String(o.value ?? '').toLowerCase() === lowerQuery,
+        );
+        if (!opt) {
+          opt = options.find(
+            (o) => String(o.label ?? '').toLowerCase() === lowerQuery,
+          );
+        }
+        if (!opt) {
+          opt = options.find((o) => {
+            const valueText = String(o.value ?? '').toLowerCase();
+            const labelText = String(o.label ?? '').toLowerCase();
+            return (
+              valueText.includes(lowerQuery) || labelText.includes(lowerQuery)
+            );
+          });
+        }
       }
     }
+
+    if (!opt) {
+      actionRef.current = { type: 'enter', matched: false, query };
+      return;
+    }
+
+    const optIndex = options.indexOf(opt);
+    if (optIndex >= 0) setHighlight(optIndex);
+    e.preventDefault();
+    onChange(opt.value, opt.label);
+    if (onSelect) onSelect(opt);
+    setInput(String(opt.value));
+    setLabel(opt.label || '');
+    if (internalRef.current) internalRef.current.value = String(opt.value);
+    e.target.value = String(opt.value);
+    e.selectedOption = opt;
+    chosenRef.current = opt;
+    actionRef.current = { type: 'enter', matched: true, option: opt };
+    setShow(false);
   }
 
   function handleBlur() {
     setTimeout(() => setShow(false), 100);
   }
 
+  const dropdown =
+    show && menuRect && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            style={{
+              position: 'fixed',
+              top: menuRect.top,
+              left: menuRect.left,
+              width: menuRect.width,
+              zIndex: 2147483647,
+            }}
+          >
+            {options.length > 0 && (
+              <ul
+                ref={listRef}
+                onScroll={(e) => {
+                  if (
+                    e.target.scrollTop + e.target.clientHeight >=
+                      e.target.scrollHeight - 5 &&
+                    hasMore &&
+                    !loading
+                  ) {
+                    const q = String(input || '').trim();
+                    const next = page + 1;
+                    setPage(next);
+                    const controller = new AbortController();
+                    fetchPage(next, q, true, controller.signal);
+                  }
+                }}
+                style={{
+                  listStyle: 'none',
+                  margin: 0,
+                  padding: 0,
+                  background: '#fff',
+                  border: '1px solid #ccc',
+                  maxHeight: '150px',
+                  overflowY: 'auto',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                }}
+              >
+                {options.map((opt, idx) => (
+                  <li
+                    key={opt.value}
+                    onMouseDown={() => {
+                      onChange(opt.value, opt.label);
+                      if (onSelect) onSelect(opt);
+                      setInput(String(opt.value));
+                      setLabel(opt.label || '');
+                      if (internalRef.current)
+                        internalRef.current.value = String(opt.value);
+                      chosenRef.current = opt;
+                      setShow(false);
+                    }}
+                    onMouseEnter={() => setHighlight(idx)}
+                    style={{
+                      padding: '0.25rem',
+                      background: highlight === idx ? '#eee' : '#fff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {opt.label || opt.value}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {loading && (
+              <div
+                style={{
+                  marginTop: options.length > 0 ? '0.25rem' : 0,
+                  background: '#fff',
+                  border: '1px solid #ccc',
+                  padding: '0.25rem',
+                  textAlign: 'center',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                }}
+              >
+                Loading...
+              </div>
+            )}
+          </div>,
+          document.body,
+        )
+      : null;
+
   return (
     <div
       ref={containerRef}
-      style={{ position: 'relative', zIndex: show ? 21000 : 'auto' }}
+      style={{ position: 'relative', zIndex: show ? 1 : 'auto', overflow: 'visible' }}
     >
       <input
         ref={(el) => {
@@ -240,84 +407,28 @@ export default function AsyncSearchSelect({
         onBlur={handleBlur}
         onKeyDown={(e) => {
           handleSelectKeyDown(e);
-          if (chosenRef.current) e.selectedOption = chosenRef.current;
+          if (actionRef.current?.type === 'enter') {
+            if (actionRef.current.matched && actionRef.current.option) {
+              e.selectedOption = actionRef.current.option;
+              e.lookupMatched = true;
+            } else if (actionRef.current.matched === false) {
+              e.lookupMatched = false;
+              e.lookupQuery = actionRef.current.query;
+            }
+          } else if (chosenRef.current) {
+            e.selectedOption = chosenRef.current;
+            e.lookupMatched = true;
+          }
           if (onKeyDown) onKeyDown(e);
           chosenRef.current = null;
+          actionRef.current = null;
         }}
         disabled={disabled}
         style={{ padding: '0.5rem', ...inputStyle }}
         title={input}
         {...rest}
       />
-      {show && options.length > 0 && (
-        <ul
-          ref={listRef}
-          onScroll={(e) => {
-            if (
-              e.target.scrollTop + e.target.clientHeight >=
-                e.target.scrollHeight - 5 &&
-              hasMore &&
-              !loading
-            ) {
-              const q = String(input || '').trim();
-              const next = page + 1;
-              setPage(next);
-              const controller = new AbortController();
-              fetchPage(next, q, true, controller.signal);
-            }
-          }}
-          style={{
-            position: 'absolute',
-            zIndex: 21000,
-            listStyle: 'none',
-            margin: 0,
-            padding: 0,
-            background: '#fff',
-            border: '1px solid #ccc',
-            width: '100%',
-            maxHeight: '150px',
-            overflowY: 'auto',
-          }}
-        >
-          {options.map((opt, idx) => (
-            <li
-              key={opt.value}
-              onMouseDown={() => {
-                onChange(opt.value, opt.label);
-                if (onSelect) onSelect(opt);
-                setInput(String(opt.value));
-                setLabel(opt.label || '');
-                if (internalRef.current) internalRef.current.value = String(opt.value);
-                chosenRef.current = opt;
-                setShow(false);
-              }}
-              onMouseEnter={() => setHighlight(idx)}
-              style={{
-                padding: '0.25rem',
-                background: highlight === idx ? '#eee' : '#fff',
-                cursor: 'pointer',
-              }}
-            >
-              {opt.label || opt.value}
-            </li>
-          ))}
-        </ul>
-      )}
-      {show && loading && (
-        <div
-          style={{
-            position: 'absolute',
-            zIndex: 21000,
-            background: '#fff',
-            border: '1px solid #ccc',
-            width: '100%',
-            padding: '0.25rem',
-            textAlign: 'center',
-          }}
-        >
-          Loading...
-        </div>
-      )}
+      {dropdown}
       {displayLabel && (
         <div style={{ fontSize: '0.8rem', color: '#555' }}>{displayLabel}</div>
       )}

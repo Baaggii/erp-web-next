@@ -2294,6 +2294,19 @@ function InlineTransactionTable(
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
+    const isLookupField =
+      !!relationConfigMap[field] ||
+      !!viewSourceMap[field] ||
+      !!autoSelectConfigs[field];
+    if (isLookupField && e.lookupMatched === false) {
+      const label = labels[field] || field;
+      const message = `${label} талбарт тохирох утга олдсонгүй.`;
+      setErrorMsg(message);
+      setInvalidCell({ row: rowIdx, field });
+      e.target.focus();
+      if (e.target.select) e.target.select();
+      return;
+    }
     let label = undefined;
     let val = e.selectedOption ? e.selectedOption.value : e.target.value;
     if (e.selectedOption) label = e.selectedOption.label;
