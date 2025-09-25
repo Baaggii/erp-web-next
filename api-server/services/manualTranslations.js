@@ -9,6 +9,7 @@ const projectRoot = path.resolve(__dirname, '../../');
 
 const localesDir = path.join(projectRoot, 'src', 'erp.mgt.mn', 'locales');
 const tooltipDir = path.join(localesDir, 'tooltips');
+const SUPPORTED_LANGS = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
 const LOCALE_FILE_LABEL = 'Locale file';
 const TOOLTIP_FILE_LABEL = 'Tooltip file';
 const MANUAL_ENTRY_LABEL = 'Manual entry';
@@ -187,6 +188,9 @@ export async function loadTranslations() {
     ...(await listLangs(localesDir)),
     ...(await listLangs(tooltipDir)),
   ]);
+  for (const lang of SUPPORTED_LANGS) {
+    seedLangs.add(lang);
+  }
 
   const langs = new Set(seedLangs);
 
