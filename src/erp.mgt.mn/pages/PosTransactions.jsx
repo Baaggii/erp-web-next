@@ -1967,12 +1967,12 @@ export default function PosTransactionsPage() {
                       mainFields={mainFields}
                       footerFields={footerFields}
                       defaultValues={fc.defaultValues || {}}
-                      table={config.masterTable}
+                      table={t.table}
                       imagenameField={
-                        memoFormConfigs[config.masterTable]?.imagenameField || []
+                        memoFormConfigs[t.table]?.imagenameField || []
                       }
                       imageIdField={
-                        memoFormConfigs[config.masterTable]?.imageIdField || ''
+                        memoFormConfigs[t.table]?.imageIdField || ''
                       }
                       relations={relationsMap[t.table] || {}}
                       relationConfigs={memoRelationConfigs[t.table] || {}}
