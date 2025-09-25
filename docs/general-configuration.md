@@ -20,7 +20,7 @@
     "boxMaxHeight": 150
   },
   "general": {
-    "aiApiEnabled": false,
+    "aiApiEnabled": true,
     "requestPollingEnabled": false,
     "requestPollingIntervalSeconds": 30
   },
@@ -37,7 +37,9 @@ up to `boxMaxWidth`/`boxMaxHeight` as text is entered and wrap when necessary.
 The **POS** section provides the same options specifically for POS transactions.
 Here `boxWidth` defines the initial grid box width of a POS transaction.
 
-The **General** section hosts feature toggles. `requestPollingEnabled` controls
+The **General** section hosts feature toggles. When an `OPENAI_API_KEY` is set
+in the environment, `aiApiEnabled` now defaults to `true` so OpenAI endpoints
+are only exposed when they can be used. `requestPollingEnabled` controls
 whether the client falls back to periodic API polling when a Socket.IO
 connection cannot be established. `requestPollingIntervalSeconds` sets the
 polling cadence (default 30&nbsp;seconds).

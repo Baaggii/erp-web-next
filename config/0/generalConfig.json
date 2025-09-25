@@ -14,7 +14,7 @@
     "boxMaxHeight": 150
   },
   "general": {
-    "aiApiEnabled": false,
+    "aiApiEnabled": true,
     "aiInventoryApiEnabled": false,
     "triggerToastEnabled": false,
     "procToastEnabled": false,

@@ -18,7 +18,7 @@ const defaults = {
     boxMaxHeight: 150,
   },
   general: {
-    aiApiEnabled: false,
+    aiApiEnabled: Boolean(process.env.OPENAI_API_KEY),
     aiInventoryApiEnabled: false,
     triggerToastEnabled: true,
     procToastEnabled: true,
