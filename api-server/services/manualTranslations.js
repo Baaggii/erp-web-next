@@ -38,7 +38,15 @@ export async function loadTranslations() {
 
   function ensureEntry(id, key, type) {
     if (!entries[id]) {
-      entries[id] = { key, type, values: {}, module: '', context: '' };
+      entries[id] = {
+        key,
+        type,
+        values: {},
+        module: '',
+        context: '',
+        page: '',
+        pageEditable: true,
+      };
     }
     return entries[id];
   }
@@ -97,6 +105,14 @@ export async function loadTranslations() {
           if (!tooltipEntry.module && meta.module) tooltipEntry.module = meta.module;
           if (!localeEntry.context && meta.context) localeEntry.context = meta.context;
           if (!tooltipEntry.context && meta.context) tooltipEntry.context = meta.context;
+          if (!localeEntry.page && meta.page) {
+            localeEntry.page = meta.page;
+            localeEntry.pageEditable = false;
+          }
+          if (!tooltipEntry.page && meta.page) {
+            tooltipEntry.page = meta.page;
+            tooltipEntry.pageEditable = false;
+          }
         }
       } catch {}
     }
@@ -120,7 +136,7 @@ export async function loadTranslations() {
         if (!isMeaningful) continue;
         const id = `locale:${k}`;
         const entry = ensureEntry(id, k, 'locale');
-        if (entry.values[lang] == null) entry.values[lang] = v;
+        entry.values[lang] = v;
       }
     } catch {}
 
@@ -133,7 +149,7 @@ export async function loadTranslations() {
         if (!isMeaningful) continue;
         const id = `tooltip:${k}`;
         const entry = ensureEntry(id, k, 'tooltip');
-        if (entry.values[lang] == null) entry.values[lang] = v;
+        entry.values[lang] = v;
       }
     } catch {}
   }
@@ -148,6 +164,8 @@ export async function loadTranslations() {
     }
     if (entry.module == null) entry.module = '';
     if (entry.context == null) entry.context = '';
+    if (entry.page == null) entry.page = '';
+    if (entry.pageEditable == null) entry.pageEditable = true;
   }
 
   return { languages: Array.from(langs), entries: Object.values(entries) };

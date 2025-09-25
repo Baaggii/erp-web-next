@@ -129,6 +129,8 @@ export default function ManualTranslationsTab() {
               ...entry,
               module: entry.module ?? '',
               context: entry.context ?? '',
+              page: entry.page ?? '',
+              pageEditable: entry.pageEditable ?? true,
               values: entry.values ?? {},
             }));
             setEntries(normalizedEntries);
@@ -189,6 +191,7 @@ export default function ManualTranslationsTab() {
     if (String(entry.key ?? '').toLowerCase().includes(term)) return true;
     if (String(entry.module ?? '').toLowerCase().includes(term)) return true;
     if (String(entry.context ?? '').toLowerCase().includes(term)) return true;
+    if (String(entry.page ?? '').toLowerCase().includes(term)) return true;
     return Object.values(entry.values ?? {}).some((v) =>
       String(v ?? '').toLowerCase().includes(term),
     );
@@ -218,11 +221,15 @@ export default function ManualTranslationsTab() {
 
   async function save(index) {
     const entry = entries[index];
+    const payload = {
+      ...entry,
+      page: entry.page ?? '',
+    };
     await fetch('/api/manual_translations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(entry),
+      body: JSON.stringify(payload),
     });
     await refreshEntries();
   }
@@ -234,6 +241,7 @@ export default function ManualTranslationsTab() {
       .map((e) => ({
         key: e.key,
         type: e.type,
+        page: e.page ?? '',
         values: { [lang]: e.values[lang] ?? '' },
       }));
     try {
@@ -333,6 +341,7 @@ export default function ManualTranslationsTab() {
         module: newEntry.module,
         context: newEntry.context,
         key: newEntry.key,
+        page: newEntry.page,
       };
       const translateEntry = (targetLang, text) =>
         translateWithCache(targetLang, text, undefined, entryMetadata);
@@ -535,7 +544,15 @@ export default function ManualTranslationsTab() {
   function addRow() {
     const newEntries = [
       ...entries,
-      { key: '', type: 'locale', module: '', context: '', values: {} },
+      {
+        key: '',
+        type: 'locale',
+        module: '',
+        context: '',
+        page: '',
+        pageEditable: true,
+        values: {},
+      },
     ];
     setEntries(newEntries);
     setPage(Math.ceil(newEntries.length / perPage));
@@ -620,6 +637,9 @@ export default function ManualTranslationsTab() {
               <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Type</th>
               <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Module</th>
               <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Context</th>
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                {t('pageName', 'Page name')}
+              </th>
               {languages.map((l) => (
                 <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
                   <div
@@ -682,6 +702,14 @@ export default function ManualTranslationsTab() {
                     <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
                       {String(entry.context ?? '')}
                     </div>
+                  </td>
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <input
+                      value={entry.page ?? ''}
+                      onChange={(e) => updateEntry(entryIdx, 'page', e.target.value)}
+                      readOnly={entry.pageEditable === false}
+                      style={{ width: '100%' }}
+                    />
                   </td>
                   {languages.map((l) => (
                     <td key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
