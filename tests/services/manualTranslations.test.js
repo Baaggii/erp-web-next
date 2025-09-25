@@ -42,8 +42,12 @@ test('exported texts are merged into manual translations', { concurrency: false 
           plain: 'Plain Text',
         },
         meta: {
-          foo: { module: 'pages/FooPage', context: 'button' },
-          'nested.bar': { module: 'pages/NestedPage', context: 'label' },
+          foo: { module: 'pages/FooPage', context: 'button', page: 'FooPage' },
+          'nested.bar': {
+            module: 'pages/NestedPage',
+            context: 'label',
+            page: 'NestedPage',
+          },
         },
       },
       null,
@@ -64,12 +68,15 @@ test('exported texts are merged into manual translations', { concurrency: false 
     assert.equal(nestedTooltip.values.en, 'Bar');
     assert.equal(nestedLocale.module, 'pages/NestedPage');
     assert.equal(nestedLocale.context, 'label');
+    assert.equal(nestedLocale.page, 'NestedPage');
     assert.equal(nestedTooltip.module, 'pages/NestedPage');
     assert.equal(nestedTooltip.context, 'label');
+    assert.equal(nestedTooltip.page, 'NestedPage');
     const plainLocale = data.entries.find((e) => e.type === 'locale' && e.key === 'plain');
     assert(plainLocale, 'plain locale entry exists');
     assert.equal(plainLocale.module, '');
     assert.equal(plainLocale.context, '');
+    assert.equal(plainLocale.page, '');
   } finally {
     cleanup();
   }
