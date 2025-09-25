@@ -144,6 +144,15 @@ function getMeaningfulTranslationSource(entry) {
   return null;
 }
 
+function getProviderGridStyle(count) {
+  const columnCount = Math.min(Math.max(count, 1), 3);
+  return {
+    display: 'grid',
+    gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+    gap: '0.5rem',
+  };
+}
+
 export default function ManualTranslationsTab() {
   const { t } = useContext(I18nContext);
   const { addToast } = useToast();
@@ -901,7 +910,7 @@ export default function ManualTranslationsTab() {
             {t('translationProgress', 'Translation progress')}
           </div>
           {translationSources.length ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+            <div style={getProviderGridStyle(translationSources.length)}>
               {translationSources.map(({ lang, label }, index) => (
                 <div
                   key={`${lang}-${label}-${index}`}
@@ -1075,7 +1084,7 @@ export default function ManualTranslationsTab() {
                     );
                   })}
                   <td style={getCellStyle('translatedBy')}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <div style={getProviderGridStyle(languages.length)}>
                       {languages.map((l) => {
                         const rawLabel = entry.translatedBy?.[l];
                         const displayLabel =
