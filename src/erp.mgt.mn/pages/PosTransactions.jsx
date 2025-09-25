@@ -2029,6 +2029,7 @@ export default function PosTransactionsPage() {
                       user={user}
                       fieldTypeMap={memoFieldTypeMap[t.table] || {}}
                       columnCaseMap={memoColumnCaseMap[t.table] || {}}
+                      tableColumns={columnMeta[t.table] || []}
                       onChange={(changes) => handleChange(t.table, changes)}
                       onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={() => true}

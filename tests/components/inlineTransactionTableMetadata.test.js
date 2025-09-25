@@ -534,6 +534,77 @@ if (typeof mock?.import !== 'function') {
     }
   });
 
+  test('InlineTransactionTable recomputes generated totals for transactions_order', async () => {
+    const reactMock = createReactMock();
+    const onRowsChange = mock.fn(() => {});
+
+    const { default: InlineTransactionTable } = await mock.import(
+      '../../src/erp.mgt.mn/components/InlineTransactionTable.jsx',
+      {
+        react: reactMock.module,
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        '../utils/buildImageName.js': { default: () => ({ name: '' }) },
+        '../utils/slugify.js': { default: (value) => String(value) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/callProcedure.js': { default: async () => ({}) },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    const tableRef = { current: null };
+
+    reactMock.render(InlineTransactionTable, {
+      ref: tableRef,
+      fields: ['ordrsub', 'sp_cost', 'ordrap'],
+      allFields: ['ordrsub', 'sp_cost', 'ordrap'],
+      rows: [{ ordrsub: '1', sp_cost: '10', ordrap: '10' }],
+      defaultValues: {},
+      onRowsChange,
+      minRows: 1,
+      relations: {},
+      relationConfigs: {},
+      relationData: {},
+      fieldTypeMap: { ordrsub: 'number', sp_cost: 'number', ordrap: 'number' },
+      totalAmountFields: [],
+      totalCurrencyFields: ['ordrap'],
+      columnCaseMap: { ordrsub: 'ordrsub', sp_cost: 'sp_cost', ordrap: 'ordrap' },
+      viewSource: {},
+      viewDisplays: {},
+      viewColumns: {},
+      loadView: noop,
+      procTriggers: {},
+      user: {},
+      tableColumns: [
+        { name: 'ordrsub' },
+        { name: 'sp_cost' },
+        {
+          name: 'ordrap',
+          generationExpression: 'IFNULL(`ordrsub`,0) * IFNULL(`sp_cost`,0)',
+        },
+      ],
+      collectRows: true,
+      tableName: 'transactions_order',
+    });
+
+    const tree = reactMock.getTree();
+    const inputs = findAllByType(tree, 'input');
+    assert.equal(inputs.length >= 2, true, 'should render quantity and cost inputs');
+
+    // ordrsub field
+    inputs[0].props.onChange({ target: { value: '5' } });
+    // sp_cost field
+    inputs[1].props.onChange({ target: { value: '20' } });
+
+    const lastCall = onRowsChange.mock.calls[onRowsChange.mock.calls.length - 1];
+    assert.ok(lastCall, 'onRowsChange should be called after edits');
+    const [rowsArg] = lastCall.arguments;
+    assert.equal(rowsArg[0].ordrap, 100);
+    assert.equal(rowsArg.ordrap, 100);
+  });
+
   test('InlineTransactionTable blocks procedure call when required parameters are empty', async () => {
     const reactMock = createReactMock();
     const originalFetch = global.fetch;

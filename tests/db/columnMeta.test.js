@@ -30,6 +30,6 @@ test('listTableColumnMeta uses header mappings when DB labels missing', async ()
   restore();
   await fs.writeFile(filePath, origContent);
   assert.deepEqual(meta, [
-    { name: 'title', key: '', extra: '', label: 'гарчиг' },
+    { name: 'title', key: '', extra: '', label: 'гарчиг', generationExpression: null },
   ]);
 });
