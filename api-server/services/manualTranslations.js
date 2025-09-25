@@ -9,6 +9,9 @@ const projectRoot = path.resolve(__dirname, '../../');
 
 const localesDir = path.join(projectRoot, 'src', 'erp.mgt.mn', 'locales');
 const tooltipDir = path.join(localesDir, 'tooltips');
+const LOCALE_FILE_LABEL = 'Locale file';
+const TOOLTIP_FILE_LABEL = 'Tooltip file';
+const MANUAL_ENTRY_LABEL = 'Manual entry';
 const translationsMetaFile = path.join(
   projectRoot,
   'docs',
@@ -199,6 +202,13 @@ export async function loadTranslations() {
         const id = `locale:${k}`;
         const entry = ensureEntry(id, k, 'locale');
         entry.values[lang] = v;
+        if (
+          v != null &&
+          String(v).trim() &&
+          (!entry.translatedBy?.[lang] || !entry.translatedBy[lang].trim())
+        ) {
+          entry.translatedBy[lang] = LOCALE_FILE_LABEL;
+        }
       }
     } catch {}
 
@@ -212,6 +222,13 @@ export async function loadTranslations() {
         const id = `tooltip:${k}`;
         const entry = ensureEntry(id, k, 'tooltip');
         entry.values[lang] = v;
+        if (
+          v != null &&
+          String(v).trim() &&
+          (!entry.translatedBy?.[lang] || !entry.translatedBy[lang].trim())
+        ) {
+          entry.translatedBy[lang] = TOOLTIP_FILE_LABEL;
+        }
       }
     } catch {}
   }
@@ -271,6 +288,7 @@ export async function saveTranslation({
   const entryId = `${type}:${key}`;
   const translatedByStore = await loadTranslatedByStore();
   const existingTranslatedBy = { ...(translatedByStore[entryId] || {}) };
+  const incomingTranslatedBy = normalizeTranslatedByMap(translatedBy);
 
   for (const [lang, val] of Object.entries(values)) {
     const dir = type === 'tooltip' ? tooltipDir : localesDir;
@@ -286,12 +304,14 @@ export async function saveTranslation({
       }
     } else {
       obj[key] = val;
+      if (!incomingTranslatedBy[lang]) {
+        incomingTranslatedBy[lang] = MANUAL_ENTRY_LABEL;
+      }
     }
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, JSON.stringify(obj, null, 2) + '\n', 'utf8');
   }
 
-  const incomingTranslatedBy = normalizeTranslatedByMap(translatedBy);
   for (const [lang, label] of Object.entries(incomingTranslatedBy)) {
     existingTranslatedBy[lang] = label;
   }

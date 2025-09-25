@@ -13,6 +13,7 @@ const TRANSLATOR_LABELS = {
   ai: 'OpenAI',
   openai: 'OpenAI',
   'locale-file': 'Locale file',
+  'manual-entry': 'Manual entry',
   'cache-node': 'Server cache',
   'cache-localStorage': 'LocalStorage cache',
   'cache-indexedDB': 'IndexedDB cache',
@@ -39,6 +40,8 @@ function getTranslatorLabel(source) {
     .join(' ');
   return fallback || TRANSLATOR_LABELS.unknown;
 }
+
+const MANUAL_ENTRY_LABEL = 'Manual entry';
 
 const BASE_COLUMN_DEFAULT_WIDTHS = {
   key: 240,
@@ -233,8 +236,12 @@ export default function ManualTranslationsTab() {
               for (const lang of languagesList) {
                 if (values[lang] == null) values[lang] = '';
                 const label = translatedBy[lang];
-                translatedBy[lang] =
-                  typeof label === 'string' && label.trim() ? label.trim() : '';
+                if (typeof label === 'string') {
+                  const trimmed = label.trim();
+                  translatedBy[lang] = trimmed ? getTranslatorLabel(trimmed) : '';
+                } else {
+                  translatedBy[lang] = '';
+                }
               }
               return {
                 ...entry,
@@ -508,7 +515,7 @@ export default function ManualTranslationsTab() {
       entry.values = { ...entry.values, [lang]: value };
       entry.translatedBy = {
         ...(entry.translatedBy ?? {}),
-        [lang]: '',
+        [lang]: MANUAL_ENTRY_LABEL,
       };
       copy[index] = entry;
       return copy;
