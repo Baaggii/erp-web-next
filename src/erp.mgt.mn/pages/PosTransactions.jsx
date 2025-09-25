@@ -269,22 +269,6 @@ export function shouldLoadRelations(formConfig, cols = []) {
   return hasView || hasForeignKey(cols);
 }
 
-function copyArrayMetadata(target, source) {
-  if (!Array.isArray(target) || !Array.isArray(source)) return;
-  Object.keys(source).forEach((key) => {
-    if (!arrayIndexPattern.test(key)) {
-      target[key] = source[key];
-    }
-  });
-}
-
-function cloneArrayWithMetadata(source) {
-  if (!Array.isArray(source)) return [];
-  const clone = source.slice();
-  copyArrayMetadata(clone, source);
-  return clone;
-}
-
 export function applySessionIdToTables(
   values,
   sessionId,
@@ -331,7 +315,7 @@ export function applySessionIdToTables(
           targetRows = updatedRows;
           tableChanged = true;
           if (Array.isArray(existingContainer)) {
-            copyArrayMetadata(targetRows, existingContainer);
+            assignArrayMetadata(targetRows, existingContainer);
           }
         }
       }
@@ -678,8 +662,7 @@ export default function PosTransactionsPage() {
           let tableChanged = false;
           const ensureClone = () => {
             if (!tableChanged) {
-              targetRows = currentRows.slice();
-              copyArrayMetadata(targetRows, currentRows);
+              targetRows = cloneArrayWithMetadata(currentRows);
               tableChanged = true;
             }
           };
