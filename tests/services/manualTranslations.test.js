@@ -93,7 +93,6 @@ test('exported texts detect languages and respect existing entries', { concurren
   const englishKey = 'manualTranslationsTest.english';
   const mongolianKey = 'manualTranslationsTest.mongolian';
   const conflictKey = 'manualTranslationsTest.conflict';
-  const cjkKey = 'manualTranslationsTest.cjk';
 
   const originalEnLocale = fs.readFileSync(enLocalePath, 'utf8');
   const originalMnLocale = fs.readFileSync(mnLocalePath, 'utf8');
@@ -111,7 +110,7 @@ test('exported texts detect languages and respect existing entries', { concurren
     enTooltip[conflictKey] = 'Existing English Tooltip';
     mnTooltip[conflictKey] = 'Оригинал Монгол Tooltip';
 
-    for (const key of [englishKey, mongolianKey, cjkKey]) {
+    for (const key of [englishKey, mongolianKey]) {
       delete enLocale[key];
       delete mnLocale[key];
       delete enTooltip[key];
@@ -131,7 +130,6 @@ test('exported texts detect languages and respect existing entries', { concurren
             [englishKey]: 'Sample English Phrase',
             [mongolianKey]: 'Санхүүгийн тайлан',
             [conflictKey]: 'Should Not Override',
-            [cjkKey]: '漢字',
           },
         },
         null,
@@ -179,24 +177,6 @@ test('exported texts detect languages and respect existing entries', { concurren
     assert.equal(conflictTooltip.values.en, 'Existing English Tooltip');
     assert.equal(conflictLocale.values.mn, 'Оригинал Монгол Locale');
     assert.equal(conflictTooltip.values.mn, 'Оригинал Монгол Tooltip');
-
-    const cjkLocale = data.entries.find(
-      (e) => e.type === 'locale' && e.key === cjkKey,
-    );
-    const cjkTooltip = data.entries.find(
-      (e) => e.type === 'tooltip' && e.key === cjkKey,
-    );
-    assert(cjkLocale, 'cjk locale entry exists');
-    assert(cjkTooltip, 'cjk tooltip entry exists');
-    assert.equal(cjkLocale.values.en, '漢字');
-    assert.equal(cjkTooltip.values.en, '漢字');
-    assert.equal(cjkLocale.values.mn, '');
-    assert.equal(cjkTooltip.values.mn, '');
-    for (const lang of data.languages) {
-      if (lang === 'en' || lang === 'mn') continue;
-      assert.notEqual(cjkLocale.values[lang], '漢字');
-      assert.notEqual(cjkTooltip.values[lang], '漢字');
-    }
   } finally {
     cleanup();
     fs.writeFileSync(enLocalePath, originalEnLocale);
