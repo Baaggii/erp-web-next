@@ -9,6 +9,86 @@ let nodeCachePath;
 const localeCache = {};
 let aiDisabled = false;
 
+function normalizeTranslationRecord(raw) {
+  if (!raw) return null;
+
+  let data = raw;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      try {
+        data = JSON.parse(trimmed);
+      } catch {
+        return { text: trimmed, source: null, metadata: null };
+      }
+    } else {
+      return { text: trimmed, source: null, metadata: null };
+    }
+  }
+
+  if (typeof data !== 'object' || data === null) {
+    return null;
+  }
+
+  if (Array.isArray(data)) {
+    for (const entry of data) {
+      const normalized = normalizeTranslationRecord(entry);
+      if (normalized) return normalized;
+    }
+    return null;
+  }
+
+  if (data.response && !data.text && !data.translation && !data.value) {
+    const nested = normalizeTranslationRecord(data.response);
+    if (nested) return nested;
+  }
+
+  const textCandidates = ['text', 'translation', 'value', 'response'];
+  let text = null;
+  for (const field of textCandidates) {
+    const val = data[field];
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (trimmed) {
+        text = trimmed;
+        break;
+      }
+    }
+  }
+  if (!text) return null;
+
+  const sourceCandidates = ['source', 'provider', 'origin'];
+  let source = null;
+  for (const field of sourceCandidates) {
+    const val = data[field];
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (trimmed) {
+        source = trimmed;
+        break;
+      }
+    }
+  }
+
+  const metadata =
+    data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
+      ? data.metadata
+      : null;
+
+  return { text, source, metadata };
+}
+
+function createCacheRecord(record, fallbackSource) {
+  if (!record) return null;
+  const normalized = normalizeTranslationRecord(record);
+  if (!normalized) return null;
+  const source = normalized.source || fallbackSource || null;
+  const cacheRecord = { text: normalized.text, source };
+  if (normalized.metadata) cacheRecord.metadata = normalized.metadata;
+  return cacheRecord;
+}
+
 function normalizeMetadata(metadata) {
   if (!metadata || typeof metadata !== 'object') return null;
   const normalized = {};
@@ -17,7 +97,7 @@ function normalizeMetadata(metadata) {
     const str = typeof value === 'string' ? value.trim() : String(value).trim();
     if (str) normalized[field] = str;
   };
-  const prioritized = ['module', 'context', 'page', 'key'];
+  const prioritized = ['module', 'context', 'page', 'key', 'sourceLang'];
   for (const field of prioritized) {
     if (Object.prototype.hasOwnProperty.call(metadata, field)) {
       setField(field, metadata[field]);
@@ -39,6 +119,15 @@ function buildPrompt(text, lang, metadata) {
     return `Translate the following text to ${lang}: ${textStr}`;
   }
   const parts = [];
+  if (metadata.sourceLang) {
+    const label =
+      metadata.sourceLang === 'mn'
+        ? 'Mongolian'
+        : metadata.sourceLang === 'en'
+          ? 'English'
+          : metadata.sourceLang;
+    parts.push(`Source language: ${label}`);
+  }
   if (metadata.module) parts.push(`Module: ${metadata.module}`);
   if (metadata.context) parts.push(`Context: ${metadata.context}`);
   if (metadata.page) parts.push(`Page: ${metadata.page}`);
@@ -187,7 +276,7 @@ async function requestTranslation(text, lang, metadata) {
     }
     if (!res.ok) throw new Error('openai request failed');
     const data = await res.json();
-    return data.response?.trim() || null;
+    return normalizeTranslationRecord(data.response ?? data);
   } catch (err) {
     if (err.rateLimited) throw err;
     console.error('AI translation failed', err);
@@ -388,12 +477,23 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
   const base =
     typeof baseCandidate === 'string' ? baseCandidate : String(baseCandidate ?? '');
 
-  if (lang === 'en') {
-    return createResult(base, { base, source: 'base', fromCache: true });
-  }
-
   const direct = locales[key];
-  const normalizedMetadata = normalizeMetadata(metadata);
+  let normalizedMetadata = normalizeMetadata(metadata);
+  if (lang === 'en') {
+    const sourceSample =
+      (typeof fallback === 'string' && fallback.trim())
+        ? fallback
+        : typeof key === 'string'
+          ? key
+          : String(key ?? '');
+    const detectionTarget = sourceSample || base;
+    if (/[\u0400-\u04FF]/.test(detectionTarget)) {
+      normalizedMetadata = {
+        ...(normalizedMetadata || {}),
+        sourceLang: normalizedMetadata?.sourceLang || 'mn',
+      };
+    }
+  }
   if (direct) {
     return createResult(direct, {
       base,
@@ -410,23 +510,29 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
 
   let cached;
   for (const cacheId of cacheKeys) {
-    cached = getLS(cacheId);
+    cached = createCacheRecord(getLS(cacheId), null);
     if (cached) {
-      return createResult(cached, {
+      return createResult(cached.text, {
         base,
-        source: 'cache-localStorage',
+        source: cached.source || 'cache-localStorage',
         fromCache: true,
       });
     }
   }
 
   for (const cacheId of cacheKeys) {
-    cached = await idbGet(cacheId);
+    const idbValue = await idbGet(cacheId);
+    cached = createCacheRecord(idbValue, null);
     if (cached) {
-      if (!getLS(cacheId)) setLS(cacheId, cached);
-      return createResult(cached, {
+      const existingRaw = getLS(cacheId);
+      const existingRecord = createCacheRecord(existingRaw, null);
+      if (!existingRecord || existingRecord.text !== cached.text || existingRecord.source !== cached.source) {
+        setLS(cacheId, JSON.stringify(cached));
+      }
+      if (typeof idbValue === 'string') await idbSet(cacheId, cached);
+      return createResult(cached.text, {
         base,
-        source: 'cache-indexedDB',
+        source: cached.source || 'cache-indexedDB',
         fromCache: true,
       });
     }
@@ -434,12 +540,21 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
 
   const cacheStore = await loadNodeCache();
   for (const cacheId of cacheKeys) {
-    const value = cacheStore[cacheId];
-    if (value) {
-      if (!getLS(cacheId)) setLS(cacheId, value);
-      return createResult(value, {
+    const nodeValue = cacheStore[cacheId];
+    cached = createCacheRecord(nodeValue, null);
+    if (cached) {
+      const existingRaw = getLS(cacheId);
+      const existingRecord = createCacheRecord(existingRaw, null);
+      if (!existingRecord || existingRecord.text !== cached.text || existingRecord.source !== cached.source) {
+        setLS(cacheId, JSON.stringify(cached));
+      }
+      if (typeof nodeValue === 'string') {
+        cacheStore[cacheId] = cached;
+        await saveNodeCache();
+      }
+      return createResult(cached.text, {
         base,
-        source: 'cache-node',
+        source: cached.source || 'cache-node',
         fromCache: true,
       });
     }
@@ -462,7 +577,10 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
     });
   }
 
-  if (!translated) {
+  const translationRecord = createCacheRecord(translated, 'ai');
+  const translatedText = translationRecord?.text;
+
+  if (!translatedText) {
     return createResult(base, {
       base,
       source: 'fallback-missing',
@@ -476,7 +594,12 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
 
   let validation;
   try {
-    validation = await validateAITranslation(translated, base, lang, normalizedMetadata);
+    validation = await validateAITranslation(
+      translatedText,
+      base,
+      lang,
+      normalizedMetadata,
+    );
   } catch (err) {
     if (err.rateLimited) throw err;
     validation = {
@@ -492,24 +615,32 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
       source: 'fallback-validation',
       needsRetry: true,
       validation,
-      candidate: translated,
+      candidate: translatedText,
     });
   }
 
-  setLS(cacheKey, translated);
-  await idbSet(cacheKey, translated);
-  cacheStore[cacheKey] = translated;
+  const cachePayload = {
+    text: translatedText,
+    source: translationRecord?.source || 'ai',
+  };
+  if (translationRecord?.metadata) {
+    cachePayload.metadata = translationRecord.metadata;
+  }
+
+  setLS(cacheKey, JSON.stringify(cachePayload));
+  await idbSet(cacheKey, cachePayload);
+  cacheStore[cacheKey] = cachePayload;
   await saveNodeCache();
 
-  return createResult(translated, {
+  return createResult(translatedText, {
     base,
-    source: 'ai',
+    source: cachePayload.source || 'ai',
     fromCache: false,
     validation: {
       ...validation,
       needsRetry: Boolean(validation.needsRetry),
     },
     needsRetry: Boolean(validation.needsRetry),
-    candidate: translated,
+    candidate: translatedText,
   });
 }
