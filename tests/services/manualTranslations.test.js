@@ -54,19 +54,8 @@ test('exported texts are merged into manual translations', { concurrency: false 
     const data = await loadTranslations();
     const localeFoo = data.entries.find((e) => e.type === 'locale' && e.key === 'foo');
     const tooltipFoo = data.entries.find((e) => e.type === 'tooltip' && e.key === 'foo');
-    assert(localeFoo, 'locale foo entry exists');
-    assert(tooltipFoo, 'tooltip foo entry exists');
-    assert.equal(localeFoo.values.en, 'Foo');
-    assert.equal(tooltipFoo.values.en, 'Foo');
-    assert.equal(localeFoo.module, 'pages/FooPage');
-    assert.equal(localeFoo.context, 'button');
-    assert.equal(tooltipFoo.module, 'pages/FooPage');
-    assert.equal(tooltipFoo.context, 'button');
-    const otherLang = data.languages.find((l) => l !== 'en');
-    if (otherLang) {
-      assert.equal(localeFoo.values[otherLang], '');
-      assert.equal(tooltipFoo.values[otherLang], '');
-    }
+    assert.equal(localeFoo, undefined);
+    assert.equal(tooltipFoo, undefined);
     const nestedLocale = data.entries.find((e) => e.type === 'locale' && e.key === 'nested.bar');
     const nestedTooltip = data.entries.find((e) => e.type === 'tooltip' && e.key === 'nested.bar');
     assert(nestedLocale, 'nested locale entry exists');
@@ -183,5 +172,36 @@ test('exported texts detect languages and respect existing entries', { concurren
     fs.writeFileSync(mnLocalePath, originalMnLocale);
     fs.writeFileSync(enTooltipPath, originalEnTooltip);
     fs.writeFileSync(mnTooltipPath, originalMnTooltip);
+  }
+});
+
+test('non-meaningful exported translations are ignored', { concurrency: false }, async () => {
+  cleanup();
+  fs.mkdirSync(path.dirname(exportedPath), { recursive: true });
+
+  const meaninglessKey = 'Manual.Translations_Test';
+  const meaninglessValue = 'manual translations test';
+
+  fs.writeFileSync(
+    exportedPath,
+    JSON.stringify(
+      {
+        translations: {
+          [meaninglessKey]: meaninglessValue,
+        },
+      },
+      null,
+      2,
+    ),
+  );
+
+  try {
+    const data = await loadTranslations();
+    const localeEntry = data.entries.find((e) => e.type === 'locale' && e.key === meaninglessKey);
+    const tooltipEntry = data.entries.find((e) => e.type === 'tooltip' && e.key === meaninglessKey);
+    assert.equal(localeEntry, undefined);
+    assert.equal(tooltipEntry, undefined);
+  } finally {
+    cleanup();
   }
 });
