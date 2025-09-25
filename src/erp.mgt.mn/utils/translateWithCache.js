@@ -7,6 +7,7 @@ import {
 let nodeCache;
 let nodeCachePath;
 const localeCache = {};
+const tooltipLocaleCache = {};
 let aiDisabled = false;
 
 function normalizeTranslationRecord(raw) {
@@ -196,6 +197,33 @@ async function loadLocale(lang) {
     localeCache[lang] = {};
   }
   return localeCache[lang];
+}
+
+async function loadTooltipLocale(lang) {
+  if (tooltipLocaleCache[lang]) return tooltipLocaleCache[lang];
+  try {
+    if (typeof process !== 'undefined' && process.versions?.node) {
+      const fs = await import('fs/promises');
+      const path = await import('path');
+      const file = path.join(
+        process.cwd(),
+        'src',
+        'erp.mgt.mn',
+        'locales',
+        'tooltips',
+        `${lang}.json`,
+      );
+      const data = await fs.readFile(file, 'utf8');
+      tooltipLocaleCache[lang] = JSON.parse(data);
+    } else {
+      tooltipLocaleCache[lang] = (
+        await import(`../locales/tooltips/${lang}.json`)
+      ).default;
+    }
+  } catch {
+    tooltipLocaleCache[lang] = {};
+  }
+  return tooltipLocaleCache[lang];
 }
 
 function getLS(key) {
@@ -471,13 +499,15 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
 }
 
 export default async function translateWithCache(lang, key, fallback, metadata) {
-  const locales = await loadLocale(lang);
-  const enLocales = await loadLocale('en');
-  const baseCandidate = enLocales[key] || fallback || describe(key);
+  const entryType = metadata?.type;
+  const isTooltip = entryType === 'tooltip';
+  const locales = isTooltip ? await loadTooltipLocale(lang) : await loadLocale(lang);
+  const enLocales = isTooltip ? await loadTooltipLocale('en') : await loadLocale('en');
+  const baseCandidate = (enLocales && enLocales[key]) || fallback || describe(key);
   const base =
     typeof baseCandidate === 'string' ? baseCandidate : String(baseCandidate ?? '');
 
-  const direct = locales[key];
+  const direct = locales ? locales[key] : undefined;
   let normalizedMetadata = normalizeMetadata(metadata);
   if (lang === 'en') {
     const sourceSample =
@@ -494,7 +524,15 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
       };
     }
   }
-  if (direct) {
+  if (isTooltip) {
+    if (typeof direct === 'string' && direct.trim()) {
+      return createResult(direct, {
+        base,
+        source: 'tooltip-file',
+        fromCache: true,
+      });
+    }
+  } else if (direct) {
     return createResult(direct, {
       base,
       source: 'locale-file',
