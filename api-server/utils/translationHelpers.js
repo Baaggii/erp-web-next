@@ -865,12 +865,43 @@ export function detectLang(str) {
   return 'latin';
 }
 
+function humanizePageSegment(value) {
+  if (!value) return '';
+  let segment = value.replace(/\.[^.]+$/, '');
+  segment = segment.replace(/[-_]+/g, ' ');
+  segment = segment
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z0-9]+)/g, '$1 $2');
+  segment = segment.replace(/\b(Page|Tab)$/i, '').trim();
+  if (!segment) return '';
+  const parts = segment.split(/\s+/).filter(Boolean);
+  return parts
+    .map((word) => (word.toUpperCase() === word ? word : word[0].toUpperCase() + word.slice(1)))
+    .join(' ');
+}
+
+function derivePageLabel(relPath) {
+  if (!relPath) return '';
+  const normalized = relPath.split(path.sep).join('/');
+  if (!/\bpages\//.test(normalized)) return '';
+  const parts = normalized.replace(/\.[^.]+$/, '').split('/');
+  if (!parts.length) return '';
+  let candidate = parts[parts.length - 1];
+  if (!candidate && parts.length > 1) candidate = parts[parts.length - 2];
+  if (candidate && candidate.toLowerCase() === 'index' && parts.length > 1) {
+    candidate = parts[parts.length - 2];
+  }
+  return humanizePageSegment(candidate);
+}
+
 function defaultModuleResolver(rootDir, filePath) {
-  if (!filePath) return '';
+  if (!filePath) return { module: '', page: '' };
   const rel = path.relative(rootDir, filePath);
-  if (!rel) return '';
+  if (!rel) return { module: '', page: '' };
   const normalized = rel.split(path.sep).join('/');
-  return normalized.replace(/\.[^.]+$/, '');
+  const moduleId = normalized.replace(/\.[^.]+$/, '');
+  const page = derivePageLabel(rel);
+  return { module: moduleId, page };
 }
 
 export function collectPhrasesFromPages(dir, options = {}) {
@@ -887,7 +918,7 @@ export function collectPhrasesFromPages(dir, options = {}) {
   const pairs = [];
   const uiTags = new Set(['button', 'label', 'option']);
   const seen = new Set();
-  const addPairFactory = (moduleId) => (key, text, context = '') => {
+  const addPairFactory = (moduleId, pageLabel) => (key, text, context = '') => {
     if (key == null || text == null) return;
     const normalized = `${key}:::${text}:::${moduleId ?? ''}:::${context ?? ''}`;
     if (seen.has(normalized)) return;
@@ -897,15 +928,25 @@ export function collectPhrasesFromPages(dir, options = {}) {
       text,
       module: moduleId ?? '',
       context: context ?? '',
+      page: pageLabel ?? '',
     });
   };
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
-    const moduleId =
+    const resolved =
       typeof moduleResolver === 'function'
         ? moduleResolver({ file, dir })
         : defaultModuleResolver(dir, file);
-    const addPair = addPairFactory(moduleId);
+    let moduleId = '';
+    let pageLabel = '';
+    if (resolved && typeof resolved === 'object') {
+      moduleId = resolved.module ?? '';
+      pageLabel = resolved.page ?? '';
+    } else {
+      moduleId = resolved ?? '';
+      pageLabel = '';
+    }
+    const addPair = addPairFactory(moduleId, pageLabel);
     if (parser && traverse) {
       let ast;
       try {

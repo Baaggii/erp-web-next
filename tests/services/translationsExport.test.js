@@ -102,14 +102,19 @@ export default function Tmp() {
   assert.equal(translations['Test Label'], 'Test Label');
   assert.equal(meta['Test Button'].module, 'TmpTranslation');
   assert.equal(meta['Test Button'].context, 'button');
+  assert.equal(meta['Test Button'].page, '');
   assert.equal(meta['Test Option'].module, 'TmpTranslation');
   assert.equal(meta['Test Option'].context, 'option');
+  assert.equal(meta['Test Option'].page, '');
   assert.equal(meta['Test Label'].module, 'TmpTranslation');
   assert.equal(meta['Test Label'].context, 'label');
+  assert.equal(meta['Test Label'].page, '');
   assert.equal(meta.wrapped.module, 'TmpTranslation');
   assert.equal(meta.wrapped.context, 'translation_call');
+  assert.equal(meta.wrapped.page, '');
   assert.equal(meta['Wrapped Button'].module, 'TmpTranslation');
   assert.equal(meta['Wrapped Button'].context, 'translation_call');
+  assert.equal(meta['Wrapped Button'].page, '');
   await db.pool.end();
 });
 
