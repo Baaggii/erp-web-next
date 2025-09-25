@@ -12,11 +12,22 @@ let aiDisabled = false;
 function normalizeMetadata(metadata) {
   if (!metadata || typeof metadata !== 'object') return null;
   const normalized = {};
-  for (const field of ['module', 'context', 'key']) {
-    const value = metadata[field];
-    if (value === undefined || value === null) continue;
+  const setField = (field, value) => {
+    if (value === undefined || value === null) return;
     const str = typeof value === 'string' ? value.trim() : String(value).trim();
     if (str) normalized[field] = str;
+  };
+  const prioritized = ['module', 'context', 'page', 'key'];
+  for (const field of prioritized) {
+    if (Object.prototype.hasOwnProperty.call(metadata, field)) {
+      setField(field, metadata[field]);
+    }
+  }
+  const remaining = Object.entries(metadata)
+    .filter(([field]) => !prioritized.includes(field))
+    .sort(([a], [b]) => a.localeCompare(b));
+  for (const [field, value] of remaining) {
+    setField(field, value);
   }
   return Object.keys(normalized).length ? normalized : null;
 }
@@ -30,6 +41,7 @@ function buildPrompt(text, lang, metadata) {
   const parts = [];
   if (metadata.module) parts.push(`Module: ${metadata.module}`);
   if (metadata.context) parts.push(`Context: ${metadata.context}`);
+  if (metadata.page) parts.push(`Page: ${metadata.page}`);
   if (metadata.key) parts.push(`Key: ${metadata.key}`);
   parts.push(`Text: ${textStr}`);
   return `Translate the following text to ${lang}.
