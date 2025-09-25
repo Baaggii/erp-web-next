@@ -49,7 +49,7 @@ export function sortObj(o) {
 const HANGUL_REGEX = /\p{Script=Hangul}/u;
 const HIRAGANA_KATAKANA_REGEX = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const CJK_IDEOGRAPH_REGEX = /\p{Script=Han}/u;
-const CYRILLIC_REGEX = /\p{Script=Cyrillic}/u;
+export const CYRILLIC_REGEX = /\p{Script=Cyrillic}/u;
 const LATIN_REGEX = /\p{Script=Latin}/u;
 const DIACRITIC_MARKS_REGEX = /[\u0300-\u036f]/g;
 const SPANISH_DIACRITIC_REGEX = /[áéíóúüñÁÉÍÓÚÜÑ¡¿]/;

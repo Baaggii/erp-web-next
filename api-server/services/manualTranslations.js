@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { detectLang } from '../utils/translationHelpers.js';
+import { CYRILLIC_REGEX, detectLang } from '../utils/translationHelpers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -89,8 +89,13 @@ export async function loadTranslations() {
           const meta = metadata[k] || {};
           const localeEntry = ensureEntry(localeId, k, 'locale');
           const tooltipEntry = ensureEntry(tooltipId, k, 'tooltip');
+          const hasCyrillic = typeof v === 'string' && CYRILLIC_REGEX.test(v);
+          const initialLangKey = hasCyrillic ? 'mn' : 'en';
           const detectedLang = detectLang(v);
-          const langKey = detectedLang === 'mn' ? 'mn' : 'en';
+          const langKey =
+            detectedLang === 'mn' || detectedLang === 'en'
+              ? detectedLang
+              : initialLangKey;
           if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;
           if (tooltipEntry.values[langKey] == null) tooltipEntry.values[langKey] = v;
           if (!localeEntry.module && meta.module) localeEntry.module = meta.module;
@@ -120,7 +125,7 @@ export async function loadTranslations() {
         if (!isMeaningful) continue;
         const id = `locale:${k}`;
         const entry = ensureEntry(id, k, 'locale');
-        if (entry.values[lang] == null) entry.values[lang] = v;
+        entry.values[lang] = v;
       }
     } catch {}
 
@@ -133,7 +138,7 @@ export async function loadTranslations() {
         if (!isMeaningful) continue;
         const id = `tooltip:${k}`;
         const entry = ensureEntry(id, k, 'tooltip');
-        if (entry.values[lang] == null) entry.values[lang] = v;
+        entry.values[lang] = v;
       }
     } catch {}
   }
