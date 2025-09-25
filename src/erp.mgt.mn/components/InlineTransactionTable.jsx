@@ -782,6 +782,13 @@ function InlineTransactionTable(
           if (val === undefined && key !== name) {
             val = getRowValue(row, name);
           }
+          if (val === undefined) {
+            const tableMeta = workingRows || {};
+            val = getRowValue(tableMeta, key);
+            if (val === undefined && key !== name) {
+              val = getRowValue(tableMeta, name);
+            }
+          }
           if (val && typeof val === 'object' && 'value' in val) {
             val = val.value;
           }
