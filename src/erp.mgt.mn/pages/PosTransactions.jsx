@@ -1901,6 +1901,12 @@ export default function PosTransactionsPage() {
                   fc.footerFields && fc.footerFields.length > 0
                     ? fc.footerFields
                     : [];
+                const totalAmountFields = Array.isArray(fc.totalAmountFields)
+                  ? fc.totalAmountFields
+                  : [];
+                const totalCurrencyFields = Array.isArray(fc.totalCurrencyFields)
+                  ? fc.totalCurrencyFields
+                  : [];
                 const provided = Array.isArray(fc.editableFields)
                   ? fc.editableFields
                   : [];
@@ -1967,6 +1973,8 @@ export default function PosTransactionsPage() {
                       mainFields={mainFields}
                       footerFields={footerFields}
                       defaultValues={fc.defaultValues || {}}
+                      totalAmountFields={totalAmountFields}
+                      totalCurrencyFields={totalCurrencyFields}
                       table={t.table}
                       imagenameField={
                         memoFormConfigs[t.table]?.imagenameField || []
