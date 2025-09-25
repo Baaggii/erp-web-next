@@ -655,6 +655,20 @@ export default function PosTransactionsPage() {
               tableChanged = true;
             }
           };
+          const maybeAssignArrayField = (fields, value) => {
+            if (!Array.isArray(fields) || fields.length === 0) return;
+            if (value === undefined || value === null) return;
+            fields.forEach((field) => {
+              if (!field) return;
+              const holder = tableChanged ? targetRows : currentRows;
+              const current = holder[field];
+              if (current !== undefined && current !== null && current !== '') {
+                return;
+              }
+              ensureClone();
+              targetRows[field] = value;
+            });
+          };
           currentRows.forEach((row, idx) => {
             const { updated, changed } = fillRecord(row, branchFields, companyFields);
             if (changed) {
@@ -677,6 +691,12 @@ export default function PosTransactionsPage() {
                 targetRows[key] = updated;
               }
             });
+          }
+          if (branchReady) {
+            maybeAssignArrayField(branchFields, branch);
+          }
+          if (companyReady) {
+            maybeAssignArrayField(companyFields, company);
           }
           if (tableChanged) {
             if (nextValues === currentValues) {
