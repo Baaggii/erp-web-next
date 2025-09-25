@@ -43,42 +43,6 @@ export async function loadTranslations() {
     return entries[id];
   }
 
-  const seedLangs = new Set([
-    ...(await listLangs(localesDir)),
-    ...(await listLangs(tooltipDir)),
-  ]);
-
-  const langs = new Set(seedLangs);
-
-  for (const lang of seedLangs) {
-    langs.add(lang);
-    // Load normal locale strings
-    try {
-      const file = path.join(localesDir, `${lang}.json`);
-      const data = JSON.parse(await fs.readFile(file, 'utf8'));
-      for (const [k, v] of Object.entries(data)) {
-        const { isMeaningful } = analyzeMeaning(k, v);
-        if (!isMeaningful) continue;
-        const id = `locale:${k}`;
-        const entry = ensureEntry(id, k, 'locale');
-        if (entry.values[lang] == null) entry.values[lang] = v;
-      }
-    } catch {}
-
-    // Load tooltip strings
-    try {
-      const file = path.join(tooltipDir, `${lang}.json`);
-      const data = JSON.parse(await fs.readFile(file, 'utf8'));
-      for (const [k, v] of Object.entries(data)) {
-        const { isMeaningful } = analyzeMeaning(k, v);
-        if (!isMeaningful) continue;
-        const id = `tooltip:${k}`;
-        const entry = ensureEntry(id, k, 'tooltip');
-        if (entry.values[lang] == null) entry.values[lang] = v;
-      }
-    } catch {}
-  }
-
   const configDir = path.join(projectRoot, 'config');
   try {
     const tenants = await fs.readdir(configDir, { withFileTypes: true });
@@ -126,17 +90,9 @@ export async function loadTranslations() {
           const localeEntry = ensureEntry(localeId, k, 'locale');
           const tooltipEntry = ensureEntry(tooltipId, k, 'tooltip');
           const detectedLang = detectLang(v);
-          let targetLangs = ['en'];
-          if (detectedLang) {
-            if (detectedLang === 'latin') targetLangs = ['en'];
-            else if (detectedLang === 'cjk') targetLangs = ['zh'];
-            else targetLangs = [detectedLang];
-          }
-          for (const langKey of targetLangs) {
-            langs.add(langKey);
-            if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;
-            if (tooltipEntry.values[langKey] == null) tooltipEntry.values[langKey] = v;
-          }
+          const langKey = detectedLang === 'mn' ? 'mn' : 'en';
+          if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;
+          if (tooltipEntry.values[langKey] == null) tooltipEntry.values[langKey] = v;
           if (!localeEntry.module && meta.module) localeEntry.module = meta.module;
           if (!tooltipEntry.module && meta.module) tooltipEntry.module = meta.module;
           if (!localeEntry.context && meta.context) localeEntry.context = meta.context;
@@ -145,6 +101,42 @@ export async function loadTranslations() {
       } catch {}
     }
   } catch {}
+
+  const seedLangs = new Set([
+    ...(await listLangs(localesDir)),
+    ...(await listLangs(tooltipDir)),
+  ]);
+
+  const langs = new Set(seedLangs);
+
+  for (const lang of seedLangs) {
+    langs.add(lang);
+    // Load normal locale strings
+    try {
+      const file = path.join(localesDir, `${lang}.json`);
+      const data = JSON.parse(await fs.readFile(file, 'utf8'));
+      for (const [k, v] of Object.entries(data)) {
+        const { isMeaningful } = analyzeMeaning(k, v);
+        if (!isMeaningful) continue;
+        const id = `locale:${k}`;
+        const entry = ensureEntry(id, k, 'locale');
+        if (entry.values[lang] == null) entry.values[lang] = v;
+      }
+    } catch {}
+
+    // Load tooltip strings
+    try {
+      const file = path.join(tooltipDir, `${lang}.json`);
+      const data = JSON.parse(await fs.readFile(file, 'utf8'));
+      for (const [k, v] of Object.entries(data)) {
+        const { isMeaningful } = analyzeMeaning(k, v);
+        if (!isMeaningful) continue;
+        const id = `tooltip:${k}`;
+        const entry = ensureEntry(id, k, 'tooltip');
+        if (entry.values[lang] == null) entry.values[lang] = v;
+      }
+    } catch {}
+  }
 
   langs.add('en');
   langs.add('mn');
