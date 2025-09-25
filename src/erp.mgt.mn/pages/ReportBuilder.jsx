@@ -23,49 +23,90 @@ const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
 const CALC_OPERATORS = ['+', '-', '*', '/'];
 const PAREN_OPTIONS = [0, 1, 2, 3];
 
+function usePerTabState(initialValue, activeTab) {
+  const createValue = () => {
+    if (typeof initialValue === 'function') {
+      return initialValue();
+    }
+    if (Array.isArray(initialValue)) {
+      return [...initialValue];
+    }
+    if (initialValue && typeof initialValue === 'object') {
+      return { ...initialValue };
+    }
+    return initialValue;
+  };
+
+  const [state, setState] = useState(() => ({
+    builder: createValue(),
+    code: createValue(),
+  }));
+
+  const value = state[activeTab];
+
+  const setValue = React.useCallback(
+    (updater) => {
+      setState((prev) => {
+        const currentValue = prev[activeTab];
+        const nextValue =
+          typeof updater === 'function' ? updater(currentValue) : updater;
+        if (nextValue === currentValue) return prev;
+        return { ...prev, [activeTab]: nextValue };
+      });
+    },
+    [activeTab],
+  );
+
+  return [value, setValue];
+}
+
 function ReportBuilderInner() {
   const [tables, setTables] = useState([]); // list of table names
   const [tableFields, setTableFields] = useState({}); // { tableName: [field, ...] }
   const [fieldEnums, setFieldEnums] = useState({}); // { tableName: { field: [enum] } }
   const [fieldTypes, setFieldTypes] = useState({}); // { tableName: { field: type } }
 
-  const [procName, setProcName] = useState('');
-  const [fromTable, setFromTable] = useState('');
-  const [joins, setJoins] = useState([]); // {table, alias, type, targetTable, conditions:[{fromField,toField,connector,open,close}], filters:[]}
-  const [fields, setFields] = useState([]); // {source:'field'|'alias', table, field, baseAlias, alias, aggregate, conditions:[], calcParts:[{source,table,field,alias,operator}]}
-  const [dragItem, setDragItem] = useState(null);
-  const [groups, setGroups] = useState([]); // {table, field}
-  const [having, setHaving] = useState([]); // {source:'field'|'alias', aggregate, table, field, alias, operator, valueType, value, param, connector}
-  const [params, setParams] = useState([]); // {name,type,source}
-  const [conditions, setConditions] = useState([]); // {table,field,param,connector}
-  const [fromFilters, setFromFilters] = useState([]); // {field,operator,valueType,param,value,connector,open,close}
-  const [unionQueries, setUnionQueries] = useState([]); // {unionType, ...queryState}
-  const [unionType, setUnionType] = useState('UNION');
-  const [currentUnionIndex, setCurrentUnionIndex] = useState(0);
-  const [selectSql, setSelectSql] = useState('');
-  const [viewSql, setViewSql] = useState('');
-  const [procSql, setProcSql] = useState('');
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const generalConfig = useGeneralConfig();
   const [loadError, setLoadError] = useState('');
-  const [savedReports, setSavedReports] = useState([]);
-  const [selectedReport, setSelectedReport] = useState('');
-  const [procFiles, setProcFiles] = useState([]); // {name,isDefault}
-  const [selectedProcFile, setSelectedProcFile] = useState('');
-  const [dbProcedures, setDbProcedures] = useState([]); // {name,isDefault}
-  const [selectedDbProcedure, setSelectedDbProcedure] = useState('');
-  const [loadedProcName, setLoadedProcName] = useState('');
-  const [procFileText, setProcFileText] = useState('');
-  const [procFileIsDefault, setProcFileIsDefault] = useState(false);
-  const [dbProcIsDefault, setDbProcIsDefault] = useState(false);
-  const [isDefault, setIsDefault] = useState(false);
-
-  const [procCompanyId, setProcCompanyId] = useState('');
-
-  const [customParamName, setCustomParamName] = useState('');
-  const [customParamType, setCustomParamType] = useState(PARAM_TYPES[0]);
   const [activeTab, setActiveTab] = useState('builder');
+
+  const [procName, setProcName] = usePerTabState('', activeTab);
+  const [fromTable, setFromTable] = usePerTabState('', activeTab);
+  const [joins, setJoins] = usePerTabState(() => [], activeTab);
+  const [fields, setFields] = usePerTabState(() => [], activeTab);
+  const [dragItem, setDragItem] = usePerTabState(null, activeTab);
+  const [groups, setGroups] = usePerTabState(() => [], activeTab);
+  const [having, setHaving] = usePerTabState(() => [], activeTab);
+  const [params, setParams] = usePerTabState(() => [], activeTab);
+  const [conditions, setConditions] = usePerTabState(() => [], activeTab);
+  const [fromFilters, setFromFilters] = usePerTabState(() => [], activeTab);
+  const [unionQueries, setUnionQueries] = usePerTabState(() => [], activeTab);
+  const [unionType, setUnionType] = usePerTabState('UNION', activeTab);
+  const [currentUnionIndex, setCurrentUnionIndex] = usePerTabState(0, activeTab);
+  const [selectSql, setSelectSql] = usePerTabState('', activeTab);
+  const [viewSql, setViewSql] = usePerTabState('', activeTab);
+  const [procSql, setProcSql] = usePerTabState('', activeTab);
+  const [error, setError] = usePerTabState('', activeTab);
+  const [savedReports, setSavedReports] = usePerTabState(() => [], activeTab);
+  const [selectedReport, setSelectedReport] = usePerTabState('', activeTab);
+  const [procFiles, setProcFiles] = usePerTabState(() => [], activeTab);
+  const [selectedProcFile, setSelectedProcFile] = usePerTabState('', activeTab);
+  const [dbProcedures, setDbProcedures] = usePerTabState(() => [], activeTab);
+  const [selectedDbProcedure, setSelectedDbProcedure] = usePerTabState('', activeTab);
+  const [loadedProcName, setLoadedProcName] = usePerTabState('', activeTab);
+  const [procFileText, setProcFileText] = usePerTabState('', activeTab);
+  const [procFileIsDefault, setProcFileIsDefault] = usePerTabState(false, activeTab);
+  const [dbProcIsDefault, setDbProcIsDefault] = usePerTabState(false, activeTab);
+  const [isDefault, setIsDefault] = usePerTabState(false, activeTab);
+
+  const [customParamName, setCustomParamName] = usePerTabState('', activeTab);
+  const [customParamType, setCustomParamType] = usePerTabState(
+    PARAM_TYPES[0],
+    activeTab,
+  );
+  const [viewNames, setViewNames] = usePerTabState(() => [], activeTab);
+  const [selectedView, setSelectedView] = usePerTabState('', activeTab);
   const { addToast } = useToast();
   const { company, permissions, session } = useContext(AuthContext);
   const { t: i18nextT } = useTranslation(['translation', 'tooltip']);
@@ -74,9 +115,14 @@ function ReportBuilderInner() {
   const isAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
+  const isCodeTab = activeTab === 'code';
 
   const tenantProcedures = dbProcedures.filter((p) => !p.isDefault);
-  const displayProcedures = isAdmin ? dbProcedures : tenantProcedures;
+  const displayProcedures = isCodeTab
+    ? dbProcedures
+    : isAdmin
+    ? dbProcedures
+    : tenantProcedures;
 
   const addFilterLabel = t('reportBuilder.addFilter', 'Add Filter');
   const addConditionLabel = t('reportBuilder.addCondition', 'Add Condition');
@@ -91,7 +137,7 @@ function ReportBuilderInner() {
     const first = displayProcedures[0];
     setSelectedDbProcedure(first?.name || '');
     setDbProcIsDefault(first?.isDefault || false);
-  }, [dbProcedures, isAdmin]);
+  }, [dbProcedures, isAdmin, isCodeTab]);
 
   useEffect(() => {
     setUnionQueries((prev) => {
@@ -141,14 +187,21 @@ function ReportBuilderInner() {
   }, []);
 
   useEffect(() => {
+    if (!fromTable && tables[0]) {
+      setFromTable(tables[0]);
+    }
+  }, [fromTable, tables, setFromTable]);
+
+  useEffect(() => {
     const basePrefix = generalConfig?.general?.reportProcPrefix || '';
     if (!generalConfig) return;
-    const procQuery = basePrefix
+    const procQuery = !isCodeTab && basePrefix
       ? `?prefix=${encodeURIComponent(basePrefix)}`
       : '';
+    const companyQuery = isCodeTab ? '?companyId=0' : '';
     async function fetchSaved() {
       try {
-        const res = await fetch('/api/report_builder/configs');
+        const res = await fetch(`/api/report_builder/configs${companyQuery}`);
         const data = await res.json();
         const list = data.names || [];
         setIsDefault(!!data.isDefault);
@@ -158,7 +211,9 @@ function ReportBuilderInner() {
         console.error(err);
       }
       try {
-        const res = await fetch('/api/report_builder/procedure-files');
+        const res = await fetch(
+          `/api/report_builder/procedure-files${companyQuery}`,
+        );
         const data = await res.json();
         const list = data.names || [];
         setProcFiles(list);
@@ -168,22 +223,46 @@ function ReportBuilderInner() {
         console.error(err);
       }
       try {
-        const res = await fetch(`/api/report_builder/procedures${procQuery}`);
+        const url = isCodeTab
+          ? '/api/report_builder/procedures'
+          : `/api/report_builder/procedures${procQuery}`;
+        const res = await fetch(url);
         const data = await res.json();
-        const list = (data.names || []).filter(({ name }) =>
-          isAdmin
-            ? name.startsWith(basePrefix)
-            : name.startsWith(`${basePrefix}0_`) ||
-              (company != null &&
-                name.startsWith(`${basePrefix}${company}_`)),
-        );
+        let list = data.names || [];
+        if (!isCodeTab) {
+          list = list.filter(({ name }) =>
+            isAdmin
+              ? name.startsWith(basePrefix)
+              : name.startsWith(`${basePrefix}0_`) ||
+                (company != null &&
+                  name.startsWith(`${basePrefix}${company}_`)),
+          );
+        }
         setDbProcedures(list);
       } catch (err) {
         console.error(err);
       }
+      await refreshViewList();
     }
     fetchSaved();
-  }, [generalConfig?.general?.reportProcPrefix, company, isAdmin]);
+  }, [
+    generalConfig?.general?.reportProcPrefix,
+    company,
+    isAdmin,
+    isCodeTab,
+  ]);
+
+  async function refreshViewList() {
+    try {
+      const res = await fetch('/api/report_builder/views');
+      const data = await res.json();
+      const list = data.names || [];
+      setViewNames(list);
+      setSelectedView((prev) => (prev && list.includes(prev) ? prev : list[0] || ''));
+    } catch (err) {
+      console.error(err);
+    }
+  }
 
   async function handleImport() {
     if (
@@ -194,7 +273,9 @@ function ReportBuilderInner() {
       return;
     try {
       const res = await fetch(
-        `/api/config/import/report_builder?companyId=${encodeURIComponent(company ?? '')}`,
+        `/api/config/import/report_builder?companyId=${encodeURIComponent(
+          isCodeTab ? 0 : company ?? '',
+        )}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -207,11 +288,14 @@ function ReportBuilderInner() {
         throw new Error(data.message || 'failed');
       }
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
-      const procQuery = basePrefix
+      const procQuery = !isCodeTab && basePrefix
         ? `?prefix=${encodeURIComponent(basePrefix)}`
         : '';
+      const companyQuery = isCodeTab ? '?companyId=0' : '';
       try {
-        const resCfg = await fetch('/api/report_builder/configs');
+        const resCfg = await fetch(
+          `/api/report_builder/configs${companyQuery}`,
+        );
         const dataCfg = await resCfg.json();
         const list = dataCfg.names || [];
         setIsDefault(!!dataCfg.isDefault);
@@ -219,7 +303,9 @@ function ReportBuilderInner() {
         setSelectedReport(list[0] || '');
       } catch {}
       try {
-        const resFiles = await fetch('/api/report_builder/procedure-files');
+        const resFiles = await fetch(
+          `/api/report_builder/procedure-files${companyQuery}`,
+        );
         const dataFiles = await resFiles.json();
         const list = dataFiles.names || [];
         setProcFiles(list);
@@ -228,18 +314,24 @@ function ReportBuilderInner() {
       } catch {}
       try {
         const resProcs = await fetch(
-          `/api/report_builder/procedures${procQuery}`,
+          isCodeTab
+            ? '/api/report_builder/procedures'
+            : `/api/report_builder/procedures${procQuery}`,
         );
         const dataProcs = await resProcs.json();
-        const list = (dataProcs.names || []).filter(({ name }) =>
-          isAdmin
-            ? name.startsWith(basePrefix)
-            : name.startsWith(`${basePrefix}0_`) ||
-              (company != null &&
-                name.startsWith(`${basePrefix}${company}_`)),
-        );
+        let list = dataProcs.names || [];
+        if (!isCodeTab) {
+          list = list.filter(({ name }) =>
+            isAdmin
+              ? name.startsWith(basePrefix)
+              : name.startsWith(`${basePrefix}0_`) ||
+                (company != null &&
+                  name.startsWith(`${basePrefix}${company}_`)),
+          );
+        }
         setDbProcedures(list);
       } catch {}
+      await refreshViewList();
       addToast('Imported', 'success');
     } catch (err) {
       addToast(`Import failed: ${err.message}`, 'error');
@@ -1190,9 +1282,13 @@ function ReportBuilderInner() {
     try {
       const { report } = buildDefinition();
       const sql = buildReportSql(report);
-      const prefix = generalConfig?.general?.reportViewPrefix || '';
+      const prefix = isCodeTab
+        ? ''
+        : generalConfig?.general?.reportViewPrefix || '';
       if (!procName) throw new Error('procedure name is required');
-      const viewName = `${prefix}${company ? `${company}_` : ''}${procName}`;
+      const viewName = `${prefix}${
+        isCodeTab ? '' : company ? `${company}_` : ''
+      }${procName}`;
       const view = `CREATE OR REPLACE VIEW ${viewName} AS\n${sql};`;
       setViewSql(view);
       setError('');
@@ -1206,10 +1302,17 @@ function ReportBuilderInner() {
     setProcSql('');
     try {
       const { report, params: p } = buildDefinition();
-      const prefix = generalConfig?.general?.reportProcPrefix || '';
+      const prefix = isCodeTab
+        ? ''
+        : generalConfig?.general?.reportProcPrefix || '';
       const config = buildConfig();
+      const procedureName = isCodeTab
+        ? procName
+        : company
+        ? `${company}_${procName}`
+        : procName;
       const built = buildStoredProcedure({
-        name: company ? `${company}_${procName}` : procName,
+        name: procedureName,
         params: p,
         report,
         prefix,
@@ -1233,8 +1336,9 @@ function ReportBuilderInner() {
     if (!sqlToPost) return;
     if (!window.confirm('POST stored procedure to database?')) return;
     const basePrefix = generalConfig?.general?.reportProcPrefix || '';
-    const procQuery = basePrefix
-      ? `?prefix=${encodeURIComponent(basePrefix)}`
+    const prefix = isCodeTab ? '' : basePrefix;
+    const procQuery = !isCodeTab && prefix
+      ? `?prefix=${encodeURIComponent(prefix)}`
       : '';
     try {
       const res = await fetch(`/api/report_builder/procedures`, {
@@ -1246,19 +1350,26 @@ function ReportBuilderInner() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.message || 'Save failed');
       }
-      const listRes = await fetch(`/api/report_builder/procedures${procQuery}`);
+      const listRes = await fetch(
+        isCodeTab
+          ? '/api/report_builder/procedures'
+          : `/api/report_builder/procedures${procQuery}`,
+      );
       if (!listRes.ok) {
         throw new Error('Failed to fetch procedures');
       }
       const data = await listRes.json();
-      const list = (data.names || []).filter(({ name }) =>
-        name.startsWith(`${basePrefix}0_`) ||
-        (company != null && name.startsWith(`${basePrefix}${company}_`)),
-      );
-      const expectedName = `${basePrefix}${
-        company != null ? `${company}_` : ''
-      }${name}`;
-      if (!list.some(({ name }) => name === expectedName)) {
+      let list = data.names || [];
+      if (!isCodeTab) {
+        list = list.filter(({ name }) =>
+          name.startsWith(`${basePrefix}0_`) ||
+          (company != null && name.startsWith(`${basePrefix}${company}_`)),
+        );
+      }
+      const expectedName = isCodeTab
+        ? name
+        : `${basePrefix}${company != null ? `${company}_` : ''}${name}`;
+      if (!list.some(({ name: procName }) => procName === expectedName)) {
         throw new Error('Save failed');
       }
       setDbProcedures(list);
@@ -1347,6 +1458,7 @@ function ReportBuilderInner() {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.message || 'Save failed');
       }
+      await refreshViewList();
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: { message: 'View saved', type: 'success' },
@@ -1361,16 +1473,64 @@ function ReportBuilderInner() {
     }
   }
 
+  async function handleLoadView() {
+    if (!selectedView) return;
+    try {
+      const res = await fetch(
+        `/api/report_builder/views/${encodeURIComponent(selectedView)}`,
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Failed to load view');
+      }
+      const data = await res.json();
+      setViewSql(data.sql || '');
+      setError('');
+      addToast('View loaded', 'success');
+    } catch (err) {
+      console.error(err);
+      addToast(err.message || 'Failed to load view', 'error');
+    }
+  }
+
+  async function handleDeleteView() {
+    if (!selectedView) return;
+    if (!window.confirm(`Delete view ${selectedView}?`)) return;
+    try {
+      const res = await fetch(
+        `/api/report_builder/views/${encodeURIComponent(selectedView)}`,
+        { method: 'DELETE' },
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Delete failed');
+      }
+      await refreshViewList();
+      setViewSql('');
+      addToast('View deleted', 'success');
+    } catch (err) {
+      console.error(err);
+      addToast(err.message || 'Delete failed', 'error');
+    }
+  }
+
   async function handleSaveConfig() {
     const data = buildConfig();
     try {
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
       if (!procName) throw new Error('procedure name is required');
-      const prefix = company ? `${basePrefix}${company}_` : basePrefix;
-      const name = `${prefix}${procName}`;
+      const prefix = isCodeTab
+        ? ''
+        : company
+        ? `${basePrefix}${company}_`
+        : basePrefix;
+      const name = isCodeTab ? procName : `${prefix}${procName}`;
+      const companyQuery = isCodeTab ? '?companyId=0' : '';
       if (isDefault) {
         const resImport = await fetch(
-          `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
+          `/api/config/import?companyId=${encodeURIComponent(
+            isCodeTab ? 0 : company ?? '',
+          )}`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1385,7 +1545,7 @@ function ReportBuilderInner() {
         setIsDefault(false);
       }
       const res = await fetch(
-        `/api/report_builder/configs/${encodeURIComponent(name)}`,
+        `/api/report_builder/configs/${encodeURIComponent(name)}${companyQuery}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1397,7 +1557,7 @@ function ReportBuilderInner() {
         throw new Error(data.message || 'Save failed');
       }
       const listRes = await fetch(
-        '/api/report_builder/configs',
+        `/api/report_builder/configs${companyQuery}`,
       );
       const listData = await listRes.json();
       const list = listData.names || [];
@@ -1513,7 +1673,9 @@ function ReportBuilderInner() {
     if (!cfgName) return;
     try {
       const res = await fetch(
-        `/api/report_builder/configs/${encodeURIComponent(cfgName)}`,
+        `/api/report_builder/configs/${encodeURIComponent(cfgName)}${
+          isCodeTab ? '?companyId=0' : ''
+        }`,
       );
       const data = await res.json();
       const raw = data.report || data;
@@ -1576,7 +1738,9 @@ function ReportBuilderInner() {
         try {
           const name = parsed.report.procName || selectedDbProcedure;
           await fetch(
-            `/api/report_builder/configs/${encodeURIComponent(name)}`,
+            `/api/report_builder/configs/${encodeURIComponent(name)}${
+              isCodeTab ? '?companyId=0' : ''
+            }`,
             {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -1610,11 +1774,16 @@ function ReportBuilderInner() {
     if (!procSql) return;
     const basePrefix = generalConfig?.general?.reportProcPrefix || '';
     if (!procName) return;
-    const prefix = company ? `${basePrefix}${company}_` : basePrefix;
-    const name = `${prefix}${procName}`;
+    const prefix = isCodeTab
+      ? ''
+      : company
+      ? `${basePrefix}${company}_`
+      : basePrefix;
+    const name = isCodeTab ? procName : `${prefix}${procName}`;
+    const companyQuery = isCodeTab ? '?companyId=0' : '';
     try {
       const res = await fetch(
-        `/api/report_builder/procedure-files/${encodeURIComponent(name)}`,
+        `/api/report_builder/procedure-files/${encodeURIComponent(name)}${companyQuery}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1626,7 +1795,7 @@ function ReportBuilderInner() {
         throw new Error(data.message || 'Save failed');
       }
       const listRes = await fetch(
-        '/api/report_builder/procedure-files',
+        `/api/report_builder/procedure-files${companyQuery}`,
       );
       const listData = await listRes.json();
       const list = listData.names || [];
@@ -1651,7 +1820,9 @@ function ReportBuilderInner() {
     if (!selectedProcFile) return;
     try {
       const res = await fetch(
-        `/api/report_builder/procedure-files/${encodeURIComponent(selectedProcFile)}`,
+        `/api/report_builder/procedure-files/${encodeURIComponent(
+          selectedProcFile,
+        )}${isCodeTab ? '?companyId=0' : ''}`,
       );
       const data = await res.json();
       setProcFileText(data.sql || '');
@@ -1665,8 +1836,10 @@ function ReportBuilderInner() {
     if (!selectedProcFile) return;
     try {
       const res = await fetch(
-        `/api/report_builder/procedure-files/${encodeURIComponent(selectedProcFile)}/import?companyId=${encodeURIComponent(
-          company ?? '',
+        `/api/report_builder/procedure-files/${encodeURIComponent(
+          selectedProcFile,
+        )}/import?companyId=${encodeURIComponent(
+          isCodeTab ? 0 : company ?? '',
         )}`,
         { method: 'POST' },
       );
@@ -1701,14 +1874,18 @@ function ReportBuilderInner() {
       const basePrefix = generalConfig?.general?.reportProcPrefix || '';
       const oldName = nameMatch[1];
       baseName = oldName;
-      if (
-        basePrefix &&
-        baseName.toLowerCase().startsWith(basePrefix.toLowerCase())
-      ) {
-        baseName = baseName.slice(basePrefix.length);
+      if (!isCodeTab) {
+        if (
+          basePrefix &&
+          baseName.toLowerCase().startsWith(basePrefix.toLowerCase())
+        ) {
+          baseName = baseName.slice(basePrefix.length);
+        }
+        baseName = baseName.replace(/^\d+_/, '');
+        newName = `${basePrefix}${company}_${baseName}`;
+      } else {
+        newName = baseName;
       }
-      baseName = baseName.replace(/^\d+_/, '');
-      newName = `${basePrefix}${company}_${baseName}`;
       sql = sql.replace(
         /(CREATE\s+PROCEDURE\s+)`?[^`(]+`?/i,
         `$1\`${newName}\``,
@@ -1722,7 +1899,6 @@ function ReportBuilderInner() {
       if (!/^\s*DELIMITER\s+\$\$/i.test(sql)) {
         sql = `DELIMITER $$\n${sql}`;
       }
-      setProcCompanyId(company);
       setProcName(baseName);
     }
     // ensure body terminates with END $$\nDELIMITER ;
@@ -1808,16 +1984,7 @@ function ReportBuilderInner() {
         ))}
       </div>
 
-      {activeTab === 'builder' && (
-        <div style={{ marginBottom: '1rem' }}>
-          {t(
-            'reportBuilder.builderTabComingSoon',
-            'Visual builder tools coming soon.',
-          )}
-        </div>
-      )}
-
-      <div style={{ display: activeTab === 'code' ? 'block' : 'none' }}>
+      <div>
         <div style={{ marginBottom: '0.5rem' }}>
           <button onClick={handleImport}>
             {t('reportBuilder.importDefaults', 'Import Defaults')}
@@ -2942,13 +3109,16 @@ function ReportBuilderInner() {
           <label>
             {t('reportBuilder.procedureName', 'Procedure Name')}:
             <div>
-              {`${generalConfig?.general?.reportProcPrefix || ''}${company ? `${company}_` : ''}`}
+              {!isCodeTab &&
+                `${generalConfig?.general?.reportProcPrefix || ''}${
+                  company ? `${company}_` : ''
+                }`}
               <input
                 value={procName}
                 onChange={(e) => setProcName(e.target.value)}
                 style={{ width: '50%' }}
               />
-              {generalConfig?.general?.reportProcSuffix || ''}
+              {!isCodeTab && generalConfig?.general?.reportProcSuffix}
             </div>
           </label>
         </section>
@@ -2965,6 +3135,36 @@ function ReportBuilderInner() {
             {t('reportBuilder.createProcedure', 'Create Procedure')}
           </button>
         </section>
+
+        {isCodeTab && (
+          <section style={{ marginTop: '1rem' }}>
+            <h3>{t('reportBuilder.viewList', 'Views')}</h3>
+            <select
+              value={selectedView}
+              onChange={(e) => setSelectedView(e.target.value)}
+            >
+              {viewNames.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={handleLoadView}
+              style={{ marginLeft: '0.5rem' }}
+              disabled={!selectedView}
+            >
+              {t('reportBuilder.loadView', 'Load View')}
+            </button>
+            <button
+              onClick={handleDeleteView}
+              style={{ marginLeft: '0.5rem' }}
+              disabled={!selectedView}
+            >
+              {t('reportBuilder.deleteView', 'Delete View')}
+            </button>
+          </section>
+        )}
 
         {viewSql && (
           <section style={{ marginTop: '1rem' }}>
