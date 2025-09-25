@@ -53,6 +53,7 @@ export default function ManualTranslationsTab() {
   const [completing, setCompleting] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
   const [savingLanguage, setSavingLanguage] = useState(null);
+  const [translationSources, setTranslationSources] = useState([]);
   const abortRef = useRef(false);
   const processingRef = useRef(false);
   const activeRowRef = useRef(null);
@@ -298,11 +299,22 @@ export default function ManualTranslationsTab() {
     }
   }
 
+  const captureTranslationSource = (translated) => {
+    if (translated?.source) {
+      setTranslationSources((prev) => [...prev, translated.source]);
+    }
+  };
+
+  const clearTranslationSources = () => {
+    setTranslationSources([]);
+  };
+
   async function completeAll() {
     if (processingRef.current) return;
     abortRef.current = false;
     processingRef.current = true;
     setCompleting(true);
+    clearTranslationSources();
     const allEntries = [...entries];
     const original = [...allEntries];
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
@@ -349,6 +361,7 @@ export default function ManualTranslationsTab() {
         try {
           await delay();
           const translated = await translateEntry('en', mn);
+          captureTranslationSource(translated);
           if (translated?.text && !translated.needsRetry) {
             newEntry.values.en = translated.text;
             changed = true;
@@ -365,6 +378,7 @@ export default function ManualTranslationsTab() {
         try {
           await delay();
           const translated = await translateEntry('mn', en);
+          captureTranslationSource(translated);
           if (translated?.text && !translated.needsRetry) {
             newEntry.values.mn = translated.text;
             changed = true;
@@ -400,6 +414,7 @@ export default function ManualTranslationsTab() {
             try {
               await delay();
               const translated = await translateEntry(lang, sourceText);
+              captureTranslationSource(translated);
               if (translated?.text && !translated.needsRetry) {
                 newEntry.values[lang] = translated.text;
                 changed = true;
@@ -457,6 +472,7 @@ export default function ManualTranslationsTab() {
       setEntries(original);
       processingRef.current = false;
       setCompleting(false);
+      clearTranslationSources();
       await refreshEntries();
       if (rateLimited) {
         window.dispatchEvent(
@@ -474,6 +490,7 @@ export default function ManualTranslationsTab() {
     if (rateLimited) {
       processingRef.current = false;
       setCompleting(false);
+      clearTranslationSources();
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -489,6 +506,7 @@ export default function ManualTranslationsTab() {
     }
     processingRef.current = false;
     setCompleting(false);
+    clearTranslationSources();
     if (saved) {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -525,6 +543,50 @@ export default function ManualTranslationsTab() {
 
   return (
     <div>
+      {completing && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '1rem',
+            right: '1rem',
+            backgroundColor: '#111827',
+            color: '#f9fafb',
+            padding: '0.75rem 1rem',
+            borderRadius: '0.5rem',
+            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+            maxWidth: '24rem',
+            maxHeight: '16rem',
+            overflowY: 'auto',
+            zIndex: 1000,
+            fontSize: '0.875rem',
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
+            {t('translationProgress', 'Translation progress')}
+          </div>
+          {translationSources.length ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              {translationSources.map((source, index) => (
+                <div
+                  key={`${source}-${index}`}
+                  style={{
+                    backgroundColor: '#1f2937',
+                    borderRadius: '0.375rem',
+                    padding: '0.25rem 0.5rem',
+                    wordBreak: 'break-word',
+                  }}
+                >
+                  {source}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ color: '#d1d5db' }}>
+              {t('waitingForTranslations', 'Waiting for translations...')}
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
         <button type="button" onClick={addRow}>{t('addRow', 'Add Row')}</button>
         <button
