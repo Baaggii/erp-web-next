@@ -56,6 +56,16 @@ test('exported texts are merged into manual translations', { concurrency: false 
   );
   try {
     const data = await loadTranslations();
+    assert(Array.isArray(data.languages), 'languages is an array');
+    for (const entry of data.entries) {
+      assert.equal(typeof entry.translatedBy, 'object', 'translatedBy is an object');
+      for (const lang of data.languages) {
+        assert(
+          Object.prototype.hasOwnProperty.call(entry.translatedBy, lang),
+          `translatedBy has key for ${lang}`,
+        );
+      }
+    }
     const localeFoo = data.entries.find((e) => e.type === 'locale' && e.key === 'foo');
     const tooltipFoo = data.entries.find((e) => e.type === 'tooltip' && e.key === 'foo');
     assert.equal(localeFoo, undefined);

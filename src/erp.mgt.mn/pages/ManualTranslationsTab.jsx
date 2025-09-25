@@ -9,6 +9,34 @@ const RATE_LIMIT_MAX_RETRIES = 3;
 const RATE_LIMIT_BASE_DELAY = 500;
 const RATE_LIMIT_MAX_DELAY = 5000;
 
+const TRANSLATOR_LABELS = {
+  ai: 'OpenAI',
+  'locale-file': 'Locale file',
+  'cache-node': 'Server cache',
+  'cache-localStorage': 'LocalStorage cache',
+  'cache-indexedDB': 'IndexedDB cache',
+  base: 'Base value',
+  'fallback-error': 'Fallback (error)',
+  'fallback-missing': 'Fallback (missing)',
+  'fallback-validation': 'Fallback (validation)',
+  unknown: 'Unknown source',
+};
+
+function getTranslatorLabel(source) {
+  if (typeof source !== 'string' || !source) {
+    return TRANSLATOR_LABELS.unknown;
+  }
+  if (Object.prototype.hasOwnProperty.call(TRANSLATOR_LABELS, source)) {
+    return TRANSLATOR_LABELS[source];
+  }
+  const fallback = source
+    .split(/[-_]/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  return fallback || TRANSLATOR_LABELS.unknown;
+}
+
 function normalizeEnMnPair(en, mn) {
   let normalizedEn = en;
   let normalizedMn = mn;
@@ -124,15 +152,27 @@ export default function ManualTranslationsTab() {
 
           if (res.ok) {
             const data = await res.json();
-            setLanguages(data.languages ?? []);
-            const normalizedEntries = (data.entries ?? []).map((entry) => ({
-              ...entry,
-              module: entry.module ?? '',
-              context: entry.context ?? '',
-              page: entry.page ?? '',
-              pageEditable: entry.pageEditable ?? true,
-              values: entry.values ?? {},
-            }));
+            const languagesList = Array.isArray(data.languages) ? data.languages : [];
+            setLanguages(languagesList);
+            const normalizedEntries = (data.entries ?? []).map((entry) => {
+              const values = { ...(entry.values ?? {}) };
+              const translatedBy = { ...(entry.translatedBy ?? {}) };
+              for (const lang of languagesList) {
+                if (values[lang] == null) values[lang] = '';
+                const label = translatedBy[lang];
+                translatedBy[lang] =
+                  typeof label === 'string' && label.trim() ? label.trim() : '';
+              }
+              return {
+                ...entry,
+                module: entry.module ?? '',
+                context: entry.context ?? '',
+                page: entry.page ?? '',
+                pageEditable: entry.pageEditable ?? true,
+                values,
+                translatedBy,
+              };
+            });
             setEntries(normalizedEntries);
           }
         } catch {
@@ -214,6 +254,10 @@ export default function ManualTranslationsTab() {
       const copy = [...prev];
       const entry = { ...copy[index] };
       entry.values = { ...entry.values, [lang]: value };
+      entry.translatedBy = {
+        ...(entry.translatedBy ?? {}),
+        [lang]: '',
+      };
       copy[index] = entry;
       return copy;
     });
@@ -224,6 +268,7 @@ export default function ManualTranslationsTab() {
     const payload = {
       ...entry,
       page: entry.page ?? '',
+      translatedBy: entry.translatedBy ?? {},
     };
     await fetch('/api/manual_translations', {
       method: 'POST',
@@ -243,6 +288,7 @@ export default function ManualTranslationsTab() {
         type: e.type,
         page: e.page ?? '',
         values: { [lang]: e.values[lang] ?? '' },
+        translatedBy: { [lang]: e.translatedBy?.[lang] ?? '' },
       }));
     try {
       const res = await fetch('/api/manual_translations/bulk', {
@@ -307,10 +353,10 @@ export default function ManualTranslationsTab() {
     }
   }
 
-  const captureTranslationSource = (translated) => {
-    if (translated?.source) {
-      setTranslationSources((prev) => [...prev, translated.source]);
-    }
+  const captureTranslationSource = (lang, source) => {
+    if (!lang) return;
+    const label = getTranslatorLabel(source);
+    setTranslationSources((prev) => [...prev, { lang, label }]);
   };
 
   const clearTranslationSources = () => {
@@ -336,7 +382,11 @@ export default function ManualTranslationsTab() {
       setActiveRow(idx);
       setPage(Math.floor(idx / perPage) + 1);
       const entry = allEntries[idx];
-      const newEntry = { ...entry, values: { ...entry.values } };
+      const newEntry = {
+        ...entry,
+        values: { ...entry.values },
+        translatedBy: { ...(entry.translatedBy ?? {}) },
+      };
       const entryMetadata = {
         module: newEntry.module,
         context: newEntry.context,
@@ -370,9 +420,10 @@ export default function ManualTranslationsTab() {
         try {
           await delay();
           const translated = await translateEntry('en', mn);
-          captureTranslationSource(translated);
           if (translated?.text && !translated.needsRetry) {
             newEntry.values.en = translated.text;
+            newEntry.translatedBy.en = getTranslatorLabel(translated.source);
+            captureTranslationSource('en', translated.source);
             changed = true;
           } else if (translated?.needsRetry) {
             needsManualReview = true;
@@ -387,9 +438,10 @@ export default function ManualTranslationsTab() {
         try {
           await delay();
           const translated = await translateEntry('mn', en);
-          captureTranslationSource(translated);
           if (translated?.text && !translated.needsRetry) {
             newEntry.values.mn = translated.text;
+            newEntry.translatedBy.mn = getTranslatorLabel(translated.source);
+            captureTranslationSource('mn', translated.source);
             changed = true;
           } else if (translated?.needsRetry) {
             needsManualReview = true;
@@ -423,9 +475,10 @@ export default function ManualTranslationsTab() {
             try {
               await delay();
               const translated = await translateEntry(lang, sourceText);
-              captureTranslationSource(translated);
               if (translated?.text && !translated.needsRetry) {
                 newEntry.values[lang] = translated.text;
+                newEntry.translatedBy[lang] = getTranslatorLabel(translated.source);
+                captureTranslationSource(lang, translated.source);
                 changed = true;
               } else if (translated?.needsRetry) {
                 needsManualReview = true;
@@ -552,6 +605,7 @@ export default function ManualTranslationsTab() {
         page: '',
         pageEditable: true,
         values: {},
+        translatedBy: Object.fromEntries(languages.map((lang) => [lang, ''])),
       },
     ];
     setEntries(newEntries);
@@ -583,9 +637,9 @@ export default function ManualTranslationsTab() {
           </div>
           {translationSources.length ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-              {translationSources.map((source, index) => (
+              {translationSources.map(({ lang, label }, index) => (
                 <div
-                  key={`${source}-${index}`}
+                  key={`${lang}-${label}-${index}`}
                   style={{
                     backgroundColor: '#1f2937',
                     borderRadius: '0.375rem',
@@ -593,7 +647,10 @@ export default function ManualTranslationsTab() {
                     wordBreak: 'break-word',
                   }}
                 >
-                  {source}
+                  <span style={{ fontWeight: 600, marginRight: '0.25rem' }}>
+                    {(lang || '').toUpperCase()}
+                  </span>
+                  <span>{label || TRANSLATOR_LABELS.unknown}</span>
                 </div>
               ))}
             </div>
@@ -663,6 +720,9 @@ export default function ManualTranslationsTab() {
                   </div>
                 </th>
               ))}
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                {t('translatedBy', 'Translated by')}
+              </th>
               <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }} />
             </tr>
           </thead>
@@ -721,6 +781,25 @@ export default function ManualTranslationsTab() {
                       />
                     </td>
                   ))}
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {languages.map((l) => {
+                        const rawLabel = entry.translatedBy?.[l];
+                        const displayLabel =
+                          typeof rawLabel === 'string' && rawLabel.trim()
+                            ? rawLabel.trim()
+                            : '';
+                        return (
+                          <div key={l} style={{ color: displayLabel ? '#111827' : '#6b7280' }}>
+                            <span style={{ fontWeight: 600, marginRight: '0.25rem' }}>
+                              {l.toUpperCase()}
+                            </span>
+                            <span>{displayLabel || '—'}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </td>
                   <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
                     <button onClick={() => save(entryIdx)}>{t('save', 'Save')}</button>
                     <button
