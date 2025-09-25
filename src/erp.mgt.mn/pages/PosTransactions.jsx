@@ -269,8 +269,6 @@ export function shouldLoadRelations(formConfig, cols = []) {
   return hasView || hasForeignKey(cols);
 }
 
-const arrayIndexPattern = /^(0|[1-9]\d*)$/;
-
 function copyArrayMetadata(target, source) {
   if (!Array.isArray(target) || !Array.isArray(source)) return;
   Object.keys(source).forEach((key) => {
