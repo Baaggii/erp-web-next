@@ -54,6 +54,33 @@ export default function AsyncSearchSelect({
   const actionRef = useRef(null);
   const [tenantMeta, setTenantMeta] = useState(null);
   const [menuRect, setMenuRect] = useState(null);
+  const pendingLookupRef = useRef(null);
+
+  const findBestOption = useCallback(
+    (query) => {
+      const normalized = String(query || '').trim().toLowerCase();
+      if (normalized.length === 0) return null;
+      let opt = options.find(
+        (o) => String(o.value ?? '').toLowerCase() === normalized,
+      );
+      if (opt == null) {
+        opt = options.find(
+          (o) => String(o.label ?? '').toLowerCase() === normalized,
+        );
+      }
+      if (opt == null) {
+        opt = options.find((o) => {
+          const valueText = String(o.value ?? '').toLowerCase();
+          const labelText = String(o.label ?? '').toLowerCase();
+          return (
+            valueText.includes(normalized) || labelText.includes(normalized)
+          );
+        });
+      }
+      return opt || null;
+    },
+    [options],
+  );
 
   const updateMenuPosition = useCallback(() => {
     if (!show || !internalRef.current || typeof window === 'undefined') return;
@@ -212,6 +239,32 @@ export default function AsyncSearchSelect({
     department,
   ]);
 
+  useEffect(() => {
+    const pending = pendingLookupRef.current;
+    if (loading || pending == null) return;
+    const normalizedPending = String(pending.query || '').trim().toLowerCase();
+    if (normalizedPending.length === 0) {
+      pendingLookupRef.current = null;
+      return;
+    }
+    const currentInput = String(input || '').trim().toLowerCase();
+    if (currentInput !== normalizedPending) {
+      pendingLookupRef.current = null;
+      return;
+    }
+    const opt = findBestOption(pending.query);
+    if (opt) {
+      onChange(opt.value, opt.label);
+      setInput(String(opt.value));
+      setLabel(opt.label || '');
+      if (internalRef.current) internalRef.current.value = String(opt.value);
+      pendingLookupRef.current = null;
+      setShow(false);
+    } else {
+      pendingLookupRef.current = null;
+    }
+  }, [loading, options, input, findBestOption, onChange]);
+
   function handleSelectKeyDown(e) {
     actionRef.current = null;
     if (e.key === 'ArrowDown') {
@@ -229,8 +282,11 @@ export default function AsyncSearchSelect({
     if (e.key !== 'Enter') return;
 
     const query = String(input || '').trim();
-    if (loading || !show) {
-      actionRef.current = { type: 'enter', matched: false, query };
+    if (loading || show === false) {
+      actionRef.current = { type: 'enter', matched: 'pending', query };
+      pendingLookupRef.current = {
+        query,
+      };
       return;
     }
 
@@ -239,29 +295,10 @@ export default function AsyncSearchSelect({
     if (idx >= 0 && idx < options.length) {
       opt = options[idx];
     } else if (options.length > 0) {
-      const lowerQuery = query.toLowerCase();
-      if (lowerQuery) {
-        opt = options.find(
-          (o) => String(o.value ?? '').toLowerCase() === lowerQuery,
-        );
-        if (!opt) {
-          opt = options.find(
-            (o) => String(o.label ?? '').toLowerCase() === lowerQuery,
-          );
-        }
-        if (!opt) {
-          opt = options.find((o) => {
-            const valueText = String(o.value ?? '').toLowerCase();
-            const labelText = String(o.label ?? '').toLowerCase();
-            return (
-              valueText.includes(lowerQuery) || labelText.includes(lowerQuery)
-            );
-          });
-        }
-      }
+      opt = findBestOption(query);
     }
 
-    if (!opt) {
+    if (opt == null) {
       actionRef.current = { type: 'enter', matched: false, query };
       return;
     }
@@ -382,6 +419,7 @@ export default function AsyncSearchSelect({
         }}
         value={input}
         onChange={(e) => {
+          pendingLookupRef.current = null;
           setInput(e.target.value);
           setLabel('');
           onChange(e.target.value);
@@ -413,6 +451,9 @@ export default function AsyncSearchSelect({
               e.lookupMatched = true;
             } else if (actionRef.current.matched === false) {
               e.lookupMatched = false;
+              e.lookupQuery = actionRef.current.query;
+            } else if (actionRef.current.matched === 'pending') {
+              e.lookupPending = true;
               e.lookupQuery = actionRef.current.query;
             }
           } else if (chosenRef.current) {
