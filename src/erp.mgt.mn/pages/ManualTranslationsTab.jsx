@@ -11,11 +11,14 @@ const RATE_LIMIT_MAX_DELAY = 5000;
 
 const TRANSLATOR_LABELS = {
   ai: 'OpenAI',
+  openai: 'OpenAI',
   'locale-file': 'Locale file',
   'cache-node': 'Server cache',
   'cache-localStorage': 'LocalStorage cache',
   'cache-indexedDB': 'IndexedDB cache',
   base: 'Base value',
+  google: 'Google',
+  'google-translate': 'Google Translate',
   'fallback-error': 'Fallback (error)',
   'fallback-missing': 'Fallback (missing)',
   'fallback-validation': 'Fallback (validation)',
