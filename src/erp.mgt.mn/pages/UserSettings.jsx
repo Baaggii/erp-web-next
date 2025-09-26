@@ -70,6 +70,7 @@ function UserManualTab() {
   const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const toursEnabled = userSettings.settings_enable_tours ?? false;
+  const showTourButtons = userSettings.showTourButtons ?? true;
   return (
     <div>
       <TooltipWrapper
@@ -88,6 +89,24 @@ function UserManualTab() {
             }
           />{' '}
           {t('settings_enable_tours', 'Show page guide')}
+        </label>
+      </TooltipWrapper>
+      <TooltipWrapper
+        title={t('settings_show_tour_buttons', {
+          ns: 'tooltip',
+          defaultValue: 'Show tour buttons in the header',
+        })}
+      >
+        <label htmlFor="show-tour-buttons-toggle">
+          <input
+            id="show-tour-buttons-toggle"
+            type="checkbox"
+            checked={showTourButtons}
+            onChange={(e) =>
+              updateUserSettings({ showTourButtons: e.target.checked })
+            }
+          />{' '}
+          {t('settings_show_tour_buttons', 'Show tour buttons')}
         </label>
       </TooltipWrapper>
     </div>
