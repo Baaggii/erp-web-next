@@ -1493,27 +1493,12 @@ export default function PosTransactionsPage() {
   }
 
   function recalcTotals(vals) {
-    if (!config || !config.masterTable) return vals;
-    const totals = { total_quantity: 0, total_amount: 0, total_discount: 0 };
-    for (const t of config.tables) {
-      if (t.type !== 'multi') continue;
-      const rows = Array.isArray(vals[t.table]) ? vals[t.table] : [];
-      rows.forEach((r) => {
-        Object.entries(r || {}).forEach(([k, v]) => {
-          const key = k.toLowerCase();
-          const num = Number(v) || 0;
-          if (key.includes('qty')) totals.total_quantity += num;
-          if (key.includes('amount') || key.includes('amt')) totals.total_amount += num;
-          if (key.includes('discount') || key.includes('disc')) totals.total_discount += num;
-        });
-      });
+    let next = vals;
+    if (config?.calcFields) {
+      next = syncCalcFields(next, config.calcFields);
     }
-    const masterTbl = config.masterTable;
-    const next = {
-      ...vals,
-      [masterTbl]: { ...(vals[masterTbl] || {}), ...totals },
-    };
-    return applyPosFields(next, config.posFields);
+    next = applyGeneratedColumns(next);
+    return applyPosFields(next, config?.posFields);
   }
 
   const hasData = React.useMemo(() => {
@@ -1525,10 +1510,7 @@ export default function PosTransactionsPage() {
 
   function handleChange(tbl, changes) {
     setValues((v) => {
-      let next = { ...v, [tbl]: { ...v[tbl], ...changes } };
-      next = syncCalcFields(next, config?.calcFields);
-      next = applyPosFields(next, config?.posFields);
-      next = applyGeneratedColumns(next);
+      const next = { ...v, [tbl]: { ...v[tbl], ...changes } };
       return recalcTotals(next);
     });
   }
@@ -1540,9 +1522,6 @@ export default function PosTransactionsPage() {
       if (sid) {
         next = applySessionIdToValues(next, sid);
       }
-      next = syncCalcFields(next, config?.calcFields);
-      next = applyPosFields(next, config?.posFields);
-      next = applyGeneratedColumns(next);
       return recalcTotals(next);
     });
   }
