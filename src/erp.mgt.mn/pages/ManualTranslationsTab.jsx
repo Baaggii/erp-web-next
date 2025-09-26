@@ -103,23 +103,12 @@ function toTrimmedString(value) {
 
 const NUMERIC_OR_SYMBOLS_ONLY_REGEX = /^[\p{P}\p{S}\d\s]+$/u;
 
-function isMeaningfulText(value, targetLang) {
+function isMeaningfulText(value) {
   const trimmed = toTrimmedString(value);
   if (!trimmed) {
     return false;
   }
-  if (NUMERIC_OR_SYMBOLS_ONLY_REGEX.test(trimmed)) {
-    return false;
-  }
-  const detectedLocale = detectLocaleFromText(trimmed);
-  if (targetLang === 'en' || targetLang === 'mn') {
-    if (detectedLocale && detectedLocale !== targetLang) {
-      return false;
-    }
-  } else if (detectedLocale === 'en' && targetLang !== 'en') {
-    return false;
-  }
-  return true;
+  return !NUMERIC_OR_SYMBOLS_ONLY_REGEX.test(trimmed);
 }
 
 function getMeaningfulTranslationSource(entry) {
@@ -672,8 +661,8 @@ export default function ManualTranslationsTab() {
       en = toTrimmedString(newEntry.values.en);
       mn = toTrimmedString(newEntry.values.mn);
 
-      const hasMeaningfulEn = isMeaningfulText(en, 'en');
-      const hasMeaningfulMn = isMeaningfulText(mn, 'mn');
+      const hasMeaningfulEn = isMeaningfulText(en);
+      const hasMeaningfulMn = isMeaningfulText(mn);
 
       const attemptTranslation = async (targetLang) => {
         if (abortRef.current || rateLimited) {
@@ -726,7 +715,7 @@ export default function ManualTranslationsTab() {
 
       if (restLanguages.length) {
         const missingBefore = restLanguages.filter(
-          (lang) => !isMeaningfulText(newEntry.values[lang], lang),
+          (lang) => !isMeaningfulText(newEntry.values[lang]),
         );
         if (missingBefore.length) {
           const sourceInfo = getMeaningfulTranslationSource(newEntry);
@@ -759,7 +748,7 @@ export default function ManualTranslationsTab() {
             }
             if (abortRef.current || rateLimited) break;
             const missingAfter = restLanguages.filter(
-              (lang) => !isMeaningfulText(newEntry.values[lang], lang),
+              (lang) => !isMeaningfulText(newEntry.values[lang]),
             );
             if (missingAfter.length) {
               needsManualReview = true;
