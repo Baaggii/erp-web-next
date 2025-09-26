@@ -360,9 +360,7 @@ function InlineTransactionTable(
     });
     return map;
   }, [tableColumnsKey, columnCaseMapKey]);
-  const hasGeneratedColumnsRef = useRef(
-    Object.keys(generatedColumnEvaluators).length > 0,
-  );
+  const hasGeneratedColumnsRef = useRef(false);
 
   const mainFieldSet = React.useMemo(() => {
     const set = new Set();
@@ -428,7 +426,7 @@ function InlineTransactionTable(
     const hasGeneratedColumns = Object.keys(generatedColumnEvaluators).length > 0;
     const prevHasGeneratedColumns = hasGeneratedColumnsRef.current;
     hasGeneratedColumnsRef.current = hasGeneratedColumns;
-    if (prevHasGeneratedColumns || !hasGeneratedColumns) return;
+    if (!hasGeneratedColumns || prevHasGeneratedColumns) return;
     const currentRows = rowsRef.current;
     if (!Array.isArray(currentRows) || currentRows.length === 0) return;
     commitRowsUpdate((prev) => prev);
