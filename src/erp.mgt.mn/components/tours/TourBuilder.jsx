@@ -13,6 +13,14 @@ import derivePageKey from '../../utils/derivePageKey.js';
 
 const placements = ['auto', 'top', 'bottom', 'left', 'right'];
 const cryptoSource = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
+const MODAL_MARGIN = 32;
+
+function clamp(value, min, max) {
+  if (typeof value !== 'number') return min;
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
 
 function createStepId() {
   if (cryptoSource?.randomUUID) {
@@ -163,10 +171,43 @@ export default function TourBuilder({ state, onClose }) {
   const [saving, setSaving] = useState(false);
   const [picking, setPicking] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+  const [position, setPosition] = useState({ top: null, left: null });
+  const [dragging, setDragging] = useState(false);
   const builderRef = useRef(null);
   const highlightRef = useRef({ element: null, outline: '', boxShadow: '' });
   const hasChangesRef = useRef(false);
   const pageKeyTouchedRef = useRef(Boolean(initialExplicitPageKey));
+  const dragStateRef = useRef({ active: false, offsetX: 0, offsetY: 0 });
+
+  const clampPosition = useCallback((top, left) => {
+    if (typeof window === 'undefined') {
+      return { top, left };
+    }
+    const modal = builderRef.current;
+    const modalWidth = modal?.offsetWidth ?? 0;
+    const modalHeight = modal?.offsetHeight ?? 0;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    const minLeft = MODAL_MARGIN;
+    const minTop = MODAL_MARGIN;
+    const maxLeft = Math.max(minLeft, viewportWidth - modalWidth - MODAL_MARGIN);
+    const maxTop = Math.max(minTop, viewportHeight - modalHeight - MODAL_MARGIN);
+    return {
+      top: clamp(top, minTop, maxTop),
+      left: clamp(left, minLeft, maxLeft),
+    };
+  }, []);
+
+  useEffect(() => {
+    if (position.top !== null && position.left !== null) return;
+    if (typeof window === 'undefined') return;
+    const modal = builderRef.current;
+    if (!modal) return;
+    const rect = modal.getBoundingClientRect();
+    const initialTop = (window.innerHeight - rect.height) / 2;
+    const initialLeft = (window.innerWidth - rect.width) / 2;
+    setPosition(clampPosition(initialTop, initialLeft));
+  }, [clampPosition, position.left, position.top]);
 
   const markDirty = useCallback(() => {
     setHasChanges(true);
@@ -231,6 +272,38 @@ export default function TourBuilder({ state, onClose }) {
       });
     return () => controller.abort();
   }, [ensureTourDefinition, fallbackPageKey, pageKeyTouchedRef, state]);
+
+  useEffect(() => {
+    if (!dragging) return undefined;
+    const handleMouseMove = (event) => {
+      if (!dragStateRef.current.active) return;
+      const nextTop = event.clientY - dragStateRef.current.offsetY;
+      const nextLeft = event.clientX - dragStateRef.current.offsetX;
+      setPosition(clampPosition(nextTop, nextLeft));
+    };
+
+    const stopDragging = () => {
+      dragStateRef.current.active = false;
+      setDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', stopDragging);
+    const previousUserSelect = typeof document !== 'undefined' ? document.body.style.userSelect : '';
+    if (typeof document !== 'undefined') {
+      document.addEventListener('mouseleave', stopDragging);
+      document.body.style.userSelect = 'none';
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', stopDragging);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('mouseleave', stopDragging);
+        document.body.style.userSelect = previousUserSelect;
+      }
+    };
+  }, [clampPosition, dragging]);
 
   const highlightElement = useCallback((element) => {
     const current = highlightRef.current;
@@ -446,6 +519,24 @@ export default function TourBuilder({ state, onClose }) {
 
   const saveDisabled = saving || loading || !pageKey.trim() || steps.some((step) => !step.selector.trim());
 
+  const handleHeaderMouseDown = useCallback((event) => {
+    if (event.button !== 0) return;
+    if (event.target instanceof HTMLElement) {
+      const interactive = event.target.closest('button, a, input, textarea, select');
+      if (interactive) return;
+    }
+    const modal = builderRef.current;
+    if (!modal) return;
+    const rect = modal.getBoundingClientRect();
+    dragStateRef.current = {
+      active: true,
+      offsetX: event.clientX - rect.left,
+      offsetY: event.clientY - rect.top,
+    };
+    setDragging(true);
+    event.preventDefault();
+  }, []);
+
   return (
     <div
       style={{
@@ -455,9 +546,16 @@ export default function TourBuilder({ state, onClose }) {
       role="dialog"
       aria-modal="true"
     >
-      <div style={styles.modalWrapper}>
+      <div
+        style={{
+          ...styles.modalWrapper,
+          top: position.top ?? '50%',
+          left: position.left ?? '50%',
+          transform: position.top == null || position.left == null ? 'translate(-50%, -50%)' : 'none',
+        }}
+      >
         <div style={styles.modal} ref={builderRef} className="tour-builder-modal">
-          <div style={styles.header}>
+          <div style={styles.header} onMouseDown={handleHeaderMouseDown}>
             <div>
               <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
                 {t('tour_builder_title', 'Tour builder')}
@@ -707,9 +805,6 @@ const styles = {
     position: 'fixed',
     inset: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
     zIndex: 1000,
     padding: '2rem',
   },
@@ -717,6 +812,7 @@ const styles = {
     pointerEvents: 'none',
   },
   modalWrapper: {
+    position: 'absolute',
     pointerEvents: 'auto',
   },
   modal: {
@@ -736,6 +832,7 @@ const styles = {
     padding: '1rem 1.5rem',
     background: '#111827',
     color: '#f9fafb',
+    cursor: 'move',
   },
   iconButton: {
     background: 'transparent',
