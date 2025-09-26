@@ -1114,40 +1114,139 @@ const TableManager = forwardRef(function TableManager({
     setShowForm(true);
   }
 
-  async function openEdit(row) {
-    if (getRowId(row) === undefined) {
+  async function hydrateRowForEdit(row) {
+    const id = getRowId(row);
+    if (id === undefined) {
       addToast(
         t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
         'error',
       );
-      return;
+      return null;
     }
-    await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
+
+    const meta = await ensureColumnMeta();
+    const effectiveMeta =
+      Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+
+    const effectiveCaseMap = { ...columnCaseMap };
+    (effectiveMeta || []).forEach((c) => {
+      if (c?.name) effectiveCaseMap[String(c.name).toLowerCase()] = c.name;
+    });
+
+    let tenantInfo = null;
+    try {
+      const ttRes = await fetch(
+        `/api/tenant_tables/${encodeURIComponent(table)}`,
+        { credentials: 'include' },
+      );
+      if (ttRes.ok) {
+        tenantInfo = await ttRes.json().catch(() => null);
+      }
+    } catch {
+      tenantInfo = null;
+    }
+
+    const params = new URLSearchParams();
+    const tenantKeys = getTenantKeyList(tenantInfo);
+    const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
+    if (!isShared) {
+      if (tenantKeys.includes('company_id') && company != null)
+        params.set('company_id', company);
+      if (tenantKeys.includes('branch_id') && branch != null)
+        params.set('branch_id', branch);
+      if (tenantKeys.includes('department_id') && department != null)
+        params.set('department_id', department);
+    }
+
+    const recordUrl = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(
+      id,
+    )}${params.toString() ? `?${params.toString()}` : ''}`;
+
+    let record = null;
+    try {
+      const res = await fetch(recordUrl, { credentials: 'include' });
+      if (!res.ok) {
+        addToast(t('failed_load_record', 'Failed to load record'), 'error');
+        return null;
+      }
+      const json = await res.json().catch(() => {
+        addToast(t('failed_parse_record', 'Failed to parse record'), 'error');
+        return null;
+      });
+      if (!json) return null;
+      if (json && typeof json === 'object') {
+        if (json.row && typeof json.row === 'object') record = json.row;
+        else record = json;
+      } else {
+        record = {};
+      }
+    } catch {
+      addToast(t('failed_load_record', 'Failed to load record'), 'error');
+      return null;
+    }
+
+    const normalizeWithCaseMap = (source) => {
+      if (!source || typeof source !== 'object') return {};
+      const normalized = {};
+      Object.entries(source).forEach(([rawKey, value]) => {
+        const key = effectiveCaseMap[String(rawKey).toLowerCase()] || rawKey;
+        normalized[key] = value;
+      });
+      return normalized;
+    };
+
+    const listRow = normalizeWithCaseMap(row);
+    const fetchedRow = normalizeWithCaseMap(record);
+    const merged = { ...listRow, ...fetchedRow };
+
+    const requiredColumns =
+      Array.isArray(formColumns) && formColumns.length > 0
+        ? formColumns
+        : Object.values(effectiveCaseMap || {});
+    requiredColumns.forEach((col) => {
+      const key = effectiveCaseMap[String(col).toLowerCase()] || col;
+      if (!Object.prototype.hasOwnProperty.call(merged, key)) {
+        merged[key] =
+          fetchedRow[key] ??
+          listRow[key] ??
+          record?.[col] ??
+          row?.[col] ??
+          undefined;
+      }
+    });
+
+    return merged;
+  }
+
+  async function openEdit(row) {
+    const hydrated = await hydrateRowForEdit(row);
+    if (!hydrated) return;
+    setEditing(hydrated);
+    setGridRows([hydrated]);
     setIsAdding(false);
+    setRequestType(null);
     setShowForm(true);
   }
 
   async function openRequestEdit(row) {
-    if (getRowId(row) === undefined) {
-      addToast(
-        t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
-        'error',
-      );
-      return;
-    }
-    await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
+    const hydrated = await hydrateRowForEdit(row);
+    if (!hydrated) return;
+    setEditing(hydrated);
+    setGridRows([hydrated]);
     setIsAdding(false);
     setRequestType('edit');
     setShowForm(true);
   }
 
-  useImperativeHandle(ref, () => ({
-    openAdd: buttonPerms['New transaction'] ? openAdd : () => {},
-  }));
+  useImperativeHandle(
+    ref,
+    () => ({
+      openAdd: buttonPerms['New transaction'] ? openAdd : () => {},
+      openEdit,
+      openRequestEdit,
+    }),
+    [buttonPerms, openAdd, openEdit, openRequestEdit],
+  );
 
   async function openDetail(row) {
     setDetailRow(row);
