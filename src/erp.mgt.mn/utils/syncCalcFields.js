@@ -61,15 +61,22 @@ function collectSectionFields(map, table) {
 
 function pickFirstDefinedFieldValue(source, field) {
   if (!field) return undefined;
+
+  const hasMeaningfulValue = (value) => {
+    if (value === undefined || value === null) return false;
+    const str = typeof value === 'string' ? value : String(value);
+    return str.trim() !== '';
+  };
+
   if (Array.isArray(source)) {
     for (const row of source) {
       if (!isPlainObject(row)) continue;
       const val = row[field];
-      if (val !== undefined && val !== null) return val;
+      if (hasMeaningfulValue(val)) return val;
     }
   } else if (isPlainObject(source)) {
     const val = source[field];
-    if (val !== undefined && val !== null) return val;
+    if (hasMeaningfulValue(val)) return val;
   }
   return undefined;
 }
