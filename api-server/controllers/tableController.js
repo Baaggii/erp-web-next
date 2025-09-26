@@ -89,6 +89,66 @@ export async function getTableRows(req, res, next) {
   }
 }
 
+export async function getTableRow(req, res, next) {
+  try {
+    const { table, id } = req.params;
+    if (!table || !id) {
+      return res.status(400).json({ message: 'table and id are required' });
+    }
+
+    const pkCols = await getPrimaryKeyColumns(table);
+    if (!Array.isArray(pkCols) || pkCols.length === 0) {
+      return res.status(400).json({ message: `Table ${table} has no primary key` });
+    }
+
+    const parts = pkCols.length === 1 ? [id] : String(id).split('-');
+    if (parts.length !== pkCols.length || parts.some((part) => part === undefined || part === '')) {
+      return res.status(400).json({ message: 'Invalid row identifier' });
+    }
+
+    const filters = {};
+    pkCols.forEach((col, index) => {
+      filters[col] = parts[index];
+    });
+
+    const pkLower = pkCols.map((c) => c.toLowerCase());
+    const requestedCompanyId = req.query?.company_id;
+    if (
+      requestedCompanyId !== undefined &&
+      requestedCompanyId !== '' &&
+      !pkLower.includes('company_id')
+    ) {
+      filters.company_id = requestedCompanyId;
+    } else if (
+      req.user?.companyId !== undefined &&
+      req.user?.companyId !== null &&
+      !pkLower.includes('company_id')
+    ) {
+      filters.company_id = req.user.companyId;
+    }
+
+    const includeDeletedParam = req.query?.includeDeleted;
+    const includeDeleted =
+      includeDeletedParam === '1' || includeDeletedParam === 'true';
+
+    const result = await listTableRows(table, {
+      page: 1,
+      perPage: 1,
+      filters,
+      includeDeleted,
+    });
+
+    const row = result?.rows?.[0];
+    if (!row) {
+      return res.sendStatus(404);
+    }
+
+    res.json({ row });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getTableRelations(req, res, next) {
   try {
     const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);

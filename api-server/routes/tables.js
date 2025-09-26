@@ -2,6 +2,7 @@ import express from 'express';
 import {
   getTables,
   getTableRows,
+  getTableRow,
   getTableRelations,
   listCustomTableRelations,
   saveCustomTableRelation,
@@ -34,6 +35,7 @@ router.get('/:table/relations', requireAuth, getTableRelations);
 router.get('/:table/columns', requireAuth, getTableColumnsMeta);
 router.put('/:table/labels', requireAuth, saveColumnLabels);
 router.get('/:table/:id/references', requireAuth, getRowReferences);
+router.get('/:table/:id', requireAuth, getTableRow);
 router.put('/:table/:id', requireAuth, updateRow);
 router.delete('/:table/:id', requireAuth, deleteRow);
 router.post('/:table', requireAuth, addRow);

@@ -28,6 +28,141 @@ function mockGetConnection(handler) {
   };
 }
 
+test('getTableRow returns row payload when found', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('FROM information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('FROM information_schema.STATISTICS') && sql.includes('NON_UNIQUE = 0')) {
+      return [[]];
+    }
+    if (sql.includes('FROM information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
+    }
+    if (sql.includes('FROM tenant_tables')) {
+      return [[]];
+    }
+    if (sql.startsWith('SELECT * FROM')) {
+      return [[{ id: 7, name: 'Alice', company_id: 3 }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      return [[{ count: 1 }]];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const req = {
+    params: { table: 'users', id: '7' },
+    query: {},
+    user: { companyId: 3 },
+  };
+  let payload;
+  const res = {
+    json(body) {
+      payload = body;
+    },
+    status() {
+      throw new Error('status should not be called');
+    },
+    sendStatus() {
+      throw new Error('sendStatus should not be called');
+    },
+  };
+  await controller.getTableRow(req, res, (e) => {
+    if (e) throw e;
+  });
+  restore();
+  assert.deepEqual(payload, { row: { id: 7, name: 'Alice', company_id: 3 } });
+});
+
+test('getTableRow sends 404 when no row is found', async () => {
+  const restore = mockPool(async (sql) => {
+    if (sql.includes('FROM information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('FROM information_schema.STATISTICS') && sql.includes('NON_UNIQUE = 0')) {
+      return [[]];
+    }
+    if (sql.includes('FROM information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
+    }
+    if (sql.includes('FROM tenant_tables')) {
+      return [[]];
+    }
+    if (sql.startsWith('SELECT * FROM')) {
+      return [[]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      return [[{ count: 0 }]];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const req = {
+    params: { table: 'users', id: '42' },
+    query: {},
+    user: { companyId: 1 },
+  };
+  let statusCode;
+  const res = {
+    sendStatus(code) {
+      statusCode = code;
+    },
+    status() {
+      throw new Error('status should not be called');
+    },
+    json() {
+      throw new Error('json should not be called');
+    },
+  };
+  await controller.getTableRow(req, res, (e) => {
+    if (e) throw e;
+  });
+  restore();
+  assert.equal(statusCode, 404);
+});
+
+test('getTableRow validates composite identifiers', async () => {
+  let queryCount = 0;
+  const restore = mockPool(async (sql) => {
+    queryCount++;
+    if (sql.includes('FROM information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")) {
+      return [[
+        { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+        { COLUMN_NAME: 'code', SEQ_IN_INDEX: 2 },
+      ]];
+    }
+    if (sql.includes('FROM information_schema.STATISTICS') && sql.includes('NON_UNIQUE = 0')) {
+      return [[]];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const req = {
+    params: { table: 'teams', id: '100' },
+    query: {},
+    user: { companyId: 5 },
+  };
+  let statusCode;
+  let payload;
+  const res = {
+    status(code) {
+      statusCode = code;
+      return this;
+    },
+    json(body) {
+      payload = body;
+    },
+    sendStatus() {
+      throw new Error('sendStatus should not be called');
+    },
+  };
+  await controller.getTableRow(req, res, (e) => {
+    if (e) throw e;
+  });
+  restore();
+  assert.equal(statusCode, 400);
+  assert.deepEqual(payload, { message: 'Invalid row identifier' });
+  assert.equal(queryCount, 1);
+});
+
 test('getTableRows forwards error for invalid column', async () => {
   const restore = mockPool(async (sql) => {
     if (sql.includes('information_schema.COLUMNS')) {
@@ -464,6 +599,106 @@ if (typeof mock?.import !== 'function') {
   test('saveCustomTableRelation persists mapping via service', { skip: true }, () => {});
   test('deleteCustomTableRelation calls remove service', { skip: true }, () => {});
 } else {
+  test('getTableRow returns row payload when found', async () => {
+    const actualDb = await import('../../db/index.js');
+    const { getTableRow } = await mock.import(
+      '../../api-server/controllers/tableController.js',
+      {
+        '../../db/index.js': {
+          ...actualDb,
+          getPrimaryKeyColumns: async () => ['id'],
+          listTableRows: async () => ({ rows: [{ id: 7, name: 'Alice' }] }),
+        },
+      },
+    );
+    const req = { params: { table: 'users', id: '7' }, query: {}, user: { companyId: 3 } };
+    let payload;
+    const res = {
+      json(body) {
+        payload = body;
+      },
+      status() {
+        throw new Error('status should not be called');
+      },
+      sendStatus() {
+        throw new Error('sendStatus should not be called');
+      },
+    };
+    await getTableRow(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.deepEqual(payload, { row: { id: 7, name: 'Alice' } });
+  });
+
+  test('getTableRow sends 404 when no row is found', async () => {
+    const actualDb = await import('../../db/index.js');
+    const { getTableRow } = await mock.import(
+      '../../api-server/controllers/tableController.js',
+      {
+        '../../db/index.js': {
+          ...actualDb,
+          getPrimaryKeyColumns: async () => ['id'],
+          listTableRows: async () => ({ rows: [] }),
+        },
+      },
+    );
+    const req = { params: { table: 'users', id: '42' }, query: {}, user: { companyId: 1 } };
+    let statusCode;
+    const res = {
+      sendStatus(code) {
+        statusCode = code;
+      },
+      status() {
+        throw new Error('status should not be called');
+      },
+      json() {
+        throw new Error('json should not be called');
+      },
+    };
+    await getTableRow(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(statusCode, 404);
+  });
+
+  test('getTableRow validates composite identifiers', async () => {
+    const actualDb = await import('../../db/index.js');
+    const listTableRows = mock.fn(async () => {
+      throw new Error('listTableRows should not be called');
+    });
+    const { getTableRow } = await mock.import(
+      '../../api-server/controllers/tableController.js',
+      {
+        '../../db/index.js': {
+          ...actualDb,
+          getPrimaryKeyColumns: async () => ['company_id', 'code'],
+          listTableRows,
+        },
+      },
+    );
+    const req = { params: { table: 'teams', id: '100' }, query: {}, user: { companyId: 5 } };
+    let statusCode;
+    let payload;
+    const res = {
+      status(code) {
+        statusCode = code;
+        return this;
+      },
+      json(body) {
+        payload = body;
+      },
+      sendStatus() {
+        throw new Error('sendStatus should not be called');
+      },
+    };
+    await getTableRow(req, res, (err) => {
+      if (err) throw err;
+    });
+    assert.equal(statusCode, 400);
+    assert.deepEqual(payload, { message: 'Invalid row identifier' });
+    assert.equal(listTableRows.mock.callCount(), 0);
+  });
+
   test('getTableRelations merges database and custom entries', async () => {
     const actualDb = await import('../../db/index.js');
     const actualService = await import(
