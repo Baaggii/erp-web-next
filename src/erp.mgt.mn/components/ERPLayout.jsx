@@ -17,11 +17,12 @@ import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
-import Joyride, { STATUS } from "react-joyride";
+import Joyride, { STATUS, ACTIONS, EVENTS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import { API_BASE } from "../utils/apiBase.js";
 import TourBuilder from "./tours/TourBuilder.jsx";
+import TourViewer from "./tours/TourViewer.jsx";
 import derivePageKey from "../utils/derivePageKey.js";
 
 export const TourContext = React.createContext({
@@ -34,6 +35,7 @@ export const TourContext = React.createContext({
   closeTourViewer: () => {},
   tourBuilderState: null,
   tourViewerState: null,
+  tourStepIndex: 0,
   ensureTourDefinition: () => Promise.resolve(null),
   saveTourDefinition: () => Promise.resolve(null),
   deleteTourDefinition: () => Promise.resolve(false),
@@ -193,6 +195,7 @@ export default function ERPLayout() {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tourSteps, setTourSteps] = useState([]);
+  const [tourStepIndex, setTourStepIndex] = useState(0);
   const [runTour, setRunTour] = useState(false);
   const [currentTourPage, setCurrentTourPage] = useState('');
   const toursByPageRef = useRef({});
@@ -209,6 +212,7 @@ export default function ERPLayout() {
   }, []);
   const openTourViewer = useCallback((state) => {
     if (!state) return;
+    setTourStepIndex(0);
     setTourViewerState(state);
   }, []);
   const closeTourViewer = useCallback(() => {
@@ -277,6 +281,14 @@ export default function ERPLayout() {
       const runnableSteps = normalizedSteps.filter((step) => step.target);
       if (!runnableSteps.length) return false;
 
+      const requestedIndex = Number.isFinite(options?.stepIndex)
+        ? Number(options.stepIndex)
+        : 0;
+      const initialStepIndex = Math.min(
+        Math.max(0, requestedIndex),
+        runnableSteps.length - 1,
+      );
+
       const toursEnabled = userSettings?.settings_enable_tours ?? false;
       if (!toursEnabled && !options?.force) return false;
 
@@ -296,6 +308,7 @@ export default function ERPLayout() {
           ...step,
           target: step.target || step.selector || step.id,
         }));
+        setTourStepIndex(initialStepIndex);
         setTourSteps(joyrideSteps);
         setCurrentTourPage(pageKey);
         setRunTour(true);
@@ -536,17 +549,55 @@ export default function ERPLayout() {
   }, [modules, validPaths, location.pathname, navigate, addToast, t]);
 
   const handleTourCallback = useCallback(
-    ({ status }) => {
+    (data) => {
+      const { status, index, type, action } = data;
+
+      if (Number.isFinite(index)) {
+        if (type === EVENTS.STEP_BEFORE || type === EVENTS.TOOLTIP_OPEN) {
+          const clampedIndex = Math.min(
+            Math.max(0, index),
+            Math.max(tourSteps.length - 1, 0),
+          );
+          setTourStepIndex(clampedIndex);
+        } else if (type === EVENTS.STEP_AFTER || type === EVENTS.TARGET_NOT_FOUND) {
+          const delta = action === ACTIONS.PREV ? -1 : 1;
+          const nextIndex = index + delta;
+          const clampedIndex = Math.min(
+            Math.max(0, nextIndex),
+            Math.max(tourSteps.length - 1, 0),
+          );
+          setTourStepIndex(clampedIndex);
+        }
+      }
+
       if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
         if (currentTourPage) {
           const seen = { ...(userSettings?.toursSeen || {}), [currentTourPage]: true };
           updateUserSettings({ toursSeen: seen });
         }
+        setTourStepIndex(0);
         setRunTour(false);
         closeTourViewer();
       }
     },
-    [closeTourViewer, currentTourPage, updateUserSettings, userSettings],
+    [closeTourViewer, currentTourPage, tourSteps.length, updateUserSettings, userSettings],
+  );
+
+  const handleTourStepJump = useCallback(
+    (stepIndex) => {
+      if (!tourViewerState?.pageKey) return;
+      const steps = Array.isArray(tourViewerState.steps) ? tourViewerState.steps : [];
+      if (!steps.length) return;
+      const numericIndex = Number(stepIndex);
+      const safeIndex = Number.isFinite(numericIndex) ? numericIndex : 0;
+      const clampedIndex = Math.min(Math.max(0, safeIndex), steps.length - 1);
+      startTour(tourViewerState.pageKey, steps, {
+        force: true,
+        path: tourViewerState.path || location.pathname,
+        stepIndex: clampedIndex,
+      });
+    },
+    [location.pathname, startTour, tourViewerState],
   );
 
   const resetGuide = useCallback(() => {
@@ -616,6 +667,7 @@ export default function ERPLayout() {
       closeTourViewer,
       tourBuilderState,
       tourViewerState,
+      tourStepIndex,
       ensureTourDefinition,
       saveTourDefinition,
       deleteTourDefinition,
@@ -632,6 +684,7 @@ export default function ERPLayout() {
       startTour,
       tourBuilderState,
       tourRegistryVersion,
+      tourStepIndex,
       tourViewerState,
     ],
   );
@@ -641,11 +694,19 @@ export default function ERPLayout() {
       {tourBuilderState && (
         <TourBuilder state={tourBuilderState} onClose={closeTourBuilder} />
       )}
+      {tourViewerState && (
+        <TourViewer
+          state={{ ...tourViewerState, currentStepIndex: tourStepIndex }}
+          onClose={closeTourViewer}
+          onSelectStep={handleTourStepJump}
+        />
+      )}
       <PendingRequestContext.Provider value={requestNotifications}>
         <div style={styles.container}>
           <Joyride
             steps={tourSteps}
             run={runTour}
+            stepIndex={tourStepIndex}
             continuous
             showSkipButton
             showBackButton
