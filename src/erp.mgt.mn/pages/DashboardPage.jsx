@@ -1,19 +1,17 @@
-import React, { useContext, useState, useEffect, useRef, useMemo } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
-import dashboardSteps from '../tours/DashboardPage.js';
 
 export default function DashboardPage() {
   const { user, session } = useContext(AuthContext);
   const { hasNew, markSeen, outgoing } = usePendingRequests();
   const { t } = useContext(LangContext);
   const [active, setActive] = useState('general');
-  const steps = useMemo(() => dashboardSteps(t), [t]);
-  useTour('dashboard', steps);
+  useTour('dashboard');
 
   const prevTab = useRef('general');
   useEffect(() => {

@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useContext, useMemo } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTour } from '../components/ERPLayout.jsx';
-import userSettingsSteps from '../tours/UserSettings.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
@@ -9,8 +8,7 @@ import { API_BASE } from '../utils/apiBase.js';
 
 export default function UserSettingsPage() {
   const { t } = useTranslation(['translation', 'tooltip']);
-  const steps = useMemo(() => userSettingsSteps(t), [t]);
-  useTour('user-settings', steps);
+  useTour('user-settings');
   const tabs = [
     { key: 'general', label: t('general', 'General') },
     { key: 'printer', label: t('printer', 'Printer') },
