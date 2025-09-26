@@ -298,6 +298,26 @@ const TableManager = forwardRef(function TableManager({
     [columnMeta],
   );
 
+  const generatedColumnEvaluators = useMemo(() => {
+    if (!Array.isArray(columnMeta) || columnMeta.length === 0) return {};
+    const evaluators = {};
+    columnMeta.forEach((col) => {
+      if (!col || typeof col !== 'object') return;
+      const rawName = col.name;
+      const expr =
+        col.generationExpression ??
+        col.GENERATION_EXPRESSION ??
+        col.generation_expression ??
+        null;
+      if (!rawName || !expr) return;
+      const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
+      if (typeof key !== 'string') return;
+      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
+      if (evaluator) evaluators[key] = evaluator;
+    });
+    return evaluators;
+  }, [columnMeta, columnCaseMap]);
+
   const viewSourceMap = useMemo(() => {
     const map = {};
     Object.entries(formConfig?.viewSource || {}).forEach(([k, v]) => {
@@ -1045,10 +1065,6 @@ const TableManager = forwardRef(function TableManager({
   async function openAdd() {
     const meta = await ensureColumnMeta();
     const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
-    const caseMap = {};
-    cols.forEach((c) => {
-      if (c?.name) caseMap[c.name.toLowerCase()] = c.name;
-    });
     const defaults = {};
     const baseRow = {};
     cols.forEach((c) => {
@@ -1080,22 +1096,11 @@ const TableManager = forwardRef(function TableManager({
       baseRow[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
       defaults[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
     }
-    const generatedEvaluators = {};
-    cols.forEach((c) => {
-      const expr = c?.generationExpression ?? c?.GENERATION_EXPRESSION;
-      const rawName = c?.name;
-      if (!rawName || !expr) return;
-      const key = caseMap[String(rawName).toLowerCase()] || rawName;
-      const evaluator = createGeneratedColumnEvaluator(expr, caseMap);
-      if (typeof key === 'string' && evaluator) {
-        generatedEvaluators[key] = evaluator;
-      }
-    });
     const initialRows = [{ ...baseRow, _saved: false }];
-    if (Object.keys(generatedEvaluators).length > 0) {
+    if (Object.keys(generatedColumnEvaluators).length > 0) {
       const { changed } = applyGeneratedColumnEvaluators({
         targetRows: initialRows,
-        evaluators: generatedEvaluators,
+        evaluators: generatedColumnEvaluators,
         equals: valuesEqual,
       });
       if (changed && initialRows[0]) {
@@ -1293,7 +1298,16 @@ const TableManager = forwardRef(function TableManager({
           });
         }
       });
-      return next;
+      if (Object.keys(generatedColumnEvaluators).length === 0) {
+        return next;
+      }
+      const workingRows = [{ ...next }];
+      const { changed } = applyGeneratedColumnEvaluators({
+        targetRows: workingRows,
+        evaluators: generatedColumnEvaluators,
+        equals: valuesEqual,
+      });
+      return changed ? workingRows[0] : next;
     });
     Object.entries(changes).forEach(([field, val]) => {
       const view = viewSourceMap[field];
