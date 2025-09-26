@@ -709,6 +709,7 @@ export default function ERPLayout() {
             run={runTour}
             stepIndex={tourStepIndex}
             continuous
+            spotlightClicks
             scrollOffset={joyrideScrollOffset}
             scrollToFirstStep
             scrollToSteps
