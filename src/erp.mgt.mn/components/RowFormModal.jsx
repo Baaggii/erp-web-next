@@ -66,7 +66,6 @@ const RowFormModal = function RowFormModal({
   procTriggers = {},
   autoFillSession = true,
   tableColumns = [],
-  isAddMode = false,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -225,12 +224,7 @@ const RowFormModal = function RowFormModal({
     [fieldTypeMap],
   );
   const columnsKey = React.useMemo(() => columns.join(','), [columns]);
-  const hasExistingRow = !isAddMode && row && typeof row === 'object';
-  const currentRow = hasExistingRow ? row : null;
-  const rowKey = React.useMemo(
-    () => JSON.stringify(currentRow || {}),
-    [currentRow],
-  );
+  const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
   const defaultValuesKey = React.useMemo(
     () => JSON.stringify(defaultValues || {}),
     [defaultValues],
@@ -265,11 +259,9 @@ const RowFormModal = function RowFormModal({
       } else if (typ === 'date' || typ === 'datetime') {
         placeholder = 'YYYY-MM-DD';
       }
-      const raw = currentRow
-        ? String(currentRow[c] ?? '')
-        : String(defaultValues[c] ?? '');
+      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let val = normalizeDateInput(raw, placeholder);
-      const missing = !currentRow || currentRow[c] === undefined || currentRow[c] === '';
+      const missing = !row || row[c] === undefined || row[c] === '';
       if (missing && !val && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
@@ -290,7 +282,7 @@ const RowFormModal = function RowFormModal({
   });
   const [extraVals, setExtraVals] = useState(() => {
     const extras = {};
-    Object.entries(currentRow || {}).forEach(([k, v]) => {
+    Object.entries(row || {}).forEach(([k, v]) => {
       if (!columns.includes(k)) {
         const typ = fieldTypeMap[k];
         let placeholder = '';
@@ -442,7 +434,7 @@ const RowFormModal = function RowFormModal({
     const map = {};
     const cols = new Set([
       ...columns,
-      ...Object.keys(currentRow || {}),
+      ...Object.keys(row || {}),
       ...Object.keys(defaultValues || {}),
     ]);
     cols.forEach((c) => {
@@ -458,16 +450,16 @@ const RowFormModal = function RowFormModal({
 
   useEffect(() => {
     const extras = {};
-    Object.entries(currentRow || {}).forEach(([k, v]) => {
+    Object.entries(row || {}).forEach(([k, v]) => {
       if (!columns.includes(k)) {
         extras[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
       }
     });
     setExtraVals(extras);
-  }, [currentRow, columns, placeholders]);
+  }, [row, columns, placeholders]);
 
   useEffect(() => {
-    if (table !== 'companies' || !isAddMode) return;
+    if (table !== 'companies' || row) return;
     fetch('/api/tenant_tables', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
@@ -482,7 +474,7 @@ const RowFormModal = function RowFormModal({
         opts.forEach((o) => loadSeedRecords(o.tableName));
       })
       .catch(() => {});
-  }, [table, isAddMode]);
+  }, [table, row]);
 
   function toggleSeedTable(name) {
     setExtraVals((e) => {
@@ -618,11 +610,9 @@ const RowFormModal = function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      const raw = currentRow
-        ? String(currentRow[c] ?? '')
-        : String(defaultValues[c] ?? '');
+      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let v = normalizeDateInput(raw, placeholders[c]);
-      const missing = !currentRow || currentRow[c] === undefined || currentRow[c] === '';
+      const missing = !row || row[c] === undefined || row[c] === '';
       if (missing && !v && dateField.includes(c)) {
         const now = new Date();
         if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
@@ -643,7 +633,7 @@ const RowFormModal = function RowFormModal({
     inputRefs.current = {};
     setErrors({});
     setFormValuesWithGenerated(() => vals, { notify: false });
-  }, [currentRow, visible, user, company, branch, department, setFormValuesWithGenerated]);
+  }, [row, visible, user, company, branch, department, setFormValuesWithGenerated]);
 
   function resizeInputs() {
     Object.values({ ...inputRefs.current, ...readonlyRefs.current }).forEach((el) => {
@@ -2056,7 +2046,7 @@ const RowFormModal = function RowFormModal({
     <>
       <Modal
         visible={visible}
-        title={isAddMode ? 'Мөр нэмэх' : 'Мөр засах'}
+        title={row ? 'Мөр засах' : 'Мөр нэмэх'}
         onClose={onCancel}
         width="70vw"
       >
@@ -2072,7 +2062,7 @@ const RowFormModal = function RowFormModal({
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
-        {table === 'companies' && isAddMode && seedOptions.length > 0 && (
+        {table === 'companies' && !row && seedOptions.length > 0 && (
           <div className="mt-4">
             <h3 className="font-semibold mb-2">Seed Tables</h3>
             <div className="space-y-2">
@@ -2109,24 +2099,20 @@ const RowFormModal = function RowFormModal({
           </div>
         )}
         <div className="mt-2 text-right space-x-2">
-          {!isAddMode && (
-            <>
-              <button
-                type="button"
-                onClick={() => handlePrint('emp')}
-                className="px-3 py-1 bg-gray-200 rounded"
-              >
-                {t('printEmp', 'Print Emp')}
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePrint('cust')}
-                className="px-3 py-1 bg-gray-200 rounded"
-              >
-                {t('printCust', 'Print Cust')}
-              </button>
-            </>
-          )}
+          <button
+            type="button"
+            onClick={() => handlePrint('emp')}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            {t('printEmp', 'Print Emp')}
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePrint('cust')}
+            className="px-3 py-1 bg-gray-200 rounded"
+          >
+            {t('printCust', 'Print Cust')}
+          </button>
           <button
             type="button"
             onClick={onCancel}
