@@ -2,6 +2,10 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { fetchTriggersForTables } from '../../src/erp.mgt.mn/utils/fetchTriggersForTables.js';
 import { syncCalcFields } from '../../src/erp.mgt.mn/utils/syncCalcFields.js';
+import {
+  buildGeneratedColumnEvaluators,
+  applyGeneratedColumnEvaluators,
+} from '../../src/erp.mgt.mn/utils/generatedColumns.js';
 
 if (typeof mock.import !== 'function') {
   test('shouldLoadRelations helper', { skip: true }, () => {});
@@ -435,3 +439,52 @@ test('syncCalcFields seeds metadata when rows omit multi table field', () => {
   assert.equal(synced.transactions_order.footer_note, 'persist');
   assert.equal(initial.transactions_order.pos_session_id, undefined);
 });
+
+test('generated column evaluators compute values for single tables', () => {
+  const columnMeta = {
+    transactions: [
+      { name: 'base' },
+      { name: 'tax' },
+      { name: 'total', generationExpression: '`base` + `tax`' },
+    ],
+  };
+
+  const evaluators = buildGeneratedColumnEvaluators(columnMeta, {});
+  const initial = {
+    transactions: { base: 10, tax: 5, total: 0 },
+  };
+
+  const updated = applyGeneratedColumnEvaluators(initial, evaluators);
+
+  assert.notStrictEqual(updated, initial);
+  assert.equal(updated.transactions.total, 15);
+  assert.equal(updated.transactions.base, 10);
+  assert.equal(updated.transactions.tax, 5);
+});
+
+test('generated column evaluators compute values for multi tables', () => {
+  const columnMeta = {
+    detail_rows: [
+      { name: 'qty' },
+      { name: 'price' },
+      { name: 'line_total', generationExpression: '`qty` * `price`' },
+    ],
+  };
+
+  const evaluators = buildGeneratedColumnEvaluators(columnMeta, {});
+  const initial = {
+    detail_rows: [
+      { qty: 2, price: 5 },
+      { qty: 3, price: 4, line_total: 0 },
+    ],
+  };
+
+  const updated = applyGeneratedColumnEvaluators(initial, evaluators);
+
+  assert.notStrictEqual(updated, initial);
+  assert.deepEqual(
+    updated.detail_rows.map((row) => row.line_total),
+    [10, 12],
+  );
+});
+
