@@ -9,6 +9,7 @@ import React, {
 import { TourContext } from '../ERPLayout.jsx';
 import LangContext from '../../context/I18nContext.jsx';
 import { useToast } from '../../context/ToastContext.jsx';
+import derivePageKey from '../../utils/derivePageKey.js';
 
 const placements = ['auto', 'top', 'bottom', 'left', 'right'];
 const cryptoSource = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
@@ -143,7 +144,15 @@ export default function TourBuilder({ state, onClose }) {
   } = useContext(TourContext);
   const { t } = useContext(LangContext);
   const { addToast } = useToast();
-  const [pageKey, setPageKey] = useState(state?.pageKey || '');
+  const initialExplicitPageKey =
+    typeof state?.pageKey === 'string' && state.pageKey.trim() ? state.pageKey.trim() : '';
+  const fallbackPageKey = useMemo(() => {
+    if (typeof state?.derivedPageKey === 'string' && state.derivedPageKey.trim()) {
+      return state.derivedPageKey.trim();
+    }
+    return derivePageKey(state?.path ?? '/');
+  }, [state]);
+  const [pageKey, setPageKey] = useState(() => initialExplicitPageKey || fallbackPageKey);
   const [path, setPath] = useState(state?.path || '');
   const [steps, setSteps] = useState(() => {
     const initial = Array.isArray(state?.steps) ? state.steps : [];
@@ -157,6 +166,7 @@ export default function TourBuilder({ state, onClose }) {
   const builderRef = useRef(null);
   const highlightRef = useRef({ element: null, outline: '', boxShadow: '' });
   const hasChangesRef = useRef(false);
+  const pageKeyTouchedRef = useRef(Boolean(initialExplicitPageKey));
 
   const markDirty = useCallback(() => {
     setHasChanges(true);
@@ -166,13 +176,20 @@ export default function TourBuilder({ state, onClose }) {
   useEffect(() => {
     const inlineSteps = Array.isArray(state?.steps) ? state.steps : [];
     const normalized = inlineSteps.map((step, index) => normalizeEditorStep(step, index));
-    setPageKey(state?.pageKey || '');
+    const explicitKey =
+      typeof state?.pageKey === 'string' && state.pageKey.trim() ? state.pageKey.trim() : '';
+    pageKeyTouchedRef.current = Boolean(explicitKey);
+    if (explicitKey) {
+      setPageKey(explicitKey);
+    } else if (!pageKeyTouchedRef.current) {
+      setPageKey(fallbackPageKey);
+    }
     setPath(state?.path || '');
     setSteps(normalized);
     setSelectedId(normalized[0]?.id || null);
     setHasChanges(false);
     hasChangesRef.current = false;
-  }, [state]);
+  }, [fallbackPageKey, pageKeyTouchedRef, state]);
 
   useEffect(() => {
     if (!state) return undefined;
@@ -189,7 +206,15 @@ export default function TourBuilder({ state, onClose }) {
         const normalized = Array.isArray(entry.steps)
           ? entry.steps.map((step, index) => normalizeEditorStep(step, index))
           : [];
-        setPageKey(entry.pageKey || state.pageKey || '');
+        const entryKey = typeof entry.pageKey === 'string' ? entry.pageKey.trim() : '';
+        const stateKey = typeof state.pageKey === 'string' ? state.pageKey.trim() : '';
+        const resolvedKey = entryKey || stateKey;
+        if (resolvedKey) {
+          pageKeyTouchedRef.current = true;
+          setPageKey(resolvedKey);
+        } else if (!pageKeyTouchedRef.current) {
+          setPageKey(fallbackPageKey);
+        }
         setPath(entry.path || state.path || '');
         setSteps(normalized);
         setSelectedId((prev) => normalized.find((step) => step.id === prev)?.id || normalized[0]?.id || null);
@@ -205,7 +230,7 @@ export default function TourBuilder({ state, onClose }) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [ensureTourDefinition, state]);
+  }, [ensureTourDefinition, fallbackPageKey, pageKeyTouchedRef, state]);
 
   const highlightElement = useCallback((element) => {
     const current = highlightRef.current;
@@ -380,7 +405,9 @@ export default function TourBuilder({ state, onClose }) {
         if (prev && updatedSteps.some((step) => step.id === prev)) return prev;
         return updatedSteps[0]?.id || null;
       });
-      setPageKey(entry?.pageKey || trimmedKey);
+      const resolvedKey = entry?.pageKey || trimmedKey;
+      setPageKey(resolvedKey);
+      pageKeyTouchedRef.current = true;
       setPath(entry?.path || path.trim());
       setHasChanges(false);
       hasChangesRef.current = false;
@@ -457,6 +484,9 @@ export default function TourBuilder({ state, onClose }) {
                   value={pageKey}
                   onChange={(event) => {
                     setPageKey(event.target.value);
+                    if (!pageKeyTouchedRef.current) {
+                      pageKeyTouchedRef.current = true;
+                    }
                     markDirty();
                   }}
                   placeholder="dashboard"
