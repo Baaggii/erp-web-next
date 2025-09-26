@@ -1,0 +1,927 @@
+import React, {
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { TourContext } from '../ERPLayout.jsx';
+import LangContext from '../../context/I18nContext.jsx';
+import { useToast } from '../../context/ToastContext.jsx';
+
+const placements = ['auto', 'top', 'bottom', 'left', 'right'];
+const cryptoSource = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
+
+function createStepId() {
+  if (cryptoSource?.randomUUID) {
+    return cryptoSource.randomUUID();
+  }
+  return `tour-step-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeEditorStep(step, index = 0) {
+  if (!step || typeof step !== 'object') {
+    return {
+      id: createStepId(),
+      title: '',
+      content: '',
+      selector: '',
+      target: '',
+      placement: 'bottom',
+      order: index,
+    };
+  }
+  const selectorValue =
+    typeof step.selector === 'string' && step.selector.trim()
+      ? step.selector.trim()
+      : typeof step.target === 'string' && step.target.trim()
+        ? step.target.trim()
+        : '';
+  return {
+    id:
+      typeof step.id === 'string' && step.id.trim() ? step.id.trim() : createStepId(),
+    title: typeof step.title === 'string' ? step.title : '',
+    content:
+      typeof step.content === 'string' || typeof step.content === 'number'
+        ? String(step.content)
+        : '',
+    selector: selectorValue,
+    target: selectorValue,
+    placement:
+      typeof step.placement === 'string' && step.placement.trim()
+        ? step.placement.trim()
+        : typeof step.position === 'string' && step.position.trim()
+          ? step.position.trim()
+          : 'bottom',
+    order:
+      typeof step.order === 'number' && Number.isFinite(step.order) ? step.order : index,
+  };
+}
+
+function createEmptyStep(order = 0) {
+  return {
+    id: createStepId(),
+    title: '',
+    content: '',
+    selector: '',
+    target: '',
+    placement: 'bottom',
+    order,
+  };
+}
+
+function cssEscapeValue(value) {
+  if (typeof value !== 'string') return '';
+  if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') {
+    return CSS.escape(value);
+  }
+  return value.replace(/"/g, '\\"').replace(/\\/g, '\\\\');
+}
+
+function buildSelector(element) {
+  if (!(element instanceof Element)) return '';
+  const attrNames = ['data-tour', 'data-tour-id', 'data-testid'];
+  const attrMatch = attrNames
+    .map((name) => ({ name, value: element.getAttribute(name) }))
+    .find((entry) => entry.value);
+  if (element.id) {
+    return `#${cssEscapeValue(element.id)}`;
+  }
+  if (attrMatch?.value) {
+    return `[${attrMatch.name}="${cssEscapeValue(attrMatch.value)}"]`;
+  }
+
+  const segments = [];
+  let current = element;
+  let depth = 0;
+  while (current && depth < 5) {
+    if (current.id) {
+      segments.unshift(`#${cssEscapeValue(current.id)}`);
+      break;
+    }
+    const attr = attrNames
+      .map((name) => ({ name, value: current.getAttribute(name) }))
+      .find((entry) => entry.value);
+    if (attr?.value) {
+      segments.unshift(`[${attr.name}="${cssEscapeValue(attr.value)}"]`);
+      break;
+    }
+    const tag = current.tagName.toLowerCase();
+    const classes = Array.from(current.classList || [])
+      .filter((cls) => cls && !cls.startsWith('tour-builder'))
+      .slice(0, 2)
+      .map((cls) => `.${cssEscapeValue(cls)}`)
+      .join('');
+    let segment = `${tag}${classes}`;
+    const parent = current.parentElement;
+    if (parent) {
+      const siblings = Array.from(parent.children).filter(
+        (child) => child.tagName === current.tagName,
+      );
+      if (siblings.length > 1) {
+        const index = siblings.indexOf(current) + 1;
+        segment += `:nth-of-type(${index})`;
+      }
+    }
+    segments.unshift(segment);
+    current = current.parentElement;
+    depth += 1;
+  }
+
+  if (!segments.length) {
+    return element.tagName ? element.tagName.toLowerCase() : '';
+  }
+  return segments.join(' > ');
+}
+
+export default function TourBuilder({ state, onClose }) {
+  const {
+    ensureTourDefinition,
+    saveTourDefinition,
+    deleteTourDefinition,
+  } = useContext(TourContext);
+  const { t } = useContext(LangContext);
+  const { addToast } = useToast();
+  const [pageKey, setPageKey] = useState(state?.pageKey || '');
+  const [path, setPath] = useState(state?.path || '');
+  const [steps, setSteps] = useState(() => {
+    const initial = Array.isArray(state?.steps) ? state.steps : [];
+    return initial.map((step, index) => normalizeEditorStep(step, index));
+  });
+  const [selectedId, setSelectedId] = useState(() => steps[0]?.id || null);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
+  const builderRef = useRef(null);
+  const highlightRef = useRef({ element: null, outline: '', boxShadow: '' });
+  const hasChangesRef = useRef(false);
+
+  const markDirty = useCallback(() => {
+    setHasChanges(true);
+    hasChangesRef.current = true;
+  }, []);
+
+  useEffect(() => {
+    const inlineSteps = Array.isArray(state?.steps) ? state.steps : [];
+    const normalized = inlineSteps.map((step, index) => normalizeEditorStep(step, index));
+    setPageKey(state?.pageKey || '');
+    setPath(state?.path || '');
+    setSteps(normalized);
+    setSelectedId(normalized[0]?.id || null);
+    setHasChanges(false);
+    hasChangesRef.current = false;
+  }, [state]);
+
+  useEffect(() => {
+    if (!state) return undefined;
+    const controller = new AbortController();
+    setLoading(true);
+    ensureTourDefinition({
+      pageKey: state.pageKey,
+      path: state.path,
+      forceReload: true,
+      signal: controller.signal,
+    })
+      .then((entry) => {
+        if (!entry || hasChangesRef.current) return;
+        const normalized = Array.isArray(entry.steps)
+          ? entry.steps.map((step, index) => normalizeEditorStep(step, index))
+          : [];
+        setPageKey(entry.pageKey || state.pageKey || '');
+        setPath(entry.path || state.path || '');
+        setSteps(normalized);
+        setSelectedId((prev) => normalized.find((step) => step.id === prev)?.id || normalized[0]?.id || null);
+        setHasChanges(false);
+        hasChangesRef.current = false;
+      })
+      .catch((err) => {
+        if (!controller.signal.aborted) {
+          console.error('Failed to load tour definition', err);
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
+    return () => controller.abort();
+  }, [ensureTourDefinition, state]);
+
+  const highlightElement = useCallback((element) => {
+    const current = highlightRef.current;
+    if (current.element && current.element !== element && current.element instanceof HTMLElement) {
+      current.element.style.outline = current.outline;
+      current.element.style.boxShadow = current.boxShadow;
+    }
+    if (element && element instanceof HTMLElement) {
+      highlightRef.current = {
+        element,
+        outline: element.style.outline,
+        boxShadow: element.style.boxShadow,
+      };
+      element.style.outline = '2px solid #2563eb';
+      element.style.boxShadow = '0 0 0 2px rgba(37, 99, 235, 0.25)';
+    } else {
+      highlightRef.current = { element: null, outline: '', boxShadow: '' };
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!picking || typeof document === 'undefined') {
+      if (typeof document !== 'undefined') {
+        document.body.style.cursor = '';
+      }
+      highlightElement(null);
+      return undefined;
+    }
+
+    const handleMouseMove = (event) => {
+      if (builderRef.current?.contains(event.target)) {
+        highlightElement(null);
+        return;
+      }
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      highlightElement(target);
+    };
+
+    const handleClick = (event) => {
+      if (builderRef.current?.contains(event.target)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      const selector = target ? buildSelector(target) : '';
+      if (selector && selectedId) {
+        markDirty();
+        setSteps((prev) =>
+          prev.map((step) =>
+            step.id === selectedId ? { ...step, selector, target: selector } : step,
+          ),
+        );
+      }
+      setPicking(false);
+    };
+
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setPicking(false);
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove, true);
+    document.addEventListener('click', handleClick, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+    document.body.style.cursor = 'crosshair';
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove, true);
+      document.removeEventListener('click', handleClick, true);
+      document.removeEventListener('keydown', handleKeyDown, true);
+      document.body.style.cursor = '';
+      highlightElement(null);
+    };
+  }, [highlightElement, markDirty, picking, selectedId]);
+
+  useEffect(() => {
+    if (!selectedId && steps.length) {
+      setSelectedId(steps[0].id);
+    }
+  }, [selectedId, steps]);
+
+  const sortedSteps = useMemo(
+    () => steps.slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0)),
+    [steps],
+  );
+
+  const selectedStep = sortedSteps.find((step) => step.id === selectedId) || null;
+
+  const handleAddStep = useCallback(() => {
+    setSteps((prev) => {
+      const nextStep = createEmptyStep(prev.length);
+      setSelectedId(nextStep.id);
+      markDirty();
+      return [...prev, nextStep];
+    });
+  }, [markDirty]);
+
+  const handleDeleteStep = useCallback(
+    (id) => {
+      setSteps((prev) => {
+        const filtered = prev.filter((step) => step.id !== id);
+        const normalized = filtered.map((step, index) => ({ ...step, order: index }));
+        if (id === selectedId) {
+          setSelectedId(normalized[0]?.id || null);
+        }
+        return normalized;
+      });
+      markDirty();
+    },
+    [markDirty, selectedId],
+  );
+
+  const handleMoveStep = useCallback((id, direction) => {
+    setSteps((prev) => {
+      const index = prev.findIndex((step) => step.id === id);
+      if (index === -1) return prev;
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const next = prev.slice();
+      const [item] = next.splice(index, 1);
+      next.splice(targetIndex, 0, item);
+      markDirty();
+      return next.map((step, idx) => ({ ...step, order: idx }));
+    });
+  }, [markDirty]);
+
+  const updateStep = useCallback(
+    (id, patch) => {
+      markDirty();
+      setSteps((prev) =>
+        prev.map((step) => (step.id === id ? { ...step, ...patch } : step)),
+      );
+    },
+    [markDirty],
+  );
+
+  const handleSave = useCallback(async () => {
+    const trimmedKey = pageKey.trim();
+    if (!trimmedKey) {
+      addToast('Page key is required', 'error');
+      return;
+    }
+    const invalid = steps.some((step) => !step.selector.trim());
+    if (invalid) {
+      addToast('Each step must have a target selector.', 'error');
+      return;
+    }
+    setSaving(true);
+    try {
+      const normalized = steps.map((step, index) => ({
+        ...step,
+        id: step.id,
+        order: index,
+        selector: step.selector.trim(),
+        target: step.selector.trim(),
+        content: step.content || '',
+        title: step.title || '',
+        placement: step.placement || 'bottom',
+      }));
+      const entry = await saveTourDefinition({
+        pageKey: trimmedKey,
+        path: path.trim() || undefined,
+        steps: normalized,
+        previousPageKey: state?.mode === 'edit' ? state.pageKey : undefined,
+      });
+      const updatedSteps = Array.isArray(entry?.steps)
+        ? entry.steps.map((step, index) => normalizeEditorStep(step, index))
+        : normalized.map((step, index) => normalizeEditorStep(step, index));
+      setSteps(updatedSteps);
+      setSelectedId((prev) => {
+        if (prev && updatedSteps.some((step) => step.id === prev)) return prev;
+        return updatedSteps[0]?.id || null;
+      });
+      setPageKey(entry?.pageKey || trimmedKey);
+      setPath(entry?.path || path.trim());
+      setHasChanges(false);
+      hasChangesRef.current = false;
+      addToast('Tour saved successfully.', 'success');
+    } catch (err) {
+      console.error('Failed to save tour definition', err);
+      addToast('Failed to save the tour. Please try again.', 'error');
+    } finally {
+      setSaving(false);
+      setPicking(false);
+    }
+  }, [addToast, pageKey, path, saveTourDefinition, state?.mode, state?.pageKey, steps]);
+
+  const handleDeleteTour = useCallback(async () => {
+    if (!state?.pageKey) return;
+    if (!window.confirm('Delete this tour?')) return;
+    setSaving(true);
+    try {
+      await deleteTourDefinition(state.pageKey);
+      addToast('Tour deleted.', 'success');
+      setPicking(false);
+      onClose?.();
+    } catch (err) {
+      console.error('Failed to delete tour definition', err);
+      addToast('Failed to delete the tour.', 'error');
+    } finally {
+      setSaving(false);
+    }
+  }, [addToast, deleteTourDefinition, onClose, state?.pageKey]);
+
+  const handleClose = useCallback(() => {
+    setPicking(false);
+    highlightElement(null);
+    onClose?.();
+  }, [highlightElement, onClose]);
+
+  const saveDisabled = saving || loading || !pageKey.trim() || steps.some((step) => !step.selector.trim());
+
+  return (
+    <div style={styles.overlay} role="dialog" aria-modal="true">
+      <div style={styles.modal} ref={builderRef} className="tour-builder-modal">
+        <div style={styles.header}>
+          <div>
+            <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+              {t('tour_builder_title', 'Tour builder')}
+            </div>
+            <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
+              {state?.mode === 'edit'
+                ? t('tour_builder_edit_mode', 'Edit the guided tour for this page')
+                : t('tour_builder_create_mode', 'Create a guided tour for this page')}
+            </div>
+          </div>
+          <button type="button" onClick={handleClose} style={styles.iconButton} aria-label={t('close', 'Close')}>
+            ×
+          </button>
+        </div>
+        {loading ? (
+          <div style={styles.loading}>{t('tour_builder_loading', 'Loading tour definition…')}</div>
+        ) : (
+          <div style={styles.body}>
+            <div style={styles.sidebar}>
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>{t('tour_builder_page_key', 'Page key')}</label>
+                <input
+                  style={styles.input}
+                  value={pageKey}
+                  onChange={(event) => {
+                    setPageKey(event.target.value);
+                    markDirty();
+                  }}
+                  placeholder="dashboard"
+                />
+              </div>
+              <div style={styles.fieldGroup}>
+                <label style={styles.label}>{t('tour_builder_path', 'Path')}</label>
+                <input
+                  style={styles.input}
+                  value={path}
+                  onChange={(event) => {
+                    setPath(event.target.value);
+                    markDirty();
+                  }}
+                  placeholder="/settings"
+                />
+              </div>
+              <div style={styles.stepsList}>
+                {sortedSteps.map((step, index) => {
+                  const active = step.id === selectedId;
+                  return (
+                    <div
+                      key={step.id}
+                      style={{
+                        ...styles.stepCard,
+                        ...(active ? styles.stepCardActive : null),
+                      }}
+                      onClick={() => setSelectedId(step.id)}
+                    >
+                      <div style={styles.stepHeader}>
+                        <span>
+                          {t('tour_builder_step_label', 'Step')} {index + 1}
+                        </span>
+                        <div style={styles.stepActions}>
+                          <button
+                            type="button"
+                            style={{
+                              ...styles.tinyButton,
+                              ...(index === 0 ? styles.disabledButton : null),
+                            }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleMoveStep(step.id, 'up');
+                            }}
+                            disabled={index === 0}
+                            aria-label={t('move_up', 'Move up')}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            style={{
+                              ...styles.tinyButton,
+                              ...(index === sortedSteps.length - 1 ? styles.disabledButton : null),
+                            }}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleMoveStep(step.id, 'down');
+                            }}
+                            disabled={index === sortedSteps.length - 1}
+                            aria-label={t('move_down', 'Move down')}
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            style={styles.tinyButton}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDeleteStep(step.id);
+                            }}
+                            aria-label={t('delete', 'Delete')}
+                          >
+                            🗑
+                          </button>
+                        </div>
+                      </div>
+                      <div style={styles.speechBubble}>
+                        <div style={styles.bubbleText}>
+                          {step.content ? step.content : t('tour_builder_no_content', 'No content yet')}
+                        </div>
+                        <div style={styles.bubbleTail} />
+                      </div>
+                      <div style={styles.selectorPreview}>
+                        {step.selector || t('tour_builder_no_selector', 'No selector assigned')}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <button type="button" style={styles.addStepButton} onClick={handleAddStep}>
+                {t('tour_builder_add_step', '＋ Add step')}
+              </button>
+            </div>
+            <div style={styles.editor}>
+              {selectedStep ? (
+                <div style={styles.editorForm}>
+                  <div style={styles.fieldGroup}>
+                    <label style={styles.label}>{t('tour_builder_step_title', 'Title (optional)')}</label>
+                    <input
+                      style={styles.input}
+                      value={selectedStep.title}
+                      onChange={(event) => updateStep(selectedStep.id, { title: event.target.value })}
+                    />
+                  </div>
+                  <div style={styles.fieldGroup}>
+                    <label style={styles.label}>{t('tour_builder_step_content', 'Speech bubble content')}</label>
+                    <textarea
+                      style={styles.textarea}
+                      value={selectedStep.content}
+                      onChange={(event) => updateStep(selectedStep.id, { content: event.target.value })}
+                    />
+                  </div>
+                  <div style={styles.fieldGroup}>
+                    <label style={styles.label}>{t('tour_builder_selector', 'Target selector')}</label>
+                    <input
+                      style={styles.input}
+                      value={selectedStep.selector}
+                      onChange={(event) => updateStep(selectedStep.id, {
+                        selector: event.target.value,
+                        target: event.target.value,
+                      })}
+                      placeholder="#component-id"
+                    />
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      <button
+                        type="button"
+                        style={styles.pickButton}
+                        onClick={() => setPicking(true)}
+                        disabled={picking}
+                      >
+                        {t('tour_builder_pick_target', 'Pick target')}
+                      </button>
+                      {picking ? (
+                        <button
+                          type="button"
+                          style={styles.cancelPickButton}
+                          onClick={() => setPicking(false)}
+                        >
+                          {t('cancel', 'Cancel')}
+                        </button>
+                      ) : null}
+                    </div>
+                    {picking && (
+                      <div style={styles.pickerNotice}>
+                        {t(
+                          'tour_builder_picker_help',
+                          'Hover the element and click to capture its selector. Press Esc to stop picking.',
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div style={styles.fieldGroup}>
+                    <label style={styles.label}>{t('tour_builder_placement', 'Placement')}</label>
+                    <select
+                      style={styles.select}
+                      value={selectedStep.placement}
+                      onChange={(event) => updateStep(selectedStep.id, { placement: event.target.value })}
+                    >
+                      {placements.map((placement) => (
+                        <option key={placement} value={placement}>
+                          {placement}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  {hasChanges && (
+                    <div style={styles.unsavedChanges}>
+                      {t('tour_builder_unsaved', 'You have unsaved changes.')}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={styles.emptyState}>
+                  {t('tour_builder_empty_state', 'Add a step to start configuring your tour.')}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        <div style={styles.footer}>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {state?.mode === 'edit' && (
+              <button
+                type="button"
+                style={styles.dangerButton}
+                onClick={handleDeleteTour}
+                disabled={saving}
+              >
+                {t('tour_builder_delete', 'Delete tour')}
+              </button>
+            )}
+          </div>
+          <div style={styles.footerSpacer} />
+          <button type="button" style={styles.secondaryButton} onClick={handleClose}>
+            {t('cancel', 'Cancel')}
+          </button>
+          <button
+            type="button"
+            style={{
+              ...styles.primaryButton,
+              ...(saveDisabled ? styles.disabledButton : null),
+            }}
+            onClick={handleSave}
+            disabled={saveDisabled}
+          >
+            {saving ? t('saving', 'Saving…') : t('save', 'Save')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const styles = {
+  overlay: {
+    position: 'fixed',
+    inset: 0,
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: '2rem',
+  },
+  modal: {
+    width: 'min(980px, 96vw)',
+    maxHeight: '92vh',
+    backgroundColor: '#ffffff',
+    borderRadius: '16px',
+    boxShadow: '0 24px 55px rgba(15, 23, 42, 0.3)',
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
+  header: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '1rem 1.5rem',
+    background: '#111827',
+    color: '#f9fafb',
+  },
+  iconButton: {
+    background: 'transparent',
+    border: 'none',
+    color: '#f9fafb',
+    fontSize: '1.5rem',
+    cursor: 'pointer',
+    lineHeight: 1,
+  },
+  body: {
+    display: 'flex',
+    gap: '1.25rem',
+    padding: '1.5rem',
+    overflow: 'hidden',
+    flex: 1,
+  },
+  sidebar: {
+    width: '320px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1rem',
+    overflowY: 'auto',
+    paddingRight: '0.5rem',
+  },
+  fieldGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  label: {
+    fontSize: '0.8rem',
+    fontWeight: 600,
+    color: '#374151',
+  },
+  input: {
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    padding: '0.6rem',
+    fontSize: '0.9rem',
+  },
+  stepsList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+    overflowY: 'auto',
+    paddingRight: '0.25rem',
+  },
+  stepCard: {
+    border: '1px solid #e5e7eb',
+    borderRadius: '12px',
+    padding: '0.75rem',
+    background: '#f9fafb',
+    cursor: 'pointer',
+    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+  },
+  stepCardActive: {
+    borderColor: '#2563eb',
+    boxShadow: '0 0 0 2px rgba(37, 99, 235, 0.18)',
+    background: '#ffffff',
+  },
+  stepHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '0.5rem',
+    fontWeight: 600,
+    color: '#1f2937',
+  },
+  stepActions: {
+    display: 'flex',
+    gap: '0.25rem',
+  },
+  tinyButton: {
+    border: '1px solid #d1d5db',
+    background: '#fff',
+    borderRadius: '5px',
+    padding: '0.25rem 0.35rem',
+    cursor: 'pointer',
+    fontSize: '0.75rem',
+  },
+  speechBubble: {
+    position: 'relative',
+    background: '#ffffff',
+    border: '1px solid #d1d5db',
+    borderRadius: '14px',
+    padding: '0.75rem',
+    color: '#1f2937',
+    fontSize: '0.85rem',
+    lineHeight: 1.4,
+  },
+  bubbleText: {
+    minHeight: '2.5rem',
+  },
+  bubbleTail: {
+    position: 'absolute',
+    left: '1.5rem',
+    bottom: '-0.55rem',
+    width: '1.1rem',
+    height: '1.1rem',
+    background: '#ffffff',
+    borderRight: '1px solid #d1d5db',
+    borderBottom: '1px solid #d1d5db',
+    transform: 'rotate(45deg)',
+  },
+  selectorPreview: {
+    marginTop: '0.6rem',
+    fontSize: '0.75rem',
+    fontFamily: 'monospace',
+    color: '#4b5563',
+    wordBreak: 'break-word',
+  },
+  addStepButton: {
+    border: '1px dashed #2563eb',
+    borderRadius: '8px',
+    padding: '0.6rem',
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  editor: {
+    flex: 1,
+    background: '#f3f4f6',
+    borderRadius: '12px',
+    padding: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    overflowY: 'auto',
+  },
+  editorForm: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1rem',
+  },
+  textarea: {
+    minHeight: '120px',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    padding: '0.75rem',
+    fontSize: '0.9rem',
+    resize: 'vertical',
+  },
+  select: {
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    padding: '0.6rem',
+    fontSize: '0.9rem',
+  },
+  pickerNotice: {
+    marginTop: '0.5rem',
+    background: '#e0f2fe',
+    borderRadius: '8px',
+    padding: '0.5rem 0.75rem',
+    fontSize: '0.8rem',
+    color: '#1e3a8a',
+  },
+  emptyState: {
+    flex: 1,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: '#6b7280',
+    fontSize: '0.95rem',
+    textAlign: 'center',
+    padding: '1rem',
+  },
+  footer: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+    padding: '1rem 1.5rem',
+    borderTop: '1px solid #e5e7eb',
+    background: '#f9fafb',
+  },
+  footerSpacer: {
+    flex: 1,
+  },
+  primaryButton: {
+    background: '#2563eb',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '0.65rem 1.5rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  secondaryButton: {
+    background: '#fff',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    padding: '0.65rem 1.4rem',
+    cursor: 'pointer',
+  },
+  dangerButton: {
+    background: '#dc2626',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '8px',
+    padding: '0.55rem 1.2rem',
+    cursor: 'pointer',
+  },
+  pickButton: {
+    background: '#10b981',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '0.45rem 1rem',
+    cursor: 'pointer',
+  },
+  cancelPickButton: {
+    background: '#f97316',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '0.45rem 1rem',
+    cursor: 'pointer',
+  },
+  loading: {
+    padding: '2rem',
+    textAlign: 'center',
+    color: '#4b5563',
+  },
+  disabledButton: {
+    opacity: 0.6,
+    cursor: 'not-allowed',
+  },
+  unsavedChanges: {
+    background: '#fef3c7',
+    color: '#92400e',
+    padding: '0.5rem 0.75rem',
+    borderRadius: '8px',
+    fontSize: '0.8rem',
+  },
+};

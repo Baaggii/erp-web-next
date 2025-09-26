@@ -20,8 +20,10 @@ import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useToast } from "../context/ToastContext.jsx";
+import { API_BASE } from "../utils/apiBase.js";
+import TourBuilder from "./tours/TourBuilder.jsx";
 
-const TourContext = React.createContext({
+export const TourContext = React.createContext({
   startTour: () => false,
   getTourForPath: () => undefined,
   registryVersion: 0,
@@ -31,14 +33,138 @@ const TourContext = React.createContext({
   closeTourViewer: () => {},
   tourBuilderState: null,
   tourViewerState: null,
+  ensureTourDefinition: () => Promise.resolve(null),
+  saveTourDefinition: () => Promise.resolve(null),
+  deleteTourDefinition: () => Promise.resolve(false),
 });
-export const useTour = (pageKey, steps, options) => {
-  const { startTour } = useContext(TourContext);
+export const useTour = (pageKey, options = {}) => {
+  const { startTour, ensureTourDefinition } = useContext(TourContext);
   const { userSettings } = useContext(AuthContext);
+  const location = useLocation();
+
   useEffect(() => {
-    startTour(pageKey, steps, options);
-  }, [startTour, pageKey, steps, options, userSettings]);
+    if (!pageKey || typeof ensureTourDefinition !== 'function') return undefined;
+    const controller = new AbortController();
+    let isMounted = true;
+
+    const { forceReload, path, ...restOptions } = options || {};
+    const targetPath = path ?? location.pathname;
+
+    async function load() {
+      try {
+        const entry = await ensureTourDefinition({
+          pageKey,
+          path: targetPath,
+          forceReload,
+          signal: controller.signal,
+        });
+        if (!isMounted) return;
+        const steps = Array.isArray(entry?.steps) ? entry.steps : [];
+        const resolvedPath = entry?.path || targetPath;
+        startTour(pageKey, steps, { ...restOptions, path: resolvedPath });
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error('Failed to load tour definition', err);
+      }
+    }
+
+    load();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
+  }, [ensureTourDefinition, location.pathname, options, pageKey, startTour, userSettings]);
 };
+
+const cryptoSource = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
+
+function createClientStepId() {
+  if (cryptoSource?.randomUUID) {
+    return cryptoSource.randomUUID();
+  }
+  return `client-step-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeClientStep(step, index = 0) {
+  if (!step || typeof step !== 'object') return null;
+  const selectorRaw =
+    typeof step.selector === 'string' && step.selector.trim()
+      ? step.selector.trim()
+      : typeof step.target === 'string' && step.target.trim()
+        ? step.target.trim()
+        : '';
+  const selector = selectorRaw.trim();
+  const content =
+    typeof step.content === 'string' || typeof step.content === 'number'
+      ? String(step.content)
+      : '';
+  const order =
+    typeof step.order === 'number' && Number.isFinite(step.order) ? step.order : index;
+  const placement =
+    typeof step.placement === 'string' && step.placement.trim()
+      ? step.placement.trim()
+      : typeof step.position === 'string' && step.position.trim()
+        ? step.position.trim()
+        : 'bottom';
+  const title = typeof step.title === 'string' ? step.title : undefined;
+  const offset =
+    step.offset !== undefined && !Number.isNaN(Number(step.offset))
+      ? Number(step.offset)
+      : undefined;
+  const spotlightPadding =
+    step.spotlightPadding !== undefined && !Number.isNaN(Number(step.spotlightPadding))
+      ? Number(step.spotlightPadding)
+      : undefined;
+
+  const normalized = {
+    id:
+      typeof step.id === 'string' && step.id.trim() ? step.id.trim() : createClientStepId(),
+    selector,
+    target: selector || '',
+    content,
+    placement,
+    order,
+  };
+
+  if (title !== undefined && title !== '') normalized.title = title;
+  if (offset !== undefined) normalized.offset = offset;
+  if (spotlightPadding !== undefined) normalized.spotlightPadding = spotlightPadding;
+  if (step.disableBeacon !== undefined) normalized.disableBeacon = Boolean(step.disableBeacon);
+  if (step.isFixed !== undefined) normalized.isFixed = Boolean(step.isFixed);
+  if (step.locale) normalized.locale = step.locale;
+  if (step.tooltip) normalized.tooltip = step.tooltip;
+  if (step.styles && typeof step.styles === 'object') normalized.styles = step.styles;
+  if (step.floaterProps && typeof step.floaterProps === 'object') {
+    normalized.floaterProps = step.floaterProps;
+  }
+
+  return normalized;
+}
+
+function computeStepSignature(steps) {
+  if (!Array.isArray(steps)) return '[]';
+  return JSON.stringify(
+    steps.map((step) => ({
+      id: step.id,
+      selector: step.selector,
+      content: step.content,
+      placement: step.placement,
+      order: step.order,
+      title: step.title ?? '',
+      offset: step.offset ?? null,
+      spotlightPadding: step.spotlightPadding ?? null,
+      disableBeacon: step.disableBeacon ?? false,
+      isFixed: step.isFixed ?? false,
+    })),
+  );
+}
+
+function stripStepForSave(step) {
+  if (!step || typeof step !== 'object') return step;
+  const { target, ...rest } = step;
+  return rest;
+}
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -100,29 +226,55 @@ export default function ERPLayout() {
     return cleanPath || '/';
   }, []);
 
-  const startTour = useCallback(
-    (pageKey, steps, options = {}) => {
-      if (!pageKey || !Array.isArray(steps) || steps.length === 0) return false;
-
-      const pathFromOptions = options?.path;
-      const normalizedPath = normalizePath(pathFromOptions ?? location.pathname);
-
+  const registerTourEntry = useCallback(
+    (pageKey, stepsInput = [], pathValue) => {
+      if (!pageKey) return null;
+      const normalizedPath = normalizePath(pathValue ?? '/');
+      const normalizedSteps = Array.isArray(stepsInput)
+        ? stepsInput
+            .map((step, index) => normalizeClientStep(step, index))
+            .filter(Boolean)
+        : [];
+      normalizedSteps.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      normalizedSteps.forEach((step, index) => {
+        step.order = index;
+        step.target = step.selector || step.target || '';
+      });
+      const signature = computeStepSignature(normalizedSteps);
       const existingEntry = toursByPageRef.current[pageKey];
       if (existingEntry?.path && existingEntry.path !== normalizedPath) {
         delete toursByPathRef.current[existingEntry.path];
       }
-
-      const shouldUpdateRegistry =
-        !existingEntry || existingEntry.steps !== steps || existingEntry.path !== normalizedPath;
-
-      const storedEntry = { pageKey, steps, path: normalizedPath };
+      const changed =
+        !existingEntry ||
+        existingEntry.path !== normalizedPath ||
+        existingEntry.signature !== signature;
+      const storedEntry = {
+        pageKey,
+        steps: normalizedSteps,
+        path: normalizedPath,
+        signature,
+      };
       toursByPageRef.current[pageKey] = storedEntry;
       if (normalizedPath) {
         toursByPathRef.current[normalizedPath] = storedEntry;
       }
-      if (shouldUpdateRegistry) {
+      if (changed) {
         setTourRegistryVersion((v) => v + 1);
       }
+      return storedEntry;
+    },
+    [normalizePath],
+  );
+
+  const startTour = useCallback(
+    (pageKey, stepsInput = [], options = {}) => {
+      if (!pageKey) return false;
+      const targetPath = options?.path ?? location.pathname;
+      const entry = registerTourEntry(pageKey, stepsInput, targetPath);
+      const normalizedSteps = entry?.steps || [];
+      const runnableSteps = normalizedSteps.filter((step) => step.target);
+      if (!runnableSteps.length) return false;
 
       const toursEnabled = userSettings?.settings_enable_tours ?? false;
       if (!toursEnabled && !options?.force) return false;
@@ -138,8 +290,12 @@ export default function ERPLayout() {
         }
       }
 
-      if ((options?.force || !alreadySeen) && steps.length) {
-        setTourSteps(steps);
+      if (options?.force || !alreadySeen) {
+        const joyrideSteps = runnableSteps.map((step) => ({
+          ...step,
+          target: step.target || step.selector || step.id,
+        }));
+        setTourSteps(joyrideSteps);
         setCurrentTourPage(pageKey);
         setRunTour(true);
         return true;
@@ -147,7 +303,129 @@ export default function ERPLayout() {
 
       return false;
     },
-    [location.pathname, normalizePath, updateUserSettings, userSettings],
+    [location.pathname, registerTourEntry, updateUserSettings, userSettings],
+  );
+
+  const ensureTourDefinition = useCallback(
+    async ({ pageKey, path, forceReload = false, signal } = {}) => {
+      const normalizedPath = normalizePath(path ?? location.pathname);
+      if (!forceReload) {
+        if (pageKey) {
+          const existing = toursByPageRef.current[pageKey];
+          if (existing && (!normalizedPath || existing.path === normalizedPath)) {
+            return existing;
+          }
+        } else if (normalizedPath) {
+          const existingByPath = toursByPathRef.current[normalizedPath];
+          if (existingByPath) return existingByPath;
+        }
+      }
+
+      const params = new URLSearchParams();
+      if (pageKey) params.set('pageKey', pageKey);
+      if (normalizedPath) params.set('path', normalizedPath);
+
+      const res = await fetch(`${API_BASE}/tours?${params.toString()}`, {
+        method: 'GET',
+        credentials: 'include',
+        signal,
+      });
+      if (!res.ok) {
+        throw new Error(`Failed to load tour definition (${res.status})`);
+      }
+      const data = await res.json();
+      const resolvedPageKey = data?.pageKey || pageKey;
+      const resolvedPath = data?.path || normalizedPath;
+      const serverSteps = Array.isArray(data?.steps) ? data.steps : [];
+      if (!resolvedPageKey) {
+        return null;
+      }
+      return (
+        registerTourEntry(resolvedPageKey, serverSteps, resolvedPath) || {
+          pageKey: resolvedPageKey,
+          path: normalizePath(resolvedPath),
+          steps: [],
+        }
+      );
+    },
+    [location.pathname, normalizePath, registerTourEntry],
+  );
+
+  const removeTourEntry = useCallback((pageKey) => {
+    if (!pageKey) return;
+    const existing = toursByPageRef.current[pageKey];
+    if (!existing) return;
+    if (existing.path) {
+      const stored = toursByPathRef.current[existing.path];
+      if (stored?.pageKey === pageKey) {
+        delete toursByPathRef.current[existing.path];
+      }
+    }
+    delete toursByPageRef.current[pageKey];
+    setTourRegistryVersion((v) => v + 1);
+  }, []);
+
+  const deleteTourDefinition = useCallback(
+    async (pageKey) => {
+      if (!pageKey) return false;
+      const res = await fetch(`${API_BASE}/tours/${encodeURIComponent(pageKey)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('Failed to delete tour definition');
+      }
+      await res.json().catch(() => ({}));
+      removeTourEntry(pageKey);
+      return true;
+    },
+    [removeTourEntry],
+  );
+
+  const saveTourDefinition = useCallback(
+    async ({ pageKey, path, steps: stepsInput, previousPageKey } = {}) => {
+      if (!pageKey) {
+        throw new Error('A pageKey is required to save a tour');
+      }
+      const normalizedSteps = Array.isArray(stepsInput)
+        ? stepsInput
+            .map((step, index) => normalizeClientStep(step, index))
+            .filter(Boolean)
+        : [];
+      normalizedSteps.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+      normalizedSteps.forEach((step, index) => {
+        step.order = index;
+        step.target = step.selector || step.target || '';
+      });
+      const payload = {
+        path,
+        steps: normalizedSteps.map(stripStepForSave),
+      };
+      const res = await fetch(`${API_BASE}/tours/${encodeURIComponent(pageKey)}`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to save tour definition');
+      }
+      const data = await res.json();
+      const entry = registerTourEntry(
+        data?.pageKey || pageKey,
+        data?.steps || payload.steps,
+        data?.path ?? path,
+      );
+      if (previousPageKey && previousPageKey !== entry?.pageKey) {
+        try {
+          await deleteTourDefinition(previousPageKey);
+        } catch (err) {
+          console.error('Failed to delete previous tour definition', err);
+        }
+      }
+      return entry;
+    },
+    [deleteTourDefinition, registerTourEntry],
   );
 
   const getTourForPath = useCallback(
@@ -337,13 +615,19 @@ export default function ERPLayout() {
       closeTourViewer,
       tourBuilderState,
       tourViewerState,
+      ensureTourDefinition,
+      saveTourDefinition,
+      deleteTourDefinition,
     }),
     [
+      deleteTourDefinition,
+      ensureTourDefinition,
       closeTourBuilder,
       closeTourViewer,
       getTourForPath,
       openTourBuilder,
       openTourViewer,
+      saveTourDefinition,
       startTour,
       tourBuilderState,
       tourRegistryVersion,
@@ -353,6 +637,9 @@ export default function ERPLayout() {
 
   return (
     <TourContext.Provider value={tourContextValue}>
+      {tourBuilderState && (
+        <TourBuilder state={tourBuilderState} onClose={closeTourBuilder} />
+      )}
       <PendingRequestContext.Provider value={requestNotifications}>
         <div style={styles.container}>
           <Joyride
