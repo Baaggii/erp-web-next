@@ -2016,17 +2016,26 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
-  let disabledFields = editSet
-    ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
-    : [];
-  if (isAdding) {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
-  } else if (editing) {
-    disabledFields = Array.from(
-      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
-    );
+  const isTransactionsTable =
+    typeof table === 'string' && table.toLowerCase().startsWith('transactions');
+  const structuralFields = Array.from(new Set([...getKeyFields(), ...autoCols]));
+
+  let disabledFields = [];
+  if (isAdding && !isTransactionsTable) {
+    disabledFields = Array.from(new Set([...lockedDefaults, ...structuralFields]));
   } else {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+    disabledFields = editSet
+      ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
+      : [];
+    if (isAdding) {
+      disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+    } else if (editing) {
+      disabledFields = Array.from(
+        new Set([...disabledFields, ...structuralFields, ...lockedDefaults]),
+      );
+    } else {
+      disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+    }
   }
 
   const totalAmountSet = useMemo(
