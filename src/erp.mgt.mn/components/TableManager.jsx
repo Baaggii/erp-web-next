@@ -1114,116 +1114,32 @@ const TableManager = forwardRef(function TableManager({
     setShowForm(true);
   }
 
-  async function hydrateRowForEdit(row) {
-    const id = getRowId(row);
-    if (id === undefined) {
+  async function openEdit(row) {
+    if (getRowId(row) === undefined) {
       addToast(
         t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
         'error',
       );
-      return null;
+      return;
     }
-
-    const meta = await ensureColumnMeta();
-    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
-    const caseMap = { ...columnCaseMap };
-    cols.forEach((c) => {
-      if (c?.name) {
-        caseMap[c.name.toLowerCase()] = c.name;
-      }
-    });
-
-    const recordUrl = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(
-      id,
-    )}`;
-    let payload;
-    try {
-      const res = await fetch(recordUrl, { credentials: 'include' });
-      if (!res.ok) {
-        addToast(
-          t('failed_load_record_for_edit', 'Failed to load record for editing'),
-          'error',
-        );
-        return null;
-      }
-      try {
-        payload = await res.json();
-      } catch (err) {
-        console.error('Failed to parse record payload for edit', err);
-        addToast(
-          t('failed_load_record_for_edit', 'Failed to load record for editing'),
-          'error',
-        );
-        return null;
-      }
-    } catch (err) {
-      console.error('Failed to fetch record for edit', err);
-      addToast(
-        t('failed_load_record_for_edit', 'Failed to load record for editing'),
-        'error',
-      );
-      return null;
-    }
-
-    let fetchedRow = null;
-    if (payload && typeof payload === 'object') {
-      if (Array.isArray(payload.rows) && payload.rows.length > 0) {
-        fetchedRow = payload.rows[0];
-      } else if (payload.row && typeof payload.row === 'object') {
-        fetchedRow = payload.row;
-      } else {
-        fetchedRow = payload;
-      }
-    }
-
-    if (!fetchedRow || typeof fetchedRow !== 'object') {
-      addToast(
-        t('failed_load_record_for_edit', 'Failed to load record for editing'),
-        'error',
-      );
-      return null;
-    }
-
-    const merged = { ...row };
-    Object.entries(fetchedRow).forEach(([key, value]) => {
-      if (typeof key === 'string') {
-        const normalizedKey = caseMap[key.toLowerCase()] || key;
-        merged[normalizedKey] = value;
-      } else {
-        merged[key] = value;
-      }
-    });
-
-    (Array.isArray(formColumns) ? formColumns : []).forEach((col) => {
-      const lower = typeof col === 'string' ? col.toLowerCase() : col;
-      const normalizedKey =
-        typeof lower === 'string' ? caseMap[lower] || col : col;
-      if (
-        typeof normalizedKey === 'string' &&
-        merged[normalizedKey] === undefined &&
-        fetchedRow[normalizedKey] !== undefined
-      ) {
-        merged[normalizedKey] = fetchedRow[normalizedKey];
-      }
-    });
-
-    return merged;
-  }
-
-  async function openEdit(row) {
-    const hydrated = await hydrateRowForEdit(row);
-    if (!hydrated) return;
-    setEditing(hydrated);
-    setGridRows([hydrated]);
+    await ensureColumnMeta();
+    setEditing(row);
+    setGridRows([row]);
     setIsAdding(false);
     setShowForm(true);
   }
 
   async function openRequestEdit(row) {
-    const hydrated = await hydrateRowForEdit(row);
-    if (!hydrated) return;
-    setEditing(hydrated);
-    setGridRows([hydrated]);
+    if (getRowId(row) === undefined) {
+      addToast(
+        t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
+        'error',
+      );
+      return;
+    }
+    await ensureColumnMeta();
+    setEditing(row);
+    setGridRows([row]);
     setIsAdding(false);
     setRequestType('edit');
     setShowForm(true);
@@ -1231,8 +1147,6 @@ const TableManager = forwardRef(function TableManager({
 
   useImperativeHandle(ref, () => ({
     openAdd: buttonPerms['New transaction'] ? openAdd : () => {},
-    openEdit,
-    openRequestEdit,
   }));
 
   async function openDetail(row) {
