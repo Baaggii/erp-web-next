@@ -663,6 +663,7 @@
   "settings_change_password": "Change Password",
   "settings_company_licenses": "Company Licenses",
   "settings_enable_tooltips": "Enable tooltips",
+  "settings_enable_tour_builder": "Enable tour builder",
   "settings_enable_tours": "Show page guide",
   "settings_show_tour_buttons": "Show tour buttons",
   "settings_fetch_error": "Error fetching settings:",
@@ -830,5 +831,6 @@
   "close": "Close",
   "cancel": "Cancel",
   "prev": "Prev",
-  "next": "Next"
+  "next": "Next",
+  "tour_builder_enabled": "Enable tour builder"
 }

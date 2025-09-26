@@ -28,6 +28,7 @@ const defaults = {
     debugLoggingEnabled: false,
     editLabelsEnabled: false,
     showTourButtons: true,
+    tourBuilderEnabled: true,
     showReportParams: false,
     requestPollingEnabled: false,
     requestPollingIntervalSeconds: 30,
@@ -102,6 +103,9 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   }
   if (!Object.prototype.hasOwnProperty.call(cfg.general, 'showTourButtons')) {
     cfg.general.showTourButtons = defaults.general.showTourButtons;
+  }
+  if (!Object.prototype.hasOwnProperty.call(cfg.general, 'tourBuilderEnabled')) {
+    cfg.general.tourBuilderEnabled = defaults.general.tourBuilderEnabled;
   }
   if (updates.images) {
     Object.assign(cfg.images, updates.images);

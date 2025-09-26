@@ -533,6 +533,24 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
+              title={t(
+                'tooltip:tour_builder_enabled',
+                'Allow administrators to create or edit guided tours',
+              )}
+            >
+              <label>
+                {t('tour_builder_enabled', 'Enable tour builder')}{' '}
+                <input
+                  name="tourBuilderEnabled"
+                  type="checkbox"
+                  checked={active.tourBuilderEnabled ?? true}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
               title={t('show_report_params', {
                 ns: 'tooltip',
                 defaultValue: 'Display report parameters',

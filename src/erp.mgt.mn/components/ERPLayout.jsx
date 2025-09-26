@@ -1028,8 +1028,8 @@ function MainWindow({ title }) {
 
   const canManageTours = Boolean(
     session?.permissions?.system_settings &&
-      toBooleanFlag(configBuilderToggle) &&
-      toBooleanFlag(userBuilderToggle),
+      toBooleanFlag(configBuilderToggle, true) &&
+      toBooleanFlag(userBuilderToggle, true),
   );
 
   const handleCreateTour = useCallback(() => {
