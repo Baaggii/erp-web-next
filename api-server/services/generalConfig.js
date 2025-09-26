@@ -27,6 +27,7 @@ const defaults = {
     imageToastEnabled: false,
     debugLoggingEnabled: false,
     editLabelsEnabled: false,
+    showTourButtons: true,
     showReportParams: false,
     requestPollingEnabled: false,
     requestPollingIntervalSeconds: 30,

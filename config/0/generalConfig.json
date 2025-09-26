@@ -23,6 +23,7 @@
     "imageToastEnabled": false,
     "debugLoggingEnabled": false,
     "editLabelsEnabled": true,
+    "showTourButtons": true,
     "showReportParams": false,
     "requestPollingEnabled": false,
     "requestPollingIntervalSeconds": 30,

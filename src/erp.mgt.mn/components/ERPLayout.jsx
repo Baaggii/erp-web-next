@@ -719,6 +719,11 @@ function MainWindow({ title }) {
     return Boolean(value);
   }, []);
 
+  const showTourButtons = toBooleanFlag(
+    generalConfig?.general?.showTourButtons,
+    true,
+  );
+
   const configBuilderToggle =
     generalConfig?.general?.tourBuilderEnabled ??
     generalConfig?.general?.enableTourBuilder ??
@@ -772,41 +777,43 @@ function MainWindow({ title }) {
       <div style={styles.windowHeader}>
         <div style={styles.windowHeaderLeft}>
           <span>{title}</span>
-          <div style={styles.tourButtonGroup}>
-            <button
-              type="button"
-              onClick={handleCreateTour}
-              disabled={!canManageTours}
-              style={{
-                ...styles.tourButton,
-                ...(canManageTours ? null : styles.tourButtonDisabled),
-              }}
-            >
-              {t('tour_create', 'Create tour')}
-            </button>
-            <button
-              type="button"
-              onClick={handleEditTour}
-              disabled={!canManageTours || !hasTour}
-              style={{
-                ...styles.tourButton,
-                ...(canManageTours && hasTour ? null : styles.tourButtonDisabled),
-              }}
-            >
-              {t('tour_edit', 'Edit tour')}
-            </button>
-            <button
-              type="button"
-              onClick={handleViewTour}
-              disabled={!hasTour}
-              style={{
-                ...styles.tourButton,
-                ...(hasTour ? null : styles.tourButtonDisabled),
-              }}
-            >
-              {t('tour_view', 'View tour')}
-            </button>
-          </div>
+          {showTourButtons && (
+            <div style={styles.tourButtonGroup}>
+              <button
+                type="button"
+                onClick={handleCreateTour}
+                disabled={!canManageTours}
+                style={{
+                  ...styles.tourButton,
+                  ...(canManageTours ? null : styles.tourButtonDisabled),
+                }}
+              >
+                {t('tour_create', 'Create tour')}
+              </button>
+              <button
+                type="button"
+                onClick={handleEditTour}
+                disabled={!canManageTours || !hasTour}
+                style={{
+                  ...styles.tourButton,
+                  ...(canManageTours && hasTour ? null : styles.tourButtonDisabled),
+                }}
+              >
+                {t('tour_edit', 'Edit tour')}
+              </button>
+              <button
+                type="button"
+                onClick={handleViewTour}
+                disabled={!hasTour}
+                style={{
+                  ...styles.tourButton,
+                  ...(hasTour ? null : styles.tourButtonDisabled),
+                }}
+              >
+                {t('tour_view', 'View tour')}
+              </button>
+            </div>
+          )}
         </div>
         <div>
           <button style={styles.windowHeaderBtn}>–</button>

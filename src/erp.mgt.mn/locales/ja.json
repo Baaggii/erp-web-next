@@ -660,6 +660,7 @@
   "settings_company_licenses": "会社ライセンス",
   "settings_enable_tooltips": "ツールチップを有効にする",
   "settings_enable_tours": "ページガイドを表示",
+  "show_tour_buttons": "ツアーボタンを表示",
   "settings_fetch_error": "設定の取得エラー：",
   "settings_fetch_failed": "設定の取得に失敗しました",
   "settings_forms_management": "フォーム管理",
