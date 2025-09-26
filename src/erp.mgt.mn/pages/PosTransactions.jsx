@@ -1296,7 +1296,11 @@ export default function PosTransactionsPage() {
       columns.forEach((col) => {
         if (!col || typeof col !== 'object') return;
         const rawName = col.name;
-        const expr = col.generationExpression ?? col.GENERATION_EXPRESSION;
+        const expr =
+          col.generationExpression ??
+          col.GENERATION_EXPRESSION ??
+          col.generation_expression ??
+          null;
         if (!rawName || !expr) return;
         const mapped = caseMap[String(rawName).toLowerCase()] || rawName;
         if (typeof mapped !== 'string') return;
