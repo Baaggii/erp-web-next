@@ -136,18 +136,20 @@ export async function listTours(companyId) {
 
 export async function getTour({ pageKey, path }, companyId) {
   const tours = await readTours(companyId);
+  const normalizedPath = normalizePath(path);
+
+  if (normalizedPath) {
+    for (const [key, value] of Object.entries(tours)) {
+      if (normalizePath(value?.path) === normalizedPath) {
+        return toResponse(key, value);
+      }
+    }
+  }
+
   if (pageKey && tours[pageKey]) {
     return toResponse(pageKey, tours[pageKey]);
   }
 
-  const normalizedPath = normalizePath(path);
-  if (!normalizedPath) return null;
-
-  for (const [key, value] of Object.entries(tours)) {
-    if (normalizePath(value.path) === normalizedPath) {
-      return toResponse(key, value);
-    }
-  }
   return null;
 }
 
