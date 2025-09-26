@@ -191,11 +191,7 @@ export default function FormsManagement() {
 
       fetch('/api/tables', { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : []))
-        .then((data) =>
-          setTables((Array.isArray(data) ? data : []).filter((t) =>
-            String(t).startsWith('transactions_'),
-          )),
-        )
+        .then((data) => setTables(Array.isArray(data) ? data : []))
         .catch(() => setTables([]));
 
       fetch(
