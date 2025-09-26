@@ -664,6 +664,7 @@
   "settings_company_licenses": "Компанийн лицензүүд",
   "settings_enable_tooltips": "Тайлбарыг идэвхжүүлэх",
   "settings_enable_tours": "Хуудсыг зааварчилгаа",
+  "show_tour_buttons": "Турын товчийг харуулах",
   "settings_fetch_error": "Тохиргоо татахад алдаа гарлаа:",
   "settings_fetch_failed": "Тохиргоо татах амжилтгүй",
   "settings_forms_management": "Маягтын удирдлага",

@@ -515,6 +515,24 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
+              title={t(
+                'tooltip:show_tour_buttons',
+                'Display tour action buttons in the window header',
+              )}
+            >
+              <label>
+                {t('show_tour_buttons', 'Show tour buttons')}{' '}
+                <input
+                  name="showTourButtons"
+                  type="checkbox"
+                  checked={active.showTourButtons ?? true}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
               title={t('show_report_params', {
                 ns: 'tooltip',
                 defaultValue: 'Display report parameters',

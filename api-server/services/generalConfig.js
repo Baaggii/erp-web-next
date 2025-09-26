@@ -27,6 +27,7 @@ const defaults = {
     imageToastEnabled: false,
     debugLoggingEnabled: false,
     editLabelsEnabled: false,
+    showTourButtons: true,
     showReportParams: false,
     requestPollingEnabled: false,
     requestPollingIntervalSeconds: 30,
@@ -42,45 +43,45 @@ const defaults = {
   },
 };
 
-  async function readConfig(companyId = 0) {
-    const { path: filePath, isDefault } = await getConfigPath(
-      'generalConfig.json',
-      companyId,
-    );
+async function readConfig(companyId = 0) {
+  const { path: filePath, isDefault } = await getConfigPath(
+    'generalConfig.json',
+    companyId,
+  );
 
-    try {
-      const data = await fs.readFile(filePath, 'utf8');
-      const parsed = JSON.parse(data);
-      let result;
-      if (parsed.forms || parsed.pos || parsed.general || parsed.images) {
-        const { imageStorage, ...restGeneral } = parsed.general || {};
-        const images = parsed.images || imageStorage || {};
-        result = {
-          ...defaults,
-          ...parsed,
-          general: {
-            ...defaults.general,
-            ...restGeneral,
-          },
-          images: {
-            ...defaults.images,
-            ...images,
-          },
-        };
-      } else {
-        // migrate older flat structure to new nested layout
-        result = {
-          forms: { ...defaults.forms, ...parsed },
-          pos: { ...defaults.pos },
-          general: { ...defaults.general },
-          images: { ...defaults.images },
-        };
-      }
-      return { config: result, isDefault };
-    } catch {
-      return { config: { ...defaults }, isDefault: true };
+  try {
+    const data = await fs.readFile(filePath, 'utf8');
+    const parsed = JSON.parse(data);
+    let result;
+    if (parsed.forms || parsed.pos || parsed.general || parsed.images) {
+      const { imageStorage, ...restGeneral } = parsed.general || {};
+      const images = parsed.images || imageStorage || {};
+      result = {
+        ...defaults,
+        ...parsed,
+        general: {
+          ...defaults.general,
+          ...restGeneral,
+        },
+        images: {
+          ...defaults.images,
+          ...images,
+        },
+      };
+    } else {
+      // migrate older flat structure to new nested layout
+      result = {
+        forms: { ...defaults.forms, ...parsed },
+        pos: { ...defaults.pos },
+        general: { ...defaults.general },
+        images: { ...defaults.images },
+      };
     }
+    return { config: result, isDefault };
+  } catch {
+    return { config: { ...defaults }, isDefault: true };
   }
+}
 
 async function writeConfig(cfg, companyId = 0) {
   const filePath = tenantConfigPath('generalConfig.json', companyId);
@@ -98,6 +99,9 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   if (updates.pos) Object.assign(cfg.pos, updates.pos);
   if (updates.general) {
     Object.assign(cfg.general, updates.general);
+  }
+  if (!Object.prototype.hasOwnProperty.call(cfg.general, 'showTourButtons')) {
+    cfg.general.showTourButtons = defaults.general.showTourButtons;
   }
   if (updates.images) {
     Object.assign(cfg.images, updates.images);
