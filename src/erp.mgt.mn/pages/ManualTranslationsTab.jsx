@@ -122,25 +122,48 @@ function isMeaningfulText(value, targetLang) {
   return true;
 }
 
+function isTooltipSlugValue(entry, value) {
+  if (!entry || entry.type !== 'tooltip') {
+    return false;
+  }
+  const trimmedValue = toTrimmedString(value);
+  if (!trimmedValue) {
+    return false;
+  }
+  const trimmedKey = toTrimmedString(entry.key);
+  if (!trimmedKey) {
+    return false;
+  }
+  return trimmedValue === trimmedKey;
+}
+
 function getMeaningfulTranslationSource(entry) {
   if (!entry) {
     return null;
   }
 
   const keyText = toTrimmedString(entry.key);
-  if (isMeaningfulText(keyText)) {
-    return { field: 'key', text: keyText };
-  }
-
   const values = entry.values ?? {};
   const enText = toTrimmedString(values.en);
-  if (isMeaningfulText(enText)) {
-    return { field: 'en', text: enText };
-  }
-
   const mnText = toTrimmedString(values.mn);
-  if (isMeaningfulText(mnText)) {
-    return { field: 'mn', text: mnText };
+
+  const candidates =
+    entry.type === 'tooltip'
+      ? [
+          { field: 'en', text: enText, lang: 'en' },
+          { field: 'mn', text: mnText, lang: 'mn' },
+          { field: 'key', text: keyText },
+        ]
+      : [
+          { field: 'key', text: keyText },
+          { field: 'en', text: enText, lang: 'en' },
+          { field: 'mn', text: mnText, lang: 'mn' },
+        ];
+
+  for (const candidate of candidates) {
+    if (isMeaningfulText(candidate.text, candidate.lang)) {
+      return { field: candidate.field, text: candidate.text };
+    }
   }
 
   return null;
@@ -725,9 +748,13 @@ export default function ManualTranslationsTab() {
       }
 
       if (restLanguages.length) {
-        const missingBefore = restLanguages.filter(
-          (lang) => !isMeaningfulText(newEntry.values[lang], lang),
-        );
+        const missingBefore = restLanguages.filter((lang) => {
+          const value = newEntry.values[lang];
+          if (!isMeaningfulText(value, lang)) {
+            return true;
+          }
+          return isTooltipSlugValue(newEntry, value);
+        });
         if (missingBefore.length) {
           const sourceInfo = getMeaningfulTranslationSource(newEntry);
           if (!sourceInfo || !isMeaningfulText(sourceInfo.text)) {
