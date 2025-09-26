@@ -203,6 +203,7 @@ export default function ERPLayout() {
   const [tourRegistryVersion, setTourRegistryVersion] = useState(0);
   const [tourBuilderState, setTourBuilderState] = useState(null);
   const [tourViewerState, setTourViewerState] = useState(null);
+  const joyrideScrollOffset = 56;
   const openTourBuilder = useCallback((state) => {
     if (!state) return;
     setTourBuilderState(state);
@@ -708,12 +709,16 @@ export default function ERPLayout() {
             run={runTour}
             stepIndex={tourStepIndex}
             continuous
+            scrollOffset={joyrideScrollOffset}
+            scrollToFirstStep
+            scrollToSteps
             showSkipButton
             showBackButton
             showProgress
             disableOverlayClose
             disableBeacon
             disableKeyboardNavigation={false}
+            floaterProps={{ offset: joyrideScrollOffset }}
             callback={handleTourCallback}
             locale={{
               back: 'Back',
