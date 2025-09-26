@@ -69,6 +69,7 @@ function UserManualTab() {
   const { userSettings, updateUserSettings } = useAuth();
   const toursEnabled = userSettings.settings_enable_tours ?? false;
   const showTourButtons = userSettings.showTourButtons ?? true;
+  const tourBuilderEnabled = userSettings.settings_enable_tour_builder ?? true;
   return (
     <div>
       <TooltipWrapper
@@ -105,6 +106,26 @@ function UserManualTab() {
             }
           />{' '}
           {t('settings_show_tour_buttons', 'Show tour buttons')}
+        </label>
+      </TooltipWrapper>
+      <TooltipWrapper
+        title={t('settings_enable_tour_builder', {
+          ns: 'tooltip',
+          defaultValue: 'Allow creating or editing tours',
+        })}
+      >
+        <label htmlFor="enable-tour-builder-toggle">
+          <input
+            id="enable-tour-builder-toggle"
+            type="checkbox"
+            checked={tourBuilderEnabled}
+            onChange={(e) =>
+              updateUserSettings({
+                settings_enable_tour_builder: e.target.checked,
+              })
+            }
+          />{' '}
+          {t('settings_enable_tour_builder', 'Enable tour builder')}
         </label>
       </TooltipWrapper>
     </div>

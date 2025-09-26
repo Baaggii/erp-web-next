@@ -39,8 +39,10 @@ Here `boxWidth` defines the initial grid box width of a POS transaction.
 
 The **General** section hosts feature toggles. `showTourButtons` controls
 whether the tour action group is displayed in the ERP window header. Toggle it
-off to hide the Create/Edit/View tour buttons across the application. Other
-options include `requestPollingEnabled`, which determines whether the client
+off to hide the Create/Edit/View tour buttons across the application.
+`tourBuilderEnabled` governs whether administrators with the `system_settings`
+permission can launch the tour builder to create or edit guides. Other options
+include `requestPollingEnabled`, which determines whether the client
 falls back to periodic API polling when a Socket.IO connection cannot be
 established, and `requestPollingIntervalSeconds`, which sets the polling
 cadence (default 30&nbsp;seconds).

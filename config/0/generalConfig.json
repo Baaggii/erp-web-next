@@ -24,6 +24,7 @@
     "debugLoggingEnabled": false,
     "editLabelsEnabled": true,
     "showTourButtons": true,
+    "tourBuilderEnabled": true,
     "showReportParams": false,
     "requestPollingEnabled": false,
     "requestPollingIntervalSeconds": 30,
