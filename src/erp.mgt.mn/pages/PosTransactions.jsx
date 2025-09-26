@@ -1955,18 +1955,41 @@ export default function PosTransactionsPage() {
     }
     const single = {};
     const multi = {};
-    formList.forEach((t) => {
-      if (!t?.table) return;
-      const value = payload[t.table];
-      if (t.type === 'multi') {
+    const bundledTables = new Set();
+    const addTableToBundles = (table, typeHint) => {
+      if (!table || bundledTables.has(table)) return;
+      bundledTables.add(table);
+      const value = payload[table];
+      const mapType =
+        typeHint === 'multi'
+          ? 'multi'
+          : typeHint === 'single'
+            ? 'single'
+            : tableTypeMap[table] === 'multi'
+              ? 'multi'
+              : tableTypeMap[table] === 'single'
+                ? 'single'
+                : null;
+      const inferredType =
+        Array.isArray(value) || (value && Array.isArray(value.rows)) ? 'multi' : 'single';
+      const tableType = (mapType || inferredType) === 'multi' ? 'multi' : 'single';
+      if (tableType === 'multi') {
         const serialized = serializeRowsWithMetadata(value);
-        multi[t.table] = serialized.meta
+        multi[table] = serialized.meta
           ? { rows: serialized.rows, meta: serialized.meta }
           : { rows: serialized.rows };
       } else {
-        single[t.table] = value;
+        single[table] = value;
       }
-    });
+    };
+
+    formList.forEach((t) => addTableToBundles(t?.table, t?.type));
+    if (config.statusField?.table) {
+      addTableToBundles(
+        config.statusField.table,
+        tableTypeMap[config.statusField.table],
+      );
+    }
     const postData = { masterId: masterIdRef.current, single, multi };
     const session = {
       employeeId: user?.empid,
