@@ -127,6 +127,21 @@ function restoreValuesFromTransport(values, multiTableSet) {
   return result;
 }
 
+function cloneValuesForRecalc(vals) {
+  if (!vals || typeof vals !== 'object') return {};
+  const next = {};
+  Object.entries(vals).forEach(([table, value]) => {
+    if (Array.isArray(value)) {
+      next[table] = cloneArrayWithMetadata(value);
+    } else if (isPlainRecord(value)) {
+      next[table] = { ...value };
+    } else {
+      next[table] = value;
+    }
+  });
+  return next;
+}
+
 function normalizeValueForComparison(value) {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -809,7 +824,8 @@ export default function PosTransactionsPage() {
         }
       });
 
-      return mutated ? nextValues : currentValues;
+      if (!mutated) return currentValues;
+      return recalcTotals(cloneValuesForRecalc(nextValues));
     });
   }, [branch, company, memoFormConfigs, tableTypeMap]);
 
@@ -1014,7 +1030,7 @@ export default function PosTransactionsPage() {
         }
         setConfig(cfg);
         setFormConfigs((f) => (Object.keys(f).length ? {} : f));
-        setValues({});
+        setValues(recalcTotals(cloneValuesForRecalc({})));
         setRelationsMap({});
         setRelationConfigs({});
         setRelationData({});
@@ -1417,7 +1433,11 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!currentSessionId) return;
-    setValues((prev) => applySessionIdToValues(prev, currentSessionId));
+    setValues((prev) => {
+      const next = applySessionIdToValues(prev, currentSessionId);
+      if (next === prev) return prev;
+      return recalcTotals(cloneValuesForRecalc(next));
+    });
   }, [currentSessionId, applySessionIdToValues]);
 
   useEffect(() => {
@@ -1430,7 +1450,11 @@ export default function PosTransactionsPage() {
     const prevKey = initRef.current;
     initRef.current = initKey;
     if (prevKey && prevKey.startsWith(`${name}::`) && currentSessionId) {
-      setValues((prev) => applySessionIdToValues(prev, currentSessionId));
+      setValues((prev) => {
+        const next = applySessionIdToValues(prev, currentSessionId);
+        if (next === prev) return prev;
+        return recalcTotals(cloneValuesForRecalc(next));
+      });
       return;
     }
     handleNew();
@@ -1473,7 +1497,11 @@ export default function PosTransactionsPage() {
       }
       return next;
     };
-    setValues(updateSessionValues);
+    setValues((prev) => {
+      const next = updateSessionValues(prev);
+      if (next === prev) return prev;
+      return recalcTotals(cloneValuesForRecalc(next));
+    });
   }, [masterSessionValue, visibleTablesKey, configVersion, sessionFieldsKey]);
 
   const applyGeneratedColumnsAcrossTables = useCallback(
@@ -1726,7 +1754,7 @@ export default function PosTransactionsPage() {
       }
     });
     setCurrentSessionId(sid);
-    setValues(next);
+    setValues(recalcTotals(cloneValuesForRecalc(next)));
     setMasterId(null);
     masterIdRef.current = null;
     setPendingId(null);
@@ -1813,7 +1841,7 @@ export default function PosTransactionsPage() {
       const js = await res.json().catch(() => ({}));
       if (js.id) {
         setPendingId(sid);
-        setValues(next);
+        setValues(recalcTotals(cloneValuesForRecalc(next)));
         addToast('Saved', 'success');
       } else {
         const msg = js.message || res.statusText;
@@ -1850,7 +1878,7 @@ export default function PosTransactionsPage() {
       .catch(() => null);
     if (rec && rec.data) {
       const restoredData = restoreValuesFromTransport(rec.data, multiTableSet);
-      setValues(restoredData);
+      setValues(recalcTotals(cloneValuesForRecalc(restoredData)));
       setPendingId(String(id).trim());
       setMasterId(rec.masterId || null);
       masterIdRef.current = rec.masterId || null;
@@ -1884,7 +1912,7 @@ export default function PosTransactionsPage() {
         return;
       }
       setPendingId(null);
-      setValues({});
+      setValues(recalcTotals(cloneValuesForRecalc({})));
       setMasterId(null);
       masterIdRef.current = null;
       setCurrentSessionId(null);
@@ -1964,13 +1992,21 @@ export default function PosTransactionsPage() {
         const js = await res.json().catch(() => ({}));
         if (js.id) setPostedId(js.id);
         if (config.statusField?.table && config.statusField.field && config.statusField.posted) {
-          setValues(v => ({
-            ...v,
-            [config.statusField.table]: {
-              ...(v[config.statusField.table] || {}),
-              [config.statusField.field]: config.statusField.posted,
-            },
-          }));
+          setValues((v) => {
+            const tbl = config.statusField.table;
+            const field = config.statusField.field;
+            const postedValue = config.statusField.posted;
+            const existing = v?.[tbl]?.[field];
+            if (existing === postedValue) return v;
+            const next = {
+              ...v,
+              [tbl]: {
+                ...(v?.[tbl] || {}),
+                [field]: postedValue,
+              },
+            };
+            return recalcTotals(cloneValuesForRecalc(next));
+          });
         }
         const imgCfg = memoFormConfigs[config.masterTable] || {};
         if (imgCfg.imageIdField) {
