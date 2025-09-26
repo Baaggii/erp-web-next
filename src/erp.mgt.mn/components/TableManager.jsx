@@ -2016,12 +2016,11 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
-  let disabledFields = [];
-  if (!isAdding && editSet) {
-    disabledFields = formColumns.filter((c) => !editSet.has(c.toLowerCase()));
-  }
+  let disabledFields = editSet
+    ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
+    : [];
   if (isAdding) {
-    disabledFields = Array.from(new Set([...lockedDefaults]));
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
   } else if (editing) {
     disabledFields = Array.from(
       new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
