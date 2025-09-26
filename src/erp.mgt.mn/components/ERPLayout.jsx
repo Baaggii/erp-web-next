@@ -22,6 +22,7 @@ import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 import { API_BASE } from "../utils/apiBase.js";
 import TourBuilder from "./tours/TourBuilder.jsx";
+import derivePageKey from "../utils/derivePageKey.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -979,6 +980,8 @@ function MainWindow({ title }) {
   const generalConfig = useGeneralConfig();
   const badgePaths = hasNew ? new Set(['/', '/requests']) : new Set();
 
+  const derivedPageKey = useMemo(() => derivePageKey(location.pathname), [location.pathname]);
+
   // Store rendered outlet by path once the route changes. Avoid tracking
   // the `outlet` object itself to prevent endless updates caused by React
   // creating a new element on every render.
@@ -1035,12 +1038,16 @@ function MainWindow({ title }) {
 
   const handleCreateTour = useCallback(() => {
     if (!canManageTours) return;
-    openTourBuilder?.({
+    const builderState = {
       mode: 'create',
       pageKey: tourInfo?.pageKey || null,
       path: tourInfo?.path || location.pathname,
-    });
-  }, [canManageTours, location.pathname, openTourBuilder, tourInfo]);
+    };
+    if (!tourInfo?.pageKey) {
+      builderState.derivedPageKey = derivedPageKey;
+    }
+    openTourBuilder?.(builderState);
+  }, [canManageTours, derivedPageKey, location.pathname, openTourBuilder, tourInfo]);
 
   const handleEditTour = useCallback(() => {
     if (!canManageTours || !hasTour || !tourInfo) return;
