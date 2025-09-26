@@ -17,6 +17,11 @@ import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
 import { syncCalcFields } from '../utils/syncCalcFields.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
+import {
+  valuesEqual,
+  createGeneratedColumnEvaluator,
+  applyGeneratedColumnEvaluators,
+} from '../utils/generatedColumns.js';
 
 export { syncCalcFields };
 
@@ -1273,6 +1278,85 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
 
+  const generatedColumnConfigs = useMemo(() => {
+    if (!config) return {};
+    const tables = [];
+    if (config.masterTable) tables.push(config.masterTable);
+    if (Array.isArray(config.tables)) {
+      config.tables.forEach((t) => {
+        if (t?.table) tables.push(t.table);
+      });
+    }
+    const result = {};
+    tables.forEach((tbl) => {
+      const columns = columnMeta[tbl] || [];
+      if (!Array.isArray(columns) || columns.length === 0) return;
+      const caseMap = memoColumnCaseMap[tbl] || {};
+      const evaluators = {};
+      columns.forEach((col) => {
+        if (!col || typeof col !== 'object') return;
+        const rawName = col.name;
+        const expr = col.generationExpression ?? col.GENERATION_EXPRESSION;
+        if (!rawName || !expr) return;
+        const mapped = caseMap[String(rawName).toLowerCase()] || rawName;
+        if (typeof mapped !== 'string') return;
+        const evaluator = createGeneratedColumnEvaluator(expr, caseMap);
+        if (evaluator) evaluators[mapped] = evaluator;
+      });
+      if (Object.keys(evaluators).length === 0) return;
+      const fc = memoFormConfigs[tbl] || {};
+      const collectFields = (value) => {
+        if (!value) return [];
+        if (Array.isArray(value)) return value;
+        if (typeof value === 'string') return [value];
+        if (typeof value === 'object') {
+          const list = [];
+          Object.values(value).forEach((item) => {
+            if (Array.isArray(item)) list.push(...item);
+            else if (typeof item === 'string') list.push(item);
+          });
+          return list;
+        }
+        return [];
+      };
+      const mapFieldName = (field) => {
+        if (typeof field !== 'string' || !field) return null;
+        const lower = field.toLowerCase();
+        const mapped = caseMap[lower] || field;
+        return typeof mapped === 'string' ? mapped : field;
+      };
+      const mainSet = new Set();
+      [
+        ...collectFields(fc.mainFields),
+        ...collectFields(fc.main),
+        ...collectFields(fc.visibleFields),
+        ...collectFields(fc.fields),
+      ].forEach((field) => {
+        const mapped = mapFieldName(field);
+        if (mapped) mainSet.add(mapped);
+      });
+      const metadataCandidates = [
+        ...collectFields(fc.headerFields),
+        ...collectFields(fc.header),
+        ...collectFields(fc.footerFields),
+        ...collectFields(fc.footer),
+        ...collectFields(fc.totalAmountFields),
+        ...collectFields(fc.totalCurrencyFields),
+      ];
+      const metadataSet = new Set();
+      metadataCandidates.forEach((field) => {
+        const mapped = mapFieldName(field);
+        if (mapped && !mainSet.has(mapped)) metadataSet.add(mapped);
+      });
+      result[tbl] = {
+        evaluators,
+        mainFields: mainSet.size > 0 ? mainSet : null,
+        metadataFields: metadataSet.size > 0 ? metadataSet : null,
+      };
+    });
+    return result;
+  }, [config, columnMeta, memoColumnCaseMap, memoFormConfigs]);
+
   const memoRelationConfigs = useMemo(() => {
     const map = {};
     visibleTables.forEach((tbl) => {
@@ -1388,6 +1472,52 @@ export default function PosTransactionsPage() {
     setValues(updateSessionValues);
   }, [masterSessionValue, visibleTablesKey, configVersion, sessionFieldsKey]);
 
+  const applyGeneratedColumnsAcrossTables = useCallback(
+    (vals) => {
+      if (!config) return vals;
+      if (!vals || typeof vals !== 'object') return vals;
+      if (!generatedColumnConfigs || Object.keys(generatedColumnConfigs).length === 0) {
+        return vals;
+      }
+      const tables = [];
+      if (config.masterTable) tables.push(config.masterTable);
+      if (Array.isArray(config.tables)) {
+        config.tables.forEach((t) => {
+          if (t?.table) tables.push(t.table);
+        });
+      }
+      let nextVals = vals;
+      let mutated = false;
+      tables.forEach((tbl) => {
+        const cfg = generatedColumnConfigs[tbl];
+        if (!cfg) return;
+        const current = nextVals[tbl];
+        if (!Array.isArray(current)) return;
+        const cloned = cloneArrayWithMetadata(current);
+        const { changed, metadata } = applyGeneratedColumnEvaluators({
+          targetRows: cloned,
+          evaluators: cfg.evaluators,
+          mainFields: cfg.mainFields,
+          metadataFields: cfg.metadataFields,
+          equals: valuesEqual,
+        });
+        if (!changed && !metadata) return;
+        if (metadata) {
+          Object.entries(metadata).forEach(([key, value]) => {
+            cloned[key] = value;
+          });
+        }
+        if (!mutated) {
+          nextVals = { ...vals };
+          mutated = true;
+        }
+        nextVals[tbl] = cloned;
+      });
+      return mutated ? nextVals : vals;
+    },
+    [config, generatedColumnConfigs],
+  );
+
   function applyPosFields(vals, posFieldConfig) {
     if (!Array.isArray(posFieldConfig)) return vals;
     let next = { ...vals };
@@ -1468,7 +1598,7 @@ export default function PosTransactionsPage() {
     if (config?.calcFields) {
       next = syncCalcFields(next, config.calcFields);
     }
-    next = applyGeneratedColumns(next);
+    next = applyGeneratedColumnsAcrossTables(next);
     return applyPosFields(next, config?.posFields);
   }
 
