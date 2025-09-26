@@ -1091,7 +1091,7 @@ const TableManager = forwardRef(function TableManager({
         generatedEvaluators[key] = evaluator;
       }
     });
-    const initialRows = [{ ...baseRow }];
+    const initialRows = [{ ...baseRow, _saved: false }];
     if (Object.keys(generatedEvaluators).length > 0) {
       const { changed } = applyGeneratedColumnEvaluators({
         targetRows: initialRows,
