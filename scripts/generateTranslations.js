@@ -42,6 +42,13 @@ const localesDir = path.resolve('src/erp.mgt.mn/locales');
 const tooltipsDir = path.join(localesDir, 'tooltips');
 const TIMEOUT_MS = 7000;
 
+const manualTranslationSourcesPath = path.resolve(
+  'docs/manuals/manual-translation-sources.json',
+);
+
+let manualTranslationSources = loadManualTranslationSources();
+let manualTranslationSourcesDirty = false;
+
 function normalizeForComparison(value) {
   if (value == null) return '';
   return String(value)
@@ -123,6 +130,108 @@ function formatMetadataForPrompt(metadata) {
     lines.push(`- ${label}: ${values.join(', ')}`);
   }
   return lines.join('\n');
+}
+
+function loadManualTranslationSources() {
+  try {
+    if (!fs.existsSync(manualTranslationSourcesPath)) {
+      return {};
+    }
+    const raw = fs.readFileSync(manualTranslationSourcesPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const normalized = {};
+    for (const [entryId, langs] of Object.entries(parsed)) {
+      if (!langs || typeof langs !== 'object') continue;
+      const entry = {};
+      for (const [lang, label] of Object.entries(langs)) {
+        if (typeof label !== 'string') continue;
+        const trimmed = label.trim();
+        if (trimmed) entry[lang] = trimmed;
+      }
+      if (Object.keys(entry).length) normalized[entryId] = entry;
+    }
+    return normalized;
+  } catch (err) {
+    console.warn(
+      `[gen-i18n] failed to load manual translation metadata: ${err.message}`,
+    );
+    return {};
+  }
+}
+
+function normalizeProviderCode(provider) {
+  if (typeof provider !== 'string') return '';
+  const trimmed = provider.trim();
+  if (!trimmed) return '';
+  const normalized = trimmed.toLowerCase();
+  if (normalized === 'label') return '';
+  if (normalized.includes('openai') || normalized === 'ai') return 'ai';
+  if (normalized.includes('google')) return 'google';
+  if (normalized === 'manual entry' || normalized === 'manual-entry') {
+    return 'manual-entry';
+  }
+  if (normalized === 'locale file' || normalized === 'locale-file') {
+    return 'locale-file';
+  }
+  if (normalized === 'tooltip file' || normalized === 'tooltip-file') {
+    return 'tooltip-file';
+  }
+  if (normalized.startsWith('cache-')) return normalized;
+  if (normalized.startsWith('fallback')) return normalized;
+  return normalized.replace(/\s+/g, '-');
+}
+
+function updateManualTranslationSource(type, key, lang, provider) {
+  if (!type || !key || !lang) return;
+  const entryId = `${type}:${key}`;
+  const code = normalizeProviderCode(provider);
+  const normalizedLang = String(lang).trim();
+  if (!normalizedLang) return;
+
+  if (code) {
+    if (!manualTranslationSources[entryId]) {
+      manualTranslationSources[entryId] = {};
+    }
+    if (manualTranslationSources[entryId][normalizedLang] !== code) {
+      manualTranslationSources[entryId][normalizedLang] = code;
+      manualTranslationSourcesDirty = true;
+    }
+    return;
+  }
+
+  if (manualTranslationSources[entryId]?.[normalizedLang]) {
+    delete manualTranslationSources[entryId][normalizedLang];
+    manualTranslationSourcesDirty = true;
+    if (Object.keys(manualTranslationSources[entryId]).length === 0) {
+      delete manualTranslationSources[entryId];
+    }
+  }
+}
+
+function persistManualTranslationSources() {
+  if (!manualTranslationSourcesDirty) return;
+  const sortedEntries = Object.keys(manualTranslationSources).sort();
+  const output = {};
+  for (const entryId of sortedEntries) {
+    const langs = manualTranslationSources[entryId];
+    if (!langs || typeof langs !== 'object') continue;
+    const sortedLangs = Object.keys(langs)
+      .filter((lang) => typeof langs[lang] === 'string' && langs[lang].trim())
+      .sort();
+    if (!sortedLangs.length) continue;
+    output[entryId] = {};
+    for (const lang of sortedLangs) {
+      output[entryId][lang] = langs[lang];
+    }
+  }
+  fs.mkdirSync(path.dirname(manualTranslationSourcesPath), { recursive: true });
+  fs.writeFileSync(
+    manualTranslationSourcesPath,
+    JSON.stringify(output, null, 2) + '\n',
+    'utf8',
+  );
+  manualTranslationSourcesDirty = false;
 }
 
 /* ---------------- Utilities ---------------- */
@@ -1235,41 +1344,45 @@ export async function generateTranslations({
             );
           }
 
-          const relocationOptions = {
-            metadata: entry?.metadata,
-            baseEnglish: englishLabel,
-          };
+          const relocationOptions = {};
           if (lang === 'mn') {
             relocationOptions.validator = isValidMongolianCyrillic;
             relocationOptions.invalidReason =
               'contains Cyrillic characters outside the Mongolian range';
           }
-          const translated = await translateWithPreferredProviders(
-            originalValue,
-            relocationLang,
+        const translated = await translateWithPreferredProviders(
+          originalValue,
+          relocationLang,
+          lang,
+          keyPath,
+          'gen-i18n',
+          relocationOptions,
+        );
+        if (translated) {
+          localeObj[k] = translated.text;
+          console.warn(
+            `[gen-i18n] relocated ${lang}.${keyPath} -> ${relocationLang}.${keyPath}; filled with ${translated.provider}`,
+          );
+          updateManualTranslationSource(
+            'locale',
+            keyPath,
+            lang,
+            translated.provider,
+          );
+        } else {
+          localeObj[k] = '';
+          manualReview.track(
+            'locale',
             lang,
             keyPath,
-            'gen-i18n',
-            relocationOptions,
+            'no valid relocation translation',
           );
-          if (translated) {
-            localeObj[k] = translated.text;
-            console.warn(
-              `[gen-i18n] relocated ${lang}.${keyPath} -> ${relocationLang}.${keyPath}; filled with ${translated.provider}`,
-            );
-          } else {
-            localeObj[k] = '';
-            manualReview.track(
-              'locale',
-              lang,
-              keyPath,
-              'no valid relocation translation',
-            );
-            console.warn(
-              `[gen-i18n] relocated ${lang}.${keyPath} -> ${relocationLang}.${keyPath}; no valid translation`,
-            );
-          }
-          fixedKeys.add(`${lang}.${keyPath}`);
+          console.warn(
+            `[gen-i18n] relocated ${lang}.${keyPath} -> ${relocationLang}.${keyPath}; no valid translation`,
+          );
+          updateManualTranslationSource('locale', keyPath, lang, '');
+        }
+        fixedKeys.add(`${lang}.${keyPath}`);
           continue;
         }
 
@@ -1329,9 +1442,11 @@ export async function generateTranslations({
               `[gen-i18n] WARNING: cleared ${lang}.${keyPath}; unable to auto-correct invalid translation`,
             );
             fixedKeys.add(`${lang}.${keyPath}`);
+            updateManualTranslationSource('locale', keyPath, lang, '');
           } else {
             localeObj[k] = translated;
             fixedKeys.add(`${lang}.${keyPath}`);
+            updateManualTranslationSource('locale', keyPath, lang, 'google');
           }
         }
       } else if (v && typeof v === 'object') {
@@ -1497,6 +1612,7 @@ export async function generateTranslations({
       if (!locales.mn.tooltip[key] && locales.en.tooltip[key]) {
         let translationText = null;
         let failureReason = '';
+        let tooltipProvider = '';
         try {
           const { translation: tooltipTranslation } = await translateWithOpenAI(
             locales.en.tooltip[key],
@@ -1510,6 +1626,7 @@ export async function generateTranslations({
           });
           if (validation.ok) {
             translationText = validation.text;
+            tooltipProvider = 'OpenAI';
           } else {
             failureReason = validation.reason;
             console.warn(
@@ -1538,18 +1655,19 @@ export async function generateTranslations({
                 resultType: 'tooltip',
               },
             );
-            const validation = validateTranslatedText(googleTooltip, 'mn', {
-              validator: isValidMongolianCyrillic,
-              invalidReason:
-                'contains Cyrillic characters outside the Mongolian range',
-            });
-            if (validation.ok) {
-              translationText = validation.text;
-            } else {
-              failureReason = failureReason || validation.reason;
-              console.warn(
-                `[gen-i18n] rejected Google Mongolian tooltip for key="${key}": ${validation.reason}`,
-              );
+          const validation = validateTranslatedText(googleTooltip, 'mn', {
+            validator: isValidMongolianCyrillic,
+            invalidReason:
+              'contains Cyrillic characters outside the Mongolian range',
+          });
+          if (validation.ok) {
+            translationText = validation.text;
+            tooltipProvider = 'Google';
+          } else {
+            failureReason = failureReason || validation.reason;
+            console.warn(
+              `[gen-i18n] rejected Google Mongolian tooltip for key="${key}": ${validation.reason}`,
+            );
             }
           } catch (err2) {
             console.warn(
@@ -1561,8 +1679,10 @@ export async function generateTranslations({
 
         if (translationText) {
           locales.mn.tooltip[key] = translationText;
+          updateManualTranslationSource('tooltip', key, 'mn', tooltipProvider);
         } else {
           locales.mn.tooltip[key] = '';
+          updateManualTranslationSource('tooltip', key, 'mn', '');
           manualReview.track(
             'tooltip',
             'mn',
@@ -1627,6 +1747,7 @@ export async function generateTranslations({
           console.warn(
             `${prefix} cleared stale English ${lang}.${key}: "${trimmedExisting}" -> ""`,
           );
+          updateManualTranslationSource('locale', key, lang, '');
         } else {
           log(`${prefix} Skipping ${lang}.${key}, already translated`);
           continue;
@@ -1823,6 +1944,13 @@ export async function generateTranslations({
           );
         }
 
+        updateManualTranslationSource(
+          'locale',
+          key,
+          'mn',
+          finalTranslation ? translationProvider : '',
+        );
+
         const existingTip = locales.mn.tooltip[key];
         const trimmedExistingTip =
           typeof existingTip === 'string' ? existingTip.trim() : '';
@@ -1858,6 +1986,13 @@ export async function generateTranslations({
             }`,
           );
         }
+
+        updateManualTranslationSource(
+          'tooltip',
+          key,
+          'mn',
+          finalTooltip ? tooltipProvider : '',
+        );
       } else if (lang === sourceLang) {
         locales[lang][key] = sourceText;
       } else {
@@ -2031,6 +2166,13 @@ export async function generateTranslations({
           );
         }
 
+        updateManualTranslationSource(
+          'locale',
+          key,
+          lang,
+          finalTranslation ? translationProvider : '',
+        );
+
         const existingTip = locales[lang].tooltip[key];
         const trimmedExistingTip =
           typeof existingTip === 'string' ? existingTip.trim() : '';
@@ -2064,13 +2206,20 @@ export async function generateTranslations({
             tooltipFailure || 'no valid tooltip translation',
           );
           if (tooltipSource) {
-            console.warn(
-              `[gen-i18n] ${lang} tooltip for ${key} requires manual QA${
-                tooltipFailure ? ` (${tooltipFailure})` : ''
-              }`,
-            );
-          }
+          console.warn(
+            `[gen-i18n] ${lang} tooltip for ${key} requires manual QA${
+              tooltipFailure ? ` (${tooltipFailure})` : ''
+            }`,
+          );
         }
+
+        updateManualTranslationSource(
+          'tooltip',
+          key,
+          lang,
+          finalTooltip ? tooltipProvider : '',
+        );
+      }
       }
 
       counter++;
@@ -2098,6 +2247,8 @@ export async function generateTranslations({
   }
 
   manualReview.flush(log);
+
+  persistManualTranslationSources();
 
   if (fixedKeys.size) {
     log('[gen-i18n] corrected invalid translations:');
@@ -2204,6 +2355,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
       continue;
     }
 
+    let tooltipProvider = '';
     try {
       const { tooltip } = await translateWithOpenAI(
         englishLabel,
@@ -2234,6 +2386,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
           );
         } else {
           englishTooltips[key] = validation.text;
+          tooltipProvider = 'OpenAI';
         }
       } else {
         englishTooltips[key] = '';
@@ -2248,6 +2401,12 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
       console.warn(
         `[gen-tooltips] failed to generate English tooltip for key="${key}": ${err.message}`,
       );
+    }
+
+    if (englishTooltips[key]) {
+      updateManualTranslationSource('tooltip', key, 'en', tooltipProvider);
+    } else {
+      updateManualTranslationSource('tooltip', key, 'en', '');
     }
   }
 
@@ -2307,6 +2466,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
           console.warn(
             `[gen-tooltips] relocated ${lang}.${k} -> ${relocationLang}.${k}; filled with ${translated.provider}`,
           );
+          updateManualTranslationSource('tooltip', k, lang, translated.provider);
         } else {
           obj[k] = '';
           console.warn(
@@ -2318,6 +2478,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
             k,
             'no valid relocation translation',
           );
+          updateManualTranslationSource('tooltip', k, lang, '');
         }
         changed = true;
       }
@@ -2377,6 +2538,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
       const sourceLang = 'en';
       let translationText = null;
       let failureReason = '';
+      let translationProvider = '';
       try {
         const res = await translateWithOpenAI(sourceText, sourceLang, lang);
         const validation = validateTranslatedText(res.translation, lang, {
@@ -2386,6 +2548,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
         });
         if (validation.ok) {
           translationText = validation.text;
+          translationProvider = 'OpenAI';
         } else {
           failureReason = validation.reason;
           console.warn(
@@ -2420,6 +2583,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
           });
           if (validation.ok) {
             translationText = validation.text;
+            translationProvider = 'Google';
           } else {
             failureReason = failureReason || validation.reason;
             console.warn(
@@ -2436,6 +2600,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
       if (translationText) {
         current[key] = translationText;
         updated = true;
+        updateManualTranslationSource('tooltip', key, lang, translationProvider);
       } else {
         current[key] = '';
         manualReview.track(
@@ -2450,6 +2615,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
           }`,
         );
         updated = true;
+        updateManualTranslationSource('tooltip', key, lang, '');
       }
     }
 
@@ -2472,6 +2638,7 @@ export async function generateTooltipTranslations({ onLog = console.log, signal 
     }
   }
   manualReview.flush(log);
+  persistManualTranslationSources();
   log('[gen-tooltips] DONE');
 }
 
