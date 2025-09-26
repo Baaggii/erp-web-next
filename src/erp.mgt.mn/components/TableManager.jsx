@@ -28,6 +28,11 @@ import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import {
+  applyGeneratedColumnEvaluators,
+  createGeneratedColumnEvaluator,
+  valuesEqual,
+} from '../utils/generatedColumns.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -160,7 +165,23 @@ const TableManager = forwardRef(function TableManager({
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
-  const handleRowsChange = useCallback((rs) => setGridRows(rs), []);
+  const handleRowsChange = useCallback((rs) => {
+    setGridRows(rs);
+    if (!Array.isArray(rs) || rs.length === 0) return;
+    setEditing((prev) => {
+      const firstRow = rs[0];
+      if (!firstRow || typeof firstRow !== 'object') return prev;
+      const base = prev ? { ...prev } : {};
+      let changed = false;
+      Object.entries(firstRow).forEach(([key, value]) => {
+        if (!Object.is(base[key], value)) {
+          base[key] = value;
+          changed = true;
+        }
+      });
+      return changed ? base : prev;
+    });
+  }, []);
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
   const [showCascade, setShowCascade] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
@@ -985,27 +1006,29 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function ensureColumnMeta() {
-    if (columnMeta.length > 0 || !table) return;
+    if (!table) return [];
+    if (columnMeta.length > 0) return columnMeta;
     try {
       const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
         credentials: 'include',
       });
-      if (res.ok) {
-        try {
-          const cols = await res.json();
-          if (Array.isArray(cols)) {
-            setColumnMeta(cols);
-            setAutoInc(computeAutoInc(cols));
-          }
-        } catch {
-          addToast(
-            t('failed_parse_table_columns', 'Failed to parse table columns'),
-            'error',
-          );
-        }
-      } else {
+      if (!res.ok) {
         addToast(
           t('failed_load_table_columns', 'Failed to load table columns'),
+          'error',
+        );
+        return [];
+      }
+      try {
+        const cols = await res.json();
+        if (Array.isArray(cols)) {
+          setColumnMeta(cols);
+          setAutoInc(computeAutoInc(cols));
+          return cols;
+        }
+      } catch {
+        addToast(
+          t('failed_parse_table_columns', 'Failed to parse table columns'),
           'error',
         );
       }
@@ -1016,43 +1039,72 @@ const TableManager = forwardRef(function TableManager({
         'error',
       );
     }
+    return columnMeta;
   }
 
   async function openAdd() {
-    await ensureColumnMeta();
-    const vals = {};
+    const meta = await ensureColumnMeta();
+    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+    const caseMap = {};
+    cols.forEach((c) => {
+      if (c?.name) caseMap[c.name.toLowerCase()] = c.name;
+    });
     const defaults = {};
-    const all = columnMeta.map((c) => c.name);
-    all.forEach((c) => {
-      const isGenerated = generatedCols.has(c);
-      let v = (formConfig?.defaultValues || {})[c] || '';
+    const baseRow = {};
+    cols.forEach((c) => {
+      const name = c.name;
+      const isGenerated =
+        typeof c?.extra === 'string' && /(virtual|stored)\s+generated/i.test(c.extra);
+      let v = (formConfig?.defaultValues || {})[name] || '';
       if (autoFillSession && !isGenerated) {
-        if (userIdFields.includes(c) && user?.empid) v = user.empid;
-        if (branchIdFields.includes(c) && branch !== undefined) v = branch;
-        if (departmentIdFields.includes(c) && department !== undefined) v = department;
-        if (companyIdFields.includes(c) && company !== undefined) v = company;
+        if (userIdFields.includes(name) && user?.empid) v = user.empid;
+        if (branchIdFields.includes(name) && branch !== undefined) v = branch;
+        if (departmentIdFields.includes(name) && department !== undefined) v = department;
+        if (companyIdFields.includes(name) && company !== undefined) v = company;
       }
-      vals[c] = v;
-      defaults[c] = v;
-      if (!v && formConfig?.dateField?.includes(c)) {
-        const typ = fieldTypeMap[c];
+      baseRow[name] = v;
+      defaults[name] = v;
+      if (!v && formConfig?.dateField?.includes(name)) {
+        const typ = fieldTypeMap[name];
         const now = new Date();
         if (typ === 'datetime') {
-          defaults[c] = formatTimestamp(now);
+          defaults[name] = formatTimestamp(now);
         } else if (typ === 'date') {
-          defaults[c] = formatTimestamp(now).slice(0, 10);
+          defaults[name] = formatTimestamp(now).slice(0, 10);
         } else if (typ === 'time') {
-          defaults[c] = formatTimestamp(now).slice(11, 19);
+          defaults[name] = formatTimestamp(now).slice(11, 19);
         }
       }
     });
     if (formConfig?.transactionTypeField && formConfig.transactionTypeValue) {
-      vals[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
+      baseRow[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
       defaults[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
     }
+    const generatedEvaluators = {};
+    cols.forEach((c) => {
+      const expr = c?.generationExpression ?? c?.GENERATION_EXPRESSION;
+      const rawName = c?.name;
+      if (!rawName || !expr) return;
+      const key = caseMap[String(rawName).toLowerCase()] || rawName;
+      const evaluator = createGeneratedColumnEvaluator(expr, caseMap);
+      if (typeof key === 'string' && evaluator) {
+        generatedEvaluators[key] = evaluator;
+      }
+    });
+    const initialRows = [{ ...baseRow }];
+    if (Object.keys(generatedEvaluators).length > 0) {
+      const { changed } = applyGeneratedColumnEvaluators({
+        targetRows: initialRows,
+        evaluators: generatedEvaluators,
+        equals: valuesEqual,
+      });
+      if (changed && initialRows[0]) {
+        Object.assign(baseRow, initialRows[0]);
+      }
+    }
     setRowDefaults(defaults);
-    setEditing(vals);
-    setGridRows([vals]);
+    setEditing(baseRow);
+    setGridRows(initialRows);
     setIsAdding(true);
     setShowForm(true);
   }
@@ -1953,9 +2005,15 @@ const TableManager = forwardRef(function TableManager({
   let disabledFields = editSet
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
     : [];
-  disabledFields = editing
-    ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
-    : Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  if (isAdding) {
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  } else if (editing) {
+    disabledFields = Array.from(
+      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
+    );
+  } else {
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  }
 
   const totalAmountSet = useMemo(
     () => new Set(formConfig?.totalAmountFields || []),
