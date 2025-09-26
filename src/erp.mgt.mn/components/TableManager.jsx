@@ -33,6 +33,13 @@ import {
   createGeneratedColumnEvaluator,
   valuesEqual,
 } from '../utils/generatedColumns.js';
+import {
+  submitEditRequest,
+  submitNewRow,
+  submitUpdate,
+} from './tableManagerSubmissions.js';
+
+export { submitEditRequest, submitNewRow, submitUpdate } from './tableManagerSubmissions.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -1551,155 +1558,67 @@ const TableManager = forwardRef(function TableManager({
       }
     });
 
+    const sanitizedPayload = cleaned;
+
     if (requestType === 'edit') {
-      const reason = await promptRequestReason();
-      if (!reason || !reason.trim()) {
-        addToast(
-          t('request_reason_required', 'Request reason is required'),
-          'error',
-        );
-        return;
-      }
-      try {
-        const res = await fetch(`${API_BASE}/pending_request`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            table_name: table,
-            record_id: getRowId(editing),
-            request_type: 'edit',
-            request_reason: reason,
-            proposed_data: cleaned,
-          }),
-        });
-        if (res.ok) {
-          addToast(
-            t('edit_request_submitted', 'Edit request submitted'),
-            'success',
-          );
-          setShowForm(false);
-          setEditing(null);
-          setIsAdding(false);
-          setGridRows([]);
-          setRequestType(null);
-        } else if (res.status === 409) {
-          addToast(
-            t('similar_request_pending', 'A similar request is already pending'),
-            'error',
-          );
-        } else {
-          addToast(t('edit_request_failed', 'Edit request failed'), 'error');
-        }
-      } catch {
-        addToast(t('edit_request_failed', 'Edit request failed'), 'error');
-      }
-      return;
+      return submitEditRequest(sanitizedPayload, {
+        promptRequestReason,
+        addToast,
+        t,
+        table,
+        editing,
+        setShowForm,
+        setEditing,
+        setIsAdding,
+        setGridRows,
+        setRequestType,
+        getRowId,
+        API_BASE,
+      });
     }
 
-    const method = isAdding ? 'POST' : 'PUT';
-    const url = isAdding
-      ? `/api/tables/${encodeURIComponent(table)}`
-      : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`;
+    const submissionOptions = {
+      fetchImpl: fetch,
+      table,
+      page,
+      perPage,
+      company,
+      columns,
+      sort,
+      filters,
+      setRows,
+      setCount,
+      logRowsMemory,
+      setSelectedRows,
+      setShowForm,
+      setEditing,
+      setIsAdding,
+      setGridRows,
+      addToast,
+    };
 
     if (isAdding) {
-      if (columns.has('created_by')) cleaned.created_by = user?.empid;
-      if (columns.has('created_at')) {
-        cleaned.created_at = formatTimestamp(new Date());
-      }
+      return submitNewRow(sanitizedPayload, {
+        ...submissionOptions,
+        columns,
+        user,
+        formatTimestamp,
+        openAdd,
+        formConfig,
+        merged,
+        buildImageName,
+        columnCaseMap,
+        getRowId,
+        getImageFolder,
+        oldImageName,
+      });
     }
 
-    try {
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(cleaned),
-      });
-      const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
-      if (res.ok) {
-        const params = new URLSearchParams({ page, perPage });
-        if (company != null && columns.has('company_id'))
-          params.set('company_id', company);
-        if (sort.column) {
-          params.set('sort', sort.column);
-          params.set('dir', sort.dir);
-        }
-        Object.entries(filters).forEach(([k, v]) => {
-          if (v) params.set(k, v);
-        });
-        const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
-          credentials: 'include',
-        }).then((r) => r.json());
-        const rows = data.rows || [];
-        setRows(rows);
-        setCount(data.total ?? data.count ?? 0);
-        logRowsMemory(rows);
-        setSelectedRows(new Set());
-        setShowForm(false);
-        setEditing(null);
-        setIsAdding(false);
-        setGridRows([]);
-        const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
-        if (isAdding && (formConfig?.imagenameField || []).length) {
-          const inserted = rows.find(
-            (r) => String(getRowId(r)) === String(savedRow.id),
-          );
-          const rowForName = inserted || {
-            ...merged,
-            [formConfig.imageIdField]: savedRow[formConfig.imageIdField],
-          };
-          const nameFields = Array.from(
-            new Set(
-              (formConfig?.imagenameField || [])
-                .concat(formConfig?.imageIdField || '')
-                .filter(Boolean),
-            ),
-          );
-          const { name: newImageName } = buildImageName(
-            rowForName,
-            nameFields,
-            columnCaseMap,
-          );
-          const folder = getImageFolder(rowForName);
-          if (
-            oldImageName &&
-            newImageName &&
-            (oldImageName !== newImageName || folder !== table)
-          ) {
-            const renameUrl =
-              `/api/transaction_images/${table}/${encodeURIComponent(oldImageName)}` +
-              `/rename/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
-            await fetch(renameUrl, { method: 'POST', credentials: 'include' });
-            const verifyUrl =
-              `/api/transaction_images/${table}/${encodeURIComponent(newImageName)}?folder=${encodeURIComponent(folder)}`;
-            const res2 = await fetch(verifyUrl, { credentials: 'include' });
-            const imgs = res2.ok ? await res2.json().catch(() => []) : [];
-            if (!Array.isArray(imgs) || imgs.length === 0) {
-              await fetch(renameUrl, { method: 'POST', credentials: 'include' });
-            }
-          }
-        }
-        addToast(msg, 'success');
-        if (isAdding) {
-          setTimeout(() => openAdd(), 0);
-        }
-        return true;
-      } else {
-        let message = 'Хадгалахад алдаа гарлаа';
-        try {
-          const data = await res.json();
-          if (data && data.message) message += `: ${data.message}`;
-        } catch {
-          // ignore
-        }
-        addToast(message, 'error');
-        return false;
-      }
-    } catch (err) {
-      console.error('Save failed', err);
-      return false;
-    }
+    return submitUpdate(sanitizedPayload, {
+      ...submissionOptions,
+      editing,
+      getRowId,
+    });
   }
 
   async function executeDeleteRow(id, cascade) {
