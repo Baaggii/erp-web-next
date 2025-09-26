@@ -21,13 +21,23 @@ import Joyride, { STATUS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useToast } from "../context/ToastContext.jsx";
 
-const TourContext = React.createContext(() => {});
-export const useTour = (pageKey, steps) => {
-  const startTour = useContext(TourContext);
+const TourContext = React.createContext({
+  startTour: () => false,
+  getTourForPath: () => undefined,
+  registryVersion: 0,
+  openTourBuilder: () => {},
+  closeTourBuilder: () => {},
+  openTourViewer: () => {},
+  closeTourViewer: () => {},
+  tourBuilderState: null,
+  tourViewerState: null,
+});
+export const useTour = (pageKey, steps, options) => {
+  const { startTour } = useContext(TourContext);
   const { userSettings } = useContext(AuthContext);
   useEffect(() => {
-    startTour(pageKey, steps);
-  }, [startTour, pageKey, steps, userSettings]);
+    startTour(pageKey, steps, options);
+  }, [startTour, pageKey, steps, options, userSettings]);
 };
 
 /**
@@ -58,21 +68,95 @@ export default function ERPLayout() {
   const [tourSteps, setTourSteps] = useState([]);
   const [runTour, setRunTour] = useState(false);
   const [currentTourPage, setCurrentTourPage] = useState('');
+  const toursByPageRef = useRef({});
+  const toursByPathRef = useRef({});
+  const [tourRegistryVersion, setTourRegistryVersion] = useState(0);
+  const [tourBuilderState, setTourBuilderState] = useState(null);
+  const [tourViewerState, setTourViewerState] = useState(null);
+  const openTourBuilder = useCallback((state) => {
+    if (!state) return;
+    setTourBuilderState(state);
+  }, []);
+  const closeTourBuilder = useCallback(() => {
+    setTourBuilderState(null);
+  }, []);
+  const openTourViewer = useCallback((state) => {
+    if (!state) return;
+    setTourViewerState(state);
+  }, []);
+  const closeTourViewer = useCallback(() => {
+    setTourViewerState(null);
+  }, []);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
 
-  const startTour = useCallback((pageKey, steps) => {
-    if (!userSettings?.settings_enable_tours) return;
-    const seen = userSettings?.toursSeen || {};
-    if (!seen[pageKey] && steps && steps.length) {
-      setTourSteps(steps);
-      setCurrentTourPage(pageKey);
-      setRunTour(true);
-    }
-  }, [userSettings]);
+  const normalizePath = useCallback((path) => {
+    if (!path) return '/';
+    const [cleanWithoutHash] = path.split('#');
+    const [cleanPath] = (cleanWithoutHash || path).split('?');
+    return cleanPath || '/';
+  }, []);
+
+  const startTour = useCallback(
+    (pageKey, steps, options = {}) => {
+      if (!pageKey || !Array.isArray(steps) || steps.length === 0) return false;
+
+      const pathFromOptions = options?.path;
+      const normalizedPath = normalizePath(pathFromOptions ?? location.pathname);
+
+      const existingEntry = toursByPageRef.current[pageKey];
+      if (existingEntry?.path && existingEntry.path !== normalizedPath) {
+        delete toursByPathRef.current[existingEntry.path];
+      }
+
+      const shouldUpdateRegistry =
+        !existingEntry || existingEntry.steps !== steps || existingEntry.path !== normalizedPath;
+
+      const storedEntry = { pageKey, steps, path: normalizedPath };
+      toursByPageRef.current[pageKey] = storedEntry;
+      if (normalizedPath) {
+        toursByPathRef.current[normalizedPath] = storedEntry;
+      }
+      if (shouldUpdateRegistry) {
+        setTourRegistryVersion((v) => v + 1);
+      }
+
+      const toursEnabled = userSettings?.settings_enable_tours ?? false;
+      if (!toursEnabled && !options?.force) return false;
+
+      const seen = userSettings?.toursSeen || {};
+      const alreadySeen = !!seen[pageKey];
+
+      if (options?.force && alreadySeen) {
+        const updatedSeen = { ...seen };
+        delete updatedSeen[pageKey];
+        if (updateUserSettings) {
+          updateUserSettings({ toursSeen: updatedSeen });
+        }
+      }
+
+      if ((options?.force || !alreadySeen) && steps.length) {
+        setTourSteps(steps);
+        setCurrentTourPage(pageKey);
+        setRunTour(true);
+        return true;
+      }
+
+      return false;
+    },
+    [location.pathname, normalizePath, updateUserSettings, userSettings],
+  );
+
+  const getTourForPath = useCallback(
+    (path) => {
+      const key = normalizePath(path);
+      return toursByPathRef.current[key];
+    },
+    [normalizePath],
+  );
 
   const modules = useModules();
   const moduleMap = useMemo(() => {
@@ -172,23 +256,27 @@ export default function ERPLayout() {
     }
   }, [modules, validPaths, location.pathname, navigate, addToast, t]);
 
-  const handleTourCallback = ({ status }) => {
-    if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
-      if (currentTourPage) {
-        const seen = { ...(userSettings?.toursSeen || {}), [currentTourPage]: true };
-        updateUserSettings({ toursSeen: seen });
+  const handleTourCallback = useCallback(
+    ({ status }) => {
+      if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
+        if (currentTourPage) {
+          const seen = { ...(userSettings?.toursSeen || {}), [currentTourPage]: true };
+          updateUserSettings({ toursSeen: seen });
+        }
+        setRunTour(false);
+        closeTourViewer();
       }
-      setRunTour(false);
-    }
-  };
+    },
+    [closeTourViewer, currentTourPage, updateUserSettings, userSettings],
+  );
 
-  const resetGuide = () => {
-    const key = currentTourPage || location.pathname.split('/').filter(Boolean)[0] || 'dashboard';
-    const seen = { ...(userSettings?.toursSeen || {}) };
-    delete seen[key];
-    updateUserSettings({ toursSeen: seen });
-    setRunTour(true);
-  };
+  const resetGuide = useCallback(() => {
+    const normalized = normalizePath(location.pathname);
+    const existing = getTourForPath(normalized);
+    if (existing?.steps?.length) {
+      startTour(existing.pageKey, existing.steps, { force: true, path: normalized });
+    }
+  }, [getTourForPath, location.pathname, normalizePath, startTour]);
 
   const {
     tabs,
@@ -238,8 +326,33 @@ export default function ERPLayout() {
     navigate('/');
   }
 
+  const tourContextValue = useMemo(
+    () => ({
+      startTour,
+      getTourForPath,
+      registryVersion: tourRegistryVersion,
+      openTourBuilder,
+      closeTourBuilder,
+      openTourViewer,
+      closeTourViewer,
+      tourBuilderState,
+      tourViewerState,
+    }),
+    [
+      closeTourBuilder,
+      closeTourViewer,
+      getTourForPath,
+      openTourBuilder,
+      openTourViewer,
+      startTour,
+      tourBuilderState,
+      tourRegistryVersion,
+      tourViewerState,
+    ],
+  );
+
   return (
-    <TourContext.Provider value={startTour}>
+    <TourContext.Provider value={tourContextValue}>
       <PendingRequestContext.Provider value={requestNotifications}>
         <div style={styles.container}>
           <Joyride
@@ -247,9 +360,18 @@ export default function ERPLayout() {
             run={runTour}
             continuous
             showSkipButton
+            showBackButton
+            showProgress
             disableOverlayClose
             disableKeyboardNavigation={false}
             callback={handleTourCallback}
+            locale={{
+              back: 'Back',
+              close: 'End tour',
+              last: 'End tour',
+              next: 'Next',
+              skip: 'Skip',
+            }}
           />
           <Header
             user={user}
@@ -562,6 +684,11 @@ function MainWindow({ title }) {
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
   const { hasNew } = useContext(PendingRequestContext);
+  const { startTour, getTourForPath, registryVersion, openTourBuilder, openTourViewer } =
+    useContext(TourContext);
+  const { userSettings, session } = useContext(AuthContext);
+  const { t } = useContext(LangContext);
+  const generalConfig = useGeneralConfig();
   const badgePaths = hasNew ? new Set(['/', '/requests']) : new Set();
 
   // Store rendered outlet by path once the route changes. Avoid tracking
@@ -577,11 +704,110 @@ function MainWindow({ title }) {
   }
 
   const elements = { ...cache, [location.pathname]: outlet };
+  const tourInfo = useMemo(
+    () => getTourForPath(location.pathname),
+    [getTourForPath, location.pathname, registryVersion],
+  );
+  const hasTour = !!(tourInfo?.steps && tourInfo.steps.length);
+
+  const toBooleanFlag = useCallback((value, defaultValue = false) => {
+    if (value === undefined || value === null) return defaultValue;
+    if (typeof value === 'string') {
+      const lower = value.toLowerCase();
+      return lower === 'true' || lower === '1' || lower === 'yes';
+    }
+    return Boolean(value);
+  }, []);
+
+  const configBuilderToggle =
+    generalConfig?.general?.tourBuilderEnabled ??
+    generalConfig?.general?.enableTourBuilder ??
+    generalConfig?.tourBuilder?.enabled ??
+    generalConfig?.tours?.builderEnabled;
+  const userBuilderToggle =
+    userSettings?.settings_enable_tour_builder ??
+    userSettings?.settings_enable_tours_builder ??
+    userSettings?.settings_enable_tour_management;
+
+  const canManageTours = Boolean(
+    session?.permissions?.system_settings &&
+      toBooleanFlag(configBuilderToggle) &&
+      toBooleanFlag(userBuilderToggle),
+  );
+
+  const handleCreateTour = useCallback(() => {
+    if (!canManageTours) return;
+    openTourBuilder?.({
+      mode: 'create',
+      pageKey: tourInfo?.pageKey || null,
+      path: tourInfo?.path || location.pathname,
+    });
+  }, [canManageTours, location.pathname, openTourBuilder, tourInfo]);
+
+  const handleEditTour = useCallback(() => {
+    if (!canManageTours || !hasTour || !tourInfo) return;
+    openTourBuilder?.({
+      mode: 'edit',
+      pageKey: tourInfo.pageKey,
+      path: tourInfo.path || location.pathname,
+      steps: tourInfo.steps,
+    });
+  }, [canManageTours, hasTour, location.pathname, openTourBuilder, tourInfo]);
+
+  const handleViewTour = useCallback(() => {
+    if (!hasTour || !tourInfo) return;
+    openTourViewer?.({
+      pageKey: tourInfo.pageKey,
+      path: tourInfo.path || location.pathname,
+      steps: tourInfo.steps,
+    });
+    startTour(tourInfo.pageKey, tourInfo.steps, {
+      force: true,
+      path: tourInfo.path || location.pathname,
+    });
+  }, [hasTour, location.pathname, openTourViewer, startTour, tourInfo]);
 
   return (
     <div style={styles.windowContainer}>
       <div style={styles.windowHeader}>
-        <span>{title}</span>
+        <div style={styles.windowHeaderLeft}>
+          <span>{title}</span>
+          <div style={styles.tourButtonGroup}>
+            <button
+              type="button"
+              onClick={handleCreateTour}
+              disabled={!canManageTours}
+              style={{
+                ...styles.tourButton,
+                ...(canManageTours ? null : styles.tourButtonDisabled),
+              }}
+            >
+              {t('tour_create', 'Create tour')}
+            </button>
+            <button
+              type="button"
+              onClick={handleEditTour}
+              disabled={!canManageTours || !hasTour}
+              style={{
+                ...styles.tourButton,
+                ...(canManageTours && hasTour ? null : styles.tourButtonDisabled),
+              }}
+            >
+              {t('tour_edit', 'Edit tour')}
+            </button>
+            <button
+              type="button"
+              onClick={handleViewTour}
+              disabled={!hasTour}
+              style={{
+                ...styles.tourButton,
+                ...(hasTour ? null : styles.tourButtonDisabled),
+              }}
+            >
+              {t('tour_view', 'View tour')}
+            </button>
+          </div>
+        </div>
         <div>
           <button style={styles.windowHeaderBtn}>–</button>
           <button style={styles.windowHeaderBtn}>□</button>
@@ -791,6 +1017,12 @@ const styles = {
     borderTopRightRadius: "4px",
     fontSize: "0.95rem",
   },
+  windowHeaderLeft: {
+    display: "flex",
+    alignItems: "center",
+    gap: "0.75rem",
+    flexWrap: "wrap",
+  },
   windowHeaderBtn: {
     marginLeft: "0.5rem",
     background: "transparent",
@@ -839,6 +1071,27 @@ const styles = {
     height: "8px",
     display: "inline-block",
     marginRight: "4px",
+  },
+  tourButtonGroup: {
+    display: "inline-flex",
+    gap: "0.5rem",
+  },
+  tourButton: {
+    backgroundColor: "#4b5563",
+    color: "#f9fafb",
+    border: "1px solid #9ca3af",
+    borderRadius: "4px",
+    padding: "0.2rem 0.75rem",
+    fontSize: "0.85rem",
+    cursor: "pointer",
+    transition: "background-color 0.2s ease",
+  },
+  tourButtonDisabled: {
+    backgroundColor: "#6b7280",
+    borderColor: "#6b7280",
+    color: "#d1d5db",
+    cursor: "not-allowed",
+    opacity: 0.7,
   },
   windowContent: {
     flexGrow: 1,
