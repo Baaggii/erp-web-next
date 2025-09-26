@@ -2806,6 +2806,7 @@ const TableManager = forwardRef(function TableManager({
         key={`rowform-${table}`}
         visible={showForm}
         useGrid
+        isAddMode={isAdding}
         onCancel={() => {
           setShowForm(false);
           setEditing(null);
