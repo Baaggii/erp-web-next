@@ -7,6 +7,7 @@ if (typeof mock.import !== 'function') {
   test('shouldLoadRelations helper', { skip: true }, () => {});
   test('applySessionIdToTables helper', { skip: true }, () => {});
   test('calc field preflight respects SUM aggregators and multi rows', { skip: true }, () => {});
+  test('generated column configs support lowercase generation_expression metadata', { skip: true }, () => {});
 } else {
   test('shouldLoadRelations helper', async () => {
     const { shouldLoadRelations } = await mock.import(
@@ -244,6 +245,161 @@ if (typeof mock.import !== 'function') {
       calcFields,
     );
     assert.ok(mismatchSession, 'should detect mismatched multi-row values');
+  });
+
+  test('generated column configs support lowercase generation_expression metadata', async () => {
+    const stateOverrides = Array(21).fill(undefined);
+    stateOverrides[0] = {}; // configs
+    stateOverrides[1] = 'pos';
+    stateOverrides[2] = {
+      masterTable: 'transactions',
+      masterType: 'multi',
+      masterPosition: 'upper_left',
+      tables: [],
+    };
+    stateOverrides[3] = {
+      transactions: {
+        mainFields: ['qty', 'price', 'virtual_total'],
+        headerFields: [],
+        footerFields: [],
+      },
+    };
+    stateOverrides[4] = {
+      transactions: [
+        { name: 'qty' },
+        { name: 'price' },
+        { name: 'virtual_total', generation_expression: 'qty * price' },
+      ],
+    };
+    const memoResults = [];
+    const callbackResults = [];
+    const recordedExpressions = [];
+    const applyCalls = [];
+    let stateIndex = 0;
+
+    function resolveInitial(initial) {
+      return typeof initial === 'function' ? initial() : initial;
+    }
+
+    function useState(initial) {
+      const override =
+        stateOverrides[stateIndex] !== undefined
+          ? stateOverrides[stateIndex]
+          : resolveInitial(initial);
+      const idx = stateIndex;
+      stateIndex += 1;
+      const setter = () => {};
+      return [override, setter];
+    }
+
+    function useMemo(fn, deps) {
+      const result = fn();
+      memoResults.push({ fn, deps, result });
+      return result;
+    }
+
+    function useCallback(fn, deps) {
+      callbackResults.push({ fn, deps });
+      return fn;
+    }
+
+    const reactMock = {
+      useState,
+      useMemo,
+      useCallback,
+      useEffect: () => {},
+      useRef: (initial) => ({ current: initial }),
+      useContext: () => ({ user: {}, company: {}, branch: {} }),
+      useReducer: (reducer, initial) => [resolveInitial(initial), () => {}],
+      createElement: () => null,
+      Fragment: Symbol.for('react.test.fragment'),
+    };
+    reactMock.default = reactMock;
+
+    const generatedColumnsMock = {
+      valuesEqual: (a, b) => a === b,
+      createGeneratedColumnEvaluator: (expression) => {
+        recordedExpressions.push(expression);
+        return ({ row }) => {
+          const qty = Number(row.qty ?? 0);
+          const price = Number(row.price ?? 0);
+          return qty * price;
+        };
+      },
+      applyGeneratedColumnEvaluators: ({ targetRows, evaluators }) => {
+        applyCalls.push({ targetRows, evaluators });
+        let changed = false;
+        targetRows.forEach((row, index) => {
+          Object.entries(evaluators || {}).forEach(([field, evaluator]) => {
+            const next = evaluator({ row, index });
+            if (row[field] !== next) {
+              row[field] = next;
+              changed = true;
+            }
+          });
+        });
+        return { changed, metadata: null };
+      },
+    };
+
+    const mod = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {
+        react: reactMock,
+        '../utils/generatedColumns.js': generatedColumnsMock,
+        '../context/ToastContext.jsx': { useToast: () => ({ addToast: () => {} }) },
+        '../context/AuthContext.jsx': { AuthContext: {} },
+        '../hooks/useGeneralConfig.js': { default: () => ({}) },
+        '../components/RowFormModal.jsx': { default: () => null },
+        '../components/Modal.jsx': { default: () => null },
+        '../utils/formatTimestamp.js': { default: (v) => v },
+        '../utils/buildImageName.js': { default: () => '' },
+        '../utils/slugify.js': { default: (v) => v },
+        '../utils/debug.js': { debugLog: () => {} },
+        '../utils/syncCalcFields.js': { syncCalcFields: (vals) => vals },
+        '../utils/fetchTriggersForTables.js': { fetchTriggersForTables: () => [] },
+      },
+    );
+
+    const PosTransactionsPage = mod.default;
+    PosTransactionsPage();
+
+    assert.ok(
+      recordedExpressions.includes('qty * price'),
+      'should compile generation_expression value',
+    );
+
+    const generatedEntry = memoResults.find(
+      (entry) => entry.result && entry.result.transactions,
+    );
+    assert.ok(generatedEntry, 'should produce generated column configuration');
+    assert.equal(
+      typeof generatedEntry.result.transactions.evaluators.virtual_total,
+      'function',
+      'should register evaluator for virtual_total',
+    );
+
+    const applyHook = callbackResults.find((entry) =>
+      typeof entry.fn === 'function' &&
+      entry.fn.toString().includes('applyGeneratedColumnEvaluators'),
+    );
+    assert.ok(applyHook, 'should expose generated column applier');
+
+    const original = {
+      transactions: [
+        { id: 1, qty: 2, price: 5 },
+        { id: 2, qty: 3, price: 4 },
+      ],
+    };
+    const applied = applyHook.fn(original);
+
+    assert.notStrictEqual(applied, original, 'should return new values object');
+    assert.deepEqual(
+      applied.transactions.map((row) => row.virtual_total),
+      [10, 12],
+      'should apply evaluator results to each row',
+    );
+    assert.ok(applyCalls.length > 0, 'should invoke generated column evaluator helper');
   });
 
 }
