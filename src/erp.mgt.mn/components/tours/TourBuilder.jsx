@@ -420,13 +420,21 @@ export default function TourBuilder({ state, onClose }) {
   const saveDisabled = saving || loading || !pageKey.trim() || steps.some((step) => !step.selector.trim());
 
   return (
-    <div style={styles.overlay} role="dialog" aria-modal="true">
-      <div style={styles.modal} ref={builderRef} className="tour-builder-modal">
-        <div style={styles.header}>
-          <div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
-              {t('tour_builder_title', 'Tour builder')}
-            </div>
+    <div
+      style={{
+        ...styles.overlay,
+        ...(picking ? styles.overlayPicking : null),
+      }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div style={styles.modalWrapper}>
+        <div style={styles.modal} ref={builderRef} className="tour-builder-modal">
+          <div style={styles.header}>
+            <div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 600 }}>
+                {t('tour_builder_title', 'Tour builder')}
+              </div>
             <div style={{ fontSize: '0.85rem', opacity: 0.75 }}>
               {state?.mode === 'edit'
                 ? t('tour_builder_edit_mode', 'Edit the guided tour for this page')
@@ -658,6 +666,7 @@ export default function TourBuilder({ state, onClose }) {
             {saving ? t('saving', 'Saving…') : t('save', 'Save')}
           </button>
         </div>
+        </div>
       </div>
     </div>
   );
@@ -673,6 +682,12 @@ const styles = {
     justifyContent: 'center',
     zIndex: 1000,
     padding: '2rem',
+  },
+  overlayPicking: {
+    pointerEvents: 'none',
+  },
+  modalWrapper: {
+    pointerEvents: 'auto',
   },
   modal: {
     width: 'min(980px, 96vw)',
