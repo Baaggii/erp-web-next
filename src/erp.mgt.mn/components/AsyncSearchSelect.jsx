@@ -43,7 +43,6 @@ export default function AsyncSearchSelect({
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const [loading, setLoading] = useState(false);
-  const [userNavigated, setUserNavigated] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const containerRef = useRef(null);
@@ -79,23 +78,6 @@ export default function AsyncSearchSelect({
         });
       }
       return opt || null;
-    },
-    [options],
-  );
-
-  const findExactOption = useCallback(
-    (query) => {
-      const normalized = String(query || '').trim().toLowerCase();
-      if (normalized.length === 0) return null;
-      const byValue = options.find(
-        (o) => String(o.value ?? '').toLowerCase() === normalized,
-      );
-      if (byValue) return byValue;
-      return (
-        options.find(
-          (o) => String(o.label ?? '').toLowerCase() === normalized,
-        ) || null
-      );
     },
     [options],
   );
@@ -197,21 +179,8 @@ export default function AsyncSearchSelect({
   }, [value]);
 
   useEffect(() => {
-    if (!show) return;
-    setHighlight((h) => {
-      if (options.length === 0) return -1;
-      if (h >= options.length) return options.length - 1;
-      if (h < 0 && userNavigated) return 0;
-      return h;
-    });
-  }, [options, show, userNavigated]);
-
-  useEffect(() => {
-    if (!show) {
-      setUserNavigated(false);
-      setHighlight(-1);
-    }
-  }, [show]);
+    if (show && options.length > 0) setHighlight((h) => (h < 0 ? 0 : Math.min(h, options.length - 1)));
+  }, [options, show]);
 
   useEffect(() => {
     let canceled = false;
@@ -283,15 +252,7 @@ export default function AsyncSearchSelect({
       pendingLookupRef.current = null;
       return;
     }
-    let opt = null;
-    if (pending.allowAutoSelect) {
-      opt = findBestOption(pending.query);
-    } else if (pending.requireExact) {
-      opt = findExactOption(pending.query);
-    }
-    if (!opt && !pending.allowAutoSelect) {
-      opt = findExactOption(pending.query);
-    }
+    const opt = findBestOption(pending.query);
     if (opt) {
       onChange(opt.value, opt.label);
       setInput(String(opt.value));
@@ -302,63 +263,29 @@ export default function AsyncSearchSelect({
     } else {
       pendingLookupRef.current = null;
     }
-  }, [
-    loading,
-    options,
-    input,
-    findBestOption,
-    findExactOption,
-    onChange,
-  ]);
+  }, [loading, options, input, findBestOption, onChange]);
 
   function handleSelectKeyDown(e) {
     actionRef.current = null;
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (!show) setShow(true);
-      setUserNavigated(true);
-      setHighlight((h) => {
-        const maxIndex = options.length - 1;
-        if (maxIndex < 0) return -1;
-        const next = h < 0 ? 0 : h + 1;
-        return Math.min(next, maxIndex);
-      });
+      setHighlight((h) => Math.min(h + 1, options.length - 1));
       return;
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (!show) setShow(true);
-      setUserNavigated(true);
-      setHighlight((h) => {
-        const maxIndex = options.length - 1;
-        if (maxIndex < 0) return -1;
-        if (h < 0) return maxIndex;
-        return Math.max(h - 1, 0);
-      });
+      setHighlight((h) => Math.max(h - 1, 0));
       return;
     }
     if (e.key !== 'Enter') return;
 
     const query = String(input || '').trim();
-    const exactMatch = findExactOption(query);
-    const allowAutoSelect = userNavigated || !!exactMatch;
     if (loading || show === false) {
-      if (!allowAutoSelect) {
-        setShow(false);
-        actionRef.current = { type: 'enter' };
-        return;
-      }
-      actionRef.current = {
-        type: 'enter',
-        matched: 'pending',
-        query,
-        allowAutoSelect,
-        requireExact: !userNavigated,
-      };
+      actionRef.current = { type: 'enter', matched: 'pending', query };
       pendingLookupRef.current = {
         query,
-        allowAutoSelect,
-        requireExact: !userNavigated,
       };
       return;
     }
@@ -367,13 +294,12 @@ export default function AsyncSearchSelect({
     let opt = null;
     if (idx >= 0 && idx < options.length) {
       opt = options[idx];
-    } else if (exactMatch) {
-      opt = exactMatch;
+    } else if (options.length > 0) {
+      opt = findBestOption(query);
     }
 
     if (opt == null) {
-      setShow(false);
-      actionRef.current = { type: 'enter' };
+      actionRef.current = { type: 'enter', matched: false, query };
       return;
     }
 
@@ -440,7 +366,6 @@ export default function AsyncSearchSelect({
                   <li
                     key={opt.value}
                     onMouseDown={() => {
-                      setUserNavigated(true);
                       onChange(opt.value, opt.label);
                       if (onSelect) onSelect(opt);
                       setInput(String(opt.value));
@@ -450,10 +375,7 @@ export default function AsyncSearchSelect({
                       chosenRef.current = opt;
                       setShow(false);
                     }}
-                    onMouseEnter={() => {
-                      setUserNavigated(true);
-                      setHighlight(idx);
-                    }}
+                    onMouseEnter={() => setHighlight(idx)}
                     style={{
                       padding: '0.25rem',
                       background: highlight === idx ? '#eee' : '#fff',
@@ -500,14 +422,12 @@ export default function AsyncSearchSelect({
           pendingLookupRef.current = null;
           setInput(e.target.value);
           setLabel('');
-          setUserNavigated(false);
           onChange(e.target.value);
           setShow(true);
           setHighlight(-1);
         }}
         onFocus={(e) => {
           setShow(true);
-          setUserNavigated(false);
           if (onFocus) onFocus(e);
           e.target.style.width = 'auto';
           const max = parseFloat(inputStyle.maxWidth) || 150;
