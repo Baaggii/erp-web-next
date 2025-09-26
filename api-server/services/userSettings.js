@@ -23,7 +23,15 @@ export async function saveUserSettings(empid, settings, companyId = 0) {
   } catch {
     data = {};
   }
-  data[empid] = { ...(data[empid] || {}), ...settings };
+  const normalizedSettings = { ...(settings || {}) };
+  if (Object.prototype.hasOwnProperty.call(normalizedSettings, 'showTourButtons')) {
+    normalizedSettings.showTourButtons = Boolean(normalizedSettings.showTourButtons);
+  }
+
+  data[empid] = { ...(data[empid] || {}), ...normalizedSettings };
+  if (!Object.prototype.hasOwnProperty.call(data[empid], 'showTourButtons')) {
+    data[empid].showTourButtons = true;
+  }
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(data, null, 2));
   return data[empid];

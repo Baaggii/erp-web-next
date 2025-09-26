@@ -525,6 +525,6 @@
   "reports": "Reports",
   "user_level_actions": "User level actions",
   "edit_delete_request": "Edit or delete request",
-  "show_tour_buttons": "Show or hide the tour action buttons in the window header.",
+  "settings_show_tour_buttons": "Show or hide the tour action buttons in the window header.",
   "system_settings": "System settings"
 }

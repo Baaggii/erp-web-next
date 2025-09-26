@@ -788,6 +788,6 @@
   "assembly_price": "Assembly price",
   "reports": "Reports",
   "edit_delete_request": "Edit or delete request",
-  "show_tour_buttons": "在窗口标题中显示或隐藏导览按钮。",
+  "settings_show_tour_buttons": "在窗口标题中显示或隐藏导览按钮。",
   "system_settings": "System settings"
 }

@@ -719,10 +719,15 @@ function MainWindow({ title }) {
     return Boolean(value);
   }, []);
 
-  const showTourButtons = toBooleanFlag(
+  const showTourButtonsConfig = toBooleanFlag(
     generalConfig?.general?.showTourButtons,
     true,
   );
+  const showTourButtonsPreference = toBooleanFlag(
+    userSettings?.showTourButtons,
+    true,
+  );
+  const showTourButtons = showTourButtonsConfig && showTourButtonsPreference;
 
   const configBuilderToggle =
     generalConfig?.general?.tourBuilderEnabled ??
