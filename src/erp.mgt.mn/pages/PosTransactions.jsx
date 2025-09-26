@@ -15,10 +15,6 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
-import {
-  buildGeneratedColumnEvaluators,
-  applyGeneratedColumnEvaluators,
-} from '../utils/generatedColumns.js';
 import { syncCalcFields } from '../utils/syncCalcFields.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 
@@ -125,7 +121,6 @@ function restoreValuesFromTransport(values, multiTableSet) {
   });
   return result;
 }
-
 
 function normalizeValueForComparison(value) {
   if (value === undefined) return undefined;
@@ -809,10 +804,9 @@ export default function PosTransactionsPage() {
         }
       });
 
-      if (!mutated) return currentValues;
-      return applyGeneratedColumns(nextValues);
+      return mutated ? nextValues : currentValues;
     });
-  }, [branch, company, memoFormConfigs, tableTypeMap, applyGeneratedColumns]);
+  }, [branch, company, memoFormConfigs, tableTypeMap]);
 
   async function loadRelations(tbl) {
     if (loadingTablesRef.current.has(tbl)) {
@@ -1311,19 +1305,6 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, viewColumnsMap]);
 
-  const generatedColumnEvaluators = useMemo(() => {
-    const scopedMeta = {};
-    visibleTables.forEach((tbl) => {
-      if (columnMeta[tbl]) scopedMeta[tbl] = columnMeta[tbl];
-    });
-    return buildGeneratedColumnEvaluators(scopedMeta, memoColumnCaseMap);
-  }, [visibleTablesKey, configVersion, columnMeta, memoColumnCaseMap]);
-
-  const applyGeneratedColumns = useCallback(
-    (vals) => applyGeneratedColumnEvaluators(vals, generatedColumnEvaluators),
-    [generatedColumnEvaluators],
-  );
-
   useEffect(() => {
     if (!config) {
       setSessionFields(null);
@@ -1348,10 +1329,8 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!currentSessionId) return;
-    setValues((prev) =>
-      applyGeneratedColumns(applySessionIdToValues(prev, currentSessionId)),
-    );
-  }, [currentSessionId, applySessionIdToValues, applyGeneratedColumns]);
+    setValues((prev) => applySessionIdToValues(prev, currentSessionId));
+  }, [currentSessionId, applySessionIdToValues]);
 
   useEffect(() => {
     if (!config) return;
@@ -1363,9 +1342,7 @@ export default function PosTransactionsPage() {
     const prevKey = initRef.current;
     initRef.current = initKey;
     if (prevKey && prevKey.startsWith(`${name}::`) && currentSessionId) {
-      setValues((prev) =>
-        applyGeneratedColumns(applySessionIdToValues(prev, currentSessionId)),
-      );
+      setValues((prev) => applySessionIdToValues(prev, currentSessionId));
       return;
     }
     handleNew();
@@ -1408,14 +1385,8 @@ export default function PosTransactionsPage() {
       }
       return next;
     };
-    setValues((prev) => applyGeneratedColumns(updateSessionValues(prev)));
-  }, [
-    masterSessionValue,
-    visibleTablesKey,
-    configVersion,
-    sessionFieldsKey,
-    applyGeneratedColumns,
-  ]);
+    setValues(updateSessionValues);
+  }, [masterSessionValue, visibleTablesKey, configVersion, sessionFieldsKey]);
 
   function applyPosFields(vals, posFieldConfig) {
     if (!Array.isArray(posFieldConfig)) return vals;
@@ -1576,7 +1547,6 @@ export default function PosTransactionsPage() {
       next[t.table] = t.type === 'multi' ? [] : {};
     });
     next = applySessionIdToValues(next, sid);
-    next = applyGeneratedColumns(next);
     if (
       config.statusField?.table &&
       config.statusField.field &&
@@ -1622,7 +1592,7 @@ export default function PosTransactionsPage() {
       }
     });
     setCurrentSessionId(sid);
-    setValues(applyGeneratedColumns(next));
+    setValues(next);
     setMasterId(null);
     masterIdRef.current = null;
     setPendingId(null);
@@ -1709,7 +1679,7 @@ export default function PosTransactionsPage() {
       const js = await res.json().catch(() => ({}));
       if (js.id) {
         setPendingId(sid);
-        setValues(applyGeneratedColumns(next));
+        setValues(next);
         addToast('Saved', 'success');
       } else {
         const msg = js.message || res.statusText;
@@ -1746,7 +1716,7 @@ export default function PosTransactionsPage() {
       .catch(() => null);
     if (rec && rec.data) {
       const restoredData = restoreValuesFromTransport(rec.data, multiTableSet);
-      setValues(applyGeneratedColumns(restoredData));
+      setValues(restoredData);
       setPendingId(String(id).trim());
       setMasterId(rec.masterId || null);
       masterIdRef.current = rec.masterId || null;
@@ -1816,7 +1786,6 @@ export default function PosTransactionsPage() {
         if (payload[tbl][k] === undefined) payload[tbl][k] = v;
       });
     });
-    payload = applyGeneratedColumns(payload);
     const mismatch = findCalcFieldMismatch(payload, config.calcFields);
     if (mismatch) {
       addToast('Mapping mismatch', 'error');
@@ -1861,15 +1830,13 @@ export default function PosTransactionsPage() {
         const js = await res.json().catch(() => ({}));
         if (js.id) setPostedId(js.id);
         if (config.statusField?.table && config.statusField.field && config.statusField.posted) {
-          setValues((v) =>
-            applyGeneratedColumns({
-              ...v,
-              [config.statusField.table]: {
-                ...(v[config.statusField.table] || {}),
-                [config.statusField.field]: config.statusField.posted,
-              },
-            }),
-          );
+          setValues(v => ({
+            ...v,
+            [config.statusField.table]: {
+              ...(v[config.statusField.table] || {}),
+              [config.statusField.field]: config.statusField.posted,
+            },
+          }));
         }
         const imgCfg = memoFormConfigs[config.masterTable] || {};
         if (imgCfg.imageIdField) {
