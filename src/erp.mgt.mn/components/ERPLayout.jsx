@@ -650,6 +650,7 @@ export default function ERPLayout() {
             showBackButton
             showProgress
             disableOverlayClose
+            disableBeacon
             disableKeyboardNavigation={false}
             callback={handleTourCallback}
             locale={{
