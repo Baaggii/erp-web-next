@@ -105,6 +105,19 @@ function createClientStepId() {
   return `client-step-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+const MISSING_TARGET_ARROW_ATTRIBUTE = "data-tour-missing-target-arrow-marker";
+const INTERACTIVE_DESCENDANT_SELECTORS = [
+  "button",
+  "a[href]",
+  "input:not([type=\"hidden\"])",
+  "select",
+  "textarea",
+  "[role=\"button\"]",
+  "[role=\"menuitem\"]",
+  "[role=\"option\"]",
+  "[tabindex]:not([tabindex=\"-1\"])",
+];
+
 function coerceSelectorValue(value) {
   if (typeof value === "string") return value;
   if (value === null || value === undefined) return "";
@@ -299,6 +312,7 @@ function sanitizeTourStepsForRestart(steps) {
       delete sanitized.missingTargetPauseArrowSelector;
       delete sanitized.missingTargetPauseArrowMessage;
       delete sanitized.missingTargetPauseArrowRect;
+      delete sanitized.missingTargetPauseArrowMarker;
 
       return sanitized;
     });
@@ -577,6 +591,25 @@ export default function ERPLayout() {
         // ignore
       }
     }
+    if (
+      entry.markerAttribute &&
+      entry.markerValue &&
+      typeof document !== "undefined" &&
+      document?.querySelectorAll
+    ) {
+      try {
+        const selector =
+          `[${entry.markerAttribute}="${entry.markerValue}"]`;
+        const nodes = document.querySelectorAll(selector);
+        nodes.forEach((node) => {
+          if (node?.removeAttribute) {
+            node.removeAttribute(entry.markerAttribute);
+          }
+        });
+      } catch (err) {
+        // ignore selector errors
+      }
+    }
     if (entry.container?.parentNode) {
       entry.container.parentNode.removeChild(entry.container);
     }
@@ -676,6 +709,7 @@ export default function ERPLayout() {
         delete restoredStep.missingTargetPauseArrowSelector;
         delete restoredStep.missingTargetPauseArrowMessage;
         delete restoredStep.missingTargetPauseArrowRect;
+        delete restoredStep.missingTargetPauseArrowMarker;
         delete restoredStep.missingTargetPauseTooltipMessage;
 
         baseSteps[adjustedOriginalIndex] = restoredStep;
@@ -1373,21 +1407,56 @@ export default function ERPLayout() {
 
               let arrowRect = null;
               let arrowIsValid = false;
+              let arrowTrackedElement = null;
+              let markerValueForAssignment = "";
+              let markerValueForRemoval = "";
               if (typeof document !== "undefined" && document?.body) {
                 try {
                   const arrowElements = document.querySelectorAll(fallbackSelector);
                   if (arrowElements.length > 0) {
-                    const candidateElements = Array.from(arrowElements)
-                      .map((element, elementIndex) => {
-                        if (!element || typeof element.getBoundingClientRect !== "function") {
-                          return null;
+                    const candidateElements = [];
+                    Array.from(arrowElements).forEach((element, elementIndex) => {
+                      if (!element || typeof element.getBoundingClientRect !== "function") {
+                        return;
+                      }
+
+                      const seenNodes = new Set();
+                      const pushCandidate = (rect, resolvedElement, visible) => {
+                        if (!rect) return;
+                        candidateElements.push({
+                          element,
+                          rect,
+                          visible: Boolean(visible),
+                          elementIndex,
+                          resolvedElement: resolvedElement || element,
+                        });
+                      };
+
+                      const baseRect = element.getBoundingClientRect();
+                      if (baseRect) {
+                        const baseVisible = baseRect.width > 0 && baseRect.height > 0;
+                        pushCandidate(baseRect, element, baseVisible);
+                        seenNodes.add(element);
+                      }
+
+                      for (const selector of INTERACTIVE_DESCENDANT_SELECTORS) {
+                        let nodes = [];
+                        try {
+                          nodes = Array.from(element.querySelectorAll(selector));
+                        } catch (err) {
+                          // ignore invalid selectors
                         }
-                        const rect = element.getBoundingClientRect();
-                        if (!rect) return null;
-                        const visible = rect.width > 0 && rect.height > 0;
-                        return { element, rect, visible, elementIndex };
-                      })
-                      .filter(Boolean);
+                        nodes.forEach((node) => {
+                          if (!node || seenNodes.has(node)) return;
+                          seenNodes.add(node);
+                          if (typeof node.getBoundingClientRect !== "function") return;
+                          const nodeRect = node.getBoundingClientRect();
+                          if (!nodeRect) return;
+                          const nodeVisible = nodeRect.width > 0 && nodeRect.height > 0;
+                          pushCandidate(nodeRect, node, nodeVisible);
+                        });
+                      }
+                    });
 
                     if (candidateElements.length) {
                       const targetSelectorCandidates = [];
@@ -1474,7 +1543,7 @@ export default function ERPLayout() {
                       });
 
                       const bestCandidate = candidateWithScore[0]?.candidate;
-                      if (bestCandidate?.visible) {
+                      if (bestCandidate?.visible && bestCandidate.rect) {
                         const { rect } = bestCandidate;
                         arrowRect = {
                           top: rect.top,
@@ -1483,6 +1552,8 @@ export default function ERPLayout() {
                           height: rect.height,
                         };
                         arrowIsValid = true;
+                        arrowTrackedElement =
+                          bestCandidate.resolvedElement || bestCandidate.element;
                       }
                     }
                   }
@@ -1572,7 +1643,16 @@ export default function ERPLayout() {
                       updatedPauseStep.highlightSelectors = [fallbackSelector];
                       mutated = true;
                     }
+                    const previousMarkerValue =
+                      typeof updatedPauseStep.missingTargetPauseArrowMarker === "string"
+                        ? updatedPauseStep.missingTargetPauseArrowMarker.trim()
+                        : "";
                     if (arrowIsValid) {
+                      const markerValue =
+                        previousMarkerValue || createClientStepId();
+                      const markerSelector =
+                        `[${MISSING_TARGET_ARROW_ATTRIBUTE}="${markerValue}"]`;
+
                       if (
                         updatedPauseStep.missingTargetPauseHasArrow !== true
                       ) {
@@ -1581,10 +1661,17 @@ export default function ERPLayout() {
                       }
                       if (
                         updatedPauseStep.missingTargetPauseArrowSelector !==
-                        fallbackSelector
+                        markerSelector
                       ) {
                         updatedPauseStep.missingTargetPauseArrowSelector =
-                          fallbackSelector;
+                          markerSelector;
+                        mutated = true;
+                      }
+                      if (
+                        updatedPauseStep.missingTargetPauseArrowMarker !==
+                        markerValue
+                      ) {
+                        updatedPauseStep.missingTargetPauseArrowMarker = markerValue;
                         mutated = true;
                       }
                       if (arrowRect) {
@@ -1607,6 +1694,14 @@ export default function ERPLayout() {
                       ) {
                         updatedPauseStep.missingTargetPauseArrowMessage = arrowMessage;
                         mutated = true;
+                      }
+                      markerValueForAssignment = markerValue;
+                      if (
+                        previousMarkerValue &&
+                        previousMarkerValue !== markerValue &&
+                        !markerValueForRemoval
+                      ) {
+                        markerValueForRemoval = previousMarkerValue;
                       }
                     } else {
                       if (
@@ -1633,6 +1728,15 @@ export default function ERPLayout() {
                       ) {
                         delete updatedPauseStep.missingTargetPauseArrowMessage;
                         mutated = true;
+                      }
+                      if (
+                        updatedPauseStep.missingTargetPauseArrowMarker !== undefined
+                      ) {
+                        delete updatedPauseStep.missingTargetPauseArrowMarker;
+                        mutated = true;
+                      }
+                      if (!markerValueForRemoval && previousMarkerValue) {
+                        markerValueForRemoval = previousMarkerValue;
                       }
                     }
                     if (
@@ -1672,6 +1776,7 @@ export default function ERPLayout() {
                 updatedCurrentStep.highlightSelectors = normalizedOriginalSelectors;
               }
               delete updatedCurrentStep.missingTarget;
+              delete updatedCurrentStep.missingTargetPauseArrowMarker;
 
               const placeholder = {
                 ...currentStep,
@@ -1691,10 +1796,17 @@ export default function ERPLayout() {
               delete placeholder.missingTargetPauseArrowSelector;
               delete placeholder.missingTargetPauseArrowMessage;
               delete placeholder.missingTargetPauseArrowRect;
+              delete placeholder.missingTargetPauseArrowMarker;
               if (arrowIsValid) {
+                const markerValue =
+                  markerValueForAssignment || createClientStepId();
+                const markerSelector =
+                  `[${MISSING_TARGET_ARROW_ATTRIBUTE}="${markerValue}"]`;
+                markerValueForAssignment = markerValue;
                 placeholder.missingTargetPauseHasArrow = true;
-                placeholder.missingTargetPauseArrowSelector = fallbackSelector;
+                placeholder.missingTargetPauseArrowSelector = markerSelector;
                 placeholder.missingTargetPauseArrowMessage = arrowMessage;
+                placeholder.missingTargetPauseArrowMarker = markerValue;
                 if (arrowRect) {
                   placeholder.missingTargetPauseArrowRect = arrowRect;
                 }
@@ -1710,6 +1822,52 @@ export default function ERPLayout() {
               placeholderIndex = clampedIndex;
               return nextSteps;
             });
+
+            if (
+              markerValueForRemoval &&
+              typeof document !== "undefined" &&
+              document?.querySelectorAll
+            ) {
+              try {
+                const selector =
+                  `[${MISSING_TARGET_ARROW_ATTRIBUTE}="${markerValueForRemoval}"]`;
+                const nodes = document.querySelectorAll(selector);
+                nodes.forEach((node) => {
+                  if (node?.removeAttribute) {
+                    node.removeAttribute(MISSING_TARGET_ARROW_ATTRIBUTE);
+                  }
+                });
+              } catch (err) {
+                // ignore selector errors
+              }
+            }
+
+            if (
+              arrowIsValid &&
+              markerValueForAssignment &&
+              arrowTrackedElement &&
+              typeof document !== "undefined"
+            ) {
+              try {
+                const selector =
+                  `[${MISSING_TARGET_ARROW_ATTRIBUTE}="${markerValueForAssignment}"]`;
+                const nodes = document.querySelectorAll(selector);
+                nodes.forEach((node) => {
+                  if (node === arrowTrackedElement) return;
+                  if (node?.removeAttribute) {
+                    node.removeAttribute(MISSING_TARGET_ARROW_ATTRIBUTE);
+                  }
+                });
+                if (arrowTrackedElement.setAttribute) {
+                  arrowTrackedElement.setAttribute(
+                    MISSING_TARGET_ARROW_ATTRIBUTE,
+                    markerValueForAssignment,
+                  );
+                }
+              } catch (err) {
+                // ignore selector errors
+              }
+            }
 
             if (placeholderStep && Number.isFinite(placeholderIndex)) {
               setTourStepIndex(placeholderIndex);
@@ -2069,6 +2227,12 @@ export default function ERPLayout() {
 
     const selectors = Array.from(selectorsSet);
 
+    const markerValue =
+      typeof step.missingTargetPauseArrowMarker === "string" &&
+      step.missingTargetPauseArrowMarker.trim()
+        ? step.missingTargetPauseArrowMarker.trim()
+        : "";
+
     const storedRectRaw =
       step.missingTargetPauseArrowRect &&
       typeof step.missingTargetPauseArrowRect === "object"
@@ -2162,6 +2326,8 @@ export default function ERPLayout() {
       handleScroll: null,
       handleResize: null,
       resizeObserver: null,
+      markerAttribute: MISSING_TARGET_ARROW_ATTRIBUTE,
+      markerValue,
     };
 
     const findElement = () => {
@@ -2181,6 +2347,21 @@ export default function ERPLayout() {
 
     entry.trackedElement = findElement();
 
+    if (
+      entry.markerAttribute &&
+      entry.markerValue &&
+      entry.trackedElement?.setAttribute
+    ) {
+      try {
+        entry.trackedElement.setAttribute(
+          entry.markerAttribute,
+          entry.markerValue,
+        );
+      } catch (err) {
+        // ignore attribute errors
+      }
+    }
+
     const getRect = () => {
       if (entry.trackedElement) {
         const rect = entry.trackedElement.getBoundingClientRect();
@@ -2191,6 +2372,20 @@ export default function ERPLayout() {
       const nextElement = findElement();
       if (nextElement) {
         entry.trackedElement = nextElement;
+        if (
+          entry.markerAttribute &&
+          entry.markerValue &&
+          entry.trackedElement?.setAttribute
+        ) {
+          try {
+            entry.trackedElement.setAttribute(
+              entry.markerAttribute,
+              entry.markerValue,
+            );
+          } catch (err) {
+            // ignore attribute errors
+          }
+        }
         const rect = nextElement.getBoundingClientRect();
         if (rect && (rect.width || rect.height)) {
           return rect;
