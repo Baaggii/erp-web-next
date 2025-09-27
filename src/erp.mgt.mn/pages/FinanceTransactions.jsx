@@ -69,12 +69,6 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const prevSessionRef = useRef({});
   const prevConfigRef = useRef(null);
 
-  const tableName = typeof table === 'string' ? table : String(table ?? '');
-  const isTransactionTable = tableName.toLowerCase().startsWith('transactions');
-  const canAddRows = isTransactionTable
-    ? Boolean(buttonPerms?.['New transaction'])
-    : true;
-
   const procMap = useHeaderMappings(
     config?.procedures
       ? [...config.procedures, selectedProc].filter(Boolean)
@@ -581,7 +575,7 @@ useEffect(() => {
       {table && config && (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
-            {canAddRows && (
+            {buttonPerms['New transaction'] && (
               <button
                 onClick={() => tableRef.current?.openAdd()}
                 style={{ marginRight: '0.5rem' }}

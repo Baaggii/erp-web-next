@@ -198,12 +198,6 @@ const TableManager = forwardRef(function TableManager({
   const [imagesRow, setImagesRow] = useState(null);
   const [uploadRow, setUploadRow] = useState(null);
   const [ctxMenu, setCtxMenu] = useState(null); // { x, y, value }
-
-  const tableName = typeof table === 'string' ? table : String(table ?? '');
-  const isTransactionTable = tableName.toLowerCase().startsWith('transactions');
-  const canAddRows = isTransactionTable
-    ? Boolean(buttonPerms?.['New transaction'])
-    : true;
   const [searchTerm, setSearchTerm] = useState('');
   const [searchImages, setSearchImages] = useState([]);
   const [searchPage, setSearchPage] = useState(1);
@@ -1296,11 +1290,11 @@ const TableManager = forwardRef(function TableManager({
   useImperativeHandle(
     ref,
     () => ({
-      openAdd: canAddRows ? openAdd : () => {},
+      openAdd: buttonPerms['New transaction'] ? openAdd : () => {},
       openEdit,
       openRequestEdit,
     }),
-    [canAddRows, openAdd, openEdit, openRequestEdit],
+    [buttonPerms, openAdd, openEdit, openRequestEdit],
   );
 
   async function openDetail(row) {
@@ -2178,7 +2172,7 @@ const TableManager = forwardRef(function TableManager({
           textAlign: 'left',
         }}
       >
-        {canAddRows && (
+        {buttonPerms['New transaction'] && (
           <TooltipWrapper title={t('add_row', { ns: 'tooltip', defaultValue: 'Add new row' })}>
             <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
               {addLabel}
