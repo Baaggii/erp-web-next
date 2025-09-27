@@ -577,6 +577,58 @@ test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
   assert.equal(cleared.transactions_income.or_or, 0);
 });
 
+test('syncCalcFields aggregates AVG cells across detail rows', () => {
+  const calcFields = [
+    {
+      cells: [
+        { table: 'transactions_pos', field: 'avg_discount' },
+        { table: 'transactions_order', field: 'line_discount', agg: 'AVG' },
+        { table: 'transactions_income', field: 'avg_discount' },
+      ],
+    },
+  ];
+
+  const initial = {
+    transactions_pos: { avg_discount: 0 },
+    transactions_order: [
+      { line: 1, line_discount: 10 },
+      { line: 2, line_discount: 20 },
+      { line: 3, line_discount: null },
+    ],
+    transactions_income: { avg_discount: 0 },
+  };
+
+  const synced = syncCalcFields(initial, calcFields);
+  assert.equal(synced.transactions_pos.avg_discount, 15);
+  assert.equal(synced.transactions_income.avg_discount, 15);
+  assert.equal(synced.transactions_order[0].line_discount, 10);
+  assert.equal(synced.transactions_order[1].line_discount, 20);
+  assert.equal(synced.transactions_order[2].line_discount, null);
+
+  const updated = {
+    ...synced,
+    transactions_order: synced.transactions_order.map((row) =>
+      row.line === 2 ? { ...row, line_discount: 40 } : row,
+    ),
+  };
+
+  const afterEdit = syncCalcFields(updated, calcFields);
+  assert.equal(afterEdit.transactions_pos.avg_discount, 25);
+  assert.equal(afterEdit.transactions_income.avg_discount, 25);
+  assert.equal(afterEdit.transactions_order[1].line_discount, 40);
+
+  const cleared = syncCalcFields(
+    {
+      ...afterEdit,
+      transactions_order: [],
+    },
+    calcFields,
+  );
+
+  assert.equal(cleared.transactions_pos.avg_discount, 25);
+  assert.equal(cleared.transactions_income.avg_discount, 25);
+});
+
 test('syncCalcFields updates multi table metadata for header fields', () => {
   const calcFields = [
     {
