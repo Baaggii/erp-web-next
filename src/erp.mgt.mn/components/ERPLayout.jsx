@@ -36,6 +36,7 @@ export const TourContext = React.createContext({
   tourBuilderState: null,
   tourViewerState: null,
   tourStepIndex: 0,
+  activeTourRunId: 0,
   ensureTourDefinition: () => Promise.resolve(null),
   saveTourDefinition: () => Promise.resolve(null),
   deleteTourDefinition: () => Promise.resolve(false),
@@ -197,6 +198,9 @@ export default function ERPLayout() {
   const [tourSteps, setTourSteps] = useState([]);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [runTour, setRunTour] = useState(false);
+  const tourRunIdRef = useRef(0);
+  const activeTourRunIdRef = useRef(0);
+  const [activeTourRunId, setActiveTourRunId] = useState(0);
   const [currentTourPage, setCurrentTourPage] = useState('');
   const toursByPageRef = useRef({});
   const toursByPathRef = useRef({});
@@ -305,9 +309,15 @@ export default function ERPLayout() {
       }
 
       if (options?.force || !alreadySeen) {
+        const nextRunId = tourRunIdRef.current + 1;
+        tourRunIdRef.current = nextRunId;
+        activeTourRunIdRef.current = nextRunId;
+        setActiveTourRunId(nextRunId);
+
         const joyrideSteps = runnableSteps.map((step) => ({
           ...step,
           target: step.target || step.selector || step.id,
+          __runId: nextRunId,
         }));
         setTourStepIndex(initialStepIndex);
         setTourSteps(joyrideSteps);
@@ -551,7 +561,7 @@ export default function ERPLayout() {
 
   const handleTourCallback = useCallback(
     (data) => {
-      const { status, index, type, action } = data;
+      const { status, index, type, action, step } = data;
       const defer =
         typeof queueMicrotask === "function"
           ? queueMicrotask
@@ -561,13 +571,19 @@ export default function ERPLayout() {
 
       defer(() => {
         if (Number.isFinite(index)) {
+          const eventRunId = step?.__runId;
+          const isCurrentRun =
+            eventRunId === undefined || eventRunId === activeTourRunIdRef.current;
           if (type === EVENTS.STEP_BEFORE || type === EVENTS.TOOLTIP_OPEN) {
             const clampedIndex = Math.min(
               Math.max(0, index),
               Math.max(tourSteps.length - 1, 0),
             );
             setTourStepIndex(clampedIndex);
-          } else if (type === EVENTS.STEP_AFTER || type === EVENTS.TARGET_NOT_FOUND) {
+          } else if (
+            (type === EVENTS.STEP_AFTER || type === EVENTS.TARGET_NOT_FOUND) &&
+            isCurrentRun
+          ) {
             const delta = action === ACTIONS.PREV ? -1 : 1;
             const nextIndex = index + delta;
             const clampedIndex = Math.min(
@@ -600,6 +616,7 @@ export default function ERPLayout() {
       const numericIndex = Number(stepIndex);
       const safeIndex = Number.isFinite(numericIndex) ? numericIndex : 0;
       const clampedIndex = Math.min(Math.max(0, safeIndex), steps.length - 1);
+      setTourStepIndex(clampedIndex);
       startTour(tourViewerState.pageKey, steps, {
         force: true,
         path: tourViewerState.path || location.pathname,
@@ -677,6 +694,7 @@ export default function ERPLayout() {
       tourBuilderState,
       tourViewerState,
       tourStepIndex,
+      activeTourRunId,
       ensureTourDefinition,
       saveTourDefinition,
       deleteTourDefinition,
@@ -695,6 +713,7 @@ export default function ERPLayout() {
       tourRegistryVersion,
       tourStepIndex,
       tourViewerState,
+      activeTourRunId,
     ],
   );
 
@@ -705,7 +724,11 @@ export default function ERPLayout() {
       )}
       {tourViewerState && (
         <TourViewer
-          state={{ ...tourViewerState, currentStepIndex: tourStepIndex }}
+          state={{
+            ...tourViewerState,
+            currentStepIndex: tourStepIndex,
+            runId: activeTourRunId,
+          }}
           onClose={closeTourViewer}
           onSelectStep={handleTourStepJump}
         />
