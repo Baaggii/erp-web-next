@@ -1428,10 +1428,8 @@ export default function ERPLayout() {
     const updatePositions = () => {
       spotlightEntries.forEach(({ mask, outline, element, padding: paddingAmount }) => {
         const rect = element.getBoundingClientRect();
-        const scrollY = window.scrollY ?? window.pageYOffset ?? 0;
-        const scrollX = window.scrollX ?? window.pageXOffset ?? 0;
-        const top = scrollY + rect.top - paddingAmount;
-        const left = scrollX + rect.left - paddingAmount;
+        const top = rect.top - paddingAmount;
+        const left = rect.left - paddingAmount;
         const width = rect.width + paddingAmount * 2;
         const height = rect.height + paddingAmount * 2;
         const roundedTop = `${Math.floor(top)}px`;
