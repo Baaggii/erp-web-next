@@ -164,6 +164,90 @@ function computeStepSignature(steps) {
   );
 }
 
+function JoyrideTooltip({ index = 0, step, tooltipProps = {}, helpers = {} }) {
+  const canGoBack = index > 0;
+  const backLabel = step?.locale?.back || 'Back';
+  const nextLabel = step?.locale?.next || 'Next';
+  const endLabel =
+    step?.locale?.last || step?.locale?.close || step?.locale?.skip || 'End tour';
+
+  const handleBack = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (typeof helpers.goBack === 'function') {
+      helpers.goBack(event);
+    }
+  };
+
+  const handleNext = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (typeof helpers.next === 'function') {
+      helpers.next(event);
+    }
+  };
+
+  const handleEnd = (event) => {
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (typeof helpers.close === 'function') {
+      helpers.close(true);
+    }
+  };
+
+  return (
+    <div
+      {...tooltipProps}
+      className={`react-joyride__tooltip ${tooltipProps?.className ?? ''}`.trim()}
+    >
+      {step?.title ? (
+        <div className="react-joyride__tooltip-header">
+          <h3 className="react-joyride__tooltip-title">{step.title}</h3>
+        </div>
+      ) : null}
+      <div className="react-joyride__tooltip-content">{step?.content}</div>
+      <div
+        className="react-joyride__tooltip-footer"
+        style={{
+          display: 'flex',
+          gap: '0.5rem',
+          justifyContent: 'flex-end',
+          marginTop: '1rem',
+        }}
+      >
+        <button
+          type="button"
+          className="react-joyride__tooltip-button react-joyride__tooltip-button--back"
+          onClick={handleBack}
+          disabled={!canGoBack}
+        >
+          {backLabel}
+        </button>
+        <button
+          type="button"
+          className="react-joyride__tooltip-button react-joyride__tooltip-button--primary"
+          onClick={handleNext}
+        >
+          {nextLabel}
+        </button>
+        <button
+          type="button"
+          className="react-joyride__tooltip-button react-joyride__tooltip-button--skip"
+          onClick={handleEnd}
+        >
+          {endLabel}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function stripStepForSave(step) {
   if (!step || typeof step !== 'object') return step;
   const { target, ...rest } = step;
@@ -744,7 +828,6 @@ export default function ERPLayout() {
             scrollOffset={joyrideScrollOffset}
             scrollToFirstStep
             scrollToSteps
-            showSkipButton
             showBackButton
             showProgress
             disableOverlayClose
@@ -752,12 +835,12 @@ export default function ERPLayout() {
             disableKeyboardNavigation={false}
             floaterProps={{ offset: joyrideScrollOffset }}
             callback={handleTourCallback}
+            tooltipComponent={JoyrideTooltip}
             locale={{
               back: 'Back',
               close: 'End tour',
               last: 'End tour',
               next: 'Next',
-              skip: 'Skip',
             }}
           />
           <Header
