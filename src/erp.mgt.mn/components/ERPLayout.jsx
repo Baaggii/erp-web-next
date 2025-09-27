@@ -1176,6 +1176,13 @@ function MainWindow({ title }) {
     setTabContent(location.pathname, outlet);
   }, [location.pathname, setTabContent]);
 
+  useEffect(() => {
+    if (!activeKey || activeKey === location.pathname) return;
+    if (typeof activeKey !== 'string') return;
+    if (!activeKey.startsWith('/')) return;
+    navigate(activeKey);
+  }, [activeKey, location.pathname, navigate]);
+
   function handleSwitch(key) {
     switchTab(key);
     if (key.startsWith('/')) navigate(key);
@@ -1338,7 +1345,7 @@ function MainWindow({ title }) {
               <button
                 onClick={(e) => {
                   e.stopPropagation();
-                  closeTab(t.key);
+                  closeTab(t.key, navigate);
                 }}
                 style={styles.closeBtn}
               >
