@@ -41,7 +41,60 @@ function getTranslatorLabel(source) {
   return fallback || TRANSLATOR_LABELS.unknown;
 }
 
-const MANUAL_ENTRY_LABEL = 'Manual entry';
+const MANUAL_ENTRY_PROVIDER = 'manual-entry';
+
+function normalizeProvider(provider) {
+  if (typeof provider !== 'string') {
+    return '';
+  }
+  const trimmed = provider.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower === 'manual entry' || lower === 'manual-entry') {
+    return MANUAL_ENTRY_PROVIDER;
+  }
+  return trimmed;
+}
+
+function normalizeOrigin(origin) {
+  if (typeof origin !== 'string') {
+    return '';
+  }
+  const trimmed = origin.trim();
+  if (!trimmed) {
+    return '';
+  }
+  const lower = trimmed.toLowerCase();
+  if (lower === 'locale file' || lower === 'locale-file' || lower === 'locale') {
+    return 'locale-file';
+  }
+  if (lower === 'tooltip file' || lower === 'tooltip-file' || lower === 'tooltip') {
+    return 'tooltip-file';
+  }
+  return trimmed;
+}
+
+function formatTranslationSource(origin, provider) {
+  const normalizedOrigin = normalizeOrigin(origin);
+  const normalizedProvider = normalizeProvider(provider);
+  const originLabel = normalizedOrigin ? getTranslatorLabel(normalizedOrigin) : '';
+  const providerLabel = normalizedProvider ? getTranslatorLabel(normalizedProvider) : '';
+  if (originLabel && providerLabel) {
+    if (originLabel === providerLabel) {
+      return originLabel;
+    }
+    return `${originLabel} – ${providerLabel}`;
+  }
+  if (originLabel) {
+    return originLabel;
+  }
+  if (providerLabel) {
+    return providerLabel;
+  }
+  return TRANSLATOR_LABELS.unknown;
+}
 
 const BASE_COLUMN_KEYS = [
   'key',
@@ -233,15 +286,12 @@ export default function ManualTranslationsTab() {
             const normalizedEntries = (data.entries ?? []).map((entry) => {
               const values = { ...(entry.values ?? {}) };
               const translatedBy = { ...(entry.translatedBy ?? {}) };
+              const translatedBySources = { ...(entry.translatedBySources ?? {}) };
               for (const lang of languagesList) {
                 if (values[lang] == null) values[lang] = '';
-                const label = translatedBy[lang];
-                if (typeof label === 'string') {
-                  const trimmed = label.trim();
-                  translatedBy[lang] = trimmed ? getTranslatorLabel(trimmed) : '';
-                } else {
-                  translatedBy[lang] = '';
-                }
+                translatedBy[lang] = normalizeProvider(translatedBy[lang]);
+                const origin = normalizeOrigin(translatedBySources[lang]);
+                translatedBySources[lang] = origin;
               }
               return {
                 ...entry,
@@ -251,6 +301,7 @@ export default function ManualTranslationsTab() {
                 pageEditable: entry.pageEditable ?? true,
                 values,
                 translatedBy,
+                translatedBySources,
               };
             });
             setEntries(normalizedEntries);
@@ -503,8 +554,14 @@ export default function ManualTranslationsTab() {
       entry.values = { ...entry.values, [lang]: value };
       entry.translatedBy = {
         ...(entry.translatedBy ?? {}),
-        [lang]: MANUAL_ENTRY_LABEL,
+        [lang]: MANUAL_ENTRY_PROVIDER,
       };
+      if (entry.translatedBySources) {
+        entry.translatedBySources = {
+          ...entry.translatedBySources,
+          [lang]: '',
+        };
+      }
       copy[index] = entry;
       return copy;
     });
@@ -600,10 +657,14 @@ export default function ManualTranslationsTab() {
     }
   }
 
-  const captureTranslationSource = (lang, source) => {
+  const captureTranslationSource = (lang, provider, origin) => {
     if (!lang) return;
-    const label = getTranslatorLabel(source);
-    setTranslationSources((prev) => [...prev, { lang, label }]);
+    const normalizedProvider = normalizeProvider(provider);
+    const normalizedOrigin = normalizeOrigin(origin);
+    setTranslationSources((prev) => [
+      ...prev,
+      { lang, provider: normalizedProvider, origin: normalizedOrigin },
+    ]);
   };
 
   const clearTranslationSources = () => {
@@ -633,6 +694,7 @@ export default function ManualTranslationsTab() {
         ...entry,
         values: { ...entry.values },
         translatedBy: { ...(entry.translatedBy ?? {}) },
+        translatedBySources: { ...(entry.translatedBySources ?? {}) },
       };
       const entryMetadata = {
         module: newEntry.module,
@@ -682,8 +744,13 @@ export default function ManualTranslationsTab() {
           const translated = await translateEntry(targetLang, sourceInfo.text);
           if (translated?.text && !translated.needsRetry) {
             newEntry.values[targetLang] = translated.text;
-            newEntry.translatedBy[targetLang] = getTranslatorLabel(translated.source);
-            captureTranslationSource(targetLang, translated.source);
+            const provider = normalizeProvider(translated.source);
+            const origin = normalizeOrigin(
+              newEntry.translatedBySources?.[targetLang] ?? newEntry.type,
+            );
+            newEntry.translatedBy[targetLang] = provider;
+            newEntry.translatedBySources[targetLang] = origin;
+            captureTranslationSource(targetLang, provider, origin);
             changed = true;
             return true;
           }
@@ -733,8 +800,13 @@ export default function ManualTranslationsTab() {
                 const translated = await translateEntry(lang, sourceInfo.text);
                 if (translated?.text && !translated.needsRetry) {
                   newEntry.values[lang] = translated.text;
-                  newEntry.translatedBy[lang] = getTranslatorLabel(translated.source);
-                  captureTranslationSource(lang, translated.source);
+                  const provider = normalizeProvider(translated.source);
+                  const origin = normalizeOrigin(
+                    newEntry.translatedBySources?.[lang] ?? newEntry.type,
+                  );
+                  newEntry.translatedBy[lang] = provider;
+                  newEntry.translatedBySources[lang] = origin;
+                  captureTranslationSource(lang, provider, origin);
                   changed = true;
                 } else if (translated?.needsRetry) {
                   needsManualReview = true;
@@ -757,7 +829,11 @@ export default function ManualTranslationsTab() {
         }
       }
       if (changed) {
-        pending.push(newEntry);
+        const { translatedBySources: _ignoredSources, ...restEntry } = newEntry;
+        pending.push({
+          ...restEntry,
+          translatedBy: { ...(newEntry.translatedBy ?? {}) },
+        });
         saved = true;
       }
       if (needsManualReview) {
@@ -860,6 +936,7 @@ export default function ManualTranslationsTab() {
         pageEditable: true,
         values: {},
         translatedBy: Object.fromEntries(languages.map((lang) => [lang, ''])),
+        translatedBySources: Object.fromEntries(languages.map((lang) => [lang, ''])),
       },
     ];
     setEntries(newEntries);
@@ -891,22 +968,25 @@ export default function ManualTranslationsTab() {
           </div>
           {translationSources.length ? (
             <div style={getProviderGridStyle(translationSources.length)}>
-              {translationSources.map(({ lang, label }, index) => (
-                <div
-                  key={`${lang}-${label}-${index}`}
-                  style={{
-                    backgroundColor: '#1f2937',
-                    borderRadius: '0.375rem',
-                    padding: '0.25rem 0.5rem',
-                    wordBreak: 'break-word',
-                  }}
-                >
-                  <span style={{ fontWeight: 600, marginRight: '0.25rem' }}>
-                    {(lang || '').toUpperCase()}
-                  </span>
-                  <span>{label || TRANSLATOR_LABELS.unknown}</span>
-                </div>
-              ))}
+              {translationSources.map(({ lang, origin, provider }, index) => {
+                const displayLabel = formatTranslationSource(origin, provider);
+                return (
+                  <div
+                    key={`${lang}-${origin}-${provider}-${index}`}
+                    style={{
+                      backgroundColor: '#1f2937',
+                      borderRadius: '0.375rem',
+                      padding: '0.25rem 0.5rem',
+                      wordBreak: 'break-word',
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, marginRight: '0.25rem' }}>
+                      {(lang || '').toUpperCase()}
+                    </span>
+                    <span>{displayLabel || TRANSLATOR_LABELS.unknown}</span>
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div style={{ color: '#d1d5db' }}>
@@ -1097,11 +1177,9 @@ export default function ManualTranslationsTab() {
                   <td style={getCellStyle()}>
                     <div style={getProviderGridStyle(languages.length)}>
                       {languages.map((l) => {
-                        const rawLabel = entry.translatedBy?.[l];
-                        const displayLabel =
-                          typeof rawLabel === 'string' && rawLabel.trim()
-                            ? rawLabel.trim()
-                            : '';
+                        const provider = entry.translatedBy?.[l];
+                        const origin = entry.translatedBySources?.[l] ?? entry.type;
+                        const displayLabel = formatTranslationSource(origin, provider);
                         return (
                           <div key={l} style={{ color: displayLabel ? '#111827' : '#6b7280' }}>
                             <span style={{ fontWeight: 600, marginRight: '0.25rem' }}>
