@@ -718,11 +718,10 @@ const RowFormModal = function RowFormModal({
   async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    const isLookupField =
+    const requiresExplicitMatch =
       !!relationConfigMap[col] ||
-      !!viewSourceMap[col] ||
-      !!autoSelectConfigs[col];
-    if (isLookupField && e.lookupMatched === false) {
+      !!viewSourceMap[col];
+    if (requiresExplicitMatch && e.lookupMatched === false) {
       setErrors((er) => ({ ...er, [col]: 'Тохирох утга олдсонгүй' }));
       const el = inputRefs.current[col];
       if (el) {
