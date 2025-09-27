@@ -597,15 +597,18 @@ export default function ERPLayout() {
 
   const removeExtraSpotlights = useCallback(() => {
     extraSpotlightsRef.current.forEach((entry) => {
-      const overlay = entry?.overlay;
-      if (overlay && overlay.parentNode) {
-        overlay.parentNode.removeChild(overlay);
+      const { mask, outline } = entry || {};
+      if (mask?.parentNode) {
+        mask.parentNode.removeChild(mask);
+      }
+      if (outline?.parentNode) {
+        outline.parentNode.removeChild(outline);
       }
     });
     extraSpotlightsRef.current = [];
 
     const container = extraSpotlightContainerRef.current;
-    if (container && container.parentNode) {
+    if (container?.parentNode) {
       container.parentNode.removeChild(container);
     }
     extraSpotlightContainerRef.current = null;
@@ -1354,7 +1357,7 @@ export default function ERPLayout() {
       return undefined;
     }
     const extraSelectors = trimmedSelectors.slice(1);
-    const overlayEntries = [];
+    const spotlightEntries = [];
     const paddingValue = Number(step.spotlightPadding);
     const padding = Number.isFinite(paddingValue) ? paddingValue : 10;
 
@@ -1363,13 +1366,13 @@ export default function ERPLayout() {
       container = document.createElement("div");
       container.className = "tour-extra-spotlight-container";
       Object.assign(container.style, {
-        position: "absolute",
-        top: "0",
-        left: "0",
-        width: "0",
-        height: "0",
+        position: "fixed",
+        inset: "0",
+        width: "100%",
+        height: "100%",
         pointerEvents: "none",
-        zIndex: 10000,
+        zIndex: 10001,
+        isolation: "isolate",
       });
       document.body.appendChild(container);
       extraSpotlightContainerRef.current = container;
@@ -1385,24 +1388,36 @@ export default function ERPLayout() {
       }
       elements.forEach((element) => {
         if (!(element instanceof HTMLElement)) return;
-        const overlay = document.createElement("div");
-        overlay.className = "tour-extra-spotlight";
-        Object.assign(overlay.style, {
+        const mask = document.createElement("div");
+        mask.className = "tour-extra-spotlight-mask";
+        Object.assign(mask.style, {
           position: "absolute",
           borderRadius: "12px",
-          backgroundColor: "rgba(56, 189, 248, 0.15)",
-          boxShadow:
-            "0 0 0 2px rgba(56, 189, 248, 0.55), 0 12px 24px rgba(15, 23, 42, 0.25)",
+          backgroundColor: "#000",
+          mixBlendMode: "destination-out",
           pointerEvents: "none",
-          zIndex: 10000,
           transition: "all 0.15s ease",
         });
-        container.appendChild(overlay);
-        overlayEntries.push({ overlay, element, padding });
+
+        const outline = document.createElement("div");
+        outline.className = "tour-extra-spotlight";
+        Object.assign(outline.style, {
+          position: "absolute",
+          borderRadius: "12px",
+          backgroundColor: "rgba(59, 130, 246, 0.15)",
+          boxShadow:
+            "0 0 0 2px rgba(59, 130, 246, 0.85), 0 12px 24px rgba(15, 23, 42, 0.35), 0 0 35px rgba(59, 130, 246, 0.55)",
+          pointerEvents: "none",
+          transition: "all 0.15s ease",
+        });
+
+        container.appendChild(mask);
+        container.appendChild(outline);
+        spotlightEntries.push({ mask, outline, element, padding });
       });
     });
 
-    if (!overlayEntries.length) {
+    if (!spotlightEntries.length) {
       if (container && container.parentNode) {
         container.parentNode.removeChild(container);
       }
@@ -1411,7 +1426,7 @@ export default function ERPLayout() {
     }
 
     const updatePositions = () => {
-      overlayEntries.forEach(({ overlay, element, padding: paddingAmount }) => {
+      spotlightEntries.forEach(({ mask, outline, element, padding: paddingAmount }) => {
         const rect = element.getBoundingClientRect();
         const scrollY = window.scrollY ?? window.pageYOffset ?? 0;
         const scrollX = window.scrollX ?? window.pageXOffset ?? 0;
@@ -1419,10 +1434,22 @@ export default function ERPLayout() {
         const left = scrollX + rect.left - paddingAmount;
         const width = rect.width + paddingAmount * 2;
         const height = rect.height + paddingAmount * 2;
-        overlay.style.top = `${Math.floor(top)}px`;
-        overlay.style.left = `${Math.floor(left)}px`;
-        overlay.style.width = `${Math.max(0, Math.ceil(width))}px`;
-        overlay.style.height = `${Math.max(0, Math.ceil(height))}px`;
+        const roundedTop = `${Math.floor(top)}px`;
+        const roundedLeft = `${Math.floor(left)}px`;
+        const roundedWidth = `${Math.max(0, Math.ceil(width))}px`;
+        const roundedHeight = `${Math.max(0, Math.ceil(height))}px`;
+        if (mask) {
+          mask.style.top = roundedTop;
+          mask.style.left = roundedLeft;
+          mask.style.width = roundedWidth;
+          mask.style.height = roundedHeight;
+        }
+        if (outline) {
+          outline.style.top = roundedTop;
+          outline.style.left = roundedLeft;
+          outline.style.width = roundedWidth;
+          outline.style.height = roundedHeight;
+        }
       });
     };
 
@@ -1446,10 +1473,10 @@ export default function ERPLayout() {
     let resizeObserver = null;
     if (typeof ResizeObserver === "function") {
       resizeObserver = new ResizeObserver(() => scheduleUpdate());
-      overlayEntries.forEach(({ element }) => resizeObserver.observe(element));
+      spotlightEntries.forEach(({ element }) => resizeObserver.observe(element));
     }
 
-    extraSpotlightsRef.current = overlayEntries;
+    extraSpotlightsRef.current = spotlightEntries;
 
     return () => {
       if (rafId !== null) {
