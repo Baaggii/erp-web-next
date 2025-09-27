@@ -339,7 +339,17 @@ export default function ManualTranslationsTab() {
   );
 
   const refreshEntries = useCallback(
-    ({ force = false } = {}) => load({ ignoreCooldown: force, queue: true }),
+    ({ force = false } = {}) => {
+      if (force) {
+        const state = loadStateRef.current;
+        if (state.timeoutId) {
+          clearTimeout(state.timeoutId);
+          state.timeoutId = null;
+        }
+        state.cooldown = false;
+      }
+      return load({ ignoreCooldown: force, queue: true });
+    },
     [load],
   );
 
@@ -589,7 +599,7 @@ export default function ManualTranslationsTab() {
       credentials: 'include',
       body: JSON.stringify(payload),
     });
-    await refreshEntries();
+    await refreshEntries({ force: true });
   }
 
   async function saveLanguage(lang) {
@@ -625,7 +635,7 @@ export default function ManualTranslationsTab() {
         return;
       }
       addToast(t('languageSaved', 'Language translations saved'), 'success');
-      await refreshEntries();
+      await refreshEntries({ force: true });
     } catch {
       addToast(t('languageSaveFailed', 'Failed to save language translations'), 'error');
     } finally {
@@ -874,7 +884,7 @@ export default function ManualTranslationsTab() {
       processingRef.current = false;
       setCompleting(false);
       clearTranslationSources();
-      await refreshEntries();
+      await refreshEntries({ force: true });
       if (rateLimited) {
         window.dispatchEvent(
           new CustomEvent('toast', {
@@ -903,7 +913,7 @@ export default function ManualTranslationsTab() {
       return;
     }
     if (saved) {
-      await refreshEntries();
+      await refreshEntries({ force: true });
     }
     processingRef.current = false;
     setCompleting(false);
