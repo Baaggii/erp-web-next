@@ -324,20 +324,6 @@ function InlineTransactionTable(
     [tableColumns],
   );
 
-  const generatedColumnPipeline = React.useMemo(
-    () =>
-      createGeneratedColumnPipeline({
-        tableColumns,
-        columnCaseMap,
-        mainFields: mainFieldSet,
-        metadataFields: metadataFieldSet,
-        equals: valuesEqual,
-      }),
-    [tableColumnsKey, columnCaseMapKey, mainFieldSet, metadataFieldSet],
-  );
-  const generatedColumnEvaluators = generatedColumnPipeline.evaluators;
-  const hasGeneratedColumnsRef = useRef(false);
-
   const mainFieldSet = React.useMemo(() => {
     const set = new Set();
     fields.forEach((f) => {
@@ -357,6 +343,20 @@ function InlineTransactionTable(
     });
     return set;
   }, [allFieldsKey, columnCaseMapKey, mainFieldSet]);
+
+  const generatedColumnPipeline = React.useMemo(
+    () =>
+      createGeneratedColumnPipeline({
+        tableColumns,
+        columnCaseMap,
+        mainFields: mainFieldSet,
+        metadataFields: metadataFieldSet,
+        equals: valuesEqual,
+      }),
+    [tableColumnsKey, columnCaseMapKey, mainFieldSet, metadataFieldSet],
+  );
+  const generatedColumnEvaluators = generatedColumnPipeline.evaluators;
+  const hasGeneratedColumnsRef = useRef(false);
 
   const applyGeneratedColumns = React.useCallback(
     (targetRows, indices = null) =>
