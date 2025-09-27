@@ -350,6 +350,15 @@ export default function ERPLayout() {
   const closeTourViewer = useCallback(() => {
     setTourViewerState(null);
   }, []);
+
+  const endTour = useCallback(() => {
+    setRunTour(false);
+    setTourSteps([]);
+    setTourStepIndex(0);
+    setCurrentTourPage("");
+    setCurrentTourPath("");
+    closeTourViewer();
+  }, [closeTourViewer]);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
@@ -738,22 +747,16 @@ export default function ERPLayout() {
             const seen = { ...(userSettings?.toursSeen || {}), [currentTourPage]: true };
             updateUserSettings({ toursSeen: seen });
           }
-          setTourStepIndex(0);
-          setTourSteps([]);
-          setRunTour(false);
-          setCurrentTourPage('');
-          setCurrentTourPath('');
-          closeTourViewer();
+          endTour();
         }
       });
     },
     [
       addToast,
-      closeTourViewer,
       currentTourPage,
+      endTour,
       t,
       tourSteps,
-      setTourSteps,
       updateUserSettings,
       userSettings,
     ],
@@ -765,15 +768,10 @@ export default function ERPLayout() {
     if (normalizedLocationPath === currentTourPath) return;
     if (!(runTour || tourViewerState)) return;
 
-    setRunTour(false);
-    setTourSteps([]);
-    setTourStepIndex(0);
-    setCurrentTourPage('');
-    setCurrentTourPath('');
-    closeTourViewer();
+    endTour();
   }, [
-    closeTourViewer,
     currentTourPath,
+    endTour,
     location.pathname,
     normalizePath,
     runTour,
@@ -902,6 +900,7 @@ export default function ERPLayout() {
             runId: activeTourRunId,
           }}
           onClose={closeTourViewer}
+          onEndTour={endTour}
           onSelectStep={handleTourStepJump}
         />
       )}

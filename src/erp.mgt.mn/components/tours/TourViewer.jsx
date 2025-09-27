@@ -145,7 +145,7 @@ function normalizeSteps(steps) {
   }));
 }
 
-export default function TourViewer({ state, onClose, onSelectStep }) {
+export default function TourViewer({ state, onClose, onSelectStep, onEndTour }) {
   const steps = useMemo(() => normalizeSteps(state?.steps), [state?.steps]);
   const activeIndex = useMemo(() => {
     if (typeof state?.currentStepIndex !== "number") return null;
@@ -329,6 +329,11 @@ export default function TourViewer({ state, onClose, onSelectStep }) {
                 )}
               </div>
               <div style={headerActionsStyles}>
+                {typeof onEndTour === "function" && (
+                  <button type="button" onClick={onEndTour} style={actionButtonStyles}>
+                    End tour
+                  </button>
+                )}
                 <button type="button" onClick={toggleSide} style={actionButtonStyles}>
                   Dock {side === "right" ? "left" : "right"}
                 </button>
