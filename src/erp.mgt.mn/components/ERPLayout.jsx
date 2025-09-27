@@ -552,34 +552,42 @@ export default function ERPLayout() {
   const handleTourCallback = useCallback(
     (data) => {
       const { status, index, type, action } = data;
+      const defer =
+        typeof queueMicrotask === "function"
+          ? queueMicrotask
+          : (cb) => {
+              setTimeout(cb, 0);
+            };
 
-      if (Number.isFinite(index)) {
-        if (type === EVENTS.STEP_BEFORE || type === EVENTS.TOOLTIP_OPEN) {
-          const clampedIndex = Math.min(
-            Math.max(0, index),
-            Math.max(tourSteps.length - 1, 0),
-          );
-          setTourStepIndex(clampedIndex);
-        } else if (type === EVENTS.STEP_AFTER || type === EVENTS.TARGET_NOT_FOUND) {
-          const delta = action === ACTIONS.PREV ? -1 : 1;
-          const nextIndex = index + delta;
-          const clampedIndex = Math.min(
-            Math.max(0, nextIndex),
-            Math.max(tourSteps.length - 1, 0),
-          );
-          setTourStepIndex(clampedIndex);
+      defer(() => {
+        if (Number.isFinite(index)) {
+          if (type === EVENTS.STEP_BEFORE || type === EVENTS.TOOLTIP_OPEN) {
+            const clampedIndex = Math.min(
+              Math.max(0, index),
+              Math.max(tourSteps.length - 1, 0),
+            );
+            setTourStepIndex(clampedIndex);
+          } else if (type === EVENTS.STEP_AFTER || type === EVENTS.TARGET_NOT_FOUND) {
+            const delta = action === ACTIONS.PREV ? -1 : 1;
+            const nextIndex = index + delta;
+            const clampedIndex = Math.min(
+              Math.max(0, nextIndex),
+              Math.max(tourSteps.length - 1, 0),
+            );
+            setTourStepIndex(clampedIndex);
+          }
         }
-      }
 
-      if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
-        if (currentTourPage) {
-          const seen = { ...(userSettings?.toursSeen || {}), [currentTourPage]: true };
-          updateUserSettings({ toursSeen: seen });
+        if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
+          if (currentTourPage) {
+            const seen = { ...(userSettings?.toursSeen || {}), [currentTourPage]: true };
+            updateUserSettings({ toursSeen: seen });
+          }
+          setTourStepIndex(0);
+          setRunTour(false);
+          closeTourViewer();
         }
-        setTourStepIndex(0);
-        setRunTour(false);
-        closeTourViewer();
-      }
+      });
     },
     [closeTourViewer, currentTourPage, tourSteps.length, updateUserSettings, userSettings],
   );
