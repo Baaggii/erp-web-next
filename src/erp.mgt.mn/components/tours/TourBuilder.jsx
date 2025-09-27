@@ -15,6 +15,46 @@ const placements = ['auto', 'top', 'bottom', 'left', 'right'];
 const cryptoSource = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
 const MODAL_MARGIN = 32;
 
+function coerceSelectorValue(value) {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+function normalizeSelectorsForState(selectors, fallback) {
+  const list = Array.isArray(selectors)
+    ? selectors.map((value) => coerceSelectorValue(value))
+    : [];
+  if (list.length) return list;
+  const fallbackValue = typeof fallback === 'string' ? fallback.trim() : '';
+  return fallbackValue ? [fallbackValue] : [];
+}
+
+function derivePrimarySelector(selectors) {
+  if (!Array.isArray(selectors)) return '';
+  for (const value of selectors) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return '';
+}
+
+function normalizeSelectorsForPayload(selectors) {
+  if (!Array.isArray(selectors)) return [];
+  const seen = new Set();
+  const result = [];
+  selectors.forEach((value) => {
+    const stringValue = typeof value === 'string' ? value : coerceSelectorValue(value);
+    const trimmed = stringValue.trim();
+    if (!trimmed) return;
+    if (seen.has(trimmed)) return;
+    seen.add(trimmed);
+    result.push(trimmed);
+  });
+  return result;
+}
+
 function clamp(value, min, max) {
   if (typeof value !== 'number') return min;
   if (value < min) return min;
@@ -37,6 +77,7 @@ function normalizeEditorStep(step, index = 0) {
       content: '',
       selector: '',
       target: '',
+      selectors: [],
       placement: 'bottom',
       order: index,
     };
@@ -47,6 +88,8 @@ function normalizeEditorStep(step, index = 0) {
       : typeof step.target === 'string' && step.target.trim()
         ? step.target.trim()
         : '';
+  const selectors = normalizeSelectorsForState(step.selectors, selectorValue);
+  const primary = derivePrimarySelector(selectors);
   return {
     id:
       typeof step.id === 'string' && step.id.trim() ? step.id.trim() : createStepId(),
@@ -55,8 +98,9 @@ function normalizeEditorStep(step, index = 0) {
       typeof step.content === 'string' || typeof step.content === 'number'
         ? String(step.content)
         : '',
-    selector: selectorValue,
-    target: selectorValue,
+    selector: primary,
+    target: primary,
+    selectors,
     placement:
       typeof step.placement === 'string' && step.placement.trim()
         ? step.placement.trim()
@@ -75,6 +119,7 @@ function createEmptyStep(order = 0) {
     content: '',
     selector: '',
     target: '',
+    selectors: [],
     placement: 'bottom',
     order,
   };
@@ -324,6 +369,34 @@ export default function TourBuilder({ state, onClose }) {
     }
   }, []);
 
+  const setStepSelectors = useCallback(
+    (id, updater) => {
+      if (!id) return;
+      markDirty();
+      setSteps((prev) =>
+        prev.map((step) => {
+          if (step.id !== id) return step;
+          const current = Array.isArray(step.selectors) ? step.selectors : [];
+          const nextRaw =
+            typeof updater === 'function'
+              ? updater(current.slice())
+              : Array.isArray(updater)
+                ? updater.slice()
+                : [];
+          const normalized = normalizeSelectorsForState(nextRaw);
+          const primary = derivePrimarySelector(normalized);
+          return {
+            ...step,
+            selectors: normalized,
+            selector: primary,
+            target: primary,
+          };
+        }),
+      );
+    },
+    [markDirty],
+  );
+
   useEffect(() => {
     if (!picking || typeof document === 'undefined') {
       if (typeof document !== 'undefined') {
@@ -348,13 +421,14 @@ export default function TourBuilder({ state, onClose }) {
       event.stopPropagation();
       const target = event.target instanceof HTMLElement ? event.target : null;
       const selector = target ? buildSelector(target) : '';
-      if (selector && selectedId) {
-        markDirty();
-        setSteps((prev) =>
-          prev.map((step) =>
-            step.id === selectedId ? { ...step, selector, target: selector } : step,
-          ),
-        );
+      const trimmedSelector = selector.trim();
+      if (trimmedSelector && selectedId) {
+        setStepSelectors(selectedId, (selectors) => {
+          if (selectors.some((value) => value.trim() === trimmedSelector)) {
+            return selectors;
+          }
+          return [...selectors, trimmedSelector];
+        });
       }
       if (target && typeof target.blur === 'function') {
         const blurTarget = () => target.blur();
@@ -386,7 +460,7 @@ export default function TourBuilder({ state, onClose }) {
       document.body.style.cursor = '';
       highlightElement(null);
     };
-  }, [highlightElement, markDirty, picking, selectedId]);
+  }, [highlightElement, picking, selectedId, setStepSelectors]);
 
   useEffect(() => {
     if (!selectedId && steps.length) {
@@ -400,6 +474,9 @@ export default function TourBuilder({ state, onClose }) {
   );
 
   const selectedStep = sortedSteps.find((step) => step.id === selectedId) || null;
+  const selectedStepSelectors = Array.isArray(selectedStep?.selectors)
+    ? selectedStep.selectors
+    : [];
 
   const handleAddStep = useCallback(() => {
     setSteps((prev) => {
@@ -443,7 +520,33 @@ export default function TourBuilder({ state, onClose }) {
     (id, patch) => {
       markDirty();
       setSteps((prev) =>
-        prev.map((step) => (step.id === id ? { ...step, ...patch } : step)),
+        prev.map((step) => {
+          if (step.id !== id) return step;
+          const next = { ...step, ...patch };
+          if (!Array.isArray(next.selectors)) {
+            next.selectors = Array.isArray(step.selectors) ? step.selectors.slice() : [];
+          }
+          if (Object.prototype.hasOwnProperty.call(patch ?? {}, 'selectors')) {
+            next.selectors = normalizeSelectorsForState(next.selectors);
+          } else if (Object.prototype.hasOwnProperty.call(patch ?? {}, 'selector')) {
+            const value = typeof patch.selector === 'string' ? patch.selector : '';
+            const base = next.selectors.slice();
+            if (base.length) {
+              base[0] = value;
+            } else if (value) {
+              base.push(value);
+            } else {
+              base.length = 0;
+            }
+            next.selectors = normalizeSelectorsForState(base);
+          } else {
+            next.selectors = normalizeSelectorsForState(next.selectors);
+          }
+          const primary = derivePrimarySelector(next.selectors);
+          next.selector = primary;
+          next.target = primary;
+          return next;
+        }),
       );
     },
     [markDirty],
@@ -455,23 +558,30 @@ export default function TourBuilder({ state, onClose }) {
       addToast('Page key is required', 'error');
       return;
     }
-    const invalid = steps.some((step) => !step.selector.trim());
+    const invalid = steps.some(
+      (step) => normalizeSelectorsForPayload(step.selectors).length === 0,
+    );
     if (invalid) {
-      addToast('Each step must have a target selector.', 'error');
+      addToast('Each step must have at least one target selector.', 'error');
       return;
     }
     setSaving(true);
     try {
-      const normalized = steps.map((step, index) => ({
-        ...step,
-        id: step.id,
-        order: index,
-        selector: step.selector.trim(),
-        target: step.selector.trim(),
-        content: step.content || '',
-        title: step.title || '',
-        placement: step.placement || 'bottom',
-      }));
+      const normalized = steps.map((step, index) => {
+        const selectors = normalizeSelectorsForPayload(step.selectors);
+        const primary = selectors[0] || '';
+        return {
+          ...step,
+          id: step.id,
+          order: index,
+          selectors,
+          selector: primary,
+          target: primary,
+          content: step.content || '',
+          title: step.title || '',
+          placement: step.placement || 'bottom',
+        };
+      });
       const entry = await saveTourDefinition({
         pageKey: trimmedKey,
         path: path.trim() || undefined,
@@ -525,7 +635,11 @@ export default function TourBuilder({ state, onClose }) {
     onClose?.();
   }, [highlightElement, onClose]);
 
-  const saveDisabled = saving || loading || !pageKey.trim() || steps.some((step) => !step.selector.trim());
+  const saveDisabled =
+    saving ||
+    loading ||
+    !pageKey.trim() ||
+    steps.some((step) => normalizeSelectorsForPayload(step.selectors).length === 0);
 
   const handleHeaderMouseDown = useCallback((event) => {
     if (event.button !== 0) return;
@@ -612,6 +726,7 @@ export default function TourBuilder({ state, onClose }) {
               </div>
               <div style={styles.stepsList}>
                 {sortedSteps.map((step, index) => {
+                  const trimmedSelectors = normalizeSelectorsForPayload(step.selectors);
                   const active = step.id === selectedId;
                   return (
                     <div
@@ -677,7 +792,20 @@ export default function TourBuilder({ state, onClose }) {
                         <div style={styles.bubbleTail} />
                       </div>
                       <div style={styles.selectorPreview}>
-                        {step.selector || t('tour_builder_no_selector', 'No selector assigned')}
+                        {trimmedSelectors.length ? (
+                          trimmedSelectors.map((selectorValue, selectorIndex) => (
+                            <span
+                              key={`${step.id}-selector-${selectorIndex}-${selectorValue}`}
+                              style={styles.selectorChip}
+                            >
+                              {selectorValue}
+                            </span>
+                          ))
+                        ) : (
+                          <span style={styles.selectorPreviewEmpty}>
+                            {t('tour_builder_no_selector', 'No selector assigned')}
+                          </span>
+                        )}
                       </div>
                     </div>
                   );
@@ -707,17 +835,99 @@ export default function TourBuilder({ state, onClose }) {
                     />
                   </div>
                   <div style={styles.fieldGroup}>
-                    <label style={styles.label}>{t('tour_builder_selector', 'Target selector')}</label>
-                    <input
-                      style={styles.input}
-                      value={selectedStep.selector}
-                      onChange={(event) => updateStep(selectedStep.id, {
-                        selector: event.target.value,
-                        target: event.target.value,
-                      })}
-                      placeholder="#component-id"
-                    />
-                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <label style={styles.label}>{t('tour_builder_selector', 'Target selectors')}</label>
+                    <div style={styles.selectorList}>
+                      {selectedStepSelectors.length ? (
+                        selectedStepSelectors.map((selectorValue, selectorIndex) => (
+                          <div key={`${selectedStep.id}-selector-${selectorIndex}`} style={styles.selectorItem}>
+                            <span style={styles.selectorBadge}>{selectorIndex + 1}</span>
+                            <input
+                              style={{ ...styles.input, ...styles.selectorInput }}
+                              value={selectorValue}
+                              onChange={(event) =>
+                                setStepSelectors(selectedStep.id, (selectors) => {
+                                  const next = selectors.slice();
+                                  next[selectorIndex] = event.target.value;
+                                  return next;
+                                })
+                              }
+                              placeholder={
+                                selectorIndex === 0
+                                  ? '#component-id'
+                                  : t(
+                                      'tour_builder_additional_selector_placeholder',
+                                      'Additional selector',
+                                    )
+                              }
+                            />
+                            <div style={styles.selectorControls}>
+                              <button
+                                type="button"
+                                style={{
+                                  ...styles.selectorControlButton,
+                                  ...(selectorIndex === 0 ? styles.disabledButton : null),
+                                }}
+                                onClick={() =>
+                                  setStepSelectors(selectedStep.id, (selectors) => {
+                                    if (selectorIndex <= 0) return selectors;
+                                    const next = selectors.slice();
+                                    const [item] = next.splice(selectorIndex, 1);
+                                    next.splice(selectorIndex - 1, 0, item);
+                                    return next;
+                                  })
+                                }
+                                disabled={selectorIndex === 0}
+                                aria-label={t('move_up', 'Move up')}
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                style={{
+                                  ...styles.selectorControlButton,
+                                  ...(selectorIndex === selectedStepSelectors.length - 1
+                                    ? styles.disabledButton
+                                    : null),
+                                }}
+                                onClick={() =>
+                                  setStepSelectors(selectedStep.id, (selectors) => {
+                                    if (selectorIndex >= selectors.length - 1) return selectors;
+                                    const next = selectors.slice();
+                                    const [item] = next.splice(selectorIndex, 1);
+                                    next.splice(selectorIndex + 1, 0, item);
+                                    return next;
+                                  })
+                                }
+                                disabled={selectorIndex === selectedStepSelectors.length - 1}
+                                aria-label={t('move_down', 'Move down')}
+                              >
+                                ↓
+                              </button>
+                              <button
+                                type="button"
+                                style={styles.selectorControlButton}
+                                onClick={() =>
+                                  setStepSelectors(selectedStep.id, (selectors) =>
+                                    selectors.filter((_, idx) => idx !== selectorIndex),
+                                  )
+                                }
+                                aria-label={t('delete', 'Delete')}
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={styles.selectorEmpty}>
+                          {t(
+                            'tour_builder_no_selectors_hint',
+                            'No selectors yet. Use “Pick target” or add one manually.',
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div style={styles.selectorActionsRow}>
                       <button
                         type="button"
                         style={styles.pickButton}
@@ -735,12 +945,21 @@ export default function TourBuilder({ state, onClose }) {
                           {t('cancel', 'Cancel')}
                         </button>
                       ) : null}
+                      <button
+                        type="button"
+                        style={styles.addSelectorButton}
+                        onClick={() =>
+                          setStepSelectors(selectedStep.id, (selectors) => [...selectors, ''])
+                        }
+                      >
+                        {t('tour_builder_add_selector', '＋ Add manual selector')}
+                      </button>
                     </div>
                     {picking && (
                       <div style={styles.pickerNotice}>
                         {t(
                           'tour_builder_picker_help',
-                          'Hover the element and click to capture its selector. Press Esc to stop picking.',
+                          'Hover an element and click to append its selector. Press Esc to stop picking.',
                         )}
                       </div>
                     )}
@@ -947,10 +1166,85 @@ const styles = {
   },
   selectorPreview: {
     marginTop: '0.6rem',
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.35rem',
+  },
+  selectorChip: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '0.15rem 0.45rem',
+    background: '#e0f2fe',
+    color: '#1d4ed8',
+    borderRadius: '999px',
+    fontSize: '0.7rem',
+    lineHeight: 1.2,
+    maxWidth: '100%',
+    wordBreak: 'break-all',
+  },
+  selectorPreviewEmpty: {
     fontSize: '0.75rem',
-    fontFamily: 'monospace',
-    color: '#4b5563',
-    wordBreak: 'break-word',
+    color: '#9ca3af',
+  },
+  selectorList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  selectorItem: {
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'flex-start',
+  },
+  selectorBadge: {
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    color: '#1d4ed8',
+    background: '#e0f2fe',
+    borderRadius: '999px',
+    padding: '0.2rem 0.5rem',
+    lineHeight: 1,
+    marginTop: '0.2rem',
+  },
+  selectorInput: {
+    flex: 1,
+  },
+  selectorControls: {
+    display: 'flex',
+    gap: '0.25rem',
+    flexShrink: 0,
+  },
+  selectorControlButton: {
+    border: '1px solid #d1d5db',
+    background: '#fff',
+    borderRadius: '6px',
+    padding: '0.25rem 0.4rem',
+    cursor: 'pointer',
+    fontSize: '0.75rem',
+    lineHeight: 1,
+  },
+  selectorEmpty: {
+    fontSize: '0.8rem',
+    color: '#6b7280',
+    background: '#f3f4f6',
+    borderRadius: '8px',
+    padding: '0.75rem',
+  },
+  selectorActionsRow: {
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginTop: '0.5rem',
+  },
+  addSelectorButton: {
+    border: '1px dashed #2563eb',
+    background: '#eff6ff',
+    color: '#1d4ed8',
+    borderRadius: '6px',
+    padding: '0.45rem 0.9rem',
+    cursor: 'pointer',
+    fontWeight: 600,
   },
   addStepButton: {
     border: '1px dashed #2563eb',

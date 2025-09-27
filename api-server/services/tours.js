@@ -27,6 +27,32 @@ function coerceNumber(value) {
   return Number.isFinite(num) ? num : undefined;
 }
 
+function coerceSelectorValue(value) {
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+function normalizeSelectors(selectors, fallback) {
+  const list = Array.isArray(selectors)
+    ? selectors
+        .map((value) => coerceSelectorValue(value).trim())
+        .filter(Boolean)
+    : [];
+  const seen = new Set();
+  const normalized = [];
+  list.forEach((value) => {
+    if (seen.has(value)) return;
+    seen.add(value);
+    normalized.push(value);
+  });
+  if (!normalized.length) {
+    const fallbackValue = typeof fallback === 'string' ? fallback.trim() : '';
+    if (fallbackValue) normalized.push(fallbackValue);
+  }
+  return normalized;
+}
+
 function sanitizeStep(step, index) {
   if (!step || typeof step !== 'object') return null;
   const selectorSource =
@@ -35,7 +61,8 @@ function sanitizeStep(step, index) {
       : typeof step.target === 'string' && step.target.trim()
         ? step.target.trim()
         : '';
-  const selector = selectorSource.trim();
+  const selectors = normalizeSelectors(step.selectors, selectorSource);
+  const selector = selectors[0] || '';
   const idSource = typeof step.id === 'string' && step.id.trim() ? step.id.trim() : null;
   const titleSource = typeof step.title === 'string' ? step.title.trim() : null;
   const placementSource =
@@ -52,7 +79,9 @@ function sanitizeStep(step, index) {
   const orderValue = coerceNumber(step.order);
   const normalized = {
     id: idSource || createStepId(),
+    selectors,
     selector,
+    target: selector,
     content: contentValue,
     order: orderValue ?? index,
   };
