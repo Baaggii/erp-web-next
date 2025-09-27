@@ -105,6 +105,32 @@ function createClientStepId() {
   return `client-step-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
+function coerceSelectorValue(value) {
+  if (typeof value === "string") return value;
+  if (value === null || value === undefined) return "";
+  return String(value);
+}
+
+function normalizeSelectorList(selectors, fallback) {
+  const list = Array.isArray(selectors)
+    ? selectors
+        .map((value) => coerceSelectorValue(value).trim())
+        .filter(Boolean)
+    : [];
+  const seen = new Set();
+  const normalized = [];
+  list.forEach((value) => {
+    if (seen.has(value)) return;
+    seen.add(value);
+    normalized.push(value);
+  });
+  if (!normalized.length) {
+    const fallbackValue = typeof fallback === "string" ? fallback.trim() : "";
+    if (fallbackValue) normalized.push(fallbackValue);
+  }
+  return normalized;
+}
+
 function normalizeClientStep(step, index = 0) {
   if (!step || typeof step !== 'object') return null;
   const selectorRaw =
@@ -113,7 +139,8 @@ function normalizeClientStep(step, index = 0) {
       : typeof step.target === 'string' && step.target.trim()
         ? step.target.trim()
         : '';
-  const selector = selectorRaw.trim();
+  const selectors = normalizeSelectorList(step.selectors, selectorRaw);
+  const selector = selectors[0] || '';
   const content =
     typeof step.content === 'string' || typeof step.content === 'number'
       ? String(step.content)
@@ -139,6 +166,7 @@ function normalizeClientStep(step, index = 0) {
   const normalized = {
     id:
       typeof step.id === 'string' && step.id.trim() ? step.id.trim() : createClientStepId(),
+    selectors,
     selector,
     target: selector || '',
     content,
@@ -158,6 +186,10 @@ function normalizeClientStep(step, index = 0) {
     normalized.floaterProps = step.floaterProps;
   }
 
+  if (selectors.length) {
+    normalized.highlightSelectors = selectors;
+  }
+
   return normalized;
 }
 
@@ -167,6 +199,7 @@ function computeStepSignature(steps) {
     steps.map((step) => ({
       id: step.id,
       selector: step.selector,
+      selectors: Array.isArray(step.selectors) ? step.selectors : [],
       content: step.content,
       placement: step.placement,
       order: step.order,
@@ -293,7 +326,7 @@ function JoyrideTooltip({
 
 function stripStepForSave(step) {
   if (!step || typeof step !== 'object') return step;
-  const { target, ...rest } = step;
+  const { target, highlightSelectors, __runId, ...rest } = step;
   return rest;
 }
 
@@ -336,6 +369,16 @@ export default function ERPLayout() {
   const [tourBuilderState, setTourBuilderState] = useState(null);
   const [tourViewerState, setTourViewerState] = useState(null);
   const joyrideScrollOffset = 56;
+  const extraSpotlightsRef = useRef([]);
+  const removeExtraSpotlights = useCallback(() => {
+    extraSpotlightsRef.current.forEach((entry) => {
+      const overlay = entry?.overlay;
+      if (overlay && overlay.parentNode) {
+        overlay.parentNode.removeChild(overlay);
+      }
+    });
+    extraSpotlightsRef.current = [];
+  }, []);
   const openTourBuilder = useCallback((state) => {
     if (!state) return;
     setTourBuilderState(state);
@@ -366,13 +409,14 @@ export default function ERPLayout() {
   }, []);
 
   const endTour = useCallback(() => {
+    removeExtraSpotlights();
     setRunTour(false);
     setTourSteps([]);
     setTourStepIndex(0);
     setCurrentTourPage("");
     setCurrentTourPath("");
     closeTourViewer();
-  }, [closeTourViewer]);
+  }, [closeTourViewer, removeExtraSpotlights]);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
@@ -462,6 +506,7 @@ export default function ERPLayout() {
           target: step.target || step.selector || step.id,
           __runId: nextRunId,
         }));
+        removeExtraSpotlights();
         setTourStepIndex(initialStepIndex);
         setTourSteps(joyrideSteps);
         setCurrentTourPage(pageKey);
@@ -476,6 +521,7 @@ export default function ERPLayout() {
       location.pathname,
       normalizePath,
       registerTourEntry,
+      removeExtraSpotlights,
       updateUserSettings,
       userSettings,
     ],
@@ -777,6 +823,118 @@ export default function ERPLayout() {
   );
 
   useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      return undefined;
+    }
+    if (!runTour) {
+      removeExtraSpotlights();
+      return undefined;
+    }
+    const step = tourSteps[tourStepIndex];
+    if (!step) {
+      removeExtraSpotlights();
+      return undefined;
+    }
+    removeExtraSpotlights();
+    const baseSelectors = Array.isArray(step.highlightSelectors)
+      ? step.highlightSelectors
+      : Array.isArray(step.selectors)
+        ? step.selectors
+        : [];
+    const trimmedSelectors = baseSelectors
+      .map((value) => (typeof value === "string" ? value.trim() : ""))
+      .filter(Boolean);
+    if (trimmedSelectors.length <= 1) {
+      return undefined;
+    }
+    const extraSelectors = trimmedSelectors.slice(1);
+    const overlayEntries = [];
+    const paddingValue = Number(step.spotlightPadding);
+    const padding = Number.isFinite(paddingValue) ? paddingValue : 10;
+
+    extraSelectors.forEach((selector) => {
+      let elements = [];
+      try {
+        elements = Array.from(document.querySelectorAll(selector));
+      } catch (err) {
+        console.warn("Invalid selector for tour spotlight", selector, err);
+        return;
+      }
+      elements.forEach((element) => {
+        if (!(element instanceof HTMLElement)) return;
+        const overlay = document.createElement("div");
+        overlay.className = "tour-extra-spotlight";
+        Object.assign(overlay.style, {
+          position: "absolute",
+          borderRadius: "12px",
+          boxShadow:
+            "0 0 0 2px rgba(56, 189, 248, 0.55), 0 0 0 9999px rgba(15, 23, 42, 0.45)",
+          pointerEvents: "none",
+          zIndex: 10000,
+          transition: "all 0.15s ease",
+        });
+        document.body.appendChild(overlay);
+        overlayEntries.push({ overlay, element, padding });
+      });
+    });
+
+    if (!overlayEntries.length) {
+      return undefined;
+    }
+
+    const updatePositions = () => {
+      overlayEntries.forEach(({ overlay, element, padding: paddingAmount }) => {
+        const rect = element.getBoundingClientRect();
+        const scrollY = window.scrollY ?? window.pageYOffset ?? 0;
+        const scrollX = window.scrollX ?? window.pageXOffset ?? 0;
+        const top = scrollY + rect.top - paddingAmount;
+        const left = scrollX + rect.left - paddingAmount;
+        const width = rect.width + paddingAmount * 2;
+        const height = rect.height + paddingAmount * 2;
+        overlay.style.top = `${Math.floor(top)}px`;
+        overlay.style.left = `${Math.floor(left)}px`;
+        overlay.style.width = `${Math.max(0, Math.ceil(width))}px`;
+        overlay.style.height = `${Math.max(0, Math.ceil(height))}px`;
+      });
+    };
+
+    updatePositions();
+
+    let rafId = null;
+    const scheduleUpdate = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(() => {
+        rafId = null;
+        updatePositions();
+      });
+    };
+
+    const handleScroll = () => scheduleUpdate();
+    const handleResize = () => scheduleUpdate();
+
+    window.addEventListener("scroll", handleScroll, true);
+    window.addEventListener("resize", handleResize, true);
+
+    let resizeObserver = null;
+    if (typeof ResizeObserver === "function") {
+      resizeObserver = new ResizeObserver(() => scheduleUpdate());
+      overlayEntries.forEach(({ element }) => resizeObserver.observe(element));
+    }
+
+    extraSpotlightsRef.current = overlayEntries;
+
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      window.removeEventListener("scroll", handleScroll, true);
+      window.removeEventListener("resize", handleResize, true);
+      if (resizeObserver) resizeObserver.disconnect();
+      removeExtraSpotlights();
+    };
+  }, [removeExtraSpotlights, runTour, tourStepIndex, tourSteps]);
+
+  useEffect(() => {
     if (!currentTourPath) return;
     const normalizedLocationPath = normalizePath(location.pathname);
     if (normalizedLocationPath === currentTourPath) return;
@@ -791,6 +949,8 @@ export default function ERPLayout() {
     runTour,
     tourViewerState,
   ]);
+
+  useEffect(() => () => removeExtraSpotlights(), [removeExtraSpotlights]);
 
   const handleTourStepJump = useCallback(
     (stepIndex) => {
