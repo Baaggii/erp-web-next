@@ -152,109 +152,32 @@ function sumCellValue(source, field) {
   return { sum: 0, hasValue: false };
 }
 
-function avgCellValue(source, field) {
-  if (Array.isArray(source)) {
-    let sum = 0;
-    let count = 0;
-    for (const row of source) {
-      if (!row || typeof row !== 'object') continue;
-      const raw = getValue(row, field);
-      if (raw === undefined) continue;
-      const num = Number(raw);
-      if (!Number.isFinite(num)) continue;
-      sum += num;
-      count += 1;
-    }
-    return { sum, count, hasValue: count > 0 };
-  }
-  if (isPlainObject(source)) {
-    const raw = getValue(source, field);
-    if (raw === undefined) {
-      return { sum: 0, count: 0, hasValue: false };
-    }
-    const num = Number(raw);
-    if (!Number.isFinite(num)) {
-      return { sum: 0, count: 0, hasValue: false };
-    }
-    return { sum: num, count: 1, hasValue: true };
-  }
-  return { sum: 0, count: 0, hasValue: false };
-}
-
-const CALC_FIELD_AGGREGATORS = {
-  SUM: {
-    compute: sumCellValue,
-    merge(prev = { sum: 0, hasValue: false }, next = { sum: 0, hasValue: false }) {
-      const hasValue = Boolean(prev.hasValue) || Boolean(next.hasValue);
-      const sum =
-        (prev.hasValue ? prev.sum : 0) + (next.hasValue ? next.sum : 0);
-      return { sum, hasValue };
-    },
-    finalize(result) {
-      if (!result || !result.hasValue) {
-        return { value: 0, hasValue: false };
-      }
-      return { value: result.sum, hasValue: true };
-    },
-  },
-  AVG: {
-    compute: avgCellValue,
-    merge(
-      prev = { sum: 0, count: 0, hasValue: false },
-      next = { sum: 0, count: 0, hasValue: false },
-    ) {
-      const sum = (prev.sum || 0) + (next.sum || 0);
-      const count = (prev.count || 0) + (next.count || 0);
-      const hasValue = Boolean(prev.hasValue) || Boolean(next.hasValue);
-      return { sum, count, hasValue };
-    },
-    finalize(result) {
-      if (!result || !result.hasValue || !result.count) {
-        return { value: 0, hasValue: false };
-      }
-      return { value: result.sum / result.count, hasValue: true };
-    },
-  },
-};
-
 export function propagateCalcFields(cfg, data) {
   if (!Array.isArray(cfg.calcFields)) return;
   for (const map of cfg.calcFields) {
     const cells = Array.isArray(map?.cells) ? map.cells : [];
     if (!cells.length) continue;
 
-    const aggregatorState = new Map();
-    const aggregatorOrder = [];
-
     let computedValue;
     let hasComputedValue = false;
 
+    let sumValue = 0;
+    let hasSum = false;
+
     for (const cell of cells) {
       const { table, field, agg } = cell || {};
-      const aggKey = typeof agg === 'string' ? agg.trim().toUpperCase() : '';
-      if (!table || !field || !aggKey) continue;
-      const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
-      if (!aggregator) continue;
+      if (!table || !field || agg !== 'SUM') continue;
       const source = data[table];
-      const computed = aggregator.compute(source, field);
-      if (aggregatorState.has(aggKey)) {
-        const merged = aggregator.merge(aggregatorState.get(aggKey), computed);
-        aggregatorState.set(aggKey, merged);
-      } else {
-        aggregatorState.set(aggKey, computed);
-        aggregatorOrder.push(aggKey);
+      const { sum, hasValue } = sumCellValue(source, field);
+      if (hasValue) {
+        sumValue += sum;
+        hasSum = true;
       }
     }
 
-    for (const aggKey of aggregatorOrder) {
-      const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
-      if (!aggregator) continue;
-      const finalized = aggregator.finalize(aggregatorState.get(aggKey));
-      if (finalized?.hasValue) {
-        computedValue = finalized.value;
-        hasComputedValue = true;
-        break;
-      }
+    if (hasSum) {
+      computedValue = sumValue;
+      hasComputedValue = true;
     }
 
     if (!hasComputedValue) {
@@ -294,16 +217,15 @@ export function propagateCalcFields(cfg, data) {
     for (const cell of cells) {
       const { table, field, agg } = cell || {};
       if (!table || !field) continue;
-      const aggKey = typeof agg === 'string' ? agg.trim().toUpperCase() : '';
-      const aggregator = aggKey ? CALC_FIELD_AGGREGATORS[aggKey] : null;
       const target = data[table];
       if (!target) continue;
 
+      if (agg === 'SUM' && Array.isArray(target)) {
+        setValue(target, field, computedValue);
+        continue;
+      }
+
       if (Array.isArray(target)) {
-        if (aggregator) {
-          setValue(target, field, computedValue);
-          continue;
-        }
         for (const row of target) {
           if (!row || typeof row !== 'object') continue;
           setValue(row, field, computedValue);
