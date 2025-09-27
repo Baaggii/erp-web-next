@@ -176,6 +176,33 @@ function getMeaningfulTranslationSource(entry) {
   return null;
 }
 
+function deriveTooltipBaseText(entry, languages) {
+  if (!entry || entry.type !== 'tooltip') {
+    return '';
+  }
+
+  const keyText = toTrimmedString(entry.key)
+    .replace(/[._-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (isMeaningfulText(keyText)) {
+    return keyText;
+  }
+
+  const values = entry.values ?? {};
+  if (values && typeof values === 'object') {
+    for (const lang of languages) {
+      if (lang === 'en') continue;
+      const candidate = toTrimmedString(values[lang]);
+      if (isMeaningfulText(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return '';
+}
+
 function getProviderGridStyle(count) {
   const columnCount = Math.min(Math.max(count, 1), 3);
   return {
@@ -659,7 +686,7 @@ export default function ManualTranslationsTab() {
     clearTranslationSources();
     const allEntries = [...entries];
     const original = [...allEntries];
-    const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
+    const restLanguages = languages.filter((l) => l !== 'en');
     const updated = [];
     const pending = [];
     const notCompleted = [];
@@ -702,14 +729,58 @@ export default function ManualTranslationsTab() {
       en = toTrimmedString(newEntry.values.en);
       mn = toTrimmedString(newEntry.values.mn);
 
-      const hasMeaningfulEn = isMeaningfulText(en);
-      const hasMeaningfulMn = isMeaningfulText(mn);
+      let hasMeaningfulEn = isMeaningfulText(en);
+      let hasMeaningfulMn = isMeaningfulText(mn);
+
+      if (!hasMeaningfulEn && newEntry.type === 'tooltip') {
+        const baseText = deriveTooltipBaseText(newEntry, languages);
+        if (isMeaningfulText(baseText)) {
+          try {
+            await delay();
+            const translated = await translateWithCache(
+              'en',
+              baseText,
+              undefined,
+              entryMetadata,
+            );
+            if (translated?.text && !translated.needsRetry) {
+              newEntry.values.en = translated.text;
+              const sourceCode =
+                typeof translated.source === 'string' ? translated.source : '';
+              newEntry.translatedBy.en = sourceCode;
+              captureTranslationSource(newEntry.type, 'en', sourceCode);
+              en = toTrimmedString(newEntry.values.en);
+              hasMeaningfulEn = isMeaningfulText(en);
+              changed = true;
+            } else if (translated?.needsRetry) {
+              needsManualReview = true;
+            }
+          } catch (err) {
+            if (err.rateLimited) {
+              abortRef.current = true;
+              rateLimited = true;
+            }
+          }
+        } else {
+          needsManualReview = true;
+        }
+      }
+
+      const getSourceInfoForLang = (targetLang) => {
+        if (targetLang !== 'en') {
+          const enText = toTrimmedString(newEntry.values.en);
+          if (isMeaningfulText(enText)) {
+            return { field: 'en', text: enText };
+          }
+        }
+        return getMeaningfulTranslationSource(newEntry);
+      };
 
       const attemptTranslation = async (targetLang) => {
         if (abortRef.current || rateLimited) {
           return false;
         }
-        const sourceInfo = getMeaningfulTranslationSource(newEntry);
+        const sourceInfo = getSourceInfoForLang(targetLang);
         if (!sourceInfo || !isMeaningfulText(sourceInfo.text)) {
           needsManualReview = true;
           return false;
@@ -724,7 +795,7 @@ export default function ManualTranslationsTab() {
           if (translated?.text && !translated.needsRetry) {
             newEntry.values[targetLang] = translated.text;
             const sourceCode =
-              typeof translated.source === 'string' ? translated.source.trim() : '';
+              typeof translated.source === 'string' ? translated.source : '';
             newEntry.translatedBy[targetLang] = sourceCode;
             captureTranslationSource(newEntry.type, targetLang, sourceCode);
             changed = true;
@@ -746,6 +817,7 @@ export default function ManualTranslationsTab() {
         const translated = await attemptTranslation('en');
         if (translated) {
           en = toTrimmedString(newEntry.values.en);
+          hasMeaningfulEn = isMeaningfulText(en);
         }
       }
 
@@ -753,6 +825,7 @@ export default function ManualTranslationsTab() {
         const translated = await attemptTranslation('mn');
         if (translated) {
           mn = toTrimmedString(newEntry.values.mn);
+          hasMeaningfulMn = isMeaningfulText(mn);
         }
       }
 
@@ -761,43 +834,39 @@ export default function ManualTranslationsTab() {
           (lang) => !isMeaningfulText(newEntry.values[lang]),
         );
         if (missingBefore.length) {
-          const sourceInfo = getMeaningfulTranslationSource(newEntry);
-          if (!sourceInfo || !isMeaningfulText(sourceInfo.text)) {
-            needsManualReview = true;
-          } else {
-            for (const lang of missingBefore) {
-              if (abortRef.current || rateLimited) break;
-              if (!isMeaningfulText(sourceInfo.text)) {
-                needsManualReview = true;
-                break;
-              }
-              try {
-                await delay();
-                const translated = await translateEntry(lang, sourceInfo.text);
-                if (translated?.text && !translated.needsRetry) {
-                  newEntry.values[lang] = translated.text;
-                  const sourceCode =
-                    typeof translated.source === 'string' ? translated.source.trim() : '';
-                  newEntry.translatedBy[lang] = sourceCode;
-                  captureTranslationSource(newEntry.type, lang, sourceCode);
-                  changed = true;
-                } else if (translated?.needsRetry) {
-                  needsManualReview = true;
-                }
-              } catch (err) {
-                if (err.rateLimited) {
-                  abortRef.current = true;
-                  rateLimited = true;
-                }
-              }
-            }
+          for (const lang of missingBefore) {
             if (abortRef.current || rateLimited) break;
-            const missingAfter = restLanguages.filter(
-              (lang) => !isMeaningfulText(newEntry.values[lang]),
-            );
-            if (missingAfter.length) {
+            const sourceInfo = getSourceInfoForLang(lang);
+            if (!sourceInfo || !isMeaningfulText(sourceInfo.text)) {
               needsManualReview = true;
+              break;
             }
+            try {
+              await delay();
+              const translated = await translateEntry(lang, sourceInfo.text);
+              if (translated?.text && !translated.needsRetry) {
+                newEntry.values[lang] = translated.text;
+                const sourceCode =
+                  typeof translated.source === 'string' ? translated.source : '';
+                newEntry.translatedBy[lang] = sourceCode;
+                captureTranslationSource(newEntry.type, lang, sourceCode);
+                changed = true;
+              } else if (translated?.needsRetry) {
+                needsManualReview = true;
+              }
+            } catch (err) {
+              if (err.rateLimited) {
+                abortRef.current = true;
+                rateLimited = true;
+              }
+            }
+          }
+          if (abortRef.current || rateLimited) break;
+          const missingAfter = restLanguages.filter(
+            (lang) => !isMeaningfulText(newEntry.values[lang]),
+          );
+          if (missingAfter.length) {
+            needsManualReview = true;
           }
         }
       }
