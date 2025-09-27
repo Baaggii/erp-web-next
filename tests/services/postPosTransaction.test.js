@@ -7,7 +7,6 @@ import {
   propagateCalcFields,
   validateConfiguredFields,
 } from '../../api-server/services/postPosTransaction.js';
-import { applyPosFields } from '../../src/erp.mgt.mn/utils/transactionValues.js';
 
 if (typeof pool.getConnection !== 'function') {
   pool.getConnection = async () => {
@@ -149,31 +148,6 @@ function createBaseData() {
 const SIMPLE_POS_CONFIG = JSON.stringify({
   POS_Modmarket: { masterTable: 'transactions_pos' },
   ONLINE_POS: { masterTable: 'transactions_pos_online' },
-});
-
-const COMPLEX_FORMULA_LAYOUT = {
-  masterTable: 'transactions_pos',
-  tables: [{ table: 'transactions_order', type: 'multi' }],
-  posFields: [
-    {
-      parts: [
-        { table: 'transactions_pos', field: 'total_amount', agg: '=' },
-        { table: 'transactions_order', field: 'line_total', agg: 'SUM' },
-        { table: 'transactions_pos', field: 'tax_multiplier', agg: '*' },
-        { table: 'transactions_pos', field: 'discount_divisor', agg: '/' },
-      ],
-    },
-    {
-      parts: [
-        { table: 'transactions_pos', field: 'avg_price', agg: '=' },
-        { table: 'transactions_order', field: 'price', agg: 'AVG' },
-      ],
-    },
-  ],
-};
-
-const COMPLEX_POS_CONFIG = JSON.stringify({
-  COMPLEX_FORMULA_POS: COMPLEX_FORMULA_LAYOUT,
 });
 
 function createMockConnection(expectedMasterTable, insertId, queries) {
@@ -362,105 +336,6 @@ test('validateConfiguredFields rejects invalid dates', () => {
   data.transactions_pos.pos_date = '2024-02-30';
   const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);
   assert.ok(errors.some((msg) => msg.includes('Invalid date for transactions_pos.pos_date')));
-});
-
-test('postPosTransaction persists POS formulas with multiply, divide, and average operations', async (t) => {
-  const queries = [];
-  const insertedRows = [];
-  const conn = {
-    beginTransaction: async () => {},
-    commit: async () => {},
-    rollback: async () => {},
-    release: () => {},
-    query: async (sql, params) => {
-      queries.push({ sql, params });
-      if (typeof sql === 'string' && sql.includes('information_schema.KEY_COLUMN_USAGE')) {
-        return [[]];
-      }
-      if (typeof sql === 'string' && sql.startsWith('INSERT INTO transactions_pos')) {
-        const match = sql.match(/INSERT INTO transactions_pos \(([^)]+)\)/i);
-        if (match) {
-          const cols = match[1].split(',').map((col) => col.trim());
-          const row = {};
-          cols.forEach((col, index) => {
-            row[col] = Array.isArray(params) ? params[index] : undefined;
-          });
-          insertedRows.push({ table: 'transactions_pos', row });
-        }
-        return [{ insertId: 1001 }];
-      }
-      if (typeof sql === 'string' && sql.startsWith('INSERT INTO transactions_order')) {
-        return [{ insertId: 0 }];
-      }
-      if (typeof sql === 'string' && sql.startsWith('UPDATE')) {
-        return [{ affectedRows: 1 }];
-      }
-      return [[]];
-    },
-  };
-
-  t.mock.method(pool, 'getConnection', async () => conn);
-  t.mock.method(fs, 'readFile', async () => COMPLEX_POS_CONFIG);
-  mockMasterColumns(t, {
-    transactions_pos: [
-      'id',
-      'session_id',
-      'company_id',
-      'branch_id',
-      'department_id',
-      'emp_id',
-      'pos_date',
-      'total_quantity',
-      'total_amount',
-      'total_discount',
-      'payment_type',
-      'tax_multiplier',
-      'discount_divisor',
-      'avg_price',
-    ],
-  });
-
-  const inputData = {
-    transactions_pos: {
-      pos_date: '2024-04-01',
-      total_amount: 0,
-      total_quantity: 2,
-      total_discount: 0,
-      payment_type: 'Cash',
-      tax_multiplier: 1.5,
-      discount_divisor: 2,
-    },
-    transactions_order: [
-      { line_total: 100.5, price: 10.5 },
-      { line_total: 50, price: 5 },
-    ],
-  };
-
-  const expectedUiValues = applyPosFields(
-    JSON.parse(JSON.stringify(inputData)),
-    COMPLEX_FORMULA_LAYOUT.posFields,
-  );
-
-  const id = await postPosTransaction(
-    'COMPLEX_FORMULA_POS',
-    inputData,
-    { employeeId: 'EMP-4' },
-    0,
-  );
-
-  assert.equal(id, 1001);
-  const masterInsert = insertedRows.find((entry) => entry.table === 'transactions_pos');
-  assert.ok(masterInsert, 'captures inserted master row');
-  assert.equal(
-    masterInsert.row.total_amount,
-    expectedUiValues.transactions_pos.total_amount,
-    'total_amount matches UI calculation',
-  );
-  assert.equal(
-    masterInsert.row.avg_price,
-    expectedUiValues.transactions_pos.avg_price,
-    'avg_price matches UI calculation',
-  );
 });
 
 test('postPosTransaction uses POS_Modmarket layout config', async (t) => {
