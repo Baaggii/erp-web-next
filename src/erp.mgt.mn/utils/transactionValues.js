@@ -3,6 +3,7 @@ import {
   applyGeneratedColumnEvaluators,
   valuesEqual,
 } from './generatedColumns.js';
+import { syncCalcFields } from './syncCalcFields.js';
 
 const arrayIndexPattern = /^(0|[1-9]\d*)$/;
 
@@ -223,6 +224,108 @@ export function applyGeneratedColumnsForValues(valuesByTable, pipelineMap) {
   return mutated ? next : valuesByTable;
 }
 
+export function applyPosFields(vals, posFieldConfig) {
+  if (!Array.isArray(posFieldConfig)) return vals;
+
+  let next = { ...vals };
+
+  for (const pf of posFieldConfig) {
+    const parts = Array.isArray(pf?.parts) ? pf.parts : [];
+    if (parts.length < 2) continue;
+
+    const [target, ...calc] = parts;
+    let val = 0;
+    let init = false;
+
+    for (const p of calc) {
+      if (!p?.table || !p?.field) continue;
+      const data = next[p.table];
+      let num = 0;
+
+      if (Array.isArray(data)) {
+        if (p.agg === 'SUM' || p.agg === 'AVG') {
+          const sum = data.reduce(
+            (sumAcc, row) => sumAcc + (Number(row?.[p.field]) || 0),
+            0,
+          );
+          num = p.agg === 'AVG' ? (data.length ? sum / data.length : 0) : sum;
+        } else {
+          num = Number(data[0]?.[p.field]) || 0;
+        }
+      } else {
+        num = Number(data?.[p.field]) || 0;
+      }
+
+      if (p.agg === '=' && !init) {
+        val = num;
+        init = true;
+      } else if (p.agg === '+') {
+        val += num;
+      } else if (p.agg === '-') {
+        val -= num;
+      } else if (p.agg === '*') {
+        val *= num;
+      } else if (p.agg === '/') {
+        val /= num;
+      } else {
+        val = num;
+        init = true;
+      }
+    }
+
+    if (!target?.table || !target?.field) continue;
+    const tgt = next[target.table];
+
+    if (Array.isArray(tgt)) {
+      let resultRows = tgt;
+      let tableChanged = false;
+
+      const ensureClone = () => {
+        if (resultRows === tgt) {
+          resultRows = cloneArrayWithMetadata(tgt);
+        }
+      };
+
+      tgt.forEach((row, index) => {
+        if (!isPlainRecord(row)) return;
+        if ((row?.[target.field] ?? undefined) === val) return;
+        ensureClone();
+        resultRows[index] = { ...row, [target.field]: val };
+        tableChanged = true;
+      });
+
+      if ((resultRows?.[target.field] ?? undefined) !== val) {
+        ensureClone();
+        resultRows[target.field] = val;
+        tableChanged = true;
+      }
+
+      if (tableChanged) {
+        next = { ...next, [target.table]: resultRows };
+      }
+    } else {
+      next = { ...next, [target.table]: { ...(tgt || {}), [target.field]: val } };
+    }
+  }
+
+  return next;
+}
+
+export function recalcGeneratedColumns(values, pipelines, calcFields) {
+  let next = values;
+
+  if (Array.isArray(calcFields) && calcFields.length > 0) {
+    next = syncCalcFields(next, calcFields);
+  }
+
+  return applyGeneratedColumnsForValues(next, pipelines);
+}
+
+export function recalcTotals(values, { calcFields, pipelines, posFields } = {}) {
+  const base = recalcGeneratedColumns(values, pipelines, calcFields);
+  return applyPosFields(base, posFields);
+}
+
 export default {
   isPlainRecord,
   extractArrayMetadata,
@@ -236,4 +339,7 @@ export default {
   buildGeneratedColumnEvaluators,
   createGeneratedColumnPipeline,
   applyGeneratedColumnsForValues,
+  applyPosFields,
+  recalcGeneratedColumns,
+  recalcTotals,
 };
