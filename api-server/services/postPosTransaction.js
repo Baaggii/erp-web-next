@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { pool } from '../../db/index.js';
 import { getConfigPath } from '../utils/configPaths.js';
+import { parseLocalizedNumber } from '../../src/erp.mgt.mn/utils/parseLocalizedNumber.js';
 
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
@@ -318,34 +319,71 @@ export function propagateCalcFields(cfg, data) {
 
 function evalPosFormulas(cfg, data) {
   if (!Array.isArray(cfg.posFields)) return;
+  const parseOrZero = (value) => {
+    const parsed = parseLocalizedNumber(value);
+    return parsed === null ? 0 : parsed;
+  };
   for (const pf of cfg.posFields) {
-    const parts = pf.parts || [];
-    if (!parts.length) continue;
+    const parts = Array.isArray(pf?.parts) ? pf.parts : [];
+    if (parts.length < 2) continue;
     const [target, ...calc] = parts;
     let val = 0;
     let init = false;
     for (const p of calc) {
-      const tData = data[p.table] || {};
-      const num = Number(tData[p.field] ?? 0);
-      if (p.agg === '=' && !init) {
+      const table = typeof p?.table === 'string' ? p.table.trim() : '';
+      const field = typeof p?.field === 'string' ? p.field.trim() : '';
+      if (!table || !field) continue;
+      const agg = typeof p?.agg === 'string' ? p.agg.trim().toUpperCase() : '';
+      const source = data[table];
+      let num = 0;
+      if (Array.isArray(source)) {
+        if (agg === 'SUM' || agg === 'AVG') {
+          let sum = 0;
+          for (const row of source) {
+            const raw = row && typeof row === 'object' ? row[field] : undefined;
+            sum += parseOrZero(raw);
+          }
+          num = agg === 'AVG' ? (source.length ? sum / source.length : 0) : sum;
+        } else {
+          const firstRow = source[0];
+          const raw = firstRow && typeof firstRow === 'object' ? firstRow[field] : undefined;
+          num = parseOrZero(raw);
+        }
+      } else if (isPlainObject(source)) {
+        num = parseOrZero(source[field]);
+      } else {
+        num = parseOrZero(undefined);
+      }
+      if (agg === '=' && !init) {
         val = num;
         init = true;
-      } else if (p.agg === '+') {
+      } else if (agg === '+') {
         val += num;
-      } else if (p.agg === '-') {
+      } else if (agg === '-') {
         val -= num;
-      } else if (p.agg === '=') {
+      } else if (agg === '*') {
+        val *= num;
+      } else if (agg === '/') {
+        val /= num;
+      } else {
         val = num;
+        init = true;
       }
     }
-    const targetTable = data[target.table];
+    const targetTableKey = typeof target?.table === 'string' ? target.table.trim() : '';
+    const targetField = typeof target?.field === 'string' ? target.field.trim() : '';
+    if (!targetTableKey || !targetField) continue;
+    const targetTable = data[targetTableKey];
     if (!targetTable) continue;
     if (Array.isArray(targetTable)) {
       for (const row of targetTable) {
-        row[target.field] = val;
+        if (row && typeof row === 'object') {
+          row[targetField] = val;
+        }
       }
-    } else {
-      targetTable[target.field] = val;
+      targetTable[targetField] = val;
+    } else if (isPlainObject(targetTable)) {
+      targetTable[targetField] = val;
     }
   }
 }
