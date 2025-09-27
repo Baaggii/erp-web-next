@@ -268,7 +268,7 @@ function JoyrideTooltip({
   const handleEnd = (event) => {
     if (typeof skipOnClick === 'function') {
       skipOnClick(event);
-      return;
+      if (event?.defaultPrevented) return;
     }
     if (typeof helpers.close === 'function') {
       helpers.close(true);
@@ -277,15 +277,18 @@ function JoyrideTooltip({
 
   const handlePrimary = (event) => {
     if (isLastStep) {
-      if (typeof primaryOnClick === 'function') {
-        primaryOnClick(event);
-        if (event?.defaultPrevented) return;
+      if (typeof event?.preventDefault === 'function') {
+        event.preventDefault();
       }
       handleEnd(event);
       return;
     }
     if (typeof primaryOnClick === 'function') {
       primaryOnClick(event);
+      if (event?.defaultPrevented) return;
+      if (typeof helpers.next === 'function') {
+        helpers.next(event);
+      }
       return;
     }
     if (typeof helpers.next === 'function') {
