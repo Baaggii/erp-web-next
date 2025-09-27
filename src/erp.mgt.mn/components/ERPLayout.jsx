@@ -439,6 +439,7 @@ export default function ERPLayout() {
   const [tourRegistryVersion, setTourRegistryVersion] = useState(0);
   const [tourBuilderState, setTourBuilderState] = useState(null);
   const [tourViewerState, setTourViewerState] = useState(null);
+  const [multiSpotlightActive, setMultiSpotlightActive] = useState(false);
   const updateViewerIndex = useCallback((nextIndex) => {
     setTourViewerState((prev) =>
       prev ? { ...prev, currentStepIndex: nextIndex } : prev,
@@ -511,6 +512,12 @@ export default function ERPLayout() {
     removeMissingTargetArrow();
   }, [removeMissingTargetArrow]);
   const joyrideScrollOffset = 56;
+  const joyrideOverlayColor = multiSpotlightActive
+    ? "transparent"
+    : "rgba(15, 23, 42, 0.7)";
+  const joyrideSpotlightShadow = multiSpotlightActive
+    ? "0 0 0 2px rgba(56, 189, 248, 0.85)"
+    : "0 0 0 2px rgba(56, 189, 248, 0.55), 0 0 0 9999px rgba(15, 23, 42, 0.65)";
   const extraSpotlightsRef = useRef([]);
   const extraSpotlightContainerRef = useRef(null);
   const resolveMissingTargetById = useCallback(
@@ -687,11 +694,11 @@ export default function ERPLayout() {
   useEffect(() => () => removeMissingTargetArrow(), [removeMissingTargetArrow]);
 
   const removeExtraSpotlights = useCallback(() => {
-    extraSpotlightsRef.current.forEach((entry) => {
-      const { mask, outline } = entry || {};
-      if (mask?.parentNode) {
-        mask.parentNode.removeChild(mask);
-      }
+    const entries = Array.isArray(extraSpotlightsRef.current)
+      ? extraSpotlightsRef.current
+      : [];
+    entries.forEach((entry) => {
+      const { outline } = entry || {};
       if (outline?.parentNode) {
         outline.parentNode.removeChild(outline);
       }
@@ -699,10 +706,19 @@ export default function ERPLayout() {
     extraSpotlightsRef.current = [];
 
     const container = extraSpotlightContainerRef.current;
-    if (container?.parentNode) {
-      container.parentNode.removeChild(container);
+    if (container) {
+      container.style.maskImage = "";
+      container.style.webkitMaskImage = "";
+      container.style.maskSize = "";
+      container.style.webkitMaskSize = "";
+      container.style.maskRepeat = "";
+      container.style.webkitMaskRepeat = "";
+      if (container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
     }
     extraSpotlightContainerRef.current = null;
+    setMultiSpotlightActive(false);
   }, []);
   const openTourBuilder = useCallback((state) => {
     if (!state) return;
@@ -1516,40 +1532,59 @@ export default function ERPLayout() {
       return undefined;
     }
     removeExtraSpotlights();
-    const baseSelectors = Array.isArray(step.highlightSelectors)
-      ? step.highlightSelectors
-      : Array.isArray(step.selectors)
-        ? step.selectors
-        : [];
-    const trimmedSelectors = baseSelectors
-      .map((value) => (typeof value === "string" ? value.trim() : ""))
-      .filter(Boolean);
-    if (trimmedSelectors.length <= 1) {
+    const selectors = [];
+    const seenSelectors = new Set();
+    const pushSelector = (value) => {
+      if (typeof value !== "string") return;
+      const trimmed = value.trim();
+      if (!trimmed || seenSelectors.has(trimmed)) return;
+      seenSelectors.add(trimmed);
+      selectors.push(trimmed);
+    };
+
+    const primarySelectorRaw =
+      typeof step.target === "string" && step.target.trim()
+        ? step.target.trim()
+        : typeof step.selector === "string" && step.selector.trim()
+          ? step.selector.trim()
+          : "";
+
+    pushSelector(primarySelectorRaw);
+
+    if (Array.isArray(step.highlightSelectors)) {
+      step.highlightSelectors.forEach((value) => pushSelector(value));
+    }
+    if (Array.isArray(step.selectors)) {
+      step.selectors.forEach((value) => pushSelector(value));
+    }
+
+    const trimmedSelectors = selectors.filter(Boolean);
+    const primaryElement =
+      typeof step.target !== "string" &&
+      step.target &&
+      typeof step.target.getBoundingClientRect === "function"
+        ? step.target
+        : null;
+
+    if (!trimmedSelectors.length && !primaryElement) {
       return undefined;
     }
-    const extraSelectors = trimmedSelectors.slice(1);
-    const spotlightEntries = [];
+
     const paddingValue = Number(step.spotlightPadding);
     const padding = Number.isFinite(paddingValue) ? paddingValue : 10;
+    const seenMaskElements = new Set();
+    const primaryElements = new Set();
+    const seenOutlineElements = new Set();
+    const maskTargets = [];
+    const outlineTargets = [];
 
-    let container = extraSpotlightContainerRef.current;
-    if (!container) {
-      container = document.createElement("div");
-      container.className = "tour-extra-spotlight-container";
-      Object.assign(container.style, {
-        position: "fixed",
-        inset: "0",
-        width: "100%",
-        height: "100%",
-        pointerEvents: "none",
-        zIndex: 10001,
-        isolation: "isolate",
-      });
-      document.body.appendChild(container);
-      extraSpotlightContainerRef.current = container;
+    if (primaryElement) {
+      seenMaskElements.add(primaryElement);
+      primaryElements.add(primaryElement);
+      maskTargets.push({ element: primaryElement, padding });
     }
 
-    extraSelectors.forEach((selector) => {
+    trimmedSelectors.forEach((selector, index) => {
       let elements = [];
       try {
         elements = Array.from(document.querySelectorAll(selector));
@@ -1557,79 +1592,137 @@ export default function ERPLayout() {
         console.warn("Invalid selector for tour spotlight", selector, err);
         return;
       }
+      const isPrimarySelector = index === 0;
       elements.forEach((element) => {
-        if (!(element instanceof HTMLElement)) return;
-        const mask = document.createElement("div");
-        mask.className = "tour-extra-spotlight-mask";
-        Object.assign(mask.style, {
-          position: "absolute",
-          borderRadius: "12px",
-          backgroundColor: "#000",
-          mixBlendMode: "destination-out",
-          pointerEvents: "none",
-          transition: "all 0.15s ease",
-        });
-
-        const outline = document.createElement("div");
-        outline.className = "tour-extra-spotlight";
-        Object.assign(outline.style, {
-          position: "absolute",
-          borderRadius: "12px",
-          backgroundColor: "rgba(59, 130, 246, 0.15)",
-          boxShadow:
-            "0 0 0 2px rgba(59, 130, 246, 0.85), 0 12px 24px rgba(15, 23, 42, 0.35), 0 0 35px rgba(59, 130, 246, 0.55)",
-          pointerEvents: "none",
-          transition: "all 0.15s ease",
-        });
-
-        container.appendChild(mask);
-        container.appendChild(outline);
-        spotlightEntries.push({ mask, outline, element, padding });
+        if (!element || typeof element.getBoundingClientRect !== "function") return;
+        if (!seenMaskElements.has(element)) {
+          seenMaskElements.add(element);
+          maskTargets.push({ element, padding });
+        }
+        if (isPrimarySelector) {
+          primaryElements.add(element);
+        } else if (!primaryElements.has(element) && !seenOutlineElements.has(element)) {
+          seenOutlineElements.add(element);
+          outlineTargets.push({ element, padding });
+        }
       });
     });
 
-    if (!spotlightEntries.length) {
-      if (container && container.parentNode) {
-        container.parentNode.removeChild(container);
-      }
-      extraSpotlightContainerRef.current = null;
+    if (maskTargets.length <= 1) {
       return undefined;
     }
 
-    const updatePositions = () => {
-      spotlightEntries.forEach(({ mask, outline, element, padding: paddingAmount }) => {
+    const overlay = document.createElement("div");
+    overlay.className = "tour-extra-spotlight-overlay";
+    Object.assign(overlay.style, {
+      position: "fixed",
+      inset: "0",
+      width: "100%",
+      height: "100%",
+      pointerEvents: "none",
+      zIndex: 10001,
+      backgroundColor: "rgba(15, 23, 42, 0.65)",
+      isolation: "isolate",
+    });
+    document.body.appendChild(overlay);
+    extraSpotlightContainerRef.current = overlay;
+
+    const spotlightEntries = outlineTargets.map(({ element, padding: paddingAmount }) => {
+      const outline = document.createElement("div");
+      outline.className = "tour-extra-spotlight";
+      Object.assign(outline.style, {
+        position: "absolute",
+        borderRadius: "12px",
+        backgroundColor: "rgba(59, 130, 246, 0.15)",
+        boxShadow:
+          "0 0 0 2px rgba(59, 130, 246, 0.85), 0 12px 24px rgba(15, 23, 42, 0.35), 0 0 35px rgba(59, 130, 246, 0.55)",
+        pointerEvents: "none",
+        transition: "all 0.15s ease",
+      });
+      overlay.appendChild(outline);
+      return { outline, element, padding: paddingAmount };
+    });
+
+    extraSpotlightsRef.current = spotlightEntries;
+    setMultiSpotlightActive(true);
+
+    const updateOverlay = () => {
+      const overlayElement = extraSpotlightContainerRef.current;
+      if (!overlayElement) return;
+      const viewportWidth = Math.max(
+        window.innerWidth || 0,
+        document.documentElement?.clientWidth || 0,
+        document.body?.clientWidth || 0,
+      );
+      const viewportHeight = Math.max(
+        window.innerHeight || 0,
+        document.documentElement?.clientHeight || 0,
+        document.body?.clientHeight || 0,
+      );
+
+      const svgParts = [
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${viewportWidth}" height="${viewportHeight}" viewBox="0 0 ${viewportWidth} ${viewportHeight}" preserveAspectRatio="none">`,
+        `<rect x="0" y="0" width="${viewportWidth}" height="${viewportHeight}" fill="white" />`,
+      ];
+      let hasVisibleRect = false;
+
+      maskTargets.forEach(({ element, padding: paddingAmount }) => {
         const rect = element.getBoundingClientRect();
-        const top = rect.top - paddingAmount;
-        const left = rect.left - paddingAmount;
-        const width = rect.width + paddingAmount * 2;
-        const height = rect.height + paddingAmount * 2;
-        const roundedTop = `${Math.floor(top)}px`;
-        const roundedLeft = `${Math.floor(left)}px`;
-        const roundedWidth = `${Math.max(0, Math.ceil(width))}px`;
-        const roundedHeight = `${Math.max(0, Math.ceil(height))}px`;
-        if (mask) {
-          mask.style.top = roundedTop;
-          mask.style.left = roundedLeft;
-          mask.style.width = roundedWidth;
-          mask.style.height = roundedHeight;
+        const expandedWidth = rect.width + paddingAmount * 2;
+        const expandedHeight = rect.height + paddingAmount * 2;
+        if (expandedWidth <= 0 || expandedHeight <= 0) {
+          return;
         }
-        if (outline) {
-          outline.style.top = roundedTop;
-          outline.style.left = roundedLeft;
-          outline.style.width = roundedWidth;
-          outline.style.height = roundedHeight;
-        }
+        const expandedLeft = rect.left - paddingAmount;
+        const expandedTop = rect.top - paddingAmount;
+        const x = Math.floor(expandedLeft);
+        const y = Math.floor(expandedTop);
+        const widthValue = Math.max(0, Math.ceil(expandedWidth));
+        const heightValue = Math.max(0, Math.ceil(expandedHeight));
+        svgParts.push(
+          `<rect x="${x}" y="${y}" width="${widthValue}" height="${heightValue}" rx="12" ry="12" fill="black" />`,
+        );
+        hasVisibleRect = true;
+      });
+
+      if (hasVisibleRect) {
+        const svg = `${svgParts.join("")}</svg>`;
+        const encoded = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
+        overlayElement.style.backgroundColor = "rgba(15, 23, 42, 0.65)";
+        overlayElement.style.maskImage = encoded;
+        overlayElement.style.webkitMaskImage = encoded;
+        const sizeValue = `${viewportWidth}px ${viewportHeight}px`;
+        overlayElement.style.maskSize = sizeValue;
+        overlayElement.style.webkitMaskSize = sizeValue;
+        overlayElement.style.maskRepeat = "no-repeat";
+        overlayElement.style.webkitMaskRepeat = "no-repeat";
+      } else {
+        overlayElement.style.maskImage = "none";
+        overlayElement.style.webkitMaskImage = "none";
+        overlayElement.style.backgroundColor = "transparent";
+      }
+
+      spotlightEntries.forEach(({ outline, element, padding: paddingAmount }) => {
+        const rect = element.getBoundingClientRect();
+        const expandedWidth = rect.width + paddingAmount * 2;
+        const expandedHeight = rect.height + paddingAmount * 2;
+        const expandedLeft = rect.left - paddingAmount;
+        const expandedTop = rect.top - paddingAmount;
+        outline.style.top = `${Math.floor(expandedTop)}px`;
+        outline.style.left = `${Math.floor(expandedLeft)}px`;
+        outline.style.width = `${Math.max(0, Math.ceil(expandedWidth))}px`;
+        outline.style.height = `${Math.max(0, Math.ceil(expandedHeight))}px`;
       });
     };
 
-    updatePositions();
+    updateOverlay();
 
     let rafId = null;
     const scheduleUpdate = () => {
       if (rafId !== null) return;
       rafId = window.requestAnimationFrame(() => {
         rafId = null;
-        updatePositions();
+        updateOverlay();
       });
     };
 
@@ -1642,10 +1735,14 @@ export default function ERPLayout() {
     let resizeObserver = null;
     if (typeof ResizeObserver === "function") {
       resizeObserver = new ResizeObserver(() => scheduleUpdate());
-      spotlightEntries.forEach(({ element }) => resizeObserver.observe(element));
+      maskTargets.forEach(({ element }) => {
+        try {
+          resizeObserver.observe(element);
+        } catch (err) {
+          // ignore observer errors
+        }
+      });
     }
-
-    extraSpotlightsRef.current = spotlightEntries;
 
     return () => {
       if (rafId !== null) {
@@ -1653,7 +1750,13 @@ export default function ERPLayout() {
       }
       window.removeEventListener("scroll", handleScroll, true);
       window.removeEventListener("resize", handleResize, true);
-      if (resizeObserver) resizeObserver.disconnect();
+      if (resizeObserver) {
+        try {
+          resizeObserver.disconnect();
+        } catch (err) {
+          // ignore observer errors
+        }
+      }
       removeExtraSpotlights();
     };
   }, [removeExtraSpotlights, runTour, tourStepIndex, tourSteps]);
@@ -2083,12 +2186,11 @@ export default function ERPLayout() {
             floaterProps={{ offset: joyrideScrollOffset }}
             styles={{
               overlay: {
-                backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                backgroundColor: joyrideOverlayColor,
               },
               spotlight: {
                 borderRadius: 12,
-                boxShadow:
-                  '0 0 0 2px rgba(56, 189, 248, 0.55), 0 0 0 9999px rgba(15, 23, 42, 0.65)',
+                boxShadow: joyrideSpotlightShadow,
               },
             }}
             callback={handleTourCallback}
