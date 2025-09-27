@@ -10,11 +10,54 @@ function normalizeSelectorList(list) {
     .filter(Boolean);
 }
 
+function isElementVisible(element) {
+  if (!element || typeof element !== "object") return false;
+
+  let hasDimensions = false;
+  if (typeof element.getBoundingClientRect === "function") {
+    try {
+      const rect = element.getBoundingClientRect();
+      if (rect && typeof rect === "object") {
+        const width =
+          typeof rect.width === "number"
+            ? rect.width
+            : typeof rect.right === "number" && typeof rect.left === "number"
+              ? rect.right - rect.left
+              : 0;
+        const height =
+          typeof rect.height === "number"
+            ? rect.height
+            : typeof rect.bottom === "number" && typeof rect.top === "number"
+              ? rect.bottom - rect.top
+              : 0;
+        hasDimensions = Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0;
+      }
+    } catch (err) {
+      // Ignore getBoundingClientRect errors and fall back to other checks.
+    }
+  }
+
+  if (!hasDimensions) {
+    const offsetWidth = typeof element.offsetWidth === "number" ? element.offsetWidth : 0;
+    const offsetHeight = typeof element.offsetHeight === "number" ? element.offsetHeight : 0;
+    hasDimensions = offsetWidth > 0 && offsetHeight > 0;
+  }
+
+  if (hasDimensions) return true;
+
+  if ("offsetParent" in element) {
+    return Boolean(element.offsetParent);
+  }
+
+  return false;
+}
+
 function findExistingSelector(selectors, querySelector) {
   for (let idx = 0; idx < selectors.length; idx += 1) {
     const selector = selectors[idx];
     try {
-      if (querySelector(selector)) {
+      const element = querySelector(selector);
+      if (isElementVisible(element)) {
         return selector;
       }
     } catch (err) {
@@ -73,7 +116,8 @@ export function findVisibleFallbackSelector(
     parentSelector = stripLastSelectorSegment(parentSelector);
     if (!parentSelector) break;
     try {
-      if (querySelector(parentSelector)) {
+      const element = querySelector(parentSelector);
+      if (isElementVisible(element)) {
         return parentSelector;
       }
     } catch (err) {

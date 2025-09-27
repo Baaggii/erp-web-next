@@ -55,21 +55,49 @@ test("findVisibleFallbackSelector returns first visible highlight selector", () 
     target: "#missing",
     highlightSelectors: ["#missing", "#fallback", "#other"],
   };
-  const query = (selector) => selector === "#fallback";
+  const elements = {
+    "#missing": { offsetParent: null, getBoundingClientRect: () => ({ width: 0, height: 0 }) },
+    "#fallback": {
+      offsetParent: {},
+      getBoundingClientRect: () => ({ width: 10, height: 10 }),
+    },
+    "#other": null,
+  };
+  const query = (selector) => elements[selector] || null;
 
   const result = findVisibleFallbackSelector(step, query);
 
   assert.equal(result, "#fallback");
 });
 
-test("findVisibleFallbackSelector falls back to parent selector", () => {
+test("findVisibleFallbackSelector skips hidden targets and pauses on visible parent", () => {
   const step = {
     target: "#alpha .bravo .charlie",
-    highlightSelectors: ["#alpha .bravo .charlie"],
+    highlightSelectors: ["#alpha .bravo .charlie", "#alpha .bravo"],
   };
-  const query = (selector) => selector === "#alpha .bravo";
+  const elements = {
+    "#alpha .bravo .charlie": {
+      offsetParent: null,
+      offsetWidth: 0,
+      offsetHeight: 0,
+      getBoundingClientRect: () => ({ width: 0, height: 0 }),
+    },
+    "#alpha .bravo": {
+      offsetParent: null,
+      offsetWidth: 0,
+      offsetHeight: 0,
+      getBoundingClientRect: () => ({ width: 0, height: 0 }),
+    },
+    "#alpha": {
+      offsetParent: {},
+      offsetWidth: 100,
+      offsetHeight: 40,
+      getBoundingClientRect: () => ({ width: 100, height: 40 }),
+    },
+  };
+  const query = (selector) => elements[selector] || null;
 
   const result = findVisibleFallbackSelector(step, query);
 
-  assert.equal(result, "#alpha .bravo");
+  assert.equal(result, "#alpha");
 });
