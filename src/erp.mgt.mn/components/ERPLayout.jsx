@@ -1717,6 +1717,8 @@ export default function ERPLayout() {
     const seenMaskElements = new Set();
     const primaryElements = new Set();
     const seenOutlineElements = new Set();
+    const resolvedSelectors = new Set();
+    let sawMissingSelector = false;
     const maskTargets = [];
     const outlineTargets = [];
 
@@ -1726,14 +1728,23 @@ export default function ERPLayout() {
       maskTargets.push({ element: primaryElement, padding });
     }
 
+    const declaredTargetCount = (primaryElement ? 1 : 0) + trimmedSelectors.length;
+    const hasMultipleDeclaredTargets = declaredTargetCount > 1;
+
     trimmedSelectors.forEach((selector, index) => {
       let elements = [];
       try {
         elements = Array.from(document.querySelectorAll(selector));
       } catch (err) {
         console.warn("Invalid selector for tour spotlight", selector, err);
+        sawMissingSelector = true;
         return;
       }
+      if (!elements.length) {
+        sawMissingSelector = true;
+        return;
+      }
+      resolvedSelectors.add(selector);
       const isPrimarySelector = index === 0;
       elements.forEach((element) => {
         if (!element || typeof element.getBoundingClientRect !== "function") return;
@@ -1750,7 +1761,11 @@ export default function ERPLayout() {
       });
     });
 
-    if (maskTargets.length <= 1) {
+    const hasMissingSelectors =
+      hasMultipleDeclaredTargets &&
+      (sawMissingSelector || resolvedSelectors.size < trimmedSelectors.length);
+
+    if (!hasMultipleDeclaredTargets && maskTargets.length <= 1) {
       return undefined;
     }
 
@@ -1763,13 +1778,13 @@ export default function ERPLayout() {
       height: "100%",
       pointerEvents: "none",
       zIndex: 10001,
-      backgroundColor: "rgba(15, 23, 42, 0.65)",
+      backgroundColor: "transparent",
       isolation: "isolate",
     });
     document.body.appendChild(overlay);
     extraSpotlightContainerRef.current = overlay;
 
-    const spotlightEntries = outlineTargets.map(({ element, padding: paddingAmount }) => {
+    const createOutlineEntry = (element, paddingAmount, role = "outline") => {
       const outline = document.createElement("div");
       outline.className = "tour-extra-spotlight";
       Object.assign(outline.style, {
@@ -1780,10 +1795,22 @@ export default function ERPLayout() {
           "0 0 0 2px rgba(59, 130, 246, 0.85), 0 12px 24px rgba(15, 23, 42, 0.35), 0 0 35px rgba(59, 130, 246, 0.55)",
         pointerEvents: "none",
         transition: "all 0.15s ease",
+        opacity: role === "mask" ? "0" : "1",
       });
+      outline.dataset.spotlightRole = role;
       overlay.appendChild(outline);
-      return { outline, element, padding: paddingAmount };
-    });
+      return { outline, element, padding: paddingAmount, role };
+    };
+
+    const maskSpotlightEntries = maskTargets.map(({ element, padding: paddingAmount }) =>
+      createOutlineEntry(element, paddingAmount, "mask"),
+    );
+
+    const outlineSpotlightEntries = outlineTargets.map(({ element, padding: paddingAmount }) =>
+      createOutlineEntry(element, paddingAmount, "outline"),
+    );
+
+    const spotlightEntries = [...maskSpotlightEntries, ...outlineSpotlightEntries];
 
     extraSpotlightsRef.current = spotlightEntries;
     setMultiSpotlightActive(true);
@@ -1830,7 +1857,10 @@ export default function ERPLayout() {
         hasVisibleRect = true;
       });
 
-      if (hasVisibleRect) {
+      const shouldDimBackground =
+        hasVisibleRect && maskTargets.length > 0 && !hasMissingSelectors;
+
+      if (shouldDimBackground) {
         svgParts.push(`</mask>`, `</defs>`);
         svgParts.push(
           `<rect x="0" y="0" width="${viewportWidth}" height="${viewportHeight}" fill="white" mask="url(#${maskId})" />`,
@@ -1848,10 +1878,14 @@ export default function ERPLayout() {
       } else {
         overlayElement.style.maskImage = "none";
         overlayElement.style.webkitMaskImage = "none";
+        overlayElement.style.maskSize = "";
+        overlayElement.style.webkitMaskSize = "";
+        overlayElement.style.maskRepeat = "";
+        overlayElement.style.webkitMaskRepeat = "";
         overlayElement.style.backgroundColor = "transparent";
       }
 
-      spotlightEntries.forEach(({ outline, element, padding: paddingAmount }) => {
+      spotlightEntries.forEach(({ outline, element, padding: paddingAmount, role }) => {
         const rect = element.getBoundingClientRect();
         const expandedWidth = rect.width + paddingAmount * 2;
         const expandedHeight = rect.height + paddingAmount * 2;
@@ -1861,6 +1895,9 @@ export default function ERPLayout() {
         outline.style.left = `${Math.floor(expandedLeft)}px`;
         outline.style.width = `${Math.max(0, Math.ceil(expandedWidth))}px`;
         outline.style.height = `${Math.max(0, Math.ceil(expandedHeight))}px`;
+        if (role === "mask") {
+          outline.style.opacity = shouldDimBackground ? "0" : "1";
+        }
       });
     };
 
