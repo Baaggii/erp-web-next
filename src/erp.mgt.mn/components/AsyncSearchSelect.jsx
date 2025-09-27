@@ -179,12 +179,8 @@ export default function AsyncSearchSelect({
   }, [value]);
 
   useEffect(() => {
-    setHighlight((h) => {
-      if (h < 0) return h;
-      if (options.length === 0) return -1;
-      return Math.min(h, options.length - 1);
-    });
-  }, [options.length]);
+    if (show && options.length > 0) setHighlight((h) => (h < 0 ? 0 : Math.min(h, options.length - 1)));
+  }, [options, show]);
 
   useEffect(() => {
     let canceled = false;
@@ -274,21 +270,13 @@ export default function AsyncSearchSelect({
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       if (!show) setShow(true);
-      setHighlight((h) => {
-        if (options.length === 0) return -1;
-        const next = h + 1;
-        if (next < 0) return 0;
-        return Math.min(next, options.length - 1);
-      });
+      setHighlight((h) => Math.min(h + 1, options.length - 1));
       return;
     }
     if (e.key === 'ArrowUp') {
       e.preventDefault();
       if (!show) setShow(true);
-      setHighlight((h) => {
-        if (h <= 0) return -1;
-        return h - 1;
-      });
+      setHighlight((h) => Math.max(h - 1, 0));
       return;
     }
     if (e.key !== 'Enter') return;
@@ -302,7 +290,6 @@ export default function AsyncSearchSelect({
       return;
     }
 
-    const requireExplicitMatch = highlight >= 0;
     let idx = highlight;
     let opt = null;
     if (idx >= 0 && idx < options.length) {
@@ -312,9 +299,7 @@ export default function AsyncSearchSelect({
     }
 
     if (opt == null) {
-      if (requireExplicitMatch) {
-        actionRef.current = { type: 'enter', matched: false, query };
-      }
+      actionRef.current = { type: 'enter', matched: false, query };
       return;
     }
 
