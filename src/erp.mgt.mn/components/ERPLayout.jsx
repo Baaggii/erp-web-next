@@ -1340,28 +1340,6 @@ export default function ERPLayout() {
                 "Click the highlighted parent control to continue.",
               );
 
-              let arrowRect = null;
-              let arrowIsValid = false;
-              if (typeof document !== "undefined" && document?.body) {
-                try {
-                  const arrowElements = document.querySelectorAll(fallbackSelector);
-                  if (arrowElements.length === 1) {
-                    const rect = arrowElements[0].getBoundingClientRect();
-                    if (rect && rect.width > 0 && rect.height > 0) {
-                      arrowRect = {
-                        top: rect.top,
-                        left: rect.left,
-                        width: rect.width,
-                        height: rect.height,
-                      };
-                      arrowIsValid = true;
-                    }
-                  }
-                } catch (err) {
-                  // ignore invalid selectors
-                }
-              }
-
               const trimmedTarget =
                 typeof currentStep.target === "string"
                   ? currentStep.target.trim()
@@ -1407,6 +1385,126 @@ export default function ERPLayout() {
               const watchSelectors = normalizedOriginalSelectors.length
                 ? normalizedOriginalSelectors
                 : fallbackWatchSelectors;
+
+              let arrowRect = null;
+              let arrowIsValid = false;
+              if (typeof document !== "undefined" && document?.body) {
+                try {
+                  const arrowElements = document.querySelectorAll(fallbackSelector);
+                  if (arrowElements.length > 0) {
+                    const candidateElements = Array.from(arrowElements)
+                      .map((element, elementIndex) => {
+                        if (!element || typeof element.getBoundingClientRect !== "function") {
+                          return null;
+                        }
+                        const rect = element.getBoundingClientRect();
+                        if (!rect) return null;
+                        const visible = rect.width > 0 && rect.height > 0;
+                        return { element, rect, visible, elementIndex };
+                      })
+                      .filter(Boolean);
+
+                    if (candidateElements.length) {
+                      const targetSelectorCandidates = [];
+                      const seenTargets = new Set();
+                      const pushTargetSelector = (value) => {
+                        if (typeof value !== "string") return;
+                        const trimmed = value.trim();
+                        if (!trimmed || trimmed === fallbackSelector) return;
+                        if (seenTargets.has(trimmed)) return;
+                        seenTargets.add(trimmed);
+                        targetSelectorCandidates.push(trimmed);
+                      };
+
+                      if (normalizedOriginalSelectors.length) {
+                        normalizedOriginalSelectors.forEach((value) => pushTargetSelector(value));
+                      } else {
+                        pushTargetSelector(trimmedTarget);
+                        pushTargetSelector(trimmedSelector);
+                        if (Array.isArray(currentStep.selectors)) {
+                          currentStep.selectors.forEach((value) => pushTargetSelector(value));
+                        }
+                        if (Array.isArray(currentStep.highlightSelectors)) {
+                          currentStep.highlightSelectors.forEach((value) => pushTargetSelector(value));
+                        }
+                      }
+
+                      const targetRects = [];
+                      targetSelectorCandidates.forEach((selectorValue) => {
+                        try {
+                          const nodes = document.querySelectorAll(selectorValue);
+                          Array.from(nodes).forEach((node) => {
+                            if (!node || typeof node.getBoundingClientRect !== "function") {
+                              return;
+                            }
+                            const rect = node.getBoundingClientRect();
+                            if (rect) {
+                              targetRects.push({ rect });
+                            }
+                          });
+                        } catch (err) {
+                          // ignore invalid selectors
+                        }
+                      });
+
+                      const candidateWithScore = candidateElements.map((candidate) => {
+                        const { rect, visible, elementIndex } = candidate;
+                        const candidateCenterX = rect.left + rect.width / 2;
+                        const candidateCenterY = rect.top + rect.height / 2;
+
+                        let nearestDistance = Infinity;
+                        if (targetRects.length) {
+                          targetRects.forEach(({ rect: targetRect }) => {
+                            if (!targetRect) return;
+                            const targetCenterX = targetRect.left + targetRect.width / 2;
+                            const targetCenterY = targetRect.top + targetRect.height / 2;
+                            const dx = candidateCenterX - targetCenterX;
+                            const dy = candidateCenterY - targetCenterY;
+                            const distance = Math.sqrt(dx * dx + dy * dy);
+                            if (distance < nearestDistance) {
+                              nearestDistance = distance;
+                            }
+                          });
+                        } else {
+                          nearestDistance = elementIndex;
+                        }
+
+                        const visibilityScore = visible ? 0 : 1;
+                        return {
+                          candidate,
+                          visibilityScore,
+                          nearestDistance,
+                          elementIndex,
+                        };
+                      });
+
+                      candidateWithScore.sort((a, b) => {
+                        if (a.visibilityScore !== b.visibilityScore) {
+                          return a.visibilityScore - b.visibilityScore;
+                        }
+                        if (a.nearestDistance !== b.nearestDistance) {
+                          return a.nearestDistance - b.nearestDistance;
+                        }
+                        return a.elementIndex - b.elementIndex;
+                      });
+
+                      const bestCandidate = candidateWithScore[0]?.candidate;
+                      if (bestCandidate?.visible) {
+                        const { rect } = bestCandidate;
+                        arrowRect = {
+                          top: rect.top,
+                          left: rect.left,
+                          width: rect.width,
+                          height: rect.height,
+                        };
+                        arrowIsValid = true;
+                      }
+                    }
+                  }
+                } catch (err) {
+                  // ignore invalid selectors
+                }
+              }
 
               const placeholderContent =
                 currentStep.content !== undefined && currentStep.content !== null
