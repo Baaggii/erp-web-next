@@ -47,12 +47,17 @@ export const useTour = (pageKey, options = {}) => {
   const { userSettings } = useContext(AuthContext);
   const location = useLocation();
 
+  const { forceReload, path, ...restOptions } = options || {};
+  const memoizedRestOptions = useMemo(
+    () => restOptions,
+    [JSON.stringify(restOptions)],
+  );
+
   useEffect(() => {
     if (!pageKey || typeof ensureTourDefinition !== 'function') return undefined;
     const controller = new AbortController();
     let isMounted = true;
 
-    const { forceReload, path, ...restOptions } = options || {};
     const targetPath = path ?? location.pathname;
 
     async function load() {
@@ -66,7 +71,7 @@ export const useTour = (pageKey, options = {}) => {
         if (!isMounted) return;
         const steps = Array.isArray(entry?.steps) ? entry.steps : [];
         const resolvedPath = entry?.path || targetPath;
-        startTour(pageKey, steps, { ...restOptions, path: resolvedPath });
+        startTour(pageKey, steps, { ...memoizedRestOptions, path: resolvedPath });
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error('Failed to load tour definition', err);
@@ -79,7 +84,16 @@ export const useTour = (pageKey, options = {}) => {
       isMounted = false;
       controller.abort();
     };
-  }, [ensureTourDefinition, location.pathname, options, pageKey, startTour, userSettings]);
+  }, [
+    ensureTourDefinition,
+    forceReload,
+    location.pathname,
+    memoizedRestOptions,
+    pageKey,
+    path,
+    startTour,
+    userSettings,
+  ]);
 };
 
 const cryptoSource = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
