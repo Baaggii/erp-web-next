@@ -212,6 +212,98 @@ function computeStepSignature(steps) {
   );
 }
 
+function sanitizeTourStepsForRestart(steps) {
+  if (!Array.isArray(steps)) return [];
+
+  return steps
+    .filter(
+      (step) => step && typeof step === "object" && !step.missingTargetPauseStep,
+    )
+    .map((step) => {
+      const sanitized = { ...step };
+
+      const originalTarget =
+        typeof step.missingTargetOriginalTarget === "string"
+          ? step.missingTargetOriginalTarget.trim()
+          : "";
+
+      const originalSelectorsRaw = Array.isArray(
+        step.missingTargetOriginalSelectors,
+      )
+        ? step.missingTargetOriginalSelectors
+        : [];
+      const originalSelectors = originalSelectorsRaw
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean);
+
+      const fallbackSelector =
+        originalTarget ||
+        (typeof step.selector === "string" ? step.selector.trim() : "") ||
+        (typeof step.target === "string" ? step.target.trim() : "");
+
+      const normalizedSelectors = normalizeSelectorList(
+        originalSelectors.length
+          ? originalSelectors
+          : Array.isArray(step.selectors)
+            ? step.selectors
+                .map((value) => (typeof value === "string" ? value.trim() : ""))
+                .filter(Boolean)
+            : [],
+        fallbackSelector,
+      );
+
+      if (normalizedSelectors.length) {
+        sanitized.selectors = normalizedSelectors;
+        sanitized.highlightSelectors = normalizedSelectors;
+        sanitized.selector = normalizedSelectors[0];
+      } else if (fallbackSelector) {
+        sanitized.selector = fallbackSelector;
+        sanitized.selectors = [fallbackSelector];
+        sanitized.highlightSelectors = [fallbackSelector];
+      } else {
+        delete sanitized.selectors;
+        delete sanitized.highlightSelectors;
+        delete sanitized.selector;
+      }
+
+      if (originalTarget) {
+        sanitized.target = originalTarget;
+      }
+
+      if (
+        (!sanitized.target ||
+          (typeof sanitized.target === "string" && !sanitized.target.trim())) &&
+        typeof sanitized.selector === "string" &&
+        sanitized.selector.trim()
+      ) {
+        sanitized.target = sanitized.selector.trim();
+      }
+
+      if (typeof sanitized.target === "string") {
+        sanitized.target = sanitized.target.trim();
+      }
+
+      if (typeof sanitized.selector === "string") {
+        sanitized.selector = sanitized.selector.trim();
+      }
+
+      delete sanitized.missingTarget;
+      delete sanitized.missingTargetOriginalTarget;
+      delete sanitized.missingTargetOriginalSelectors;
+      delete sanitized.missingTargetPauseStep;
+      delete sanitized.missingTargetPauseStepId;
+      delete sanitized.missingTargetPauseForStepId;
+      delete sanitized.missingTargetPauseWatchSelectors;
+      delete sanitized.missingTargetPauseTooltipMessage;
+      delete sanitized.missingTargetPauseHasArrow;
+      delete sanitized.missingTargetPauseArrowSelector;
+      delete sanitized.missingTargetPauseArrowMessage;
+      delete sanitized.missingTargetPauseArrowRect;
+
+      return sanitized;
+    });
+}
+
 function JoyrideTooltip({
   index = 0,
   size = 0,
@@ -2084,19 +2176,55 @@ export default function ERPLayout() {
   const handleTourStepJump = useCallback(
     (stepIndex) => {
       if (!tourViewerState?.pageKey) return;
-      const steps = Array.isArray(tourViewerState.steps) ? tourViewerState.steps : [];
-      if (!steps.length) return;
+
+      const viewerPath = tourViewerState.path || location.pathname;
+      const registryEntry =
+        typeof getTourForPath === "function" ? getTourForPath(viewerPath) : null;
+      const registrySteps = Array.isArray(registryEntry?.steps)
+        ? registryEntry.steps
+        : null;
+
+      const sourceSteps =
+        registryEntry?.pageKey === tourViewerState.pageKey &&
+        registrySteps &&
+        registrySteps.length
+          ? registrySteps
+          : Array.isArray(tourViewerState.steps)
+            ? tourViewerState.steps
+            : [];
+
+      const cleanedSteps = sanitizeTourStepsForRestart(sourceSteps);
+      if (!cleanedSteps.length) return;
+
       const numericIndex = Number(stepIndex);
       const safeIndex = Number.isFinite(numericIndex) ? numericIndex : 0;
-      const clampedIndex = Math.min(Math.max(0, safeIndex), steps.length - 1);
+      const clampedIndex = Math.min(Math.max(0, safeIndex), cleanedSteps.length - 1);
+
+      setTourViewerState((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          steps: cleanedSteps,
+          currentStepIndex: clampedIndex,
+        };
+      });
+
       setTourStepIndex(clampedIndex);
-      startTour(tourViewerState.pageKey, steps, {
+
+      const startPath = registryEntry?.path || viewerPath;
+
+      startTour(tourViewerState.pageKey, cleanedSteps, {
         force: true,
-        path: tourViewerState.path || location.pathname,
+        path: startPath,
         stepIndex: clampedIndex,
       });
     },
-    [location.pathname, startTour, tourViewerState],
+    [
+      getTourForPath,
+      location.pathname,
+      startTour,
+      tourViewerState,
+    ],
   );
 
   const resetGuide = useCallback(() => {
