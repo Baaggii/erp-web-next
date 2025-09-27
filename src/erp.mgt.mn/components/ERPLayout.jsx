@@ -330,6 +330,7 @@ function JoyrideTooltip({
   const {
     className: primaryClassName,
     onClick: primaryOnClick,
+    disabled: primaryDisabled,
     ...restPrimaryProps
   } = primaryProps || {};
   const {
@@ -367,7 +368,19 @@ function JoyrideTooltip({
     }
   };
 
+  const isMissingTargetPauseStep = Boolean(step?.missingTargetPauseStep);
+  const isPrimaryDisabled = Boolean(primaryDisabled || isMissingTargetPauseStep);
+
   const handlePrimary = (event) => {
+    if (isMissingTargetPauseStep) {
+      if (typeof event?.preventDefault === 'function') {
+        event.preventDefault();
+      }
+      if (typeof primaryOnClick === 'function') {
+        primaryOnClick(event);
+      }
+      return;
+    }
     if (isLastStep) {
       if (typeof event?.preventDefault === 'function') {
         event.preventDefault();
@@ -460,6 +473,8 @@ function JoyrideTooltip({
           type="button"
           className={`react-joyride__tooltip-button react-joyride__tooltip-button--primary ${primaryClassName ?? ''}`.trim()}
           onClick={handlePrimary}
+          disabled={isPrimaryDisabled}
+          aria-disabled={isMissingTargetPauseStep || undefined}
           {...restPrimaryProps}
         >
           {nextLabel}
