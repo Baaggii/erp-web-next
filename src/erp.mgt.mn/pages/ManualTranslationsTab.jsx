@@ -290,8 +290,9 @@ export default function ManualTranslationsTab() {
               for (const lang of languagesList) {
                 if (values[lang] == null) values[lang] = '';
                 translatedBy[lang] = normalizeProvider(translatedBy[lang]);
-                const origin = normalizeOrigin(translatedBySources[lang]);
-                translatedBySources[lang] = origin;
+                const normalizedOrigin = normalizeOrigin(translatedBySources[lang]);
+                const fallbackOrigin = normalizeOrigin(entry.type) || toTrimmedString(entry.type);
+                translatedBySources[lang] = normalizedOrigin || fallbackOrigin || 'unknown';
               }
               return {
                 ...entry,
