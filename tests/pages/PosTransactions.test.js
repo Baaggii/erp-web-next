@@ -247,6 +247,7 @@ if (typeof mock.import !== 'function') {
     assert.ok(mismatchSession, 'should detect mismatched multi-row values');
   });
 
+
   test('generated column configs support lowercase generation_expression metadata', async () => {
     const stateOverrides = Array(21).fill(undefined);
     stateOverrides[0] = {}; // configs
@@ -590,4 +591,63 @@ test('syncCalcFields seeds metadata when rows omit multi table field', () => {
   assert.equal(synced.transactions_order.pos_session_id, 'sess-200');
   assert.equal(synced.transactions_order.footer_note, 'persist');
   assert.equal(initial.transactions_order.pos_session_id, undefined);
+});
+
+test('syncCalcFields SUM handles localized numeric strings', () => {
+  const calcFields = [
+    {
+      cells: [
+        { table: 'transactions', field: 'total_qty', agg: 'SUM' },
+        { table: 'transactions_inventory', field: 'qty', agg: 'SUM' },
+      ],
+    },
+    {
+      cells: [
+        { table: 'transactions', field: 'total_amount', agg: 'SUM' },
+        { table: 'transactions_inventory', field: 'amount', agg: 'SUM' },
+      ],
+    },
+    {
+      cells: [
+        { table: 'transactions', field: 'total_discount', agg: 'SUM' },
+        { table: 'transactions_inventory', field: 'discount', agg: 'SUM' },
+      ],
+    },
+  ];
+
+  const initial = {
+    transactions: {
+      total_qty: 0,
+      total_amount: 0,
+      total_discount: 0,
+    },
+    transactions_inventory: [
+      {
+        qty: '1,5',
+        amount: '10\u00a0000',
+        discount: '0,5',
+      },
+      {
+        qty: '2',
+        amount: '2 500',
+        discount: '1',
+      },
+      {
+        qty: '0,5',
+        amount: '1.234,56',
+        discount: '0',
+      },
+    ],
+  };
+
+  const synced = syncCalcFields(initial, calcFields);
+
+  assert.notStrictEqual(
+    synced.transactions,
+    initial.transactions,
+    'should create new master row when totals change',
+  );
+  assert.equal(synced.transactions.total_qty, 4);
+  assert.equal(synced.transactions.total_amount, 13734.56);
+  assert.equal(synced.transactions.total_discount, 1.5);
 });
