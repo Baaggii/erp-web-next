@@ -286,7 +286,28 @@ function JoyrideTooltip({
       ) : null}
       <div className="react-joyride__tooltip-content">
         {step?.content}
-        {step?.missingTarget ? (
+        {step?.missingTargetPauseStep ? (
+          <div
+            className="react-joyride__tooltip-missing-target"
+            style={{
+              marginTop: '0.75rem',
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              border: '1px solid rgb(251 146 60)',
+              backgroundColor: 'rgba(254, 243, 199, 0.45)',
+              color: 'rgb(154 52 18)',
+              fontWeight: 600,
+            }}
+          >
+            {step.missingTargetPauseTooltipMessage
+              ? step.missingTargetPauseTooltipMessage
+              : step.missingTargetPauseArrowMessage
+                ? `${step.missingTargetPauseArrowMessage}.`
+                : step.missingTarget
+                  ? step.missingTarget
+                  : 'Click the highlighted control to continue.'}
+          </div>
+        ) : step?.missingTarget ? (
           <div
             className="react-joyride__tooltip-missing-target"
             style={{
@@ -406,6 +427,36 @@ export default function ERPLayout() {
     },
     [],
   );
+  const missingTargetArrowRef = useRef(null);
+  const removeMissingTargetArrow = useCallback(() => {
+    const entry = missingTargetArrowRef.current;
+    if (!entry) return;
+
+    if (
+      entry.rafId !== null &&
+      typeof window !== "undefined" &&
+      typeof window.cancelAnimationFrame === "function"
+    ) {
+      window.cancelAnimationFrame(entry.rafId);
+    }
+    if (entry.handleScroll) {
+      window.removeEventListener("scroll", entry.handleScroll, true);
+    }
+    if (entry.handleResize) {
+      window.removeEventListener("resize", entry.handleResize, true);
+    }
+    if (entry.resizeObserver) {
+      try {
+        entry.resizeObserver.disconnect();
+      } catch (err) {
+        // ignore
+      }
+    }
+    if (entry.container?.parentNode) {
+      entry.container.parentNode.removeChild(entry.container);
+    }
+    missingTargetArrowRef.current = null;
+  }, []);
   const missingTargetWatcherRef = useRef(null);
   const stopMissingTargetWatcher = useCallback(() => {
     const watcher = missingTargetWatcherRef.current;
@@ -425,7 +476,8 @@ export default function ERPLayout() {
       }
     }
     missingTargetWatcherRef.current = null;
-  }, []);
+    removeMissingTargetArrow();
+  }, [removeMissingTargetArrow]);
   const joyrideScrollOffset = 56;
   const extraSpotlightsRef = useRef([]);
   const extraSpotlightContainerRef = useRef(null);
@@ -489,6 +541,11 @@ export default function ERPLayout() {
         delete restoredStep.missingTargetOriginalSelectors;
         delete restoredStep.missingTargetPauseStepId;
         delete restoredStep.missingTargetPauseWatchSelectors;
+        delete restoredStep.missingTargetPauseHasArrow;
+        delete restoredStep.missingTargetPauseArrowSelector;
+        delete restoredStep.missingTargetPauseArrowMessage;
+        delete restoredStep.missingTargetPauseArrowRect;
+        delete restoredStep.missingTargetPauseTooltipMessage;
 
         baseSteps[adjustedOriginalIndex] = restoredStep;
         placeholderIndex = pauseIndex;
@@ -594,6 +651,8 @@ export default function ERPLayout() {
     },
     [resolveMissingTargetById, stopMissingTargetWatcher],
   );
+
+  useEffect(() => () => removeMissingTargetArrow(), [removeMissingTargetArrow]);
 
   const removeExtraSpotlights = useCallback(() => {
     extraSpotlightsRef.current.forEach((entry) => {
@@ -1117,6 +1176,33 @@ export default function ERPLayout() {
                 return prevSteps;
               }
 
+              const arrowMessage = t(
+                "tour_missing_target_arrow_hint",
+                "Press here to reveal the next control",
+              );
+              const tooltipMessage = t(
+                "tour_missing_target_tooltip_hint",
+                "Click the highlighted parent control to continue.",
+              );
+
+              let arrowRect = null;
+              if (typeof document !== "undefined" && document?.body) {
+                try {
+                  const arrowElement = document.querySelector(fallbackSelector);
+                  if (arrowElement) {
+                    const rect = arrowElement.getBoundingClientRect();
+                    arrowRect = {
+                      top: rect.top,
+                      left: rect.left,
+                      width: rect.width,
+                      height: rect.height,
+                    };
+                  }
+                } catch (err) {
+                  // ignore invalid selectors
+                }
+              }
+
               const trimmedTarget =
                 typeof currentStep.target === "string"
                   ? currentStep.target.trim()
@@ -1244,6 +1330,52 @@ export default function ERPLayout() {
                       updatedPauseStep.highlightSelectors = [fallbackSelector];
                       mutated = true;
                     }
+                    if (updatedPauseStep.missingTargetPauseHasArrow !== true) {
+                      updatedPauseStep.missingTargetPauseHasArrow = true;
+                      mutated = true;
+                    }
+                    if (
+                      updatedPauseStep.missingTargetPauseArrowSelector !==
+                      fallbackSelector
+                    ) {
+                      updatedPauseStep.missingTargetPauseArrowSelector =
+                        fallbackSelector;
+                      mutated = true;
+                    }
+                    if (arrowRect) {
+                      const prevRect =
+                        updatedPauseStep.missingTargetPauseArrowRect;
+                      const rectChanged =
+                        !prevRect ||
+                        prevRect.top !== arrowRect.top ||
+                        prevRect.left !== arrowRect.left ||
+                        prevRect.width !== arrowRect.width ||
+                        prevRect.height !== arrowRect.height;
+                      if (rectChanged) {
+                        updatedPauseStep.missingTargetPauseArrowRect = arrowRect;
+                        mutated = true;
+                      }
+                    } else if (
+                      updatedPauseStep.missingTargetPauseArrowRect !== undefined
+                    ) {
+                      delete updatedPauseStep.missingTargetPauseArrowRect;
+                      mutated = true;
+                    }
+                    if (
+                      updatedPauseStep.missingTargetPauseArrowMessage !==
+                      arrowMessage
+                    ) {
+                      updatedPauseStep.missingTargetPauseArrowMessage = arrowMessage;
+                      mutated = true;
+                    }
+                    if (
+                      updatedPauseStep.missingTargetPauseTooltipMessage !==
+                      tooltipMessage
+                    ) {
+                      updatedPauseStep.missingTargetPauseTooltipMessage =
+                        tooltipMessage;
+                      mutated = true;
+                    }
                     if (mutated) {
                       const nextSteps = [...prevSteps];
                       nextSteps[pauseIndex] = updatedPauseStep;
@@ -1286,7 +1418,14 @@ export default function ERPLayout() {
                 missingTargetPauseStep: true,
                 missingTargetPauseForStepId: currentStep.id,
                 missingTargetPauseWatchSelectors: watchSelectors,
+                missingTargetPauseHasArrow: true,
+                missingTargetPauseArrowSelector: fallbackSelector,
+                missingTargetPauseArrowMessage: arrowMessage,
+                missingTargetPauseTooltipMessage: tooltipMessage,
               };
+              if (arrowRect) {
+                placeholder.missingTargetPauseArrowRect = arrowRect;
+              }
               delete placeholder.missingTargetOriginalTarget;
               delete placeholder.missingTargetOriginalSelectors;
               delete placeholder.missingTargetPauseStepId;
@@ -1486,6 +1625,268 @@ export default function ERPLayout() {
       removeExtraSpotlights();
     };
   }, [removeExtraSpotlights, runTour, tourStepIndex, tourSteps]);
+
+  useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") {
+      return undefined;
+    }
+    if (!runTour) {
+      removeMissingTargetArrow();
+      return undefined;
+    }
+    const step = tourSteps[tourStepIndex];
+    if (!step || !step.missingTargetPauseStep) {
+      removeMissingTargetArrow();
+      return undefined;
+    }
+
+    removeMissingTargetArrow();
+
+    const selectorsSet = new Set();
+    const addSelector = (value) => {
+      if (typeof value !== "string") return;
+      const trimmed = value.trim();
+      if (!trimmed) return;
+      selectorsSet.add(trimmed);
+    };
+
+    addSelector(step.missingTargetPauseArrowSelector);
+    if (Array.isArray(step.highlightSelectors)) {
+      step.highlightSelectors.forEach(addSelector);
+    }
+    if (Array.isArray(step.selectors)) {
+      step.selectors.forEach(addSelector);
+    }
+
+    const selectors = Array.from(selectorsSet);
+
+    const storedRectRaw =
+      step.missingTargetPauseArrowRect &&
+      typeof step.missingTargetPauseArrowRect === "object"
+        ? step.missingTargetPauseArrowRect
+        : null;
+    const storedRect = storedRectRaw
+      ? {
+          top: Number(storedRectRaw.top) || 0,
+          left: Number(storedRectRaw.left) || 0,
+          width: Number(storedRectRaw.width) || 0,
+          height: Number(storedRectRaw.height) || 0,
+        }
+      : null;
+
+    if (!selectors.length && !storedRect) {
+      return undefined;
+    }
+
+    const overlay = document.createElement("div");
+    overlay.className = "tour-missing-target-arrow-overlay";
+    Object.assign(overlay.style, {
+      position: "fixed",
+      inset: "0",
+      zIndex: "10002",
+      pointerEvents: "none",
+      fontFamily: "inherit",
+    });
+    document.body.appendChild(overlay);
+
+    const callout = document.createElement("div");
+    callout.className = "tour-missing-target-arrow";
+    Object.assign(callout.style, {
+      position: "absolute",
+      display: "flex",
+      alignItems: "center",
+      gap: "12px",
+      justifyContent: "center",
+      pointerEvents: "none",
+      color: "#fff",
+      fontWeight: "700",
+      fontSize: "16px",
+      textAlign: "center",
+      maxWidth: "calc(100vw - 48px)",
+      filter: "drop-shadow(0 14px 28px rgba(15, 23, 42, 0.4))",
+      transition: "transform 0.2s ease, top 0.2s ease, left 0.2s ease",
+    });
+    overlay.appendChild(callout);
+
+    const bubble = document.createElement("div");
+    bubble.className = "tour-missing-target-arrow-text";
+    const arrowMessage =
+      typeof step.missingTargetPauseArrowMessage === "string" &&
+      step.missingTargetPauseArrowMessage.trim()
+        ? step.missingTargetPauseArrowMessage.trim()
+        : "Press here to reveal the next control";
+    bubble.textContent = arrowMessage;
+    Object.assign(bubble.style, {
+      background: "linear-gradient(135deg, #fb923c, #f97316)",
+      padding: "18px 22px",
+      borderRadius: "18px",
+      lineHeight: "1.4",
+      letterSpacing: "0.01em",
+      boxShadow: "0 22px 42px rgba(15, 23, 42, 0.45)",
+      pointerEvents: "none",
+      fontSize: "18px",
+    });
+
+    const pointer = document.createElement("div");
+    pointer.className = "tour-missing-target-arrow-pointer";
+    Object.assign(pointer.style, {
+      width: "0",
+      height: "0",
+      borderLeft: "20px solid transparent",
+      borderRight: "20px solid transparent",
+      pointerEvents: "none",
+    });
+
+    callout.appendChild(bubble);
+    callout.appendChild(pointer);
+
+    const entry = {
+      container: overlay,
+      callout,
+      bubble,
+      pointer,
+      selectors,
+      storedRect,
+      trackedElement: null,
+      orientation: null,
+      rafId: null,
+      handleScroll: null,
+      handleResize: null,
+      resizeObserver: null,
+    };
+
+    const findElement = () => {
+      for (const selector of selectors) {
+        if (!selector) continue;
+        try {
+          const element = document.querySelector(selector);
+          if (element) {
+            return element;
+          }
+        } catch (err) {
+          // ignore invalid selectors
+        }
+      }
+      return null;
+    };
+
+    entry.trackedElement = findElement();
+
+    const getRect = () => {
+      if (entry.trackedElement) {
+        const rect = entry.trackedElement.getBoundingClientRect();
+        if (rect && (rect.width || rect.height)) {
+          return rect;
+        }
+      }
+      const nextElement = findElement();
+      if (nextElement) {
+        entry.trackedElement = nextElement;
+        const rect = nextElement.getBoundingClientRect();
+        if (rect && (rect.width || rect.height)) {
+          return rect;
+        }
+      }
+      if (storedRect) {
+        return storedRect;
+      }
+      return null;
+    };
+
+    const applyOrientation = (nextOrientation) => {
+      if (entry.orientation === nextOrientation) return;
+      entry.orientation = nextOrientation;
+      callout.style.flexDirection = "column";
+      if (nextOrientation === "above") {
+        bubble.style.order = "1";
+        pointer.style.order = "2";
+        pointer.style.marginTop = "10px";
+        pointer.style.marginBottom = "0";
+        pointer.style.borderTop = "26px solid #f97316";
+        pointer.style.borderBottom = "0";
+      } else {
+        bubble.style.order = "2";
+        pointer.style.order = "1";
+        pointer.style.marginTop = "0";
+        pointer.style.marginBottom = "10px";
+        pointer.style.borderTop = "0";
+        pointer.style.borderBottom = "26px solid #f97316";
+      }
+    };
+
+    const updatePositions = () => {
+      const rect = getRect();
+      if (!rect) {
+        overlay.style.display = "none";
+        return;
+      }
+      overlay.style.display = "block";
+
+      const viewportWidth =
+        window.innerWidth || document.documentElement?.clientWidth || 0;
+      const viewportHeight =
+        window.innerHeight || document.documentElement?.clientHeight || 0;
+      const width = Math.max(240, Math.min(320, viewportWidth - 48));
+      const halfWidth = width / 2;
+      const targetCenterX = rect.left + rect.width / 2;
+      const clampedCenterX = Math.min(
+        Math.max(targetCenterX, halfWidth + 24),
+        viewportWidth - halfWidth - 24,
+      );
+      callout.style.width = `${Math.round(width)}px`;
+      callout.style.left = `${Math.round(clampedCenterX)}px`;
+
+      const gap = 32;
+      const spaceAbove = rect.top;
+      const spaceBelow = viewportHeight - (rect.top + rect.height);
+      const nextOrientation =
+        spaceAbove < 140 && spaceBelow > spaceAbove ? "below" : "above";
+      applyOrientation(nextOrientation);
+
+      if (entry.orientation === "above") {
+        callout.style.top = `${Math.round(rect.top)}px`;
+        callout.style.transform = `translate(-50%, calc(-100% - ${gap}px))`;
+      } else {
+        callout.style.top = `${Math.round(rect.top + rect.height)}px`;
+        callout.style.transform = `translate(-50%, ${gap}px)`;
+      }
+    };
+
+    const scheduleUpdate = () => {
+      if (entry.rafId !== null) return;
+      entry.rafId = window.requestAnimationFrame(() => {
+        entry.rafId = null;
+        updatePositions();
+      });
+    };
+
+    entry.handleScroll = () => scheduleUpdate();
+    entry.handleResize = () => scheduleUpdate();
+
+    window.addEventListener("scroll", entry.handleScroll, true);
+    window.addEventListener("resize", entry.handleResize, true);
+
+    if (typeof ResizeObserver === "function") {
+      entry.resizeObserver = new ResizeObserver(() => scheduleUpdate());
+      const observerTarget = entry.trackedElement || findElement();
+      if (observerTarget) {
+        entry.trackedElement = observerTarget;
+        try {
+          entry.resizeObserver.observe(observerTarget);
+        } catch (err) {
+          // ignore observer errors
+        }
+      }
+    }
+
+    missingTargetArrowRef.current = entry;
+
+    updatePositions();
+
+    return () => {
+      removeMissingTargetArrow();
+    };
+  }, [removeMissingTargetArrow, runTour, tourStepIndex, tourSteps]);
 
   useEffect(() => {
     if (!currentTourPath) return;
