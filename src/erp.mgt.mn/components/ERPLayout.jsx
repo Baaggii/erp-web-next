@@ -388,6 +388,7 @@ export default function ERPLayout() {
   const [tourViewerState, setTourViewerState] = useState(null);
   const joyrideScrollOffset = 56;
   const extraSpotlightsRef = useRef([]);
+  const extraSpotlightContainerRef = useRef(null);
   const removeExtraSpotlights = useCallback(() => {
     extraSpotlightsRef.current.forEach((entry) => {
       const overlay = entry?.overlay;
@@ -396,6 +397,12 @@ export default function ERPLayout() {
       }
     });
     extraSpotlightsRef.current = [];
+
+    const container = extraSpotlightContainerRef.current;
+    if (container && container.parentNode) {
+      container.parentNode.removeChild(container);
+    }
+    extraSpotlightContainerRef.current = null;
   }, []);
   const openTourBuilder = useCallback((state) => {
     if (!state) return;
@@ -986,6 +993,23 @@ export default function ERPLayout() {
     const paddingValue = Number(step.spotlightPadding);
     const padding = Number.isFinite(paddingValue) ? paddingValue : 10;
 
+    let container = extraSpotlightContainerRef.current;
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "tour-extra-spotlight-container";
+      Object.assign(container.style, {
+        position: "absolute",
+        top: "0",
+        left: "0",
+        width: "0",
+        height: "0",
+        pointerEvents: "none",
+        zIndex: 10000,
+      });
+      document.body.appendChild(container);
+      extraSpotlightContainerRef.current = container;
+    }
+
     extraSelectors.forEach((selector) => {
       let elements = [];
       try {
@@ -1001,18 +1025,23 @@ export default function ERPLayout() {
         Object.assign(overlay.style, {
           position: "absolute",
           borderRadius: "12px",
+          backgroundColor: "rgba(56, 189, 248, 0.15)",
           boxShadow:
-            "0 0 0 2px rgba(56, 189, 248, 0.55), 0 0 0 9999px rgba(15, 23, 42, 0.45)",
+            "0 0 0 2px rgba(56, 189, 248, 0.55), 0 12px 24px rgba(15, 23, 42, 0.25)",
           pointerEvents: "none",
           zIndex: 10000,
           transition: "all 0.15s ease",
         });
-        document.body.appendChild(overlay);
+        container.appendChild(overlay);
         overlayEntries.push({ overlay, element, padding });
       });
     });
 
     if (!overlayEntries.length) {
+      if (container && container.parentNode) {
+        container.parentNode.removeChild(container);
+      }
+      extraSpotlightContainerRef.current = null;
       return undefined;
     }
 
