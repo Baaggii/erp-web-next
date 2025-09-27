@@ -10,9 +10,65 @@ const projectRoot = path.resolve(__dirname, '../../');
 const localesDir = path.join(projectRoot, 'src', 'erp.mgt.mn', 'locales');
 const tooltipDir = path.join(localesDir, 'tooltips');
 const SUPPORTED_LANGS = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
-const LOCALE_FILE_LABEL = 'Locale file';
-const TOOLTIP_FILE_LABEL = 'Tooltip file';
-const MANUAL_ENTRY_LABEL = 'Manual entry';
+const FILE_ORIGIN_BY_TYPE = {
+  locale: 'locale-file',
+  tooltip: 'tooltip-file',
+};
+const SOURCE_SEPARATOR = '|';
+
+function parseTranslatedByLabel(label) {
+  if (typeof label !== 'string') {
+    return { origin: '', provider: '' };
+  }
+
+  const trimmed = label.trim();
+  if (!trimmed) {
+    return { origin: '', provider: '' };
+  }
+
+  const lower = trimmed.toLowerCase();
+  if (lower === 'locale file' || lower === 'locale-file') {
+    return { origin: 'locale-file', provider: '' };
+  }
+  if (lower === 'tooltip file' || lower === 'tooltip-file') {
+    return { origin: 'tooltip-file', provider: '' };
+  }
+  if (lower === 'manual entry') {
+    return { origin: '', provider: 'manual-entry' };
+  }
+  if (lower === 'manual-entry') {
+    return { origin: '', provider: 'manual-entry' };
+  }
+
+  if (trimmed.includes(SOURCE_SEPARATOR)) {
+    const [rawOrigin, rawProvider = ''] = trimmed.split(SOURCE_SEPARATOR);
+    const origin = rawOrigin.trim();
+    const provider = rawProvider.trim();
+    return { origin, provider };
+  }
+
+  return { origin: '', provider: trimmed };
+}
+
+function composeTranslatedByLabel(origin, provider) {
+  const safeOrigin = typeof origin === 'string' ? origin.trim() : '';
+  const safeProvider = typeof provider === 'string' ? provider.trim() : '';
+  if (safeOrigin && safeProvider) {
+    return `${safeOrigin}${SOURCE_SEPARATOR}${safeProvider}`;
+  }
+  if (safeOrigin) {
+    return safeOrigin;
+  }
+  if (safeProvider) {
+    return safeProvider;
+  }
+  return '';
+}
+
+function combineFileOrigin(label, origin) {
+  const { provider } = parseTranslatedByLabel(label);
+  return composeTranslatedByLabel(origin, provider);
+}
 const translationsMetaFile = path.join(
   projectRoot,
   'docs',
@@ -218,12 +274,11 @@ export async function loadTranslations() {
         const id = `locale:${k}`;
         const entry = ensureEntry(id, k, 'locale');
         entry.values[lang] = v;
-        if (
-          v != null &&
-          String(v).trim() &&
-          (!entry.translatedBy?.[lang] || !entry.translatedBy[lang].trim())
-        ) {
-          entry.translatedBy[lang] = LOCALE_FILE_LABEL;
+        if (v != null && String(v).trim()) {
+          entry.translatedBy[lang] = combineFileOrigin(
+            entry.translatedBy?.[lang] || '',
+            FILE_ORIGIN_BY_TYPE.locale,
+          );
         }
       }
     } catch {}
@@ -238,12 +293,11 @@ export async function loadTranslations() {
         const id = `tooltip:${k}`;
         const entry = ensureEntry(id, k, 'tooltip');
         entry.values[lang] = v;
-        if (
-          v != null &&
-          String(v).trim() &&
-          (!entry.translatedBy?.[lang] || !entry.translatedBy[lang].trim())
-        ) {
-          entry.translatedBy[lang] = TOOLTIP_FILE_LABEL;
+        if (v != null && String(v).trim()) {
+          entry.translatedBy[lang] = combineFileOrigin(
+            entry.translatedBy?.[lang] || '',
+            FILE_ORIGIN_BY_TYPE.tooltip,
+          );
         }
       }
     } catch {}
@@ -253,24 +307,41 @@ export async function loadTranslations() {
   langs.add('mn');
 
   // Ensure all language fields exist
-  for (const entry of Object.values(entries)) {
+  const preparedEntries = [];
+
+  for (const originalEntry of Object.values(entries)) {
+    const entry = {
+      ...originalEntry,
+      values: { ...(originalEntry.values || {}) },
+      translatedBy: { ...(originalEntry.translatedBy || {}) },
+    };
+
+    const translatedByProviders = {};
+    const translatedBySources = {};
+
     for (const lang of langs) {
       if (entry.values[lang] == null) entry.values[lang] = '';
-      if (!entry.translatedBy || typeof entry.translatedBy !== 'object') {
-        entry.translatedBy = {};
-      }
       const label = entry.translatedBy[lang];
-      if (typeof label !== 'string') {
-        entry.translatedBy[lang] = '';
+      const { origin, provider } = parseTranslatedByLabel(label);
+      if (origin) {
+        translatedBySources[lang] = origin;
       }
+      translatedByProviders[lang] = provider || '';
     }
-    if (entry.module == null) entry.module = '';
-    if (entry.context == null) entry.context = '';
-    if (entry.page == null) entry.page = '';
-    if (entry.pageEditable == null) entry.pageEditable = true;
+
+    entry.module = entry.module ?? '';
+    entry.context = entry.context ?? '';
+    entry.page = entry.page ?? '';
+    entry.pageEditable = entry.pageEditable ?? true;
+
+    preparedEntries.push({
+      ...entry,
+      translatedBy: translatedByProviders,
+      translatedBySources,
+    });
   }
 
-  return { languages: Array.from(langs), entries: Object.values(entries) };
+  return { languages: Array.from(langs), entries: preparedEntries };
 }
 
 function normalizeTranslatedByMap(map) {
@@ -278,8 +349,11 @@ function normalizeTranslatedByMap(map) {
   const normalized = {};
   for (const [lang, label] of Object.entries(map)) {
     if (typeof label !== 'string') continue;
-    const trimmed = label.trim();
-    if (trimmed) normalized[lang] = trimmed;
+    const { origin, provider } = parseTranslatedByLabel(label);
+    const normalizedLabel = composeTranslatedByLabel(origin, provider);
+    if (normalizedLabel) {
+      normalized[lang] = normalizedLabel;
+    }
   }
   return normalized;
 }
@@ -305,6 +379,8 @@ export async function saveTranslation({
   const translatedByStore = await loadTranslatedByStore();
   const existingTranslatedBy = { ...(translatedByStore[entryId] || {}) };
   const incomingTranslatedBy = normalizeTranslatedByMap(translatedBy);
+  const fileOrigin = FILE_ORIGIN_BY_TYPE[type] || FILE_ORIGIN_BY_TYPE.locale;
+  const updatedLanguages = new Set();
 
   for (const [lang, val] of Object.entries(values)) {
     const dir = type === 'tooltip' ? tooltipDir : localesDir;
@@ -318,17 +394,25 @@ export async function saveTranslation({
       if (existingTranslatedBy[lang] != null) {
         delete existingTranslatedBy[lang];
       }
+      if (incomingTranslatedBy[lang] != null) {
+        delete incomingTranslatedBy[lang];
+      }
+      updatedLanguages.add(lang);
     } else {
       obj[key] = val;
-      if (!incomingTranslatedBy[lang]) {
-        incomingTranslatedBy[lang] = MANUAL_ENTRY_LABEL;
-      }
+      const incomingMeta = parseTranslatedByLabel(incomingTranslatedBy[lang]);
+      const existingMeta = parseTranslatedByLabel(existingTranslatedBy[lang]);
+      const origin = incomingMeta.origin || existingMeta.origin || fileOrigin;
+      const providerCode = incomingMeta.provider || existingMeta.provider || '';
+      incomingTranslatedBy[lang] = composeTranslatedByLabel(origin, providerCode);
+      updatedLanguages.add(lang);
     }
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, JSON.stringify(obj, null, 2) + '\n', 'utf8');
   }
 
   for (const [lang, label] of Object.entries(incomingTranslatedBy)) {
+    if (!updatedLanguages.has(lang)) continue;
     existingTranslatedBy[lang] = label;
   }
 
