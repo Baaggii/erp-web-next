@@ -284,7 +284,25 @@ function JoyrideTooltip({
           <h3 className="react-joyride__tooltip-title">{step.title}</h3>
         </div>
       ) : null}
-      <div className="react-joyride__tooltip-content">{step?.content}</div>
+      <div className="react-joyride__tooltip-content">
+        {step?.content}
+        {step?.missingTarget ? (
+          <div
+            className="react-joyride__tooltip-missing-target"
+            style={{
+              marginTop: '0.75rem',
+              padding: '0.75rem',
+              borderRadius: '0.5rem',
+              border: '1px solid rgb(251 146 60)',
+              backgroundColor: 'rgba(254, 243, 199, 0.45)',
+              color: 'rgb(154 52 18)',
+              fontWeight: 600,
+            }}
+          >
+            {step.missingTarget}
+          </div>
+        ) : null}
+      </div>
       <div
         className="react-joyride__tooltip-footer"
         style={{
@@ -770,27 +788,69 @@ export default function ERPLayout() {
           const eventRunId = step?.__runId;
           const isCurrentRun =
             eventRunId === undefined || eventRunId === activeTourRunIdRef.current;
-          if (type === EVENTS.STEP_BEFORE || type === EVENTS.TOOLTIP_OPEN) {
-            const clampedIndex = Math.min(
-              Math.max(0, index),
-              Math.max(tourSteps.length - 1, 0),
+          const clampIndex = (value) =>
+            Math.min(Math.max(0, value), Math.max(tourSteps.length - 1, 0));
+          const updateViewerIndex = (nextIndex) => {
+            setTourViewerState((prev) =>
+              prev ? { ...prev, currentStepIndex: nextIndex } : prev,
             );
+          };
+
+          if (type === EVENTS.STEP_BEFORE || type === EVENTS.TOOLTIP_OPEN) {
+            const clampedIndex = clampIndex(index);
             setTourStepIndex(clampedIndex);
+            if (isCurrentRun) {
+              updateViewerIndex(clampedIndex);
+              if (type === EVENTS.TOOLTIP_OPEN) {
+                setTourSteps((prevSteps) => {
+                  if (!Array.isArray(prevSteps)) return prevSteps;
+                  const targetStep = prevSteps[clampedIndex];
+                  if (!targetStep || !targetStep.missingTarget) return prevSteps;
+                  const nextSteps = [...prevSteps];
+                  const { missingTarget, ...restStep } = targetStep;
+                  nextSteps[clampedIndex] = restStep;
+                  return nextSteps;
+                });
+              }
+            }
           } else if (type === EVENTS.STEP_AFTER && isCurrentRun) {
             const delta = action === ACTIONS.PREV ? -1 : 1;
-            const nextIndex = index + delta;
-            const clampedIndex = Math.min(
-              Math.max(0, nextIndex),
-              Math.max(tourSteps.length - 1, 0),
-            );
-            setTourStepIndex(clampedIndex);
+            const nextIndex = clampIndex(index + delta);
+            setTourStepIndex(nextIndex);
+            updateViewerIndex(nextIndex);
           } else if (type === EVENTS.TARGET_NOT_FOUND && isCurrentRun) {
             const fallbackIndex = findLastVisibleTourStepIndex(tourSteps, index - 1);
             if (fallbackIndex >= 0) {
-              setTourStepIndex(fallbackIndex);
-              setTourViewerState((prev) =>
-                prev ? { ...prev, currentStepIndex: fallbackIndex } : prev,
+              const fallbackMessage = t(
+                "tour_missing_target_hint",
+                "Expand the referenced control to continue the tour.",
               );
+              setTourSteps((prevSteps) => {
+                if (!Array.isArray(prevSteps)) return prevSteps;
+                let hasChanges = false;
+                const nextSteps = prevSteps.map((existingStep, stepIndex) => {
+                  if (!existingStep || typeof existingStep !== "object") {
+                    return existingStep;
+                  }
+                  if (stepIndex === fallbackIndex) {
+                    if (existingStep.missingTarget === fallbackMessage) {
+                      return existingStep;
+                    }
+                    hasChanges = true;
+                    return { ...existingStep, missingTarget: fallbackMessage };
+                  }
+                  if (existingStep.missingTarget !== undefined) {
+                    hasChanges = true;
+                    const { missingTarget, ...restStep } = existingStep;
+                    return restStep;
+                  }
+                  return existingStep;
+                });
+                return hasChanges ? nextSteps : prevSteps;
+              });
+              const clampedFallback = clampIndex(fallbackIndex);
+              setTourStepIndex(clampedFallback);
+              updateViewerIndex(clampedFallback);
               addToast(
                 t(
                   "tour_missing_target_warning",
