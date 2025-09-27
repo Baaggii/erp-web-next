@@ -86,3 +86,45 @@ test('recalcTotals applies POS aggregates after generated columns', () => {
   assert.equal(result.items[0].line_total, 20);
   assert.equal(initialValues.header.grand_total, undefined);
 });
+
+test('recalcTotals keeps POS fields aligned for localized numeric strings', () => {
+  const initialValues = {
+    transactions_pos: {
+      total_amount: '1\u202f234,56',
+      total_discount: '234,56',
+      deposit_amount: '1\u202f300,00',
+    },
+  };
+
+  const posFields = [
+    {
+      parts: [
+        { table: 'transactions_pos', field: 'payable_amount' },
+        { table: 'transactions_pos', field: 'total_amount', agg: '=' },
+        { table: 'transactions_pos', field: 'total_discount', agg: '-' },
+      ],
+    },
+    {
+      parts: [
+        { table: 'transactions_pos', field: 'cashback' },
+        { table: 'transactions_pos', field: 'deposit_amount', agg: '=' },
+        { table: 'transactions_pos', field: 'payable_amount', agg: '-' },
+      ],
+    },
+  ];
+
+  const result = recalcTotals(initialValues, {
+    calcFields: [],
+    pipelines: {},
+    posFields,
+  });
+
+  assert.notStrictEqual(result, initialValues);
+  assert.equal(result.transactions_pos.total_amount, initialValues.transactions_pos.total_amount);
+  assert.equal(result.transactions_pos.total_discount, initialValues.transactions_pos.total_discount);
+  assert.equal(result.transactions_pos.deposit_amount, initialValues.transactions_pos.deposit_amount);
+  assert.equal(result.transactions_pos.payable_amount, 1000);
+  assert.equal(result.transactions_pos.cashback, 300);
+  assert.equal(initialValues.transactions_pos.payable_amount, undefined);
+  assert.equal(initialValues.transactions_pos.cashback, undefined);
+});
