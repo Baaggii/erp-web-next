@@ -168,16 +168,19 @@ function InlineTransactionTable(
   }, [tableDisplayFieldsKey]);
 
   // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
+  const normalizedTableName =
+    typeof tableName === 'string' ? tableName.toLowerCase() : '';
+
   const autoSelectConfigs = React.useMemo(() => {
     const map = {};
     Object.entries(columnCaseMap || {}).forEach(([lower, key]) => {
       const cfg = displayIndex[lower];
-      if (cfg) {
-        map[key] = cfg;
-      }
+      if (!cfg) return;
+      if (cfg.table && cfg.table.toLowerCase() === normalizedTableName) return;
+      map[key] = cfg;
     });
     return map;
-  }, [columnCaseMapKey, displayIndex]);
+  }, [columnCaseMapKey, displayIndex, normalizedTableName]);
 
   const combinedViewSource = React.useMemo(() => {
     const map = { ...viewSourceMap };
