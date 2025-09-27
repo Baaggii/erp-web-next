@@ -1179,7 +1179,7 @@ export default function ManualTranslationsTab() {
                     <div style={getProviderGridStyle(languages.length)}>
                       {languages.map((l) => {
                         const provider = entry.translatedBy?.[l];
-                        const origin = entry.translatedBySources?.[l] ?? entry.type;
+                        const origin = entry.translatedBySources?.[l] || entry.type;
                         const displayLabel = formatTranslationSource(origin, provider);
                         return (
                           <div key={l} style={{ color: displayLabel ? '#111827' : '#6b7280' }}>
