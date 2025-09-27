@@ -29,10 +29,11 @@ import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import {
-  applyGeneratedColumnEvaluators,
-  createGeneratedColumnEvaluator,
-  valuesEqual,
-} from '../utils/generatedColumns.js';
+  assignArrayMetadata,
+  applyGeneratedColumnsForValues,
+  createGeneratedColumnPipeline,
+} from '../utils/transactionValues.js';
+import { syncCalcFields } from '../utils/syncCalcFields.js';
 import {
   submitEditRequest,
   submitNewRow,
@@ -305,25 +306,68 @@ const TableManager = forwardRef(function TableManager({
     [columnMeta],
   );
 
-  const generatedColumnEvaluators = useMemo(() => {
-    if (!Array.isArray(columnMeta) || columnMeta.length === 0) return {};
-    const evaluators = {};
-    columnMeta.forEach((col) => {
-      if (!col || typeof col !== 'object') return;
-      const rawName = col.name;
-      const expr =
-        col.generationExpression ??
-        col.GENERATION_EXPRESSION ??
-        col.generation_expression ??
-        null;
-      if (!rawName || !expr) return;
-      const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
-      if (typeof key !== 'string') return;
-      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
-      if (evaluator) evaluators[key] = evaluator;
-    });
-    return evaluators;
-  }, [columnMeta, columnCaseMap]);
+  const calcFieldsConfig = useMemo(
+    () =>
+      Array.isArray(formConfig?.calcFields) && formConfig.calcFields.length > 0
+        ? formConfig.calcFields
+        : null,
+    [formConfig?.calcFields],
+  );
+
+  const generatedColumnPipeline = useMemo(
+    () =>
+      createGeneratedColumnPipeline({
+        tableColumns: columnMeta,
+        columnCaseMap,
+      }),
+    [columnMeta, columnCaseMap],
+  );
+
+  const generatedColumnPipelineMap = useMemo(() => {
+    if (!table) return {};
+    return { [table]: generatedColumnPipeline };
+  }, [table, generatedColumnPipeline]);
+
+  const hasGeneratedColumnEvaluators = useMemo(
+    () => Object.keys(generatedColumnPipeline?.evaluators || {}).length > 0,
+    [generatedColumnPipeline],
+  );
+
+  const hasCalcFields = Boolean(calcFieldsConfig);
+  const shouldProcessGeneratedValues = hasGeneratedColumnEvaluators || hasCalcFields;
+
+  const processRowsWithGeneratedColumns = useCallback(
+    (rows) => {
+      if (!shouldProcessGeneratedValues || !Array.isArray(rows)) {
+        return rows;
+      }
+      let workingValues = { [table]: rows };
+      if (hasCalcFields) {
+        workingValues = syncCalcFields(workingValues, calcFieldsConfig);
+      }
+      let afterGenerated = workingValues;
+      if (hasGeneratedColumnEvaluators) {
+        afterGenerated = applyGeneratedColumnsForValues(
+          workingValues,
+          generatedColumnPipelineMap,
+        );
+      }
+      let finalValues = afterGenerated;
+      if (hasCalcFields) {
+        finalValues = syncCalcFields(afterGenerated, calcFieldsConfig);
+      }
+      const processedRows = finalValues?.[table];
+      return Array.isArray(processedRows) ? processedRows : rows;
+    },
+    [
+      shouldProcessGeneratedValues,
+      table,
+      hasCalcFields,
+      calcFieldsConfig,
+      hasGeneratedColumnEvaluators,
+      generatedColumnPipelineMap,
+    ],
+  );
 
   const viewSourceMap = useMemo(() => {
     const map = {};
@@ -1104,19 +1148,17 @@ const TableManager = forwardRef(function TableManager({
       defaults[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
     }
     const initialRows = [{ ...baseRow, _saved: false }];
-    if (Object.keys(generatedColumnEvaluators).length > 0) {
-      const { changed } = applyGeneratedColumnEvaluators({
-        targetRows: initialRows,
-        evaluators: generatedColumnEvaluators,
-        equals: valuesEqual,
-      });
-      if (changed && initialRows[0]) {
-        Object.assign(baseRow, initialRows[0]);
-      }
+    const processedRows = processRowsWithGeneratedColumns(initialRows);
+    const firstRow =
+      Array.isArray(processedRows) && processedRows.length > 0
+        ? processedRows[0]
+        : null;
+    if (firstRow && typeof firstRow === 'object') {
+      Object.assign(baseRow, firstRow);
     }
     setRowDefaults(defaults);
     setEditing(baseRow);
-    setGridRows(initialRows);
+    setGridRows(Array.isArray(processedRows) ? processedRows : initialRows);
     setIsAdding(true);
     setShowForm(true);
   }
@@ -1381,40 +1423,54 @@ const TableManager = forwardRef(function TableManager({
 
   function handleFieldChange(changes) {
     if (!editing) return;
-    setEditing((e) => {
-      const next = { ...e, ...changes };
-      Object.entries(changes).forEach(([field, val]) => {
-        const conf = relationConfigs[field];
-        let value = val;
-        if (value && typeof value === 'object' && 'value' in value) {
-          value = value.value;
-        }
-        if (conf && conf.displayFields && refRows[field]?.[value]) {
-          const row = refRows[field][value];
-          const rowKeyMap = {};
-          Object.keys(row).forEach((k) => {
-            rowKeyMap[k.toLowerCase()] = k;
-          });
-          conf.displayFields.forEach((df) => {
-            const key = columnCaseMap[df.toLowerCase()];
-            const rk = rowKeyMap[df.toLowerCase()];
-            if (key && rk && row[rk] !== undefined) {
-              next[key] = row[rk];
-            }
-          });
-        }
-      });
-      if (Object.keys(generatedColumnEvaluators).length === 0) {
-        return next;
+    const next = { ...editing, ...changes };
+    Object.entries(changes).forEach(([field, val]) => {
+      const conf = relationConfigs[field];
+      let value = val;
+      if (value && typeof value === 'object' && 'value' in value) {
+        value = value.value;
       }
-      const workingRows = [{ ...next }];
-      const { changed } = applyGeneratedColumnEvaluators({
-        targetRows: workingRows,
-        evaluators: generatedColumnEvaluators,
-        equals: valuesEqual,
-      });
-      return changed ? workingRows[0] : next;
+      if (conf && conf.displayFields && refRows[field]?.[value]) {
+        const row = refRows[field][value];
+        const rowKeyMap = {};
+        Object.keys(row).forEach((k) => {
+          rowKeyMap[k.toLowerCase()] = k;
+        });
+        conf.displayFields.forEach((df) => {
+          const key = columnCaseMap[df.toLowerCase()];
+          const rk = rowKeyMap[df.toLowerCase()];
+          if (key && rk && row[rk] !== undefined) {
+            next[key] = row[rk];
+          }
+        });
+      }
     });
+
+    let workingRows;
+    if (Array.isArray(gridRows) && gridRows.length > 0) {
+      workingRows = gridRows.map((row, index) => {
+        if (!row || typeof row !== 'object') return row;
+        if (index === 0) {
+          return { ...row, ...next };
+        }
+        return { ...row };
+      });
+      if (gridRows !== workingRows) assignArrayMetadata(workingRows, gridRows);
+    } else {
+      workingRows = [{ ...next }];
+    }
+
+    const processedRows = processRowsWithGeneratedColumns(workingRows);
+    const finalRows = Array.isArray(processedRows) ? processedRows : workingRows;
+    const firstRow =
+      finalRows.length > 0 && typeof finalRows[0] === 'object' ? finalRows[0] : next;
+
+    setEditing(firstRow);
+    if (finalRows !== gridRows) {
+      setGridRows(finalRows);
+    }
+
+    const editingSnapshot = firstRow;
     Object.entries(changes).forEach(([field, val]) => {
       const view = viewSourceMap[field];
       if (!view || val === '') return;
@@ -1427,7 +1483,7 @@ const TableManager = forwardRef(function TableManager({
         if (v !== view) return;
         if (!colNames.includes(f)) return;
         let pv = changes[f];
-        if (pv === undefined) pv = editing?.[f];
+        if (pv === undefined) pv = editingSnapshot?.[f];
         if (pv === undefined || pv === '') return;
         if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
         params.set(f, pv);

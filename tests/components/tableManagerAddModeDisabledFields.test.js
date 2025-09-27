@@ -33,6 +33,9 @@ if (!haveReact) {
   test('TableManager keeps relation fields enabled in add mode', async (t) => {
     const origFetch = global.fetch;
     let modalProps = null;
+    const pipelineConfigs = [];
+    const appliedGeneratedValues = [];
+    const calcFieldCalls = [];
 
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
@@ -121,6 +124,26 @@ if (!haveReact) {
           '../utils/slugify.js': { default: () => '' },
           '../utils/apiBase.js': { API_BASE: '' },
           '../utils/normalizeDateInput.js': { default: (v) => v },
+          '../utils/transactionValues.js': {
+            assignArrayMetadata: (target) => target,
+            createGeneratedColumnPipeline: (config) => {
+              pipelineConfigs.push(config);
+              return {
+                evaluators: { generated_field: () => {} },
+                apply: () => ({ changed: false, metadata: null }),
+              };
+            },
+            applyGeneratedColumnsForValues: (values) => {
+              appliedGeneratedValues.push(values);
+              return values;
+            },
+          },
+          '../utils/syncCalcFields.js': {
+            syncCalcFields: (values) => {
+              calcFieldCalls.push(values);
+              return values;
+            },
+          },
         },
       );
 
@@ -160,6 +183,19 @@ if (!haveReact) {
       assert.ok(
         !modalProps.disabledFields.includes('contract_type_id'),
         'Relation dropdown should remain enabled in add mode',
+      );
+      assert.ok(
+        pipelineConfigs.length > 0,
+        'Generated column pipeline should be created for the table',
+      );
+      assert.ok(
+        appliedGeneratedValues.length > 0,
+        'Generated column pipeline should be applied to default rows',
+      );
+      assert.equal(
+        calcFieldCalls.length,
+        0,
+        'Calc fields should not run when no calcFields config provided',
       );
 
       root.unmount();
