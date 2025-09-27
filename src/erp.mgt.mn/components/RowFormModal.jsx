@@ -189,18 +189,16 @@ const RowFormModal = function RowFormModal({
   }, [tableDisplayFieldsKey]);
 
   // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
-  const normalizedTableName = typeof table === 'string' ? table.toLowerCase() : '';
-
   const autoSelectConfigs = React.useMemo(() => {
     const map = {};
     Object.entries(columnCaseMap || {}).forEach(([lower, key]) => {
       const cfg = displayIndex[lower];
-      if (!cfg) return;
-      if (cfg.table && cfg.table.toLowerCase() === normalizedTableName) return;
-      map[key] = cfg;
+      if (cfg) {
+        map[key] = cfg;
+      }
     });
     return map;
-  }, [columnCaseMapKey, displayIndex, normalizedTableName]);
+  }, [columnCaseMapKey, displayIndex]);
   const getRowValueCaseInsensitive = useCallback((rowObj, key) => {
     if (!rowObj || !key) return undefined;
     const lowerKey = key.toLowerCase();
