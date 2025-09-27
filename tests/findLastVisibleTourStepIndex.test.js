@@ -1,7 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { findLastVisibleTourStepIndex } from "../src/erp.mgt.mn/utils/findVisibleTourStep.js";
+import {
+  findLastVisibleTourStepIndex,
+  findVisibleFallbackSelector,
+} from "../src/erp.mgt.mn/utils/findVisibleTourStep.js";
 
 test("findLastVisibleTourStepIndex returns previous visible step", () => {
   const steps = [
@@ -45,4 +48,28 @@ test("findLastVisibleTourStepIndex returns -1 when nothing visible", () => {
   const result = findLastVisibleTourStepIndex(steps, 1, query);
 
   assert.equal(result, -1);
+});
+
+test("findVisibleFallbackSelector returns first visible highlight selector", () => {
+  const step = {
+    target: "#missing",
+    highlightSelectors: ["#missing", "#fallback", "#other"],
+  };
+  const query = (selector) => selector === "#fallback";
+
+  const result = findVisibleFallbackSelector(step, query);
+
+  assert.equal(result, "#fallback");
+});
+
+test("findVisibleFallbackSelector falls back to parent selector", () => {
+  const step = {
+    target: "#alpha .bravo .charlie",
+    highlightSelectors: ["#alpha .bravo .charlie"],
+  };
+  const query = (selector) => selector === "#alpha .bravo";
+
+  const result = findVisibleFallbackSelector(step, query);
+
+  assert.equal(result, "#alpha .bravo");
 });
