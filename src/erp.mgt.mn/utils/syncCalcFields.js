@@ -134,6 +134,51 @@ const CALC_FIELD_AGGREGATORS = {
       return { value: result.sum, hasValue: true };
     },
   },
+  AVG: {
+    compute(source, field) {
+      if (Array.isArray(source)) {
+        let sum = 0;
+        let count = 0;
+        for (const row of source) {
+          if (!isPlainObject(row)) continue;
+          const raw = row[field];
+          if (raw === undefined || raw === null) continue;
+          const num = parseLocalizedNumber(raw);
+          if (num === null) continue;
+          sum += num;
+          count += 1;
+        }
+        return { sum, count, hasValue: count > 0 };
+      }
+      if (isPlainObject(source)) {
+        const raw = source[field];
+        if (raw === undefined || raw === null) {
+          return { sum: 0, count: 0, hasValue: false };
+        }
+        const num = parseLocalizedNumber(raw);
+        if (num === null) {
+          return { sum: 0, count: 0, hasValue: false };
+        }
+        return { sum: num, count: 1, hasValue: true };
+      }
+      return { sum: 0, count: 0, hasValue: false };
+    },
+    merge(
+      prev = { sum: 0, count: 0, hasValue: false },
+      next = { sum: 0, count: 0, hasValue: false },
+    ) {
+      const count = (prev.count || 0) + (next.count || 0);
+      const sum = (prev.sum || 0) + (next.sum || 0);
+      const hasValue = Boolean(prev.hasValue) || Boolean(next.hasValue);
+      return { sum, count, hasValue };
+    },
+    finalize(result) {
+      if (!result || !result.hasValue || !result.count) {
+        return { value: 0, hasValue: false };
+      }
+      return { value: result.sum / result.count, hasValue: true };
+    },
+  },
 };
 
 export function syncCalcFields(vals, mapConfig) {
