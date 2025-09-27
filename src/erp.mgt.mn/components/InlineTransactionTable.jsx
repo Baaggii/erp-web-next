@@ -1521,10 +1521,11 @@ function InlineTransactionTable(
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
-    const requiresExplicitMatch =
+    const isLookupField =
       !!relationConfigMap[field] ||
-      !!viewSourceMap[field];
-    if (requiresExplicitMatch && e.lookupMatched === false) {
+      !!viewSourceMap[field] ||
+      !!autoSelectConfigs[field];
+    if (isLookupField && e.lookupMatched === false) {
       const label = labels[field] || field;
       const message = `${label} талбарт тохирох утга олдсонгүй.`;
       setErrorMsg(message);
