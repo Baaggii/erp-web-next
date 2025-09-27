@@ -24,7 +24,7 @@ import { API_BASE } from "../utils/apiBase.js";
 import TourBuilder from "./tours/TourBuilder.jsx";
 import TourViewer from "./tours/TourViewer.jsx";
 import derivePageKey from "../utils/derivePageKey.js";
-import { findLastVisibleTourStepIndex } from "../utils/findVisibleTourStep.js";
+import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -805,11 +805,47 @@ export default function ERPLayout() {
                 setTourSteps((prevSteps) => {
                   if (!Array.isArray(prevSteps)) return prevSteps;
                   const targetStep = prevSteps[clampedIndex];
-                  if (!targetStep || !targetStep.missingTarget) return prevSteps;
+                  if (!targetStep || typeof targetStep !== "object") {
+                    return prevSteps;
+                  }
+
                   const nextSteps = [...prevSteps];
-                  const { missingTarget, ...restStep } = targetStep;
-                  nextSteps[clampedIndex] = restStep;
-                  return nextSteps;
+                  const storedOriginal =
+                    typeof targetStep.missingTargetOriginalTarget === "string"
+                      ? targetStep.missingTargetOriginalTarget.trim()
+                      : "";
+
+                  let shouldRestore = false;
+                  if (storedOriginal) {
+                    let originalVisible = false;
+                    if (typeof document !== "undefined" && document?.querySelector) {
+                      try {
+                        originalVisible = Boolean(
+                          document.querySelector(storedOriginal),
+                        );
+                      } catch (err) {
+                        originalVisible = false;
+                      }
+                    }
+                    if (originalVisible) {
+                      const {
+                        missingTargetOriginalTarget,
+                        missingTarget,
+                        ...restStep
+                      } = targetStep;
+                      nextSteps[clampedIndex] = {
+                        ...restStep,
+                        target: storedOriginal,
+                      };
+                      shouldRestore = true;
+                    }
+                  } else if (targetStep.missingTarget !== undefined) {
+                    const { missingTarget, ...restStep } = targetStep;
+                    nextSteps[clampedIndex] = restStep;
+                    shouldRestore = true;
+                  }
+
+                  return shouldRestore ? nextSteps : prevSteps;
                 });
               }
             }
@@ -819,46 +855,84 @@ export default function ERPLayout() {
             setTourStepIndex(nextIndex);
             updateViewerIndex(nextIndex);
           } else if (type === EVENTS.TARGET_NOT_FOUND && isCurrentRun) {
-            const fallbackIndex = findLastVisibleTourStepIndex(tourSteps, index - 1);
-            if (fallbackIndex >= 0) {
-              const fallbackMessage = t(
-                "tour_missing_target_hint",
-                "Expand the referenced control to continue the tour.",
-              );
-              setTourSteps((prevSteps) => {
-                if (!Array.isArray(prevSteps)) return prevSteps;
-                let hasChanges = false;
-                const nextSteps = prevSteps.map((existingStep, stepIndex) => {
-                  if (!existingStep || typeof existingStep !== "object") {
-                    return existingStep;
-                  }
-                  if (stepIndex === fallbackIndex) {
-                    if (existingStep.missingTarget === fallbackMessage) {
-                      return existingStep;
-                    }
-                    hasChanges = true;
-                    return { ...existingStep, missingTarget: fallbackMessage };
-                  }
-                  if (existingStep.missingTarget !== undefined) {
-                    hasChanges = true;
-                    const { missingTarget, ...restStep } = existingStep;
-                    return restStep;
-                  }
-                  return existingStep;
-                });
-                return hasChanges ? nextSteps : prevSteps;
-              });
-              const clampedFallback = clampIndex(fallbackIndex);
-              setTourStepIndex(clampedFallback);
-              updateViewerIndex(clampedFallback);
-              addToast(
-                t(
-                  "tour_missing_target_warning",
-                  "The last visible tour step needs attention.",
-                ),
-                "warning",
-              );
-            }
+            const clampedIndex = clampIndex(index);
+            const fallbackMessage = t(
+              "tour_missing_target_hint",
+              "Expand the referenced control to continue the tour.",
+            );
+            setTourSteps((prevSteps) => {
+              if (!Array.isArray(prevSteps)) return prevSteps;
+              if (clampedIndex < 0 || clampedIndex >= prevSteps.length) {
+                return prevSteps;
+              }
+
+              const currentStep = prevSteps[clampedIndex];
+              if (!currentStep || typeof currentStep !== "object") {
+                return prevSteps;
+              }
+
+              const fallbackSelector = findVisibleFallbackSelector(currentStep);
+              if (!fallbackSelector) {
+                return prevSteps;
+              }
+
+              const messageExists =
+                typeof currentStep.missingTarget === "string" &&
+                currentStep.missingTarget.includes(fallbackMessage);
+
+              const nextStep = {
+                ...currentStep,
+                target: fallbackSelector,
+                missingTarget: messageExists
+                  ? currentStep.missingTarget
+                  : typeof currentStep.missingTarget === "string" &&
+                      currentStep.missingTarget.trim().length
+                    ? `${currentStep.missingTarget}\n${fallbackMessage}`
+                    : fallbackMessage,
+              };
+
+              const existingOriginal =
+                typeof currentStep.missingTargetOriginalTarget === "string"
+                  ? currentStep.missingTargetOriginalTarget.trim()
+                  : "";
+              const trimmedTarget =
+                typeof currentStep.target === "string"
+                  ? currentStep.target.trim()
+                  : "";
+              const trimmedSelector =
+                typeof currentStep.selector === "string"
+                  ? currentStep.selector.trim()
+                  : "";
+
+              if (!existingOriginal) {
+                if (trimmedTarget && trimmedTarget !== fallbackSelector) {
+                  nextStep.missingTargetOriginalTarget = trimmedTarget;
+                } else if (
+                  trimmedSelector &&
+                  trimmedSelector !== fallbackSelector
+                ) {
+                  nextStep.missingTargetOriginalTarget = trimmedSelector;
+                }
+              } else {
+                nextStep.missingTargetOriginalTarget = existingOriginal;
+              }
+
+              const shouldUpdate =
+                nextStep.target !== currentStep.target ||
+                nextStep.missingTarget !== currentStep.missingTarget ||
+                nextStep.missingTargetOriginalTarget !==
+                  currentStep.missingTargetOriginalTarget;
+
+              if (!shouldUpdate) {
+                return prevSteps;
+              }
+
+              const nextSteps = [...prevSteps];
+              nextSteps[clampedIndex] = nextStep;
+              return nextSteps;
+            });
+            setTourStepIndex(clampedIndex);
+            updateViewerIndex(clampedIndex);
           }
         }
 
