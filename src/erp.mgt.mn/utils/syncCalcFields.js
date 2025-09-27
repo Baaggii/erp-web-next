@@ -4,7 +4,7 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function parseLocalizedNumber(value) {
+function parseLocalizedNumber(value) {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : null;
   }
