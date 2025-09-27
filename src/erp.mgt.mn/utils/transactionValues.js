@@ -3,7 +3,7 @@ import {
   applyGeneratedColumnEvaluators,
   valuesEqual,
 } from './generatedColumns.js';
-import { syncCalcFields, parseLocalizedNumber } from './syncCalcFields.js';
+import { syncCalcFields } from './syncCalcFields.js';
 
 const arrayIndexPattern = /^(0|[1-9]\d*)$/;
 
@@ -229,11 +229,6 @@ export function applyPosFields(vals, posFieldConfig) {
 
   let next = { ...vals };
 
-  const parseOrZero = (value) => {
-    const parsed = parseLocalizedNumber(value);
-    return parsed === null ? 0 : parsed;
-  };
-
   for (const pf of posFieldConfig) {
     const parts = Array.isArray(pf?.parts) ? pf.parts : [];
     if (parts.length < 2) continue;
@@ -250,15 +245,15 @@ export function applyPosFields(vals, posFieldConfig) {
       if (Array.isArray(data)) {
         if (p.agg === 'SUM' || p.agg === 'AVG') {
           const sum = data.reduce(
-            (sumAcc, row) => sumAcc + parseOrZero(row?.[p.field]),
+            (sumAcc, row) => sumAcc + (Number(row?.[p.field]) || 0),
             0,
           );
           num = p.agg === 'AVG' ? (data.length ? sum / data.length : 0) : sum;
         } else {
-          num = parseOrZero(data[0]?.[p.field]);
+          num = Number(data[0]?.[p.field]) || 0;
         }
       } else {
-        num = parseOrZero(data?.[p.field]);
+        num = Number(data?.[p.field]) || 0;
       }
 
       if (p.agg === '=' && !init) {
