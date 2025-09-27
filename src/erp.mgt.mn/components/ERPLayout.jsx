@@ -165,17 +165,42 @@ function computeStepSignature(steps) {
   );
 }
 
-function JoyrideTooltip({ index = 0, step, tooltipProps = {}, helpers = {} }) {
+function JoyrideTooltip({
+  index = 0,
+  step,
+  tooltipProps = {},
+  helpers = {},
+  backProps = {},
+  primaryProps = {},
+  skipProps = {},
+}) {
   const canGoBack = index > 0;
   const backLabel = step?.locale?.back || 'Back';
   const nextLabel = step?.locale?.next || 'Next';
   const endLabel =
     step?.locale?.last || step?.locale?.close || step?.locale?.skip || 'End tour';
 
+  const {
+    className: backClassName,
+    onClick: backOnClick,
+    disabled: backDisabled,
+    ...restBackProps
+  } = backProps || {};
+  const {
+    className: primaryClassName,
+    onClick: primaryOnClick,
+    ...restPrimaryProps
+  } = primaryProps || {};
+  const {
+    className: skipClassName,
+    onClick: skipOnClick,
+    ...restSkipProps
+  } = skipProps || {};
+
   const handleBack = (event) => {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
+    if (typeof backOnClick === 'function') {
+      backOnClick(event);
+      return;
     }
     if (typeof helpers.goBack === 'function') {
       helpers.goBack(event);
@@ -183,9 +208,9 @@ function JoyrideTooltip({ index = 0, step, tooltipProps = {}, helpers = {} }) {
   };
 
   const handleNext = (event) => {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
+    if (typeof primaryOnClick === 'function') {
+      primaryOnClick(event);
+      return;
     }
     if (typeof helpers.next === 'function') {
       helpers.next(event);
@@ -193,9 +218,9 @@ function JoyrideTooltip({ index = 0, step, tooltipProps = {}, helpers = {} }) {
   };
 
   const handleEnd = (event) => {
-    if (event) {
-      event.preventDefault();
-      event.stopPropagation();
+    if (typeof skipOnClick === 'function') {
+      skipOnClick(event);
+      return;
     }
     if (typeof helpers.close === 'function') {
       helpers.close(true);
@@ -224,23 +249,26 @@ function JoyrideTooltip({ index = 0, step, tooltipProps = {}, helpers = {} }) {
       >
         <button
           type="button"
-          className="react-joyride__tooltip-button react-joyride__tooltip-button--back"
+          className={`react-joyride__tooltip-button react-joyride__tooltip-button--back ${backClassName ?? ''}`.trim()}
           onClick={handleBack}
-          disabled={!canGoBack}
+          disabled={backDisabled ?? !canGoBack}
+          {...restBackProps}
         >
           {backLabel}
         </button>
         <button
           type="button"
-          className="react-joyride__tooltip-button react-joyride__tooltip-button--primary"
+          className={`react-joyride__tooltip-button react-joyride__tooltip-button--primary ${primaryClassName ?? ''}`.trim()}
           onClick={handleNext}
+          {...restPrimaryProps}
         >
           {nextLabel}
         </button>
         <button
           type="button"
-          className="react-joyride__tooltip-button react-joyride__tooltip-button--skip"
+          className={`react-joyride__tooltip-button react-joyride__tooltip-button--skip ${skipClassName ?? ''}`.trim()}
           onClick={handleEnd}
+          {...restSkipProps}
         >
           {endLabel}
         </button>
