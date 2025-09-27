@@ -1048,8 +1048,14 @@ function MainWindow({ title }) {
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
   const { hasNew } = useContext(PendingRequestContext);
-  const { startTour, getTourForPath, registryVersion, openTourBuilder, openTourViewer } =
-    useContext(TourContext);
+  const {
+    startTour,
+    getTourForPath,
+    registryVersion,
+    openTourBuilder,
+    openTourViewer,
+    ensureTourDefinition,
+  } = useContext(TourContext);
   const { userSettings, session } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const generalConfig = useGeneralConfig();
@@ -1094,6 +1100,23 @@ function MainWindow({ title }) {
     true,
   );
   const showTourButtons = showTourButtonsConfig && showTourButtonsPreference;
+
+  useEffect(() => {
+    if (!showTourButtons) return undefined;
+    if (tourInfo) return undefined;
+    if (typeof ensureTourDefinition !== 'function') return undefined;
+
+    const controller = new AbortController();
+
+    ensureTourDefinition({ path: location.pathname, signal: controller.signal }).catch((err) => {
+      if (controller.signal.aborted) return;
+      console.error('Failed to preload tour definition', err);
+    });
+
+    return () => {
+      controller.abort();
+    };
+  }, [ensureTourDefinition, location.pathname, showTourButtons, tourInfo]);
 
   const configBuilderToggle =
     generalConfig?.general?.tourBuilderEnabled ??
