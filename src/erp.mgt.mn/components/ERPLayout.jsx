@@ -1234,17 +1234,21 @@ export default function ERPLayout() {
               );
 
               let arrowRect = null;
+              let arrowIsValid = false;
               if (typeof document !== "undefined" && document?.body) {
                 try {
-                  const arrowElement = document.querySelector(fallbackSelector);
-                  if (arrowElement) {
-                    const rect = arrowElement.getBoundingClientRect();
-                    arrowRect = {
-                      top: rect.top,
-                      left: rect.left,
-                      width: rect.width,
-                      height: rect.height,
-                    };
+                  const arrowElements = document.querySelectorAll(fallbackSelector);
+                  if (arrowElements.length === 1) {
+                    const rect = arrowElements[0].getBoundingClientRect();
+                    if (rect && rect.width > 0 && rect.height > 0) {
+                      arrowRect = {
+                        top: rect.top,
+                        left: rect.left,
+                        width: rect.width,
+                        height: rect.height,
+                      };
+                      arrowIsValid = true;
+                    }
                   }
                 } catch (err) {
                   // ignore invalid selectors
@@ -1378,43 +1382,68 @@ export default function ERPLayout() {
                       updatedPauseStep.highlightSelectors = [fallbackSelector];
                       mutated = true;
                     }
-                    if (updatedPauseStep.missingTargetPauseHasArrow !== true) {
-                      updatedPauseStep.missingTargetPauseHasArrow = true;
-                      mutated = true;
-                    }
-                    if (
-                      updatedPauseStep.missingTargetPauseArrowSelector !==
-                      fallbackSelector
-                    ) {
-                      updatedPauseStep.missingTargetPauseArrowSelector =
-                        fallbackSelector;
-                      mutated = true;
-                    }
-                    if (arrowRect) {
-                      const prevRect =
-                        updatedPauseStep.missingTargetPauseArrowRect;
-                      const rectChanged =
-                        !prevRect ||
-                        prevRect.top !== arrowRect.top ||
-                        prevRect.left !== arrowRect.left ||
-                        prevRect.width !== arrowRect.width ||
-                        prevRect.height !== arrowRect.height;
-                      if (rectChanged) {
-                        updatedPauseStep.missingTargetPauseArrowRect = arrowRect;
+                    if (arrowIsValid) {
+                      if (
+                        updatedPauseStep.missingTargetPauseHasArrow !== true
+                      ) {
+                        updatedPauseStep.missingTargetPauseHasArrow = true;
                         mutated = true;
                       }
-                    } else if (
-                      updatedPauseStep.missingTargetPauseArrowRect !== undefined
-                    ) {
-                      delete updatedPauseStep.missingTargetPauseArrowRect;
-                      mutated = true;
-                    }
-                    if (
-                      updatedPauseStep.missingTargetPauseArrowMessage !==
-                      arrowMessage
-                    ) {
-                      updatedPauseStep.missingTargetPauseArrowMessage = arrowMessage;
-                      mutated = true;
+                      if (
+                        updatedPauseStep.missingTargetPauseArrowSelector !==
+                        fallbackSelector
+                      ) {
+                        updatedPauseStep.missingTargetPauseArrowSelector =
+                          fallbackSelector;
+                        mutated = true;
+                      }
+                      if (arrowRect) {
+                        const prevRect =
+                          updatedPauseStep.missingTargetPauseArrowRect;
+                        const rectChanged =
+                          !prevRect ||
+                          prevRect.top !== arrowRect.top ||
+                          prevRect.left !== arrowRect.left ||
+                          prevRect.width !== arrowRect.width ||
+                          prevRect.height !== arrowRect.height;
+                        if (rectChanged) {
+                          updatedPauseStep.missingTargetPauseArrowRect = arrowRect;
+                          mutated = true;
+                        }
+                      }
+                      if (
+                        updatedPauseStep.missingTargetPauseArrowMessage !==
+                        arrowMessage
+                      ) {
+                        updatedPauseStep.missingTargetPauseArrowMessage = arrowMessage;
+                        mutated = true;
+                      }
+                    } else {
+                      if (
+                        updatedPauseStep.missingTargetPauseHasArrow !== undefined
+                      ) {
+                        delete updatedPauseStep.missingTargetPauseHasArrow;
+                        mutated = true;
+                      }
+                      if (
+                        updatedPauseStep.missingTargetPauseArrowSelector !==
+                        undefined
+                      ) {
+                        delete updatedPauseStep.missingTargetPauseArrowSelector;
+                        mutated = true;
+                      }
+                      if (
+                        updatedPauseStep.missingTargetPauseArrowRect !== undefined
+                      ) {
+                        delete updatedPauseStep.missingTargetPauseArrowRect;
+                        mutated = true;
+                      }
+                      if (
+                        updatedPauseStep.missingTargetPauseArrowMessage !== undefined
+                      ) {
+                        delete updatedPauseStep.missingTargetPauseArrowMessage;
+                        mutated = true;
+                      }
                     }
                     if (
                       updatedPauseStep.missingTargetPauseTooltipMessage !==
@@ -1466,13 +1495,19 @@ export default function ERPLayout() {
                 missingTargetPauseStep: true,
                 missingTargetPauseForStepId: currentStep.id,
                 missingTargetPauseWatchSelectors: watchSelectors,
-                missingTargetPauseHasArrow: true,
-                missingTargetPauseArrowSelector: fallbackSelector,
-                missingTargetPauseArrowMessage: arrowMessage,
                 missingTargetPauseTooltipMessage: tooltipMessage,
               };
-              if (arrowRect) {
-                placeholder.missingTargetPauseArrowRect = arrowRect;
+              delete placeholder.missingTargetPauseHasArrow;
+              delete placeholder.missingTargetPauseArrowSelector;
+              delete placeholder.missingTargetPauseArrowMessage;
+              delete placeholder.missingTargetPauseArrowRect;
+              if (arrowIsValid) {
+                placeholder.missingTargetPauseHasArrow = true;
+                placeholder.missingTargetPauseArrowSelector = fallbackSelector;
+                placeholder.missingTargetPauseArrowMessage = arrowMessage;
+                if (arrowRect) {
+                  placeholder.missingTargetPauseArrowRect = arrowRect;
+                }
               }
               delete placeholder.missingTargetOriginalTarget;
               delete placeholder.missingTargetOriginalSelectors;
@@ -1771,6 +1806,11 @@ export default function ERPLayout() {
     }
     const step = tourSteps[tourStepIndex];
     if (!step || !step.missingTargetPauseStep) {
+      removeMissingTargetArrow();
+      return undefined;
+    }
+
+    if (step.missingTargetPauseHasArrow !== true) {
       removeMissingTargetArrow();
       return undefined;
     }
