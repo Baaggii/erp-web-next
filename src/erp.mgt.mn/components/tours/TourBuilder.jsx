@@ -356,6 +356,14 @@ export default function TourBuilder({ state, onClose }) {
           ),
         );
       }
+      if (target && typeof target.blur === 'function') {
+        const blurTarget = () => target.blur();
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+          window.requestAnimationFrame(blurTarget);
+        } else {
+          blurTarget();
+        }
+      }
       setPicking(false);
     };
 
