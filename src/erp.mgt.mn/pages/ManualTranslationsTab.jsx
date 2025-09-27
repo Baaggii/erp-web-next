@@ -223,8 +223,23 @@ export default function ManualTranslationsTab() {
   });
 
   const load = useCallback(
-    async ({ ignoreCooldown = false } = {}) => {
+    async function runLoad({ ignoreCooldown = false, queue = false } = {}) {
       const state = loadStateRef.current;
+      if (queue && state.promise) {
+        // A request is already in-flight; wait for it to settle before queuing
+        // the next load so we always fetch fresh data after the current one.
+        const currentPromise = state.promise;
+        try {
+          await currentPromise;
+        } catch {
+          // ignore
+        } finally {
+          if (state.promise === currentPromise) {
+            state.promise = null;
+          }
+        }
+        return runLoad({ ignoreCooldown, queue: false });
+      }
       if (state.cooldown && !ignoreCooldown) {
         return state.promise ?? Promise.resolve();
       }
@@ -324,13 +339,7 @@ export default function ManualTranslationsTab() {
   );
 
   const refreshEntries = useCallback(
-    async ({ force = false } = {}) => {
-      const state = loadStateRef.current;
-      if (state.cooldown && !force) {
-        return state.promise ?? Promise.resolve();
-      }
-      return load({ ignoreCooldown: force });
-    },
+    ({ force = false } = {}) => load({ ignoreCooldown: force, queue: true }),
     [load],
   );
 
