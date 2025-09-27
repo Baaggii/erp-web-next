@@ -215,6 +215,7 @@ export default function TourBuilder({ state, onClose }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [pendingSelectorFocus, setPendingSelectorFocus] = useState(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [position, setPosition] = useState({ top: null, left: null });
   const [dragging, setDragging] = useState(false);
@@ -423,12 +424,45 @@ export default function TourBuilder({ state, onClose }) {
       const selector = target ? buildSelector(target) : '';
       const trimmedSelector = selector.trim();
       if (trimmedSelector && selectedId) {
+        let focusIndex = -1;
+        let didUpdate = false;
         setStepSelectors(selectedId, (selectors) => {
-          if (selectors.some((value) => value.trim() === trimmedSelector)) {
-            return selectors;
+          const source = Array.isArray(selectors) ? selectors : [];
+          const normalized = source.map((value) =>
+            typeof value === 'string' ? value : coerceSelectorValue(value),
+          );
+          const trimmedValues = normalized.map((value) => value.trim());
+
+          const duplicateIndex = trimmedValues.findIndex(
+            (value) => value === trimmedSelector,
+          );
+          if (duplicateIndex !== -1) {
+            focusIndex = duplicateIndex;
+            if (normalized[duplicateIndex] !== trimmedSelector) {
+              const next = normalized.slice();
+              next[duplicateIndex] = trimmedSelector;
+              didUpdate = true;
+              return next;
+            }
+            return source;
           }
-          return [...selectors, trimmedSelector];
+
+          const emptyIndex = trimmedValues.findIndex((value) => !value);
+          if (emptyIndex !== -1) {
+            const next = normalized.slice();
+            next[emptyIndex] = trimmedSelector;
+            focusIndex = emptyIndex;
+            didUpdate = true;
+            return next;
+          }
+
+          focusIndex = normalized.length;
+          didUpdate = true;
+          return [...normalized, trimmedSelector];
         });
+        if (didUpdate && focusIndex !== -1) {
+          setPendingSelectorFocus({ stepId: selectedId, index: focusIndex });
+        }
       }
       if (target && typeof target.blur === 'function') {
         const blurTarget = () => target.blur();
@@ -460,7 +494,30 @@ export default function TourBuilder({ state, onClose }) {
       document.body.style.cursor = '';
       highlightElement(null);
     };
-  }, [highlightElement, picking, selectedId, setStepSelectors]);
+  }, [highlightElement, picking, selectedId, setPendingSelectorFocus, setStepSelectors]);
+
+  useEffect(() => {
+    if (!pendingSelectorFocus) return;
+    const { stepId, index } = pendingSelectorFocus;
+    const root = builderRef.current;
+    if (root && typeof index === 'number') {
+      const match = Array.from(root.querySelectorAll('[data-selector-step-id]')).find(
+        (element) =>
+          element instanceof HTMLElement &&
+          element.getAttribute('data-selector-step-id') === stepId &&
+          Number(element.getAttribute('data-selector-index')) === index,
+      );
+      if (match instanceof HTMLElement) {
+        if (typeof match.focus === 'function') {
+          match.focus();
+        }
+        if (typeof match.scrollIntoView === 'function') {
+          match.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+    }
+    setPendingSelectorFocus(null);
+  }, [pendingSelectorFocus]);
 
   useEffect(() => {
     if (!selectedId && steps.length) {
@@ -843,6 +900,8 @@ export default function TourBuilder({ state, onClose }) {
                             <span style={styles.selectorBadge}>{selectorIndex + 1}</span>
                             <input
                               style={{ ...styles.input, ...styles.selectorInput }}
+                              data-selector-step-id={selectedStep.id}
+                              data-selector-index={selectorIndex}
                               value={selectorValue}
                               onChange={(event) =>
                                 setStepSelectors(selectedStep.id, (selectors) => {
