@@ -378,6 +378,16 @@ export async function saveTranslation({
   const entryId = `${type}:${key}`;
   const translatedByStore = await loadTranslatedByStore();
   const existingTranslatedBy = { ...(translatedByStore[entryId] || {}) };
+  const rawIncomingMeta = {};
+  if (translatedBy && typeof translatedBy === 'object') {
+    for (const [lang, label] of Object.entries(translatedBy)) {
+      if (typeof label !== 'string') continue;
+      const parsed = parseTranslatedByLabel(label);
+      if (parsed.origin || parsed.provider) {
+        rawIncomingMeta[lang] = parsed;
+      }
+    }
+  }
   const incomingTranslatedBy = normalizeTranslatedByMap(translatedBy);
   const fileOrigin = FILE_ORIGIN_BY_TYPE[type] || FILE_ORIGIN_BY_TYPE.locale;
   const updatedLanguages = new Set();
@@ -402,8 +412,17 @@ export async function saveTranslation({
       obj[key] = val;
       const incomingMeta = parseTranslatedByLabel(incomingTranslatedBy[lang]);
       const existingMeta = parseTranslatedByLabel(existingTranslatedBy[lang]);
-      const origin = incomingMeta.origin || existingMeta.origin || fileOrigin;
-      const providerCode = incomingMeta.provider || existingMeta.provider || '';
+      const requestedMeta = rawIncomingMeta[lang] || {};
+      const origin =
+        requestedMeta.origin ||
+        incomingMeta.origin ||
+        existingMeta.origin ||
+        fileOrigin;
+      const providerCode =
+        requestedMeta.provider ||
+        incomingMeta.provider ||
+        existingMeta.provider ||
+        '';
       incomingTranslatedBy[lang] = composeTranslatedByLabel(origin, providerCode);
       updatedLanguages.add(lang);
     }
