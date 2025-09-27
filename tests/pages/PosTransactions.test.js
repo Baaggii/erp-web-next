@@ -249,6 +249,9 @@ if (typeof mock.import !== 'function') {
 
 
   test('generated column configs support lowercase generation_expression metadata', async () => {
+    const actualTransactionValues = await import(
+      '../../src/erp.mgt.mn/utils/transactionValues.js'
+    );
     const stateOverrides = Array(21).fill(undefined);
     stateOverrides[0] = {}; // configs
     stateOverrides[1] = 'pos';
@@ -317,6 +320,7 @@ if (typeof mock.import !== 'function') {
     };
     reactMock.default = reactMock;
 
+    const pipelineConfigs = [];
     const generatedColumnsMock = {
       valuesEqual: (a, b) => a === b,
       createGeneratedColumnEvaluator: (expression) => {
@@ -343,11 +347,33 @@ if (typeof mock.import !== 'function') {
       },
     };
 
+    const transactionValuesMock = {
+      ...actualTransactionValues,
+      createGeneratedColumnPipeline: (config) => {
+        pipelineConfigs.push(config);
+        return actualTransactionValues.createGeneratedColumnPipeline(config);
+      },
+      applyGeneratedColumnsForValues: (vals, pipelines) => {
+        applyCalls.push({ vals, pipelines });
+        return actualTransactionValues.applyGeneratedColumnsForValues(
+          vals,
+          pipelines,
+        );
+      },
+    };
+    transactionValuesMock.default = {
+      ...actualTransactionValues.default,
+      createGeneratedColumnPipeline: transactionValuesMock.createGeneratedColumnPipeline,
+      applyGeneratedColumnsForValues:
+        transactionValuesMock.applyGeneratedColumnsForValues,
+    };
+
     const mod = await mock.import(
       '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
       {
         react: reactMock,
         '../utils/generatedColumns.js': generatedColumnsMock,
+        '../utils/transactionValues.js': transactionValuesMock,
         '../context/ToastContext.jsx': { useToast: () => ({ addToast: () => {} }) },
         '../context/AuthContext.jsx': { AuthContext: {} },
         '../hooks/useGeneralConfig.js': { default: () => ({}) },
@@ -370,6 +396,18 @@ if (typeof mock.import !== 'function') {
       'should compile generation_expression value',
     );
 
+    const transactionsPipelineConfig = pipelineConfigs.find(
+      (cfg) => Array.isArray(cfg?.tableColumns) && cfg.tableColumns.length > 0,
+    );
+    assert.ok(transactionsPipelineConfig, 'should build pipeline configuration');
+    assert.equal(
+      transactionsPipelineConfig.tableColumns.some((col) =>
+        (col.generation_expression ?? col.generationExpression ?? '').includes('*'),
+      ),
+      true,
+      'should receive generation_expression details',
+    );
+
     const generatedEntry = memoResults.find(
       (entry) => entry.result && entry.result.transactions,
     );
@@ -382,7 +420,7 @@ if (typeof mock.import !== 'function') {
 
     const applyHook = callbackResults.find((entry) =>
       typeof entry.fn === 'function' &&
-      entry.fn.toString().includes('applyGeneratedColumnEvaluators'),
+      entry.fn.toString().includes('applyGeneratedColumnsForValues'),
     );
     assert.ok(applyHook, 'should expose generated column applier');
 
@@ -398,9 +436,12 @@ if (typeof mock.import !== 'function') {
     assert.deepEqual(
       applied.transactions.map((row) => row.virtual_total),
       [10, 12],
-      'should apply evaluator results to each row',
+      'should compute generated column values',
     );
-    assert.ok(applyCalls.length > 0, 'should invoke generated column evaluator helper');
+    assert.ok(
+      applyCalls.some((entry) => Object.prototype.hasOwnProperty.call(entry, 'pipelines')),
+      'should delegate generated column application',
+    );
   });
 
 }

@@ -17,130 +17,20 @@ import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
 import { syncCalcFields } from '../utils/syncCalcFields.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
+import { valuesEqual } from '../utils/generatedColumns.js';
 import {
-  valuesEqual,
-  createGeneratedColumnEvaluator,
-  applyGeneratedColumnEvaluators,
-} from '../utils/generatedColumns.js';
+  isPlainRecord,
+  assignArrayMetadata,
+  cloneArrayWithMetadata,
+  serializeRowsWithMetadata,
+  serializeValuesForTransport,
+  restoreValuesFromTransport,
+  cloneValuesForRecalc,
+  createGeneratedColumnPipeline,
+  applyGeneratedColumnsForValues,
+} from '../utils/transactionValues.js';
 
 export { syncCalcFields };
-
-function isPlainRecord(value) {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-const arrayIndexPattern = /^(0|[1-9]\d*)$/;
-
-function extractArrayMetadata(value) {
-  if (!value || typeof value !== 'object') return null;
-  const metadata = {};
-  let hasMetadata = false;
-  Object.keys(value).forEach((key) => {
-    if (key === 'rows' || key === 'meta') return;
-    if (!arrayIndexPattern.test(key)) {
-      metadata[key] = value[key];
-      hasMetadata = true;
-    }
-  });
-  return hasMetadata ? metadata : null;
-}
-
-function assignArrayMetadata(target, source) {
-  if (!Array.isArray(target) || !source || typeof source !== 'object') {
-    return target;
-  }
-  const metadata = extractArrayMetadata(source);
-  if (metadata) Object.assign(target, metadata);
-  return target;
-}
-
-function cloneArrayWithMetadata(source) {
-  if (!Array.isArray(source)) return source;
-  const clone = source.map((row) => (isPlainRecord(row) ? { ...row } : row));
-  return assignArrayMetadata(clone, source);
-}
-
-function serializeRowsWithMetadata(container) {
-  if (isPlainRecord(container) && Array.isArray(container.rows)) {
-    const rows = container.rows.map((row) => (isPlainRecord(row) ? { ...row } : row));
-    const meta = extractArrayMetadata(container.meta);
-    return meta ? { rows, meta } : { rows };
-  }
-  const rows = Array.isArray(container)
-    ? container.map((row) => (isPlainRecord(row) ? { ...row } : row))
-    : [];
-  const meta = extractArrayMetadata(container);
-  return meta ? { rows, meta } : { rows };
-}
-
-function restoreRowsWithMetadata(entry) {
-  if (Array.isArray(entry)) {
-    return cloneArrayWithMetadata(entry);
-  }
-  if (isPlainRecord(entry) && Array.isArray(entry.rows)) {
-    const rows = entry.rows.map((row) => (isPlainRecord(row) ? { ...row } : row));
-    return assignArrayMetadata(rows, entry.meta || {});
-  }
-  if (isPlainRecord(entry)) {
-    return [
-      {
-        ...entry,
-      },
-    ];
-  }
-  return [];
-}
-
-function serializeValuesForTransport(values, multiTableSet) {
-  const result = {};
-  Object.entries(values || {}).forEach(([table, value]) => {
-    if (multiTableSet.has(table)) {
-      const serialized = serializeRowsWithMetadata(value);
-      result[table] = serialized.meta
-        ? { rows: serialized.rows, meta: serialized.meta }
-        : { rows: serialized.rows };
-    } else if (Array.isArray(value)) {
-      result[table] = value.map((row) => (isPlainRecord(row) ? { ...row } : row));
-    } else if (isPlainRecord(value)) {
-      result[table] = { ...value };
-    } else {
-      result[table] = value;
-    }
-  });
-  return result;
-}
-
-function restoreValuesFromTransport(values, multiTableSet) {
-  if (!values || typeof values !== 'object') return {};
-  const result = {};
-  Object.entries(values).forEach(([table, value]) => {
-    if (multiTableSet.has(table)) {
-      result[table] = restoreRowsWithMetadata(value);
-    } else if (Array.isArray(value)) {
-      result[table] = value.map((row) => (isPlainRecord(row) ? { ...row } : row));
-    } else if (isPlainRecord(value)) {
-      result[table] = { ...value };
-    } else {
-      result[table] = value;
-    }
-  });
-  return result;
-}
-
-function cloneValuesForRecalc(vals) {
-  if (!vals || typeof vals !== 'object') return {};
-  const next = {};
-  Object.entries(vals).forEach(([table, value]) => {
-    if (Array.isArray(value)) {
-      next[table] = cloneArrayWithMetadata(value);
-    } else if (isPlainRecord(value)) {
-      next[table] = { ...value };
-    } else {
-      next[table] = value;
-    }
-  });
-  return next;
-}
 
 function normalizeValueForComparison(value) {
   if (value === undefined) return undefined;
@@ -1294,7 +1184,7 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
 
-  const generatedColumnConfigs = useMemo(() => {
+  const generatedColumnPipelines = useMemo(() => {
     if (!config) return {};
     const tables = [];
     if (config.masterTable) tables.push(config.masterTable);
@@ -1308,22 +1198,6 @@ export default function PosTransactionsPage() {
       const columns = columnMeta[tbl] || [];
       if (!Array.isArray(columns) || columns.length === 0) return;
       const caseMap = memoColumnCaseMap[tbl] || {};
-      const evaluators = {};
-      columns.forEach((col) => {
-        if (!col || typeof col !== 'object') return;
-        const rawName = col.name;
-        const expr =
-          col.generationExpression ??
-          col.GENERATION_EXPRESSION ??
-          col.generation_expression ??
-          null;
-        if (!rawName || !expr) return;
-        const mapped = caseMap[String(rawName).toLowerCase()] || rawName;
-        if (typeof mapped !== 'string') return;
-        const evaluator = createGeneratedColumnEvaluator(expr, caseMap);
-        if (evaluator) evaluators[mapped] = evaluator;
-      });
-      if (Object.keys(evaluators).length === 0) return;
       const fc = memoFormConfigs[tbl] || {};
       const collectFields = (value) => {
         if (!value) return [];
@@ -1368,11 +1242,15 @@ export default function PosTransactionsPage() {
         const mapped = mapFieldName(field);
         if (mapped && !mainSet.has(mapped)) metadataSet.add(mapped);
       });
-      result[tbl] = {
-        evaluators,
-        mainFields: mainSet.size > 0 ? mainSet : null,
-        metadataFields: metadataSet.size > 0 ? metadataSet : null,
-      };
+      const pipeline = createGeneratedColumnPipeline({
+        tableColumns: columns,
+        columnCaseMap: caseMap,
+        mainFields: mainSet.size > 0 ? mainSet : undefined,
+        metadataFields: metadataSet.size > 0 ? metadataSet : undefined,
+        equals: valuesEqual,
+      });
+      if (Object.keys(pipeline.evaluators).length === 0) return;
+      result[tbl] = pipeline;
     });
     return result;
   }, [config, columnMeta, memoColumnCaseMap, memoFormConfigs]);
@@ -1505,49 +1383,8 @@ export default function PosTransactionsPage() {
   }, [masterSessionValue, visibleTablesKey, configVersion, sessionFieldsKey]);
 
   const applyGeneratedColumnsAcrossTables = useCallback(
-    (vals) => {
-      if (!config) return vals;
-      if (!vals || typeof vals !== 'object') return vals;
-      if (!generatedColumnConfigs || Object.keys(generatedColumnConfigs).length === 0) {
-        return vals;
-      }
-      const tables = [];
-      if (config.masterTable) tables.push(config.masterTable);
-      if (Array.isArray(config.tables)) {
-        config.tables.forEach((t) => {
-          if (t?.table) tables.push(t.table);
-        });
-      }
-      let nextVals = vals;
-      let mutated = false;
-      tables.forEach((tbl) => {
-        const cfg = generatedColumnConfigs[tbl];
-        if (!cfg) return;
-        const current = nextVals[tbl];
-        if (!Array.isArray(current)) return;
-        const cloned = cloneArrayWithMetadata(current);
-        const { changed, metadata } = applyGeneratedColumnEvaluators({
-          targetRows: cloned,
-          evaluators: cfg.evaluators,
-          mainFields: cfg.mainFields,
-          metadataFields: cfg.metadataFields,
-          equals: valuesEqual,
-        });
-        if (!changed && !metadata) return;
-        if (metadata) {
-          Object.entries(metadata).forEach(([key, value]) => {
-            cloned[key] = value;
-          });
-        }
-        if (!mutated) {
-          nextVals = { ...vals };
-          mutated = true;
-        }
-        nextVals[tbl] = cloned;
-      });
-      return mutated ? nextVals : vals;
-    },
-    [config, generatedColumnConfigs],
+    (vals) => applyGeneratedColumnsForValues(vals, generatedColumnPipelines),
+    [generatedColumnPipelines],
   );
 
   function applyPosFields(vals, posFieldConfig) {

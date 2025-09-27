@@ -1,29 +1,7 @@
+import { extractArrayMetadata, assignArrayMetadata } from './transactionValues.js';
+
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-const arrayIndexPattern = /^(0|[1-9]\d*)$/;
-
-function extractArrayMetadata(value) {
-  if (!value || typeof value !== 'object') return null;
-  const metadata = {};
-  let hasMetadata = false;
-  Object.keys(value).forEach((key) => {
-    if (!arrayIndexPattern.test(key)) {
-      metadata[key] = value[key];
-      hasMetadata = true;
-    }
-  });
-  return hasMetadata ? metadata : null;
-}
-
-function assignArrayMetadata(target, source) {
-  if (!Array.isArray(target) || !source || typeof source !== 'object') {
-    return target;
-  }
-  const metadata = extractArrayMetadata(source);
-  if (metadata) Object.assign(target, metadata);
-  return target;
 }
 
 function parseLocalizedNumber(value) {
