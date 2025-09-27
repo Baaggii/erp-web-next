@@ -1787,8 +1787,11 @@ export default function ERPLayout() {
         document.body?.clientHeight || 0,
       );
 
+      const maskId = "tour-spotlight-mask";
       const svgParts = [
         `<svg xmlns="http://www.w3.org/2000/svg" width="${viewportWidth}" height="${viewportHeight}" viewBox="0 0 ${viewportWidth} ${viewportHeight}" preserveAspectRatio="none">`,
+        `<defs>`,
+        `<mask id="${maskId}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" mask-type="alpha">`,
         `<rect x="0" y="0" width="${viewportWidth}" height="${viewportHeight}" fill="white" />`,
       ];
       let hasVisibleRect = false;
@@ -1807,12 +1810,16 @@ export default function ERPLayout() {
         const widthValue = Math.max(0, Math.ceil(expandedWidth));
         const heightValue = Math.max(0, Math.ceil(expandedHeight));
         svgParts.push(
-          `<rect x="${x}" y="${y}" width="${widthValue}" height="${heightValue}" rx="12" ry="12" fill="black" />`,
+          `<rect x="${x}" y="${y}" width="${widthValue}" height="${heightValue}" rx="12" ry="12" fill="white" fill-opacity="0" />`,
         );
         hasVisibleRect = true;
       });
 
       if (hasVisibleRect) {
+        svgParts.push(`</mask>`, `</defs>`);
+        svgParts.push(
+          `<rect x="0" y="0" width="${viewportWidth}" height="${viewportHeight}" fill="white" mask="url(#${maskId})" />`,
+        );
         const svg = `${svgParts.join("")}</svg>`;
         const encoded = `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
         overlayElement.style.backgroundColor = "rgba(15, 23, 42, 0.65)";
