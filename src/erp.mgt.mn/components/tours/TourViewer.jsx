@@ -40,27 +40,45 @@ const headerStyles = {
   padding: "1rem 1.25rem",
   borderBottom: "1px solid rgba(148, 163, 184, 0.4)",
   display: "flex",
-  alignItems: "center",
+  alignItems: "flex-start",
   justifyContent: "space-between",
-  gap: "1rem",
+  gap: "0.75rem",
+  rowGap: "0.5rem",
+  flexWrap: "wrap",
   cursor: "move",
+  overflow: "visible",
+};
+
+const headerTitleStyles = {
+  flex: "1 1 160px",
+  minWidth: 0,
 };
 
 const headerActionsStyles = {
   display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
+  alignItems: "stretch",
+  justifyContent: "flex-end",
+  gap: "0.4rem",
+  rowGap: "0.35rem",
+  flex: "1 1 160px",
+  flexWrap: "wrap",
 };
 
 const actionButtonStyles = {
-  padding: "0.35rem 0.65rem",
+  padding: "0.3rem 0.5rem",
   borderRadius: "6px",
   border: "1px solid rgba(148, 163, 184, 0.7)",
   backgroundColor: "#f1f5f9",
   color: "#0f172a",
-  fontSize: "0.75rem",
+  fontSize: "0.7rem",
+  lineHeight: 1.2,
   cursor: "pointer",
-  whiteSpace: "nowrap",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  whiteSpace: "normal",
+  textAlign: "center",
+  flex: "1 1 5.5rem",
 };
 
 const listStyles = {
@@ -322,7 +340,7 @@ export default function TourViewer({ state, onClose, onSelectStep, onEndTour }) 
         <div ref={panelRef} style={wrapperStyles} role="dialog" aria-modal={false}>
           <div style={panelStyles}>
             <div style={headerStyles} onMouseDown={startDrag}>
-              <div>
+              <div style={headerTitleStyles}>
                 <div style={{ fontSize: "1rem", fontWeight: 600, color: "#0f172a" }}>{title}</div>
                 {subtitle && (
                   <div style={{ fontSize: "0.8rem", color: "#64748b", marginTop: "0.25rem" }}>{subtitle}</div>
@@ -330,8 +348,13 @@ export default function TourViewer({ state, onClose, onSelectStep, onEndTour }) 
               </div>
               <div style={headerActionsStyles}>
                 {typeof onEndTour === "function" && (
-                  <button type="button" onClick={onEndTour} style={actionButtonStyles}>
-                    End tour
+                  <button
+                    type="button"
+                    onClick={onEndTour}
+                    style={actionButtonStyles}
+                    aria-label="End tour"
+                  >
+                    End
                   </button>
                 )}
                 <button type="button" onClick={toggleSide} style={actionButtonStyles}>
