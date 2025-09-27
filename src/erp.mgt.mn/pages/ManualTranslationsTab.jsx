@@ -560,7 +560,6 @@ export default function ManualTranslationsTab() {
       if (entry.translatedBySources) {
         entry.translatedBySources = {
           ...entry.translatedBySources,
-          [lang]: '',
         };
       }
       copy[index] = entry;
