@@ -6,6 +6,34 @@ const DEFAULT_TOP = 96;
 
 const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
 
+const rectanglesOverlap = (rectA, rectB) => {
+  if (!rectA || !rectB) return false;
+  return !(
+    rectA.right <= rectB.left ||
+    rectA.left >= rectB.right ||
+    rectA.bottom <= rectB.top ||
+    rectA.top >= rectB.bottom
+  );
+};
+
+const measureViewerTooltipOverlap = (panelRect) => {
+  if (typeof document === "undefined") {
+    return { overlap: false, tooltipRect: null };
+  }
+  if (!panelRect) {
+    return { overlap: false, tooltipRect: null };
+  }
+  const tooltipElement = document.querySelector(".react-joyride__tooltip");
+  if (!tooltipElement) {
+    return { overlap: false, tooltipRect: null };
+  }
+  const tooltipRect = tooltipElement.getBoundingClientRect();
+  return {
+    overlap: rectanglesOverlap(panelRect, tooltipRect),
+    tooltipRect,
+  };
+};
+
 const getInitialPosition = () => {
   if (typeof window === "undefined") {
     return { top: DEFAULT_TOP, left: 0 };
@@ -230,6 +258,47 @@ export default function TourViewer({ state, onClose, onSelectStep, onEndTour }) 
     if (isCollapsed) return;
     applyDockedPosition(side);
   }, [side, isCollapsed, applyDockedPosition]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    if (isCollapsed) return undefined;
+
+    const frameId = window.requestAnimationFrame(() => {
+      const panelRect = panelRef.current?.getBoundingClientRect();
+      const { overlap, tooltipRect } = measureViewerTooltipOverlap(panelRect);
+      if (!overlap || !tooltipRect || !panelRect) {
+        return;
+      }
+
+      const oppositeSide = side === "right" ? "left" : "right";
+      const viewportHeight = window.innerHeight;
+      const desiredTop = clamp(
+        positionRef.current.top ?? DEFAULT_TOP,
+        VIEWPORT_MARGIN,
+        Math.max(VIEWPORT_MARGIN, viewportHeight - panelRect.height - VIEWPORT_MARGIN)
+      );
+      const oppositeLeft =
+        oppositeSide === "right"
+          ? window.innerWidth - panelRect.width - VIEWPORT_MARGIN
+          : VIEWPORT_MARGIN;
+      const candidateRect = {
+        top: desiredTop,
+        bottom: desiredTop + panelRect.height,
+        left: oppositeLeft,
+        right: oppositeLeft + panelRect.width,
+        width: panelRect.width,
+        height: panelRect.height,
+      };
+
+      if (!rectanglesOverlap(candidateRect, tooltipRect)) {
+        setSide(oppositeSide);
+      }
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [activeIndex, state?.runId, side, isCollapsed]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
