@@ -214,6 +214,7 @@ function computeStepSignature(steps) {
 
 function JoyrideTooltip({
   index = 0,
+  size = 0,
   step,
   tooltipProps = {},
   helpers = {},
@@ -226,6 +227,7 @@ function JoyrideTooltip({
   const nextLabel = step?.locale?.next || 'Next';
   const endLabel =
     step?.locale?.last || step?.locale?.close || step?.locale?.skip || 'End tour';
+  const isLastStep = size > 0 && index >= size - 1;
 
   const {
     className: backClassName,
@@ -254,16 +256,6 @@ function JoyrideTooltip({
     }
   };
 
-  const handleNext = (event) => {
-    if (typeof primaryOnClick === 'function') {
-      primaryOnClick(event);
-      return;
-    }
-    if (typeof helpers.next === 'function') {
-      helpers.next(event);
-    }
-  };
-
   const handleEnd = (event) => {
     if (typeof skipOnClick === 'function') {
       skipOnClick(event);
@@ -271,6 +263,24 @@ function JoyrideTooltip({
     }
     if (typeof helpers.close === 'function') {
       helpers.close(true);
+    }
+  };
+
+  const handlePrimary = (event) => {
+    if (isLastStep) {
+      if (typeof primaryOnClick === 'function') {
+        primaryOnClick(event);
+        if (event?.defaultPrevented) return;
+      }
+      handleEnd(event);
+      return;
+    }
+    if (typeof primaryOnClick === 'function') {
+      primaryOnClick(event);
+      return;
+    }
+    if (typeof helpers.next === 'function') {
+      helpers.next(event);
     }
   };
 
@@ -345,19 +355,21 @@ function JoyrideTooltip({
         <button
           type="button"
           className={`react-joyride__tooltip-button react-joyride__tooltip-button--primary ${primaryClassName ?? ''}`.trim()}
-          onClick={handleNext}
+          onClick={handlePrimary}
           {...restPrimaryProps}
         >
-          {nextLabel}
+          {isLastStep ? endLabel : nextLabel}
         </button>
-        <button
-          type="button"
-          className={`react-joyride__tooltip-button react-joyride__tooltip-button--skip ${skipClassName ?? ''}`.trim()}
-          onClick={handleEnd}
-          {...restSkipProps}
-        >
-          {endLabel}
-        </button>
+        {isLastStep ? null : (
+          <button
+            type="button"
+            className={`react-joyride__tooltip-button react-joyride__tooltip-button--skip ${skipClassName ?? ''}`.trim()}
+            onClick={handleEnd}
+            {...restSkipProps}
+          >
+            {endLabel}
+          </button>
+        )}
       </div>
     </div>
   );
