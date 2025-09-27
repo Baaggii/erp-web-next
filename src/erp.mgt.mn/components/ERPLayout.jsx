@@ -315,6 +315,7 @@ export default function ERPLayout() {
   const activeTourRunIdRef = useRef(0);
   const [activeTourRunId, setActiveTourRunId] = useState(0);
   const [currentTourPage, setCurrentTourPage] = useState('');
+  const [currentTourPath, setCurrentTourPath] = useState('');
   const toursByPageRef = useRef({});
   const toursByPathRef = useRef({});
   const [tourRegistryVersion, setTourRegistryVersion] = useState(0);
@@ -328,11 +329,24 @@ export default function ERPLayout() {
   const closeTourBuilder = useCallback(() => {
     setTourBuilderState(null);
   }, []);
-  const openTourViewer = useCallback((state) => {
-    if (!state) return;
-    setTourStepIndex(0);
-    setTourViewerState(state);
+
+  const normalizePath = useCallback((path) => {
+    if (!path) return '/';
+    const [cleanWithoutHash] = path.split('#');
+    const [cleanPath] = (cleanWithoutHash || path).split('?');
+    return cleanPath || '/';
   }, []);
+
+  const openTourViewer = useCallback(
+    (state) => {
+      if (!state) return;
+      const normalized = state.path ? normalizePath(state.path) : '';
+      setCurrentTourPath(normalized);
+      setTourStepIndex(0);
+      setTourViewerState(state);
+    },
+    [normalizePath],
+  );
   const closeTourViewer = useCallback(() => {
     setTourViewerState(null);
   }, []);
@@ -340,13 +354,6 @@ export default function ERPLayout() {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
-  }, []);
-
-  const normalizePath = useCallback((path) => {
-    if (!path) return '/';
-    const [cleanWithoutHash] = path.split('#');
-    const [cleanPath] = (cleanWithoutHash || path).split('?');
-    return cleanPath || '/';
   }, []);
 
   const registerTourEntry = useCallback(
@@ -435,13 +442,20 @@ export default function ERPLayout() {
         setTourStepIndex(initialStepIndex);
         setTourSteps(joyrideSteps);
         setCurrentTourPage(pageKey);
+        setCurrentTourPath(entry?.path || normalizePath(targetPath));
         setRunTour(true);
         return true;
       }
 
       return false;
     },
-    [location.pathname, registerTourEntry, updateUserSettings, userSettings],
+    [
+      location.pathname,
+      normalizePath,
+      registerTourEntry,
+      updateUserSettings,
+      userSettings,
+    ],
   );
 
   const ensureTourDefinition = useCallback(
@@ -725,7 +739,10 @@ export default function ERPLayout() {
             updateUserSettings({ toursSeen: seen });
           }
           setTourStepIndex(0);
+          setTourSteps([]);
           setRunTour(false);
+          setCurrentTourPage('');
+          setCurrentTourPath('');
           closeTourViewer();
         }
       });
@@ -736,10 +753,32 @@ export default function ERPLayout() {
       currentTourPage,
       t,
       tourSteps,
+      setTourSteps,
       updateUserSettings,
       userSettings,
     ],
   );
+
+  useEffect(() => {
+    if (!currentTourPath) return;
+    const normalizedLocationPath = normalizePath(location.pathname);
+    if (normalizedLocationPath === currentTourPath) return;
+    if (!(runTour || tourViewerState)) return;
+
+    setRunTour(false);
+    setTourSteps([]);
+    setTourStepIndex(0);
+    setCurrentTourPage('');
+    setCurrentTourPath('');
+    closeTourViewer();
+  }, [
+    closeTourViewer,
+    currentTourPath,
+    location.pathname,
+    normalizePath,
+    runTour,
+    tourViewerState,
+  ]);
 
   const handleTourStepJump = useCallback(
     (stepIndex) => {
