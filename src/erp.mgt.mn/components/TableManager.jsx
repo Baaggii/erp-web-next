@@ -2034,32 +2034,17 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
-  let disabledFields = [];
-  if (!isAdding && editSet) {
-    disabledFields = formColumns.filter((c) => !editSet.has(c.toLowerCase()));
-  }
-
-  const keyFields = getKeyFields();
-  const addModeLocks = new Set([
-    ...lockedDefaults,
-    ...generatedCols,
-    ...keyFields,
-  ]);
-
+  let disabledFields = editSet
+    ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
+    : [];
   if (isAdding) {
-    disabledFields = Array.from(addModeLocks);
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
   } else if (editing) {
-    const structuralLocks = new Set([
-      ...lockedDefaults,
-      ...generatedCols,
-      ...keyFields,
-    ]);
     disabledFields = Array.from(
-      new Set([...disabledFields, ...structuralLocks]),
+      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
     );
   } else {
-    const baseLocks = new Set([...lockedDefaults, ...generatedCols]);
-    disabledFields = Array.from(new Set([...disabledFields, ...baseLocks]));
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
   }
 
   const totalAmountSet = useMemo(
