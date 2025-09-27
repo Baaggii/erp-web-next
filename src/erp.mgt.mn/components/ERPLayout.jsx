@@ -24,6 +24,7 @@ import { API_BASE } from "../utils/apiBase.js";
 import TourBuilder from "./tours/TourBuilder.jsx";
 import TourViewer from "./tours/TourViewer.jsx";
 import derivePageKey from "../utils/derivePageKey.js";
+import { findLastVisibleTourStepIndex } from "../utils/findVisibleTourStep.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -664,10 +665,7 @@ export default function ERPLayout() {
               Math.max(tourSteps.length - 1, 0),
             );
             setTourStepIndex(clampedIndex);
-          } else if (
-            (type === EVENTS.STEP_AFTER || type === EVENTS.TARGET_NOT_FOUND) &&
-            isCurrentRun
-          ) {
+          } else if (type === EVENTS.STEP_AFTER && isCurrentRun) {
             const delta = action === ACTIONS.PREV ? -1 : 1;
             const nextIndex = index + delta;
             const clampedIndex = Math.min(
@@ -675,6 +673,21 @@ export default function ERPLayout() {
               Math.max(tourSteps.length - 1, 0),
             );
             setTourStepIndex(clampedIndex);
+          } else if (type === EVENTS.TARGET_NOT_FOUND && isCurrentRun) {
+            const fallbackIndex = findLastVisibleTourStepIndex(tourSteps, index - 1);
+            if (fallbackIndex >= 0) {
+              setTourStepIndex(fallbackIndex);
+              setTourViewerState((prev) =>
+                prev ? { ...prev, currentStepIndex: fallbackIndex } : prev,
+              );
+              addToast(
+                t(
+                  "tour_missing_target_warning",
+                  "The last visible tour step needs attention.",
+                ),
+                "warning",
+              );
+            }
           }
         }
 
@@ -689,7 +702,15 @@ export default function ERPLayout() {
         }
       });
     },
-    [closeTourViewer, currentTourPage, tourSteps.length, updateUserSettings, userSettings],
+    [
+      addToast,
+      closeTourViewer,
+      currentTourPage,
+      t,
+      tourSteps,
+      updateUserSettings,
+      userSettings,
+    ],
   );
 
   const handleTourStepJump = useCallback(
