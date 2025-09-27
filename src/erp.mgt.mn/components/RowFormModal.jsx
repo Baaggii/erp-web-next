@@ -47,7 +47,6 @@ const RowFormModal = function RowFormModal({
   dateField = [],
   inline = false,
   useGrid = false,
-  isAddMode: isAddModeProp = undefined,
   fitted = false,
   table = '',
   imagenameField = [],
@@ -68,8 +67,6 @@ const RowFormModal = function RowFormModal({
   autoFillSession = true,
   tableColumns = [],
 }) {
-  const isAddMode = isAddModeProp ?? !row;
-  const isEditMode = !isAddMode;
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const warned = useRef(false);
@@ -2049,7 +2046,7 @@ const RowFormModal = function RowFormModal({
     <>
       <Modal
         visible={visible}
-        title={isEditMode ? 'Мөр засах' : 'Мөр нэмэх'}
+        title={row ? 'Мөр засах' : 'Мөр нэмэх'}
         onClose={onCancel}
         width="70vw"
       >
@@ -2065,7 +2062,7 @@ const RowFormModal = function RowFormModal({
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
-        {table === 'companies' && isAddMode && seedOptions.length > 0 && (
+        {table === 'companies' && !row && seedOptions.length > 0 && (
           <div className="mt-4">
             <h3 className="font-semibold mb-2">Seed Tables</h3>
             <div className="space-y-2">
