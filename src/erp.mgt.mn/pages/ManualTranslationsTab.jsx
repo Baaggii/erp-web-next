@@ -41,48 +41,7 @@ function getTranslatorLabel(source) {
   return fallback || TRANSLATOR_LABELS.unknown;
 }
 
-const MANUAL_ENTRY_SOURCE = 'manual-entry';
-
-const ENTRY_TYPE_LABELS = {
-  locale: 'Locale file',
-  tooltip: 'Tooltip file',
-};
-
-function getEntryTypeLabel(type) {
-  if (typeof type !== 'string') {
-    return '';
-  }
-  const trimmed = type.trim();
-  if (!trimmed) {
-    return '';
-  }
-  if (Object.prototype.hasOwnProperty.call(ENTRY_TYPE_LABELS, trimmed)) {
-    return ENTRY_TYPE_LABELS[trimmed];
-  }
-  return trimmed
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
-
-function formatTranslationSource(type, provider) {
-  const typeLabel = getEntryTypeLabel(type);
-  const providerLabel = getTranslatorLabel(provider);
-  if (typeLabel && providerLabel && providerLabel !== TRANSLATOR_LABELS.unknown) {
-    return `${typeLabel} – ${providerLabel}`;
-  }
-  if (typeLabel && providerLabel === TRANSLATOR_LABELS.unknown) {
-    return `${typeLabel} – ${TRANSLATOR_LABELS.unknown}`;
-  }
-  if (typeLabel) {
-    return typeLabel;
-  }
-  if (providerLabel && providerLabel !== TRANSLATOR_LABELS.unknown) {
-    return providerLabel;
-  }
-  return TRANSLATOR_LABELS.unknown;
-}
+const MANUAL_ENTRY_LABEL = 'Manual entry';
 
 const BASE_COLUMN_KEYS = [
   'key',
@@ -279,7 +238,7 @@ export default function ManualTranslationsTab() {
                 const label = translatedBy[lang];
                 if (typeof label === 'string') {
                   const trimmed = label.trim();
-                  translatedBy[lang] = trimmed || '';
+                  translatedBy[lang] = trimmed ? getTranslatorLabel(trimmed) : '';
                 } else {
                   translatedBy[lang] = '';
                 }
@@ -544,7 +503,7 @@ export default function ManualTranslationsTab() {
       entry.values = { ...entry.values, [lang]: value };
       entry.translatedBy = {
         ...(entry.translatedBy ?? {}),
-        [lang]: MANUAL_ENTRY_SOURCE,
+        [lang]: MANUAL_ENTRY_LABEL,
       };
       copy[index] = entry;
       return copy;
@@ -641,9 +600,9 @@ export default function ManualTranslationsTab() {
     }
   }
 
-  const captureTranslationSource = (entryType, lang, source) => {
+  const captureTranslationSource = (lang, source) => {
     if (!lang) return;
-    const label = formatTranslationSource(entryType, source);
+    const label = getTranslatorLabel(source);
     setTranslationSources((prev) => [...prev, { lang, label }]);
   };
 
@@ -723,10 +682,8 @@ export default function ManualTranslationsTab() {
           const translated = await translateEntry(targetLang, sourceInfo.text);
           if (translated?.text && !translated.needsRetry) {
             newEntry.values[targetLang] = translated.text;
-            const sourceCode =
-              typeof translated.source === 'string' ? translated.source.trim() : '';
-            newEntry.translatedBy[targetLang] = sourceCode;
-            captureTranslationSource(newEntry.type, targetLang, sourceCode);
+            newEntry.translatedBy[targetLang] = getTranslatorLabel(translated.source);
+            captureTranslationSource(targetLang, translated.source);
             changed = true;
             return true;
           }
@@ -776,10 +733,8 @@ export default function ManualTranslationsTab() {
                 const translated = await translateEntry(lang, sourceInfo.text);
                 if (translated?.text && !translated.needsRetry) {
                   newEntry.values[lang] = translated.text;
-                  const sourceCode =
-                    typeof translated.source === 'string' ? translated.source.trim() : '';
-                  newEntry.translatedBy[lang] = sourceCode;
-                  captureTranslationSource(newEntry.type, lang, sourceCode);
+                  newEntry.translatedBy[lang] = getTranslatorLabel(translated.source);
+                  captureTranslationSource(lang, translated.source);
                   changed = true;
                 } else if (translated?.needsRetry) {
                   needsManualReview = true;
@@ -1143,12 +1098,10 @@ export default function ManualTranslationsTab() {
                     <div style={getProviderGridStyle(languages.length)}>
                       {languages.map((l) => {
                         const rawLabel = entry.translatedBy?.[l];
-                        const providerCode =
-                          typeof rawLabel === 'string' ? rawLabel.trim() : '';
-                        const hasInfo = providerCode || getEntryTypeLabel(entry.type);
-                        const displayLabel = hasInfo
-                          ? formatTranslationSource(entry.type, providerCode)
-                          : '';
+                        const displayLabel =
+                          typeof rawLabel === 'string' && rawLabel.trim()
+                            ? rawLabel.trim()
+                            : '';
                         return (
                           <div key={l} style={{ color: displayLabel ? '#111827' : '#6b7280' }}>
                             <span style={{ fontWeight: 600, marginRight: '0.25rem' }}>
