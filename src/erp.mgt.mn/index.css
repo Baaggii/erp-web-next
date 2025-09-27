@@ -260,6 +260,27 @@ select[multiple] {
   color: #0f172a;
 }
 
+.react-joyride__tooltip-button--end {
+  --end: linear-gradient(135deg, #f97316, #ef4444);
+  background: var(--end);
+  color: #ffffff;
+  font-weight: 700;
+  border-color: transparent;
+  box-shadow: 0 16px 32px rgba(239, 68, 68, 0.35);
+}
+
+.react-joyride__tooltip-button--end:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 40px rgba(239, 68, 68, 0.45);
+  filter: brightness(1.05);
+}
+
+.react-joyride__tooltip-button--end:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 12px 24px rgba(239, 68, 68, 0.4);
+  filter: brightness(0.98);
+}
+
 select[multiple] option:checked {
   background-color: #2563eb;
   color: #fff;

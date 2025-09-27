@@ -244,6 +244,15 @@ function JoyrideTooltip({
     ...restSkipProps
   } = skipProps || {};
 
+  const sanitizedSkipClassName = (skipClassName || '')
+    .split(/\s+/)
+    .filter((cls) =>
+      cls &&
+      cls !== 'react-joyride__tooltip-button--skip' &&
+      cls !== 'react-joyride__tooltip-button',
+    )
+    .join(' ');
+
   const handleBack = (event) => {
     if (typeof backOnClick === 'function') {
       backOnClick(event);
@@ -352,7 +361,7 @@ function JoyrideTooltip({
         </button>
         <button
           type="button"
-          className={`react-joyride__tooltip-button react-joyride__tooltip-button--skip ${skipClassName ?? ''}`.trim()}
+          className={`react-joyride__tooltip-button react-joyride__tooltip-button--end ${sanitizedSkipClassName}`.trim()}
           onClick={handleEnd}
           {...restSkipProps}
         >
