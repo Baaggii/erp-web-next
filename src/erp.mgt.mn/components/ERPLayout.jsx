@@ -1962,6 +1962,7 @@ export default function ERPLayout() {
     let sawMissingSelector = false;
     const maskTargets = [];
     const outlineTargets = [];
+    let hasVisibleSecondaryTarget = false;
 
     if (primaryElement) {
       seenMaskElements.add(primaryElement);
@@ -1985,10 +1986,17 @@ export default function ERPLayout() {
         sawMissingSelector = true;
         return;
       }
-      resolvedSelectors.add(selector);
       const isPrimarySelector = index === 0;
+      let hasVisibleElementForSelector = false;
       elements.forEach((element) => {
-        if (!element || typeof element.getBoundingClientRect !== "function") return;
+        if (!element || typeof element.getBoundingClientRect !== "function") {
+          return;
+        }
+        const rect = element.getBoundingClientRect();
+        if (!rect || rect.width <= 0 || rect.height <= 0) {
+          return;
+        }
+        hasVisibleElementForSelector = true;
         if (!seenMaskElements.has(element)) {
           seenMaskElements.add(element);
           maskTargets.push({ element, padding });
@@ -1998,8 +2006,14 @@ export default function ERPLayout() {
         } else if (!primaryElements.has(element) && !seenOutlineElements.has(element)) {
           seenOutlineElements.add(element);
           outlineTargets.push({ element, padding });
+          hasVisibleSecondaryTarget = true;
         }
       });
+      if (!hasVisibleElementForSelector) {
+        sawMissingSelector = true;
+        return;
+      }
+      resolvedSelectors.add(selector);
     });
 
     const hasMissingSelectors =
@@ -2007,6 +2021,10 @@ export default function ERPLayout() {
       (sawMissingSelector || resolvedSelectors.size < trimmedSelectors.length);
 
     if (!hasMultipleDeclaredTargets && maskTargets.length <= 1) {
+      return undefined;
+    }
+
+    if (hasMultipleDeclaredTargets && !hasVisibleSecondaryTarget) {
       return undefined;
     }
 
