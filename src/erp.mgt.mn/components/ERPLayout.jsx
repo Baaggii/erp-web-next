@@ -855,6 +855,16 @@ export default function ERPLayout() {
             disableBeacon
             disableKeyboardNavigation={false}
             floaterProps={{ offset: joyrideScrollOffset }}
+            styles={{
+              overlay: {
+                backgroundColor: 'rgba(15, 23, 42, 0.7)',
+              },
+              spotlight: {
+                borderRadius: 12,
+                boxShadow:
+                  '0 0 0 2px rgba(56, 189, 248, 0.55), 0 0 0 9999px rgba(15, 23, 42, 0.65)',
+              },
+            }}
             callback={handleTourCallback}
             tooltipComponent={JoyrideTooltip}
             locale={{
