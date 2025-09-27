@@ -14,11 +14,12 @@ import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import { valuesEqual } from '../utils/generatedColumns.js';
 import {
-  valuesEqual,
-  createGeneratedColumnEvaluator,
-  applyGeneratedColumnEvaluators,
-} from '../utils/generatedColumns.js';
+  assignArrayMetadata,
+  extractArrayMetadata,
+  createGeneratedColumnPipeline,
+} from '../utils/transactionValues.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -28,28 +29,6 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 function normalizeNumberInput(value) {
   if (typeof value !== 'string') return value;
   return value.replace(',', '.');
-}
-
-const arrayIndexPattern = /^(0|[1-9]\d*)$/;
-
-function extractArrayMetadata(value) {
-  if (!value || typeof value !== 'object') return null;
-  const metadata = {};
-  let hasMetadata = false;
-  Object.keys(value).forEach((key) => {
-    if (!arrayIndexPattern.test(key)) {
-      metadata[key] = value[key];
-      hasMetadata = true;
-    }
-  });
-  return hasMetadata ? metadata : null;
-}
-
-function assignArrayMetadata(target, source) {
-  if (!Array.isArray(target)) return target;
-  const metadata = extractArrayMetadata(source);
-  if (metadata) Object.assign(target, metadata);
-  return target;
 }
 
 function InlineTransactionTable(
@@ -345,21 +324,18 @@ function InlineTransactionTable(
     [tableColumns],
   );
 
-  const generatedColumnEvaluators = React.useMemo(() => {
-    const map = {};
-    if (!Array.isArray(tableColumns)) return map;
-    tableColumns.forEach((col) => {
-      if (!col || typeof col !== 'object') return;
-      const rawName = col.name;
-      const expr = col.generationExpression ?? col.GENERATION_EXPRESSION;
-      if (!rawName || !expr) return;
-      const mapped = columnCaseMap[String(rawName).toLowerCase()] || rawName;
-      if (typeof mapped !== 'string') return;
-      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
-      if (evaluator) map[mapped] = evaluator;
-    });
-    return map;
-  }, [tableColumnsKey, columnCaseMapKey]);
+  const generatedColumnPipeline = React.useMemo(
+    () =>
+      createGeneratedColumnPipeline({
+        tableColumns,
+        columnCaseMap,
+        mainFields: mainFieldSet,
+        metadataFields: metadataFieldSet,
+        equals: valuesEqual,
+      }),
+    [tableColumnsKey, columnCaseMapKey, mainFieldSet, metadataFieldSet],
+  );
+  const generatedColumnEvaluators = generatedColumnPipeline.evaluators;
   const hasGeneratedColumnsRef = useRef(false);
 
   const mainFieldSet = React.useMemo(() => {
@@ -384,15 +360,8 @@ function InlineTransactionTable(
 
   const applyGeneratedColumns = React.useCallback(
     (targetRows, indices = null) =>
-      applyGeneratedColumnEvaluators({
-        targetRows,
-        evaluators: generatedColumnEvaluators,
-        indices,
-        mainFields: mainFieldSet,
-        metadataFields: metadataFieldSet,
-        equals: valuesEqual,
-      }),
-    [generatedColumnEvaluators, mainFieldSet, metadataFieldSet],
+      generatedColumnPipeline.apply(targetRows, indices),
+    [generatedColumnPipeline],
   );
 
   const commitRowsUpdate = React.useCallback(
