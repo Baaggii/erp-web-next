@@ -386,9 +386,215 @@ export default function ERPLayout() {
   const [tourRegistryVersion, setTourRegistryVersion] = useState(0);
   const [tourBuilderState, setTourBuilderState] = useState(null);
   const [tourViewerState, setTourViewerState] = useState(null);
+  const updateViewerIndex = useCallback((nextIndex) => {
+    setTourViewerState((prev) =>
+      prev ? { ...prev, currentStepIndex: nextIndex } : prev,
+    );
+  }, []);
+  const updateTourSteps = useCallback(
+    (updater) => {
+      if (typeof updater !== "function") return;
+      setTourSteps((prevSteps) => {
+        const nextSteps = updater(prevSteps);
+        if (Array.isArray(nextSteps) && nextSteps !== prevSteps) {
+          setTourViewerState((prev) =>
+            prev ? { ...prev, steps: nextSteps } : prev,
+          );
+        }
+        return nextSteps;
+      });
+    },
+    [],
+  );
+  const missingTargetWatcherRef = useRef(null);
+  const stopMissingTargetWatcher = useCallback(() => {
+    const watcher = missingTargetWatcherRef.current;
+    if (!watcher) return;
+    if (watcher.observer) {
+      try {
+        watcher.observer.disconnect();
+      } catch (err) {
+        // ignore
+      }
+    }
+    if (watcher.intervalId) {
+      try {
+        clearInterval(watcher.intervalId);
+      } catch (err) {
+        // ignore
+      }
+    }
+    missingTargetWatcherRef.current = null;
+  }, []);
   const joyrideScrollOffset = 56;
   const extraSpotlightsRef = useRef([]);
   const extraSpotlightContainerRef = useRef(null);
+  const resolveMissingTargetById = useCallback(
+    (pauseStepId) => {
+      if (!pauseStepId) return;
+      stopMissingTargetWatcher();
+      let placeholderIndex = null;
+      let resolvedIndex = null;
+      updateTourSteps((prevSteps) => {
+        if (!Array.isArray(prevSteps)) return prevSteps;
+        const pauseIndex = prevSteps.findIndex((entry) => entry?.id === pauseStepId);
+        if (pauseIndex === -1) return prevSteps;
+        const pauseStep = prevSteps[pauseIndex];
+        if (!pauseStep || typeof pauseStep !== "object") return prevSteps;
+        const originalId = pauseStep.missingTargetPauseForStepId;
+        if (!originalId) return prevSteps;
+        const originalIndex = prevSteps.findIndex((entry) => entry?.id === originalId);
+        if (originalIndex === -1) return prevSteps;
+
+        const baseSteps = prevSteps.filter((_, idx) => idx !== pauseIndex);
+        const adjustedOriginalIndex =
+          originalIndex > pauseIndex ? originalIndex - 1 : originalIndex;
+        if (
+          adjustedOriginalIndex < 0 ||
+          adjustedOriginalIndex >= baseSteps.length
+        ) {
+          return prevSteps;
+        }
+
+        const originalStep = baseSteps[adjustedOriginalIndex];
+        if (!originalStep || typeof originalStep !== "object") {
+          return prevSteps;
+        }
+
+        const restoredStep = { ...originalStep };
+        const restoredTarget =
+          typeof restoredStep.missingTargetOriginalTarget === "string"
+            ? restoredStep.missingTargetOriginalTarget.trim()
+            : "";
+        if (restoredTarget) {
+          restoredStep.target = restoredTarget;
+        }
+
+        const restoredSelectorsRaw = Array.isArray(
+          restoredStep.missingTargetOriginalSelectors,
+        )
+          ? restoredStep.missingTargetOriginalSelectors
+          : [];
+        const restoredSelectors = restoredSelectorsRaw
+          .map((value) => (typeof value === "string" ? value.trim() : ""))
+          .filter(Boolean);
+        if (restoredSelectors.length) {
+          restoredStep.selectors = restoredSelectors;
+          restoredStep.selector = restoredSelectors[0];
+          restoredStep.highlightSelectors = restoredSelectors;
+        }
+
+        delete restoredStep.missingTarget;
+        delete restoredStep.missingTargetOriginalTarget;
+        delete restoredStep.missingTargetOriginalSelectors;
+        delete restoredStep.missingTargetPauseStepId;
+        delete restoredStep.missingTargetPauseWatchSelectors;
+
+        baseSteps[adjustedOriginalIndex] = restoredStep;
+        placeholderIndex = pauseIndex;
+        resolvedIndex = adjustedOriginalIndex;
+        return baseSteps;
+      });
+
+      if (placeholderIndex === null || resolvedIndex === null) {
+        return;
+      }
+
+      let nextIndexValue = resolvedIndex;
+      setTourStepIndex((prevIndex) => {
+        if (prevIndex <= placeholderIndex) {
+          nextIndexValue = resolvedIndex;
+          return resolvedIndex;
+        }
+        const decremented = Math.max(prevIndex - 1, 0);
+        nextIndexValue = decremented;
+        return decremented;
+      });
+      updateViewerIndex(nextIndexValue);
+    },
+    [stopMissingTargetWatcher, updateTourSteps, updateViewerIndex],
+  );
+
+  const startMissingTargetWatcher = useCallback(
+    (step) => {
+      if (
+        !step ||
+        typeof step !== "object" ||
+        !step.missingTargetPauseStep ||
+        !Array.isArray(step.missingTargetPauseWatchSelectors)
+      ) {
+        return;
+      }
+
+      const selectors = step.missingTargetPauseWatchSelectors
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter(Boolean);
+      if (!selectors.length) return;
+      if (typeof document === "undefined" || !document?.body) return;
+
+      stopMissingTargetWatcher();
+
+      const checkVisibility = () => {
+        for (const selector of selectors) {
+          if (!selector) continue;
+          try {
+            const element = document.querySelector(selector);
+            if (element) {
+              const hasRect =
+                typeof element.getClientRects === "function" &&
+                element.getClientRects().length > 0;
+              const isSvgElement =
+                typeof SVGElement !== "undefined" && element instanceof SVGElement;
+              const hasParent =
+                (element instanceof HTMLElement && element.offsetParent !== null) ||
+                (isSvgElement &&
+                  typeof element.getBBox === "function" &&
+                  element.getBBox().width > 0 &&
+                  element.getBBox().height > 0);
+              if (hasRect || hasParent) {
+                resolveMissingTargetById(step.id);
+                return true;
+              }
+            }
+          } catch (err) {
+            // ignore invalid selectors
+          }
+        }
+        return false;
+      };
+
+      let observer = null;
+      if (typeof MutationObserver === "function") {
+        try {
+          observer = new MutationObserver(() => {
+            checkVisibility();
+          });
+          observer.observe(document.body, {
+            attributes: true,
+            childList: true,
+            subtree: true,
+          });
+        } catch (err) {
+          observer = null;
+        }
+      }
+
+      let intervalId = null;
+      if (typeof window !== "undefined" && typeof window.setInterval === "function") {
+        intervalId = window.setInterval(checkVisibility, 500);
+      }
+
+      missingTargetWatcherRef.current = {
+        stepId: step.id,
+        observer,
+        intervalId,
+      };
+
+      checkVisibility();
+    },
+    [resolveMissingTargetById, stopMissingTargetWatcher],
+  );
+
   const removeExtraSpotlights = useCallback(() => {
     extraSpotlightsRef.current.forEach((entry) => {
       const overlay = entry?.overlay;
@@ -435,13 +641,14 @@ export default function ERPLayout() {
 
   const endTour = useCallback(() => {
     removeExtraSpotlights();
+    stopMissingTargetWatcher();
     setRunTour(false);
     setTourSteps([]);
     setTourStepIndex(0);
     setCurrentTourPage("");
     setCurrentTourPath("");
     closeTourViewer();
-  }, [closeTourViewer, removeExtraSpotlights]);
+  }, [closeTourViewer, removeExtraSpotlights, stopMissingTargetWatcher]);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
@@ -797,11 +1004,6 @@ export default function ERPLayout() {
             eventRunId === undefined || eventRunId === activeTourRunIdRef.current;
           const clampIndex = (value) =>
             Math.min(Math.max(0, value), Math.max(tourSteps.length - 1, 0));
-          const updateViewerIndex = (nextIndex) => {
-            setTourViewerState((prev) =>
-              prev ? { ...prev, currentStepIndex: nextIndex } : prev,
-            );
-          };
 
           if (type === EVENTS.STEP_BEFORE || type === EVENTS.TOOLTIP_OPEN) {
             const clampedIndex = clampIndex(index);
@@ -809,10 +1011,21 @@ export default function ERPLayout() {
             if (isCurrentRun) {
               updateViewerIndex(clampedIndex);
               if (type === EVENTS.TOOLTIP_OPEN) {
-                setTourSteps((prevSteps) => {
+                if (step?.missingTargetPauseStep) {
+                  startMissingTargetWatcher(step);
+                } else if (missingTargetWatcherRef.current?.stepId) {
+                  stopMissingTargetWatcher();
+                }
+                updateTourSteps((prevSteps) => {
                   if (!Array.isArray(prevSteps)) return prevSteps;
+                  if (clampedIndex < 0 || clampedIndex >= prevSteps.length) {
+                    return prevSteps;
+                  }
                   const targetStep = prevSteps[clampedIndex];
                   if (!targetStep || typeof targetStep !== "object") {
+                    return prevSteps;
+                  }
+                  if (targetStep.missingTargetPauseStep) {
                     return prevSteps;
                   }
 
@@ -838,12 +1051,17 @@ export default function ERPLayout() {
                       const {
                         missingTargetOriginalTarget,
                         missingTarget,
+                        missingTargetOriginalSelectors,
                         ...restStep
                       } = targetStep;
-                      nextSteps[clampedIndex] = {
-                        ...restStep,
-                        target: storedOriginal,
-                      };
+                      const restoredStep = { ...restStep };
+                      if (missingTargetOriginalSelectors) {
+                        restoredStep.selectors = missingTargetOriginalSelectors;
+                        restoredStep.selector = missingTargetOriginalSelectors[0];
+                        restoredStep.highlightSelectors = missingTargetOriginalSelectors;
+                      }
+                      restoredStep.target = storedOriginal;
+                      nextSteps[clampedIndex] = restoredStep;
                       shouldRestore = true;
                     }
                   } else if (targetStep.missingTarget !== undefined) {
@@ -857,17 +1075,23 @@ export default function ERPLayout() {
               }
             }
           } else if (type === EVENTS.STEP_AFTER && isCurrentRun) {
+            if (missingTargetWatcherRef.current?.stepId === step?.id) {
+              stopMissingTargetWatcher();
+            }
             const delta = action === ACTIONS.PREV ? -1 : 1;
             const nextIndex = clampIndex(index + delta);
             setTourStepIndex(nextIndex);
             updateViewerIndex(nextIndex);
           } else if (type === EVENTS.TARGET_NOT_FOUND && isCurrentRun) {
+            stopMissingTargetWatcher();
             const clampedIndex = clampIndex(index);
             const fallbackMessage = t(
               "tour_missing_target_hint",
               "Expand the referenced control to continue the tour.",
             );
-            setTourSteps((prevSteps) => {
+            let placeholderStep = null;
+            let placeholderIndex = clampedIndex;
+            updateTourSteps((prevSteps) => {
               if (!Array.isArray(prevSteps)) return prevSteps;
               if (clampedIndex < 0 || clampedIndex >= prevSteps.length) {
                 return prevSteps;
@@ -877,31 +1101,19 @@ export default function ERPLayout() {
               if (!currentStep || typeof currentStep !== "object") {
                 return prevSteps;
               }
+              if (currentStep.missingTargetPauseStep) {
+                return prevSteps;
+              }
 
-              const fallbackSelector = findVisibleFallbackSelector(currentStep);
+              const fallbackSelectorRaw = findVisibleFallbackSelector(currentStep);
+              const fallbackSelector =
+                typeof fallbackSelectorRaw === "string"
+                  ? fallbackSelectorRaw.trim()
+                  : "";
               if (!fallbackSelector) {
                 return prevSteps;
               }
 
-              const messageExists =
-                typeof currentStep.missingTarget === "string" &&
-                currentStep.missingTarget.includes(fallbackMessage);
-
-              const nextStep = {
-                ...currentStep,
-                target: fallbackSelector,
-                missingTarget: messageExists
-                  ? currentStep.missingTarget
-                  : typeof currentStep.missingTarget === "string" &&
-                      currentStep.missingTarget.trim().length
-                    ? `${currentStep.missingTarget}\n${fallbackMessage}`
-                    : fallbackMessage,
-              };
-
-              const existingOriginal =
-                typeof currentStep.missingTargetOriginalTarget === "string"
-                  ? currentStep.missingTargetOriginalTarget.trim()
-                  : "";
               const trimmedTarget =
                 typeof currentStep.target === "string"
                   ? currentStep.target.trim()
@@ -910,40 +1122,190 @@ export default function ERPLayout() {
                 typeof currentStep.selector === "string"
                   ? currentStep.selector.trim()
                   : "";
+              const existingOriginalTarget =
+                typeof currentStep.missingTargetOriginalTarget === "string"
+                  ? currentStep.missingTargetOriginalTarget.trim()
+                  : "";
 
-              if (!existingOriginal) {
+              const combinedSelectorsSet = new Set();
+              const selectorsFromStep = Array.isArray(currentStep.selectors)
+                ? currentStep.selectors
+                    .map((value) => (typeof value === "string" ? value.trim() : ""))
+                    .filter(Boolean)
+                : [];
+              selectorsFromStep.forEach((value) => combinedSelectorsSet.add(value));
+              const highlightSelectors = Array.isArray(currentStep.highlightSelectors)
+                ? currentStep.highlightSelectors
+                    .map((value) => (typeof value === "string" ? value.trim() : ""))
+                    .filter(Boolean)
+                : [];
+              highlightSelectors.forEach((value) => combinedSelectorsSet.add(value));
+              if (trimmedTarget && trimmedTarget !== fallbackSelector) {
+                combinedSelectorsSet.add(trimmedTarget);
+              }
+              if (trimmedSelector && trimmedSelector !== fallbackSelector) {
+                combinedSelectorsSet.add(trimmedSelector);
+              }
+              const normalizedOriginalSelectors = Array.from(combinedSelectorsSet);
+
+              const fallbackWatchSelectors = [trimmedTarget, trimmedSelector]
+                .map((value) => (typeof value === "string" ? value.trim() : ""))
+                .filter((value, idx, arr) => {
+                  if (!value) return false;
+                  if (value === fallbackSelector) return false;
+                  return arr.indexOf(value) === idx;
+                });
+
+              const watchSelectors = normalizedOriginalSelectors.length
+                ? normalizedOriginalSelectors
+                : fallbackWatchSelectors;
+
+              const placeholderContent =
+                currentStep.content !== undefined && currentStep.content !== null
+                  ? currentStep.content
+                  : fallbackMessage;
+
+              const existingPauseId =
+                typeof currentStep.missingTargetPauseStepId === "string"
+                  ? currentStep.missingTargetPauseStepId.trim()
+                  : "";
+
+              const existingMissing =
+                typeof currentStep.missingTarget === "string"
+                  ? currentStep.missingTarget.trim()
+                  : "";
+              const combinedMessage = existingMissing.length
+                ? existingMissing.includes(fallbackMessage)
+                  ? existingMissing
+                  : `${existingMissing}\n${fallbackMessage}`
+                : fallbackMessage;
+
+              const ensureOriginalTarget = () => {
+                if (existingOriginalTarget) return existingOriginalTarget;
                 if (trimmedTarget && trimmedTarget !== fallbackSelector) {
-                  nextStep.missingTargetOriginalTarget = trimmedTarget;
-                } else if (
-                  trimmedSelector &&
-                  trimmedSelector !== fallbackSelector
-                ) {
-                  nextStep.missingTargetOriginalTarget = trimmedSelector;
+                  return trimmedTarget;
                 }
-              } else {
-                nextStep.missingTargetOriginalTarget = existingOriginal;
+                if (trimmedSelector && trimmedSelector !== fallbackSelector) {
+                  return trimmedSelector;
+                }
+                if (normalizedOriginalSelectors.length) {
+                  return normalizedOriginalSelectors[0];
+                }
+                return trimmedTarget || trimmedSelector || currentStep.target || "";
+              };
+
+              if (existingPauseId) {
+                const pauseIndex = prevSteps.findIndex(
+                  (entry) => entry?.id === existingPauseId,
+                );
+                if (pauseIndex >= 0) {
+                  const pauseStep = prevSteps[pauseIndex];
+                  if (pauseStep && typeof pauseStep === "object") {
+                    const updatedPauseStep = { ...pauseStep };
+                    let mutated = false;
+                    if (updatedPauseStep.content !== placeholderContent) {
+                      updatedPauseStep.content = placeholderContent;
+                      mutated = true;
+                    }
+                    if (updatedPauseStep.missingTarget !== combinedMessage) {
+                      updatedPauseStep.missingTarget = combinedMessage;
+                      mutated = true;
+                    }
+                    if (
+                      updatedPauseStep.missingTargetPauseForStepId !== currentStep.id
+                    ) {
+                      updatedPauseStep.missingTargetPauseForStepId = currentStep.id;
+                      mutated = true;
+                    }
+                    const pauseWatch = Array.isArray(
+                      updatedPauseStep.missingTargetPauseWatchSelectors,
+                    )
+                      ? updatedPauseStep.missingTargetPauseWatchSelectors
+                      : [];
+                    const normalizedWatch = watchSelectors;
+                    if (
+                      normalizedWatch.length &&
+                      (pauseWatch.length !== normalizedWatch.length ||
+                        normalizedWatch.some((value, idx) => value !== pauseWatch[idx]))
+                    ) {
+                      updatedPauseStep.missingTargetPauseWatchSelectors = normalizedWatch;
+                      mutated = true;
+                    }
+                    if (
+                      updatedPauseStep.target !== fallbackSelector ||
+                      updatedPauseStep.selector !== fallbackSelector
+                    ) {
+                      updatedPauseStep.target = fallbackSelector;
+                      updatedPauseStep.selector = fallbackSelector;
+                      updatedPauseStep.selectors = [fallbackSelector];
+                      updatedPauseStep.highlightSelectors = [fallbackSelector];
+                      mutated = true;
+                    }
+                    if (mutated) {
+                      const nextSteps = [...prevSteps];
+                      nextSteps[pauseIndex] = updatedPauseStep;
+                      placeholderStep = updatedPauseStep;
+                      placeholderIndex = pauseIndex;
+                      return nextSteps;
+                    }
+                    placeholderStep = updatedPauseStep;
+                    placeholderIndex = pauseIndex;
+                    return prevSteps;
+                  }
+                }
               }
 
-              const shouldUpdate =
-                nextStep.target !== currentStep.target ||
-                nextStep.missingTarget !== currentStep.missingTarget ||
-                nextStep.missingTargetOriginalTarget !==
-                  currentStep.missingTargetOriginalTarget;
-
-              if (!shouldUpdate) {
-                return prevSteps;
+              const pauseStepId = existingPauseId || createClientStepId();
+              const originalTarget = ensureOriginalTarget();
+              const updatedCurrentStep = {
+                ...currentStep,
+                target: originalTarget || currentStep.target,
+                selector: originalTarget || currentStep.selector,
+                missingTargetOriginalTarget: originalTarget || "",
+                missingTargetOriginalSelectors: normalizedOriginalSelectors,
+                missingTargetPauseStepId: pauseStepId,
+              };
+              if (normalizedOriginalSelectors.length) {
+                updatedCurrentStep.selectors = normalizedOriginalSelectors;
+                updatedCurrentStep.highlightSelectors = normalizedOriginalSelectors;
               }
+              delete updatedCurrentStep.missingTarget;
+
+              const placeholder = {
+                ...currentStep,
+                id: pauseStepId,
+                target: fallbackSelector,
+                selector: fallbackSelector,
+                selectors: [fallbackSelector],
+                highlightSelectors: [fallbackSelector],
+                content: placeholderContent,
+                missingTarget: combinedMessage,
+                missingTargetPauseStep: true,
+                missingTargetPauseForStepId: currentStep.id,
+                missingTargetPauseWatchSelectors: watchSelectors,
+              };
+              delete placeholder.missingTargetOriginalTarget;
+              delete placeholder.missingTargetOriginalSelectors;
+              delete placeholder.missingTargetPauseStepId;
 
               const nextSteps = [...prevSteps];
-              nextSteps[clampedIndex] = nextStep;
+              nextSteps.splice(clampedIndex, 0, placeholder);
+              nextSteps[clampedIndex + 1] = updatedCurrentStep;
+              placeholderStep = placeholder;
+              placeholderIndex = clampedIndex;
               return nextSteps;
             });
-            setTourStepIndex(clampedIndex);
-            updateViewerIndex(clampedIndex);
+
+            if (placeholderStep && Number.isFinite(placeholderIndex)) {
+              setTourStepIndex(placeholderIndex);
+              updateViewerIndex(placeholderIndex);
+              startMissingTargetWatcher(placeholderStep);
+            }
           }
         }
 
         if ([STATUS.FINISHED, STATUS.SKIPPED].includes(status)) {
+          stopMissingTargetWatcher();
           if (currentTourPage) {
             const seen = { ...(userSettings?.toursSeen || {}), [currentTourPage]: true };
             updateUserSettings({ toursSeen: seen });
@@ -953,12 +1315,15 @@ export default function ERPLayout() {
       });
     },
     [
-      addToast,
       currentTourPage,
       endTour,
+      startMissingTargetWatcher,
+      stopMissingTargetWatcher,
       t,
       tourSteps,
+      updateTourSteps,
       updateUserSettings,
+      updateViewerIndex,
       userSettings,
     ],
   );
