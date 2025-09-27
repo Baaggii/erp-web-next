@@ -392,6 +392,19 @@ export async function saveTranslation({
   const fileOrigin = FILE_ORIGIN_BY_TYPE[type] || FILE_ORIGIN_BY_TYPE.locale;
   const updatedLanguages = new Set();
 
+  for (const [lang, label] of Object.entries(incomingTranslatedBy)) {
+    if (Object.prototype.hasOwnProperty.call(values, lang)) continue;
+    const requestedMeta = rawIncomingMeta[lang] || parseTranslatedByLabel(label);
+    const providerCode = requestedMeta.provider || '';
+    if (!providerCode) continue;
+    const existingMeta = parseTranslatedByLabel(existingTranslatedBy[lang]);
+    const origin = requestedMeta.origin || existingMeta.origin || fileOrigin;
+    const combinedLabel = composeTranslatedByLabel(origin, providerCode);
+    if (!combinedLabel || combinedLabel === existingTranslatedBy[lang]) continue;
+    incomingTranslatedBy[lang] = combinedLabel;
+    updatedLanguages.add(lang);
+  }
+
   for (const [lang, val] of Object.entries(values)) {
     const dir = type === 'tooltip' ? tooltipDir : localesDir;
     const file = path.join(dir, `${lang}.json`);
