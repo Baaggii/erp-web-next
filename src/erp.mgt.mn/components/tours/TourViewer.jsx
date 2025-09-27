@@ -109,6 +109,15 @@ const actionButtonStyles = {
   flex: "1 1 5.5rem",
 };
 
+const endActionButtonStyles = {
+  ...actionButtonStyles,
+  backgroundImage: "linear-gradient(135deg, #f97316, #ef4444)",
+  color: "#ffffff",
+  border: "none",
+  fontWeight: 700,
+  boxShadow: "0 16px 32px rgba(239, 68, 68, 0.35)",
+};
+
 const listStyles = {
   listStyle: "none",
   margin: 0,
@@ -420,7 +429,7 @@ export default function TourViewer({ state, onClose, onSelectStep, onEndTour }) 
                   <button
                     type="button"
                     onClick={onEndTour}
-                    style={actionButtonStyles}
+                    style={endActionButtonStyles}
                     aria-label="End tour"
                   >
                     End
