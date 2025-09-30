@@ -11,9 +11,6 @@ import {
   deleteProcedure,
   getStoredProcedureSql,
   getEmploymentSession,
-  listDatabaseViews,
-  getViewSql,
-  deleteView,
 } from '../../db/index.js';
 import { generateProcedureConfig } from '../utils/generateProcedureConfig.js';
 
@@ -224,39 +221,6 @@ router.post('/views', requireAuth, async (req, res, next) => {
     const { sql } = req.body || {};
     if (!sql) return res.status(400).json({ message: 'sql required' });
     await saveView(sql);
-    res.json({ ok: true });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get('/views', requireAuth, async (req, res, next) => {
-  try {
-    const { prefix = '' } = req.query;
-    const names = await listDatabaseViews(prefix);
-    res.json({ names });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get('/views/:name', requireAuth, async (req, res, next) => {
-  try {
-    const { name } = req.params;
-    if (!name) return res.status(400).json({ message: 'name required' });
-    const sql = await getViewSql(name);
-    if (!sql) return res.status(404).json({ message: 'View not found' });
-    res.json({ sql });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.delete('/views/:name', requireAuth, async (req, res, next) => {
-  try {
-    const { name } = req.params;
-    if (!name) return res.status(400).json({ message: 'name required' });
-    await deleteView(name);
     res.json({ ok: true });
   } catch (err) {
     next(err);

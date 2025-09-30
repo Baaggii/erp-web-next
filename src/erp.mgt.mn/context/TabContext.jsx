@@ -42,44 +42,23 @@ export function TabProvider({ children }) {
     window.__activeTabKey = key;
   }, []);
 
-  const closeTab = useCallback(
-    (key, onNavigate) => {
-      if (key === '/') return;
-      trackSetState('TabProvider.setTabs');
-      setTabs((t) => t.filter((tab) => tab.key !== key));
-      trackSetState('TabProvider.setCache');
-      setCache((c) => {
-        const n = { ...c };
-        delete n[key];
-        return n;
-      });
-      let nextActiveKey = null;
-      let shouldNavigate = false;
-      trackSetState('TabProvider.setActiveKey');
-      setActiveKey((current) => {
-        if (current !== key) {
-          nextActiveKey = current;
-          return current;
-        }
-        const remaining = tabs.filter((t) => t.key !== key);
-        const fallback = remaining[0]?.key || null;
-        nextActiveKey = fallback;
-        shouldNavigate = true;
-        return fallback;
-      });
-      window.__activeTabKey = nextActiveKey || 'global';
-      if (
-        shouldNavigate &&
-        typeof onNavigate === 'function' &&
-        nextActiveKey &&
-        typeof nextActiveKey === 'string' &&
-        nextActiveKey.startsWith('/')
-      ) {
-        onNavigate(nextActiveKey);
-      }
-    },
-    [tabs],
-  );
+  const closeTab = useCallback((key) => {
+    if (key === '/') return;
+    trackSetState('TabProvider.setTabs');
+    setTabs((t) => t.filter((tab) => tab.key !== key));
+    trackSetState('TabProvider.setCache');
+    setCache((c) => {
+      const n = { ...c };
+      delete n[key];
+      return n;
+    });
+    trackSetState('TabProvider.setActiveKey');
+    setActiveKey((k) => {
+      if (k !== key) return k;
+      const remaining = tabs.filter((t) => t.key !== key);
+      return remaining[0]?.key || null;
+    });
+  }, [tabs]);
 
   const setTabContent = useCallback((key, content) => {
     trackSetState('TabProvider.setCache');

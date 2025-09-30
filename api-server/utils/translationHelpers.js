@@ -49,7 +49,7 @@ export function sortObj(o) {
 const HANGUL_REGEX = /\p{Script=Hangul}/u;
 const HIRAGANA_KATAKANA_REGEX = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const CJK_IDEOGRAPH_REGEX = /\p{Script=Han}/u;
-export const CYRILLIC_REGEX = /\p{Script=Cyrillic}/u;
+const CYRILLIC_REGEX = /\p{Script=Cyrillic}/u;
 const LATIN_REGEX = /\p{Script=Latin}/u;
 const DIACRITIC_MARKS_REGEX = /[\u0300-\u036f]/g;
 const SPANISH_DIACRITIC_REGEX = /[áéíóúüñÁÉÍÓÚÜÑ¡¿]/;
@@ -865,43 +865,12 @@ export function detectLang(str) {
   return 'latin';
 }
 
-function humanizePageSegment(value) {
-  if (!value) return '';
-  let segment = value.replace(/\.[^.]+$/, '');
-  segment = segment.replace(/[-_]+/g, ' ');
-  segment = segment
-    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
-    .replace(/([A-Z]+)([A-Z][a-z0-9]+)/g, '$1 $2');
-  segment = segment.replace(/\b(Page|Tab)$/i, '').trim();
-  if (!segment) return '';
-  const parts = segment.split(/\s+/).filter(Boolean);
-  return parts
-    .map((word) => (word.toUpperCase() === word ? word : word[0].toUpperCase() + word.slice(1)))
-    .join(' ');
-}
-
-function derivePageLabel(relPath) {
-  if (!relPath) return '';
-  const normalized = relPath.split(path.sep).join('/');
-  if (!/\bpages\//.test(normalized)) return '';
-  const parts = normalized.replace(/\.[^.]+$/, '').split('/');
-  if (!parts.length) return '';
-  let candidate = parts[parts.length - 1];
-  if (!candidate && parts.length > 1) candidate = parts[parts.length - 2];
-  if (candidate && candidate.toLowerCase() === 'index' && parts.length > 1) {
-    candidate = parts[parts.length - 2];
-  }
-  return humanizePageSegment(candidate);
-}
-
 function defaultModuleResolver(rootDir, filePath) {
-  if (!filePath) return { module: '', page: '' };
+  if (!filePath) return '';
   const rel = path.relative(rootDir, filePath);
-  if (!rel) return { module: '', page: '' };
+  if (!rel) return '';
   const normalized = rel.split(path.sep).join('/');
-  const moduleId = normalized.replace(/\.[^.]+$/, '');
-  const page = derivePageLabel(rel);
-  return { module: moduleId, page };
+  return normalized.replace(/\.[^.]+$/, '');
 }
 
 export function collectPhrasesFromPages(dir, options = {}) {
@@ -918,7 +887,7 @@ export function collectPhrasesFromPages(dir, options = {}) {
   const pairs = [];
   const uiTags = new Set(['button', 'label', 'option']);
   const seen = new Set();
-  const addPairFactory = (moduleId, pageLabel) => (key, text, context = '') => {
+  const addPairFactory = (moduleId) => (key, text, context = '') => {
     if (key == null || text == null) return;
     const normalized = `${key}:::${text}:::${moduleId ?? ''}:::${context ?? ''}`;
     if (seen.has(normalized)) return;
@@ -928,25 +897,15 @@ export function collectPhrasesFromPages(dir, options = {}) {
       text,
       module: moduleId ?? '',
       context: context ?? '',
-      page: pageLabel ?? '',
     });
   };
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
-    const resolved =
+    const moduleId =
       typeof moduleResolver === 'function'
         ? moduleResolver({ file, dir })
         : defaultModuleResolver(dir, file);
-    let moduleId = '';
-    let pageLabel = '';
-    if (resolved && typeof resolved === 'object') {
-      moduleId = resolved.module ?? '';
-      pageLabel = resolved.page ?? '';
-    } else {
-      moduleId = resolved ?? '';
-      pageLabel = '';
-    }
-    const addPair = addPairFactory(moduleId, pageLabel);
+    const addPair = addPairFactory(moduleId);
     if (parser && traverse) {
       let ast;
       try {

@@ -14,12 +14,6 @@ import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
-import { valuesEqual } from '../utils/generatedColumns.js';
-import {
-  assignArrayMetadata,
-  extractArrayMetadata,
-  createGeneratedColumnPipeline,
-} from '../utils/transactionValues.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -29,6 +23,28 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 function normalizeNumberInput(value) {
   if (typeof value !== 'string') return value;
   return value.replace(',', '.');
+}
+
+const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+
+function extractArrayMetadata(value) {
+  if (!value || typeof value !== 'object') return null;
+  const metadata = {};
+  let hasMetadata = false;
+  Object.keys(value).forEach((key) => {
+    if (!arrayIndexPattern.test(key)) {
+      metadata[key] = value[key];
+      hasMetadata = true;
+    }
+  });
+  return hasMetadata ? metadata : null;
+}
+
+function assignArrayMetadata(target, source) {
+  if (!Array.isArray(target)) return target;
+  const metadata = extractArrayMetadata(source);
+  if (metadata) Object.assign(target, metadata);
+  return target;
 }
 
 function InlineTransactionTable(
@@ -76,7 +92,6 @@ function InlineTransactionTable(
     imagenameFields = [],
     imageIdField = '',
     configHash: _configHash,
-    tableColumns = [],
   },
   ref,
 ) {
@@ -153,11 +168,6 @@ function InlineTransactionTable(
     return map;
   }, [relationConfigsKey, columnCaseMapKey]);
 
-  const relationConfigMapKey = React.useMemo(
-    () => JSON.stringify(relationConfigMap || {}),
-    [relationConfigMap],
-  );
-
   const displayIndex = React.useMemo(() => {
     const index = {};
     Object.entries(tableDisplayFields || {}).forEach(([tbl, cfg]) => {
@@ -172,80 +182,17 @@ function InlineTransactionTable(
     return index;
   }, [tableDisplayFieldsKey]);
 
-  const relationsKey = React.useMemo(() => JSON.stringify(relations || {}), [relations]);
-
-  const tableRelationsConfig = React.useMemo(() => {
-    if (!tableName) return {};
-    const sources = [generalConfig?.tableRelations, general?.tableRelations, cfg?.tableRelations];
-    const lowerTable = String(tableName).toLowerCase();
-    for (const src of sources) {
-      if (!src || typeof src !== 'object') continue;
-      let entry = src[tableName];
-      if (!entry) {
-        const match = Object.keys(src).find(
-          (key) => typeof key === 'string' && key.toLowerCase() === lowerTable,
-        );
-        if (match) entry = src[match];
-      }
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-      const normalized = {};
-      Object.keys(entry).forEach((col) => {
-        if (typeof col !== 'string') return;
-        const mapped = columnCaseMap[col.toLowerCase()] || col;
-        if (typeof mapped === 'string') {
-          normalized[mapped] = entry[col];
-        }
-      });
-      if (Object.keys(normalized).length > 0) {
-        return normalized;
-      }
-    }
-    return {};
-  }, [generalConfig, general, cfg, tableName, columnCaseMap, columnCaseMapKey]);
-
-  const tableRelationsKey = React.useMemo(
-    () => JSON.stringify(tableRelationsConfig || {}),
-    [tableRelationsConfig],
-  );
-
-  const lookupColumnSet = React.useMemo(() => {
-    const set = new Set(Object.keys(relationConfigMap || {}));
-    Object.entries(relations || {}).forEach(([rawKey, value]) => {
-      if (!value) return;
-      const mapped = columnCaseMap[rawKey.toLowerCase()] || rawKey;
-      if (!mapped) return;
-      if (Array.isArray(value)) {
-        if (value.length > 0) set.add(mapped);
-        return;
-      }
-      if (typeof value === 'object' && Object.keys(value).length > 0) {
-        set.add(mapped);
-      }
-    });
-    Object.keys(viewSourceMap || {}).forEach((key) => set.add(key));
-    Object.keys(tableRelationsConfig || {}).forEach((key) => set.add(key));
-    return set;
-  }, [
-    relationConfigMapKey,
-    relationsKey,
-    tableRelationsKey,
-    columnCaseMapKey,
-    columnCaseMap,
-    viewSourceMap,
-  ]);
-
   // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
   const autoSelectConfigs = React.useMemo(() => {
     const map = {};
     Object.entries(columnCaseMap || {}).forEach(([lower, key]) => {
-      if (!lookupColumnSet.has(key)) return;
       const cfg = displayIndex[lower];
       if (cfg) {
         map[key] = cfg;
       }
     });
     return map;
-  }, [columnCaseMapKey, displayIndex, lookupColumnSet]);
+  }, [columnCaseMapKey, displayIndex]);
 
   const combinedViewSource = React.useMemo(() => {
     const map = { ...viewSourceMap };
@@ -256,39 +203,31 @@ function InlineTransactionTable(
   }, [viewSourceMap, autoSelectConfigs]);
 
   function fillSessionDefaults(obj) {
-    const base =
-      obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {};
-    let row = base;
-    let changed = false;
-    const ensureRow = () => {
-      if (!changed) {
-        row = { ...base };
-        changed = true;
-      }
-    };
-    const maybeSet = (field, value) => {
-      if (!field) return;
-      const current = row[field];
-      if (current !== undefined && current !== null && current !== '') return;
-      ensureRow();
-      row[field] = value;
-    };
+    const row = { ...obj };
     if (user?.empid !== undefined) {
-      userIdSet.forEach((f) => maybeSet(f, user.empid));
+      userIdSet.forEach((f) => {
+        if (row[f] === undefined || row[f] === '') row[f] = user.empid;
+      });
     }
-    if (branch != null) {
-      branchIdSet.forEach((f) => maybeSet(f, branch));
+    if (branch !== undefined) {
+      branchIdSet.forEach((f) => {
+        if (row[f] === undefined || row[f] === '') row[f] = branch;
+      });
     }
     if (department !== undefined) {
-      departmentIdSet.forEach((f) => maybeSet(f, department));
+      departmentIdSet.forEach((f) => {
+        if (row[f] === undefined || row[f] === '') row[f] = department;
+      });
     }
-    if (company != null) {
-      companyIdSet.forEach((f) => maybeSet(f, company));
+    if (company !== undefined) {
+      companyIdSet.forEach((f) => {
+        if (row[f] === undefined || row[f] === '') row[f] = company;
+      });
     }
-    if (dateField.length > 0) {
-      const now = formatTimestamp(new Date()).slice(0, 10);
-      dateField.forEach((f) => maybeSet(f, now));
-    }
+    const now = formatTimestamp(new Date()).slice(0, 10);
+    dateField.forEach((f) => {
+      if (row[f] === undefined || row[f] === '') row[f] = now;
+    });
     return row;
   }
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
@@ -316,7 +255,6 @@ function InlineTransactionTable(
     return assignArrayMetadata(next, initRows);
   });
   const rowsRef = useRef(rows);
-  const contextDefaultsRef = useRef({ branch, company });
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
@@ -380,94 +318,6 @@ function InlineTransactionTable(
     });
     return map;
   }, [viewColumnsKey, columnCaseMapKey, tableName]);
-
-  const tableColumnsKey = React.useMemo(
-    () =>
-      JSON.stringify(
-        (Array.isArray(tableColumns) ? tableColumns : []).map((c) => [
-          c?.name || '',
-          c?.generationExpression ?? c?.GENERATION_EXPRESSION ?? null,
-        ]),
-      ),
-    [tableColumns],
-  );
-
-  const mainFieldSet = React.useMemo(() => {
-    const set = new Set();
-    fields.forEach((f) => {
-      if (!f) return;
-      const mapped = columnCaseMap[String(f).toLowerCase()] || f;
-      if (typeof mapped === 'string') set.add(mapped);
-    });
-    return set;
-  }, [fieldsKey, columnCaseMapKey]);
-
-  const metadataFieldSet = React.useMemo(() => {
-    const set = new Set();
-    allFieldsList.forEach((f) => {
-      if (!f) return;
-      const mapped = columnCaseMap[String(f).toLowerCase()] || f;
-      if (typeof mapped === 'string' && !mainFieldSet.has(mapped)) set.add(mapped);
-    });
-    return set;
-  }, [allFieldsKey, columnCaseMapKey, mainFieldSet]);
-
-  const generatedColumnPipeline = React.useMemo(
-    () =>
-      createGeneratedColumnPipeline({
-        tableColumns,
-        columnCaseMap,
-        mainFields: mainFieldSet,
-        metadataFields: metadataFieldSet,
-        equals: valuesEqual,
-      }),
-    [tableColumnsKey, columnCaseMapKey, mainFieldSet, metadataFieldSet],
-  );
-  const generatedColumnEvaluators = generatedColumnPipeline.evaluators;
-  const hasGeneratedColumnsRef = useRef(false);
-
-  const applyGeneratedColumns = React.useCallback(
-    (targetRows, indices = null) =>
-      generatedColumnPipeline.apply(targetRows, indices),
-    [generatedColumnPipeline],
-  );
-
-  const commitRowsUpdate = React.useCallback(
-    (updater, { indices = null, notify = true, metadataSource = null } = {}) => {
-      setRows((prevRows) => {
-        const base = updater(prevRows);
-        if (!Array.isArray(base)) return base;
-        const nextRows = base === prevRows ? prevRows.slice() : base.slice();
-        const source = metadataSource ?? prevRows;
-        assignArrayMetadata(nextRows, source);
-        const { changed, metadata } = applyGeneratedColumns(nextRows, indices);
-        if (metadata) {
-          Object.entries(metadata).forEach(([key, value]) => {
-            nextRows[key] = value;
-          });
-        }
-        const didChange = Boolean(
-          changed ||
-            metadata ||
-            metadataSource ||
-            base !== prevRows,
-        );
-        if (didChange && notify) onRowsChange(nextRows);
-        return didChange ? nextRows : prevRows;
-      });
-    },
-    [applyGeneratedColumns, onRowsChange],
-  );
-
-  useEffect(() => {
-    const hasGeneratedColumns = Object.keys(generatedColumnEvaluators).length > 0;
-    const prevHasGeneratedColumns = hasGeneratedColumnsRef.current;
-    hasGeneratedColumnsRef.current = hasGeneratedColumns;
-    if (!hasGeneratedColumns || prevHasGeneratedColumns) return;
-    const currentRows = rowsRef.current;
-    if (!Array.isArray(currentRows) || currentRows.length === 0) return;
-    commitRowsUpdate((prev) => prev);
-  }, [generatedColumnEvaluators, commitRowsUpdate]);
 
   const placeholders = React.useMemo(() => {
     const map = {};
@@ -534,53 +384,9 @@ function InlineTransactionTable(
     const metadataChanged = JSON.stringify(metadata) !== JSON.stringify(currentMetadata);
     const withMetadata = assignArrayMetadata(normalized, initRows);
     if (metadataChanged || JSON.stringify(withMetadata) !== JSON.stringify(rows)) {
-      commitRowsUpdate(() => withMetadata, { notify: false, metadataSource: initRows });
+      setRows(withMetadata);
     }
   }, [initRows, minRows, defaultValues, placeholders]);
-
-  useEffect(() => {
-    const prev = contextDefaultsRef.current;
-    const branchReady = branch != null && prev.branch == null;
-    const companyReady = company != null && prev.company == null;
-    contextDefaultsRef.current = { branch, company };
-    if (!branchReady && !companyReady) return;
-
-    commitRowsUpdate(
-      (currentRows) => {
-        if (!Array.isArray(currentRows)) return currentRows;
-        let changed = false;
-        let nextRows = currentRows;
-        const ensureClone = () => {
-          if (!changed) {
-            nextRows = currentRows.slice();
-            changed = true;
-          }
-        };
-
-        currentRows.forEach((row, idx) => {
-          const updated = fillSessionDefaults(row);
-          if (updated !== row) {
-            ensureClone();
-            nextRows[idx] = updated;
-          }
-        });
-
-        Object.keys(currentRows).forEach((key) => {
-          if (arrayIndexPattern.test(key)) return;
-          const meta = currentRows[key];
-          if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return;
-          const updated = fillSessionDefaults(meta);
-          if (updated !== meta) {
-            ensureClone();
-            nextRows[key] = updated;
-          }
-        });
-
-        return changed ? nextRows : currentRows;
-      },
-      { notify: false },
-    );
-  }, [branch, company, fillSessionDefaults]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
@@ -642,15 +448,12 @@ function InlineTransactionTable(
 
   useEffect(() => {
     if (rows.length < minRows) {
-      commitRowsUpdate(
-        (current) => {
-          if (!Array.isArray(current) || current.length >= minRows) return current;
-          const next = current.slice();
-          while (next.length < minRows) next.push({});
-          return next;
-        },
-        { notify: false },
-      );
+      setRows((r) => {
+        const next = [...r];
+        while (next.length < minRows) next.push({});
+        assignArrayMetadata(next, r);
+        return next;
+      });
     }
     if (focusRow.current === null) return;
     const idx = focusRow.current;
@@ -687,18 +490,20 @@ function InlineTransactionTable(
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
     clearRows: () =>
-      commitRowsUpdate(
-        () =>
-          Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues)),
-      ),
+      setRows((prev) => {
+        const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
+        assignArrayMetadata(next, prev);
+        onRowsChange(next);
+        return next;
+      }),
     replaceRows: (newRows) =>
-      commitRowsUpdate(
-        () => {
-          const base = Array.isArray(newRows) ? newRows : [];
-          return base.map((r) => fillSessionDefaults(r));
-        },
-        { metadataSource: Array.isArray(newRows) ? newRows : undefined },
-      ),
+      setRows((prev) => {
+        const base = Array.isArray(newRows) ? newRows : [];
+        const next = base.map((r) => fillSessionDefaults(r));
+        assignArrayMetadata(next, Array.isArray(newRows) ? newRows : prev);
+        onRowsChange(next);
+        return next;
+      }),
     hasInvalid: () => invalidCell !== null,
   }));
 
@@ -760,6 +565,29 @@ function InlineTransactionTable(
         }),
       );
     }
+  }
+
+  function valuesEqual(a, b) {
+    if (Object.is(a, b)) return true;
+    if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) {
+      return false;
+    }
+    if (Array.isArray(a) || Array.isArray(b)) {
+      if (!Array.isArray(a) || !Array.isArray(b)) return false;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i += 1) {
+        if (!valuesEqual(a[i], b[i])) return false;
+      }
+      return true;
+    }
+    const aKeys = Object.keys(a);
+    const bKeys = Object.keys(b);
+    if (aKeys.length !== bKeys.length) return false;
+    for (const key of aKeys) {
+      if (!Object.prototype.hasOwnProperty.call(b, key)) return false;
+      if (!valuesEqual(a[key], b[key])) return false;
+    }
+    return true;
   }
 
   function applyProcedureResult(rowIdx, rowData, baseRows = rowsRef.current) {
@@ -953,13 +781,6 @@ function InlineTransactionTable(
           let val = getRowValue(row, key);
           if (val === undefined && key !== name) {
             val = getRowValue(row, name);
-          }
-          if (val === undefined) {
-            const tableMeta = workingRows || {};
-            val = getRowValue(tableMeta, key);
-            if (val === undefined && key !== name) {
-              val = getRowValue(tableMeta, name);
-            }
           }
           if (val && typeof val === 'object' && 'value' in val) {
             val = val.value;
@@ -1179,18 +1000,20 @@ function InlineTransactionTable(
     }
 
     if (updates.length > 0) {
-      const changedRows = Array.from(new Set(updates.map((u) => u.rowIdx)));
-      commitRowsUpdate(
-        (currentRows) => {
-          let next = currentRows;
-          updates.forEach(({ rowIdx: idx, rowData }) => {
-            const result = applyProcedureResult(idx, rowData, next);
-            next = result.rows;
-          });
-          return next;
-        },
-        { indices: changedRows },
-      );
+      let finalRows = null;
+      setRows((currentRows) => {
+        let next = currentRows;
+        updates.forEach(({ rowIdx: idx, rowData }) => {
+          const result = applyProcedureResult(idx, rowData, next);
+          next = result.rows;
+        });
+        finalRows = next;
+        return next;
+      });
+      if (finalRows) {
+        rowsRef.current = finalRows;
+        onRowsChange(finalRows);
+      }
     }
   }
 
@@ -1286,19 +1109,23 @@ function InlineTransactionTable(
         }
       }
     }
-    const newIndex = rows.length;
-    focusRow.current = newIndex;
-    commitRowsUpdate(
-      (r) => {
-        const row = fillSessionDefaults(defaultValues);
-        return [...r, row];
-      },
-      { indices: [newIndex] },
-    );
+    setRows((r) => {
+      const row = fillSessionDefaults(defaultValues);
+      const next = [...r, row];
+      focusRow.current = next.length - 1;
+      assignArrayMetadata(next, r);
+      onRowsChange(next);
+      return next;
+    });
   }
 
   function removeRow(idx) {
-    commitRowsUpdate((r) => r.filter((_, i) => i !== idx));
+    setRows((r) => {
+      const next = r.filter((_, i) => i !== idx);
+      assignArrayMetadata(next, r);
+      onRowsChange(next);
+      return next;
+    });
   }
 
   function openUpload(idx) {
@@ -1306,28 +1133,30 @@ function InlineTransactionTable(
   }
 
   function handleUploaded(idx, name) {
-    commitRowsUpdate(
-      (r) =>
-        r.map((row, i) => (i === idx ? { ...row, _imageName: name } : row)),
-      { indices: [idx] },
-    );
+    setRows((r) => {
+      const next = r.map((row, i) => (i === idx ? { ...row, _imageName: name } : row));
+      assignArrayMetadata(next, r);
+      onRowsChange(next);
+      return next;
+    });
   }
 
   function applyAISuggestion(idx, item) {
     if (!item) return;
-    const codeField = fields.find((f) => /code|name|item/i.test(f));
-    const qtyField = fields.find((f) => /(qty|quantity|count)/i.test(f));
-    commitRowsUpdate(
-      (r) =>
-        r.map((row, i) => {
-          if (i !== idx) return row;
-          const updated = { ...row };
-          if (codeField && item.code !== undefined) updated[codeField] = item.code;
-          if (qtyField && item.qty !== undefined) updated[qtyField] = item.qty;
-          return updated;
-        }),
-      { indices: [idx] },
-    );
+    setRows((r) => {
+      const codeField = fields.find((f) => /code|name|item/i.test(f));
+      const qtyField = fields.find((f) => /(qty|quantity|count)/i.test(f));
+      const next = r.map((row, i) => {
+        if (i !== idx) return row;
+        const updated = { ...row };
+        if (codeField && item.code !== undefined) updated[codeField] = item.code;
+        if (qtyField && item.qty !== undefined) updated[qtyField] = item.qty;
+        return updated;
+      });
+      assignArrayMetadata(next, r);
+      onRowsChange(next);
+      return next;
+    });
   }
 
   function getImageFolder(row) {
@@ -1347,29 +1176,30 @@ function InlineTransactionTable(
 
 
   function handleChange(rowIdx, field, value) {
-    commitRowsUpdate(
-      (r) =>
-        r.map((row, i) => {
-          if (i !== rowIdx) return row;
-          const updated = { ...row, [field]: value };
-          const conf = relationConfigMap[field];
-          let val = value;
-          if (val && typeof val === 'object' && 'value' in val) {
-            val = val.value;
-          }
-          if (conf && conf.displayFields && relationData[field]?.[val]) {
-            const ref = relationData[field][val];
-            conf.displayFields.forEach((df) => {
-              const key = columnCaseMap[df.toLowerCase()];
-              if (key && ref[df] !== undefined) {
-                updated[key] = ref[df];
-              }
-            });
-          }
-          return updated;
-        }),
-      { indices: [rowIdx] },
-    );
+    setRows((r) => {
+      const next = r.map((row, i) => {
+        if (i !== rowIdx) return row;
+        const updated = { ...row, [field]: value };
+        const conf = relationConfigMap[field];
+        let val = value;
+        if (val && typeof val === 'object' && 'value' in val) {
+          val = val.value;
+        }
+        if (conf && conf.displayFields && relationData[field]?.[val]) {
+          const ref = relationData[field][val];
+          conf.displayFields.forEach((df) => {
+            const key = columnCaseMap[df.toLowerCase()];
+            if (key && ref[df] !== undefined) {
+              updated[key] = ref[df];
+            }
+          });
+        }
+        return updated;
+      });
+      assignArrayMetadata(next, r);
+      onRowsChange(next);
+      return next;
+    });
     if (invalidCell && invalidCell.row === rowIdx && invalidCell.field === field) {
       setInvalidCell(null);
       setErrorMsg('');
@@ -1419,19 +1249,20 @@ function InlineTransactionTable(
               }),
             );
           }
-          commitRowsUpdate(
-            (r) =>
-              r.map((row, i) => {
-                if (i !== rowIdx) return row;
-                const updated = { ...row };
-                Object.entries(rowData).forEach(([k, v]) => {
-                  const key = columnCaseMap[k.toLowerCase()];
-                  if (key) updated[key] = v;
-                });
-                return updated;
-              }),
-            { indices: [rowIdx] },
-          );
+          setRows((r) => {
+            const next = r.map((row, i) => {
+              if (i !== rowIdx) return row;
+              const updated = { ...row };
+              Object.entries(rowData).forEach(([k, v]) => {
+                const key = columnCaseMap[k.toLowerCase()];
+                if (key) updated[key] = v;
+              });
+              return updated;
+            });
+            assignArrayMetadata(next, r);
+            onRowsChange(next);
+            return next;
+          });
         })
         .catch((err) => {
           window.dispatchEvent(
@@ -1538,10 +1369,12 @@ function InlineTransactionTable(
         }
         updated._imageName = newImageName;
       }
-      commitRowsUpdate(
-        (r) => r.map((row, i) => (i === idx ? updated : row)),
-        { indices: [idx] },
-      );
+      setRows((r) => {
+        const next = r.map((row, i) => (i === idx ? updated : row));
+        assignArrayMetadata(next, r);
+        onRowsChange(next);
+        return next;
+      });
       procCache.current = {};
     }
   }
@@ -1589,19 +1422,6 @@ function InlineTransactionTable(
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
-    const isLookupField =
-      !!relationConfigMap[field] ||
-      !!viewSourceMap[field] ||
-      !!autoSelectConfigs[field];
-    if (isLookupField && e.lookupMatched === false) {
-      const label = labels[field] || field;
-      const message = `${label} талбарт тохирох утга олдсонгүй.`;
-      setErrorMsg(message);
-      setInvalidCell({ row: rowIdx, field });
-      e.target.focus();
-      if (e.target.select) e.target.select();
-      return;
-    }
     let label = undefined;
     let val = e.selectedOption ? e.selectedOption.value : e.target.value;
     if (e.selectedOption) label = e.selectedOption.label;

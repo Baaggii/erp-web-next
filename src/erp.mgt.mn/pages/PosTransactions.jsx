@@ -17,20 +17,12 @@ import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
 import { syncCalcFields } from '../utils/syncCalcFields.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
-import { valuesEqual } from '../utils/generatedColumns.js';
-import {
-  isPlainRecord,
-  assignArrayMetadata,
-  cloneArrayWithMetadata,
-  serializeRowsWithMetadata,
-  serializeValuesForTransport,
-  restoreValuesFromTransport,
-  cloneValuesForRecalc,
-  createGeneratedColumnPipeline,
-  recalcTotals as recalcPosTotals,
-} from '../utils/transactionValues.js';
 
 export { syncCalcFields };
+
+function isPlainRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
 
 function normalizeValueForComparison(value) {
   if (value === undefined) return undefined;
@@ -247,6 +239,24 @@ export function shouldLoadRelations(formConfig, cols = []) {
   return hasView || hasForeignKey(cols);
 }
 
+const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+
+function copyArrayMetadata(target, source) {
+  if (!Array.isArray(target) || !Array.isArray(source)) return;
+  Object.keys(source).forEach((key) => {
+    if (!arrayIndexPattern.test(key)) {
+      target[key] = source[key];
+    }
+  });
+}
+
+function cloneArrayWithMetadata(source) {
+  if (!Array.isArray(source)) return [];
+  const clone = source.slice();
+  copyArrayMetadata(clone, source);
+  return clone;
+}
+
 export function applySessionIdToTables(
   values,
   sessionId,
@@ -293,7 +303,7 @@ export function applySessionIdToTables(
           targetRows = updatedRows;
           tableChanged = true;
           if (Array.isArray(existingContainer)) {
-            assignArrayMetadata(targetRows, existingContainer);
+            copyArrayMetadata(targetRows, existingContainer);
           }
         }
       }
@@ -534,7 +544,6 @@ export default function PosTransactionsPage() {
   const viewFetchesRef = useRef(new Map());
   // Records view names that finished loading to avoid repeated network calls
   const viewLoadedRef = useRef(new Set());
-  const contextReadyRef = useRef({ branch, company });
   const unmountedRef = useRef(false);
   const abortControllersRef = useRef(new Set());
 
@@ -574,150 +583,6 @@ export default function PosTransactionsPage() {
       procTriggerLoadedRef.current.clear();
     };
   }, [name]);
-
-  useEffect(() => {
-    const prev = contextReadyRef.current;
-    const branchReady = branch != null && prev.branch == null;
-    const companyReady = company != null && prev.company == null;
-    contextReadyRef.current = { branch, company };
-    if (!branchReady && !companyReady) return;
-
-    const tables = Object.entries(memoFormConfigs);
-    if (tables.length === 0) return;
-
-    setValues((currentValues) => {
-      if (!currentValues || typeof currentValues !== 'object') return currentValues;
-      let mutated = false;
-      let nextValues = currentValues;
-
-      const fillRecord = (record, branchFields, companyFields) => {
-        const base =
-          record && typeof record === 'object' && !Array.isArray(record)
-            ? record
-            : {};
-        let updated = base;
-        let changed = false;
-        const maybeAssign = (field, value) => {
-          if (!field) return;
-          const current = updated[field];
-          if (current !== undefined && current !== null && current !== '') return;
-          if (updated === base) {
-            updated = { ...base };
-          }
-          updated[field] = value;
-          changed = true;
-        };
-        if (branchReady && Array.isArray(branchFields) && branchFields.length > 0) {
-          branchFields.forEach((field) => maybeAssign(field, branch));
-        }
-        if (companyReady && Array.isArray(companyFields) && companyFields.length > 0) {
-          companyFields.forEach((field) => maybeAssign(field, company));
-        }
-        return { updated, changed };
-      };
-
-      tables.forEach(([tbl, fc]) => {
-        if (!fc) return;
-        const branchFields = Array.isArray(fc.branchIdFields)
-          ? fc.branchIdFields
-          : [];
-        const companyFields = Array.isArray(fc.companyIdFields)
-          ? fc.companyIdFields
-          : [];
-        if (
-          (!branchReady || branchFields.length === 0) &&
-          (!companyReady || companyFields.length === 0)
-        ) {
-          return;
-        }
-
-        const container = nextValues[tbl];
-        const type = tableTypeMap[tbl] === 'multi' ? 'multi' : 'single';
-
-        if (type === 'multi') {
-          const currentRows = Array.isArray(container) ? container : [];
-          let targetRows = currentRows;
-          let tableChanged = false;
-          const ensureClone = () => {
-            if (!tableChanged) {
-              targetRows = cloneArrayWithMetadata(currentRows);
-              tableChanged = true;
-            }
-          };
-          const maybeAssignArrayField = (fields, value) => {
-            if (!Array.isArray(fields) || fields.length === 0) return;
-            if (value === undefined || value === null) return;
-            fields.forEach((field) => {
-              if (!field) return;
-              const holder = tableChanged ? targetRows : currentRows;
-              const current = holder[field];
-              if (current !== undefined && current !== null && current !== '') {
-                return;
-              }
-              ensureClone();
-              targetRows[field] = value;
-            });
-          };
-          currentRows.forEach((row, idx) => {
-            const { updated, changed } = fillRecord(row, branchFields, companyFields);
-            if (changed) {
-              ensureClone();
-              targetRows[idx] = updated;
-            }
-          });
-          if (Array.isArray(container)) {
-            Object.keys(container).forEach((key) => {
-              if (arrayIndexPattern.test(key)) return;
-              const meta = container[key];
-              if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return;
-              const { updated, changed } = fillRecord(
-                meta,
-                branchFields,
-                companyFields,
-              );
-              if (changed) {
-                ensureClone();
-                targetRows[key] = updated;
-              }
-            });
-          }
-          if (branchReady) {
-            maybeAssignArrayField(branchFields, branch);
-          }
-          if (companyReady) {
-            maybeAssignArrayField(companyFields, company);
-          }
-          if (tableChanged) {
-            if (nextValues === currentValues) {
-              nextValues = { ...currentValues };
-            }
-            nextValues[tbl] = targetRows;
-            mutated = true;
-          }
-        } else {
-          const source =
-            container && typeof container === 'object' && !Array.isArray(container)
-              ? container
-              : {};
-          const { updated, changed } = fillRecord(
-            source,
-            branchFields,
-            companyFields,
-          );
-          if (changed) {
-            if (nextValues === currentValues) {
-              nextValues = { ...currentValues };
-            }
-            nextValues[tbl] = updated;
-            mutated = true;
-          }
-        }
-      });
-
-      if (!mutated) return currentValues;
-      return recalcTotals(cloneValuesForRecalc(nextValues));
-    });
-  }, [branch, company, memoFormConfigs, tableTypeMap]);
 
   async function loadRelations(tbl) {
     if (loadingTablesRef.current.has(tbl)) {
@@ -920,7 +785,7 @@ export default function PosTransactionsPage() {
         }
         setConfig(cfg);
         setFormConfigs((f) => (Object.keys(f).length ? {} : f));
-        setValues(recalcTotals(cloneValuesForRecalc({})));
+        setValues({});
         setRelationsMap({});
         setRelationConfigs({});
         setRelationData({});
@@ -968,16 +833,6 @@ export default function PosTransactionsPage() {
       visibleTables: visibleSet,
     };
   }, [config]);
-
-  const multiTableSet = React.useMemo(() => {
-    const set = new Set();
-    formList.forEach((t) => {
-      if (t?.type === 'multi' && t.table) {
-        set.add(t.table);
-      }
-    });
-    return set;
-  }, [formList]);
 
   // Stable key used for effect dependencies that care about visible table set
   const visibleTablesKey = React.useMemo(
@@ -1060,27 +915,20 @@ export default function PosTransactionsPage() {
 
       await Promise.all(
         tables.map(async (tbl, idx) => {
-          if (!tbl) return;
-
           const form = forms[idx];
-          let cfg = null;
-          if (form) {
-            try {
-              const res = await fetch(
-                `/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`,
-                { credentials: 'include' },
-              );
-              cfg = res.ok ? await res.json().catch(() => null) : null;
-            } catch {
-              cfg = null;
-            }
-          }
+          if (!tbl || !form || !visibleTables.has(tbl)) return;
 
-          if (form) {
-            fcMap[tbl] = cfg || {};
-          } else if (!(tbl in fcMap)) {
-            fcMap[tbl] = {};
+          let cfg = null;
+          try {
+            const res = await fetch(
+              `/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`,
+              { credentials: 'include' },
+            );
+            cfg = res.ok ? await res.json().catch(() => null) : null;
+          } catch {
+            cfg = null;
           }
+          fcMap[tbl] = cfg || {};
 
           if (!loadedTablesRef.current.has(tbl)) {
             try {
@@ -1184,87 +1032,6 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
 
-  const generatedColumnPipelines = useMemo(() => {
-    if (!config) return {};
-    const tables = [];
-    if (config.masterTable) tables.push(config.masterTable);
-    if (Array.isArray(config.tables)) {
-      config.tables.forEach((t) => {
-        if (t?.table) tables.push(t.table);
-      });
-    }
-    const result = {};
-    tables.forEach((tbl) => {
-      const columns = columnMeta[tbl] || [];
-      if (!Array.isArray(columns) || columns.length === 0) return;
-      const caseMap = memoColumnCaseMap[tbl] || {};
-      const fc = memoFormConfigs[tbl] || {};
-      const collectFields = (value) => {
-        if (!value) return [];
-        if (Array.isArray(value)) return value;
-        if (typeof value === 'string') return [value];
-        if (typeof value === 'object') {
-          const list = [];
-          Object.values(value).forEach((item) => {
-            if (Array.isArray(item)) list.push(...item);
-            else if (typeof item === 'string') list.push(item);
-          });
-          return list;
-        }
-        return [];
-      };
-      const mapFieldName = (field) => {
-        if (typeof field !== 'string' || !field) return null;
-        const lower = field.toLowerCase();
-        const mapped = caseMap[lower] || field;
-        return typeof mapped === 'string' ? mapped : field;
-      };
-      const mainSet = new Set();
-      [
-        ...collectFields(fc.mainFields),
-        ...collectFields(fc.main),
-        ...collectFields(fc.visibleFields),
-        ...collectFields(fc.fields),
-      ].forEach((field) => {
-        const mapped = mapFieldName(field);
-        if (mapped) mainSet.add(mapped);
-      });
-      const metadataCandidates = [
-        ...collectFields(fc.headerFields),
-        ...collectFields(fc.header),
-        ...collectFields(fc.footerFields),
-        ...collectFields(fc.footer),
-        ...collectFields(fc.totalAmountFields),
-        ...collectFields(fc.totalCurrencyFields),
-      ];
-      const metadataSet = new Set();
-      metadataCandidates.forEach((field) => {
-        const mapped = mapFieldName(field);
-        if (mapped && !mainSet.has(mapped)) metadataSet.add(mapped);
-      });
-      const pipeline = createGeneratedColumnPipeline({
-        tableColumns: columns,
-        columnCaseMap: caseMap,
-        mainFields: mainSet.size > 0 ? mainSet : undefined,
-        metadataFields: metadataSet.size > 0 ? metadataSet : undefined,
-        equals: valuesEqual,
-      });
-      if (Object.keys(pipeline.evaluators).length === 0) return;
-      result[tbl] = pipeline;
-    });
-    return result;
-  }, [config, columnMeta, memoColumnCaseMap, memoFormConfigs]);
-
-  const recalcTotals = useCallback(
-    (vals) =>
-      recalcPosTotals(vals, {
-        calcFields: config?.calcFields,
-        pipelines: generatedColumnPipelines,
-        posFields: config?.posFields,
-      }),
-    [config, generatedColumnPipelines],
-  );
-
   const memoRelationConfigs = useMemo(() => {
     const map = {};
     visibleTables.forEach((tbl) => {
@@ -1321,11 +1088,7 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!currentSessionId) return;
-    setValues((prev) => {
-      const next = applySessionIdToValues(prev, currentSessionId);
-      if (next === prev) return prev;
-      return recalcTotals(cloneValuesForRecalc(next));
-    });
+    setValues((prev) => applySessionIdToValues(prev, currentSessionId));
   }, [currentSessionId, applySessionIdToValues]);
 
   useEffect(() => {
@@ -1338,11 +1101,7 @@ export default function PosTransactionsPage() {
     const prevKey = initRef.current;
     initRef.current = initKey;
     if (prevKey && prevKey.startsWith(`${name}::`) && currentSessionId) {
-      setValues((prev) => {
-        const next = applySessionIdToValues(prev, currentSessionId);
-        if (next === prev) return prev;
-        return recalcTotals(cloneValuesForRecalc(next));
-      });
+      setValues((prev) => applySessionIdToValues(prev, currentSessionId));
       return;
     }
     handleNew();
@@ -1385,12 +1144,82 @@ export default function PosTransactionsPage() {
       }
       return next;
     };
-    setValues((prev) => {
-      const next = updateSessionValues(prev);
-      if (next === prev) return prev;
-      return recalcTotals(cloneValuesForRecalc(next));
-    });
+    setValues(updateSessionValues);
   }, [masterSessionValue, visibleTablesKey, configVersion, sessionFieldsKey]);
+
+  function applyPosFields(vals, posFieldConfig) {
+    if (!Array.isArray(posFieldConfig)) return vals;
+    let next = { ...vals };
+    for (const pf of posFieldConfig) {
+      const parts = Array.isArray(pf.parts) ? pf.parts : [];
+      if (parts.length < 2) continue;
+      const [target, ...calc] = parts;
+      let val = 0;
+      let init = false;
+      for (const p of calc) {
+        if (!p.table || !p.field) continue;
+        const data = next[p.table];
+        let num = 0;
+        if (Array.isArray(data)) {
+          if (p.agg === 'SUM' || p.agg === 'AVG') {
+            const sum = data.reduce((s, r) => s + (Number(r?.[p.field]) || 0), 0);
+            num = p.agg === 'AVG' ? (data.length ? sum / data.length : 0) : sum;
+          } else {
+            num = Number(data[0]?.[p.field]) || 0;
+          }
+        } else {
+          num = Number(data?.[p.field]) || 0;
+        }
+        if (p.agg === '=' && !init) {
+          val = num;
+          init = true;
+        } else if (p.agg === '+') {
+          val += num;
+        } else if (p.agg === '-') {
+          val -= num;
+        } else if (p.agg === '*') {
+          val *= num;
+        } else if (p.agg === '/') {
+          val /= num;
+        } else {
+          val = num;
+          init = true;
+        }
+      }
+      if (!target.table || !target.field) continue;
+      const tgt = next[target.table];
+      if (Array.isArray(tgt)) {
+        next[target.table] = tgt.map((r) => ({ ...r, [target.field]: val }));
+      } else {
+        next[target.table] = { ...(tgt || {}), [target.field]: val };
+      }
+    }
+    return next;
+  }
+
+  function recalcTotals(vals) {
+    if (!config || !config.masterTable) return vals;
+    const totals = { total_quantity: 0, total_amount: 0, total_discount: 0 };
+    for (const t of config.tables) {
+      if (t.type !== 'multi') continue;
+      const rows = Array.isArray(vals[t.table]) ? vals[t.table] : [];
+      rows.forEach((r) => {
+        Object.entries(r || {}).forEach(([k, v]) => {
+          const key = k.toLowerCase();
+          const num = Number(v) || 0;
+          if (key.includes('qty')) totals.total_quantity += num;
+          if (key.includes('amount') || key.includes('amt')) totals.total_amount += num;
+          if (key.includes('discount') || key.includes('disc')) totals.total_discount += num;
+        });
+      });
+    }
+    const masterTbl = config.masterTable;
+    const next = {
+      ...vals,
+      [masterTbl]: { ...(vals[masterTbl] || {}), ...totals },
+    };
+    return applyPosFields(next, config.posFields);
+  }
 
   const hasData = React.useMemo(() => {
     return Object.values(values).some((v) => {
@@ -1401,7 +1230,9 @@ export default function PosTransactionsPage() {
 
   function handleChange(tbl, changes) {
     setValues((v) => {
-      const next = { ...v, [tbl]: { ...v[tbl], ...changes } };
+      let next = { ...v, [tbl]: { ...v[tbl], ...changes } };
+      next = syncCalcFields(next, config?.calcFields);
+      next = applyPosFields(next, config?.posFields);
       return recalcTotals(next);
     });
   }
@@ -1413,6 +1244,8 @@ export default function PosTransactionsPage() {
       if (sid) {
         next = applySessionIdToValues(next, sid);
       }
+      next = syncCalcFields(next, config?.calcFields);
+      next = applyPosFields(next, config?.posFields);
       return recalcTotals(next);
     });
   }
@@ -1487,12 +1320,12 @@ export default function PosTransactionsPage() {
           if (next[tbl][f] === undefined) next[tbl][f] = user.empid;
         });
       }
-      if (fc.branchIdFields && branch != null) {
+      if (fc.branchIdFields && branch !== undefined) {
         fc.branchIdFields.forEach((f) => {
           if (next[tbl][f] === undefined) next[tbl][f] = branch;
         });
       }
-      if (fc.companyIdFields && company != null) {
+      if (fc.companyIdFields && company !== undefined) {
         fc.companyIdFields.forEach((f) => {
           if (next[tbl][f] === undefined) next[tbl][f] = company;
         });
@@ -1512,7 +1345,7 @@ export default function PosTransactionsPage() {
       }
     });
     setCurrentSessionId(sid);
-    setValues(recalcTotals(cloneValuesForRecalc(next)));
+    setValues(next);
     setMasterId(null);
     masterIdRef.current = null;
     setPendingId(null);
@@ -1545,12 +1378,12 @@ export default function PosTransactionsPage() {
             if (updated[f] === undefined) updated[f] = user.empid;
           });
         }
-        if (fc.branchIdFields && branch != null) {
+        if (fc.branchIdFields && branch !== undefined) {
           fc.branchIdFields.forEach((f) => {
             if (updated[f] === undefined) updated[f] = branch;
           });
         }
-        if (fc.companyIdFields && company != null) {
+        if (fc.companyIdFields && company !== undefined) {
           fc.companyIdFields.forEach((f) => {
             if (updated[f] === undefined) updated[f] = company;
           });
@@ -1589,17 +1422,16 @@ export default function PosTransactionsPage() {
       date: formatTimestamp(new Date()),
     };
     try {
-      const transportData = serializeValuesForTransport(next, multiTableSet);
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: sid, name, data: transportData, masterId: mid, session }),
+        body: JSON.stringify({ id: sid, name, data: next, masterId: mid, session }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
         setPendingId(sid);
-        setValues(recalcTotals(cloneValuesForRecalc(next)));
+        setValues(next);
         addToast('Saved', 'success');
       } else {
         const msg = js.message || res.statusText;
@@ -1635,8 +1467,7 @@ export default function PosTransactionsPage() {
       .then((res) => (res.ok ? res.json() : null))
       .catch(() => null);
     if (rec && rec.data) {
-      const restoredData = restoreValuesFromTransport(rec.data, multiTableSet);
-      setValues(recalcTotals(cloneValuesForRecalc(restoredData)));
+      setValues(rec.data);
       setPendingId(String(id).trim());
       setMasterId(rec.masterId || null);
       masterIdRef.current = rec.masterId || null;
@@ -1644,7 +1475,7 @@ export default function PosTransactionsPage() {
         (f) => f.table === config?.masterTable,
       );
       if (masterSf) {
-        const sid = restoredData?.[config.masterTable]?.[masterSf.field];
+        const sid = rec.data?.[config.masterTable]?.[masterSf.field];
         setCurrentSessionId(sid || null);
       }
       addToast('Loaded', 'success');
@@ -1670,7 +1501,7 @@ export default function PosTransactionsPage() {
         return;
       }
       setPendingId(null);
-      setValues(recalcTotals(cloneValuesForRecalc({})));
+      setValues({});
       setMasterId(null);
       masterIdRef.current = null;
       setCurrentSessionId(null);
@@ -1714,16 +1545,8 @@ export default function PosTransactionsPage() {
     const single = {};
     const multi = {};
     formList.forEach((t) => {
-      if (!t?.table) return;
-      const value = payload[t.table];
-      if (t.type === 'multi') {
-        const serialized = serializeRowsWithMetadata(value);
-        multi[t.table] = serialized.meta
-          ? { rows: serialized.rows, meta: serialized.meta }
-          : { rows: serialized.rows };
-      } else {
-        single[t.table] = value;
-      }
+      if (t.type === 'multi') multi[t.table] = payload[t.table];
+      else single[t.table] = payload[t.table];
     });
     const postData = { masterId: masterIdRef.current, single, multi };
     const session = {
@@ -1750,21 +1573,13 @@ export default function PosTransactionsPage() {
         const js = await res.json().catch(() => ({}));
         if (js.id) setPostedId(js.id);
         if (config.statusField?.table && config.statusField.field && config.statusField.posted) {
-          setValues((v) => {
-            const tbl = config.statusField.table;
-            const field = config.statusField.field;
-            const postedValue = config.statusField.posted;
-            const existing = v?.[tbl]?.[field];
-            if (existing === postedValue) return v;
-            const next = {
-              ...v,
-              [tbl]: {
-                ...(v?.[tbl] || {}),
-                [field]: postedValue,
-              },
-            };
-            return recalcTotals(cloneValuesForRecalc(next));
-          });
+          setValues(v => ({
+            ...v,
+            [config.statusField.table]: {
+              ...(v[config.statusField.table] || {}),
+              [config.statusField.field]: config.statusField.posted,
+            },
+          }));
         }
         const imgCfg = memoFormConfigs[config.masterTable] || {};
         if (imgCfg.imageIdField) {
@@ -1934,12 +1749,6 @@ export default function PosTransactionsPage() {
                   fc.footerFields && fc.footerFields.length > 0
                     ? fc.footerFields
                     : [];
-                const totalAmountFields = Array.isArray(fc.totalAmountFields)
-                  ? fc.totalAmountFields
-                  : [];
-                const totalCurrencyFields = Array.isArray(fc.totalCurrencyFields)
-                  ? fc.totalCurrencyFields
-                  : [];
                 const provided = Array.isArray(fc.editableFields)
                   ? fc.editableFields
                   : [];
@@ -2006,14 +1815,12 @@ export default function PosTransactionsPage() {
                       mainFields={mainFields}
                       footerFields={footerFields}
                       defaultValues={fc.defaultValues || {}}
-                      totalAmountFields={totalAmountFields}
-                      totalCurrencyFields={totalCurrencyFields}
-                      table={t.table}
+                      table={config.masterTable}
                       imagenameField={
-                        memoFormConfigs[t.table]?.imagenameField || []
+                        memoFormConfigs[config.masterTable]?.imagenameField || []
                       }
                       imageIdField={
-                        memoFormConfigs[t.table]?.imageIdField || ''
+                        memoFormConfigs[config.masterTable]?.imageIdField || ''
                       }
                       relations={relationsMap[t.table] || {}}
                       relationConfigs={memoRelationConfigs[t.table] || {}}
@@ -2026,7 +1833,6 @@ export default function PosTransactionsPage() {
                       user={user}
                       fieldTypeMap={memoFieldTypeMap[t.table] || {}}
                       columnCaseMap={memoColumnCaseMap[t.table] || {}}
-                      tableColumns={columnMeta[t.table] || []}
                       onChange={(changes) => handleChange(t.table, changes)}
                       onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={() => true}

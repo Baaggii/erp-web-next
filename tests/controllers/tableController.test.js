@@ -4,7 +4,6 @@ import * as controller from '../../api-server/controllers/tableController.js';
 import * as db from '../../db/index.js';
 import * as relationsConfig from '../../api-server/services/tableRelationsConfig.js';
 import { EventEmitter } from 'node:events';
-import { encodeCompositeId } from '../../utils/compositeId.js';
 
 function mockPool(handler) {
   const originalQuery = db.pool.query;
@@ -221,87 +220,6 @@ test('getTableRows aborts request and destroys connection', async () => {
   assert.ok(destroyed);
   assert.strictEqual(released, false);
   assert.strictEqual(queryCount, 1);
-});
-
-test('getTableRow allows shared rows for global company scope', async () => {
-  let selectSql = '';
-  let selectParams;
-  const restore = mockPool(async (sql, params) => {
-    if (
-      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
-    ) {
-      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
-    }
-    if (sql.includes('information_schema.COLUMNS')) {
-      return [[{ COLUMN_NAME: 'id' }, { COLUMN_NAME: 'company_id' }]];
-    }
-    if (sql.includes('FROM tenant_tables')) {
-      return [[{ is_shared: 1, seed_on_create: 0 }]];
-    }
-    if (sql.startsWith('SELECT * FROM ?? WHERE')) {
-      selectSql = sql;
-      selectParams = params;
-      return [[{ id: '1', company_id: 0 }]];
-    }
-    throw new Error('unexpected query ' + sql);
-  });
-  const req = { params: { table: 'shared_table', id: '1' }, user: { companyId: 5 } };
-  let payload;
-  const res = {
-    json(body) {
-      payload = body;
-    },
-    status(code) {
-      throw new Error(`unexpected status ${code}`);
-    },
-  };
-  await controller.getTableRow(req, res, (err) => {
-    if (err) throw err;
-  });
-  restore();
-  assert.ok(selectSql.includes('`company_id` IN (0, ?)'));
-  assert.deepEqual(selectParams, ['shared_table', '1', 5]);
-  assert.deepEqual(payload, { id: '1', company_id: 0 });
-});
-
-test('getTableRow decodes composite ids containing hyphens', async () => {
-  let selectParams;
-  const restore = mockPool(async (sql, params) => {
-    if (
-      sql.includes('information_schema.STATISTICS') &&
-      sql.includes("INDEX_NAME = 'PRIMARY'")
-    ) {
-      return [[
-        { COLUMN_NAME: 'doc_id', SEQ_IN_INDEX: 1 },
-        { COLUMN_NAME: 'doc_no', SEQ_IN_INDEX: 2 },
-      ]];
-    }
-    if (sql.includes('information_schema.COLUMNS')) {
-      return [[{ COLUMN_NAME: 'doc_id' }, { COLUMN_NAME: 'doc_no' }]];
-    }
-    if (sql.startsWith('SELECT * FROM ?? WHERE')) {
-      selectParams = params;
-      return [[{ doc_id: '42', doc_no: 'INV-2024-001' }]];
-    }
-    throw new Error('unexpected query ' + sql);
-  });
-  const encodedId = encodeCompositeId(['42', 'INV-2024-001']);
-  const req = { params: { table: 'documents', id: encodedId }, user: {} };
-  let payload;
-  const res = {
-    json(body) {
-      payload = body;
-    },
-    status(code) {
-      throw new Error(`unexpected status ${code}`);
-    },
-  };
-  await controller.getTableRow(req, res, (err) => {
-    if (err) throw err;
-  });
-  restore();
-  assert.deepEqual(selectParams, ['documents', '42', 'INV-2024-001']);
-  assert.deepEqual(payload, { doc_id: '42', doc_no: 'INV-2024-001' });
 });
 
 test('addRow forwards db error when required id missing', async () => {

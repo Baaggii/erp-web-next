@@ -12,13 +12,11 @@ import {
   pool,
   getPrimaryKeyColumns,
   getEmploymentSession,
-  getTenantTableFlags,
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
-import { decodeCompositeId } from '../../utils/compositeId.js';
 import {
   listCustomRelations,
   saveCustomRelation,
@@ -36,7 +34,6 @@ try {
   bcrypt = { hash: async (s) => s };
 }
 import { formatDateForDb } from '../utils/formatDate.js';
-import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
 
 export async function getTables(req, res, next) {
   try {
@@ -87,69 +84,6 @@ export async function getTableRows(req, res, next) {
       controller.signal,
     );
     res.json(result);
-  } catch (err) {
-    next(err);
-  }
-}
-
-export async function getTableRow(req, res, next) {
-  try {
-    const table = req.params.table;
-    const id = req.params.id;
-    const pkCols = await getPrimaryKeyColumns(table);
-    if (pkCols.length === 0) {
-      return res.status(400).json({ message: 'Table has no primary or unique key' });
-    }
-
-    const columns = await listTableColumns(table);
-    const pkLower = pkCols.map((c) => c.toLowerCase());
-    const hasCompanyId = columns.some((c) => String(c).toLowerCase() === 'company_id');
-    const addCompanyFilter =
-      req.user?.companyId != null && hasCompanyId && !pkLower.includes('company_id');
-    const flags = addCompanyFilter ? await getTenantTableFlags(table) : null;
-
-    if (pkCols.length === 1) {
-      const col = pkCols[0];
-      let where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-      const params = [table, id];
-      if (addCompanyFilter) {
-        if (flags?.isShared) {
-          where += ' AND `company_id` IN (' + GLOBAL_COMPANY_ID + ', ?)';
-        } else {
-          where += ' AND `company_id` = ?';
-        }
-        params.push(req.user.companyId);
-      }
-      const [rows] = await pool.query(
-        `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-        params,
-      );
-      const row = rows[0];
-      if (!row) return res.status(404).json({ message: 'Row not found' });
-      return res.json(row);
-    }
-
-    const parts = decodeCompositeId(id, pkCols.length);
-    if (pkCols.some((_, index) => parts[index] === undefined)) {
-      return res.status(404).json({ message: 'Row not found' });
-    }
-    let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-    const params = [table, ...pkCols.map((_, index) => parts[index])];
-    if (addCompanyFilter) {
-      if (flags?.isShared) {
-        where += ' AND `company_id` IN (' + GLOBAL_COMPANY_ID + ', ?)';
-      } else {
-        where += ' AND `company_id` = ?';
-      }
-      params.push(req.user.companyId);
-    }
-    const [rows] = await pool.query(
-      `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-      params,
-    );
-    const row = rows[0];
-    if (!row) return res.status(404).json({ message: 'Row not found' });
-    res.json(row);
   } catch (err) {
     next(err);
   }
@@ -356,7 +290,7 @@ export async function updateRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(req.params.table);
       if (pkCols.length > 0) {
-        const parts = decodeCompositeId(req.params.id, pkCols.length);
+        const parts = String(req.params.id).split('-');
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [rows] = await pool.query(
           `SELECT * FROM \`${req.params.table}\` WHERE ${where} LIMIT 1`,
@@ -431,7 +365,7 @@ export async function deleteRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(table);
       if (pkCols.length > 0) {
-        const parts = decodeCompositeId(id, pkCols.length);
+        const parts = String(id).split('-');
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [rows] = await pool.query(
           `SELECT * FROM \`${table}\` WHERE ${where} LIMIT 1`,

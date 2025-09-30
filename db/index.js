@@ -45,7 +45,6 @@ import { tenantConfigPath, getConfigPath } from "../api-server/utils/configPaths
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
 import { GLOBAL_COMPANY_ID } from "../config/0/constants.js";
 import { formatDateForDb } from "../api-server/utils/formatDate.js";
-import { decodeCompositeId } from "../utils/compositeId.js";
 
 const PROTECTED_PROCEDURE_PREFIXES = ["dynrep_"];
 
@@ -1225,29 +1224,6 @@ export async function listDatabaseViews(prefix = '') {
         typeof n === 'string' &&
         (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
     );
-}
-
-export async function getViewSql(name) {
-  if (!name) return null;
-  try {
-    const [rows] = await pool.query('SHOW CREATE VIEW ??', [name]);
-    const text = rows?.[0]?.['Create View'];
-    if (text) return text;
-  } catch {}
-  try {
-    const [rows] = await pool.query(
-      `SELECT VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
-      [name],
-    );
-    return rows?.[0]?.VIEW_DEFINITION || null;
-  } catch {
-    return null;
-  }
-}
-
-export async function deleteView(name) {
-  if (!name) return;
-  await pool.query(`DROP VIEW IF EXISTS \`${name}\``);
 }
 
 export async function listTableColumns(tableName) {
@@ -3924,7 +3900,7 @@ export async function saveTableColumnLabels(
 
 export async function listTableColumnMeta(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA, GENERATION_EXPRESSION
+    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = ?
@@ -3950,7 +3926,6 @@ export async function listTableColumnMeta(tableName) {
     key: r.COLUMN_KEY,
     extra: r.EXTRA,
     label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
-    generationExpression: r.GENERATION_EXPRESSION ?? null,
   }));
 }
 
@@ -4160,7 +4135,7 @@ export async function updateTableRow(
   const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
 
   if (tableName === 'company_module_licenses') {
-    const [companyId, moduleKey] = decodeCompositeId(id, 2);
+    const [companyId, moduleKey] = String(id).split('-');
     await conn.query(
       `UPDATE company_module_licenses SET ${setClause} WHERE company_id = ? AND module_key = ?`,
       [...values, companyId, moduleKey],
@@ -4197,7 +4172,7 @@ export async function updateTableRow(
     return { [col]: id };
   }
 
-  const parts = decodeCompositeId(id, pkCols.length);
+  const parts = String(id).split('-');
   let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
   const whereParams = [...parts];
   if (addCompanyFilter) {
@@ -4268,7 +4243,7 @@ export async function deleteTableRow(
   const effectiveCompanyIdForSoftDelete =
     softDeleteCompanyId !== undefined ? softDeleteCompanyId : companyId;
   if (tableName === 'company_module_licenses') {
-    const [companyId, moduleKey] = decodeCompositeId(id, 2);
+    const [companyId, moduleKey] = String(id).split('-');
     await conn.query(
       'DELETE FROM company_module_licenses WHERE company_id = ? AND module_key = ?',
       [companyId, moduleKey],
@@ -4322,7 +4297,7 @@ export async function deleteTableRow(
     return { [col]: id };
   }
 
-  const parts = decodeCompositeId(id, pkCols.length);
+  const parts = String(id).split('-');
   let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
   const whereParams = [...parts];
   if (addCompanyFilter) {
@@ -4383,11 +4358,8 @@ async function fetchTenantDefaultRow(tableName, rowId) {
     err.status = 400;
     throw err;
   }
-  const parts = decodeCompositeId(rowId ?? '', pkCols.length);
-  if (
-    parts.length !== pkCols.length ||
-    parts.some((part) => part === undefined || part === '')
-  ) {
+  const parts = String(rowId ?? '').split('-');
+  if (parts.length !== pkCols.length || parts.some((part) => part === '')) {
     const err = new Error('Invalid row identifier');
     err.status = 400;
     throw err;
@@ -4487,7 +4459,7 @@ export async function deleteTenantDefaultRow(tableName, rowId, userId) {
 
 export async function listRowReferences(tableName, id, conn = pool) {
   const pkCols = await getPrimaryKeyColumns(tableName);
-  const parts = decodeCompositeId(id, pkCols.length);
+  const parts = String(id).split('-');
   let targetRowLoaded = false;
   let targetRow;
 

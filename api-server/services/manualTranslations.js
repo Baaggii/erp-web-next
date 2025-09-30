@@ -1,7 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { CYRILLIC_REGEX, detectLang } from '../utils/translationHelpers.js';
+import { detectLang } from '../utils/translationHelpers.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,86 +9,6 @@ const projectRoot = path.resolve(__dirname, '../../');
 
 const localesDir = path.join(projectRoot, 'src', 'erp.mgt.mn', 'locales');
 const tooltipDir = path.join(localesDir, 'tooltips');
-const SUPPORTED_LANGS = ['en', 'mn', 'ja', 'ko', 'zh', 'es', 'de', 'fr', 'ru'];
-const FILE_ORIGIN_BY_TYPE = {
-  locale: 'locale-file',
-  tooltip: 'tooltip-file',
-};
-const SOURCE_SEPARATOR = '|';
-
-function parseTranslatedByLabel(label) {
-  if (typeof label !== 'string') {
-    return { origin: '', provider: '' };
-  }
-
-  const trimmed = label.trim();
-  if (!trimmed) {
-    return { origin: '', provider: '' };
-  }
-
-  const lower = trimmed.toLowerCase();
-  if (lower === 'locale file' || lower === 'locale-file') {
-    return { origin: 'locale-file', provider: '' };
-  }
-  if (lower === 'tooltip file' || lower === 'tooltip-file') {
-    return { origin: 'tooltip-file', provider: '' };
-  }
-  if (lower === 'manual entry') {
-    return { origin: '', provider: 'manual-entry' };
-  }
-  if (lower === 'manual-entry') {
-    return { origin: '', provider: 'manual-entry' };
-  }
-
-  if (trimmed.includes(SOURCE_SEPARATOR)) {
-    const [rawOrigin, rawProvider = ''] = trimmed.split(SOURCE_SEPARATOR);
-    const origin = rawOrigin.trim();
-    const provider = rawProvider.trim();
-    return { origin, provider };
-  }
-
-  return { origin: '', provider: trimmed };
-}
-
-function composeTranslatedByLabel(origin, provider) {
-  const safeOrigin = typeof origin === 'string' ? origin.trim() : '';
-  const safeProvider = typeof provider === 'string' ? provider.trim() : '';
-  if (safeOrigin && safeProvider) {
-    return `${safeOrigin}${SOURCE_SEPARATOR}${safeProvider}`;
-  }
-  if (safeOrigin) {
-    return safeOrigin;
-  }
-  if (safeProvider) {
-    return safeProvider;
-  }
-  return '';
-}
-
-function combineFileOrigin(label, origin) {
-  const { provider } = parseTranslatedByLabel(label);
-  return composeTranslatedByLabel(origin, provider);
-}
-const translationsMetaFile = path.join(
-  projectRoot,
-  'docs',
-  'manuals',
-  'manual-translation-sources.json',
-);
-
-const NORMALIZE_MEANING_REGEX = /[\s\p{P}\p{S}_]+/gu;
-
-function normalizeForMeaning(value) {
-  if (value == null) return '';
-  return String(value).toLowerCase().replace(NORMALIZE_MEANING_REGEX, '');
-}
-
-function analyzeMeaning(key, value) {
-  const normalizedKey = normalizeForMeaning(key);
-  const normalizedValue = normalizeForMeaning(value);
-  const isMeaningful = normalizedValue.length > 0 && normalizedValue !== normalizedKey;
-  return { normalizedKey, normalizedValue, isMeaningful };
-}
 
 async function listLangs(dir) {
   try {
@@ -99,75 +19,43 @@ async function listLangs(dir) {
   }
 }
 
-async function loadTranslatedByStore() {
-  try {
-    const raw = await fs.readFile(translationsMetaFile, 'utf8');
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== 'object') return {};
-    const normalized = {};
-    for (const [entryId, entryValue] of Object.entries(parsed)) {
-      if (!entryValue || typeof entryValue !== 'object') continue;
-      const translatedBy = {};
-      for (const [lang, label] of Object.entries(entryValue)) {
-        if (typeof label !== 'string') continue;
-        const trimmed = label.trim();
-        if (trimmed) {
-          translatedBy[lang] = trimmed;
-        }
-      }
-      if (Object.keys(translatedBy).length) {
-        normalized[entryId] = translatedBy;
-      }
-    }
-    return normalized;
-  } catch {
-    return {};
-  }
-}
-
-async function saveTranslatedByStore(store) {
-  try {
-    await fs.mkdir(path.dirname(translationsMetaFile), { recursive: true });
-    await fs.writeFile(
-      translationsMetaFile,
-      JSON.stringify(store, null, 2) + '\n',
-      'utf8',
-    );
-  } catch {}
-}
-
-function cloneTranslatedBy(entryId, store) {
-  const record = store[entryId];
-  if (!record || typeof record !== 'object') return {};
-  const clone = {};
-  for (const [lang, label] of Object.entries(record)) {
-    if (typeof label !== 'string') continue;
-    const trimmed = label.trim();
-    if (trimmed) clone[lang] = trimmed;
-  }
-  return clone;
-}
-
 export async function loadTranslations() {
+  const langs = new Set([
+    ...(await listLangs(localesDir)),
+    ...(await listLangs(tooltipDir)),
+  ]);
   const entries = {};
-  const translatedByStore = await loadTranslatedByStore();
 
   function ensureEntry(id, key, type) {
     if (!entries[id]) {
-      entries[id] = {
-        key,
-        type,
-        values: {},
-        module: '',
-        context: '',
-        page: '',
-        pageEditable: true,
-        translatedBy: cloneTranslatedBy(id, translatedByStore),
-      };
+      entries[id] = { key, type, values: {}, module: '', context: '' };
     }
     return entries[id];
   }
 
+  for (const lang of langs) {
+    // Load normal locale strings
+    try {
+      const file = path.join(localesDir, `${lang}.json`);
+      const data = JSON.parse(await fs.readFile(file, 'utf8'));
+      for (const [k, v] of Object.entries(data)) {
+        const id = `locale:${k}`;
+        ensureEntry(id, k, 'locale').values[lang] = v;
+      }
+    } catch {}
+
+    // Load tooltip strings
+    try {
+      const file = path.join(tooltipDir, `${lang}.json`);
+      const data = JSON.parse(await fs.readFile(file, 'utf8'));
+      for (const [k, v] of Object.entries(data)) {
+        const id = `tooltip:${k}`;
+        ensureEntry(id, k, 'tooltip').values[lang] = v;
+      }
+    } catch {}
+  }
+
+  // Load exported text identifiers
   const configDir = path.join(projectRoot, 'config');
   try {
     const tenants = await fs.readdir(configDir, { withFileTypes: true });
@@ -207,204 +95,47 @@ export async function loadTranslations() {
           }
         })(translationsData, '');
         for (const [k, v] of Object.entries(flat)) {
-          const { isMeaningful } = analyzeMeaning(k, v);
-          if (!isMeaningful) continue;
           const localeId = `locale:${k}`;
           const tooltipId = `tooltip:${k}`;
           const meta = metadata[k] || {};
           const localeEntry = ensureEntry(localeId, k, 'locale');
           const tooltipEntry = ensureEntry(tooltipId, k, 'tooltip');
-          const hasCyrillic = typeof v === 'string' && CYRILLIC_REGEX.test(v);
-          const initialLangKey = hasCyrillic ? 'mn' : 'en';
           const detectedLang = detectLang(v);
-          const langKey =
-            detectedLang === 'mn' || detectedLang === 'en'
-              ? detectedLang
-              : initialLangKey;
-          if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;
-
-          const tooltipSources = [meta.tooltip, meta.tooltipValue, meta.tooltipText];
-          const tooltipContent = tooltipSources.find(
-            (value) => typeof value === 'string' && value.trim(),
-          );
-
-          if (tooltipContent) {
-            if (tooltipEntry.values[langKey] == null) {
-              tooltipEntry.values[langKey] = tooltipContent;
-            }
-          } else if (tooltipEntry.values[langKey] == null) {
-            tooltipEntry.values[langKey] = '';
+          let targetLangs = ['en'];
+          if (detectedLang) {
+            if (detectedLang === 'latin') targetLangs = ['en'];
+            else if (detectedLang === 'cjk') targetLangs = ['zh'];
+            else targetLangs = [detectedLang];
+          }
+          for (const langKey of targetLangs) {
+            langs.add(langKey);
+            if (localeEntry.values[langKey] == null) localeEntry.values[langKey] = v;
+            if (tooltipEntry.values[langKey] == null) tooltipEntry.values[langKey] = v;
           }
           if (!localeEntry.module && meta.module) localeEntry.module = meta.module;
           if (!tooltipEntry.module && meta.module) tooltipEntry.module = meta.module;
           if (!localeEntry.context && meta.context) localeEntry.context = meta.context;
           if (!tooltipEntry.context && meta.context) tooltipEntry.context = meta.context;
-          if (!localeEntry.page && meta.page) {
-            localeEntry.page = meta.page;
-            localeEntry.pageEditable = false;
-          }
-          if (!tooltipEntry.page && meta.page) {
-            tooltipEntry.page = meta.page;
-            tooltipEntry.pageEditable = false;
-          }
         }
+        if (!langs.has('en')) langs.add('en');
       } catch {}
     }
   } catch {}
 
-  const seedLangs = new Set([
-    ...(await listLangs(localesDir)),
-    ...(await listLangs(tooltipDir)),
-  ]);
-  for (const lang of SUPPORTED_LANGS) {
-    seedLangs.add(lang);
-  }
-
-  const langs = new Set(seedLangs);
-
-  for (const lang of seedLangs) {
-    langs.add(lang);
-    // Load normal locale strings
-    try {
-      const file = path.join(localesDir, `${lang}.json`);
-      const data = JSON.parse(await fs.readFile(file, 'utf8'));
-      for (const [k, v] of Object.entries(data)) {
-        const { isMeaningful } = analyzeMeaning(k, v);
-        if (!isMeaningful) continue;
-        const id = `locale:${k}`;
-        const entry = ensureEntry(id, k, 'locale');
-        entry.values[lang] = v;
-        if (v != null && String(v).trim()) {
-          entry.translatedBy[lang] = combineFileOrigin(
-            entry.translatedBy?.[lang] || '',
-            FILE_ORIGIN_BY_TYPE.locale,
-          );
-        }
-      }
-    } catch {}
-
-    // Load tooltip strings
-    try {
-      const file = path.join(tooltipDir, `${lang}.json`);
-      const data = JSON.parse(await fs.readFile(file, 'utf8'));
-      for (const [k, v] of Object.entries(data)) {
-        const { isMeaningful } = analyzeMeaning(k, v);
-        if (!isMeaningful) continue;
-        const id = `tooltip:${k}`;
-        const entry = ensureEntry(id, k, 'tooltip');
-        entry.values[lang] = v;
-        if (v != null && String(v).trim()) {
-          entry.translatedBy[lang] = combineFileOrigin(
-            entry.translatedBy?.[lang] || '',
-            FILE_ORIGIN_BY_TYPE.tooltip,
-          );
-        }
-      }
-    } catch {}
-  }
-
-  langs.add('en');
-  langs.add('mn');
-
   // Ensure all language fields exist
-  const preparedEntries = [];
-
-  for (const originalEntry of Object.values(entries)) {
-    const entry = {
-      ...originalEntry,
-      values: { ...(originalEntry.values || {}) },
-      translatedBy: { ...(originalEntry.translatedBy || {}) },
-    };
-
-    const translatedByProviders = {};
-    const translatedBySources = {};
-
+  for (const entry of Object.values(entries)) {
     for (const lang of langs) {
       if (entry.values[lang] == null) entry.values[lang] = '';
-      const label = entry.translatedBy[lang];
-      const { origin, provider } = parseTranslatedByLabel(label);
-      if (origin) {
-        translatedBySources[lang] = origin;
-      }
-      translatedByProviders[lang] = provider || '';
     }
-
-    entry.module = entry.module ?? '';
-    entry.context = entry.context ?? '';
-    entry.page = entry.page ?? '';
-    entry.pageEditable = entry.pageEditable ?? true;
-
-    preparedEntries.push({
-      ...entry,
-      translatedBy: translatedByProviders,
-      translatedBySources,
-    });
+    if (entry.module == null) entry.module = '';
+    if (entry.context == null) entry.context = '';
   }
 
-  return { languages: Array.from(langs), entries: preparedEntries };
+  return { languages: Array.from(langs), entries: Object.values(entries) };
 }
 
-function normalizeTranslatedByMap(map) {
-  if (!map || typeof map !== 'object') return {};
-  const normalized = {};
-  for (const [lang, label] of Object.entries(map)) {
-    if (typeof label !== 'string') continue;
-    const { origin, provider } = parseTranslatedByLabel(label);
-    const normalizedLabel = composeTranslatedByLabel(origin, provider);
-    if (normalizedLabel) {
-      normalized[lang] = normalizedLabel;
-    }
-  }
-  return normalized;
-}
-
-function translatedByEqual(a, b) {
-  const aKeys = Object.keys(a);
-  const bKeys = Object.keys(b);
-  if (aKeys.length !== bKeys.length) return false;
-  for (const key of aKeys) {
-    if (a[key] !== b[key]) return false;
-  }
-  return true;
-}
-
-export async function saveTranslation({
-  key,
-  type = 'locale',
-  values = {},
-  translatedBy = {},
-}) {
+export async function saveTranslation({ key, type = 'locale', values = {} }) {
   if (!key) return;
-  const entryId = `${type}:${key}`;
-  const translatedByStore = await loadTranslatedByStore();
-  const existingTranslatedBy = { ...(translatedByStore[entryId] || {}) };
-  const rawIncomingMeta = {};
-  if (translatedBy && typeof translatedBy === 'object') {
-    for (const [lang, label] of Object.entries(translatedBy)) {
-      if (typeof label !== 'string') continue;
-      const parsed = parseTranslatedByLabel(label);
-      if (parsed.origin || parsed.provider) {
-        rawIncomingMeta[lang] = parsed;
-      }
-    }
-  }
-  const incomingTranslatedBy = normalizeTranslatedByMap(translatedBy);
-  const fileOrigin = FILE_ORIGIN_BY_TYPE[type] || FILE_ORIGIN_BY_TYPE.locale;
-  const updatedLanguages = new Set();
-
-  for (const [lang, label] of Object.entries(incomingTranslatedBy)) {
-    if (Object.prototype.hasOwnProperty.call(values, lang)) continue;
-    const requestedMeta = rawIncomingMeta[lang] || parseTranslatedByLabel(label);
-    const providerCode = requestedMeta.provider || '';
-    if (!providerCode) continue;
-    const existingMeta = parseTranslatedByLabel(existingTranslatedBy[lang]);
-    const origin = requestedMeta.origin || existingMeta.origin || fileOrigin;
-    const combinedLabel = composeTranslatedByLabel(origin, providerCode);
-    if (!combinedLabel || combinedLabel === existingTranslatedBy[lang]) continue;
-    incomingTranslatedBy[lang] = combinedLabel;
-    updatedLanguages.add(lang);
-  }
-
   for (const [lang, val] of Object.entries(values)) {
     const dir = type === 'tooltip' ? tooltipDir : localesDir;
     const file = path.join(dir, `${lang}.json`);
@@ -414,55 +145,11 @@ export async function saveTranslation({
     } catch {}
     if (val == null || val === '') {
       delete obj[key];
-      if (existingTranslatedBy[lang] != null) {
-        delete existingTranslatedBy[lang];
-      }
-      if (incomingTranslatedBy[lang] != null) {
-        delete incomingTranslatedBy[lang];
-      }
-      updatedLanguages.add(lang);
     } else {
       obj[key] = val;
-      const incomingMeta = parseTranslatedByLabel(incomingTranslatedBy[lang]);
-      const existingMeta = parseTranslatedByLabel(existingTranslatedBy[lang]);
-      const requestedMeta = rawIncomingMeta[lang] || {};
-      const origin =
-        requestedMeta.origin ||
-        incomingMeta.origin ||
-        existingMeta.origin ||
-        fileOrigin;
-      const providerCode =
-        requestedMeta.provider ||
-        incomingMeta.provider ||
-        existingMeta.provider ||
-        '';
-      incomingTranslatedBy[lang] = composeTranslatedByLabel(origin, providerCode);
-      updatedLanguages.add(lang);
     }
     await fs.mkdir(path.dirname(file), { recursive: true });
     await fs.writeFile(file, JSON.stringify(obj, null, 2) + '\n', 'utf8');
-  }
-
-  for (const [lang, label] of Object.entries(incomingTranslatedBy)) {
-    if (!updatedLanguages.has(lang)) continue;
-    existingTranslatedBy[lang] = label;
-  }
-
-  const normalizedExisting = normalizeTranslatedByMap(existingTranslatedBy);
-  const previous = translatedByStore[entryId] || {};
-  const hasExisting = Object.keys(normalizedExisting).length > 0;
-  const hasPrevious = Object.keys(previous).length > 0;
-  const changed = hasExisting
-    ? !translatedByEqual(previous, normalizedExisting)
-    : hasPrevious;
-
-  if (changed) {
-    if (hasExisting) {
-      translatedByStore[entryId] = normalizedExisting;
-    } else {
-      delete translatedByStore[entryId];
-    }
-    await saveTranslatedByStore(translatedByStore);
   }
 }
 
@@ -478,12 +165,5 @@ export async function deleteTranslation(key, type = 'locale') {
         await fs.writeFile(file, JSON.stringify(obj, null, 2) + '\n', 'utf8');
       }
     } catch {}
-  }
-
-  const entryId = `${type}:${key}`;
-  const translatedByStore = await loadTranslatedByStore();
-  if (translatedByStore[entryId]) {
-    delete translatedByStore[entryId];
-    await saveTranslatedByStore(translatedByStore);
   }
 }

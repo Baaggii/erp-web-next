@@ -7,147 +7,16 @@ import {
 let nodeCache;
 let nodeCachePath;
 const localeCache = {};
-const tooltipLocaleCache = {};
 let aiDisabled = false;
-
-function normalizeTranslationRecord(raw) {
-  if (!raw) return null;
-
-  let data = raw;
-  if (typeof raw === 'string') {
-    const trimmed = raw.trim();
-    if (!trimmed) return null;
-    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-      try {
-        data = JSON.parse(trimmed);
-      } catch {
-        return { text: trimmed, source: null, metadata: null };
-      }
-    } else {
-      return { text: trimmed, source: null, metadata: null };
-    }
-  }
-
-  if (typeof data !== 'object' || data === null) {
-    return null;
-  }
-
-  if (Array.isArray(data)) {
-    for (const entry of data) {
-      const normalized = normalizeTranslationRecord(entry);
-      if (normalized) return normalized;
-    }
-    return null;
-  }
-
-  if (data.response && !data.text && !data.translation && !data.value) {
-    const nested = normalizeTranslationRecord(data.response);
-    if (nested) return nested;
-  }
-
-  const textCandidates = ['text', 'translation', 'value', 'response'];
-  let text = null;
-  for (const field of textCandidates) {
-    const val = data[field];
-    if (typeof val === 'string') {
-      const trimmed = val.trim();
-      if (trimmed) {
-        text = trimmed;
-        break;
-      }
-    }
-  }
-  if (!text) return null;
-
-  const sourceCandidates = ['source', 'provider', 'origin'];
-  let source = null;
-  for (const field of sourceCandidates) {
-    const val = data[field];
-    if (typeof val === 'string') {
-      const trimmed = val.trim();
-      if (trimmed) {
-        source = trimmed;
-        break;
-      }
-    }
-  }
-
-  const metadata =
-    data.metadata && typeof data.metadata === 'object' && !Array.isArray(data.metadata)
-      ? data.metadata
-      : null;
-
-  return { text, source, metadata };
-}
-
-function createCacheRecord(record, fallbackSource) {
-  if (!record) return null;
-  const normalized = normalizeTranslationRecord(record);
-  if (!normalized) return null;
-
-  const fallback =
-    typeof fallbackSource === 'string' && fallbackSource.trim()
-      ? fallbackSource.trim()
-      : null;
-
-  let source = normalized.source || null;
-  if (typeof source === 'string') {
-    const trimmed = source.trim();
-    if (trimmed) {
-      const lower = trimmed.toLowerCase();
-      const legacyTags = new Set([
-        'cache-node',
-        'cache-localstorage',
-        'cache-indexeddb',
-      ]);
-      const storageIndicators = [
-        'localstorage',
-        'indexeddb',
-        'node-cache',
-        'server-cache',
-      ];
-      const isLegacyTag = legacyTags.has(lower);
-      const isStorageSource =
-        lower.startsWith('cache-') ||
-        lower.endsWith('-cache') ||
-        storageIndicators.some((indicator) => lower.includes(indicator));
-
-      if (isLegacyTag || isStorageSource) {
-        source = fallback;
-      } else {
-        source = trimmed;
-      }
-    } else {
-      source = null;
-    }
-  }
-  if (!source && fallback) {
-    source = fallback;
-  }
-  const cacheRecord = { text: normalized.text, source };
-  if (normalized.metadata) cacheRecord.metadata = normalized.metadata;
-  return cacheRecord;
-}
 
 function normalizeMetadata(metadata) {
   if (!metadata || typeof metadata !== 'object') return null;
   const normalized = {};
-  const setField = (field, value) => {
-    if (value === undefined || value === null) return;
+  for (const field of ['module', 'context', 'key']) {
+    const value = metadata[field];
+    if (value === undefined || value === null) continue;
     const str = typeof value === 'string' ? value.trim() : String(value).trim();
     if (str) normalized[field] = str;
-  };
-  const prioritized = ['module', 'context', 'page', 'key', 'sourceLang'];
-  for (const field of prioritized) {
-    if (Object.prototype.hasOwnProperty.call(metadata, field)) {
-      setField(field, metadata[field]);
-    }
-  }
-  const remaining = Object.entries(metadata)
-    .filter(([field]) => !prioritized.includes(field))
-    .sort(([a], [b]) => a.localeCompare(b));
-  for (const [field, value] of remaining) {
-    setField(field, value);
   }
   return Object.keys(normalized).length ? normalized : null;
 }
@@ -159,18 +28,8 @@ function buildPrompt(text, lang, metadata) {
     return `Translate the following text to ${lang}: ${textStr}`;
   }
   const parts = [];
-  if (metadata.sourceLang) {
-    const label =
-      metadata.sourceLang === 'mn'
-        ? 'Mongolian'
-        : metadata.sourceLang === 'en'
-          ? 'English'
-          : metadata.sourceLang;
-    parts.push(`Source language: ${label}`);
-  }
   if (metadata.module) parts.push(`Module: ${metadata.module}`);
   if (metadata.context) parts.push(`Context: ${metadata.context}`);
-  if (metadata.page) parts.push(`Page: ${metadata.page}`);
   if (metadata.key) parts.push(`Key: ${metadata.key}`);
   parts.push(`Text: ${textStr}`);
   return `Translate the following text to ${lang}.
@@ -236,33 +95,6 @@ async function loadLocale(lang) {
     localeCache[lang] = {};
   }
   return localeCache[lang];
-}
-
-async function loadTooltipLocale(lang) {
-  if (tooltipLocaleCache[lang]) return tooltipLocaleCache[lang];
-  try {
-    if (typeof process !== 'undefined' && process.versions?.node) {
-      const fs = await import('fs/promises');
-      const path = await import('path');
-      const file = path.join(
-        process.cwd(),
-        'src',
-        'erp.mgt.mn',
-        'locales',
-        'tooltips',
-        `${lang}.json`,
-      );
-      const data = await fs.readFile(file, 'utf8');
-      tooltipLocaleCache[lang] = JSON.parse(data);
-    } else {
-      tooltipLocaleCache[lang] = (
-        await import(`../locales/tooltips/${lang}.json`)
-      ).default;
-    }
-  } catch {
-    tooltipLocaleCache[lang] = {};
-  }
-  return tooltipLocaleCache[lang];
 }
 
 function getLS(key) {
@@ -343,7 +175,7 @@ async function requestTranslation(text, lang, metadata) {
     }
     if (!res.ok) throw new Error('openai request failed');
     const data = await res.json();
-    return normalizeTranslationRecord(data.response ?? data);
+    return data.response?.trim() || null;
   } catch (err) {
     if (err.rateLimited) throw err;
     console.error('AI translation failed', err);
@@ -538,40 +370,19 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
 }
 
 export default async function translateWithCache(lang, key, fallback, metadata) {
-  const entryType = metadata?.type;
-  const isTooltip = entryType === 'tooltip';
-  const locales = isTooltip ? await loadTooltipLocale(lang) : await loadLocale(lang);
-  const enLocales = isTooltip ? await loadTooltipLocale('en') : await loadLocale('en');
-  const baseCandidate = (enLocales && enLocales[key]) || fallback || describe(key);
+  const locales = await loadLocale(lang);
+  const enLocales = await loadLocale('en');
+  const baseCandidate = enLocales[key] || fallback || describe(key);
   const base =
     typeof baseCandidate === 'string' ? baseCandidate : String(baseCandidate ?? '');
 
-  const direct = locales ? locales[key] : undefined;
-  let normalizedMetadata = normalizeMetadata(metadata);
   if (lang === 'en') {
-    const sourceSample =
-      (typeof fallback === 'string' && fallback.trim())
-        ? fallback
-        : typeof key === 'string'
-          ? key
-          : String(key ?? '');
-    const detectionTarget = sourceSample || base;
-    if (/[\u0400-\u04FF]/.test(detectionTarget)) {
-      normalizedMetadata = {
-        ...(normalizedMetadata || {}),
-        sourceLang: normalizedMetadata?.sourceLang || 'mn',
-      };
-    }
+    return createResult(base, { base, source: 'base', fromCache: true });
   }
-  if (isTooltip) {
-    if (typeof direct === 'string' && direct.trim()) {
-      return createResult(direct, {
-        base,
-        source: 'tooltip-file',
-        fromCache: true,
-      });
-    }
-  } else if (direct) {
+
+  const direct = locales[key];
+  const normalizedMetadata = normalizeMetadata(metadata);
+  if (direct) {
     return createResult(direct, {
       base,
       source: 'locale-file',
@@ -587,29 +398,23 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
 
   let cached;
   for (const cacheId of cacheKeys) {
-    cached = createCacheRecord(getLS(cacheId), 'ai');
+    cached = getLS(cacheId);
     if (cached) {
-      return createResult(cached.text, {
+      return createResult(cached, {
         base,
-        source: cached.source,
+        source: 'cache-localStorage',
         fromCache: true,
       });
     }
   }
 
   for (const cacheId of cacheKeys) {
-    const idbValue = await idbGet(cacheId);
-    cached = createCacheRecord(idbValue, 'ai');
+    cached = await idbGet(cacheId);
     if (cached) {
-      const existingRaw = getLS(cacheId);
-      const existingRecord = createCacheRecord(existingRaw, 'ai');
-      if (!existingRecord || existingRecord.text !== cached.text || existingRecord.source !== cached.source) {
-        setLS(cacheId, JSON.stringify(cached));
-      }
-      if (typeof idbValue === 'string') await idbSet(cacheId, cached);
-      return createResult(cached.text, {
+      if (!getLS(cacheId)) setLS(cacheId, cached);
+      return createResult(cached, {
         base,
-        source: cached.source,
+        source: 'cache-indexedDB',
         fromCache: true,
       });
     }
@@ -617,21 +422,12 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
 
   const cacheStore = await loadNodeCache();
   for (const cacheId of cacheKeys) {
-    const nodeValue = cacheStore[cacheId];
-    cached = createCacheRecord(nodeValue, 'ai');
-    if (cached) {
-      const existingRaw = getLS(cacheId);
-      const existingRecord = createCacheRecord(existingRaw, 'ai');
-      if (!existingRecord || existingRecord.text !== cached.text || existingRecord.source !== cached.source) {
-        setLS(cacheId, JSON.stringify(cached));
-      }
-      if (typeof nodeValue === 'string') {
-        cacheStore[cacheId] = cached;
-        await saveNodeCache();
-      }
-      return createResult(cached.text, {
+    const value = cacheStore[cacheId];
+    if (value) {
+      if (!getLS(cacheId)) setLS(cacheId, value);
+      return createResult(value, {
         base,
-        source: cached.source,
+        source: 'cache-node',
         fromCache: true,
       });
     }
@@ -654,10 +450,7 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
     });
   }
 
-  const translationRecord = createCacheRecord(translated, 'ai');
-  const translatedText = translationRecord?.text;
-
-  if (!translatedText) {
+  if (!translated) {
     return createResult(base, {
       base,
       source: 'fallback-missing',
@@ -671,12 +464,7 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
 
   let validation;
   try {
-    validation = await validateAITranslation(
-      translatedText,
-      base,
-      lang,
-      normalizedMetadata,
-    );
+    validation = await validateAITranslation(translated, base, lang, normalizedMetadata);
   } catch (err) {
     if (err.rateLimited) throw err;
     validation = {
@@ -692,34 +480,24 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
       source: 'fallback-validation',
       needsRetry: true,
       validation,
-      candidate: translatedText,
+      candidate: translated,
     });
   }
 
-  const cachePayload = {
-    text: translatedText,
-    source: translationRecord?.source || 'ai',
-  };
-  if (translationRecord?.metadata) {
-    cachePayload.metadata = translationRecord.metadata;
-  }
-
-  setLS(cacheKey, JSON.stringify(cachePayload));
-  await idbSet(cacheKey, cachePayload);
-  cacheStore[cacheKey] = cachePayload;
+  setLS(cacheKey, translated);
+  await idbSet(cacheKey, translated);
+  cacheStore[cacheKey] = translated;
   await saveNodeCache();
 
-  return createResult(translatedText, {
+  return createResult(translated, {
     base,
-    source: cachePayload.source || 'ai',
+    source: 'ai',
     fromCache: false,
     validation: {
       ...validation,
       needsRetry: Boolean(validation.needsRetry),
     },
     needsRetry: Boolean(validation.needsRetry),
-    candidate: translatedText,
+    candidate: translated,
   });
 }
-
-export { createCacheRecord };

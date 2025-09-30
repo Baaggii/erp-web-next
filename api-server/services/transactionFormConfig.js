@@ -2,18 +2,18 @@ import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
-async function readConfig(companyId = 0) {
-  const { path: filePath, isDefault } = await getConfigPath(
-    'transactionForms.json',
-    companyId,
-  );
-  try {
-    const data = await fs.readFile(filePath, 'utf8');
-    return { cfg: JSON.parse(data), isDefault };
-  } catch {
-    return { cfg: {}, isDefault: true };
+  async function readConfig(companyId = 0) {
+    const { path: filePath, isDefault } = await getConfigPath(
+      'transactionForms.json',
+      companyId,
+    );
+    try {
+      const data = await fs.readFile(filePath, 'utf8');
+      return { cfg: JSON.parse(data), isDefault };
+    } catch {
+      return { cfg: {}, isDefault: true };
+    }
   }
-}
 
 async function writeConfig(cfg, companyId = 0) {
   const filePath = tenantConfigPath('transactionForms.json', companyId);
@@ -159,20 +159,6 @@ export async function listTransactionNames(
     }
   }
   return { names: result, isDefault };
-}
-
-export async function listAllTransactionConfigs(companyId = 0) {
-  const { cfg, isDefault } = await readConfig(companyId);
-  const tables = {};
-  for (const [table, names] of Object.entries(cfg)) {
-    if (!names || typeof names !== 'object') continue;
-    const parsed = {};
-    for (const [name, info] of Object.entries(names)) {
-      parsed[name] = { ...parseEntry(info), table, name };
-    }
-    tables[table] = parsed;
-  }
-  return { tables, isDefault };
 }
 
 export async function setFormConfig(

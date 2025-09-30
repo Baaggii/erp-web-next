@@ -9,108 +9,6 @@ const RATE_LIMIT_MAX_RETRIES = 3;
 const RATE_LIMIT_BASE_DELAY = 500;
 const RATE_LIMIT_MAX_DELAY = 5000;
 
-const TRANSLATOR_LABELS = {
-  ai: 'OpenAI',
-  openai: 'OpenAI',
-  'locale-file': 'Locale file',
-  'manual-entry': 'Manual entry',
-  'cache-node': 'Server cache',
-  'cache-localStorage': 'LocalStorage cache',
-  'cache-indexedDB': 'IndexedDB cache',
-  base: 'Base value',
-  google: 'Google',
-  'google-translate': 'Google Translate',
-  'fallback-error': 'Fallback (error)',
-  'fallback-missing': 'Fallback (missing)',
-  'fallback-validation': 'Fallback (validation)',
-  unknown: 'Unknown source',
-};
-
-function getTranslatorLabel(source) {
-  if (typeof source !== 'string' || !source) {
-    return TRANSLATOR_LABELS.unknown;
-  }
-  if (Object.prototype.hasOwnProperty.call(TRANSLATOR_LABELS, source)) {
-    return TRANSLATOR_LABELS[source];
-  }
-  const fallback = source
-    .split(/[-_]/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-  return fallback || TRANSLATOR_LABELS.unknown;
-}
-
-const MANUAL_ENTRY_PROVIDER = 'manual-entry';
-
-function normalizeProvider(provider) {
-  if (typeof provider !== 'string') {
-    return '';
-  }
-  const trimmed = provider.trim();
-  if (!trimmed) {
-    return '';
-  }
-  const lower = trimmed.toLowerCase();
-  if (lower === 'manual entry' || lower === 'manual-entry') {
-    return MANUAL_ENTRY_PROVIDER;
-  }
-  return trimmed;
-}
-
-function normalizeOrigin(origin) {
-  if (typeof origin !== 'string') {
-    return '';
-  }
-  const trimmed = origin.trim();
-  if (!trimmed) {
-    return '';
-  }
-  const lower = trimmed.toLowerCase();
-  if (lower === 'locale file' || lower === 'locale-file' || lower === 'locale') {
-    return 'locale-file';
-  }
-  if (lower === 'tooltip file' || lower === 'tooltip-file' || lower === 'tooltip') {
-    return 'tooltip-file';
-  }
-  return trimmed;
-}
-
-function formatTranslationSource(origin, provider) {
-  const normalizedOrigin = normalizeOrigin(origin);
-  const normalizedProvider = normalizeProvider(provider);
-  const originLabel = normalizedOrigin ? getTranslatorLabel(normalizedOrigin) : '';
-  const providerLabel = normalizedProvider ? getTranslatorLabel(normalizedProvider) : '';
-  if (originLabel && providerLabel) {
-    if (originLabel === providerLabel) {
-      return originLabel;
-    }
-    return `${originLabel} – ${providerLabel}`;
-  }
-  if (originLabel) {
-    return originLabel;
-  }
-  if (providerLabel) {
-    return providerLabel;
-  }
-  return TRANSLATOR_LABELS.unknown;
-}
-
-const BASE_COLUMN_KEYS = [
-  'key',
-  'type',
-  'module',
-  'context',
-  'page',
-  'translatedBy',
-  'actions',
-];
-const MIN_COLUMN_WIDTH = 80;
-
-function getLanguageColumnKey(lang) {
-  return `lang:${lang}`;
-}
-
 function normalizeEnMnPair(en, mn) {
   let normalizedEn = en;
   let normalizedMn = mn;
@@ -144,59 +42,6 @@ function normalizeEnMnPair(en, mn) {
   return { en: normalizedEn, mn: normalizedMn };
 }
 
-function toTrimmedString(value) {
-  if (typeof value === 'string') {
-    return value.trim();
-  }
-  if (value === null || value === undefined) {
-    return '';
-  }
-  return String(value).trim();
-}
-
-const NUMERIC_OR_SYMBOLS_ONLY_REGEX = /^[\p{P}\p{S}\d\s]+$/u;
-
-function isMeaningfulText(value) {
-  const trimmed = toTrimmedString(value);
-  if (!trimmed) {
-    return false;
-  }
-  return !NUMERIC_OR_SYMBOLS_ONLY_REGEX.test(trimmed);
-}
-
-function getMeaningfulTranslationSource(entry) {
-  if (!entry) {
-    return null;
-  }
-
-  const keyText = toTrimmedString(entry.key);
-  if (isMeaningfulText(keyText)) {
-    return { field: 'key', text: keyText };
-  }
-
-  const values = entry.values ?? {};
-  const enText = toTrimmedString(values.en);
-  if (isMeaningfulText(enText)) {
-    return { field: 'en', text: enText };
-  }
-
-  const mnText = toTrimmedString(values.mn);
-  if (isMeaningfulText(mnText)) {
-    return { field: 'mn', text: mnText };
-  }
-
-  return null;
-}
-
-function getProviderGridStyle(count) {
-  const columnCount = Math.min(Math.max(count, 1), 3);
-  return {
-    display: 'grid',
-    gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
-    gap: '0.5rem',
-  };
-}
-
 export default function ManualTranslationsTab() {
   const { t } = useContext(I18nContext);
   const { addToast } = useToast();
@@ -208,12 +53,9 @@ export default function ManualTranslationsTab() {
   const [completing, setCompleting] = useState(false);
   const [activeRow, setActiveRow] = useState(null);
   const [savingLanguage, setSavingLanguage] = useState(null);
-  const [translationSources, setTranslationSources] = useState([]);
-  const [columnWidths, setColumnWidths] = useState({});
   const abortRef = useRef(false);
   const processingRef = useRef(false);
   const activeRowRef = useRef(null);
-  const columnWidthsRef = useRef(columnWidths);
   const loadStateRef = useRef({
     promise: null,
     retryCount: 0,
@@ -223,23 +65,8 @@ export default function ManualTranslationsTab() {
   });
 
   const load = useCallback(
-    async function runLoad({ ignoreCooldown = false, queue = false } = {}) {
+    async ({ ignoreCooldown = false } = {}) => {
       const state = loadStateRef.current;
-      if (queue && state.promise) {
-        // A request is already in-flight; wait for it to settle before queuing
-        // the next load so we always fetch fresh data after the current one.
-        const currentPromise = state.promise;
-        try {
-          await currentPromise;
-        } catch {
-          // ignore
-        } finally {
-          if (state.promise === currentPromise) {
-            state.promise = null;
-          }
-        }
-        return runLoad({ ignoreCooldown, queue: false });
-      }
       if (state.cooldown && !ignoreCooldown) {
         return state.promise ?? Promise.resolve();
       }
@@ -296,30 +123,13 @@ export default function ManualTranslationsTab() {
 
           if (res.ok) {
             const data = await res.json();
-            const languagesList = Array.isArray(data.languages) ? data.languages : [];
-            setLanguages(languagesList);
-            const normalizedEntries = (data.entries ?? []).map((entry) => {
-              const values = { ...(entry.values ?? {}) };
-              const translatedBy = { ...(entry.translatedBy ?? {}) };
-              const translatedBySources = { ...(entry.translatedBySources ?? {}) };
-              for (const lang of languagesList) {
-                if (values[lang] == null) values[lang] = '';
-                translatedBy[lang] = normalizeProvider(translatedBy[lang]);
-                const normalizedOrigin = normalizeOrigin(translatedBySources[lang]);
-                const fallbackOrigin = normalizeOrigin(entry.type) || toTrimmedString(entry.type);
-                translatedBySources[lang] = normalizedOrigin || fallbackOrigin || 'unknown';
-              }
-              return {
-                ...entry,
-                module: entry.module ?? '',
-                context: entry.context ?? '',
-                page: entry.page ?? '',
-                pageEditable: entry.pageEditable ?? true,
-                values,
-                translatedBy,
-                translatedBySources,
-              };
-            });
+            setLanguages(data.languages ?? []);
+            const normalizedEntries = (data.entries ?? []).map((entry) => ({
+              ...entry,
+              module: entry.module ?? '',
+              context: entry.context ?? '',
+              values: entry.values ?? {},
+            }));
             setEntries(normalizedEntries);
           }
         } catch {
@@ -339,16 +149,12 @@ export default function ManualTranslationsTab() {
   );
 
   const refreshEntries = useCallback(
-    ({ force = false } = {}) => {
-      if (force) {
-        const state = loadStateRef.current;
-        if (state.timeoutId) {
-          clearTimeout(state.timeoutId);
-          state.timeoutId = null;
-        }
-        state.cooldown = false;
+    async ({ force = false } = {}) => {
+      const state = loadStateRef.current;
+      if (state.cooldown && !force) {
+        return state.promise ?? Promise.resolve();
       }
-      return load({ ignoreCooldown: force, queue: true });
+      return load({ ignoreCooldown: force });
     },
     [load],
   );
@@ -367,173 +173,6 @@ export default function ManualTranslationsTab() {
   }, [load]);
 
   useEffect(() => {
-    columnWidthsRef.current = columnWidths;
-  }, [columnWidths]);
-
-  useEffect(() => {
-    setColumnWidths((prev) => {
-      const allowedKeys = new Set([
-        ...BASE_COLUMN_KEYS,
-        ...languages.map((lang) => getLanguageColumnKey(lang)),
-      ]);
-
-      const next = {};
-      let changed = false;
-
-      for (const [key, value] of Object.entries(prev)) {
-        if (allowedKeys.has(key)) {
-          next[key] = value;
-        } else {
-          changed = true;
-        }
-      }
-
-      if (!changed && Object.keys(prev).length === Object.keys(next).length) {
-        return prev;
-      }
-
-      return next;
-    });
-  }, [languages]);
-
-  const getColumnWidth = useCallback(
-    (columnKey) => {
-      const width = columnWidths[columnKey];
-      if (typeof width === 'number' && !Number.isNaN(width)) {
-        return width;
-      }
-      return undefined;
-    },
-    [columnWidths],
-  );
-
-  const getColumnWidthStyle = useCallback(
-    (columnKey) => {
-      const width = getColumnWidth(columnKey);
-      if (typeof width === 'number') {
-        return { width, minWidth: width };
-      }
-      return { width: 'auto', minWidth: 0 };
-    },
-    [getColumnWidth],
-  );
-
-  const handleResizeStart = useCallback(
-    (event, columnKey) => {
-      event.preventDefault();
-      event.stopPropagation();
-
-      const pointerId = event.pointerId ?? null;
-      const target = event.currentTarget;
-      const th = target.closest('th');
-      const measuredWidth = th ? th.getBoundingClientRect().width : null;
-      const storedWidth = columnWidthsRef.current[columnKey];
-      const initialWidth =
-        typeof measuredWidth === 'number' && !Number.isNaN(measuredWidth)
-          ? measuredWidth
-          : typeof storedWidth === 'number' && !Number.isNaN(storedWidth)
-            ? storedWidth
-            : MIN_COLUMN_WIDTH;
-      const startX = event.clientX;
-
-      const onPointerMove = (moveEvent) => {
-        if (pointerId != null && moveEvent.pointerId != null && moveEvent.pointerId !== pointerId) {
-          return;
-        }
-        const delta = moveEvent.clientX - startX;
-        const newWidth = Math.max(MIN_COLUMN_WIDTH, initialWidth + delta);
-        setColumnWidths((prev) => {
-          const current = prev[columnKey];
-          if (typeof current === 'number' && Math.abs(current - newWidth) < 0.5) {
-            return prev;
-          }
-          return {
-            ...prev,
-            [columnKey]: newWidth,
-          };
-        });
-      };
-
-      const cleanup = () => {
-        window.removeEventListener('pointermove', onPointerMove);
-        window.removeEventListener('pointerup', onPointerUp);
-        window.removeEventListener('pointercancel', onPointerUp);
-        if (typeof target.releasePointerCapture === 'function' && pointerId != null) {
-          try {
-            target.releasePointerCapture(pointerId);
-          } catch {
-            // ignore release errors
-          }
-        }
-      };
-
-      const onPointerUp = (endEvent) => {
-        if (pointerId != null && endEvent.pointerId != null && endEvent.pointerId !== pointerId) {
-          return;
-        }
-        cleanup();
-      };
-
-      window.addEventListener('pointermove', onPointerMove);
-      window.addEventListener('pointerup', onPointerUp);
-      window.addEventListener('pointercancel', onPointerUp);
-
-      if (typeof target.setPointerCapture === 'function' && pointerId != null) {
-        try {
-          target.setPointerCapture(pointerId);
-        } catch {
-          // ignore capture errors
-        }
-      }
-    },
-    [setColumnWidths],
-  );
-
-  const renderResizeHandle = useCallback(
-    (columnKey) => (
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        onPointerDown={(event) => handleResizeStart(event, columnKey)}
-        style={{
-          position: 'absolute',
-          top: 0,
-          right: -4,
-          width: 8,
-          height: '100%',
-          cursor: 'col-resize',
-          userSelect: 'none',
-          touchAction: 'none',
-          zIndex: 1,
-        }}
-      />
-    ),
-    [handleResizeStart],
-  );
-
-  const getHeaderStyle = useCallback(() => {
-    return {
-      border: '1px solid #d1d5db',
-      padding: '0.25rem',
-      paddingRight: '0.75rem',
-      position: 'relative',
-      width: 'auto',
-      textAlign: 'left',
-      verticalAlign: 'top',
-    };
-  }, []);
-
-  const getCellStyle = useCallback(() => {
-    return {
-      border: '1px solid #d1d5db',
-      padding: '0.25rem',
-      width: 'auto',
-      verticalAlign: 'top',
-      textAlign: 'left',
-    };
-  }, []);
-
-  useEffect(() => {
     setPage(1);
   }, [searchTerm]);
 
@@ -549,7 +188,6 @@ export default function ManualTranslationsTab() {
     if (String(entry.key ?? '').toLowerCase().includes(term)) return true;
     if (String(entry.module ?? '').toLowerCase().includes(term)) return true;
     if (String(entry.context ?? '').toLowerCase().includes(term)) return true;
-    if (String(entry.page ?? '').toLowerCase().includes(term)) return true;
     return Object.values(entry.values ?? {}).some((v) =>
       String(v ?? '').toLowerCase().includes(term),
     );
@@ -572,15 +210,6 @@ export default function ManualTranslationsTab() {
       const copy = [...prev];
       const entry = { ...copy[index] };
       entry.values = { ...entry.values, [lang]: value };
-      entry.translatedBy = {
-        ...(entry.translatedBy ?? {}),
-        [lang]: MANUAL_ENTRY_PROVIDER,
-      };
-      if (entry.translatedBySources) {
-        entry.translatedBySources = {
-          ...entry.translatedBySources,
-        };
-      }
       copy[index] = entry;
       return copy;
     });
@@ -588,18 +217,13 @@ export default function ManualTranslationsTab() {
 
   async function save(index) {
     const entry = entries[index];
-    const payload = {
-      ...entry,
-      page: entry.page ?? '',
-      translatedBy: entry.translatedBy ?? {},
-    };
     await fetch('/api/manual_translations', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify(payload),
+      body: JSON.stringify(entry),
     });
-    await refreshEntries({ force: true });
+    await refreshEntries();
   }
 
   async function saveLanguage(lang) {
@@ -609,9 +233,7 @@ export default function ManualTranslationsTab() {
       .map((e) => ({
         key: e.key,
         type: e.type,
-        page: e.page ?? '',
         values: { [lang]: e.values[lang] ?? '' },
-        translatedBy: { [lang]: e.translatedBy?.[lang] ?? '' },
       }));
     try {
       const res = await fetch('/api/manual_translations/bulk', {
@@ -635,7 +257,7 @@ export default function ManualTranslationsTab() {
         return;
       }
       addToast(t('languageSaved', 'Language translations saved'), 'success');
-      await refreshEntries({ force: true });
+      await refreshEntries();
     } catch {
       addToast(t('languageSaveFailed', 'Failed to save language translations'), 'error');
     } finally {
@@ -676,26 +298,11 @@ export default function ManualTranslationsTab() {
     }
   }
 
-  const captureTranslationSource = (lang, provider, origin) => {
-    if (!lang) return;
-    const normalizedProvider = normalizeProvider(provider);
-    const normalizedOrigin = normalizeOrigin(origin);
-    setTranslationSources((prev) => [
-      ...prev,
-      { lang, provider: normalizedProvider, origin: normalizedOrigin },
-    ]);
-  };
-
-  const clearTranslationSources = () => {
-    setTranslationSources([]);
-  };
-
   async function completeAll() {
     if (processingRef.current) return;
     abortRef.current = false;
     processingRef.current = true;
     setCompleting(true);
-    clearTranslationSources();
     const allEntries = [...entries];
     const original = [...allEntries];
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
@@ -709,23 +316,22 @@ export default function ManualTranslationsTab() {
       setActiveRow(idx);
       setPage(Math.floor(idx / perPage) + 1);
       const entry = allEntries[idx];
-      const newEntry = {
-        ...entry,
-        values: { ...entry.values },
-        translatedBy: { ...(entry.translatedBy ?? {}) },
-        translatedBySources: { ...(entry.translatedBySources ?? {}) },
-      };
+      const newEntry = { ...entry, values: { ...entry.values } };
       const entryMetadata = {
         module: newEntry.module,
         context: newEntry.context,
         key: newEntry.key,
-        page: newEntry.page,
-        type: newEntry.type,
       };
       const translateEntry = (targetLang, text) =>
         translateWithCache(targetLang, text, undefined, entryMetadata);
-      let en = toTrimmedString(newEntry.values.en);
-      let mn = toTrimmedString(newEntry.values.mn);
+      let en =
+        typeof newEntry.values.en === 'string'
+          ? newEntry.values.en.trim()
+          : String(newEntry.values.en ?? '').trim();
+      let mn =
+        typeof newEntry.values.mn === 'string'
+          ? newEntry.values.mn.trim()
+          : String(newEntry.values.mn ?? '').trim();
       let changed = false;
       let needsManualReview = false;
       const normalized = normalizeEnMnPair(en, mn);
@@ -739,41 +345,14 @@ export default function ManualTranslationsTab() {
         mn = normalized.mn;
         changed = true;
       }
-      en = toTrimmedString(newEntry.values.en);
-      mn = toTrimmedString(newEntry.values.mn);
-
-      const hasMeaningfulEn = isMeaningfulText(en);
-      const hasMeaningfulMn = isMeaningfulText(mn);
-
-      const attemptTranslation = async (targetLang) => {
-        if (abortRef.current || rateLimited) {
-          return false;
-        }
-        const sourceInfo = getMeaningfulTranslationSource(newEntry);
-        if (!sourceInfo || !isMeaningfulText(sourceInfo.text)) {
-          needsManualReview = true;
-          return false;
-        }
+      if (!en && mn) {
         try {
-          if (!isMeaningfulText(sourceInfo.text)) {
-            needsManualReview = true;
-            return false;
-          }
           await delay();
-          const translated = await translateEntry(targetLang, sourceInfo.text);
+          const translated = await translateEntry('en', mn);
           if (translated?.text && !translated.needsRetry) {
-            newEntry.values[targetLang] = translated.text;
-            const provider = normalizeProvider(translated.source);
-            const origin = normalizeOrigin(
-              newEntry.translatedBySources?.[targetLang] ?? newEntry.type,
-            );
-            newEntry.translatedBy[targetLang] = provider;
-            newEntry.translatedBySources[targetLang] = origin;
-            captureTranslationSource(targetLang, provider, origin);
+            newEntry.values.en = translated.text;
             changed = true;
-            return true;
-          }
-          if (translated?.needsRetry) {
+          } else if (translated?.needsRetry) {
             needsManualReview = true;
           }
         } catch (err) {
@@ -782,77 +361,72 @@ export default function ManualTranslationsTab() {
             rateLimited = true;
           }
         }
-        return false;
-      };
-
-      if (!hasMeaningfulEn) {
-        const translated = await attemptTranslation('en');
-        if (translated) {
-          en = toTrimmedString(newEntry.values.en);
-        }
-      }
-
-      if (!hasMeaningfulMn) {
-        const translated = await attemptTranslation('mn');
-        if (translated) {
-          mn = toTrimmedString(newEntry.values.mn);
-        }
-      }
-
-      if (restLanguages.length) {
-        const missingBefore = restLanguages.filter(
-          (lang) => !isMeaningfulText(newEntry.values[lang]),
-        );
-        if (missingBefore.length) {
-          const sourceInfo = getMeaningfulTranslationSource(newEntry);
-          if (!sourceInfo || !isMeaningfulText(sourceInfo.text)) {
+      } else if (!mn && en) {
+        try {
+          await delay();
+          const translated = await translateEntry('mn', en);
+          if (translated?.text && !translated.needsRetry) {
+            newEntry.values.mn = translated.text;
+            changed = true;
+          } else if (translated?.needsRetry) {
             needsManualReview = true;
-          } else {
-            for (const lang of missingBefore) {
-              if (abortRef.current || rateLimited) break;
-              if (!isMeaningfulText(sourceInfo.text)) {
-                needsManualReview = true;
-                break;
-              }
-              try {
-                await delay();
-                const translated = await translateEntry(lang, sourceInfo.text);
-                if (translated?.text && !translated.needsRetry) {
-                  newEntry.values[lang] = translated.text;
-                  const provider = normalizeProvider(translated.source);
-                  const origin = normalizeOrigin(
-                    newEntry.translatedBySources?.[lang] ?? newEntry.type,
-                  );
-                  newEntry.translatedBy[lang] = provider;
-                  newEntry.translatedBySources[lang] = origin;
-                  captureTranslationSource(lang, provider, origin);
-                  changed = true;
-                } else if (translated?.needsRetry) {
-                  needsManualReview = true;
-                }
-              } catch (err) {
-                if (err.rateLimited) {
-                  abortRef.current = true;
-                  rateLimited = true;
-                }
-              }
-            }
+          }
+        } catch (err) {
+          if (err.rateLimited) {
+            abortRef.current = true;
+            rateLimited = true;
+          }
+        }
+      }
+      const enAfter =
+        typeof newEntry.values.en === 'string'
+          ? newEntry.values.en.trim()
+          : String(newEntry.values.en ?? '').trim();
+      const mnAfter =
+        typeof newEntry.values.mn === 'string'
+          ? newEntry.values.mn.trim()
+          : String(newEntry.values.mn ?? '').trim();
+      if (enAfter && mnAfter && restLanguages.length) {
+        const sourceText = enAfter || mnAfter;
+        const missingBefore = restLanguages.filter((l) => {
+          const val = newEntry.values[l];
+          const trimmed =
+            typeof val === 'string' ? val.trim() : String(val ?? '').trim();
+          return !trimmed;
+        });
+        if (missingBefore.length) {
+          for (const lang of missingBefore) {
             if (abortRef.current || rateLimited) break;
-            const missingAfter = restLanguages.filter(
-              (lang) => !isMeaningfulText(newEntry.values[lang]),
-            );
-            if (missingAfter.length) {
-              needsManualReview = true;
+            try {
+              await delay();
+              const translated = await translateEntry(lang, sourceText);
+              if (translated?.text && !translated.needsRetry) {
+                newEntry.values[lang] = translated.text;
+                changed = true;
+              } else if (translated?.needsRetry) {
+                needsManualReview = true;
+              }
+            } catch (err) {
+              if (err.rateLimited) {
+                abortRef.current = true;
+                rateLimited = true;
+              }
             }
+          }
+          if (abortRef.current || rateLimited) break;
+          const missingAfter = restLanguages.filter((l) => {
+            const val = newEntry.values[l];
+            const trimmed =
+              typeof val === 'string' ? val.trim() : String(val ?? '').trim();
+            return !trimmed;
+          });
+          if (missingAfter.length) {
+            needsManualReview = true;
           }
         }
       }
       if (changed) {
-        const { translatedBySources: _ignoredSources, ...restEntry } = newEntry;
-        pending.push({
-          ...restEntry,
-          translatedBy: { ...(newEntry.translatedBy ?? {}) },
-        });
+        pending.push(newEntry);
         saved = true;
       }
       if (needsManualReview) {
@@ -883,8 +457,7 @@ export default function ManualTranslationsTab() {
       setEntries(original);
       processingRef.current = false;
       setCompleting(false);
-      clearTranslationSources();
-      await refreshEntries({ force: true });
+      await refreshEntries();
       if (rateLimited) {
         window.dispatchEvent(
           new CustomEvent('toast', {
@@ -901,7 +474,6 @@ export default function ManualTranslationsTab() {
     if (rateLimited) {
       processingRef.current = false;
       setCompleting(false);
-      clearTranslationSources();
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
@@ -913,11 +485,10 @@ export default function ManualTranslationsTab() {
       return;
     }
     if (saved) {
-      await refreshEntries({ force: true });
+      await refreshEntries();
     }
     processingRef.current = false;
     setCompleting(false);
-    clearTranslationSources();
     if (saved) {
       window.dispatchEvent(
         new CustomEvent('toast', {
@@ -946,17 +517,7 @@ export default function ManualTranslationsTab() {
   function addRow() {
     const newEntries = [
       ...entries,
-      {
-        key: '',
-        type: 'locale',
-        module: '',
-        context: '',
-        page: '',
-        pageEditable: true,
-        values: {},
-        translatedBy: Object.fromEntries(languages.map((lang) => [lang, ''])),
-        translatedBySources: Object.fromEntries(languages.map((lang) => [lang, ''])),
-      },
+      { key: '', type: 'locale', module: '', context: '', values: {} },
     ];
     setEntries(newEntries);
     setPage(Math.ceil(newEntries.length / perPage));
@@ -964,56 +525,6 @@ export default function ManualTranslationsTab() {
 
   return (
     <div>
-      {completing && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: '1rem',
-            right: '1rem',
-            backgroundColor: '#111827',
-            color: '#f9fafb',
-            padding: '0.75rem 1rem',
-            borderRadius: '0.5rem',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-            maxWidth: '24rem',
-            maxHeight: '16rem',
-            overflowY: 'auto',
-            zIndex: 1000,
-            fontSize: '0.875rem',
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>
-            {t('translationProgress', 'Translation progress')}
-          </div>
-          {translationSources.length ? (
-            <div style={getProviderGridStyle(translationSources.length)}>
-              {translationSources.map(({ lang, origin, provider }, index) => {
-                const displayLabel = formatTranslationSource(origin, provider);
-                return (
-                  <div
-                    key={`${lang}-${origin}-${provider}-${index}`}
-                    style={{
-                      backgroundColor: '#1f2937',
-                      borderRadius: '0.375rem',
-                      padding: '0.25rem 0.5rem',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    <span style={{ fontWeight: 600, marginRight: '0.25rem' }}>
-                      {(lang || '').toUpperCase()}
-                    </span>
-                    <span>{displayLabel || TRANSLATOR_LABELS.unknown}</span>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ color: '#d1d5db' }}>
-              {t('waitingForTranslations', 'Waiting for translations...')}
-            </div>
-          )}
-        </div>
-      )}
       <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
         <button type="button" onClick={addRow}>{t('addRow', 'Add Row')}</button>
         <button
@@ -1039,81 +550,38 @@ export default function ManualTranslationsTab() {
           placeholder={t('search', 'Search')}
         />
       </div>
-      <div style={{ overflowX: 'hidden' }}>
-        <table
-          style={{ borderCollapse: 'collapse', width: '100%', tableLayout: 'fixed' }}
-        >
-          <colgroup>
-            <col style={getColumnWidthStyle('key')} />
-            <col style={getColumnWidthStyle('type')} />
-            <col style={getColumnWidthStyle('module')} />
-            <col style={getColumnWidthStyle('context')} />
-            <col style={getColumnWidthStyle('page')} />
-            {languages.map((l) => {
-              const columnKey = getLanguageColumnKey(l);
-              return <col key={columnKey} style={getColumnWidthStyle(columnKey)} />;
-            })}
-            <col style={getColumnWidthStyle('translatedBy')} />
-            <col style={getColumnWidthStyle('actions')} />
-          </colgroup>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
           <thead>
             <tr>
-              <th style={getHeaderStyle()}>
-                Key
-                {renderResizeHandle('key')}
-              </th>
-              <th style={getHeaderStyle()}>
-                Type
-                {renderResizeHandle('type')}
-              </th>
-              <th style={getHeaderStyle()}>
-                Module
-                {renderResizeHandle('module')}
-              </th>
-              <th style={getHeaderStyle()}>
-                Context
-                {renderResizeHandle('context')}
-              </th>
-              <th style={getHeaderStyle()}>
-                {t('pageName', 'Page name')}
-                {renderResizeHandle('page')}
-              </th>
-              {languages.map((l) => {
-                const columnKey = getLanguageColumnKey(l);
-                return (
-                  <th key={l} style={getHeaderStyle()}>
-                    <div
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        gap: '0.25rem',
-                        width: '100%',
-                      }}
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Key</th>
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Type</th>
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Module</th>
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>Context</th>
+              {languages.map((l) => (
+                <th key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    <span>{l}</span>
+                    <button
+                      type="button"
+                      onClick={() => saveLanguage(l)}
+                      disabled={savingLanguage !== null}
                     >
-                      <span>{l}</span>
-                      <button
-                        type="button"
-                        onClick={() => saveLanguage(l)}
-                        disabled={savingLanguage !== null}
-                      >
-                        {savingLanguage === l
-                          ? t('saving', 'Saving...')
-                          : t('save', 'Save')}
-                      </button>
-                    </div>
-                    {renderResizeHandle(columnKey)}
-                  </th>
-                );
-              })}
-              <th style={getHeaderStyle()}>
-                {t('translatedBy', 'Translated by')}
-                {renderResizeHandle('translatedBy')}
-              </th>
-              <th style={getHeaderStyle()}>
-                <span aria-hidden="true">&nbsp;</span>
-                {renderResizeHandle('actions')}
-              </th>
+                      {savingLanguage === l
+                        ? t('saving', 'Saving...')
+                        : t('save', 'Save')}
+                    </button>
+                  </div>
+                </th>
+              ))}
+              <th style={{ border: '1px solid #d1d5db', padding: '0.25rem' }} />
             </tr>
           </thead>
           <tbody>
@@ -1127,90 +595,43 @@ export default function ManualTranslationsTab() {
                   style={rowStyle}
                   ref={entryIdx === activeRow ? activeRowRef : null}
                 >
-                  <td style={getCellStyle()}>
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
                     <input
                       value={entry.key}
                       onChange={(e) => updateEntry(entryIdx, 'key', e.target.value)}
-                      style={{ width: '100%' }}
                     />
                   </td>
-                  <td style={getCellStyle()}>
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
                     <select
                       value={entry.type}
                       onChange={(e) => updateEntry(entryIdx, 'type', e.target.value)}
-                      style={{ width: '100%' }}
                     >
                       <option value="locale">locale</option>
                       <option value="tooltip">tooltip</option>
                       <option value="exported">exported</option>
                     </select>
                   </td>
-                  <td style={getCellStyle()}>
-                    <div
-                      style={{
-                        overflowWrap: 'anywhere',
-                        whiteSpace: 'pre-wrap',
-                        width: '100%',
-                      }}
-                    >
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
                       {String(entry.module ?? '')}
                     </div>
                   </td>
-                  <td style={getCellStyle()}>
-                    <div
-                      style={{
-                        overflowWrap: 'anywhere',
-                        whiteSpace: 'pre-wrap',
-                        width: '100%',
-                      }}
-                    >
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                    <div style={{ overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}>
                       {String(entry.context ?? '')}
                     </div>
                   </td>
-                  <td style={getCellStyle()}>
-                    <input
-                      value={entry.page ?? ''}
-                      onChange={(e) => updateEntry(entryIdx, 'page', e.target.value)}
-                      readOnly={entry.pageEditable === false}
-                      style={{ width: '100%' }}
-                    />
-                  </td>
-                  {languages.map((l) => {
-                    const columnKey = getLanguageColumnKey(l);
-                    return (
-                      <td key={l} style={getCellStyle()}>
-                        <textarea
-                          value={entry.values[l] || ''}
-                          onChange={(e) => updateValue(entryIdx, l, e.target.value)}
-                          style={{
-                            width: '100%',
-                            overflowWrap: 'anywhere',
-                            whiteSpace: 'pre-wrap',
-                            display: 'block',
-                          }}
-                          rows={2}
-                        />
-                      </td>
-                    );
-                  })}
-                  <td style={getCellStyle()}>
-                    <div style={getProviderGridStyle(languages.length)}>
-                      {languages.map((l) => {
-                        const provider = entry.translatedBy?.[l];
-                        const origin = entry.translatedBySources?.[l] || entry.type;
-                        const displayLabel = formatTranslationSource(origin, provider);
-                        return (
-                          <div key={l} style={{ color: displayLabel ? '#111827' : '#6b7280' }}>
-                            <span style={{ fontWeight: 600, marginRight: '0.25rem' }}>
-                              {l.toUpperCase()}
-                            </span>
-                            <span>{displayLabel || '—'}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </td>
-                  <td style={{ ...getCellStyle(), whiteSpace: 'nowrap' }}>
+                  {languages.map((l) => (
+                    <td key={l} style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
+                      <textarea
+                        value={entry.values[l] || ''}
+                        onChange={(e) => updateValue(entryIdx, l, e.target.value)}
+                        style={{ width: '100%', overflowWrap: 'anywhere', whiteSpace: 'pre-wrap' }}
+                        rows={2}
+                      />
+                    </td>
+                  ))}
+                  <td style={{ border: '1px solid #d1d5db', padding: '0.25rem' }}>
                     <button onClick={() => save(entryIdx)}>{t('save', 'Save')}</button>
                     <button
                       onClick={() => remove(entryIdx)}

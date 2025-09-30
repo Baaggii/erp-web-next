@@ -25,34 +25,14 @@ export default function UserManualExport() {
   useEffect(() => {
     async function loadFormDescs() {
       try {
-        const res = await fetch('/api/transaction_forms?mode=all', {
+        const res = await fetch('/api/transaction_forms', {
           credentials: 'include',
         });
         if (!res.ok) return;
-        const apiData = await res.json().catch(() => null);
-        if (!apiData || typeof apiData !== 'object') return;
-        let txForms = apiData.tables || apiData.config || null;
-        if (!txForms) {
-          const { isDefault: _unused, ...rest } = apiData;
-          const grouped = {};
-          let groupedCount = 0;
-          Object.entries(rest || {}).forEach(([key, value]) => {
-            if (!value || typeof value !== 'object') return;
-            const tbl = value.table;
-            if (!tbl) return;
-            if (!grouped[tbl]) grouped[tbl] = {};
-            grouped[tbl][key] = value;
-            groupedCount += 1;
-          });
-          txForms = groupedCount > 0 ? grouped : rest;
-        }
+        const txForms = await res.json();
         const bMap = {}, rMap = {}, reqMap = {};
         Object.values(txForms || {}).forEach((forms) => {
-          const entries = Array.isArray(forms)
-            ? forms.map((f) => [typeof f === 'string' ? f : f.key, f])
-            : Object.entries(forms || {});
-          entries.forEach(([, cfg]) => {
-            if (!cfg || typeof cfg !== 'object') return;
+          Object.entries(forms || {}).forEach(([_, cfg]) => {
             if (Array.isArray(cfg.buttons)) {
               cfg.buttons.forEach((b) => {
                 const bKey = typeof b === 'string' ? b : b.key;
@@ -318,29 +298,10 @@ export default function UserManualExport() {
 
         let tfData;
         try {
-          const tfRes = await fetch("/api/transaction_forms?mode=all", {
+          const tfRes = await fetch("/api/transaction_forms", {
             credentials: "include",
           });
-          if (tfRes.ok) {
-            const apiData = await tfRes.json().catch(() => null);
-            if (apiData && typeof apiData === "object") {
-              tfData = apiData.tables || apiData.config || null;
-              if (!tfData) {
-                const { isDefault: _unused, ...rest } = apiData;
-                const grouped = {};
-                let groupedCount = 0;
-                Object.entries(rest || {}).forEach(([key, value]) => {
-                  if (!value || typeof value !== "object") return;
-                  const tbl = value.table;
-                  if (!tbl) return;
-                  if (!grouped[tbl]) grouped[tbl] = {};
-                  grouped[tbl][key] = value;
-                  groupedCount += 1;
-                });
-                tfData = groupedCount > 0 ? grouped : rest;
-              }
-            }
-          }
+          if (tfRes.ok) tfData = await tfRes.json();
         } catch (e) {
           // ignore, will fall back to local config
         }

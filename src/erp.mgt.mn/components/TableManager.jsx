@@ -28,15 +28,6 @@ import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
-import {
-  encodeCompositeId,
-  decodeCompositeId,
-} from '../../../utils/compositeId.js';
-import {
-  applyGeneratedColumnEvaluators,
-  createGeneratedColumnEvaluator,
-  valuesEqual,
-} from '../utils/generatedColumns.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -169,163 +160,9 @@ const TableManager = forwardRef(function TableManager({
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
-  const { user, company, branch, department, session } = useContext(AuthContext);
-  const generalConfig = useGeneralConfig();
-  const { addToast } = useToast();
-  const isSubordinate = Boolean(session?.senior_empid);
-  const canRequestStatus = isSubordinate;
-  const columnCaseMap = useMemo(() => {
-    const map = {};
-    columnMeta.forEach((c) => {
-      map[c.name.toLowerCase()] = c.name;
-    });
-    return map;
-  }, [columnMeta]);
-  const handleRowsChange = useCallback((rs) => {
-    setGridRows(rs);
-    if (!Array.isArray(rs) || rs.length === 0) return;
-    setEditing((prev) => {
-      const firstRow = rs[0];
-      if (!firstRow || typeof firstRow !== 'object') return prev;
-      const base = prev ? { ...prev } : {};
-      let changed = false;
-      Object.entries(firstRow).forEach(([key, value]) => {
-        if (!Object.is(base[key], value)) {
-          base[key] = value;
-          changed = true;
-        }
-      });
-      return changed ? base : prev;
-    });
-  }, []);
+  const handleRowsChange = useCallback((rs) => setGridRows(rs), []);
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
   const [showCascade, setShowCascade] = useState(false);
-  const ensureRowCaseConsistency = useCallback(
-    (rowObj) => {
-      if (!rowObj || typeof rowObj !== 'object') return rowObj;
-      const normalized = {};
-      Object.entries(rowObj).forEach(([rawKey, value]) => {
-        if (typeof rawKey !== 'string') return;
-        const mapped = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
-        normalized[mapped] = value;
-      });
-      const canonicalEntries = Object.entries(normalized);
-      canonicalEntries.forEach(([key, value]) => {
-        if (typeof key !== 'string') return;
-        const lowerKey = key.toLowerCase();
-        if (!Object.prototype.hasOwnProperty.call(normalized, lowerKey)) {
-          normalized[lowerKey] = value;
-        }
-      });
-      return normalized;
-    },
-    [columnCaseMap],
-  );
-
-  const hydrateRowForEdit = useCallback(
-    async (rowObj, encodedId) => {
-      if (!rowObj || typeof rowObj !== 'object') return rowObj;
-      const baseRow = ensureRowCaseConsistency(rowObj);
-      if (!table || encodedId === undefined || encodedId === null) {
-        return baseRow;
-      }
-      let tenantInfo = null;
-      try {
-        const ttRes = await fetch(`/api/tenant_tables/${encodeURIComponent(table)}`, {
-          credentials: 'include',
-        });
-        if (ttRes.ok) {
-          tenantInfo = await ttRes.json().catch(() => null);
-        }
-      } catch {
-        tenantInfo = null;
-      }
-      const params = new URLSearchParams();
-      if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
-        const keys = getTenantKeyList(tenantInfo);
-        if (keys.includes('company_id') && company != null) params.set('company_id', company);
-        if (keys.includes('branch_id') && branch != null) params.set('branch_id', branch);
-        if (keys.includes('department_id') && department != null)
-          params.set('department_id', department);
-      }
-      const apiId = formatRowIdForApi(encodedId);
-      if (apiId === undefined || apiId === null) {
-        return baseRow;
-      }
-      let fetchedRow = null;
-      let fetchFailed = false;
-      try {
-        const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}${
-          params.toString() ? `?${params.toString()}` : ''
-        }`;
-        const res = await fetch(url, { credentials: 'include' });
-        if (res.ok) {
-          const payload = await res.json().catch(() => {
-            fetchFailed = true;
-            return null;
-          });
-          if (payload) {
-            const candidates = [];
-            if (payload && typeof payload === 'object') {
-              if (payload.row && typeof payload.row === 'object' && !Array.isArray(payload.row)) {
-                candidates.push(payload.row);
-              }
-              if (
-                Array.isArray(payload.rows) &&
-                payload.rows.length > 0 &&
-                typeof payload.rows[0] === 'object'
-              ) {
-                candidates.push(payload.rows[0]);
-              }
-            }
-            if (Array.isArray(payload) && payload.length > 0 && typeof payload[0] === 'object') {
-              candidates.push(payload[0]);
-            }
-            if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
-              candidates.push(payload);
-            }
-            const hasKnownColumn = (obj) => {
-              if (!obj || typeof obj !== 'object') return false;
-              return Object.keys(obj).some((key) => {
-                if (typeof key !== 'string') return false;
-                if (key.startsWith('_')) return true;
-                return Boolean(columnCaseMap[String(key).toLowerCase()]);
-              });
-            };
-            fetchedRow = candidates.find((candidate) => hasKnownColumn(candidate)) || null;
-            if (!fetchedRow) {
-              fetchFailed = true;
-            }
-          } else {
-            fetchFailed = true;
-          }
-        } else {
-          fetchFailed = true;
-        }
-      } catch (err) {
-        console.error('Failed to hydrate row for edit', err);
-        fetchFailed = true;
-      }
-      if (fetchFailed) {
-        addToast(t('failed_load_row_data', 'Failed to load row data'), 'error');
-      }
-      if (fetchedRow && typeof fetchedRow === 'object' && !Array.isArray(fetchedRow)) {
-        const normalizedFetched = ensureRowCaseConsistency(fetchedRow);
-        return ensureRowCaseConsistency({ ...baseRow, ...normalizedFetched });
-      }
-      return baseRow;
-    },
-    [
-      addToast,
-      branch,
-      columnCaseMap,
-      company,
-      department,
-      ensureRowCaseConsistency,
-      table,
-      t,
-    ],
-  );
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
@@ -358,6 +195,11 @@ const TableManager = forwardRef(function TableManager({
     () => Array.from(requestIdSet).sort().join(','),
     [requestIdSet],
   );
+  const { user, company, branch, department, session } = useContext(AuthContext);
+  const isSubordinate = Boolean(session?.senior_empid);
+  const generalConfig = useGeneralConfig();
+  const { addToast } = useToast();
+  const canRequestStatus = isSubordinate;
 
   function promptRequestReason() {
     return new Promise((resolve) => {
@@ -393,6 +235,13 @@ const TableManager = forwardRef(function TableManager({
   }, []);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
+  const columnCaseMap = useMemo(() => {
+    const map = {};
+    columnMeta.forEach((c) => {
+      map[c.name.toLowerCase()] = c.name;
+    });
+    return map;
+  }, [columnMeta]);
 
   const fieldTypeMap = useMemo(() => {
     const map = {};
@@ -427,26 +276,6 @@ const TableManager = forwardRef(function TableManager({
       ),
     [columnMeta],
   );
-
-  const generatedColumnEvaluators = useMemo(() => {
-    if (!Array.isArray(columnMeta) || columnMeta.length === 0) return {};
-    const evaluators = {};
-    columnMeta.forEach((col) => {
-      if (!col || typeof col !== 'object') return;
-      const rawName = col.name;
-      const expr =
-        col.generationExpression ??
-        col.GENERATION_EXPRESSION ??
-        col.generation_expression ??
-        null;
-      if (!rawName || !expr) return;
-      const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
-      if (typeof key !== 'string') return;
-      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
-      if (evaluator) evaluators[key] = evaluator;
-    });
-    return evaluators;
-  }, [columnMeta, columnCaseMap]);
 
   const viewSourceMap = useMemo(() => {
     const map = {};
@@ -579,14 +408,7 @@ const TableManager = forwardRef(function TableManager({
         .then((res) => (res.ok ? res.json() : []))
         .then((cols) => {
           if (canceled) return;
-          const list = Array.isArray(cols)
-            ? cols.map((c) => ({
-                ...c,
-                generationExpression:
-                  c?.generationExpression ?? c?.GENERATION_EXPRESSION ?? null,
-              }))
-            : [];
-          setViewColumns((m) => ({ ...m, [v]: list }));
+          setViewColumns((m) => ({ ...m, [v]: cols.map((c) => c.name) }));
         })
         .catch(() => {});
     });
@@ -1086,33 +908,11 @@ const TableManager = forwardRef(function TableManager({
     setSelectedRows(new Set());
   }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
 
-  function formatRowIdForApi(rawId) {
-    if (rawId === undefined || rawId === null) return rawId;
-    const keys = getKeyFields();
-    if (!Array.isArray(keys) || keys.length === 0) return rawId;
-    const parts = decodeCompositeId(rawId, keys.length);
-    if (!Array.isArray(parts) || parts.length === 0) {
-      return typeof rawId === 'string' ? rawId : String(rawId);
-    }
-    const encoded = encodeCompositeId(parts);
-    if (encoded !== undefined) {
-      return encoded;
-    }
-    return parts[0];
-  }
-
   function getRowId(row) {
     const keys = getKeyFields();
-    if (!row || keys.length === 0) return undefined;
-    const values = [];
-    for (const key of keys) {
-      const value = getCase(row, key);
-      if (value === undefined || value === null) {
-        return undefined;
-      }
-      values.push(value);
-    }
-    return encodeCompositeId(values);
+    if (keys.length === 0) return undefined;
+    const idVal = keys.length === 1 ? row[keys[0]] : keys.map((k) => row[k]).join('-');
+    return idVal;
   }
 
   function getImageFolder(row) {
@@ -1178,29 +978,27 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function ensureColumnMeta() {
-    if (!table) return [];
-    if (columnMeta.length > 0) return columnMeta;
+    if (columnMeta.length > 0 || !table) return;
     try {
       const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
         credentials: 'include',
       });
-      if (!res.ok) {
+      if (res.ok) {
+        try {
+          const cols = await res.json();
+          if (Array.isArray(cols)) {
+            setColumnMeta(cols);
+            setAutoInc(computeAutoInc(cols));
+          }
+        } catch {
+          addToast(
+            t('failed_parse_table_columns', 'Failed to parse table columns'),
+            'error',
+          );
+        }
+      } else {
         addToast(
           t('failed_load_table_columns', 'Failed to load table columns'),
-          'error',
-        );
-        return [];
-      }
-      try {
-        const cols = await res.json();
-        if (Array.isArray(cols)) {
-          setColumnMeta(cols);
-          setAutoInc(computeAutoInc(cols));
-          return cols;
-        }
-      } catch {
-        addToast(
-          t('failed_parse_table_columns', 'Failed to parse table columns'),
           'error',
         );
       }
@@ -1211,99 +1009,76 @@ const TableManager = forwardRef(function TableManager({
         'error',
       );
     }
-    return columnMeta;
   }
 
   async function openAdd() {
-    const meta = await ensureColumnMeta();
-    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+    await ensureColumnMeta();
+    const vals = {};
     const defaults = {};
-    const baseRow = {};
-    cols.forEach((c) => {
-      const name = c.name;
-      const isGenerated =
-        typeof c?.extra === 'string' && /(virtual|stored)\s+generated/i.test(c.extra);
-      let v = (formConfig?.defaultValues || {})[name] || '';
+    const all = columnMeta.map((c) => c.name);
+    all.forEach((c) => {
+      const isGenerated = generatedCols.has(c);
+      let v = (formConfig?.defaultValues || {})[c] || '';
       if (autoFillSession && !isGenerated) {
-        if (userIdFields.includes(name) && user?.empid) v = user.empid;
-        if (branchIdFields.includes(name) && branch !== undefined) v = branch;
-        if (departmentIdFields.includes(name) && department !== undefined) v = department;
-        if (companyIdFields.includes(name) && company !== undefined) v = company;
+        if (userIdFields.includes(c) && user?.empid) v = user.empid;
+        if (branchIdFields.includes(c) && branch !== undefined) v = branch;
+        if (departmentIdFields.includes(c) && department !== undefined) v = department;
+        if (companyIdFields.includes(c) && company !== undefined) v = company;
       }
-      baseRow[name] = v;
-      defaults[name] = v;
-      if (!v && formConfig?.dateField?.includes(name)) {
-        const typ = fieldTypeMap[name];
+      vals[c] = v;
+      defaults[c] = v;
+      if (!v && formConfig?.dateField?.includes(c)) {
+        const typ = fieldTypeMap[c];
         const now = new Date();
         if (typ === 'datetime') {
-          defaults[name] = formatTimestamp(now);
+          defaults[c] = formatTimestamp(now);
         } else if (typ === 'date') {
-          defaults[name] = formatTimestamp(now).slice(0, 10);
+          defaults[c] = formatTimestamp(now).slice(0, 10);
         } else if (typ === 'time') {
-          defaults[name] = formatTimestamp(now).slice(11, 19);
+          defaults[c] = formatTimestamp(now).slice(11, 19);
         }
       }
     });
     if (formConfig?.transactionTypeField && formConfig.transactionTypeValue) {
-      baseRow[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
+      vals[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
       defaults[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
     }
-    const initialRows = [{ ...baseRow, _saved: false }];
-    if (Object.keys(generatedColumnEvaluators).length > 0) {
-      const { changed } = applyGeneratedColumnEvaluators({
-        targetRows: initialRows,
-        evaluators: generatedColumnEvaluators,
-        equals: valuesEqual,
-      });
-      if (changed && initialRows[0]) {
-        Object.assign(baseRow, initialRows[0]);
-      }
-    }
     setRowDefaults(defaults);
-    setEditing(baseRow);
-    setGridRows(initialRows);
+    setEditing(vals);
+    setGridRows([vals]);
     setIsAdding(true);
     setShowForm(true);
   }
 
-  async function openEditInternal(row, nextRequestType = null) {
-    if (!row) return;
-    await ensureColumnMeta();
-    const rowId = getRowId(row);
-    if (rowId === undefined) {
+  async function openEdit(row) {
+    if (getRowId(row) === undefined) {
       addToast(
         t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
         'error',
       );
       return;
     }
-    const hydrated = await hydrateRowForEdit(row, rowId);
-    let workingRow = hydrated;
-    if (Object.keys(generatedColumnEvaluators).length > 0) {
-      const workingRows = [{ ...hydrated }];
-      const { changed } = applyGeneratedColumnEvaluators({
-        targetRows: workingRows,
-        evaluators: generatedColumnEvaluators,
-        equals: valuesEqual,
-      });
-      if (changed) {
-        workingRow = workingRows[0];
-      }
-    }
-    const gridRow = { ...workingRow, _saved: true };
-    setEditing(workingRow);
-    setGridRows([gridRow]);
+    await ensureColumnMeta();
+    setEditing(row);
+    setGridRows([row]);
     setIsAdding(false);
-    setRequestType(nextRequestType ?? null);
     setShowForm(true);
   }
 
-  async function openEdit(row) {
-    await openEditInternal(row, null);
-  }
-
   async function openRequestEdit(row) {
-    await openEditInternal(row, 'edit');
+    if (getRowId(row) === undefined) {
+      addToast(
+        t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
+        'error',
+      );
+      return;
+    }
+    await ensureColumnMeta();
+    setEditing(row);
+    setGridRows([row]);
+    setIsAdding(false);
+    setRequestType('edit');
+    setShowForm(true);
   }
 
   useImperativeHandle(ref, () => ({
@@ -1337,8 +1112,7 @@ const TableManager = forwardRef(function TableManager({
           if (keys.includes('department_id') && department != null)
             params.set('department_id', department);
         }
-        const apiId = formatRowIdForApi(id);
-        const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}/references${
+        const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references${
           params.toString() ? `?${params.toString()}` : ''
         }`;
         const res = await fetch(url, { credentials: 'include' });
@@ -1460,28 +1234,18 @@ const TableManager = forwardRef(function TableManager({
           });
         }
       });
-      if (Object.keys(generatedColumnEvaluators).length === 0) {
-        return next;
-      }
-      const workingRows = [{ ...next }];
-      const { changed } = applyGeneratedColumnEvaluators({
-        targetRows: workingRows,
-        evaluators: generatedColumnEvaluators,
-        equals: valuesEqual,
-      });
-      return changed ? workingRows[0] : next;
+      return next;
     });
     Object.entries(changes).forEach(([field, val]) => {
       const view = viewSourceMap[field];
       if (!view || val === '') return;
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
       const cols = viewColumns[view] || [];
-      const colNames = cols.map((c) => (typeof c === 'string' ? c : c.name));
-      if (company != null && colNames.includes('company_id'))
+      if (company != null && cols.includes('company_id'))
         params.set('company_id', company);
       Object.entries(viewSourceMap).forEach(([f, v]) => {
         if (v !== view) return;
-        if (!colNames.includes(f)) return;
+        if (!cols.includes(f)) return;
         let pv = changes[f];
         if (pv === undefined) pv = editing?.[f];
         if (pv === undefined || pv === '') return;
@@ -1624,14 +1388,13 @@ const TableManager = forwardRef(function TableManager({
         return;
       }
       try {
-        const recordId = formatRowIdForApi(getRowId(editing));
         const res = await fetch(`${API_BASE}/pending_request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             table_name: table,
-            record_id: recordId,
+            record_id: getRowId(editing),
             request_type: 'edit',
             request_reason: reason,
             proposed_data: cleaned,
@@ -1662,10 +1425,9 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const method = isAdding ? 'POST' : 'PUT';
-    const recordId = formatRowIdForApi(getRowId(editing));
     const url = isAdding
       ? `/api/tables/${encodeURIComponent(table)}`
-      : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(recordId)}`;
+      : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`;
 
     if (isAdding) {
       if (columns.has('created_by')) cleaned.created_by = user?.empid;
@@ -1768,9 +1530,8 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function executeDeleteRow(id, cascade) {
-    const apiId = formatRowIdForApi(id);
     const res = await fetch(
-      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}${
+      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
         cascade ? '?cascade=true' : ''
       }`,
       { method: 'DELETE', credentials: 'include' },
@@ -1817,10 +1578,9 @@ const TableManager = forwardRef(function TableManager({
       );
       return;
     }
-    const apiId = formatRowIdForApi(id);
     try {
       const refRes = await fetch(
-        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}/references`,
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
         { credentials: 'include' }
       );
       if (refRes.ok) {
@@ -1829,13 +1589,13 @@ const TableManager = forwardRef(function TableManager({
           ? refs.reduce((a, r) => a + (r.count || 0), 0)
           : 0;
         if (total > 0) {
-          setDeleteInfo({ id: apiId, refs });
+          setDeleteInfo({ id, refs });
           setShowCascade(true);
           return;
         }
         if (!window.confirm(t('delete_row_question', 'Delete row?')))
           return;
-        await executeDeleteRow(apiId, false);
+        await executeDeleteRow(id, false);
         return;
       }
     } catch {
@@ -1880,14 +1640,13 @@ const TableManager = forwardRef(function TableManager({
         if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
         if (v !== '') cleaned[k] = v;
       });
-      const recordId = formatRowIdForApi(id);
       const res = await fetch(`${API_BASE}/pending_request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           table_name: table,
-          record_id: recordId,
+          record_id: id,
           request_type: 'delete',
           request_reason: reason,
           proposed_data: cleaned,
@@ -1922,7 +1681,6 @@ const TableManager = forwardRef(function TableManager({
     const cascadeMap = new Map();
     let hasRelated = false;
     for (const id of selectedRows) {
-      const apiId = formatRowIdForApi(id);
       if (id === undefined) {
         addToast(
           t('delete_failed_no_primary_key', 'Delete failed: table has no primary key'),
@@ -1932,7 +1690,7 @@ const TableManager = forwardRef(function TableManager({
       }
       try {
         const refRes = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}/references`,
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
           { credentials: 'include' }
         );
         if (refRes.ok) {
@@ -1940,10 +1698,10 @@ const TableManager = forwardRef(function TableManager({
           const total = Array.isArray(refs)
             ? refs.reduce((a, r) => a + (r.count || 0), 0)
             : 0;
-          cascadeMap.set(id, { cascade: total > 0, apiId });
+          cascadeMap.set(id, total > 0);
           if (total > 0) hasRelated = true;
         } else {
-          cascadeMap.set(id, { cascade: true, apiId });
+          cascadeMap.set(id, true);
           hasRelated = true;
         }
       } catch {
@@ -1951,7 +1709,7 @@ const TableManager = forwardRef(function TableManager({
           t('failed_check_references', 'Failed to check references'),
           'error',
         );
-        cascadeMap.set(id, { cascade: true, apiId });
+        cascadeMap.set(id, true);
         hasRelated = true;
       }
     }
@@ -1971,10 +1729,9 @@ const TableManager = forwardRef(function TableManager({
     if (!window.confirm(confirmMsg)) return;
 
     for (const id of selectedRows) {
-      const info = cascadeMap.get(id) || { cascade: true, apiId: formatRowIdForApi(id) };
-      const { cascade, apiId } = info;
+      const cascade = cascadeMap.get(id);
       const res = await fetch(
-        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}${
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
           cascade ? '?cascade=true' : ''
         }`,
         { method: 'DELETE', credentials: 'include' }
@@ -2188,15 +1945,9 @@ const TableManager = forwardRef(function TableManager({
   let disabledFields = editSet
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
     : [];
-  if (isAdding) {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
-  } else if (editing) {
-    disabledFields = Array.from(
-      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
-    );
-  } else {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
-  }
+  disabledFields = editing
+    ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
+    : Array.from(new Set([...disabledFields, ...lockedDefaults]));
 
   const totalAmountSet = useMemo(
     () => new Set(formConfig?.totalAmountFields || []),
@@ -3010,7 +2761,6 @@ const TableManager = forwardRef(function TableManager({
         procTriggers={procTriggers}
         columnCaseMap={columnCaseMap}
         table={table}
-        tableColumns={columnMeta}
         imagenameField={formConfig?.imagenameField || []}
         imageIdField={formConfig?.imageIdField || ''}
         viewSource={viewSourceMap}

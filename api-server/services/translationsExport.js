@@ -9,17 +9,15 @@ import {
   sortObj,
 } from '../utils/translationHelpers.js';
 
-function ensureMeta(meta, key, module = '', context = '', page = '') {
+function ensureMeta(meta, key, module = '', context = '') {
   if (!key) return;
   const normalizedKey = String(key);
   const nextModule = module ?? '';
   const nextContext = context ?? '';
-  const nextPage = page ?? '';
   if (!meta[normalizedKey]) {
     meta[normalizedKey] = {
       module: nextModule,
       context: nextContext,
-      page: nextPage,
     };
     return;
   }
@@ -34,12 +32,8 @@ function ensureMeta(meta, key, module = '', context = '', page = '') {
   ) {
     entry.context = nextContext;
   }
-  if ((entry.page == null || entry.page === '') && nextPage) {
-    entry.page = nextPage;
-  }
   if (entry.module == null) entry.module = '';
   if (entry.context == null) entry.context = '';
-  if (entry.page == null) entry.page = '';
 }
 
 function collectObjectMeta(meta, obj, prefix = '', context = '') {
@@ -121,9 +115,9 @@ export async function exportTranslations(companyId = 0) {
   }
 
   const tPairs = collectPhrasesFromPages(path.resolve('src/erp.mgt.mn'));
-  for (const { key, text, module: sourceModule, context, page } of tPairs) {
+  for (const { key, text, module: sourceModule, context } of tPairs) {
     if (base[key] === undefined) base[key] = pickDefault(text);
-    ensureMeta(metadata, key, sourceModule, context || 'page', page);
+    ensureMeta(metadata, key, sourceModule, context || 'page');
   }
 
   try {
@@ -256,11 +250,7 @@ export async function exportTranslations(companyId = 0) {
   const sorted = sortObj(base);
   const sortedMeta = sortObj(
     Object.fromEntries(
-      Object.entries(metadata).map(([k, v]) => [k, {
-        module: v.module ?? '',
-        context: v.context ?? '',
-        page: v.page ?? '',
-      }]),
+      Object.entries(metadata).map(([k, v]) => [k, { module: v.module ?? '', context: v.context ?? '' }]),
     ),
   );
   const exportPath = tenantConfigPath('exportedtexts.json', 0);

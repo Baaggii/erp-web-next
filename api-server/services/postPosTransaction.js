@@ -6,8 +6,6 @@ import { getConfigPath } from '../utils/configPaths.js';
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
 
-const arrayIndexPattern = /^(0|[1-9]\d*)$/;
-
 const SESSION_KEY_MAP = new Map([
   ['employee_id', 'emp_id'],
   ['employeeid', 'emp_id'],
@@ -97,29 +95,6 @@ function setValue(target, field, value) {
   }
 }
 
-function extractArrayMetadata(value) {
-  if (!value || typeof value !== 'object') return null;
-  const metadata = {};
-  let hasMetadata = false;
-  for (const key of Object.keys(value)) {
-    if (key === 'rows' || key === 'meta') continue;
-    if (arrayIndexPattern.test(key)) continue;
-    metadata[key] = value[key];
-    hasMetadata = true;
-  }
-  return hasMetadata ? metadata : null;
-}
-
-function assignArrayMetadata(target, source) {
-  if (!Array.isArray(target) || !source || typeof source !== 'object') {
-    return target;
-  }
-  const metadata = extractArrayMetadata(source);
-  if (!metadata) return target;
-  Object.assign(target, metadata);
-  return target;
-}
-
 function sumCellValue(source, field) {
   if (Array.isArray(source)) {
     let sum = 0;
@@ -185,12 +160,6 @@ export function propagateCalcFields(cfg, data) {
         const { table, field } = cell || {};
         if (!table || !field) continue;
         const source = data[table];
-        const direct = getValue(source, field);
-        if (direct !== undefined) {
-          computedValue = direct;
-          hasComputedValue = true;
-          break;
-        }
         if (Array.isArray(source)) {
           for (const row of source) {
             if (!row || typeof row !== 'object') continue;
@@ -221,7 +190,6 @@ export function propagateCalcFields(cfg, data) {
       if (!target) continue;
 
       if (agg === 'SUM' && Array.isArray(target)) {
-        setValue(target, field, computedValue);
         continue;
       }
 
@@ -230,7 +198,6 @@ export function propagateCalcFields(cfg, data) {
           if (!row || typeof row !== 'object') continue;
           setValue(row, field, computedValue);
         }
-        setValue(target, field, computedValue);
       } else if (isPlainObject(target)) {
         setValue(target, field, computedValue);
       }
@@ -359,24 +326,13 @@ function normalizeSingleEntry(value) {
 }
 
 function normalizeMultiEntry(value) {
-  let rows = [];
-  let metadata = null;
   if (Array.isArray(value)) {
-    rows = value.filter((item) => isPlainObject(item)).map((item) => ({ ...item }));
-    metadata = extractArrayMetadata(value);
-  } else if (isPlainObject(value)) {
-    if (Array.isArray(value.rows)) {
-      rows = value.rows
-        .filter((item) => isPlainObject(item))
-        .map((item) => ({ ...item }));
-      metadata = extractArrayMetadata(value.meta || {});
-    } else {
-      rows = [{ ...value }];
-    }
+    return value.filter((item) => isPlainObject(item)).map((item) => ({ ...item }));
   }
-  const normalized = Array.isArray(rows) ? rows : [];
-  if (!metadata) return normalized;
-  return assignArrayMetadata(normalized, metadata);
+  if (isPlainObject(value)) {
+    return [{ ...value }];
+  }
+  return [];
 }
 
 function inferExpectedFieldType(info) {
@@ -457,11 +413,7 @@ export function validateConfiguredFields(cfg, data, tableTypeMap = new Map()) {
 
     let rows;
     if (Array.isArray(tableData)) {
-      const metadata = extractArrayMetadata(tableData);
       rows = tableData.map((row, index) => ({ row, index }));
-      if (metadata && Object.keys(metadata).length > 0) {
-        rows.push({ row: metadata, index: 'meta' });
-      }
     } else if (isPlainObject(tableData)) {
       rows = [{ row: tableData, index: null }];
     } else {

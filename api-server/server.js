@@ -51,7 +51,6 @@ import pendingRequestRoutes from "./routes/pending_request.js";
 import activityLogRoutes from "./routes/user_activity_log.js";
 import userSettingsRoutes from "./routes/user_settings.js";
 import translationRoutes from "./routes/translations.js";
-import tourRoutes from "./routes/tours.js";
 import manualTranslationsRoutes from "./routes/manual_translations.js";
 
 // Polyfill for __dirname in ES modules
@@ -151,7 +150,6 @@ app.use("/api/procedures", requireAuth, procedureRoutes);
 app.use("/api/proc_triggers", requireAuth, procTriggerRoutes);
 app.use("/api/report_procedures", reportProcedureRoutes);
 app.use("/api/report_access", reportAccessRoutes);
-app.use("/api/tours", tourRoutes);
 app.use("/api/report_builder", reportBuilderRoutes);
 app.use("/api/transactions", requireAuth, transactionRoutes);
 app.use("/api/transaction_images", transactionImageRoutes);

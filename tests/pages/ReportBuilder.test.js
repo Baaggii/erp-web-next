@@ -7,7 +7,6 @@ if (typeof mock.import !== 'function') {
   test('ReportBuilder loads config from procedure', async () => {
     const states = [];
     let loadConfigHandler;
-    let activateCodeTab;
     const reactMock = {
       useState(initial) {
         const idx = states.length;
@@ -23,13 +22,8 @@ if (typeof mock.import !== 'function') {
           return type({ ...props, children });
         }
         const text = children.flat ? children.flat().join('') : children.join('');
-        if (type === 'button') {
-          if (text.includes('Code development')) {
-            activateCodeTab = props.onClick;
-          }
-          if (text.includes('Load config from stored procedure')) {
-            loadConfigHandler = props.onClick;
-          }
+        if (type === 'button' && text.includes('Load config from stored procedure')) {
+          loadConfigHandler = props.onClick;
         }
         return null;
       },
@@ -66,7 +60,6 @@ if (typeof mock.import !== 'function') {
     );
 
     ReportBuilder();
-    activateCodeTab?.();
 
     // selectedDbProcedure
     states[28] = 'proc1';
@@ -87,7 +80,6 @@ if (typeof mock.import !== 'function') {
   test('ReportBuilder loads config when Load Config clicked', async () => {
     const states = [];
     let loadConfigHandler;
-    let activateCodeTab;
     const reactMock = {
       useState(initial) {
         const idx = states.length;
@@ -107,13 +99,8 @@ if (typeof mock.import !== 'function') {
           return type({ ...props, children });
         }
         const text = children.flat ? children.flat().join('') : children.join('');
-        if (type === 'button') {
-          if (text.includes('Code development')) {
-            activateCodeTab = props.onClick;
-          }
-          if (text.includes('Load Config')) {
-            loadConfigHandler = props.onClick;
-          }
+        if (type === 'button' && text.includes('Load Config')) {
+          loadConfigHandler = props.onClick;
         }
         return null;
       },
@@ -148,7 +135,6 @@ if (typeof mock.import !== 'function') {
     );
 
     ReportBuilder();
-    activateCodeTab?.();
 
     // selectedReport
     states[24] = 'cfg1';
@@ -164,7 +150,6 @@ if (typeof mock.import !== 'function') {
   test('ReportBuilder auto-generates config when missing', async () => {
     const states = [];
     let loadConfigHandler;
-    let activateCodeTab;
     const reactMock = {
       useState(initial) {
         const idx = states.length;
@@ -180,13 +165,8 @@ if (typeof mock.import !== 'function') {
           return type({ ...props, children });
         }
         const text = children.flat ? children.flat().join('') : children.join('');
-        if (type === 'button') {
-          if (text.includes('Code development')) {
-            activateCodeTab = props.onClick;
-          }
-          if (text.includes('Load config from stored procedure')) {
-            loadConfigHandler = props.onClick;
-          }
+        if (type === 'button' && text.includes('Load config from stored procedure')) {
+          loadConfigHandler = props.onClick;
         }
         return null;
       },
@@ -230,7 +210,6 @@ if (typeof mock.import !== 'function') {
     );
 
     ReportBuilder();
-    activateCodeTab?.();
 
     // selectedDbProcedure
     states[28] = 'proc1';
@@ -254,7 +233,6 @@ if (typeof mock.import !== 'function') {
   test('ReportBuilder surfaces parsing errors', async () => {
     const states = [];
     let loadConfigHandler;
-    let activateCodeTab;
     const reactMock = {
       useState(initial) {
         const idx = states.length;
@@ -270,13 +248,8 @@ if (typeof mock.import !== 'function') {
           return type({ ...props, children });
         }
         const text = children.flat ? children.flat().join('') : children.join('');
-        if (type === 'button') {
-          if (text.includes('Code development')) {
-            activateCodeTab = props.onClick;
-          }
-          if (text.includes('Load config from stored procedure')) {
-            loadConfigHandler = props.onClick;
-          }
+        if (type === 'button' && text.includes('Load config from stored procedure')) {
+          loadConfigHandler = props.onClick;
         }
         return null;
       },
@@ -314,7 +287,6 @@ if (typeof mock.import !== 'function') {
     );
 
     ReportBuilder();
-    activateCodeTab?.();
 
     // selectedDbProcedure
     states[28] = 'proc1';

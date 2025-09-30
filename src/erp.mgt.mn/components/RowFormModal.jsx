@@ -9,10 +9,6 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import callProcedure from '../utils/callProcedure.js';
-import {
-  applyGeneratedColumnEvaluators,
-  createGeneratedColumnEvaluator,
-} from '../utils/generatedColumns.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
@@ -65,7 +61,6 @@ const RowFormModal = function RowFormModal({
   loadView = () => {},
   procTriggers = {},
   autoFillSession = true,
-  tableColumns = [],
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -171,11 +166,6 @@ const RowFormModal = function RowFormModal({
     return map;
   }, [relationConfigsKey, columnCaseMapKey]);
 
-  const relationConfigMapKey = React.useMemo(
-    () => JSON.stringify(relationConfigMap || {}),
-    [relationConfigMap],
-  );
-
   const displayIndex = React.useMemo(() => {
     const index = {};
     Object.entries(tableDisplayFields || {}).forEach(([tbl, cfg]) => {
@@ -190,80 +180,17 @@ const RowFormModal = function RowFormModal({
     return index;
   }, [tableDisplayFieldsKey]);
 
-  const relationsKey = React.useMemo(() => JSON.stringify(relations || {}), [relations]);
-
-  const tableRelationsConfig = React.useMemo(() => {
-    if (!table) return {};
-    const sources = [generalConfig?.tableRelations, general?.tableRelations, cfg?.tableRelations];
-    const lowerTable = String(table).toLowerCase();
-    for (const src of sources) {
-      if (!src || typeof src !== 'object') continue;
-      let entry = src[table];
-      if (!entry) {
-        const match = Object.keys(src).find(
-          (key) => typeof key === 'string' && key.toLowerCase() === lowerTable,
-        );
-        if (match) entry = src[match];
-      }
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-      const normalized = {};
-      Object.keys(entry).forEach((col) => {
-        if (typeof col !== 'string') return;
-        const mapped = columnCaseMap[col.toLowerCase()] || col;
-        if (typeof mapped === 'string') {
-          normalized[mapped] = entry[col];
-        }
-      });
-      if (Object.keys(normalized).length > 0) {
-        return normalized;
-      }
-    }
-    return {};
-  }, [generalConfig, general, cfg, table, columnCaseMap, columnCaseMapKey]);
-
-  const tableRelationsKey = React.useMemo(
-    () => JSON.stringify(tableRelationsConfig || {}),
-    [tableRelationsConfig],
-  );
-
-  const lookupColumnSet = React.useMemo(() => {
-    const set = new Set(Object.keys(relationConfigMap || {}));
-    Object.entries(relations || {}).forEach(([rawKey, value]) => {
-      if (!value) return;
-      const mapped = columnCaseMap[rawKey.toLowerCase()] || rawKey;
-      if (!mapped) return;
-      if (Array.isArray(value)) {
-        if (value.length > 0) set.add(mapped);
-        return;
-      }
-      if (typeof value === 'object' && Object.keys(value).length > 0) {
-        set.add(mapped);
-      }
-    });
-    Object.keys(viewSourceMap || {}).forEach((key) => set.add(key));
-    Object.keys(tableRelationsConfig || {}).forEach((key) => set.add(key));
-    return set;
-  }, [
-    relationConfigMapKey,
-    relationsKey,
-    tableRelationsKey,
-    columnCaseMapKey,
-    columnCaseMap,
-    viewSourceMap,
-  ]);
-
   // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
   const autoSelectConfigs = React.useMemo(() => {
     const map = {};
     Object.entries(columnCaseMap || {}).forEach(([lower, key]) => {
-      if (!lookupColumnSet.has(key)) return;
       const cfg = displayIndex[lower];
       if (cfg) {
         map[key] = cfg;
       }
     });
     return map;
-  }, [columnCaseMapKey, displayIndex, lookupColumnSet]);
+  }, [columnCaseMapKey, displayIndex]);
   const getRowValueCaseInsensitive = useCallback((rowObj, key) => {
     if (!rowObj || !key) return undefined;
     const lowerKey = key.toLowerCase();
@@ -271,6 +198,10 @@ const RowFormModal = function RowFormModal({
     if (match === undefined) return undefined;
     return rowObj[match];
   }, []);
+  const relationConfigMapKey = React.useMemo(
+    () => JSON.stringify(relationConfigMap || {}),
+    [relationConfigMap],
+  );
   const viewSourceMapKey = React.useMemo(
     () => JSON.stringify(viewSourceMap || {}),
     [viewSourceMap],
@@ -293,25 +224,6 @@ const RowFormModal = function RowFormModal({
     () => JSON.stringify(defaultValues || {}),
     [defaultValues],
   );
-  const generatedColumnEvaluators = React.useMemo(() => {
-    const map = {};
-    if (!Array.isArray(tableColumns)) return map;
-    tableColumns.forEach((col) => {
-      if (!col || typeof col !== 'object') return;
-      const rawName = col.name;
-      const expr =
-        col.generationExpression ??
-        col.GENERATION_EXPRESSION ??
-        col.generation_expression ??
-        null;
-      if (!rawName || !expr) return;
-      const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
-      if (typeof key !== 'string') return;
-      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
-      if (evaluator) map[key] = evaluator;
-    });
-    return map;
-  }, [tableColumns, columnCaseMap, columnCaseMapKey]);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -323,12 +235,9 @@ const RowFormModal = function RowFormModal({
       } else if (typ === 'date' || typ === 'datetime') {
         placeholder = 'YYYY-MM-DD';
       }
-      const rowValue = getRowValueCaseInsensitive(row, c);
-      const raw = row
-        ? String(rowValue ?? '')
-        : String(defaultValues[c] ?? '');
+      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let val = normalizeDateInput(raw, placeholder);
-      const missing = !row || rowValue === undefined || rowValue === '';
+      const missing = !row || row[c] === undefined || row[c] === '';
       if (missing && !val && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
@@ -371,72 +280,6 @@ const RowFormModal = function RowFormModal({
   useEffect(() => {
     extraValsRef.current = extraVals;
   }, [extraVals]);
-  const computeNextFormVals = useCallback((baseRow, prevRow) => {
-    if (!baseRow || typeof baseRow !== 'object') {
-      return { next: baseRow, diff: {} };
-    }
-    const working = baseRow;
-    const evaluators = generatedColumnEvaluators || {};
-    let generatedChanged = false;
-    if (Object.keys(evaluators).length > 0) {
-      const rows = [working];
-      const result = applyGeneratedColumnEvaluators({
-        targetRows: rows,
-        evaluators,
-        equals: valuesEqual,
-      });
-      generatedChanged = Boolean(result?.changed);
-    }
-    const source = prevRow || {};
-    const diff = {};
-    const keys = new Set([
-      ...Object.keys(source || {}),
-      ...Object.keys(working || {}),
-    ]);
-    keys.forEach((key) => {
-      const nextVal = working?.[key];
-      const prevVal = source?.[key];
-      if (!valuesEqual(prevVal, nextVal)) {
-        diff[key] = nextVal;
-      }
-    });
-    if (generatedChanged) {
-      return { next: { ...working }, diff };
-    }
-    return { next: working, diff };
-  }, [generatedColumnEvaluators]);
-
-  const setFormValuesWithGenerated = useCallback(
-    (updater, { notify = true } = {}) => {
-      let pendingDiff = null;
-      let snapshot = null;
-      setFormVals((prev) => {
-        const base = typeof updater === 'function' ? updater(prev) : updater;
-        if (!base) {
-          snapshot = prev;
-          return prev;
-        }
-        const working = { ...base };
-        const { next, diff } = computeNextFormVals(working, prev);
-        if (!diff || Object.keys(diff).length === 0) {
-          snapshot = prev;
-          return prev;
-        }
-        pendingDiff = diff;
-        if (valuesEqual(prev, next)) {
-          snapshot = prev;
-          return prev;
-        }
-        snapshot = next;
-        return next;
-      });
-      if (notify && pendingDiff && Object.keys(pendingDiff).length > 0) {
-        onChange(pendingDiff);
-      }
-      return { snapshot: snapshot ?? formValsRef.current, diff: pendingDiff };
-    },
-    [computeNextFormVals, onChange],
-  );
   const inputRefs = useRef({});
   const readonlyRefs = useRef({});
   const [errors, setErrors] = useState({});
@@ -677,12 +520,9 @@ const RowFormModal = function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      const rowValue = getRowValueCaseInsensitive(row, c);
-      const raw = row
-        ? String(rowValue ?? '')
-        : String(defaultValues[c] ?? '');
+      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
       let v = normalizeDateInput(raw, placeholders[c]);
-      const missing = !row || rowValue === undefined || rowValue === '';
+      const missing = !row || row[c] === undefined || row[c] === '';
       if (missing && !v && dateField.includes(c)) {
         const now = new Date();
         if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
@@ -700,19 +540,12 @@ const RowFormModal = function RowFormModal({
       }
       vals[c] = v;
     });
+    // Avoid triggering a state update if the values haven't actually changed.
+    const same = Object.keys(vals).every((k) => formVals[k] === vals[k]);
+    if (!same) setFormVals(vals);
     inputRefs.current = {};
     setErrors({});
-    setFormValuesWithGenerated(() => vals, { notify: false });
-  }, [
-    row,
-    visible,
-    user,
-    company,
-    branch,
-    department,
-    setFormValuesWithGenerated,
-    getRowValueCaseInsensitive,
-  ]);
+  }, [row, visible, user, company, branch, department]);
 
   function resizeInputs() {
     Object.values({ ...inputRefs.current, ...readonlyRefs.current }).forEach((el) => {
@@ -794,19 +627,6 @@ const RowFormModal = function RowFormModal({
   async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    const isLookupField =
-      !!relationConfigMap[col] ||
-      !!viewSourceMap[col] ||
-      !!autoSelectConfigs[col];
-    if (isLookupField && e.lookupMatched === false) {
-      setErrors((er) => ({ ...er, [col]: 'Тохирох утга олдсонгүй' }));
-      const el = inputRefs.current[col];
-      if (el) {
-        el.focus();
-        if (el.select) el.select();
-      }
-      return;
-    }
     let label = undefined;
     let val = e.selectedOption ? e.selectedOption.value : e.target.value;
     if (e.selectedOption) label = e.selectedOption.label;
@@ -815,13 +635,9 @@ const RowFormModal = function RowFormModal({
       val = normalizeNumberInput(val);
     }
     const newVal = label ? { value: val, label } : val;
-    let nextSnapshot = formValsRef.current;
-    if (!valuesEqual(formVals[col], newVal)) {
-      const result = setFormValuesWithGenerated((prev) => {
-        if (valuesEqual(prev[col], newVal)) return prev;
-        return { ...prev, [col]: newVal };
-      });
-      nextSnapshot = result?.snapshot ?? formValsRef.current;
+    if (JSON.stringify(formVals[col]) !== JSON.stringify(newVal)) {
+      setFormVals((v) => ({ ...v, [col]: newVal }));
+      onChange({ [col]: newVal });
       if (val !== e.target.value) e.target.value = val;
     }
     if (placeholders[col] && !isValidDate(val, placeholders[col])) {
@@ -843,7 +659,7 @@ const RowFormModal = function RowFormModal({
       return;
     }
     if (hasTrigger(col)) {
-      const override = { ...nextSnapshot, [col]: newVal };
+      const override = { ...formVals, [col]: newVal };
       await runProcTrigger(col, override);
     }
 
@@ -1337,10 +1153,9 @@ const RowFormModal = function RowFormModal({
 
     if (stateChanged) {
       setExtraVals(workingExtraVals);
-      const { diff: generatedDiff } = setFormValuesWithGenerated(() => workingFormVals, { notify: false }) || {};
-      const combinedChanges = { ...(generatedDiff || {}), ...aggregatedChanges };
-      if (Object.keys(combinedChanges).length > 0) {
-        onChange(combinedChanges);
+      setFormVals(workingFormVals);
+      if (Object.keys(aggregatedChanges).length > 0) {
+        onChange(aggregatedChanges);
       }
     }
   }
@@ -1652,11 +1467,9 @@ const RowFormModal = function RowFormModal({
           labelFields={relationConfigMap[c].displayFields || []}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
-            setFormValuesWithGenerated((prev) => {
-              if (valuesEqual(prev[c], val)) return prev;
-              return { ...prev, [c]: val };
-            });
+            setFormVals((v) => ({ ...v, [c]: val }));
             setErrors((er) => ({ ...er, [c]: undefined }));
+            onChange({ [c]: val });
           }}
           onSelect={(opt) => {
             const el = inputRefs.current[c];
@@ -1693,11 +1506,9 @@ const RowFormModal = function RowFormModal({
           idField={viewDisplays[viewSourceMap[c]]?.idField || c}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
-            setFormValuesWithGenerated((prev) => {
-              if (valuesEqual(prev[c], val)) return prev;
-              return { ...prev, [c]: val };
-            });
+            setFormVals((v) => ({ ...v, [c]: val }));
             setErrors((er) => ({ ...er, [c]: undefined }));
+            onChange({ [c]: val });
           }}
           onSelect={(opt) => {
             const el = inputRefs.current[c];
@@ -1734,11 +1545,9 @@ const RowFormModal = function RowFormModal({
           idField={autoSelectConfigs[c].idField}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
-            setFormValuesWithGenerated((prev) => {
-              if (valuesEqual(prev[c], val)) return prev;
-              return { ...prev, [c]: val };
-            });
+            setFormVals((v) => ({ ...v, [c]: val }));
             setErrors((er) => ({ ...er, [c]: undefined }));
+            onChange({ [c]: val });
           }}
           onSelect={(opt) => {
             const el = inputRefs.current[c];
@@ -1768,12 +1577,14 @@ const RowFormModal = function RowFormModal({
         value={formVals[c]}
         onFocus={() => handleFocusField(c)}
         onChange={(e) => {
-          const value = e.target.value;
-          setFormValuesWithGenerated((prev) => {
-            if (prev[c] === value) return prev;
-            return { ...prev, [c]: value };
+          setFormVals((prev) => {
+            if (prev[c] === e.target.value) return prev;
+            const updated = { ...prev, [c]: e.target.value };
+            onChange({ [c]: e.target.value });
+            return updated;
           });
           setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: e.target.value });
         }}
         onKeyDown={(e) => handleKeyDown(e, c)}
         disabled={disabled}
@@ -1815,12 +1626,14 @@ const RowFormModal = function RowFormModal({
             : formVals[c]
         }
         onChange={(e) => {
-          const value = e.target.value;
-          setFormValuesWithGenerated((prev) => {
-            if (prev[c] === value) return prev;
-            return { ...prev, [c]: value };
+          setFormVals((prev) => {
+            if (prev[c] === e.target.value) return prev;
+            const updated = { ...prev, [c]: e.target.value };
+            onChange({ [c]: e.target.value });
+            return updated;
           });
           setErrors((er) => ({ ...er, [c]: undefined }));
+          onChange({ [c]: e.target.value });
         }}
         onKeyDown={(e) => handleKeyDown(e, c)}
         onFocus={(e) => {
@@ -1924,7 +1737,6 @@ const RowFormModal = function RowFormModal({
             boxMaxWidth={boxMaxWidth}
             scope={scope}
             configHash={configHash}
-            tableColumns={tableColumns}
           />
         </div>
       );

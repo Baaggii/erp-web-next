@@ -1,11 +1,16 @@
 // src/erp.mgt.mn/pages/Forms.jsx
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useOutlet } from 'react-router-dom';
 import FormsIndex from './FormsIndex.jsx';
 import { useTour } from '../components/ERPLayout.jsx';
+import formsSteps from '../tours/Forms.js';
+import { useTranslation } from 'react-i18next';
+
 export default function FormsPage() {
   const outlet = useOutlet();
-  useTour('forms');
+  const { t } = useTranslation(['translation', 'tooltip']);
+  const steps = useMemo(() => formsSteps(t), [t]);
+  useTour('forms', steps);
   return outlet || <FormsIndex />;
 }
 

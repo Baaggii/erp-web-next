@@ -42,12 +42,8 @@ test('exported texts are merged into manual translations', { concurrency: false 
           plain: 'Plain Text',
         },
         meta: {
-          foo: { module: 'pages/FooPage', context: 'button', page: 'FooPage' },
-          'nested.bar': {
-            module: 'pages/NestedPage',
-            context: 'label',
-            page: 'NestedPage',
-          },
+          foo: { module: 'pages/FooPage', context: 'button' },
+          'nested.bar': { module: 'pages/NestedPage', context: 'label' },
         },
       },
       null,
@@ -56,37 +52,35 @@ test('exported texts are merged into manual translations', { concurrency: false 
   );
   try {
     const data = await loadTranslations();
-    assert(Array.isArray(data.languages), 'languages is an array');
-    for (const entry of data.entries) {
-      assert.equal(typeof entry.translatedBy, 'object', 'translatedBy is an object');
-      for (const lang of data.languages) {
-        assert(
-          Object.prototype.hasOwnProperty.call(entry.translatedBy, lang),
-          `translatedBy has key for ${lang}`,
-        );
-      }
-    }
     const localeFoo = data.entries.find((e) => e.type === 'locale' && e.key === 'foo');
     const tooltipFoo = data.entries.find((e) => e.type === 'tooltip' && e.key === 'foo');
-    assert.equal(localeFoo, undefined);
-    assert.equal(tooltipFoo, undefined);
+    assert(localeFoo, 'locale foo entry exists');
+    assert(tooltipFoo, 'tooltip foo entry exists');
+    assert.equal(localeFoo.values.en, 'Foo');
+    assert.equal(tooltipFoo.values.en, 'Foo');
+    assert.equal(localeFoo.module, 'pages/FooPage');
+    assert.equal(localeFoo.context, 'button');
+    assert.equal(tooltipFoo.module, 'pages/FooPage');
+    assert.equal(tooltipFoo.context, 'button');
+    const otherLang = data.languages.find((l) => l !== 'en');
+    if (otherLang) {
+      assert.equal(localeFoo.values[otherLang], '');
+      assert.equal(tooltipFoo.values[otherLang], '');
+    }
     const nestedLocale = data.entries.find((e) => e.type === 'locale' && e.key === 'nested.bar');
     const nestedTooltip = data.entries.find((e) => e.type === 'tooltip' && e.key === 'nested.bar');
     assert(nestedLocale, 'nested locale entry exists');
     assert(nestedTooltip, 'nested tooltip entry exists');
     assert.equal(nestedLocale.values.en, 'Bar');
-    assert.equal(nestedTooltip.values.en, '');
+    assert.equal(nestedTooltip.values.en, 'Bar');
     assert.equal(nestedLocale.module, 'pages/NestedPage');
     assert.equal(nestedLocale.context, 'label');
-    assert.equal(nestedLocale.page, 'NestedPage');
     assert.equal(nestedTooltip.module, 'pages/NestedPage');
     assert.equal(nestedTooltip.context, 'label');
-    assert.equal(nestedTooltip.page, 'NestedPage');
     const plainLocale = data.entries.find((e) => e.type === 'locale' && e.key === 'plain');
     assert(plainLocale, 'plain locale entry exists');
     assert.equal(plainLocale.module, '');
     assert.equal(plainLocale.context, '');
-    assert.equal(plainLocale.page, '');
   } finally {
     cleanup();
   }
@@ -154,7 +148,7 @@ test('exported texts detect languages and respect existing entries', { concurren
     assert(englishLocale, 'english locale entry exists');
     assert(englishTooltip, 'english tooltip entry exists');
     assert.equal(englishLocale.values.en, 'Sample English Phrase');
-    assert.equal(englishTooltip.values.en, '');
+    assert.equal(englishTooltip.values.en, 'Sample English Phrase');
     assert.equal(englishLocale.values.mn, '');
     assert.equal(englishTooltip.values.mn, '');
 
@@ -167,7 +161,7 @@ test('exported texts detect languages and respect existing entries', { concurren
     assert(mongolianLocale, 'mongolian locale entry exists');
     assert(mongolianTooltip, 'mongolian tooltip entry exists');
     assert.equal(mongolianLocale.values.mn, 'Санхүүгийн тайлан');
-    assert.equal(mongolianTooltip.values.mn, '');
+    assert.equal(mongolianTooltip.values.mn, 'Санхүүгийн тайлан');
     assert.equal(mongolianLocale.values.en, '');
     assert.equal(mongolianTooltip.values.en, '');
 
@@ -189,36 +183,5 @@ test('exported texts detect languages and respect existing entries', { concurren
     fs.writeFileSync(mnLocalePath, originalMnLocale);
     fs.writeFileSync(enTooltipPath, originalEnTooltip);
     fs.writeFileSync(mnTooltipPath, originalMnTooltip);
-  }
-});
-
-test('non-meaningful exported translations are ignored', { concurrency: false }, async () => {
-  cleanup();
-  fs.mkdirSync(path.dirname(exportedPath), { recursive: true });
-
-  const meaninglessKey = 'Manual.Translations_Test';
-  const meaninglessValue = 'manual translations test';
-
-  fs.writeFileSync(
-    exportedPath,
-    JSON.stringify(
-      {
-        translations: {
-          [meaninglessKey]: meaninglessValue,
-        },
-      },
-      null,
-      2,
-    ),
-  );
-
-  try {
-    const data = await loadTranslations();
-    const localeEntry = data.entries.find((e) => e.type === 'locale' && e.key === meaninglessKey);
-    const tooltipEntry = data.entries.find((e) => e.type === 'tooltip' && e.key === meaninglessKey);
-    assert.equal(localeEntry, undefined);
-    assert.equal(tooltipEntry, undefined);
-  } finally {
-    cleanup();
   }
 });

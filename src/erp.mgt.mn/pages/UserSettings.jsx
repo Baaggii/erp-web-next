@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useTour } from '../components/ERPLayout.jsx';
+import userSettingsSteps from '../tours/UserSettings.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
@@ -8,7 +9,8 @@ import { API_BASE } from '../utils/apiBase.js';
 
 export default function UserSettingsPage() {
   const { t } = useTranslation(['translation', 'tooltip']);
-  useTour('user-settings');
+  const steps = useMemo(() => userSettingsSteps(t), [t]);
+  useTour('user-settings', steps);
   const tabs = [
     { key: 'general', label: t('general', 'General') },
     { key: 'printer', label: t('printer', 'Printer') },
@@ -68,8 +70,6 @@ function UserManualTab() {
   const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const toursEnabled = userSettings.settings_enable_tours ?? false;
-  const showTourButtons = userSettings.showTourButtons ?? true;
-  const tourBuilderEnabled = userSettings.settings_enable_tour_builder ?? true;
   return (
     <div>
       <TooltipWrapper
@@ -88,44 +88,6 @@ function UserManualTab() {
             }
           />{' '}
           {t('settings_enable_tours', 'Show page guide')}
-        </label>
-      </TooltipWrapper>
-      <TooltipWrapper
-        title={t('settings_show_tour_buttons', {
-          ns: 'tooltip',
-          defaultValue: 'Show tour buttons in the header',
-        })}
-      >
-        <label htmlFor="show-tour-buttons-toggle">
-          <input
-            id="show-tour-buttons-toggle"
-            type="checkbox"
-            checked={showTourButtons}
-            onChange={(e) =>
-              updateUserSettings({ showTourButtons: e.target.checked })
-            }
-          />{' '}
-          {t('settings_show_tour_buttons', 'Show tour buttons')}
-        </label>
-      </TooltipWrapper>
-      <TooltipWrapper
-        title={t('settings_enable_tour_builder', {
-          ns: 'tooltip',
-          defaultValue: 'Allow creating or editing tours',
-        })}
-      >
-        <label htmlFor="enable-tour-builder-toggle">
-          <input
-            id="enable-tour-builder-toggle"
-            type="checkbox"
-            checked={tourBuilderEnabled}
-            onChange={(e) =>
-              updateUserSettings({
-                settings_enable_tour_builder: e.target.checked,
-              })
-            }
-          />{' '}
-          {t('settings_enable_tour_builder', 'Enable tour builder')}
         </label>
       </TooltipWrapper>
     </div>
