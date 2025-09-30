@@ -38,7 +38,6 @@ try {
   bcrypt = { hash: async (s) => s, compare: async () => false };
 }
 import defaultModules from "./defaultModules.js";
-import { deserializeRowId } from "../api-server/utils/rowId.js";
 import { logDb } from "./debugLog.js";
 import fs from "fs/promises";
 import path from "path";
@@ -4160,10 +4159,7 @@ export async function updateTableRow(
   const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
 
   if (tableName === 'company_module_licenses') {
-    let [companyId, moduleKey] = deserializeRowId(id);
-    if (companyId === undefined || moduleKey === undefined) {
-      [companyId, moduleKey] = String(id).split('-');
-    }
+    const [companyId, moduleKey] = String(id).split('-');
     await conn.query(
       `UPDATE company_module_licenses SET ${setClause} WHERE company_id = ? AND module_key = ?`,
       [...values, companyId, moduleKey],
@@ -4200,7 +4196,7 @@ export async function updateTableRow(
     return { [col]: id };
   }
 
-  const parts = deserializeRowId(id);
+  const parts = String(id).split('-');
   let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
   const whereParams = [...parts];
   if (addCompanyFilter) {
@@ -4271,10 +4267,7 @@ export async function deleteTableRow(
   const effectiveCompanyIdForSoftDelete =
     softDeleteCompanyId !== undefined ? softDeleteCompanyId : companyId;
   if (tableName === 'company_module_licenses') {
-    let [companyId, moduleKey] = deserializeRowId(id);
-    if (companyId === undefined || moduleKey === undefined) {
-      [companyId, moduleKey] = String(id).split('-');
-    }
+    const [companyId, moduleKey] = String(id).split('-');
     await conn.query(
       'DELETE FROM company_module_licenses WHERE company_id = ? AND module_key = ?',
       [companyId, moduleKey],
@@ -4328,7 +4321,7 @@ export async function deleteTableRow(
     return { [col]: id };
   }
 
-  const parts = deserializeRowId(id);
+  const parts = String(id).split('-');
   let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
   const whereParams = [...parts];
   if (addCompanyFilter) {
@@ -4389,7 +4382,7 @@ async function fetchTenantDefaultRow(tableName, rowId) {
     err.status = 400;
     throw err;
   }
-  const parts = deserializeRowId(rowId ?? '');
+  const parts = String(rowId ?? '').split('-');
   if (parts.length !== pkCols.length || parts.some((part) => part === '')) {
     const err = new Error('Invalid row identifier');
     err.status = 400;
@@ -4490,7 +4483,7 @@ export async function deleteTenantDefaultRow(tableName, rowId, userId) {
 
 export async function listRowReferences(tableName, id, conn = pool) {
   const pkCols = await getPrimaryKeyColumns(tableName);
-  const parts = deserializeRowId(id);
+  const parts = String(id).split('-');
   let targetRowLoaded = false;
   let targetRow;
 
