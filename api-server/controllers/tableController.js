@@ -89,6 +89,60 @@ export async function getTableRows(req, res, next) {
   }
 }
 
+export async function getTableRow(req, res, next) {
+  try {
+    const table = req.params.table;
+    const id = req.params.id;
+    const pkCols = await getPrimaryKeyColumns(table);
+    if (pkCols.length === 0) {
+      return res.status(400).json({ message: 'Table has no primary or unique key' });
+    }
+
+    const columns = await listTableColumns(table);
+    const pkLower = pkCols.map((c) => c.toLowerCase());
+    const hasCompanyId = columns.some((c) => String(c).toLowerCase() === 'company_id');
+    const addCompanyFilter =
+      req.user?.companyId != null && hasCompanyId && !pkLower.includes('company_id');
+
+    if (pkCols.length === 1) {
+      const col = pkCols[0];
+      let where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+      const params = [table, id];
+      if (addCompanyFilter) {
+        where += ' AND `company_id` = ?';
+        params.push(req.user.companyId);
+      }
+      const [rows] = await pool.query(
+        `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+        params,
+      );
+      const row = rows[0];
+      if (!row) return res.status(404).json({ message: 'Row not found' });
+      return res.json(row);
+    }
+
+    const parts = String(id).split('-');
+    if (pkCols.some((_, index) => parts[index] === undefined)) {
+      return res.status(404).json({ message: 'Row not found' });
+    }
+    let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+    const params = [table, ...pkCols.map((_, index) => parts[index])];
+    if (addCompanyFilter) {
+      where += ' AND `company_id` = ?';
+      params.push(req.user.companyId);
+    }
+    const [rows] = await pool.query(
+      `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+      params,
+    );
+    const row = rows[0];
+    if (!row) return res.status(404).json({ message: 'Row not found' });
+    res.json(row);
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function getTableRelations(req, res, next) {
   try {
     const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
