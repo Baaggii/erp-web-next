@@ -1114,32 +1114,78 @@ const TableManager = forwardRef(function TableManager({
     setShowForm(true);
   }
 
+  async function hydrateRowForEdit(row, id) {
+    const meta = await ensureColumnMeta();
+    let caseMap = columnCaseMap;
+    if ((!caseMap || Object.keys(caseMap).length === 0) && Array.isArray(meta)) {
+      caseMap = {};
+      meta.forEach((c) => {
+        if (c?.name) caseMap[c.name.toLowerCase()] = c.name;
+      });
+    }
+    const map = caseMap || {};
+    try {
+      const res = await fetch(
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to load row: ${res.status}`);
+      }
+      const data = await res.json();
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        throw new Error('Invalid row response');
+      }
+      const normalized = {};
+      Object.entries(data).forEach(([key, value]) => {
+        if (typeof key !== 'string') return;
+        const mapped = map[key.toLowerCase()] || key;
+        normalized[mapped] = value;
+      });
+      return { ...row, ...normalized };
+    } catch (err) {
+      if (typeof window !== 'undefined' && window?.erpDebug) {
+        console.error('Failed to hydrate row for edit', err);
+      }
+      addToast(
+        t('failed_load_table_row', 'Failed to load table row'),
+        'error',
+      );
+      return null;
+    }
+  }
+
   async function openEdit(row) {
-    if (getRowId(row) === undefined) {
+    const id = getRowId(row);
+    if (id === undefined) {
       addToast(
         t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
         'error',
       );
       return;
     }
-    await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
+    const hydrated = await hydrateRowForEdit(row, id);
+    if (!hydrated) return;
+    setEditing(hydrated);
+    setGridRows([hydrated]);
     setIsAdding(false);
+    setRequestType(null);
     setShowForm(true);
   }
 
   async function openRequestEdit(row) {
-    if (getRowId(row) === undefined) {
+    const id = getRowId(row);
+    if (id === undefined) {
       addToast(
         t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
         'error',
       );
       return;
     }
-    await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
+    const hydrated = await hydrateRowForEdit(row, id);
+    if (!hydrated) return;
+    setEditing(hydrated);
+    setGridRows([hydrated]);
     setIsAdding(false);
     setRequestType('edit');
     setShowForm(true);
