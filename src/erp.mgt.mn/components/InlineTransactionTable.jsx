@@ -167,17 +167,72 @@ function InlineTransactionTable(
     return index;
   }, [tableDisplayFieldsKey]);
 
+  const relationsKey = React.useMemo(() => JSON.stringify(relations || {}), [relations]);
+
+  const tableRelationsConfig = React.useMemo(() => {
+    if (!tableName) return {};
+    const sources = [generalConfig?.tableRelations, general?.tableRelations, cfg?.tableRelations];
+    const lowerTable = String(tableName).toLowerCase();
+    for (const src of sources) {
+      if (!src || typeof src !== 'object') continue;
+      let entry = src[tableName];
+      if (!entry) {
+        const match = Object.keys(src).find(
+          (key) => typeof key === 'string' && key.toLowerCase() === lowerTable,
+        );
+        if (match) entry = src[match];
+      }
+      if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+      const normalized = {};
+      Object.keys(entry).forEach((col) => {
+        if (typeof col !== 'string') return;
+        const mapped = columnCaseMap[col.toLowerCase()] || col;
+        if (typeof mapped === 'string') {
+          normalized[mapped] = entry[col];
+        }
+      });
+      if (Object.keys(normalized).length > 0) {
+        return normalized;
+      }
+    }
+    return {};
+  }, [generalConfig, general, cfg, tableName, columnCaseMap, columnCaseMapKey]);
+
+  const tableRelationsKey = React.useMemo(
+    () => JSON.stringify(tableRelationsConfig || {}),
+    [tableRelationsConfig],
+  );
+
+  const relatedColumns = React.useMemo(() => {
+    const set = new Set(Object.keys(relationConfigMap || {}));
+    Object.entries(relations || {}).forEach(([rawKey, value]) => {
+      if (!value) return;
+      const mapped = columnCaseMap[rawKey.toLowerCase()] || rawKey;
+      if (!mapped) return;
+      if (Array.isArray(value)) {
+        if (value.length > 0) set.add(mapped);
+        return;
+      }
+      if (typeof value === 'object' && Object.keys(value).length > 0) {
+        set.add(mapped);
+      }
+    });
+    Object.keys(tableRelationsConfig || {}).forEach((key) => set.add(key));
+    return set;
+  }, [relationConfigMapKey, relationsKey, tableRelationsKey, columnCaseMapKey, columnCaseMap]);
+
   // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
   const autoSelectConfigs = React.useMemo(() => {
     const map = {};
     Object.entries(columnCaseMap || {}).forEach(([lower, key]) => {
+      if (!relatedColumns.has(key)) return;
       const cfg = displayIndex[lower];
       if (cfg) {
         map[key] = cfg;
       }
     });
     return map;
-  }, [columnCaseMapKey, displayIndex]);
+  }, [columnCaseMapKey, displayIndex, relatedColumns]);
 
   const combinedViewSource = React.useMemo(() => {
     const map = { ...viewSourceMap };
