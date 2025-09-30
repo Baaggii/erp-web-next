@@ -3,6 +3,7 @@ import {
   getFormConfig,
   getConfigsByTable,
   listTransactionNames,
+  listAllTransactionConfigs,
   setFormConfig,
   deleteFormConfig,
   findTableByProcedure,
@@ -14,11 +15,15 @@ const router = express.Router();
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { table, name, moduleKey, branchId, departmentId, proc } = req.query;
+    const { table, name, moduleKey, branchId, departmentId, proc, mode } =
+      req.query;
     if (proc) {
       const { table: tbl, isDefault } = await findTableByProcedure(proc, companyId);
       if (tbl) res.json({ table: tbl, isDefault });
       else res.status(404).json({ message: 'Table not found', isDefault });
+    } else if (mode === 'all') {
+      const { tables, isDefault } = await listAllTransactionConfigs(companyId);
+      res.json({ tables, isDefault });
     } else if (table && name) {
       const { config, isDefault } = await getFormConfig(table, name, companyId);
       res.json({ ...config, isDefault });
