@@ -12,6 +12,7 @@ import {
   pool,
   getPrimaryKeyColumns,
   getEmploymentSession,
+  getTenantTableFlags,
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
@@ -34,6 +35,7 @@ try {
   bcrypt = { hash: async (s) => s };
 }
 import { formatDateForDb } from '../utils/formatDate.js';
+import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
 
 export async function getTables(req, res, next) {
   try {
@@ -103,13 +105,18 @@ export async function getTableRow(req, res, next) {
     const hasCompanyId = columns.some((c) => String(c).toLowerCase() === 'company_id');
     const addCompanyFilter =
       req.user?.companyId != null && hasCompanyId && !pkLower.includes('company_id');
+    const flags = addCompanyFilter ? await getTenantTableFlags(table) : null;
 
     if (pkCols.length === 1) {
       const col = pkCols[0];
       let where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
       const params = [table, id];
       if (addCompanyFilter) {
-        where += ' AND `company_id` = ?';
+        if (flags?.isShared) {
+          where += ' AND `company_id` IN (' + GLOBAL_COMPANY_ID + ', ?)';
+        } else {
+          where += ' AND `company_id` = ?';
+        }
         params.push(req.user.companyId);
       }
       const [rows] = await pool.query(
@@ -128,7 +135,11 @@ export async function getTableRow(req, res, next) {
     let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
     const params = [table, ...pkCols.map((_, index) => parts[index])];
     if (addCompanyFilter) {
-      where += ' AND `company_id` = ?';
+      if (flags?.isShared) {
+        where += ' AND `company_id` IN (' + GLOBAL_COMPANY_ID + ', ?)';
+      } else {
+        where += ' AND `company_id` = ?';
+      }
       params.push(req.user.companyId);
     }
     const [rows] = await pool.query(
