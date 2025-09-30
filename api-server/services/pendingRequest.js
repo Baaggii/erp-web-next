@@ -8,7 +8,6 @@ import {
 import { logUserAction } from './userActivityLog.js';
 import { isDeepStrictEqual } from 'util';
 import { formatDateForDb } from '../utils/formatDate.js';
-import { deserializeRowId } from '../utils/rowId.js';
 
 export const ALLOWED_REQUEST_TYPES = new Set(['edit', 'delete']);
 
@@ -65,25 +64,19 @@ export async function createRequest({
       if (pkCols.length === 1) {
         const col = pkCols[0];
         const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-        const decoded = deserializeRowId(recordId);
-        const value = decoded[0] ?? recordId;
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-          [tableName, value],
+          [tableName, recordId],
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
-        const parts = deserializeRowId(recordId);
-        if (pkCols.some((_, index) => parts[index] === undefined)) {
-          currentRow = null;
-        } else {
-          const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-          const [r] = await conn.query(
-            `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-            [tableName, ...parts],
-          );
-          currentRow = r[0] || null;
-        }
+        const parts = String(recordId).split('-');
+        const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+        const [r] = await conn.query(
+          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+          [tableName, ...parts],
+        );
+        currentRow = r[0] || null;
       }
       originalData = currentRow;
     } else if (requestType === 'delete') {
@@ -92,25 +85,19 @@ export async function createRequest({
       if (pkCols.length === 1) {
         const col = pkCols[0];
         const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-        const decoded = deserializeRowId(recordId);
-        const value = decoded[0] ?? recordId;
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-          [tableName, value],
+          [tableName, recordId],
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
-        const parts = deserializeRowId(recordId);
-        if (pkCols.some((_, index) => parts[index] === undefined)) {
-          currentRow = null;
-        } else {
-          const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-          const [r] = await conn.query(
-            `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-            [tableName, ...parts],
-          );
-          currentRow = r[0] || null;
-        }
+        const parts = String(recordId).split('-');
+        const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+        const [r] = await conn.query(
+          `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+          [tableName, ...parts],
+        );
+        currentRow = r[0] || null;
       }
       finalProposed = currentRow;
     }
@@ -262,27 +249,21 @@ export async function listRequests(filters) {
             if (pkCols.length === 1) {
               const col = pkCols[0];
               const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-              const decoded = deserializeRowId(row.record_id);
-              const value = decoded[0] ?? row.record_id;
               const [r] = await pool.query(
                 `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-                [row.table_name, value],
+                [row.table_name, row.record_id],
               );
               original = r[0] || null;
             } else if (pkCols.length > 1) {
-              const parts = deserializeRowId(row.record_id);
-              if (pkCols.some((_, index) => parts[index] === undefined)) {
-                original = null;
-              } else {
-                const whereClause = pkCols
-                  .map((c) => `\`${c}\` = ?`)
-                  .join(' AND ');
-                const [r] = await pool.query(
-                  `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-                  [row.table_name, ...parts],
-                );
-                original = r[0] || null;
-              }
+              const parts = String(row.record_id).split('-');
+              const whereClause = pkCols
+                .map((c) => `\`${c}\` = ?`)
+                .join(' AND ');
+              const [r] = await pool.query(
+                `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+                [row.table_name, ...parts],
+              );
+              original = r[0] || null;
             }
           } catch {
             original = null;
