@@ -60,18 +60,8 @@ export async function saveModule(req, res, next) {
       showInHeader,
       req.user.empid,
     );
-    await setCompanyModuleLicense(
-      GLOBAL_COMPANY_ID,
-      moduleKey,
-      true,
-      req.user.empid,
-    );
-    await setCompanyModuleLicense(
-      req.user.companyId,
-      moduleKey,
-      true,
-      req.user.empid,
-    );
+    await setCompanyModuleLicense(GLOBAL_COMPANY_ID, moduleKey, true);
+    await setCompanyModuleLicense(req.user.companyId, moduleKey, true);
     res.json(result);
   } catch (err) {
     next(err);
@@ -87,7 +77,7 @@ export async function populatePermissions(req, res, next) {
         company_id: req.user.companyId,
       };
     if (!(await hasAction(session, "system_settings"))) return res.sendStatus(403);
-    await populateDefaultModules(req.user.empid);
+    await populateDefaultModules();
     await populateCompanyModuleLicenses(req.user.empid);
     await populateUserLevelModulePermissions(req.user.empid);
     res.sendStatus(204);

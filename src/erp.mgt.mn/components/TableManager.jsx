@@ -1369,9 +1369,7 @@ const TableManager = forwardRef(function TableManager({
     const cleaned = {};
     const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
     Object.entries(merged).forEach(([k, v]) => {
-      const lower = k.toLowerCase();
       if (skipFields.has(k) || k.startsWith('_')) return;
-      if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
         cleaned[k] =
           typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
@@ -1635,9 +1633,7 @@ const TableManager = forwardRef(function TableManager({
       const cleaned = {};
       const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
       Object.entries(row).forEach(([k, v]) => {
-        const lower = k.toLowerCase();
         if (skipFields.has(k) || k.startsWith('_')) return;
-        if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
         if (v !== '') cleaned[k] = v;
       });
       const res = await fetch(`${API_BASE}/pending_request`, {
@@ -1808,53 +1804,8 @@ const TableManager = forwardRef(function TableManager({
   columnMeta.forEach((c) => {
     labels[c.name] = c.label || c.name;
   });
-  const auditFieldSet = useMemo(() => {
-    const base = [
-      'created_by',
-      'created_at',
-      'updated_by',
-      'updated_at',
-      'deleted_by',
-      'deleted_at',
-      'is_deleted',
-    ];
-    const set = new Set(base.map((name) => name.toLowerCase()));
-    columnMeta.forEach((c) => {
-      const name = (c.name || '').toLowerCase();
-      if (!name) return;
-      const rawType = (
-        c.type ||
-        c.columnType ||
-        c.dataType ||
-        c.DATA_TYPE ||
-        ''
-      ).toLowerCase();
-      if (
-        /tinyint\(1\)|boolean|bool|bit\(1\)/.test(rawType) &&
-        name.includes('deleted')
-      ) {
-        set.add(name);
-      }
-    });
-    return set;
-  }, [columnMeta]);
-  const hiddenColumnSet = useMemo(() => {
-    const set = new Set(auditFieldSet);
-    set.add('password');
-    return set;
-  }, [auditFieldSet]);
-  let columns = ordered.filter((c) => !hiddenColumnSet.has(c.toLowerCase()));
-  const provided = Array.isArray(formConfig?.editableFields)
-    ? formConfig.editableFields
-    : [];
-  const defaults = Array.isArray(formConfig?.editableDefaultFields)
-    ? formConfig.editableDefaultFields
-    : [];
-  const editVals = Array.from(new Set([...defaults, ...provided]));
-  const editSet =
-    editVals.length > 0
-      ? new Set(editVals.map((f) => f.toLowerCase()))
-      : null;
+  const hiddenColumns = ['password', 'created_by', 'created_at'];
+  let columns = ordered.filter((c) => !hiddenColumns.includes(c));
   const placeholders = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
@@ -1916,12 +1867,9 @@ const TableManager = forwardRef(function TableManager({
   if (columnMeta.length === 0 && autoCols.size === 0 && allColumns.includes('id')) {
     autoCols.add('id');
   }
-  let formColumns = ordered.filter((c) => {
-    if (autoCols.has(c)) return false;
-    const lower = c.toLowerCase();
-    if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return false;
-    return true;
-  });
+  let formColumns = ordered.filter(
+    (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
+  );
 
   const lockedDefaults = Object.entries(formConfig?.defaultValues || {})
     .filter(
@@ -1942,6 +1890,14 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
+  const provided = Array.isArray(formConfig?.editableFields)
+    ? formConfig.editableFields
+    : [];
+  const defaults = Array.isArray(formConfig?.editableDefaultFields)
+    ? formConfig.editableDefaultFields
+    : [];
+  const editVals = Array.from(new Set([...defaults, ...provided]));
+  const editSet = editVals.length > 0 ? new Set(editVals.map((f) => f.toLowerCase())) : null;
   let disabledFields = editSet
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
     : [];

@@ -40,11 +40,7 @@ BEGIN
          AND TABLE_NAME = tbl
          AND COLUMN_NAME = 'created_at'
     ) THEN
-      SET @s = CONCAT(
-        'ALTER TABLE `',
-        tbl,
-        '` ADD COLUMN `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP;'
-      );
+      SET @s = CONCAT('ALTER TABLE `', tbl, '` ADD COLUMN `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP;');
       PREPARE stmt FROM @s;
       EXECUTE stmt;
       DEALLOCATE PREPARE stmt;

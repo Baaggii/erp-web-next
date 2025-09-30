@@ -6,12 +6,10 @@ function stripQuotes(value = '') {
 
 function normalizeAssignmentToken(raw) {
   const cleaned = stripQuotes(String(raw || '').trim());
-  if (!cleaned) return '';
-  const match = cleaned.match(/[@:$]([A-Za-z0-9_]+)/);
-  if (match) return match[1].toLowerCase();
-  if (cleaned.startsWith('$')) return '';
-  const bare = cleaned.match(/[A-Za-z_][A-Za-z0-9_]*/);
-  return bare ? bare[0].toLowerCase() : '';
+  if (!cleaned || cleaned.startsWith('$')) return '';
+  const withoutMarkers = cleaned.replace(/^[^A-Za-z0-9_]+/, '');
+  if (!withoutMarkers || /[^A-Za-z0-9_]/.test(withoutMarkers)) return '';
+  return withoutMarkers.toLowerCase();
 }
 
 function normalizeParamToken(raw) {

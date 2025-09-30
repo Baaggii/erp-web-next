@@ -1186,10 +1186,6 @@ if (typeof mock.import !== 'function') {
           tableCount: 12,
         };
       },
-      async listTableColumns(table) {
-        assert.equal(table, 'companies');
-        return [];
-      },
     };
 
     const { restoreCompanyFullBackupHandler: handler } = await mock.import(
@@ -1215,86 +1211,6 @@ if (typeof mock.import !== 'function') {
     assert.equal(res.code, undefined);
     assert.equal(res.body.summary.type, 'full');
     assert.equal(res.body.summary.targetCompanyId, targetCompanyId);
-  });
-}
-
-if (typeof mock.import !== 'function') {
-  test('updateCompanyHandler populates audit columns', { skip: true }, () => {});
-} else {
-  test('updateCompanyHandler populates audit columns', async () => {
-    const updates = [];
-    const dbStub = {
-      async listCompanies() {
-        return [];
-      },
-      async insertTableRow() {},
-      async updateTableRow(table, id, record) {
-        updates.push([table, id, record]);
-        return {};
-      },
-      async deleteTableRowCascade() {},
-      async deleteUserLevelPermissionsForCompany() {},
-      async getPrimaryKeyColumns() {
-        return [];
-      },
-      async getEmploymentSession() {
-        return {};
-      },
-      async getUserLevelActions() {
-        return { permissions: {} };
-      },
-      async createCompanySeedBackup() {
-        return null;
-      },
-      async createCompanyFullBackup() {
-        return null;
-      },
-      async listCompanySeedBackupsForUser() {
-        return [];
-      },
-      async restoreCompanySeedBackup() {
-        return {};
-      },
-      async restoreCompanyFullBackup() {
-        return {};
-      },
-      async listTableColumns(table) {
-        assert.equal(table, 'companies');
-        return ['id', 'name', 'updated_by', 'updated_at'];
-      },
-    };
-
-    const { updateCompanyHandler: handler } = await mock.import(
-      '../../api-server/controllers/companyController.js',
-      {
-        '../../db/index.js': dbStub,
-      },
-    );
-
-    const req = {
-      params: { id: '42' },
-      body: {
-        name: 'Updated Co',
-        created_by: 'ignored',
-        created_at: '2020-01-01 00:00:00',
-      },
-      user: { empid: 'EMP-7', companyId: 0 },
-      session: { permissions: { system_settings: true } },
-    };
-    const res = createRes();
-    await handler(req, res, () => {});
-
-    assert.equal(res.code, 204);
-    assert.equal(res.locals.logTable, 'companies');
-    assert.equal(updates.length, 1);
-    const [table, id, record] = updates[0];
-    assert.equal(table, 'companies');
-    assert.equal(id, '42');
-    assert.equal(record.name, 'Updated Co');
-    assert.equal(record.updated_by, 'EMP-7');
-    assert.match(record.updated_at, /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
-    assert.ok(!('created_by' in record));
-    assert.ok(!('created_at' in record));
   });
 }
 
