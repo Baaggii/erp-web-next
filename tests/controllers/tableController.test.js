@@ -263,6 +263,51 @@ test('getTableRow allows shared rows for global company scope', async () => {
   assert.deepEqual(payload, { id: '1', company_id: 0 });
 });
 
+test('getTableRow decodes hyphenated single-column identifiers', async () => {
+  const encode = (value) =>
+    'b64:' +
+    Buffer.from(String(value), 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  let selectParams;
+  const restore = mockPool(async (sql, params) => {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'code', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'code' }]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE')) {
+      selectParams = params;
+      return [[{ code: 'part-001', name: 'Widget' }]];
+    }
+    throw new Error('unexpected query ' + sql);
+  });
+  const req = {
+    params: { table: 'inventory', id: encode('part-001') },
+    user: { companyId: 9 },
+  };
+  let payload;
+  const res = {
+    json(body) {
+      payload = body;
+    },
+    status(code) {
+      throw new Error(`unexpected status ${code}`);
+    },
+  };
+  await controller.getTableRow(req, res, (err) => {
+    if (err) throw err;
+  });
+  restore();
+  assert.deepEqual(selectParams, ['inventory', 'part-001']);
+  assert.deepEqual(payload, { code: 'part-001', name: 'Widget' });
+});
+
 test('addRow forwards db error when required id missing', async () => {
   const restore = mockPool(async (sql) => {
     if (sql.includes('information_schema.COLUMNS')) {
@@ -465,6 +510,42 @@ test('updateRow forwards user companyId to updateTableRow', async () => {
   await controller.updateRow(req, res, (e) => { if (e) throw e; });
   restore();
   assert.equal(res.code, 204);
+});
+
+test('updateRow loads original row for hyphenated identifiers', async () => {
+  const selectCalls = [];
+  const restore = mockPool(async (sql, params) => {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'code', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.startsWith('SELECT * FROM `parts`')) {
+      selectCalls.push(params);
+      return [[{ code: 'part-001', name: 'Old' }]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'code' }, { COLUMN_NAME: 'name' }]];
+    }
+    if (sql.startsWith('UPDATE')) {
+      assert.ok(sql.includes('`code` = ?'));
+      assert.deepEqual(params, ['parts', 'Gadget', 'part-001']);
+      return [{}];
+    }
+    throw new Error('unexpected query ' + sql);
+  });
+  const req = {
+    params: { table: 'parts', id: 'part-001' },
+    body: { name: 'Gadget' },
+    user: { empid: 'EMP1' },
+  };
+  const res = { locals: {}, sendStatus(code) { this.code = code; } };
+  await controller.updateRow(req, res, (e) => {
+    if (e) throw e;
+  });
+  restore();
+  assert.equal(res.code, 204);
+  assert.deepEqual(selectCalls, [['part-001']]);
 });
 
 test('deleteRow forwards user companyId to deleteTableRow', async () => {
