@@ -37,41 +37,6 @@ try {
 import { formatDateForDb } from '../utils/formatDate.js';
 import { GLOBAL_COMPANY_ID } from '../../config/0/constants.js';
 
-const BASE64URL_RE = /^[A-Za-z0-9_-]+$/;
-
-function base64UrlEncode(value) {
-  return Buffer.from(String(value), 'utf8')
-    .toString('base64')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
-}
-
-function base64UrlDecode(segment) {
-  const pad = (4 - (segment.length % 4)) % 4;
-  const base64 = segment.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat(pad);
-  return Buffer.from(base64, 'base64').toString('utf8');
-}
-
-function decodeRowIdentifier(id) {
-  const str = String(id ?? '');
-  if (str.includes('.')) {
-    const segments = str.split('.');
-    if (segments.length > 1 && segments.every((segment) => BASE64URL_RE.test(segment))) {
-      try {
-        const decoded = segments.map((segment) => base64UrlDecode(segment));
-        const reencoded = decoded.map((value) => base64UrlEncode(value)).join('.');
-        if (reencoded === str) {
-          return decoded;
-        }
-      } catch {
-        // fall back to legacy decoding
-      }
-    }
-  }
-  return str.split('-');
-}
-
 export async function getTables(req, res, next) {
   try {
     const tables = await listDatabaseTables();
@@ -163,7 +128,7 @@ export async function getTableRow(req, res, next) {
       return res.json(row);
     }
 
-    const parts = decodeRowIdentifier(id);
+    const parts = String(id).split('-');
     if (pkCols.some((_, index) => parts[index] === undefined)) {
       return res.status(404).json({ message: 'Row not found' });
     }
@@ -390,12 +355,11 @@ export async function updateRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(req.params.table);
       if (pkCols.length > 0) {
-        const parts = decodeRowIdentifier(req.params.id);
-        if (pkCols.some((_, index) => parts[index] === undefined)) throw new Error('invalid id');
+        const parts = String(req.params.id).split('-');
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [rows] = await pool.query(
           `SELECT * FROM \`${req.params.table}\` WHERE ${where} LIMIT 1`,
-          pkCols.map((_, index) => parts[index]),
+          parts,
         );
         original = rows[0];
       }
@@ -466,12 +430,11 @@ export async function deleteRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(table);
       if (pkCols.length > 0) {
-        const parts = decodeRowIdentifier(id);
-        if (pkCols.some((_, index) => parts[index] === undefined)) throw new Error('invalid id');
+        const parts = String(id).split('-');
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [rows] = await pool.query(
           `SELECT * FROM \`${table}\` WHERE ${where} LIMIT 1`,
-          pkCols.map((_, index) => parts[index]),
+          parts,
         );
         row = rows[0];
       }
