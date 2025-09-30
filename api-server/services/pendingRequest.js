@@ -65,7 +65,7 @@ export async function createRequest({
       if (pkCols.length === 1) {
         const col = pkCols[0];
         const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-        const decoded = deserializeRowId(recordId);
+        const decoded = deserializeRowId(recordId, pkCols);
         const value = decoded[0] ?? recordId;
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
@@ -73,7 +73,7 @@ export async function createRequest({
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
-        const parts = deserializeRowId(recordId);
+        const parts = deserializeRowId(recordId, pkCols);
         if (pkCols.some((_, index) => parts[index] === undefined)) {
           currentRow = null;
         } else {
@@ -92,7 +92,7 @@ export async function createRequest({
       if (pkCols.length === 1) {
         const col = pkCols[0];
         const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-        const decoded = deserializeRowId(recordId);
+        const decoded = deserializeRowId(recordId, pkCols);
         const value = decoded[0] ?? recordId;
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
@@ -100,7 +100,7 @@ export async function createRequest({
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
-        const parts = deserializeRowId(recordId);
+        const parts = deserializeRowId(recordId, pkCols);
         if (pkCols.some((_, index) => parts[index] === undefined)) {
           currentRow = null;
         } else {
@@ -262,7 +262,7 @@ export async function listRequests(filters) {
             if (pkCols.length === 1) {
               const col = pkCols[0];
               const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-              const decoded = deserializeRowId(row.record_id);
+              const decoded = deserializeRowId(row.record_id, pkCols);
               const value = decoded[0] ?? row.record_id;
               const [r] = await pool.query(
                 `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
@@ -270,7 +270,7 @@ export async function listRequests(filters) {
               );
               original = r[0] || null;
             } else if (pkCols.length > 1) {
-              const parts = deserializeRowId(row.record_id);
+              const parts = deserializeRowId(row.record_id, pkCols);
               if (pkCols.some((_, index) => parts[index] === undefined)) {
                 original = null;
               } else {

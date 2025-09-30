@@ -102,9 +102,19 @@ function base64UrlEncode(value) {
   throw new Error('Unable to encode row id component');
 }
 
+const SIMPLE_ROW_ID = /^[A-Za-z0-9_]+$/;
+
 function serializeRowId(values) {
   if (!Array.isArray(values) || values.length === 0) return undefined;
-  if (values.length === 1) return values[0];
+  if (values.length === 1) {
+    const value = values[0];
+    if (value == null) return value;
+    const str = String(value);
+    if (str.startsWith(ROW_ID_PREFIX)) return str;
+    if (SIMPLE_ROW_ID.test(str)) return value;
+    const encoded = base64UrlEncode(str);
+    return `${ROW_ID_PREFIX}${encoded}`;
+  }
   const encodedParts = values.map((value) => base64UrlEncode(value));
   return `${ROW_ID_PREFIX}${encodedParts.join('.')}`;
 }

@@ -9,12 +9,30 @@ function decodeBase64Url(part) {
   return Buffer.from(padded, 'base64').toString('utf8');
 }
 
-export function deserializeRowId(id) {
+function resolveExpectedParts(expected) {
+  if (expected == null) return undefined;
+  if (Array.isArray(expected)) return expected.length;
+  if (typeof expected === 'number') {
+    return Number.isInteger(expected) && expected > 0 ? expected : undefined;
+  }
+  if (typeof expected === 'object') {
+    if (Number.isInteger(expected.expectedParts) && expected.expectedParts > 0) {
+      return expected.expectedParts;
+    }
+    if (Array.isArray(expected.pkColumns)) {
+      return expected.pkColumns.length;
+    }
+  }
+  return undefined;
+}
+
+export function deserializeRowId(id, expectedParts) {
   if (id == null) return [];
   if (Array.isArray(id)) {
     return id.map((value) => (value == null ? value : String(value)));
   }
   const str = String(id);
+  const expected = resolveExpectedParts(expectedParts);
   if (str.startsWith(ROW_ID_PREFIX)) {
     const encoded = str.slice(ROW_ID_PREFIX.length);
     if (!encoded) return [];
@@ -27,6 +45,9 @@ export function deserializeRowId(id) {
     });
   }
   if (str === '') return [''];
+  if (expected === 1 && str.includes('-')) {
+    return [str];
+  }
   return str.split('-');
 }
 
