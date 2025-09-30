@@ -108,7 +108,7 @@ export async function getTableRow(req, res, next) {
       req.user?.companyId != null && hasCompanyId && !pkLower.includes('company_id');
     const flags = addCompanyFilter ? await getTenantTableFlags(table) : null;
 
-    const decodedParts = deserializeRowId(id, pkCols);
+    const decodedParts = deserializeRowId(id);
 
     if (pkCols.length === 1) {
       const col = pkCols[0];
@@ -359,7 +359,7 @@ export async function updateRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(req.params.table);
       if (pkCols.length > 0) {
-        const parts = deserializeRowId(req.params.id, pkCols);
+        const parts = deserializeRowId(req.params.id);
         if (pkCols.some((_, index) => parts[index] === undefined)) {
           throw new Error('Row not found');
         }
@@ -437,7 +437,7 @@ export async function deleteRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(table);
       if (pkCols.length > 0) {
-        const parts = deserializeRowId(id, pkCols);
+        const parts = deserializeRowId(id);
         if (pkCols.some((_, index) => parts[index] === undefined)) {
           throw new Error('Row not found');
         }
