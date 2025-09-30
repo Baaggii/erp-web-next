@@ -153,6 +153,11 @@ function InlineTransactionTable(
     return map;
   }, [relationConfigsKey, columnCaseMapKey]);
 
+  const relationConfigMapKey = React.useMemo(
+    () => JSON.stringify(relationConfigMap || {}),
+    [relationConfigMap],
+  );
+
   const displayIndex = React.useMemo(() => {
     const index = {};
     Object.entries(tableDisplayFields || {}).forEach(([tbl, cfg]) => {
