@@ -27,6 +27,7 @@ import {
   removeCustomRelationAtIndex,
   removeCustomRelationMatching,
 } from '../services/tableRelationsConfig.js';
+import { deserializeRowId } from '../utils/rowId.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -107,10 +108,13 @@ export async function getTableRow(req, res, next) {
       req.user?.companyId != null && hasCompanyId && !pkLower.includes('company_id');
     const flags = addCompanyFilter ? await getTenantTableFlags(table) : null;
 
+    const decodedParts = deserializeRowId(id);
+
     if (pkCols.length === 1) {
       const col = pkCols[0];
+      const pkValue = decodedParts[0] ?? id;
       let where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-      const params = [table, id];
+      const params = [table, pkValue];
       if (addCompanyFilter) {
         if (flags?.isShared) {
           where += ' AND `company_id` IN (' + GLOBAL_COMPANY_ID + ', ?)';
@@ -128,7 +132,7 @@ export async function getTableRow(req, res, next) {
       return res.json(row);
     }
 
-    const parts = String(id).split('-');
+    const parts = decodedParts;
     if (pkCols.some((_, index) => parts[index] === undefined)) {
       return res.status(404).json({ message: 'Row not found' });
     }
@@ -355,7 +359,10 @@ export async function updateRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(req.params.table);
       if (pkCols.length > 0) {
-        const parts = String(req.params.id).split('-');
+        const parts = deserializeRowId(req.params.id);
+        if (pkCols.some((_, index) => parts[index] === undefined)) {
+          throw new Error('Row not found');
+        }
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [rows] = await pool.query(
           `SELECT * FROM \`${req.params.table}\` WHERE ${where} LIMIT 1`,
@@ -430,7 +437,10 @@ export async function deleteRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(table);
       if (pkCols.length > 0) {
-        const parts = String(id).split('-');
+        const parts = deserializeRowId(id);
+        if (pkCols.some((_, index) => parts[index] === undefined)) {
+          throw new Error('Row not found');
+        }
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [rows] = await pool.query(
           `SELECT * FROM \`${table}\` WHERE ${where} LIMIT 1`,

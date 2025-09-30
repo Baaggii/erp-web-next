@@ -61,6 +61,54 @@ function logRowsMemory(rows) {
     }
 }
 
+const ROW_ID_PREFIX = 'b64:';
+
+const rowIdTextEncoder =
+  typeof TextEncoder === 'undefined' ? null : new TextEncoder();
+
+function base64UrlEncode(value) {
+  const str = String(value);
+  const encodeBase64 = (() => {
+    if (typeof btoa === 'function') return btoa;
+    if (typeof globalThis !== 'undefined') {
+      if (typeof globalThis.btoa === 'function') return globalThis.btoa;
+      if (
+        globalThis.window &&
+        typeof globalThis.window.btoa === 'function'
+      ) {
+        return globalThis.window.btoa.bind(globalThis.window);
+      }
+    }
+    return null;
+  })();
+  if (encodeBase64 && rowIdTextEncoder) {
+    const bytes = rowIdTextEncoder.encode(str);
+    let binary = '';
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
+    return encodeBase64(binary)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  }
+  if (typeof Buffer !== 'undefined' && typeof Buffer.from === 'function') {
+    return Buffer.from(str, 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  }
+  throw new Error('Unable to encode row id component');
+}
+
+function serializeRowId(values) {
+  if (!Array.isArray(values) || values.length === 0) return undefined;
+  if (values.length === 1) return values[0];
+  const encodedParts = values.map((value) => base64UrlEncode(value));
+  return `${ROW_ID_PREFIX}${encodedParts.join('.')}`;
+}
+
 function sanitizeName(name) {
   return String(name)
     .toLowerCase()
@@ -967,7 +1015,7 @@ const TableManager = forwardRef(function TableManager({
       }
       values.push(value);
     }
-    return values.length === 1 ? values[0] : values.join('-');
+    return serializeRowId(values);
   }
 
   function getImageFolder(row) {
