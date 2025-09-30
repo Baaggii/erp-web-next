@@ -18,6 +18,7 @@ import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
 import { hasAction } from '../utils/hasAction.js';
 import { createCompanyHandler } from './companyController.js';
+import { decodeCompositeId } from '../../utils/compositeId.js';
 import {
   listCustomRelations,
   saveCustomRelation,
@@ -128,7 +129,7 @@ export async function getTableRow(req, res, next) {
       return res.json(row);
     }
 
-    const parts = String(id).split('-');
+    const parts = decodeCompositeId(id, pkCols.length);
     if (pkCols.some((_, index) => parts[index] === undefined)) {
       return res.status(404).json({ message: 'Row not found' });
     }
@@ -355,7 +356,7 @@ export async function updateRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(req.params.table);
       if (pkCols.length > 0) {
-        const parts = String(req.params.id).split('-');
+        const parts = decodeCompositeId(req.params.id, pkCols.length);
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [rows] = await pool.query(
           `SELECT * FROM \`${req.params.table}\` WHERE ${where} LIMIT 1`,
@@ -430,7 +431,7 @@ export async function deleteRow(req, res, next) {
     try {
       const pkCols = await getPrimaryKeyColumns(table);
       if (pkCols.length > 0) {
-        const parts = String(id).split('-');
+        const parts = decodeCompositeId(id, pkCols.length);
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [rows] = await pool.query(
           `SELECT * FROM \`${table}\` WHERE ${where} LIMIT 1`,

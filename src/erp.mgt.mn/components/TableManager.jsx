@@ -29,6 +29,10 @@ import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import {
+  encodeCompositeId,
+  decodeCompositeId,
+} from '../../../utils/compositeId.js';
+import {
   applyGeneratedColumnEvaluators,
   createGeneratedColumnEvaluator,
   valuesEqual,
@@ -956,6 +960,21 @@ const TableManager = forwardRef(function TableManager({
     setSelectedRows(new Set());
   }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
 
+  function formatRowIdForApi(rawId) {
+    if (rawId === undefined || rawId === null) return rawId;
+    const keys = getKeyFields();
+    if (!Array.isArray(keys) || keys.length === 0) return rawId;
+    const parts = decodeCompositeId(rawId, keys.length);
+    if (!Array.isArray(parts) || parts.length === 0) {
+      return typeof rawId === 'string' ? rawId : String(rawId);
+    }
+    const encoded = encodeCompositeId(parts);
+    if (encoded !== undefined) {
+      return encoded;
+    }
+    return parts[0];
+  }
+
   function getRowId(row) {
     const keys = getKeyFields();
     if (!row || keys.length === 0) return undefined;
@@ -967,7 +986,7 @@ const TableManager = forwardRef(function TableManager({
       }
       values.push(value);
     }
-    return values.length === 1 ? values[0] : values.join('-');
+    return encodeCompositeId(values);
   }
 
   function getImageFolder(row) {
@@ -1132,8 +1151,9 @@ const TableManager = forwardRef(function TableManager({
     }
     const map = caseMap || {};
     try {
+      const apiId = formatRowIdForApi(id);
       const res = await fetch(
-        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}`,
         { credentials: 'include' },
       );
       if (!res.ok) {
@@ -1229,7 +1249,8 @@ const TableManager = forwardRef(function TableManager({
           if (keys.includes('department_id') && department != null)
             params.set('department_id', department);
         }
-        const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references${
+        const apiId = formatRowIdForApi(id);
+        const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}/references${
           params.toString() ? `?${params.toString()}` : ''
         }`;
         const res = await fetch(url, { credentials: 'include' });
@@ -1515,13 +1536,14 @@ const TableManager = forwardRef(function TableManager({
         return;
       }
       try {
+        const recordId = formatRowIdForApi(getRowId(editing));
         const res = await fetch(`${API_BASE}/pending_request`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({
             table_name: table,
-            record_id: getRowId(editing),
+            record_id: recordId,
             request_type: 'edit',
             request_reason: reason,
             proposed_data: cleaned,
@@ -1552,9 +1574,10 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const method = isAdding ? 'POST' : 'PUT';
+    const recordId = formatRowIdForApi(getRowId(editing));
     const url = isAdding
       ? `/api/tables/${encodeURIComponent(table)}`
-      : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`;
+      : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(recordId)}`;
 
     if (isAdding) {
       if (columns.has('created_by')) cleaned.created_by = user?.empid;
@@ -1657,8 +1680,9 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function executeDeleteRow(id, cascade) {
+    const apiId = formatRowIdForApi(id);
     const res = await fetch(
-      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
+      `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}${
         cascade ? '?cascade=true' : ''
       }`,
       { method: 'DELETE', credentials: 'include' },
@@ -1705,9 +1729,10 @@ const TableManager = forwardRef(function TableManager({
       );
       return;
     }
+    const apiId = formatRowIdForApi(id);
     try {
       const refRes = await fetch(
-        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}/references`,
         { credentials: 'include' }
       );
       if (refRes.ok) {
@@ -1716,13 +1741,13 @@ const TableManager = forwardRef(function TableManager({
           ? refs.reduce((a, r) => a + (r.count || 0), 0)
           : 0;
         if (total > 0) {
-          setDeleteInfo({ id, refs });
+          setDeleteInfo({ id: apiId, refs });
           setShowCascade(true);
           return;
         }
         if (!window.confirm(t('delete_row_question', 'Delete row?')))
           return;
-        await executeDeleteRow(id, false);
+        await executeDeleteRow(apiId, false);
         return;
       }
     } catch {
@@ -1767,13 +1792,14 @@ const TableManager = forwardRef(function TableManager({
         if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
         if (v !== '') cleaned[k] = v;
       });
+      const recordId = formatRowIdForApi(id);
       const res = await fetch(`${API_BASE}/pending_request`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
           table_name: table,
-          record_id: id,
+          record_id: recordId,
           request_type: 'delete',
           request_reason: reason,
           proposed_data: cleaned,
@@ -1808,6 +1834,7 @@ const TableManager = forwardRef(function TableManager({
     const cascadeMap = new Map();
     let hasRelated = false;
     for (const id of selectedRows) {
+      const apiId = formatRowIdForApi(id);
       if (id === undefined) {
         addToast(
           t('delete_failed_no_primary_key', 'Delete failed: table has no primary key'),
@@ -1817,7 +1844,7 @@ const TableManager = forwardRef(function TableManager({
       }
       try {
         const refRes = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references`,
+          `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}/references`,
           { credentials: 'include' }
         );
         if (refRes.ok) {
@@ -1825,10 +1852,10 @@ const TableManager = forwardRef(function TableManager({
           const total = Array.isArray(refs)
             ? refs.reduce((a, r) => a + (r.count || 0), 0)
             : 0;
-          cascadeMap.set(id, total > 0);
+          cascadeMap.set(id, { cascade: total > 0, apiId });
           if (total > 0) hasRelated = true;
         } else {
-          cascadeMap.set(id, true);
+          cascadeMap.set(id, { cascade: true, apiId });
           hasRelated = true;
         }
       } catch {
@@ -1836,7 +1863,7 @@ const TableManager = forwardRef(function TableManager({
           t('failed_check_references', 'Failed to check references'),
           'error',
         );
-        cascadeMap.set(id, true);
+        cascadeMap.set(id, { cascade: true, apiId });
         hasRelated = true;
       }
     }
@@ -1856,9 +1883,10 @@ const TableManager = forwardRef(function TableManager({
     if (!window.confirm(confirmMsg)) return;
 
     for (const id of selectedRows) {
-      const cascade = cascadeMap.get(id);
+      const info = cascadeMap.get(id) || { cascade: true, apiId: formatRowIdForApi(id) };
+      const { cascade, apiId } = info;
       const res = await fetch(
-        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}${
           cascade ? '?cascade=true' : ''
         }`,
         { method: 'DELETE', credentials: 'include' }
