@@ -127,6 +127,43 @@ function escapeIdentifier(name) {
   return `\`${String(name).replace(/`/g, "``")}\``;
 }
 
+const BASE64URL_RE = /^[A-Za-z0-9_-]+$/;
+
+function base64UrlEncode(value) {
+  return Buffer.from(String(value), "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+}
+
+function base64UrlDecode(segment) {
+  const pad = (4 - (segment.length % 4)) % 4;
+  const base64 = segment.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat(pad);
+  return Buffer.from(base64, "base64").toString("utf8");
+}
+
+function decodeRowIdentifier(id) {
+  const str = String(id ?? "");
+  if (str.includes(".")) {
+    const segments = str.split(".");
+    if (segments.length > 1 && segments.every((segment) => BASE64URL_RE.test(segment))) {
+      try {
+        const decoded = segments.map((segment) => base64UrlDecode(segment));
+        const reencoded = decoded.map((value) => base64UrlEncode(value)).join(".");
+        if (reencoded === str) {
+          return decoded;
+        }
+      } catch {
+        // fall back to legacy decoding
+      }
+    }
+  }
+  return str.split("-");
+}
+
+
+
 async function loadSoftDeleteConfig(companyId = GLOBAL_COMPANY_ID) {
   if (!softDeleteConfigCache.has(companyId)) {
     try {
@@ -4159,7 +4196,13 @@ export async function updateTableRow(
   const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
 
   if (tableName === 'company_module_licenses') {
-    const [companyId, moduleKey] = String(id).split('-');
+    const parts = decodeRowIdentifier(id);
+    const [companyId, moduleKey] = parts;
+    if (companyId === undefined || moduleKey === undefined) {
+      const err = new Error('Invalid row identifier');
+      err.status = 400;
+      throw err;
+    }
     await conn.query(
       `UPDATE company_module_licenses SET ${setClause} WHERE company_id = ? AND module_key = ?`,
       [...values, companyId, moduleKey],
@@ -4196,9 +4239,14 @@ export async function updateTableRow(
     return { [col]: id };
   }
 
-  const parts = String(id).split('-');
+  const parts = decodeRowIdentifier(id);
   let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-  const whereParams = [...parts];
+  const whereParams = pkCols.map((_, index) => parts[index]);
+  if (whereParams.some((value) => value === undefined)) {
+    const err = new Error('Invalid row identifier');
+    err.status = 400;
+    throw err;
+  }
   if (addCompanyFilter) {
     where += ' AND `company_id` = ?';
     whereParams.push(companyId);
@@ -4209,7 +4257,7 @@ export async function updateTableRow(
   );
   const result = {};
   pkCols.forEach((c, i) => {
-    result[c] = parts[i];
+    result[c] = whereParams[i];
   });
   return result;
 }
@@ -4267,7 +4315,13 @@ export async function deleteTableRow(
   const effectiveCompanyIdForSoftDelete =
     softDeleteCompanyId !== undefined ? softDeleteCompanyId : companyId;
   if (tableName === 'company_module_licenses') {
-    const [companyId, moduleKey] = String(id).split('-');
+    const parts = decodeRowIdentifier(id);
+    const [companyId, moduleKey] = parts;
+    if (companyId === undefined || moduleKey === undefined) {
+      const err = new Error('Invalid row identifier');
+      err.status = 400;
+      throw err;
+    }
     await conn.query(
       'DELETE FROM company_module_licenses WHERE company_id = ? AND module_key = ?',
       [companyId, moduleKey],
@@ -4321,9 +4375,14 @@ export async function deleteTableRow(
     return { [col]: id };
   }
 
-  const parts = String(id).split('-');
+  const parts = decodeRowIdentifier(id);
   let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-  const whereParams = [...parts];
+  const whereParams = pkCols.map((_, index) => parts[index]);
+  if (whereParams.some((value) => value === undefined)) {
+    const err = new Error('Invalid row identifier');
+    err.status = 400;
+    throw err;
+  }
   if (addCompanyFilter) {
     where += ' AND `company_id` = ?';
     whereParams.push(effectiveCompanyIdForFilter);
@@ -4341,7 +4400,7 @@ export async function deleteTableRow(
   }
   const result = {};
   pkCols.forEach((c, i) => {
-    result[c] = parts[i];
+    result[c] = whereParams[i];
   });
   return result;
 }
@@ -4382,14 +4441,20 @@ async function fetchTenantDefaultRow(tableName, rowId) {
     err.status = 400;
     throw err;
   }
-  const parts = String(rowId ?? '').split('-');
-  if (parts.length !== pkCols.length || parts.some((part) => part === '')) {
+  const parts = decodeRowIdentifier(rowId ?? '');
+  if (
+    parts.length !== pkCols.length ||
+    pkCols.some((_, index) => {
+      const value = parts[index];
+      return value === undefined || value === '';
+    })
+  ) {
     const err = new Error('Invalid row identifier');
     err.status = 400;
     throw err;
   }
   const whereClause = pkCols.map((col) => `${escapeIdentifier(col)} = ?`).join(' AND ');
-  const params = [tableName, ...parts];
+  const params = [tableName, ...pkCols.map((_, index) => parts[index])];
   const pkLower = pkCols.map((c) => c.toLowerCase());
   let where = whereClause;
   if (!pkLower.includes('company_id')) {
@@ -4483,7 +4548,7 @@ export async function deleteTenantDefaultRow(tableName, rowId, userId) {
 
 export async function listRowReferences(tableName, id, conn = pool) {
   const pkCols = await getPrimaryKeyColumns(tableName);
-  const parts = String(id).split('-');
+  const parts = decodeRowIdentifier(id);
   let targetRowLoaded = false;
   let targetRow;
 

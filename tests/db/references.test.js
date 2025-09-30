@@ -112,6 +112,72 @@ test('listRowReferences handles composite foreign keys', async () => {
   ]);
 });
 
+test('listRowReferences decodes encoded composite identifiers', async () => {
+  const encode = (value) =>
+    Buffer.from(String(value), 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  const encodedId = `${encode('5-1')}.${encode('7-2')}`;
+  const restore = mockPool(async (sql, params) => {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[
+        { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+        { COLUMN_NAME: 'id', SEQ_IN_INDEX: 2 },
+      ]];
+    }
+    if (sql.includes('information_schema.KEY_COLUMN_USAGE')) {
+      return [[
+        {
+          CONSTRAINT_NAME: 'fk_orders_users',
+          TABLE_NAME: 'orders',
+          COLUMN_NAME: 'company_id',
+          REFERENCED_COLUMN_NAME: 'company_id',
+        },
+        {
+          CONSTRAINT_NAME: 'fk_orders_users',
+          TABLE_NAME: 'orders',
+          COLUMN_NAME: 'user_id',
+          REFERENCED_COLUMN_NAME: 'id',
+        },
+      ]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE')) {
+      assert.deepEqual(params, [
+        'users',
+        'company_id',
+        '5-1',
+        'id',
+        '7-2',
+      ]);
+      return [[{ company_id: '5-1', id: '7-2' }]];
+    }
+    if (sql.startsWith('SELECT COUNT(*)')) {
+      assert.equal(params[0], 'orders');
+      assert.equal(params[1], 'company_id');
+      assert.equal(params[2], '5-1');
+      assert.equal(params[3], 'user_id');
+      assert.equal(params[4], '7-2');
+      return [[{ count: 1 }]];
+    }
+    throw new Error('unexpected query');
+  });
+  const refs = await db.listRowReferences('users', encodedId);
+  restore();
+  assert.deepEqual(refs, [
+    {
+      table: 'orders',
+      columns: ['company_id', 'user_id'],
+      values: ['5-1', '7-2'],
+      queryValues: ['5-1', '7-2'],
+      count: 1,
+    },
+  ]);
+});
+
 test('listRowReferences fills non-primary referenced columns from target row', async () => {
   const targetRow = {
     company_id: '55',
