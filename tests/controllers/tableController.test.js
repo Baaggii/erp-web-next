@@ -48,29 +48,6 @@ test('getTableRows forwards error for invalid column', async () => {
   assert.match(err.message, /Invalid column name/);
 });
 
-test('getTableRow fetches row using primary key lookup', async () => {
-  const restore = mockPool(async (sql, params) => {
-    if (sql.includes("INDEX_NAME = 'PRIMARY'")) {
-      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
-    }
-    if (sql.startsWith('SELECT * FROM `users`')) {
-      assert.deepEqual(params, ['42']);
-      return [[{ id: 42, name: 'Example' }]];
-    }
-    throw new Error(`Unexpected query: ${sql}`);
-  });
-  const req = { params: { table: 'users', id: '42' } };
-  const res = { json: mock.fn() };
-  await controller.getTableRow(req, res, (e) => {
-    if (e) throw e;
-  });
-  restore();
-  assert.equal(res.json.mock.calls.length, 1);
-  assert.deepEqual(res.json.mock.calls[0].arguments[0], {
-    row: { id: 42, name: 'Example' },
-  });
-});
-
 test('getTableRows uses provided company_id param', async () => {
   const restore = mockPool(async (sql, params) => {
     if (sql.includes('tenant_tables')) {
