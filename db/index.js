@@ -225,6 +225,8 @@ async function getSoftDeleteColumn(tableName, companyId = GLOBAL_COMPANY_ID) {
 
 const DELETED_AT_COLUMN_CANDIDATES = ["deleted_at", "deletedat", "deletedAt"];
 const DELETED_BY_COLUMN_CANDIDATES = ["deleted_by", "deletedby", "deletedBy"];
+const UPDATED_AT_COLUMN_CANDIDATES = ["updated_at", "updatedat", "updatedAt"];
+const UPDATED_BY_COLUMN_CANDIDATES = ["updated_by", "updatedby", "updatedBy"];
 
 function resolveColumnName(columns, lowerColumns, candidates) {
   for (const cand of candidates) {
@@ -318,6 +320,121 @@ function buildSoftDeleteUpdateClause(
     clause: assignments.join(', '),
     params,
     supported: true,
+  };
+}
+
+function buildSeedUpsertUpdateClause(
+  columns,
+  insertColumns,
+  softDeleteColumn,
+  { updatedByFallback = null } = {},
+) {
+  const normalized = Array.isArray(columns)
+    ? columns.map((col) => String(col))
+    : [];
+  const lowerColumns = normalized.map((col) => col.toLowerCase());
+  const insertList = Array.isArray(insertColumns)
+    ? insertColumns.map((col) => String(col))
+    : [];
+  const insertLower = new Set(insertList.map((col) => col.toLowerCase()));
+
+  const resolvedSoftDeleteColumn = softDeleteColumn
+    ? resolveColumnName(normalized, lowerColumns, [softDeleteColumn])
+    : null;
+  const resolvedDeletedAtColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    DELETED_AT_COLUMN_CANDIDATES,
+  );
+  const resolvedDeletedByColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    DELETED_BY_COLUMN_CANDIDATES,
+  );
+  const resolvedUpdatedAtColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    UPDATED_AT_COLUMN_CANDIDATES,
+  );
+  const resolvedUpdatedByColumn = resolveColumnName(
+    normalized,
+    lowerColumns,
+    UPDATED_BY_COLUMN_CANDIDATES,
+  );
+
+  const specialLower = new Set(
+    [
+      resolvedSoftDeleteColumn,
+      resolvedDeletedAtColumn,
+      resolvedDeletedByColumn,
+      resolvedUpdatedAtColumn,
+      resolvedUpdatedByColumn,
+    ]
+      .filter(Boolean)
+      .map((name) => name.toLowerCase()),
+  );
+
+  const assignments = [];
+  const params = [];
+
+  for (const columnName of insertList) {
+    if (specialLower.has(columnName.toLowerCase())) continue;
+    assignments.push(`\`${columnName}\` = VALUES(\`${columnName}\`)`);
+  }
+
+  const pushResetAssignment = (columnName) => {
+    if (!columnName) return;
+    const lower = columnName.toLowerCase();
+    if (insertLower.has(lower)) {
+      assignments.push(`\`${columnName}\` = VALUES(\`${columnName}\`)`);
+    } else {
+      assignments.push(`\`${columnName}\` = DEFAULT(\`${columnName}\`)`);
+    }
+  };
+
+  if (resolvedSoftDeleteColumn) {
+    pushResetAssignment(resolvedSoftDeleteColumn);
+  }
+  if (
+    resolvedDeletedAtColumn &&
+    (!resolvedSoftDeleteColumn ||
+      resolvedDeletedAtColumn.toLowerCase() !==
+        resolvedSoftDeleteColumn.toLowerCase())
+  ) {
+    pushResetAssignment(resolvedDeletedAtColumn);
+  }
+  if (
+    resolvedDeletedByColumn &&
+    (!resolvedSoftDeleteColumn ||
+      resolvedDeletedByColumn.toLowerCase() !==
+        resolvedSoftDeleteColumn.toLowerCase())
+  ) {
+    pushResetAssignment(resolvedDeletedByColumn);
+  }
+
+  if (resolvedUpdatedAtColumn) {
+    assignments.push(`\`${resolvedUpdatedAtColumn}\` = NOW()`);
+  }
+
+  if (resolvedUpdatedByColumn) {
+    if (insertLower.has(resolvedUpdatedByColumn.toLowerCase())) {
+      assignments.push(
+        `\`${resolvedUpdatedByColumn}\` = VALUES(\`${resolvedUpdatedByColumn}\`)`,
+      );
+    } else {
+      assignments.push(`\`${resolvedUpdatedByColumn}\` = ?`);
+      params.push(updatedByFallback);
+    }
+  }
+
+  if (assignments.length === 0 && insertList.length > 0) {
+    const first = insertList[0];
+    assignments.push(`\`${first}\` = VALUES(\`${first}\`)`);
+  }
+
+  return {
+    clause: assignments.join(', '),
+    params,
   };
 }
 
@@ -937,8 +1054,8 @@ export async function upsertModule(
   );
   const now = formatDateForDb(new Date());
   await pool.query(
-    `INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_header, updated_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO modules (module_key, label, parent_key, show_in_sidebar, show_in_header, created_by, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        label = VALUES(label),
        parent_key = VALUES(parent_key),
@@ -946,7 +1063,16 @@ export async function upsertModule(
        show_in_header = VALUES(show_in_header),
        updated_by = VALUES(updated_by),
        updated_at = VALUES(updated_at)`,
-    [moduleKey, label, parentKey, showInSidebar ? 1 : 0, showInHeader ? 1 : 0, empid, now],
+    [
+      moduleKey,
+      label,
+      parentKey,
+      showInSidebar ? 1 : 0,
+      showInHeader ? 1 : 0,
+      empid,
+      empid,
+      now,
+    ],
   );
   await pool.query(
     `INSERT INTO user_level_permissions (company_id, userlevel_id, action, action_key)
@@ -975,7 +1101,7 @@ export async function deleteModule(moduleKey, deletedBy = null) {
   );
   return { moduleKey: result?.module_key ?? moduleKey };
 }
-export async function populateDefaultModules() {
+export async function populateDefaultModules(createdBy = null) {
   for (const m of defaultModules) {
     await upsertModule(
       m.moduleKey,
@@ -983,7 +1109,7 @@ export async function populateDefaultModules() {
       m.parentKey,
       m.showInSidebar,
       m.showInHeader,
-      null,
+      createdBy,
     );
   }
 }
@@ -1062,12 +1188,19 @@ export async function listCompanyModuleLicenses(companyId, createdBy = null) {
 /**
  * Set a company's module license flag
  */
-export async function setCompanyModuleLicense(companyId, moduleKey, licensed) {
+export async function setCompanyModuleLicense(
+  companyId,
+  moduleKey,
+  licensed,
+  actor = null,
+) {
   await pool.query(
-    `INSERT INTO company_module_licenses (company_id, module_key, licensed)
-     VALUES (?, ?, ?)
-     ON DUPLICATE KEY UPDATE licensed = VALUES(licensed)`,
-    [companyId, moduleKey, licensed ? 1 : 0],
+    `INSERT INTO company_module_licenses (company_id, module_key, licensed, created_by, updated_by)
+     VALUES (?, ?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       licensed = VALUES(licensed),
+       updated_by = VALUES(updated_by)`,
+    [companyId, moduleKey, licensed ? 1 : 0, actor, actor],
   );
   return { companyId, moduleKey, licensed: !!licensed };
 }
@@ -1091,6 +1224,29 @@ export async function listDatabaseViews(prefix = '') {
         typeof n === 'string' &&
         (!prefix || n.toLowerCase().includes(prefix.toLowerCase())),
     );
+}
+
+export async function getViewSql(name) {
+  if (!name) return null;
+  try {
+    const [rows] = await pool.query('SHOW CREATE VIEW ??', [name]);
+    const text = rows?.[0]?.['Create View'];
+    if (text) return text;
+  } catch {}
+  try {
+    const [rows] = await pool.query(
+      `SELECT VIEW_DEFINITION FROM information_schema.VIEWS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?`,
+      [name],
+    );
+    return rows?.[0]?.VIEW_DEFINITION || null;
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteView(name) {
+  if (!name) return;
+  await pool.query(`DROP VIEW IF EXISTS \`${name}\``);
 }
 
 export async function listTableColumns(tableName) {
@@ -1264,6 +1420,7 @@ export async function seedTenantTables(
     recordMap && typeof recordMap === 'object' && !Array.isArray(recordMap)
       ? recordMap
       : {};
+  const tenantKeyOverrides = await loadTenantTableKeyConfig(companyId);
   if (Array.isArray(selectedTables)) {
     if (selectedTables.length === 0) {
       return { summary, backup: null };
@@ -1290,20 +1447,39 @@ export async function seedTenantTables(
     if (is_shared) continue;
     const tableSummary = { count: 0 };
     summary[table_name] = tableSummary;
-    const [[{ cnt }]] = await pool.query(
-      'SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?',
-      [table_name, companyId],
-    );
+    const meta = await listTableColumnMeta(table_name);
+    const columns = meta.map((c) => c.name);
+    tableColumnsCache.set(table_name, columns);
+    const softDeleteColumn = await getSoftDeleteColumn(table_name, companyId);
+    let countSql = 'SELECT COUNT(*) AS cnt FROM ?? WHERE company_id = ?';
+    const countParams = [table_name, companyId];
+    if (softDeleteColumn) {
+      const identifier = escapeIdentifier(softDeleteColumn);
+      const normalizedIdentifier = `LOWER(${identifier})`;
+      const activeMarkers = [
+        '0',
+        'n',
+        'no',
+        'false',
+        'f',
+        '0000-00-00 00:00:00',
+        '0000-00-00',
+      ];
+      const markerPlaceholders = activeMarkers.map(() => '?').join(', ');
+      countSql += ` AND (${identifier} IS NULL OR ${identifier} IN (0,'')`;
+      if (markerPlaceholders) {
+        countSql += ` OR ${normalizedIdentifier} IN (${markerPlaceholders})`;
+        countParams.push(...activeMarkers);
+      }
+      countSql += ')';
+    }
+    const [[{ cnt }]] = await pool.query(countSql, countParams);
     const existingCount = Number(cnt) || 0;
     if (existingCount > 0 && !overwrite) {
       const err = new Error(`Table ${table_name} already contains data`);
       err.status = 400;
       throw err;
     }
-
-    const meta = await listTableColumnMeta(table_name);
-    const columns = meta.map((c) => c.name);
-    const softDeleteColumn = await getSoftDeleteColumn(table_name, companyId);
     const otherCols = meta
       .filter(
         (c) =>
@@ -1314,6 +1490,30 @@ export async function seedTenantTables(
 
     const records = normalizedRecordMap?.[table_name];
     const pkCols = meta.filter((m) => m.key === 'PRI').map((m) => m.name);
+    const columnLookup = new Map();
+    for (const col of meta) {
+      const normalized = String(col?.name || '').toLowerCase();
+      if (!normalized) continue;
+      columnLookup.set(normalized, col.name);
+    }
+    let tenantKeys = [];
+    const override = tenantKeyOverrides?.[table_name];
+    if (Array.isArray(override)) {
+      tenantKeys = override
+        .map((key) => columnLookup.get(String(key || '').toLowerCase()))
+        .filter(Boolean);
+    }
+    if (tenantKeys.length === 0) {
+      for (const { aliases } of DEFAULT_TENANT_KEY_ALIASES) {
+        for (const alias of aliases) {
+          const actual = columnLookup.get(alias.toLowerCase());
+          if (actual && !tenantKeys.includes(actual)) {
+            tenantKeys.push(actual);
+            break;
+          }
+        }
+      }
+    }
     const manualRecords =
       Array.isArray(records) &&
       records.length > 0 &&
@@ -1329,6 +1529,7 @@ export async function seedTenantTables(
       columns,
       otherCols,
       pkCols,
+      tenantKeys,
       manualRecords,
       ids,
       existingCount,
@@ -1359,6 +1560,7 @@ export async function seedTenantTables(
       columns,
       otherCols,
       pkCols,
+      tenantKeys,
       manualRecords,
       ids,
       existingCount,
@@ -1397,12 +1599,17 @@ export async function seedTenantTables(
         const colNames = ['company_id', ...rowCols];
         const colsClause = colNames.map((c) => `\`${c}\``).join(', ');
         const placeholders = colNames.map(() => '?').join(', ');
+        const { clause: upsertClause, params: upsertParams } =
+          buildSeedUpsertUpdateClause(columns, colNames, softDeleteColumn, {
+            updatedByFallback: updatedBy ?? createdBy ?? null,
+          });
         const params = [
           tableName,
           ...colNames.map((c) => (c === 'company_id' ? companyId : row[c])),
+          ...upsertParams,
         ];
         const [result] = await pool.query(
-          `INSERT INTO ?? (${colsClause}) VALUES (${placeholders})`,
+          `INSERT INTO ?? (${colsClause}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${upsertClause}`,
           params,
         );
         const inserted = Number(result?.affectedRows);
@@ -1441,9 +1648,12 @@ export async function seedTenantTables(
     const colsClause = ['company_id', ...otherCols]
       .map((c) => `\`${c}\``)
       .join(', ');
+    const sourceAlias = 'src';
+    const companyIdIdentifier = escapeIdentifier('company_id');
     const selectParts = ['? AS company_id'];
     const params = [tableName, companyId];
     for (const col of otherCols) {
+      const colIdentifier = escapeIdentifier(col);
       if (col === 'created_by') {
         selectParts.push('?');
         params.push(createdBy);
@@ -1453,20 +1663,92 @@ export async function seedTenantTables(
       } else if (col === 'created_at' || col === 'updated_at') {
         selectParts.push('NOW()');
       } else {
-        selectParts.push(`\`${col}\``);
+        selectParts.push(`${sourceAlias}.${colIdentifier}`);
       }
     }
     const selectClause = selectParts.join(', ');
     let sql =
-      `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? WHERE company_id = ${GLOBAL_COMPANY_ID}`;
+      `INSERT INTO ?? (${colsClause}) SELECT ${selectClause} FROM ?? AS ${sourceAlias} WHERE ${sourceAlias}.${companyIdIdentifier} = ${GLOBAL_COMPANY_ID}`;
     params.push(tableName);
 
     const idList = Array.isArray(ids) ? ids : [];
-    if (idList.length > 0 && pkCols.length === 1) {
-      const placeholders = idList.map(() => '?').join(', ');
-      sql += ` AND \`${pkCols[0]}\` IN (${placeholders})`;
-      params.push(...idList);
+    let idFilterColumn = null;
+    let idFilterValues = [];
+    if (idList.length > 0 && Array.isArray(pkCols) && pkCols.length > 0) {
+      const tenantKeySet = new Set(
+        (Array.isArray(tenantKeys) ? tenantKeys : []).map((key) =>
+          String(key || '').toLowerCase(),
+        ),
+      );
+      const primitiveIds = [];
+      const structuredIds = [];
+      for (const rawId of idList) {
+        if (rawId && typeof rawId === 'object' && !Array.isArray(rawId)) {
+          structuredIds.push(rawId);
+        } else if (rawId !== undefined && rawId !== null) {
+          primitiveIds.push(rawId);
+        }
+      }
+      const getValuesForColumn = (column) => {
+        const normalized = String(column || '').toLowerCase();
+        if (primitiveIds.length > 0) {
+          return [...primitiveIds];
+        }
+        if (structuredIds.length > 0) {
+          const values = [];
+          for (const obj of structuredIds) {
+            const matchKey = Object.keys(obj || {}).find(
+              (key) => String(key || '').toLowerCase() === normalized,
+            );
+            if (matchKey) {
+              const value = obj[matchKey];
+              if (value !== undefined && value !== null) {
+                values.push(value);
+              }
+            }
+          }
+          return values;
+        }
+        return [];
+      };
+      const tryColumns = (candidates) => {
+        for (const pk of candidates) {
+          const values = getValuesForColumn(pk);
+          if (values.length > 0) {
+            idFilterColumn = pk;
+            idFilterValues = values;
+            return true;
+          }
+        }
+        return false;
+      };
+      const nonTenantColumns = pkCols.filter(
+        (pk) => !tenantKeySet.has(String(pk || '').toLowerCase()),
+      );
+      if (!tryColumns(nonTenantColumns)) {
+        const nonCompanyColumns = pkCols.filter(
+          (pk) => String(pk || '').toLowerCase() !== 'company_id',
+        );
+        if (!tryColumns(nonCompanyColumns)) {
+          tryColumns(pkCols);
+        }
+      }
     }
+    if (idList.length > 0 && idFilterColumn && idFilterValues.length > 0) {
+      const placeholders = idFilterValues.map(() => '?').join(', ');
+      sql += ` AND ${sourceAlias}.${escapeIdentifier(idFilterColumn)} IN (${placeholders})`;
+      params.push(...idFilterValues);
+    }
+
+    const { clause: upsertClause, params: upsertParams } =
+      buildSeedUpsertUpdateClause(
+        columns,
+        ['company_id', ...otherCols],
+        softDeleteColumn,
+        { updatedByFallback: updatedBy ?? createdBy ?? null },
+      );
+    sql += ` ON DUPLICATE KEY UPDATE ${upsertClause}`;
+    params.push(...upsertParams);
 
     const [result] = await pool.query(sql, params);
     const inserted = Number(result?.affectedRows);
@@ -1474,7 +1756,11 @@ export async function seedTenantTables(
       tableSummary.count += inserted;
     }
     if (idList.length > 0) {
-      tableSummary.ids = [...idList];
+      const summaryIds =
+        idFilterColumn && idFilterValues.length > 0 ? idFilterValues : idList;
+      if (summaryIds.length > 0) {
+        tableSummary.ids = [...summaryIds];
+      }
     }
   }
 
@@ -3637,7 +3923,7 @@ export async function saveTableColumnLabels(
 
 export async function listTableColumnMeta(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA
+    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA, GENERATION_EXPRESSION
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = ?
@@ -3663,6 +3949,7 @@ export async function listTableColumnMeta(tableName) {
     key: r.COLUMN_KEY,
     extra: r.EXTRA,
     label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
+    generationExpression: r.GENERATION_EXPRESSION ?? null,
   }));
 }
 

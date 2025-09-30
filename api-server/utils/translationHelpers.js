@@ -49,7 +49,7 @@ export function sortObj(o) {
 const HANGUL_REGEX = /\p{Script=Hangul}/u;
 const HIRAGANA_KATAKANA_REGEX = /[\p{Script=Hiragana}\p{Script=Katakana}]/u;
 const CJK_IDEOGRAPH_REGEX = /\p{Script=Han}/u;
-const CYRILLIC_REGEX = /\p{Script=Cyrillic}/u;
+export const CYRILLIC_REGEX = /\p{Script=Cyrillic}/u;
 const LATIN_REGEX = /\p{Script=Latin}/u;
 const DIACRITIC_MARKS_REGEX = /[\u0300-\u036f]/g;
 const SPANISH_DIACRITIC_REGEX = /[áéíóúüñÁÉÍÓÚÜÑ¡¿]/;
@@ -648,6 +648,81 @@ const LANGUAGE_HEURISTICS = [
 ];
 
 const MONGOLIAN_EXTRA_CYRILLIC = new Set([0x0401, 0x0451, 0x04ae, 0x04af, 0x04e8, 0x04e9]);
+const MONGOLIAN_SPECIFIC_CYRILLIC = new Set([0x04ae, 0x04af, 0x04e8, 0x04e9]);
+
+const MONGOLIAN_POSITIVE_SEQUENCES = [
+  ' САЙН ',
+  ' БАЙН',
+  ' БАЙХ',
+  ' БАЙГ',
+  ' БАЙГУ',
+  ' АЖИЛ',
+  ' АЖИГ',
+  ' ХЭРЭГ',
+  ' ХОЛБ',
+  ' БАРИХ',
+  ' ТОВЧ',
+  ' ДАНС',
+  ' ХАЯГ',
+  ' МОНГОЛ',
+  ' НЭГ ',
+  ' ОЛОН ',
+  ' ВЭ ',
+  ' ГАРЫН',
+  ' АВЛАГ',
+  ' ТОХИРГ',
+  ' ГҮЙЛ',
+  ' ҮЙЛГ',
+  ' ЛЭГЧ',
+  ' ГЧИЙ',
+  ' ЧИЙН',
+  ' ЛГЭЭ',
+  ' ЙЛГЭ',
+  ' ГЭЭ ',
+  ' ГЭЖ',
+  ' ЗАХИ',
+  ' АХИА',
+  ' ХИАЛ',
+  ' ЛБАР',
+  ' УГАА',
+  ' ГААР',
+  ' ХЯМД',
+  ' ОГНО',
+  ' ЛЫН ',
+  ' ИЙН ',
+  ' ГУУЛ',
+  ' УУЛЛ',
+  ' УЛЛА',
+  ' ТАЛБ',
+  ' ТАЛХ',
+  ' ХОЙЛ',
+  ' ХИЙХ',
+  ' ХИЙД',
+  ' ХИЙЖ',
+  ' АМЖИ',
+  'ОМЖ',
+  ' УТАС',
+  ' МЭДЭ',
+];
+
+const MONGOLIAN_POSITIVE_BIGRAMS = new Set([
+  'ЙЛ',
+  'ТГ',
+  'ГЧ',
+  'МЖ',
+  'ХЯ',
+  'ЛБ',
+  'ЛЭ',
+  'ЙХ',
+  'РХ',
+  'НЭ',
+  'ЭГ',
+  'ЭН',
+  'ЭР',
+  'ЭХ',
+  'СЭ',
+  'УУ',
+]);
 
 function isAllowedMongolianCyrillicCodePoint(codePoint) {
   return (
@@ -658,7 +733,10 @@ function isAllowedMongolianCyrillicCodePoint(codePoint) {
 
 function isLikelyMongolianCyrillic(value) {
   if (typeof value !== 'string') return false;
+
   let hasCyrillic = false;
+  let hasMongolianSpecificLetter = false;
+
   for (const char of value) {
     const codePoint = char.codePointAt(0);
     if (typeof codePoint !== 'number') continue;
@@ -667,9 +745,49 @@ function isLikelyMongolianCyrillic(value) {
       if (!isAllowedMongolianCyrillicCodePoint(codePoint)) {
         return false;
       }
+      if (MONGOLIAN_SPECIFIC_CYRILLIC.has(codePoint)) {
+        hasMongolianSpecificLetter = true;
+      }
     }
   }
-  return hasCyrillic;
+
+  if (!hasCyrillic) return false;
+  if (hasMongolianSpecificLetter) return true;
+
+  const normalized = value
+    .toUpperCase()
+    .replace(/[^\u0400-\u04FF]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (!normalized) return false;
+
+  const padded = ` ${normalized} `;
+  let signalScore = 0;
+
+  const sequenceMatches = new Set();
+  for (const seq of MONGOLIAN_POSITIVE_SEQUENCES) {
+    if (padded.includes(seq)) {
+      sequenceMatches.add(seq);
+    }
+  }
+  if (sequenceMatches.size) {
+    signalScore += sequenceMatches.size * 2;
+  }
+
+  const lettersOnly = normalized.replace(/\s+/g, '');
+  const bigramMatches = new Set();
+  for (let i = 0; i < lettersOnly.length - 1; i++) {
+    const bigram = lettersOnly.slice(i, i + 2);
+    if (MONGOLIAN_POSITIVE_BIGRAMS.has(bigram)) {
+      bigramMatches.add(bigram);
+    }
+  }
+  if (bigramMatches.size) {
+    signalScore += Math.min(bigramMatches.size, 3);
+  }
+
+  return signalScore >= 2;
 }
 
 export function isValidMongolianCyrillic(value) {
@@ -747,12 +865,43 @@ export function detectLang(str) {
   return 'latin';
 }
 
+function humanizePageSegment(value) {
+  if (!value) return '';
+  let segment = value.replace(/\.[^.]+$/, '');
+  segment = segment.replace(/[-_]+/g, ' ');
+  segment = segment
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z0-9]+)/g, '$1 $2');
+  segment = segment.replace(/\b(Page|Tab)$/i, '').trim();
+  if (!segment) return '';
+  const parts = segment.split(/\s+/).filter(Boolean);
+  return parts
+    .map((word) => (word.toUpperCase() === word ? word : word[0].toUpperCase() + word.slice(1)))
+    .join(' ');
+}
+
+function derivePageLabel(relPath) {
+  if (!relPath) return '';
+  const normalized = relPath.split(path.sep).join('/');
+  if (!/\bpages\//.test(normalized)) return '';
+  const parts = normalized.replace(/\.[^.]+$/, '').split('/');
+  if (!parts.length) return '';
+  let candidate = parts[parts.length - 1];
+  if (!candidate && parts.length > 1) candidate = parts[parts.length - 2];
+  if (candidate && candidate.toLowerCase() === 'index' && parts.length > 1) {
+    candidate = parts[parts.length - 2];
+  }
+  return humanizePageSegment(candidate);
+}
+
 function defaultModuleResolver(rootDir, filePath) {
-  if (!filePath) return '';
+  if (!filePath) return { module: '', page: '' };
   const rel = path.relative(rootDir, filePath);
-  if (!rel) return '';
+  if (!rel) return { module: '', page: '' };
   const normalized = rel.split(path.sep).join('/');
-  return normalized.replace(/\.[^.]+$/, '');
+  const moduleId = normalized.replace(/\.[^.]+$/, '');
+  const page = derivePageLabel(rel);
+  return { module: moduleId, page };
 }
 
 export function collectPhrasesFromPages(dir, options = {}) {
@@ -769,7 +918,7 @@ export function collectPhrasesFromPages(dir, options = {}) {
   const pairs = [];
   const uiTags = new Set(['button', 'label', 'option']);
   const seen = new Set();
-  const addPairFactory = (moduleId) => (key, text, context = '') => {
+  const addPairFactory = (moduleId, pageLabel) => (key, text, context = '') => {
     if (key == null || text == null) return;
     const normalized = `${key}:::${text}:::${moduleId ?? ''}:::${context ?? ''}`;
     if (seen.has(normalized)) return;
@@ -779,15 +928,25 @@ export function collectPhrasesFromPages(dir, options = {}) {
       text,
       module: moduleId ?? '',
       context: context ?? '',
+      page: pageLabel ?? '',
     });
   };
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
-    const moduleId =
+    const resolved =
       typeof moduleResolver === 'function'
         ? moduleResolver({ file, dir })
         : defaultModuleResolver(dir, file);
-    const addPair = addPairFactory(moduleId);
+    let moduleId = '';
+    let pageLabel = '';
+    if (resolved && typeof resolved === 'object') {
+      moduleId = resolved.module ?? '';
+      pageLabel = resolved.page ?? '';
+    } else {
+      moduleId = resolved ?? '';
+      pageLabel = '';
+    }
+    const addPair = addPairFactory(moduleId, pageLabel);
     if (parser && traverse) {
       let ast;
       try {

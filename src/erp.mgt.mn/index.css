@@ -158,6 +158,129 @@ select[multiple] {
   min-width: 12rem;
 }
 
+/* Joyride tooltip theming */
+.react-joyride__tooltip {
+  background: #f8fafc;
+  color: #0f172a;
+  border-radius: 12px;
+  padding: 1.25rem;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  max-width: min(360px, 90vw);
+}
+
+.react-joyride__tooltip-header {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+}
+
+.react-joyride__tooltip-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: inherit;
+}
+
+.react-joyride__tooltip-content {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: #1e293b;
+}
+
+.react-joyride__tooltip-footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 1.25rem;
+}
+
+.react-joyride__tooltip-button {
+  appearance: none;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  padding: 0.45rem 1rem;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease,
+    color 0.15s ease, border-color 0.15s ease;
+}
+
+.react-joyride__tooltip-button:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.35);
+  outline-offset: 2px;
+}
+
+.react-joyride__tooltip-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  box-shadow: none;
+}
+
+.react-joyride__tooltip-button--primary {
+  --primary: linear-gradient(135deg, #2563eb, #1d4ed8);
+  background: var(--primary);
+  color: #ffffff;
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.25);
+}
+
+.react-joyride__tooltip-button--primary:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 32px rgba(37, 99, 235, 0.35);
+}
+
+.react-joyride__tooltip-button--primary:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 8px 16px rgba(37, 99, 235, 0.3);
+}
+
+.react-joyride__tooltip-button--back {
+  --back: #e2e8f0;
+  background: var(--back);
+  color: #1f2937;
+  border-color: #cbd5f5;
+}
+
+.react-joyride__tooltip-button--back:hover:not(:disabled) {
+  background: #cbd5f5;
+}
+
+.react-joyride__tooltip-button--skip {
+  --skip: transparent;
+  background: var(--skip);
+  color: #475569;
+  border-color: transparent;
+}
+
+.react-joyride__tooltip-button--skip:hover:not(:disabled) {
+  color: #1f2937;
+}
+
+.react-joyride__tooltip-button--skip:active:not(:disabled) {
+  color: #0f172a;
+}
+
+.react-joyride__tooltip-button--end {
+  --end: linear-gradient(135deg, #f97316, #ef4444);
+  background: var(--end);
+  color: #ffffff;
+  font-weight: 700;
+  border-color: transparent;
+  box-shadow: 0 16px 32px rgba(239, 68, 68, 0.35);
+}
+
+.react-joyride__tooltip-button--end:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 22px 40px rgba(239, 68, 68, 0.45);
+  filter: brightness(1.05);
+}
+
+.react-joyride__tooltip-button--end:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 12px 24px rgba(239, 68, 68, 0.4);
+  filter: brightness(0.98);
+}
+
 select[multiple] option:checked {
   background-color: #2563eb;
   color: #fff;

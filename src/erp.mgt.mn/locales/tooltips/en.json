@@ -525,5 +525,8 @@
   "reports": "Reports",
   "user_level_actions": "User level actions",
   "edit_delete_request": "Edit or delete request",
+  "settings_enable_tour_builder": "Allow this user to create or edit guided tours when they have sufficient permissions.",
+  "settings_show_tour_buttons": "Show or hide the tour action buttons in the window header.",
+  "tour_builder_enabled": "Allow administrators with system settings access to launch the tour builder interface.",
   "system_settings": "System settings"
 }

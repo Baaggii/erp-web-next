@@ -4,6 +4,87 @@ import { pool } from '../../db/index.js';
 import { getConfigPath } from '../utils/configPaths.js';
 
 const masterForeignKeyCache = new Map();
+const masterTableColumnsCache = new Map();
+
+const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+
+const SESSION_KEY_MAP = new Map([
+  ['employee_id', 'emp_id'],
+  ['employeeid', 'emp_id'],
+  ['user_id', 'emp_id'],
+  ['userid', 'emp_id'],
+  ['company_id', 'company_id'],
+  ['companyid', 'company_id'],
+  ['branch_id', 'branch_id'],
+  ['branchid', 'branch_id'],
+  ['department_id', 'department_id'],
+  ['departmentid', 'department_id'],
+  ['session_id', 'session_id'],
+  ['sessionid', 'session_id'],
+  ['pos_date', 'pos_date'],
+  ['posdate', 'pos_date'],
+  ['date', 'pos_date'],
+]);
+
+function toSnakeCaseKey(rawKey) {
+  if (typeof rawKey !== 'string') return '';
+  const trimmed = rawKey.trim();
+  if (!trimmed) return '';
+  const snake = trimmed
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z0-9]+)/g, '$1_$2')
+    .replace(/[\s-]+/g, '_')
+    .replace(/__+/g, '_')
+    .toLowerCase();
+  return SESSION_KEY_MAP.get(snake) || snake;
+}
+
+async function getMasterTableColumnSet(table) {
+  if (!table) return new Set();
+  if (masterTableColumnsCache.has(table)) {
+    return masterTableColumnsCache.get(table);
+  }
+  const [rows] = await pool.query(
+    `SELECT COLUMN_NAME
+       FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = ?`,
+    [table],
+  );
+  const set = new Set();
+  for (const row of rows) {
+    const column = row?.COLUMN_NAME;
+    if (column) {
+      set.add(column);
+    }
+  }
+  masterTableColumnsCache.set(table, set);
+  return set;
+}
+
+function normalizeSessionInfo(sessionInfo, posData, masterColumns) {
+  if (!isPlainObject(sessionInfo)) return {};
+  const allowed = new Set();
+  if (isPlainObject(posData)) {
+    for (const key of Object.keys(posData)) {
+      allowed.add(key);
+    }
+  }
+  if (masterColumns instanceof Set) {
+    for (const col of masterColumns) {
+      allowed.add(col);
+    }
+  }
+  if (!allowed.size) return {};
+  const normalized = {};
+  for (const [rawKey, value] of Object.entries(sessionInfo)) {
+    if (value === undefined) continue;
+    const key = toSnakeCaseKey(rawKey);
+    if (!key || !allowed.has(key)) continue;
+    normalized[key] = value;
+  }
+  return normalized;
+}
 
 function getValue(row, field) {
   const val = row?.[field];
@@ -14,6 +95,29 @@ function setValue(target, field, value) {
   if (target && field) {
     target[field] = value;
   }
+}
+
+function extractArrayMetadata(value) {
+  if (!value || typeof value !== 'object') return null;
+  const metadata = {};
+  let hasMetadata = false;
+  for (const key of Object.keys(value)) {
+    if (key === 'rows' || key === 'meta') continue;
+    if (arrayIndexPattern.test(key)) continue;
+    metadata[key] = value[key];
+    hasMetadata = true;
+  }
+  return hasMetadata ? metadata : null;
+}
+
+function assignArrayMetadata(target, source) {
+  if (!Array.isArray(target) || !source || typeof source !== 'object') {
+    return target;
+  }
+  const metadata = extractArrayMetadata(source);
+  if (!metadata) return target;
+  Object.assign(target, metadata);
+  return target;
 }
 
 function sumCellValue(source, field) {
@@ -81,6 +185,12 @@ export function propagateCalcFields(cfg, data) {
         const { table, field } = cell || {};
         if (!table || !field) continue;
         const source = data[table];
+        const direct = getValue(source, field);
+        if (direct !== undefined) {
+          computedValue = direct;
+          hasComputedValue = true;
+          break;
+        }
         if (Array.isArray(source)) {
           for (const row of source) {
             if (!row || typeof row !== 'object') continue;
@@ -111,6 +221,7 @@ export function propagateCalcFields(cfg, data) {
       if (!target) continue;
 
       if (agg === 'SUM' && Array.isArray(target)) {
+        setValue(target, field, computedValue);
         continue;
       }
 
@@ -119,6 +230,7 @@ export function propagateCalcFields(cfg, data) {
           if (!row || typeof row !== 'object') continue;
           setValue(row, field, computedValue);
         }
+        setValue(target, field, computedValue);
       } else if (isPlainObject(target)) {
         setValue(target, field, computedValue);
       }
@@ -247,13 +359,24 @@ function normalizeSingleEntry(value) {
 }
 
 function normalizeMultiEntry(value) {
+  let rows = [];
+  let metadata = null;
   if (Array.isArray(value)) {
-    return value.filter((item) => isPlainObject(item)).map((item) => ({ ...item }));
+    rows = value.filter((item) => isPlainObject(item)).map((item) => ({ ...item }));
+    metadata = extractArrayMetadata(value);
+  } else if (isPlainObject(value)) {
+    if (Array.isArray(value.rows)) {
+      rows = value.rows
+        .filter((item) => isPlainObject(item))
+        .map((item) => ({ ...item }));
+      metadata = extractArrayMetadata(value.meta || {});
+    } else {
+      rows = [{ ...value }];
+    }
   }
-  if (isPlainObject(value)) {
-    return [{ ...value }];
-  }
-  return [];
+  const normalized = Array.isArray(rows) ? rows : [];
+  if (!metadata) return normalized;
+  return assignArrayMetadata(normalized, metadata);
 }
 
 function inferExpectedFieldType(info) {
@@ -334,7 +457,11 @@ export function validateConfiguredFields(cfg, data, tableTypeMap = new Map()) {
 
     let rows;
     if (Array.isArray(tableData)) {
+      const metadata = extractArrayMetadata(tableData);
       rows = tableData.map((row, index) => ({ row, index }));
+      if (metadata && Object.keys(metadata).length > 0) {
+        rows.push({ row: metadata, index: 'meta' });
+      }
     } else if (isPlainObject(tableData)) {
       rows = [{ row: tableData, index: null }];
     } else {
@@ -430,18 +557,32 @@ async function upsertRow(conn, table, row) {
 }
 
 export async function postPosTransaction(
+  name,
   data,
   sessionInfo = {},
   companyId = 0,
 ) {
-    const { path: cfgPath } = await getConfigPath(
-      'posTransactionConfig.json',
-      companyId,
-    );
+  const layoutName = typeof name === 'string' ? name.trim() : '';
+  if (!layoutName) {
+    const err = new Error('POS transaction layout name is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const { path: cfgPath } = await getConfigPath(
+    'posTransactionConfig.json',
+    companyId,
+  );
   const cfgRaw = await fs.readFile(cfgPath, 'utf8');
   const json = JSON.parse(cfgRaw);
-  const cfg = json['POS_Modmarket'];
-  if (!cfg) throw new Error('POS_Modmarket config not found');
+  const cfg = json?.[layoutName];
+  if (!cfg) {
+    const err = new Error(
+      `POS transaction config not found for layout "${layoutName}"`,
+    );
+    err.status = 400;
+    throw err;
+  }
 
   const masterTable = cfg.masterTable || 'transactions_pos';
   const masterType = cfg.masterType === 'multi' ? 'multi' : 'single';
@@ -545,7 +686,9 @@ export async function postPosTransaction(
   // Evaluate formulas
   evalPosFormulas(cfg, mergedData);
 
-  Object.assign(posData, sessionInfo);
+  const masterColumns = await getMasterTableColumnSet(masterTable);
+  const normalizedSession = normalizeSessionInfo(sessionInfo, posData, masterColumns);
+  Object.assign(posData, normalizedSession);
 
   const validationErrors = validateConfiguredFields(cfg, mergedData, tableTypeMap);
   if (validationErrors.length) {

@@ -28,6 +28,11 @@ import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import {
+  applyGeneratedColumnEvaluators,
+  createGeneratedColumnEvaluator,
+  valuesEqual,
+} from '../utils/generatedColumns.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -160,7 +165,23 @@ const TableManager = forwardRef(function TableManager({
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
-  const handleRowsChange = useCallback((rs) => setGridRows(rs), []);
+  const handleRowsChange = useCallback((rs) => {
+    setGridRows(rs);
+    if (!Array.isArray(rs) || rs.length === 0) return;
+    setEditing((prev) => {
+      const firstRow = rs[0];
+      if (!firstRow || typeof firstRow !== 'object') return prev;
+      const base = prev ? { ...prev } : {};
+      let changed = false;
+      Object.entries(firstRow).forEach(([key, value]) => {
+        if (!Object.is(base[key], value)) {
+          base[key] = value;
+          changed = true;
+        }
+      });
+      return changed ? base : prev;
+    });
+  }, []);
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
   const [showCascade, setShowCascade] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
@@ -276,6 +297,26 @@ const TableManager = forwardRef(function TableManager({
       ),
     [columnMeta],
   );
+
+  const generatedColumnEvaluators = useMemo(() => {
+    if (!Array.isArray(columnMeta) || columnMeta.length === 0) return {};
+    const evaluators = {};
+    columnMeta.forEach((col) => {
+      if (!col || typeof col !== 'object') return;
+      const rawName = col.name;
+      const expr =
+        col.generationExpression ??
+        col.GENERATION_EXPRESSION ??
+        col.generation_expression ??
+        null;
+      if (!rawName || !expr) return;
+      const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
+      if (typeof key !== 'string') return;
+      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
+      if (evaluator) evaluators[key] = evaluator;
+    });
+    return evaluators;
+  }, [columnMeta, columnCaseMap]);
 
   const viewSourceMap = useMemo(() => {
     const map = {};
@@ -408,7 +449,14 @@ const TableManager = forwardRef(function TableManager({
         .then((res) => (res.ok ? res.json() : []))
         .then((cols) => {
           if (canceled) return;
-          setViewColumns((m) => ({ ...m, [v]: cols.map((c) => c.name) }));
+          const list = Array.isArray(cols)
+            ? cols.map((c) => ({
+                ...c,
+                generationExpression:
+                  c?.generationExpression ?? c?.GENERATION_EXPRESSION ?? null,
+              }))
+            : [];
+          setViewColumns((m) => ({ ...m, [v]: list }));
         })
         .catch(() => {});
     });
@@ -978,27 +1026,29 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function ensureColumnMeta() {
-    if (columnMeta.length > 0 || !table) return;
+    if (!table) return [];
+    if (columnMeta.length > 0) return columnMeta;
     try {
       const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, {
         credentials: 'include',
       });
-      if (res.ok) {
-        try {
-          const cols = await res.json();
-          if (Array.isArray(cols)) {
-            setColumnMeta(cols);
-            setAutoInc(computeAutoInc(cols));
-          }
-        } catch {
-          addToast(
-            t('failed_parse_table_columns', 'Failed to parse table columns'),
-            'error',
-          );
-        }
-      } else {
+      if (!res.ok) {
         addToast(
           t('failed_load_table_columns', 'Failed to load table columns'),
+          'error',
+        );
+        return [];
+      }
+      try {
+        const cols = await res.json();
+        if (Array.isArray(cols)) {
+          setColumnMeta(cols);
+          setAutoInc(computeAutoInc(cols));
+          return cols;
+        }
+      } catch {
+        addToast(
+          t('failed_parse_table_columns', 'Failed to parse table columns'),
           'error',
         );
       }
@@ -1009,43 +1059,57 @@ const TableManager = forwardRef(function TableManager({
         'error',
       );
     }
+    return columnMeta;
   }
 
   async function openAdd() {
-    await ensureColumnMeta();
-    const vals = {};
+    const meta = await ensureColumnMeta();
+    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
     const defaults = {};
-    const all = columnMeta.map((c) => c.name);
-    all.forEach((c) => {
-      const isGenerated = generatedCols.has(c);
-      let v = (formConfig?.defaultValues || {})[c] || '';
+    const baseRow = {};
+    cols.forEach((c) => {
+      const name = c.name;
+      const isGenerated =
+        typeof c?.extra === 'string' && /(virtual|stored)\s+generated/i.test(c.extra);
+      let v = (formConfig?.defaultValues || {})[name] || '';
       if (autoFillSession && !isGenerated) {
-        if (userIdFields.includes(c) && user?.empid) v = user.empid;
-        if (branchIdFields.includes(c) && branch !== undefined) v = branch;
-        if (departmentIdFields.includes(c) && department !== undefined) v = department;
-        if (companyIdFields.includes(c) && company !== undefined) v = company;
+        if (userIdFields.includes(name) && user?.empid) v = user.empid;
+        if (branchIdFields.includes(name) && branch !== undefined) v = branch;
+        if (departmentIdFields.includes(name) && department !== undefined) v = department;
+        if (companyIdFields.includes(name) && company !== undefined) v = company;
       }
-      vals[c] = v;
-      defaults[c] = v;
-      if (!v && formConfig?.dateField?.includes(c)) {
-        const typ = fieldTypeMap[c];
+      baseRow[name] = v;
+      defaults[name] = v;
+      if (!v && formConfig?.dateField?.includes(name)) {
+        const typ = fieldTypeMap[name];
         const now = new Date();
         if (typ === 'datetime') {
-          defaults[c] = formatTimestamp(now);
+          defaults[name] = formatTimestamp(now);
         } else if (typ === 'date') {
-          defaults[c] = formatTimestamp(now).slice(0, 10);
+          defaults[name] = formatTimestamp(now).slice(0, 10);
         } else if (typ === 'time') {
-          defaults[c] = formatTimestamp(now).slice(11, 19);
+          defaults[name] = formatTimestamp(now).slice(11, 19);
         }
       }
     });
     if (formConfig?.transactionTypeField && formConfig.transactionTypeValue) {
-      vals[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
+      baseRow[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
       defaults[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
     }
+    const initialRows = [{ ...baseRow, _saved: false }];
+    if (Object.keys(generatedColumnEvaluators).length > 0) {
+      const { changed } = applyGeneratedColumnEvaluators({
+        targetRows: initialRows,
+        evaluators: generatedColumnEvaluators,
+        equals: valuesEqual,
+      });
+      if (changed && initialRows[0]) {
+        Object.assign(baseRow, initialRows[0]);
+      }
+    }
     setRowDefaults(defaults);
-    setEditing(vals);
-    setGridRows([vals]);
+    setEditing(baseRow);
+    setGridRows(initialRows);
     setIsAdding(true);
     setShowForm(true);
   }
@@ -1234,18 +1298,28 @@ const TableManager = forwardRef(function TableManager({
           });
         }
       });
-      return next;
+      if (Object.keys(generatedColumnEvaluators).length === 0) {
+        return next;
+      }
+      const workingRows = [{ ...next }];
+      const { changed } = applyGeneratedColumnEvaluators({
+        targetRows: workingRows,
+        evaluators: generatedColumnEvaluators,
+        equals: valuesEqual,
+      });
+      return changed ? workingRows[0] : next;
     });
     Object.entries(changes).forEach(([field, val]) => {
       const view = viewSourceMap[field];
       if (!view || val === '') return;
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
       const cols = viewColumns[view] || [];
-      if (company != null && cols.includes('company_id'))
+      const colNames = cols.map((c) => (typeof c === 'string' ? c : c.name));
+      if (company != null && colNames.includes('company_id'))
         params.set('company_id', company);
       Object.entries(viewSourceMap).forEach(([f, v]) => {
         if (v !== view) return;
-        if (!cols.includes(f)) return;
+        if (!colNames.includes(f)) return;
         let pv = changes[f];
         if (pv === undefined) pv = editing?.[f];
         if (pv === undefined || pv === '') return;
@@ -1369,7 +1443,9 @@ const TableManager = forwardRef(function TableManager({
     const cleaned = {};
     const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
     Object.entries(merged).forEach(([k, v]) => {
+      const lower = k.toLowerCase();
       if (skipFields.has(k) || k.startsWith('_')) return;
+      if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
         cleaned[k] =
           typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
@@ -1633,7 +1709,9 @@ const TableManager = forwardRef(function TableManager({
       const cleaned = {};
       const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
       Object.entries(row).forEach(([k, v]) => {
+        const lower = k.toLowerCase();
         if (skipFields.has(k) || k.startsWith('_')) return;
+        if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
         if (v !== '') cleaned[k] = v;
       });
       const res = await fetch(`${API_BASE}/pending_request`, {
@@ -1804,8 +1882,53 @@ const TableManager = forwardRef(function TableManager({
   columnMeta.forEach((c) => {
     labels[c.name] = c.label || c.name;
   });
-  const hiddenColumns = ['password', 'created_by', 'created_at'];
-  let columns = ordered.filter((c) => !hiddenColumns.includes(c));
+  const auditFieldSet = useMemo(() => {
+    const base = [
+      'created_by',
+      'created_at',
+      'updated_by',
+      'updated_at',
+      'deleted_by',
+      'deleted_at',
+      'is_deleted',
+    ];
+    const set = new Set(base.map((name) => name.toLowerCase()));
+    columnMeta.forEach((c) => {
+      const name = (c.name || '').toLowerCase();
+      if (!name) return;
+      const rawType = (
+        c.type ||
+        c.columnType ||
+        c.dataType ||
+        c.DATA_TYPE ||
+        ''
+      ).toLowerCase();
+      if (
+        /tinyint\(1\)|boolean|bool|bit\(1\)/.test(rawType) &&
+        name.includes('deleted')
+      ) {
+        set.add(name);
+      }
+    });
+    return set;
+  }, [columnMeta]);
+  const hiddenColumnSet = useMemo(() => {
+    const set = new Set(auditFieldSet);
+    set.add('password');
+    return set;
+  }, [auditFieldSet]);
+  let columns = ordered.filter((c) => !hiddenColumnSet.has(c.toLowerCase()));
+  const provided = Array.isArray(formConfig?.editableFields)
+    ? formConfig.editableFields
+    : [];
+  const defaults = Array.isArray(formConfig?.editableDefaultFields)
+    ? formConfig.editableDefaultFields
+    : [];
+  const editVals = Array.from(new Set([...defaults, ...provided]));
+  const editSet =
+    editVals.length > 0
+      ? new Set(editVals.map((f) => f.toLowerCase()))
+      : null;
   const placeholders = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
@@ -1867,9 +1990,12 @@ const TableManager = forwardRef(function TableManager({
   if (columnMeta.length === 0 && autoCols.size === 0 && allColumns.includes('id')) {
     autoCols.add('id');
   }
-  let formColumns = ordered.filter(
-    (c) => !autoCols.has(c) && c !== 'created_at' && c !== 'created_by'
-  );
+  let formColumns = ordered.filter((c) => {
+    if (autoCols.has(c)) return false;
+    const lower = c.toLowerCase();
+    if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return false;
+    return true;
+  });
 
   const lockedDefaults = Object.entries(formConfig?.defaultValues || {})
     .filter(
@@ -1890,20 +2016,18 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
-  const provided = Array.isArray(formConfig?.editableFields)
-    ? formConfig.editableFields
-    : [];
-  const defaults = Array.isArray(formConfig?.editableDefaultFields)
-    ? formConfig.editableDefaultFields
-    : [];
-  const editVals = Array.from(new Set([...defaults, ...provided]));
-  const editSet = editVals.length > 0 ? new Set(editVals.map((f) => f.toLowerCase())) : null;
   let disabledFields = editSet
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
     : [];
-  disabledFields = editing
-    ? Array.from(new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]))
-    : Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  if (isAdding) {
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  } else if (editing) {
+    disabledFields = Array.from(
+      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
+    );
+  } else {
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  }
 
   const totalAmountSet = useMemo(
     () => new Set(formConfig?.totalAmountFields || []),
@@ -2717,6 +2841,7 @@ const TableManager = forwardRef(function TableManager({
         procTriggers={procTriggers}
         columnCaseMap={columnCaseMap}
         table={table}
+        tableColumns={columnMeta}
         imagenameField={formConfig?.imagenameField || []}
         imageIdField={formConfig?.imageIdField || ''}
         viewSource={viewSourceMap}

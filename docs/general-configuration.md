@@ -37,10 +37,15 @@ up to `boxMaxWidth`/`boxMaxHeight` as text is entered and wrap when necessary.
 The **POS** section provides the same options specifically for POS transactions.
 Here `boxWidth` defines the initial grid box width of a POS transaction.
 
-The **General** section hosts feature toggles. `requestPollingEnabled` controls
-whether the client falls back to periodic API polling when a Socket.IO
-connection cannot be established. `requestPollingIntervalSeconds` sets the
-polling cadence (default 30&nbsp;seconds).
+The **General** section hosts feature toggles. `showTourButtons` controls
+whether the tour action group is displayed in the ERP window header. Toggle it
+off to hide the Create/Edit/View tour buttons across the application.
+`tourBuilderEnabled` governs whether administrators with the `system_settings`
+permission can launch the tour builder to create or edit guides. Other options
+include `requestPollingEnabled`, which determines whether the client
+falls back to periodic API polling when a Socket.IO connection cannot be
+established, and `requestPollingIntervalSeconds`, which sets the polling
+cadence (default 30&nbsp;seconds).
 
 The **Images** tab exposes `basePath`, `cleanupDays` and an `ignoreOnSearch` list.
 `basePath` sets the root directory for uploaded transaction images. The default

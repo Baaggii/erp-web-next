@@ -784,5 +784,6 @@
   "assembly_price": "Assembly price",
   "reports": "Reports",
   "edit_delete_request": "Edit or delete request",
+  "settings_show_tour_buttons": "창 헤더의 투어 버튼을 표시하거나 숨깁니다.",
   "system_settings": "System settings"
 }

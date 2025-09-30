@@ -15,6 +15,140 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
+import { syncCalcFields } from '../utils/syncCalcFields.js';
+import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
+import { valuesEqual } from '../utils/generatedColumns.js';
+import {
+  isPlainRecord,
+  assignArrayMetadata,
+  cloneArrayWithMetadata,
+  serializeRowsWithMetadata,
+  serializeValuesForTransport,
+  restoreValuesFromTransport,
+  cloneValuesForRecalc,
+  createGeneratedColumnPipeline,
+  recalcTotals as recalcPosTotals,
+} from '../utils/transactionValues.js';
+
+export { syncCalcFields };
+
+function normalizeValueForComparison(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) return undefined;
+    return value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    const num = Number(trimmed);
+    if (Number.isFinite(num)) return num;
+    return trimmed;
+  }
+  if (typeof value === 'boolean') return value;
+  if (value instanceof Date) return value.getTime();
+  return value;
+}
+
+function valuesApproximatelyEqual(a, b) {
+  if (a === undefined && b === undefined) return true;
+  const normA = normalizeValueForComparison(a);
+  const normB = normalizeValueForComparison(b);
+  if (normA === undefined && normB === undefined) return true;
+  if (normA === undefined || normB === undefined) return false;
+  if (typeof normA === 'number' && typeof normB === 'number') {
+    return Math.abs(normA - normB) <= 1e-6;
+  }
+  return normA === normB;
+}
+
+function compareCellValues(actualContainer, expectedContainer, field) {
+  const actualIsArray = Array.isArray(actualContainer);
+  const expectedIsArray = Array.isArray(expectedContainer);
+
+  if (actualIsArray || expectedIsArray) {
+    const actualRows = actualIsArray ? actualContainer : [];
+    const expectedRows = expectedIsArray ? expectedContainer : [];
+    const max = Math.max(actualRows.length, expectedRows.length);
+
+    for (let idx = 0; idx < max; idx += 1) {
+      const actualRow = actualRows[idx];
+      const expectedRow = expectedRows[idx];
+      const actualValue = isPlainRecord(actualRow)
+        ? actualRow[field]
+        : undefined;
+      const expectedValue = isPlainRecord(expectedRow)
+        ? expectedRow[field]
+        : undefined;
+
+      if (!valuesApproximatelyEqual(actualValue, expectedValue)) {
+        return {
+          rowIndex: idx,
+          actual: actualValue,
+          expected: expectedValue,
+        };
+      }
+    }
+
+    return null;
+  }
+
+  if (isPlainRecord(actualContainer) || isPlainRecord(expectedContainer)) {
+    const actualValue = isPlainRecord(actualContainer)
+      ? actualContainer[field]
+      : undefined;
+    const expectedValue = isPlainRecord(expectedContainer)
+      ? expectedContainer[field]
+      : undefined;
+
+    if (!valuesApproximatelyEqual(actualValue, expectedValue)) {
+      return { actual: actualValue, expected: expectedValue };
+    }
+  }
+
+  return null;
+}
+
+export function findCalcFieldMismatch(data, calcFields) {
+  if (!Array.isArray(calcFields) || calcFields.length === 0) return null;
+
+  const base = data && typeof data === 'object' ? data : {};
+  const expected = syncCalcFields(base, calcFields);
+
+  for (const map of calcFields) {
+    const cells = Array.isArray(map?.cells)
+      ? map.cells.filter(
+          (cell) =>
+            cell &&
+            typeof cell.table === 'string' &&
+            cell.table &&
+            typeof cell.field === 'string' &&
+            cell.field,
+        )
+      : [];
+
+    if (cells.length < 2) continue;
+
+    for (const cell of cells) {
+      const actualContainer = base[cell.table];
+      const expectedContainer = expected[cell.table];
+      const mismatch = compareCellValues(actualContainer, expectedContainer, cell.field);
+
+      if (mismatch) {
+        return {
+          map,
+          table: cell.table,
+          field: cell.field,
+          ...mismatch,
+        };
+      }
+    }
+  }
+
+  return null;
+}
+
 
 function isEqual(a, b) {
   try {
@@ -36,6 +170,52 @@ function hash(obj) {
     h = (h * 31 + str.charCodeAt(i)) >>> 0;
   }
   return h.toString(36);
+}
+
+export function extractSessionFieldsFromConfig(config) {
+  if (!config) return [];
+  const fields = [];
+  const seen = new Set();
+  const addField = (table, field) => {
+    if (!table || !field) return;
+    const tableName = String(table);
+    const fieldName = String(field);
+    const key = `${tableName}::${fieldName}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    fields.push({ table: tableName, field: fieldName });
+  };
+  const isSessionField = (name) =>
+    typeof name === 'string' && name.toLowerCase().includes('session');
+  (config.calcFields || []).forEach((row = {}) => {
+    const cells = Array.isArray(row.cells) ? row.cells : [];
+    if (cells.length === 0) return;
+    const hasSessionField = cells.some((cell) => isSessionField(cell?.field));
+    cells.forEach((cell = {}) => {
+      if (!cell.table || !cell.field) return;
+      if (hasSessionField || isSessionField(cell.field)) {
+        addField(cell.table, cell.field);
+      }
+    });
+  });
+  (config.posFields || []).forEach((p = {}) => {
+    const parts = Array.isArray(p.parts) ? p.parts : [];
+    parts.forEach((part = {}) => {
+      if (!part.table || !part.field) return;
+      if (isSessionField(part.field)) {
+        addField(part.table, part.field);
+      }
+    });
+  });
+  fields.sort((a, b) => {
+    const tableA = a.table;
+    const tableB = b.table;
+    if (tableA === tableB) {
+      return a.field.localeCompare(b.field);
+    }
+    return tableA.localeCompare(tableB);
+  });
+  return fields;
 }
 
 function parseErrorField(msg) {
@@ -82,32 +262,68 @@ export function applySessionIdToTables(
     if (!Array.isArray(fields) || fields.length === 0) return;
     const type = tableTypeMap[tbl] === 'multi' ? 'multi' : 'single';
     if (type === 'multi') {
-      const currentRows = Array.isArray(nextVals[tbl]) ? nextVals[tbl] : [];
-      if (currentRows.length === 0) return;
+      const existingContainer = nextVals[tbl];
+      const currentRows = Array.isArray(existingContainer) ? existingContainer : [];
+      let targetRows = currentRows;
       let tableChanged = false;
-      const updatedRows = currentRows.map((row) => {
-        const baseRow =
-          row && typeof row === 'object' && !Array.isArray(row) ? row : {};
-        let newRow = baseRow;
-        let rowChanged = row === null || row === undefined;
-        fields.forEach((field) => {
-          if ((newRow?.[field] ?? undefined) !== sessionId) {
-            if (newRow === baseRow && !rowChanged) {
-              newRow = { ...baseRow };
+
+      if (currentRows.length > 0) {
+        let rowsMutated = false;
+        const updatedRows = currentRows.map((row) => {
+          const baseRow =
+            row && typeof row === 'object' && !Array.isArray(row) ? row : {};
+          let newRow = baseRow;
+          let rowChanged = row === null || row === undefined;
+          fields.forEach((field) => {
+            if ((newRow?.[field] ?? undefined) !== sessionId) {
+              if (newRow === baseRow && !rowChanged) {
+                newRow = { ...baseRow };
+              }
+              newRow[field] = sessionId;
+              rowChanged = true;
             }
-            newRow[field] = sessionId;
-            rowChanged = true;
+          });
+          if (rowChanged) {
+            rowsMutated = true;
+            return newRow;
           }
+          return row;
         });
-        if (rowChanged) tableChanged = true;
-        return rowChanged ? newRow : row;
+        if (rowsMutated) {
+          targetRows = updatedRows;
+          tableChanged = true;
+          if (Array.isArray(existingContainer)) {
+            assignArrayMetadata(targetRows, existingContainer);
+          }
+        }
+      }
+
+      const ensureTargetArray = () => {
+        if (!Array.isArray(targetRows)) {
+          targetRows = [];
+          tableChanged = true;
+        } else if (!tableChanged && targetRows === currentRows) {
+          targetRows = cloneArrayWithMetadata(currentRows);
+          tableChanged = true;
+        }
+      };
+
+      let metadataChanged = false;
+      fields.forEach((field) => {
+        const currentVal = targetRows?.[field];
+        if (currentVal !== sessionId) {
+          ensureTargetArray();
+          targetRows[field] = sessionId;
+          metadataChanged = true;
+        }
       });
-      if (tableChanged) {
+
+      if (tableChanged || metadataChanged) {
         if (!mutated) {
           nextVals = { ...nextVals };
           mutated = true;
         }
-        nextVals[tbl] = updatedRows;
+        nextVals[tbl] = targetRows;
       }
     } else {
       const currentRow = nextVals[tbl];
@@ -311,11 +527,15 @@ export default function PosTransactionsPage() {
   const relationCacheRef = useRef(new Map());
   const loadingTablesRef = useRef(new Set());
   const loadedTablesRef = useRef(new Set());
+  const procTriggerFetchesRef = useRef(new Map());
+  const procTriggerLoadedRef = useRef(new Set());
   const viewCacheRef = useRef(new Map());
   // Tracks in-flight view fetch promises so multiple tables can share them
   const viewFetchesRef = useRef(new Map());
   // Records view names that finished loading to avoid repeated network calls
   const viewLoadedRef = useRef(new Set());
+  const contextReadyRef = useRef({ branch, company });
+  const unmountedRef = useRef(false);
   const abortControllersRef = useRef(new Set());
 
   const fetchWithAbort = (url, options = {}) => {
@@ -333,6 +553,12 @@ export default function PosTransactionsPage() {
     return () => window.removeEventListener('resize', check);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      unmountedRef.current = true;
+    };
+  }, []);
+
   // Abort pending requests and reset caches when the transaction name changes
   // to avoid leaking state between sessions.
   useEffect(() => {
@@ -344,8 +570,154 @@ export default function PosTransactionsPage() {
       viewCacheRef.current.clear();
       viewFetchesRef.current.clear();
       viewLoadedRef.current.clear();
+      procTriggerFetchesRef.current.clear();
+      procTriggerLoadedRef.current.clear();
     };
   }, [name]);
+
+  useEffect(() => {
+    const prev = contextReadyRef.current;
+    const branchReady = branch != null && prev.branch == null;
+    const companyReady = company != null && prev.company == null;
+    contextReadyRef.current = { branch, company };
+    if (!branchReady && !companyReady) return;
+
+    const tables = Object.entries(memoFormConfigs);
+    if (tables.length === 0) return;
+
+    setValues((currentValues) => {
+      if (!currentValues || typeof currentValues !== 'object') return currentValues;
+      let mutated = false;
+      let nextValues = currentValues;
+
+      const fillRecord = (record, branchFields, companyFields) => {
+        const base =
+          record && typeof record === 'object' && !Array.isArray(record)
+            ? record
+            : {};
+        let updated = base;
+        let changed = false;
+        const maybeAssign = (field, value) => {
+          if (!field) return;
+          const current = updated[field];
+          if (current !== undefined && current !== null && current !== '') return;
+          if (updated === base) {
+            updated = { ...base };
+          }
+          updated[field] = value;
+          changed = true;
+        };
+        if (branchReady && Array.isArray(branchFields) && branchFields.length > 0) {
+          branchFields.forEach((field) => maybeAssign(field, branch));
+        }
+        if (companyReady && Array.isArray(companyFields) && companyFields.length > 0) {
+          companyFields.forEach((field) => maybeAssign(field, company));
+        }
+        return { updated, changed };
+      };
+
+      tables.forEach(([tbl, fc]) => {
+        if (!fc) return;
+        const branchFields = Array.isArray(fc.branchIdFields)
+          ? fc.branchIdFields
+          : [];
+        const companyFields = Array.isArray(fc.companyIdFields)
+          ? fc.companyIdFields
+          : [];
+        if (
+          (!branchReady || branchFields.length === 0) &&
+          (!companyReady || companyFields.length === 0)
+        ) {
+          return;
+        }
+
+        const container = nextValues[tbl];
+        const type = tableTypeMap[tbl] === 'multi' ? 'multi' : 'single';
+
+        if (type === 'multi') {
+          const currentRows = Array.isArray(container) ? container : [];
+          let targetRows = currentRows;
+          let tableChanged = false;
+          const ensureClone = () => {
+            if (!tableChanged) {
+              targetRows = cloneArrayWithMetadata(currentRows);
+              tableChanged = true;
+            }
+          };
+          const maybeAssignArrayField = (fields, value) => {
+            if (!Array.isArray(fields) || fields.length === 0) return;
+            if (value === undefined || value === null) return;
+            fields.forEach((field) => {
+              if (!field) return;
+              const holder = tableChanged ? targetRows : currentRows;
+              const current = holder[field];
+              if (current !== undefined && current !== null && current !== '') {
+                return;
+              }
+              ensureClone();
+              targetRows[field] = value;
+            });
+          };
+          currentRows.forEach((row, idx) => {
+            const { updated, changed } = fillRecord(row, branchFields, companyFields);
+            if (changed) {
+              ensureClone();
+              targetRows[idx] = updated;
+            }
+          });
+          if (Array.isArray(container)) {
+            Object.keys(container).forEach((key) => {
+              if (arrayIndexPattern.test(key)) return;
+              const meta = container[key];
+              if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return;
+              const { updated, changed } = fillRecord(
+                meta,
+                branchFields,
+                companyFields,
+              );
+              if (changed) {
+                ensureClone();
+                targetRows[key] = updated;
+              }
+            });
+          }
+          if (branchReady) {
+            maybeAssignArrayField(branchFields, branch);
+          }
+          if (companyReady) {
+            maybeAssignArrayField(companyFields, company);
+          }
+          if (tableChanged) {
+            if (nextValues === currentValues) {
+              nextValues = { ...currentValues };
+            }
+            nextValues[tbl] = targetRows;
+            mutated = true;
+          }
+        } else {
+          const source =
+            container && typeof container === 'object' && !Array.isArray(container)
+              ? container
+              : {};
+          const { updated, changed } = fillRecord(
+            source,
+            branchFields,
+            companyFields,
+          );
+          if (changed) {
+            if (nextValues === currentValues) {
+              nextValues = { ...currentValues };
+            }
+            nextValues[tbl] = updated;
+            mutated = true;
+          }
+        }
+      });
+
+      if (!mutated) return currentValues;
+      return recalcTotals(cloneValuesForRecalc(nextValues));
+    });
+  }, [branch, company, memoFormConfigs, tableTypeMap]);
 
   async function loadRelations(tbl) {
     if (loadingTablesRef.current.has(tbl)) {
@@ -548,7 +920,7 @@ export default function PosTransactionsPage() {
         }
         setConfig(cfg);
         setFormConfigs((f) => (Object.keys(f).length ? {} : f));
-        setValues({});
+        setValues(recalcTotals(cloneValuesForRecalc({})));
         setRelationsMap({});
         setRelationConfigs({});
         setRelationData({});
@@ -597,6 +969,16 @@ export default function PosTransactionsPage() {
     };
   }, [config]);
 
+  const multiTableSet = React.useMemo(() => {
+    const set = new Set();
+    formList.forEach((t) => {
+      if (t?.type === 'multi' && t.table) {
+        set.add(t.table);
+      }
+    });
+    return set;
+  }, [formList]);
+
   // Stable key used for effect dependencies that care about visible table set
   const visibleTablesKey = React.useMemo(
     () => [...visibleTables].sort().join(','),
@@ -608,6 +990,17 @@ export default function PosTransactionsPage() {
     () => hash(memoFormConfigs),
     [memoFormConfigs],
   );
+
+  const configVersionRef = useRef(configVersion);
+
+  useEffect(() => {
+    configVersionRef.current = configVersion;
+  }, [configVersion]);
+
+  useEffect(() => {
+    procTriggerFetchesRef.current.clear();
+    procTriggerLoadedRef.current.clear();
+  }, [configVersion]);
 
   useEffect(() => {
     loadedTablesRef.current.clear();
@@ -630,22 +1023,64 @@ export default function PosTransactionsPage() {
       const relCfgMap = {};
       const relDataMap = {};
 
-      await Promise.all(
-        tables.map(async (tbl, idx) => {
-          const form = forms[idx];
-          if (!tbl || !form || !visibleTables.has(tbl)) return;
+      const uniqueTables = Array.from(
+        new Set(tables.filter((tbl) => typeof tbl === 'string' && tbl)),
+      );
+      const versionAtStart = configVersionRef.current;
 
-          let cfg = null;
+      fetchTriggersForTables({
+        tables: uniqueTables,
+        fetcher: async (tbl) => {
           try {
-            const res = await fetch(
-              `/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`,
+            const res = await fetchWithAbort(
+              `/api/proc_triggers?table=${encodeURIComponent(tbl)}`,
               { credentials: 'include' },
             );
-            cfg = res.ok ? await res.json().catch(() => null) : null;
+            if (!res.ok) return {};
+            const js = await res.json().catch(() => ({}));
+            return js || {};
           } catch {
-            cfg = null;
+            return {};
           }
-          fcMap[tbl] = cfg || {};
+        },
+        fetchesRef: procTriggerFetchesRef,
+        loadedRef: procTriggerLoadedRef,
+        applyResult: (tbl, data) => {
+          if (unmountedRef.current) return false;
+          if (configVersionRef.current !== versionAtStart) return false;
+          setProcTriggersMap((prev) => {
+            const prevData = prev[tbl];
+            const nextData = isPlainRecord(data) ? data : {};
+            if (isEqual(prevData, nextData)) return prev;
+            return { ...prev, [tbl]: nextData };
+          });
+          return true;
+        },
+      });
+
+      await Promise.all(
+        tables.map(async (tbl, idx) => {
+          if (!tbl) return;
+
+          const form = forms[idx];
+          let cfg = null;
+          if (form) {
+            try {
+              const res = await fetch(
+                `/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`,
+                { credentials: 'include' },
+              );
+              cfg = res.ok ? await res.json().catch(() => null) : null;
+            } catch {
+              cfg = null;
+            }
+          }
+
+          if (form) {
+            fcMap[tbl] = cfg || {};
+          } else if (!(tbl in fcMap)) {
+            fcMap[tbl] = {};
+          }
 
           if (!loadedTablesRef.current.has(tbl)) {
             try {
@@ -671,17 +1106,6 @@ export default function PosTransactionsPage() {
             } finally {
               loadedTablesRef.current.add(tbl);
             }
-
-            fetchWithAbort(
-              `/api/proc_triggers?table=${encodeURIComponent(tbl)}`,
-              { credentials: 'include' },
-            )
-              .then((res) => (res.ok ? res.json() : {}))
-              .then((data) => {
-                if (!cancelled)
-                  setProcTriggersMap((m) => ({ ...m, [tbl]: data || {} }));
-              })
-              .catch(() => {});
           }
         }),
       );
@@ -760,6 +1184,87 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
 
+  const generatedColumnPipelines = useMemo(() => {
+    if (!config) return {};
+    const tables = [];
+    if (config.masterTable) tables.push(config.masterTable);
+    if (Array.isArray(config.tables)) {
+      config.tables.forEach((t) => {
+        if (t?.table) tables.push(t.table);
+      });
+    }
+    const result = {};
+    tables.forEach((tbl) => {
+      const columns = columnMeta[tbl] || [];
+      if (!Array.isArray(columns) || columns.length === 0) return;
+      const caseMap = memoColumnCaseMap[tbl] || {};
+      const fc = memoFormConfigs[tbl] || {};
+      const collectFields = (value) => {
+        if (!value) return [];
+        if (Array.isArray(value)) return value;
+        if (typeof value === 'string') return [value];
+        if (typeof value === 'object') {
+          const list = [];
+          Object.values(value).forEach((item) => {
+            if (Array.isArray(item)) list.push(...item);
+            else if (typeof item === 'string') list.push(item);
+          });
+          return list;
+        }
+        return [];
+      };
+      const mapFieldName = (field) => {
+        if (typeof field !== 'string' || !field) return null;
+        const lower = field.toLowerCase();
+        const mapped = caseMap[lower] || field;
+        return typeof mapped === 'string' ? mapped : field;
+      };
+      const mainSet = new Set();
+      [
+        ...collectFields(fc.mainFields),
+        ...collectFields(fc.main),
+        ...collectFields(fc.visibleFields),
+        ...collectFields(fc.fields),
+      ].forEach((field) => {
+        const mapped = mapFieldName(field);
+        if (mapped) mainSet.add(mapped);
+      });
+      const metadataCandidates = [
+        ...collectFields(fc.headerFields),
+        ...collectFields(fc.header),
+        ...collectFields(fc.footerFields),
+        ...collectFields(fc.footer),
+        ...collectFields(fc.totalAmountFields),
+        ...collectFields(fc.totalCurrencyFields),
+      ];
+      const metadataSet = new Set();
+      metadataCandidates.forEach((field) => {
+        const mapped = mapFieldName(field);
+        if (mapped && !mainSet.has(mapped)) metadataSet.add(mapped);
+      });
+      const pipeline = createGeneratedColumnPipeline({
+        tableColumns: columns,
+        columnCaseMap: caseMap,
+        mainFields: mainSet.size > 0 ? mainSet : undefined,
+        metadataFields: metadataSet.size > 0 ? metadataSet : undefined,
+        equals: valuesEqual,
+      });
+      if (Object.keys(pipeline.evaluators).length === 0) return;
+      result[tbl] = pipeline;
+    });
+    return result;
+  }, [config, columnMeta, memoColumnCaseMap, memoFormConfigs]);
+
+  const recalcTotals = useCallback(
+    (vals) =>
+      recalcPosTotals(vals, {
+        calcFields: config?.calcFields,
+        pipelines: generatedColumnPipelines,
+        posFields: config?.posFields,
+      }),
+    [config, generatedColumnPipelines],
+  );
+
   const memoRelationConfigs = useMemo(() => {
     const map = {};
     visibleTables.forEach((tbl) => {
@@ -797,22 +1302,7 @@ export default function PosTransactionsPage() {
       setSessionFields(null);
       return;
     }
-    const fields = [];
-    const check = (tbl, field) => {
-      if (!tbl || !field) return;
-      if (field.toLowerCase().includes('session')) fields.push({ table: tbl, field });
-    };
-    (config.calcFields || []).forEach((row) => {
-      (row.cells || []).forEach((c) => check(c.table, c.field));
-    });
-    (config.posFields || []).forEach((p) => {
-      (p.parts || []).forEach((pt) => check(pt.table, pt.field));
-    });
-    fields.sort((a, b) => {
-      if (a.table === b.table) return a.field.localeCompare(b.field);
-      return a.table.localeCompare(b.table);
-    });
-    setSessionFields(fields);
+    setSessionFields(extractSessionFieldsFromConfig(config));
   }, [visibleTablesKey, configVersion, config]);
 
   const masterSessionValue = React.useMemo(() => {
@@ -831,7 +1321,11 @@ export default function PosTransactionsPage() {
 
   useEffect(() => {
     if (!currentSessionId) return;
-    setValues((prev) => applySessionIdToValues(prev, currentSessionId));
+    setValues((prev) => {
+      const next = applySessionIdToValues(prev, currentSessionId);
+      if (next === prev) return prev;
+      return recalcTotals(cloneValuesForRecalc(next));
+    });
   }, [currentSessionId, applySessionIdToValues]);
 
   useEffect(() => {
@@ -844,7 +1338,11 @@ export default function PosTransactionsPage() {
     const prevKey = initRef.current;
     initRef.current = initKey;
     if (prevKey && prevKey.startsWith(`${name}::`) && currentSessionId) {
-      setValues((prev) => applySessionIdToValues(prev, currentSessionId));
+      setValues((prev) => {
+        const next = applySessionIdToValues(prev, currentSessionId);
+        if (next === prev) return prev;
+        return recalcTotals(cloneValuesForRecalc(next));
+      });
       return;
     }
     handleNew();
@@ -887,121 +1385,12 @@ export default function PosTransactionsPage() {
       }
       return next;
     };
-    setValues(updateSessionValues);
+    setValues((prev) => {
+      const next = updateSessionValues(prev);
+      if (next === prev) return prev;
+      return recalcTotals(cloneValuesForRecalc(next));
+    });
   }, [masterSessionValue, visibleTablesKey, configVersion, sessionFieldsKey]);
-
-  function syncCalcFields(vals, mapConfig) {
-    if (!Array.isArray(mapConfig)) return vals;
-    let next = { ...vals };
-    for (const map of mapConfig) {
-      const cells = Array.isArray(map.cells) ? map.cells : [];
-      if (!cells.length) continue;
-      let value;
-      for (const cell of cells) {
-        const { table, field } = cell;
-        if (!table || !field) continue;
-        const data = next[table];
-        if (Array.isArray(data)) {
-          for (const row of data) {
-            const v = row?.[field];
-            if (v !== undefined && v !== null) {
-              value = v;
-              break;
-            }
-          }
-        } else if (data && data[field] !== undefined && data[field] !== null) {
-          value = data[field];
-        }
-        if (value !== undefined) break;
-      }
-      if (value === undefined) continue;
-      for (const cell of cells) {
-        const { table, field } = cell;
-        if (!table || !field) continue;
-        const data = next[table];
-        if (Array.isArray(data)) {
-          next[table] = data.map((r) => ({ ...r, [field]: value }));
-        } else {
-          next[table] = { ...(data || {}), [field]: value };
-        }
-      }
-    }
-    return next;
-  }
-
-  function applyPosFields(vals, posFieldConfig) {
-    if (!Array.isArray(posFieldConfig)) return vals;
-    let next = { ...vals };
-    for (const pf of posFieldConfig) {
-      const parts = Array.isArray(pf.parts) ? pf.parts : [];
-      if (parts.length < 2) continue;
-      const [target, ...calc] = parts;
-      let val = 0;
-      let init = false;
-      for (const p of calc) {
-        if (!p.table || !p.field) continue;
-        const data = next[p.table];
-        let num = 0;
-        if (Array.isArray(data)) {
-          if (p.agg === 'SUM' || p.agg === 'AVG') {
-            const sum = data.reduce((s, r) => s + (Number(r?.[p.field]) || 0), 0);
-            num = p.agg === 'AVG' ? (data.length ? sum / data.length : 0) : sum;
-          } else {
-            num = Number(data[0]?.[p.field]) || 0;
-          }
-        } else {
-          num = Number(data?.[p.field]) || 0;
-        }
-        if (p.agg === '=' && !init) {
-          val = num;
-          init = true;
-        } else if (p.agg === '+') {
-          val += num;
-        } else if (p.agg === '-') {
-          val -= num;
-        } else if (p.agg === '*') {
-          val *= num;
-        } else if (p.agg === '/') {
-          val /= num;
-        } else {
-          val = num;
-          init = true;
-        }
-      }
-      if (!target.table || !target.field) continue;
-      const tgt = next[target.table];
-      if (Array.isArray(tgt)) {
-        next[target.table] = tgt.map((r) => ({ ...r, [target.field]: val }));
-      } else {
-        next[target.table] = { ...(tgt || {}), [target.field]: val };
-      }
-    }
-    return next;
-  }
-
-  function recalcTotals(vals) {
-    if (!config || !config.masterTable) return vals;
-    const totals = { total_quantity: 0, total_amount: 0, total_discount: 0 };
-    for (const t of config.tables) {
-      if (t.type !== 'multi') continue;
-      const rows = Array.isArray(vals[t.table]) ? vals[t.table] : [];
-      rows.forEach((r) => {
-        Object.entries(r || {}).forEach(([k, v]) => {
-          const key = k.toLowerCase();
-          const num = Number(v) || 0;
-          if (key.includes('qty')) totals.total_quantity += num;
-          if (key.includes('amount') || key.includes('amt')) totals.total_amount += num;
-          if (key.includes('discount') || key.includes('disc')) totals.total_discount += num;
-        });
-      });
-    }
-    const masterTbl = config.masterTable;
-    const next = {
-      ...vals,
-      [masterTbl]: { ...(vals[masterTbl] || {}), ...totals },
-    };
-    return applyPosFields(next, config.posFields);
-  }
 
   const hasData = React.useMemo(() => {
     return Object.values(values).some((v) => {
@@ -1012,9 +1401,7 @@ export default function PosTransactionsPage() {
 
   function handleChange(tbl, changes) {
     setValues((v) => {
-      let next = { ...v, [tbl]: { ...v[tbl], ...changes } };
-      next = syncCalcFields(next, config?.calcFields);
-      next = applyPosFields(next, config?.posFields);
+      const next = { ...v, [tbl]: { ...v[tbl], ...changes } };
       return recalcTotals(next);
     });
   }
@@ -1026,8 +1413,6 @@ export default function PosTransactionsPage() {
       if (sid) {
         next = applySessionIdToValues(next, sid);
       }
-      next = syncCalcFields(next, config?.calcFields);
-      next = applyPosFields(next, config?.posFields);
       return recalcTotals(next);
     });
   }
@@ -1102,12 +1487,12 @@ export default function PosTransactionsPage() {
           if (next[tbl][f] === undefined) next[tbl][f] = user.empid;
         });
       }
-      if (fc.branchIdFields && branch !== undefined) {
+      if (fc.branchIdFields && branch != null) {
         fc.branchIdFields.forEach((f) => {
           if (next[tbl][f] === undefined) next[tbl][f] = branch;
         });
       }
-      if (fc.companyIdFields && company !== undefined) {
+      if (fc.companyIdFields && company != null) {
         fc.companyIdFields.forEach((f) => {
           if (next[tbl][f] === undefined) next[tbl][f] = company;
         });
@@ -1127,7 +1512,7 @@ export default function PosTransactionsPage() {
       }
     });
     setCurrentSessionId(sid);
-    setValues(next);
+    setValues(recalcTotals(cloneValuesForRecalc(next)));
     setMasterId(null);
     masterIdRef.current = null;
     setPendingId(null);
@@ -1160,12 +1545,12 @@ export default function PosTransactionsPage() {
             if (updated[f] === undefined) updated[f] = user.empid;
           });
         }
-        if (fc.branchIdFields && branch !== undefined) {
+        if (fc.branchIdFields && branch != null) {
           fc.branchIdFields.forEach((f) => {
             if (updated[f] === undefined) updated[f] = branch;
           });
         }
-        if (fc.companyIdFields && company !== undefined) {
+        if (fc.companyIdFields && company != null) {
           fc.companyIdFields.forEach((f) => {
             if (updated[f] === undefined) updated[f] = company;
           });
@@ -1204,16 +1589,17 @@ export default function PosTransactionsPage() {
       date: formatTimestamp(new Date()),
     };
     try {
+      const transportData = serializeValuesForTransport(next, multiTableSet);
       const res = await fetch('/api/pos_txn_pending', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ id: sid, name, data: next, masterId: mid, session }),
+        body: JSON.stringify({ id: sid, name, data: transportData, masterId: mid, session }),
       });
       const js = await res.json().catch(() => ({}));
       if (js.id) {
         setPendingId(sid);
-        setValues(next);
+        setValues(recalcTotals(cloneValuesForRecalc(next)));
         addToast('Saved', 'success');
       } else {
         const msg = js.message || res.statusText;
@@ -1249,7 +1635,8 @@ export default function PosTransactionsPage() {
       .then((res) => (res.ok ? res.json() : null))
       .catch(() => null);
     if (rec && rec.data) {
-      setValues(rec.data);
+      const restoredData = restoreValuesFromTransport(rec.data, multiTableSet);
+      setValues(recalcTotals(cloneValuesForRecalc(restoredData)));
       setPendingId(String(id).trim());
       setMasterId(rec.masterId || null);
       masterIdRef.current = rec.masterId || null;
@@ -1257,7 +1644,7 @@ export default function PosTransactionsPage() {
         (f) => f.table === config?.masterTable,
       );
       if (masterSf) {
-        const sid = rec.data?.[config.masterTable]?.[masterSf.field];
+        const sid = restoredData?.[config.masterTable]?.[masterSf.field];
         setCurrentSessionId(sid || null);
       }
       addToast('Loaded', 'success');
@@ -1283,7 +1670,7 @@ export default function PosTransactionsPage() {
         return;
       }
       setPendingId(null);
-      setValues({});
+      setValues(recalcTotals(cloneValuesForRecalc({})));
       setMasterId(null);
       masterIdRef.current = null;
       setCurrentSessionId(null);
@@ -1319,22 +1706,24 @@ export default function PosTransactionsPage() {
         if (payload[tbl][k] === undefined) payload[tbl][k] = v;
       });
     });
-    for (const map of config.calcFields || []) {
-      if (!Array.isArray(map.cells) || map.cells.length < 2) continue;
-      const [first, ...rest] = map.cells;
-      const base = payload[first.table]?.[first.field];
-      for (const c of rest) {
-        if (payload[c.table]?.[c.field] !== base) {
-          addToast('Mapping mismatch', 'error');
-          return;
-        }
-      }
+    const mismatch = findCalcFieldMismatch(payload, config.calcFields);
+    if (mismatch) {
+      addToast('Mapping mismatch', 'error');
+      return;
     }
     const single = {};
     const multi = {};
     formList.forEach((t) => {
-      if (t.type === 'multi') multi[t.table] = payload[t.table];
-      else single[t.table] = payload[t.table];
+      if (!t?.table) return;
+      const value = payload[t.table];
+      if (t.type === 'multi') {
+        const serialized = serializeRowsWithMetadata(value);
+        multi[t.table] = serialized.meta
+          ? { rows: serialized.rows, meta: serialized.meta }
+          : { rows: serialized.rows };
+      } else {
+        single[t.table] = value;
+      }
     });
     const postData = { masterId: masterIdRef.current, single, multi };
     const session = {
@@ -1361,13 +1750,21 @@ export default function PosTransactionsPage() {
         const js = await res.json().catch(() => ({}));
         if (js.id) setPostedId(js.id);
         if (config.statusField?.table && config.statusField.field && config.statusField.posted) {
-          setValues(v => ({
-            ...v,
-            [config.statusField.table]: {
-              ...(v[config.statusField.table] || {}),
-              [config.statusField.field]: config.statusField.posted,
-            },
-          }));
+          setValues((v) => {
+            const tbl = config.statusField.table;
+            const field = config.statusField.field;
+            const postedValue = config.statusField.posted;
+            const existing = v?.[tbl]?.[field];
+            if (existing === postedValue) return v;
+            const next = {
+              ...v,
+              [tbl]: {
+                ...(v?.[tbl] || {}),
+                [field]: postedValue,
+              },
+            };
+            return recalcTotals(cloneValuesForRecalc(next));
+          });
         }
         const imgCfg = memoFormConfigs[config.masterTable] || {};
         if (imgCfg.imageIdField) {
@@ -1537,6 +1934,12 @@ export default function PosTransactionsPage() {
                   fc.footerFields && fc.footerFields.length > 0
                     ? fc.footerFields
                     : [];
+                const totalAmountFields = Array.isArray(fc.totalAmountFields)
+                  ? fc.totalAmountFields
+                  : [];
+                const totalCurrencyFields = Array.isArray(fc.totalCurrencyFields)
+                  ? fc.totalCurrencyFields
+                  : [];
                 const provided = Array.isArray(fc.editableFields)
                   ? fc.editableFields
                   : [];
@@ -1603,12 +2006,14 @@ export default function PosTransactionsPage() {
                       mainFields={mainFields}
                       footerFields={footerFields}
                       defaultValues={fc.defaultValues || {}}
-                      table={config.masterTable}
+                      totalAmountFields={totalAmountFields}
+                      totalCurrencyFields={totalCurrencyFields}
+                      table={t.table}
                       imagenameField={
-                        memoFormConfigs[config.masterTable]?.imagenameField || []
+                        memoFormConfigs[t.table]?.imagenameField || []
                       }
                       imageIdField={
-                        memoFormConfigs[config.masterTable]?.imageIdField || ''
+                        memoFormConfigs[t.table]?.imageIdField || ''
                       }
                       relations={relationsMap[t.table] || {}}
                       relationConfigs={memoRelationConfigs[t.table] || {}}
@@ -1621,6 +2026,7 @@ export default function PosTransactionsPage() {
                       user={user}
                       fieldTypeMap={memoFieldTypeMap[t.table] || {}}
                       columnCaseMap={memoColumnCaseMap[t.table] || {}}
+                      tableColumns={columnMeta[t.table] || []}
                       onChange={(changes) => handleChange(t.table, changes)}
                       onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={() => true}

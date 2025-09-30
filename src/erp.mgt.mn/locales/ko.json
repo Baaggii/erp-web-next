@@ -660,6 +660,7 @@
   "settings_company_licenses": "회사 라이선스",
   "settings_enable_tooltips": "툴팁 활성화",
   "settings_enable_tours": "페이지 안내 표시",
+  "settings_show_tour_buttons": "투어 버튼 표시",
   "settings_fetch_error": "설정 가져오기 오류",
   "settings_fetch_failed": "설정을 가져오지 못했습니다",
   "settings_forms_management": "양식 관리",

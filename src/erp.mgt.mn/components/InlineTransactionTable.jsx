@@ -14,6 +14,12 @@ import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import { valuesEqual } from '../utils/generatedColumns.js';
+import {
+  assignArrayMetadata,
+  extractArrayMetadata,
+  createGeneratedColumnPipeline,
+} from '../utils/transactionValues.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -28,6 +34,7 @@ function normalizeNumberInput(value) {
 function InlineTransactionTable(
   {
     fields = [],
+    allFields = null,
     relations = {},
     relationConfigs = {},
     relationData = {},
@@ -69,6 +76,7 @@ function InlineTransactionTable(
     imagenameFields = [],
     imageIdField = '',
     configHash: _configHash,
+    tableColumns = [],
   },
   ref,
 ) {
@@ -88,6 +96,26 @@ function InlineTransactionTable(
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
   const companyIdSet = new Set(companyIdFields);
+  const requiredFieldSet = React.useMemo(
+    () => new Set((requiredFields || []).map((f) => f.toLowerCase())),
+    [requiredFields],
+  );
+  const branchIdLowerSet = React.useMemo(
+    () => new Set((branchIdFields || []).map((f) => f.toLowerCase())),
+    [branchIdFields],
+  );
+  const companyIdLowerSet = React.useMemo(
+    () => new Set((companyIdFields || []).map((f) => f.toLowerCase())),
+    [companyIdFields],
+  );
+  const departmentIdLowerSet = React.useMemo(
+    () => new Set((departmentIdFields || []).map((f) => f.toLowerCase())),
+    [departmentIdFields],
+  );
+  const userIdLowerSet = React.useMemo(
+    () => new Set((userIdFields || []).map((f) => f.toLowerCase())),
+    [userIdFields],
+  );
   const disabledSet = React.useMemo(
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
@@ -160,31 +188,39 @@ function InlineTransactionTable(
   }, [viewSourceMap, autoSelectConfigs]);
 
   function fillSessionDefaults(obj) {
-    const row = { ...obj };
+    const base =
+      obj && typeof obj === 'object' && !Array.isArray(obj) ? obj : {};
+    let row = base;
+    let changed = false;
+    const ensureRow = () => {
+      if (!changed) {
+        row = { ...base };
+        changed = true;
+      }
+    };
+    const maybeSet = (field, value) => {
+      if (!field) return;
+      const current = row[field];
+      if (current !== undefined && current !== null && current !== '') return;
+      ensureRow();
+      row[field] = value;
+    };
     if (user?.empid !== undefined) {
-      userIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = user.empid;
-      });
+      userIdSet.forEach((f) => maybeSet(f, user.empid));
     }
-    if (branch !== undefined) {
-      branchIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = branch;
-      });
+    if (branch != null) {
+      branchIdSet.forEach((f) => maybeSet(f, branch));
     }
     if (department !== undefined) {
-      departmentIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = department;
-      });
+      departmentIdSet.forEach((f) => maybeSet(f, department));
     }
-    if (company !== undefined) {
-      companyIdSet.forEach((f) => {
-        if (row[f] === undefined || row[f] === '') row[f] = company;
-      });
+    if (company != null) {
+      companyIdSet.forEach((f) => maybeSet(f, company));
     }
-    const now = formatTimestamp(new Date()).slice(0, 10);
-    dateField.forEach((f) => {
-      if (row[f] === undefined || row[f] === '') row[f] = now;
-    });
+    if (dateField.length > 0) {
+      const now = formatTimestamp(new Date()).slice(0, 10);
+      dateField.forEach((f) => maybeSet(f, now));
+    }
     return row;
   }
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
@@ -205,10 +241,17 @@ function InlineTransactionTable(
   }, []);
   const [rows, setRows] = useState(() => {
     if (Array.isArray(initRows) && initRows.length > 0) {
-      return initRows.map((r) => fillSessionDefaults(r));
+      const next = initRows.map((r) => fillSessionDefaults(r));
+      return assignArrayMetadata(next, initRows);
     }
-    return Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
+    const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
+    return assignArrayMetadata(next, initRows);
   });
+  const rowsRef = useRef(rows);
+  const contextDefaultsRef = useRef({ branch, company });
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
 
   const totalAmountSet = new Set(totalAmountFields);
   const totalCurrencySet = new Set(totalCurrencyFields);
@@ -222,6 +265,36 @@ function InlineTransactionTable(
     [fieldTypeMap],
   );
   const fieldsKey = React.useMemo(() => fields.join(','), [fields]);
+  const allFieldsList = React.useMemo(() => {
+    const seen = new Set();
+    const merged = [];
+    fields.forEach((f) => {
+      if (!f || seen.has(f)) return;
+      seen.add(f);
+      merged.push(f);
+    });
+    if (Array.isArray(allFields)) {
+      allFields.forEach((f) => {
+        if (!f || seen.has(f)) return;
+        seen.add(f);
+        merged.push(f);
+      });
+    }
+    return merged;
+  }, [fieldsKey, allFields]);
+  const allFieldsKey = React.useMemo(() => allFieldsList.join(','), [allFieldsList]);
+  const writableColumns = React.useMemo(() => {
+    const set = new Set();
+    allFieldsList.forEach((f) => {
+      if (!f) return;
+      const key = columnCaseMap[f.toLowerCase()] || f;
+      if (typeof key === 'string') set.add(key);
+    });
+    Object.values(columnCaseMap || {}).forEach((name) => {
+      if (typeof name === 'string') set.add(name);
+    });
+    return set;
+  }, [allFieldsKey, columnCaseMapKey, columnCaseMap]);
 
   const columnTypeMap = React.useMemo(() => {
     const map = {};
@@ -239,6 +312,94 @@ function InlineTransactionTable(
     });
     return map;
   }, [viewColumnsKey, columnCaseMapKey, tableName]);
+
+  const tableColumnsKey = React.useMemo(
+    () =>
+      JSON.stringify(
+        (Array.isArray(tableColumns) ? tableColumns : []).map((c) => [
+          c?.name || '',
+          c?.generationExpression ?? c?.GENERATION_EXPRESSION ?? null,
+        ]),
+      ),
+    [tableColumns],
+  );
+
+  const mainFieldSet = React.useMemo(() => {
+    const set = new Set();
+    fields.forEach((f) => {
+      if (!f) return;
+      const mapped = columnCaseMap[String(f).toLowerCase()] || f;
+      if (typeof mapped === 'string') set.add(mapped);
+    });
+    return set;
+  }, [fieldsKey, columnCaseMapKey]);
+
+  const metadataFieldSet = React.useMemo(() => {
+    const set = new Set();
+    allFieldsList.forEach((f) => {
+      if (!f) return;
+      const mapped = columnCaseMap[String(f).toLowerCase()] || f;
+      if (typeof mapped === 'string' && !mainFieldSet.has(mapped)) set.add(mapped);
+    });
+    return set;
+  }, [allFieldsKey, columnCaseMapKey, mainFieldSet]);
+
+  const generatedColumnPipeline = React.useMemo(
+    () =>
+      createGeneratedColumnPipeline({
+        tableColumns,
+        columnCaseMap,
+        mainFields: mainFieldSet,
+        metadataFields: metadataFieldSet,
+        equals: valuesEqual,
+      }),
+    [tableColumnsKey, columnCaseMapKey, mainFieldSet, metadataFieldSet],
+  );
+  const generatedColumnEvaluators = generatedColumnPipeline.evaluators;
+  const hasGeneratedColumnsRef = useRef(false);
+
+  const applyGeneratedColumns = React.useCallback(
+    (targetRows, indices = null) =>
+      generatedColumnPipeline.apply(targetRows, indices),
+    [generatedColumnPipeline],
+  );
+
+  const commitRowsUpdate = React.useCallback(
+    (updater, { indices = null, notify = true, metadataSource = null } = {}) => {
+      setRows((prevRows) => {
+        const base = updater(prevRows);
+        if (!Array.isArray(base)) return base;
+        const nextRows = base === prevRows ? prevRows.slice() : base.slice();
+        const source = metadataSource ?? prevRows;
+        assignArrayMetadata(nextRows, source);
+        const { changed, metadata } = applyGeneratedColumns(nextRows, indices);
+        if (metadata) {
+          Object.entries(metadata).forEach(([key, value]) => {
+            nextRows[key] = value;
+          });
+        }
+        const didChange = Boolean(
+          changed ||
+            metadata ||
+            metadataSource ||
+            base !== prevRows,
+        );
+        if (didChange && notify) onRowsChange(nextRows);
+        return didChange ? nextRows : prevRows;
+      });
+    },
+    [applyGeneratedColumns, onRowsChange],
+  );
+
+  useEffect(() => {
+    const hasGeneratedColumns = Object.keys(generatedColumnEvaluators).length > 0;
+    const prevHasGeneratedColumns = hasGeneratedColumnsRef.current;
+    hasGeneratedColumnsRef.current = hasGeneratedColumns;
+    if (!hasGeneratedColumns || prevHasGeneratedColumns) return;
+    const currentRows = rowsRef.current;
+    if (!Array.isArray(currentRows) || currentRows.length === 0) return;
+    commitRowsUpdate((prev) => prev);
+  }, [generatedColumnEvaluators, commitRowsUpdate]);
 
   const placeholders = React.useMemo(() => {
     const map = {};
@@ -300,10 +461,58 @@ function InlineTransactionTable(
       });
       return updated;
     });
-    if (JSON.stringify(normalized) !== JSON.stringify(rows)) {
-      setRows(normalized);
+    const metadata = extractArrayMetadata(initRows) || {};
+    const currentMetadata = extractArrayMetadata(rows) || {};
+    const metadataChanged = JSON.stringify(metadata) !== JSON.stringify(currentMetadata);
+    const withMetadata = assignArrayMetadata(normalized, initRows);
+    if (metadataChanged || JSON.stringify(withMetadata) !== JSON.stringify(rows)) {
+      commitRowsUpdate(() => withMetadata, { notify: false, metadataSource: initRows });
     }
   }, [initRows, minRows, defaultValues, placeholders]);
+
+  useEffect(() => {
+    const prev = contextDefaultsRef.current;
+    const branchReady = branch != null && prev.branch == null;
+    const companyReady = company != null && prev.company == null;
+    contextDefaultsRef.current = { branch, company };
+    if (!branchReady && !companyReady) return;
+
+    commitRowsUpdate(
+      (currentRows) => {
+        if (!Array.isArray(currentRows)) return currentRows;
+        let changed = false;
+        let nextRows = currentRows;
+        const ensureClone = () => {
+          if (!changed) {
+            nextRows = currentRows.slice();
+            changed = true;
+          }
+        };
+
+        currentRows.forEach((row, idx) => {
+          const updated = fillSessionDefaults(row);
+          if (updated !== row) {
+            ensureClone();
+            nextRows[idx] = updated;
+          }
+        });
+
+        Object.keys(currentRows).forEach((key) => {
+          if (arrayIndexPattern.test(key)) return;
+          const meta = currentRows[key];
+          if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return;
+          const updated = fillSessionDefaults(meta);
+          if (updated !== meta) {
+            ensureClone();
+            nextRows[key] = updated;
+          }
+        });
+
+        return changed ? nextRows : currentRows;
+      },
+      { notify: false },
+    );
+  }, [branch, company, fillSessionDefaults]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
@@ -365,11 +574,15 @@ function InlineTransactionTable(
 
   useEffect(() => {
     if (rows.length < minRows) {
-      setRows((r) => {
-        const next = [...r];
-        while (next.length < minRows) next.push({});
-        return next;
-      });
+      commitRowsUpdate(
+        (current) => {
+          if (!Array.isArray(current) || current.length >= minRows) return current;
+          const next = current.slice();
+          while (next.length < minRows) next.push({});
+          return next;
+        },
+        { notify: false },
+      );
     }
     if (focusRow.current === null) return;
     const idx = focusRow.current;
@@ -406,18 +619,18 @@ function InlineTransactionTable(
   useImperativeHandle(ref, () => ({
     getRows: () => rows,
     clearRows: () =>
-      setRows(() => {
-        const next = Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues));
-        onRowsChange(next);
-        return next;
-      }),
+      commitRowsUpdate(
+        () =>
+          Array.from({ length: minRows }, () => fillSessionDefaults(defaultValues)),
+      ),
     replaceRows: (newRows) =>
-      setRows(() => {
-        const base = Array.isArray(newRows) ? newRows : [];
-        const next = base.map((r) => fillSessionDefaults(r));
-        onRowsChange(next);
-        return next;
-      }),
+      commitRowsUpdate(
+        () => {
+          const base = Array.isArray(newRows) ? newRows : [];
+          return base.map((r) => fillSessionDefaults(r));
+        },
+        { metadataSource: Array.isArray(newRows) ? newRows : undefined },
+      ),
     hasInvalid: () => invalidCell !== null,
   }));
 
@@ -481,83 +694,412 @@ function InlineTransactionTable(
     }
   }
 
+  function applyProcedureResult(rowIdx, rowData, baseRows = rowsRef.current) {
+    if (!rowData || typeof rowData !== 'object') {
+      return {
+        rows: Array.isArray(baseRows) ? [...baseRows] : baseRows,
+        changedColumns: new Set(),
+      };
+    }
+    const sourceRows = Array.isArray(baseRows) ? baseRows : [];
+    const arrayUpdates = new Map();
+    const changedColumns = new Set();
+    const next = sourceRows.map((row, i) => {
+      if (i !== rowIdx) return row;
+      const baseRow = row && typeof row === 'object' ? row : {};
+      const updated = { ...baseRow };
+      const keyLookup = {};
+      Object.keys(baseRow).forEach((key) => {
+        keyLookup[key.toLowerCase()] = key;
+      });
+      Object.entries(rowData).forEach(([rawKey, rawValue]) => {
+        if (!rawKey && rawKey !== 0) return;
+        const mappedKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
+        if (typeof mappedKey !== 'string') return;
+        const lower = mappedKey.toLowerCase();
+        const existingKey = keyLookup[lower];
+        const shouldWrite = writableColumns.has(mappedKey) || existingKey;
+        if (!shouldWrite) return;
+        const targetKey = existingKey || mappedKey;
+        const previousValue = existingKey ? updated[existingKey] : undefined;
+        if (existingKey) {
+          updated[existingKey] = rawValue;
+        } else {
+          updated[mappedKey] = rawValue;
+          keyLookup[lower] = mappedKey;
+        }
+        arrayUpdates.set(mappedKey, rawValue);
+        if (!valuesEqual(previousValue, rawValue)) {
+          changedColumns.add(targetKey);
+        }
+      });
+      return updated;
+    });
+    const withMetadata = assignArrayMetadata(next, sourceRows);
+    arrayUpdates.forEach((value, key) => {
+      if (!key && key !== 0) return;
+      withMetadata[key] = value;
+    });
+    return { rows: withMetadata, changedColumns };
+  }
+
   async function runProcTrigger(rowIdx, col, rowOverride = null) {
     const showToast = general.procToastEnabled;
-    const direct = getDirectTriggers(col);
-    const paramTrigs = getParamTriggers(col);
+    const baseRows = Array.isArray(rowsRef.current) ? rowsRef.current : [];
+    let workingRows = assignArrayMetadata(
+      baseRows.map((row) => (row && typeof row === 'object' ? { ...row } : row)),
+      baseRows,
+    );
 
-    const map = new Map();
-    const keyFor = (cfg) => {
-      const out = Object.keys(cfg.outMap || {})
-        .sort()
-        .reduce((m, k) => {
-          m[k] = cfg.outMap[k];
-          return m;
-        }, {});
-      return JSON.stringify([cfg.name, cfg.params, out]);
+    if (
+      rowOverride &&
+      typeof rowIdx === 'number' &&
+      rowIdx >= 0 &&
+      rowIdx < workingRows.length &&
+      workingRows[rowIdx] &&
+      typeof workingRows[rowIdx] === 'object'
+    ) {
+      const originalRow = workingRows[rowIdx];
+      const updatedRow = { ...originalRow };
+      const keyLookup = {};
+      Object.keys(originalRow).forEach((key) => {
+        keyLookup[key.toLowerCase()] = key;
+      });
+      Object.entries(rowOverride).forEach(([rawKey, rawValue]) => {
+        if (!rawKey && rawKey !== 0) return;
+        const mappedKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
+        if (typeof mappedKey !== 'string') return;
+        const lower = mappedKey.toLowerCase();
+        const existingKey = keyLookup[lower];
+        if (existingKey) {
+          updatedRow[existingKey] = rawValue;
+        } else {
+          updatedRow[mappedKey] = rawValue;
+          keyLookup[lower] = mappedKey;
+        }
+      });
+      workingRows = workingRows.map((row, idx) => (idx === rowIdx ? updatedRow : row));
+      workingRows = assignArrayMetadata(workingRows, baseRows);
+    }
+
+    const updates = [];
+    const processed = new Set();
+    const queued = new Set();
+    const queue = [];
+
+    const normalizeColumn = (name) => {
+      if (!name && name !== 0) return null;
+      const mapped = columnCaseMap[String(name).toLowerCase()] || name;
+      return typeof mapped === 'string' ? mapped : null;
     };
-    direct.forEach((cfg) => {
-      if (!cfg || !cfg.name) return;
-      const key = keyFor(cfg);
-      const rec = map.get(key) || { cfg, cols: new Set() };
-      rec.cols.add(col.toLowerCase());
-      map.set(key, rec);
-    });
-    paramTrigs.forEach(([tCol, cfg]) => {
-      if (!cfg || !cfg.name) return;
-      const key = keyFor(cfg);
-      const rec = map.get(key) || { cfg, cols: new Set() };
-      rec.cols.add(tCol.toLowerCase());
-      map.set(key, rec);
-    });
-    for (const { cfg, cols } of map.values()) {
-      const tCol = [...cols][0];
-      const { name: procName, params = [], outMap = {} } = cfg;
-      const targetCols = Object.values(outMap || {}).map((c) =>
-        columnCaseMap[c.toLowerCase()] || c,
+
+    const enqueue = (name) => {
+      const normalized = normalizeColumn(name);
+      if (!normalized) return;
+      const lower = normalized.toLowerCase();
+      if (processed.has(lower) || queued.has(lower)) return;
+      queue.push(normalized);
+      queued.add(lower);
+    };
+
+    enqueue(col);
+
+    const getRowValue = (row, key) => {
+      if (!row || typeof row !== 'object' || !key) return undefined;
+      if (Object.prototype.hasOwnProperty.call(row, key)) return row[key];
+      const matchKey = Object.keys(row).find(
+        (existing) => existing.toLowerCase() === String(key).toLowerCase(),
       );
-      const hasTarget = targetCols.some((c) => fields.includes(c));
-      if (!hasTarget) continue;
-      const getVal = (name) => {
-        const key = columnCaseMap[name.toLowerCase()] || name;
-        let val = (rowOverride || rows[rowIdx] || {})[key];
-        if (val && typeof val === 'object' && 'value' in val) {
-          val = val.value;
-        }
-        if (placeholders[key]) {
-          val = normalizeDateInput(val, placeholders[key]);
-        }
-        if (totalCurrencySet.has(key) || totalAmountSet.has(key)) {
-          val = normalizeNumberInput(val);
-        }
-        return val;
+      if (matchKey !== undefined) return row[matchKey];
+      return undefined;
+    };
+
+    while (queue.length > 0) {
+      const currentCol = queue.shift();
+      if (!currentCol) continue;
+      const lowerCol = currentCol.toLowerCase();
+      queued.delete(lowerCol);
+      if (processed.has(lowerCol)) continue;
+      processed.add(lowerCol);
+
+      const direct = getDirectTriggers(currentCol);
+      const paramTrigs = getParamTriggers(currentCol);
+
+      const map = new Map();
+      const keyFor = (cfg) => {
+        const out = Object.keys(cfg.outMap || {})
+          .sort()
+          .reduce((m, k) => {
+            m[k] = cfg.outMap[k];
+            return m;
+          }, {});
+        return JSON.stringify([cfg.name, cfg.params, out]);
       };
-      const getParam = (p) => {
-        if (p === '$current') return getVal(tCol);
-        if (p === '$branchId') return branch;
-        if (p === '$companyId') return company;
-        if (p === '$employeeId') return user?.empid;
-        if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
-        return getVal(p);
+      const addCfg = (targetCol, cfg) => {
+        if (!cfg || !cfg.name) return;
+        const key = keyFor(cfg);
+        const rec = map.get(key) || { cfg, cols: new Set() };
+        const normalizedTarget = normalizeColumn(targetCol);
+        if (normalizedTarget) {
+          rec.cols.add(normalizedTarget);
+        }
+        map.set(key, rec);
       };
-      const paramValues = params.map(getParam);
-      const aliases = params.map((p) => outMap[p] || null);
-      const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
-      if (procCache.current[cacheKey]) {
-        const rowData = procCache.current[cacheKey];
-        setRows((r) => {
-          const next = r.map((row, i) => {
-            if (i !== rowIdx) return row;
-            const updated = { ...row };
-            Object.entries(rowData).forEach(([k, v]) => {
-              const key = columnCaseMap[k.toLowerCase()];
-              if (key) updated[key] = v;
-            });
-            return updated;
-          });
-          onRowsChange(next);
-          return next;
+      direct.forEach((cfg) => addCfg(currentCol, cfg));
+      paramTrigs.forEach(([tCol, cfg]) => addCfg(tCol, cfg));
+
+      for (const { cfg, cols } of map.values()) {
+        if (!cfg || !cfg.name) continue;
+        const colList = [...cols];
+        if (colList.length === 0) continue;
+        const targetColumn = colList[0];
+        const normalizedTarget = normalizeColumn(targetColumn);
+        if (!normalizedTarget) continue;
+
+        const { name: procName, params = [], outMap = {} } = cfg;
+        const targetCols = Object.values(outMap || {})
+          .map((c) => normalizeColumn(c))
+          .filter(Boolean);
+        const hasTarget = targetCols.some((c) => writableColumns.has(c));
+        if (!hasTarget) continue;
+
+        const optionalParamSet = new Set(
+          Array.isArray(cfg.optionalParams)
+            ? cfg.optionalParams.map((p) => String(p).toLowerCase())
+            : [],
+        );
+        const optionalPlaceholdersRaw = Array.isArray(cfg.optionalPlaceholders)
+          ? cfg.optionalPlaceholders
+          : cfg.optionalPlaceholders && typeof cfg.optionalPlaceholders === 'object'
+            ? Object.values(cfg.optionalPlaceholders)
+            : [];
+        const optionalPlaceholderSet = new Set(
+          (optionalPlaceholdersRaw || [])
+            .map((p) => (p === undefined || p === null ? '' : String(p).toLowerCase()))
+            .filter(Boolean),
+        );
+
+        const getVal = (name) => {
+          const key = normalizeColumn(name) || name;
+          const row = workingRows[rowIdx] || {};
+          let val = getRowValue(row, key);
+          if (val === undefined && key !== name) {
+            val = getRowValue(row, name);
+          }
+          if (val === undefined) {
+            const tableMeta = workingRows || {};
+            val = getRowValue(tableMeta, key);
+            if (val === undefined && key !== name) {
+              val = getRowValue(tableMeta, name);
+            }
+          }
+          if (val && typeof val === 'object' && 'value' in val) {
+            val = val.value;
+          }
+          if (placeholders[key]) {
+            val = normalizeDateInput(val, placeholders[key]);
+          }
+          if (totalCurrencySet.has(key) || totalAmountSet.has(key)) {
+            val = normalizeNumberInput(val);
+          }
+          return val;
+        };
+
+        const getParam = (p) => {
+          if (p === '$current') return getVal(normalizedTarget);
+          if (p === '$branchId') return branch;
+          if (p === '$companyId') return company;
+          if (p === '$employeeId') return user?.empid;
+          if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
+          return getVal(p);
+        };
+
+        const paramValues = params.map(getParam);
+
+        const getFieldName = (p) => {
+          if (!p) return null;
+          if (p === '$current') return normalizedTarget;
+          if (p === '$branchId') return branchIdFields?.[0] || null;
+          if (p === '$companyId') return companyIdFields?.[0] || null;
+          if (p === '$employeeId') return userIdFields?.[0] || null;
+          if (p === '$date') return dateField?.[0] || null;
+          const lower = String(p).toLowerCase();
+          return (
+            columnCaseMap[lower] ||
+            fields.find((f) => f.toLowerCase() === lower) ||
+            p
+          );
+        };
+
+        const missingLabels = [];
+        const missingFields = [];
+        params.forEach((param, idx) => {
+          const value = paramValues[idx];
+          const fieldName = getFieldName(param);
+          const fieldLower = fieldName ? String(fieldName).toLowerCase() : '';
+          const normalizedField =
+            fieldLower && fields.find((f) => f.toLowerCase() === fieldLower);
+          const paramLower = typeof param === 'string' ? param.toLowerCase() : '';
+          const shouldValidate =
+            param === '$current' ||
+            param === '$branchId' ||
+            param === '$companyId' ||
+            param === '$employeeId' ||
+            param === '$date' ||
+            Boolean(normalizedField) ||
+            (fieldLower &&
+              (requiredFieldSet.has(fieldLower) ||
+                branchIdLowerSet.has(fieldLower) ||
+                companyIdLowerSet.has(fieldLower) ||
+                departmentIdLowerSet.has(fieldLower) ||
+                userIdLowerSet.has(fieldLower)));
+          const isEmptyValue =
+            value === undefined ||
+            value === null ||
+            (typeof value === 'string' && value.trim() === '');
+          if (!shouldValidate || !isEmptyValue) return;
+          const optionalValueTokens = [];
+          if (value === undefined) optionalValueTokens.push('undefined');
+          if (value === null) optionalValueTokens.push('null');
+          if (typeof value === 'string') {
+            optionalValueTokens.push(value.trim().toLowerCase());
+          }
+          const isOptional =
+            optionalParamSet.has(paramLower) ||
+            optionalParamSet.has(fieldLower) ||
+            (normalizedField && optionalParamSet.has(normalizedField.toLowerCase())) ||
+            optionalPlaceholderSet.has(paramLower) ||
+            optionalPlaceholderSet.has(fieldLower) ||
+            (normalizedField && optionalPlaceholderSet.has(normalizedField.toLowerCase())) ||
+            optionalValueTokens.some((token) => optionalPlaceholderSet.has(token));
+          if (isOptional) return;
+          if (normalizedField) missingFields.push(normalizedField);
+          else if (fieldName) missingFields.push(fieldName);
+          if (param === '$branchId') {
+            const branchField = branchIdFields?.[0];
+            const label =
+              (branchField && (labels[branchField] || branchField)) ||
+              'Branch';
+            missingLabels.push(label);
+            return;
+          }
+          if (param === '$companyId') {
+            const companyField = companyIdFields?.[0];
+            const label =
+              (companyField && (labels[companyField] || companyField)) ||
+              'Company';
+            missingLabels.push(label);
+            return;
+          }
+          if (param === '$employeeId') {
+            const empField = userIdFields?.[0];
+            const label =
+              (empField && (labels[empField] || empField)) ||
+              'Employee';
+            missingLabels.push(label);
+            return;
+          }
+          if (param === '$date') {
+            const dateFieldName = dateField?.[0];
+            const label =
+              (dateFieldName && (labels[dateFieldName] || dateFieldName)) ||
+              'Огноо';
+            missingLabels.push(label);
+            return;
+          }
+          if (param === '$current') {
+            missingLabels.push(labels[normalizedTarget] || normalizedTarget);
+            return;
+          }
+          const labelField = normalizedField || fieldName;
+          missingLabels.push(
+            (labelField && (labels[labelField] || labelField)) || param,
+          );
         });
+
+        if (missingLabels.length > 0) {
+          const uniqueLabels = [...new Set(missingLabels.filter(Boolean))];
+          const message =
+            uniqueLabels.length > 0
+              ? `Дараах талбаруудыг бөглөнө үү: ${uniqueLabels.join(', ')}`
+              : 'Шаардлагатай талбаруудыг бөглөнө үү.';
+          setErrorMsg(message);
+          const focusFieldName = missingFields.find((name) => {
+            if (!name) return false;
+            const lower = String(name).toLowerCase();
+            return fields.some((f) => f.toLowerCase() === lower);
+          });
+          if (focusFieldName) {
+            const normalized =
+              fields.find((f) => f.toLowerCase() === focusFieldName.toLowerCase()) ||
+              focusFieldName;
+            setInvalidCell({ row: rowIdx, field: normalized });
+            const el =
+              inputRefs.current[
+                `${rowIdx}-${fields.indexOf(normalized)}`
+              ];
+            if (el) {
+              el.focus();
+              if (el.select) el.select();
+            }
+          }
+          if (showToast) {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: { message, type: 'warning' },
+              }),
+            );
+          }
+          continue;
+        }
+
+        const aliases = params.map((p) => outMap[p] || null);
+        const cacheKey = `${procName}|${JSON.stringify(paramValues)}`;
+        let rowData = procCache.current[cacheKey];
+        if (!rowData) {
+          if (showToast) {
+            window.dispatchEvent(
+              new CustomEvent('toast', {
+                detail: {
+                  message: `${normalizedTarget} -> ${procName}(${paramValues.join(', ')})`,
+                  type: 'info',
+                },
+              }),
+            );
+          }
+          try {
+            rowData = await callProcedure(procName, paramValues, aliases);
+            if (rowData && typeof rowData === 'object') {
+              procCache.current[cacheKey] = rowData;
+            }
+          } catch (err) {
+            console.error('Procedure call failed', err);
+            if (showToast) {
+              window.dispatchEvent(
+                new CustomEvent('toast', {
+                  detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
+                }),
+              );
+            }
+            continue;
+          }
+        }
+
+        if (!rowData || typeof rowData !== 'object') continue;
+
+        const { rows: updatedRows, changedColumns } = applyProcedureResult(
+          rowIdx,
+          rowData,
+          workingRows,
+        );
+        workingRows = updatedRows;
+        if (changedColumns.size > 0) {
+          updates.push({ rowIdx, rowData });
+          changedColumns.forEach((changedCol) => {
+            const normalizedChanged = normalizeColumn(changedCol) || changedCol;
+            if (hasTrigger(normalizedChanged)) enqueue(normalizedChanged);
+          });
+        }
         if (showToast) {
           window.dispatchEvent(
             new CustomEvent('toast', {
@@ -565,57 +1107,22 @@ function InlineTransactionTable(
             }),
           );
         }
-        continue;
       }
-      if (showToast) {
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: `${tCol} -> ${procName}(${paramValues.join(', ')})`,
-              type: 'info',
-            },
-          }),
-        );
-      }
-      try {
-        const rowData = await callProcedure(
-          procName,
-          paramValues,
-          aliases,
-        );
-        if (rowData && typeof rowData === 'object') {
-          procCache.current[cacheKey] = rowData;
-          setRows((r) => {
-            const next = r.map((row, i) => {
-              if (i !== rowIdx) return row;
-              const updated = { ...row };
-              Object.entries(rowData).forEach(([k, v]) => {
-                const key = columnCaseMap[k.toLowerCase()];
-                if (key) updated[key] = v;
-              });
-              return updated;
-            });
-            onRowsChange(next);
-            return next;
+    }
+
+    if (updates.length > 0) {
+      const changedRows = Array.from(new Set(updates.map((u) => u.rowIdx)));
+      commitRowsUpdate(
+        (currentRows) => {
+          let next = currentRows;
+          updates.forEach(({ rowIdx: idx, rowData }) => {
+            const result = applyProcedureResult(idx, rowData, next);
+            next = result.rows;
           });
-          if (showToast) {
-            window.dispatchEvent(
-              new CustomEvent('toast', {
-                detail: { message: `Returned: ${JSON.stringify(rowData)}`, type: 'info' },
-              }),
-            );
-          }
-        }
-      } catch (err) {
-        console.error('Procedure call failed', err);
-        if (showToast) {
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message: `Procedure failed: ${err.message}`, type: 'error' },
-            }),
-          );
-        }
-      }
+          return next;
+        },
+        { indices: changedRows },
+      );
     }
   }
 
@@ -711,21 +1218,19 @@ function InlineTransactionTable(
         }
       }
     }
-    setRows((r) => {
-      const row = fillSessionDefaults(defaultValues);
-      const next = [...r, row];
-      focusRow.current = next.length - 1;
-      onRowsChange(next);
-      return next;
-    });
+    const newIndex = rows.length;
+    focusRow.current = newIndex;
+    commitRowsUpdate(
+      (r) => {
+        const row = fillSessionDefaults(defaultValues);
+        return [...r, row];
+      },
+      { indices: [newIndex] },
+    );
   }
 
   function removeRow(idx) {
-    setRows((r) => {
-      const next = r.filter((_, i) => i !== idx);
-      onRowsChange(next);
-      return next;
-    });
+    commitRowsUpdate((r) => r.filter((_, i) => i !== idx));
   }
 
   function openUpload(idx) {
@@ -733,28 +1238,28 @@ function InlineTransactionTable(
   }
 
   function handleUploaded(idx, name) {
-    setRows((r) => {
-      const next = r.map((row, i) => (i === idx ? { ...row, _imageName: name } : row));
-      onRowsChange(next);
-      return next;
-    });
+    commitRowsUpdate(
+      (r) =>
+        r.map((row, i) => (i === idx ? { ...row, _imageName: name } : row)),
+      { indices: [idx] },
+    );
   }
 
   function applyAISuggestion(idx, item) {
     if (!item) return;
-    setRows((r) => {
-      const codeField = fields.find((f) => /code|name|item/i.test(f));
-      const qtyField = fields.find((f) => /(qty|quantity|count)/i.test(f));
-      const next = r.map((row, i) => {
-        if (i !== idx) return row;
-        const updated = { ...row };
-        if (codeField && item.code !== undefined) updated[codeField] = item.code;
-        if (qtyField && item.qty !== undefined) updated[qtyField] = item.qty;
-        return updated;
-      });
-      onRowsChange(next);
-      return next;
-    });
+    const codeField = fields.find((f) => /code|name|item/i.test(f));
+    const qtyField = fields.find((f) => /(qty|quantity|count)/i.test(f));
+    commitRowsUpdate(
+      (r) =>
+        r.map((row, i) => {
+          if (i !== idx) return row;
+          const updated = { ...row };
+          if (codeField && item.code !== undefined) updated[codeField] = item.code;
+          if (qtyField && item.qty !== undefined) updated[qtyField] = item.qty;
+          return updated;
+        }),
+      { indices: [idx] },
+    );
   }
 
   function getImageFolder(row) {
@@ -774,29 +1279,29 @@ function InlineTransactionTable(
 
 
   function handleChange(rowIdx, field, value) {
-    setRows((r) => {
-      const next = r.map((row, i) => {
-        if (i !== rowIdx) return row;
-        const updated = { ...row, [field]: value };
-        const conf = relationConfigMap[field];
-        let val = value;
-        if (val && typeof val === 'object' && 'value' in val) {
-          val = val.value;
-        }
-        if (conf && conf.displayFields && relationData[field]?.[val]) {
-          const ref = relationData[field][val];
-          conf.displayFields.forEach((df) => {
-            const key = columnCaseMap[df.toLowerCase()];
-            if (key && ref[df] !== undefined) {
-              updated[key] = ref[df];
-            }
-          });
-        }
-        return updated;
-      });
-      onRowsChange(next);
-      return next;
-    });
+    commitRowsUpdate(
+      (r) =>
+        r.map((row, i) => {
+          if (i !== rowIdx) return row;
+          const updated = { ...row, [field]: value };
+          const conf = relationConfigMap[field];
+          let val = value;
+          if (val && typeof val === 'object' && 'value' in val) {
+            val = val.value;
+          }
+          if (conf && conf.displayFields && relationData[field]?.[val]) {
+            const ref = relationData[field][val];
+            conf.displayFields.forEach((df) => {
+              const key = columnCaseMap[df.toLowerCase()];
+              if (key && ref[df] !== undefined) {
+                updated[key] = ref[df];
+              }
+            });
+          }
+          return updated;
+        }),
+      { indices: [rowIdx] },
+    );
     if (invalidCell && invalidCell.row === rowIdx && invalidCell.field === field) {
       setInvalidCell(null);
       setErrorMsg('');
@@ -846,19 +1351,19 @@ function InlineTransactionTable(
               }),
             );
           }
-          setRows((r) => {
-            const next = r.map((row, i) => {
-              if (i !== rowIdx) return row;
-              const updated = { ...row };
-              Object.entries(rowData).forEach(([k, v]) => {
-                const key = columnCaseMap[k.toLowerCase()];
-                if (key) updated[key] = v;
-              });
-              return updated;
-            });
-            onRowsChange(next);
-            return next;
-          });
+          commitRowsUpdate(
+            (r) =>
+              r.map((row, i) => {
+                if (i !== rowIdx) return row;
+                const updated = { ...row };
+                Object.entries(rowData).forEach(([k, v]) => {
+                  const key = columnCaseMap[k.toLowerCase()];
+                  if (key) updated[key] = v;
+                });
+                return updated;
+              }),
+            { indices: [rowIdx] },
+          );
         })
         .catch((err) => {
           window.dispatchEvent(
@@ -965,11 +1470,10 @@ function InlineTransactionTable(
         }
         updated._imageName = newImageName;
       }
-      setRows((r) => {
-        const next = r.map((row, i) => (i === idx ? updated : row));
-        onRowsChange(next);
-        return next;
-      });
+      commitRowsUpdate(
+        (r) => r.map((row, i) => (i === idx ? updated : row)),
+        { indices: [idx] },
+      );
       procCache.current = {};
     }
   }
@@ -1017,6 +1521,19 @@ function InlineTransactionTable(
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
+    const isLookupField =
+      !!relationConfigMap[field] ||
+      !!viewSourceMap[field] ||
+      !!autoSelectConfigs[field];
+    if (isLookupField && e.lookupMatched === false) {
+      const label = labels[field] || field;
+      const message = `${label} талбарт тохирох утга олдсонгүй.`;
+      setErrorMsg(message);
+      setInvalidCell({ row: rowIdx, field });
+      e.target.focus();
+      if (e.target.select) e.target.select();
+      return;
+    }
     let label = undefined;
     let val = e.selectedOption ? e.selectedOption.value : e.target.value;
     if (e.selectedOption) label = e.selectedOption.label;

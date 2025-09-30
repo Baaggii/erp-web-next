@@ -1,5 +1,78 @@
+import { extractArrayMetadata, assignArrayMetadata } from './transactionValues.js';
+
 function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseLocalizedNumber(value) {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  const withoutGrouping = trimmed.replace(/[\s\u00A0]+/g, '');
+  if (!withoutGrouping) return null;
+
+  let normalized = withoutGrouping;
+
+  const hasComma = normalized.includes(',');
+  const hasDot = normalized.includes('.');
+  if (hasComma && hasDot) {
+    if (normalized.lastIndexOf(',') > normalized.lastIndexOf('.')) {
+      normalized = normalized.replace(/\./g, '').replace(/,/g, '.');
+    } else {
+      normalized = normalized.replace(/,/g, '');
+    }
+  } else if (hasComma) {
+    const commaCount = (normalized.match(/,/g) || []).length;
+    if (commaCount === 1) {
+      normalized = normalized.replace(',', '.');
+    } else {
+      normalized = normalized.replace(/,/g, '');
+    }
+  }
+
+  const num = Number(normalized);
+  return Number.isFinite(num) ? num : null;
+}
+
+function collectSectionFields(map, table) {
+  const fields = new Set();
+  if (!map || !table) return fields;
+
+  const addList = (list) => {
+    if (!Array.isArray(list)) return;
+    list.forEach((item) => {
+      if (typeof item === 'string' && item) fields.add(item);
+    });
+  };
+
+  const tableSections = map.tableSections;
+  if (tableSections && typeof tableSections === 'object') {
+    const info = tableSections[table];
+    if (info && typeof info === 'object') {
+      addList(info.headerFields || info.header || info.headers);
+      addList(info.footerFields || info.footer || info.footers);
+    }
+  }
+
+  const headerByTable = map.headerFieldsByTable;
+  if (headerByTable && typeof headerByTable === 'object') {
+    addList(headerByTable[table]);
+  }
+
+  const footerByTable = map.footerFieldsByTable;
+  if (footerByTable && typeof footerByTable === 'object') {
+    addList(footerByTable[table]);
+  }
+
+  return fields;
 }
 
 function pickFirstDefinedFieldValue(source, field) {
@@ -27,8 +100,8 @@ const CALC_FIELD_AGGREGATORS = {
           if (!isPlainObject(row)) continue;
           const raw = row[field];
           if (raw === undefined || raw === null) continue;
-          const num = Number(raw);
-          if (!Number.isFinite(num)) continue;
+          const num = parseLocalizedNumber(raw);
+          if (num === null) continue;
           sum += num;
           hasData = true;
         }
@@ -42,8 +115,8 @@ const CALC_FIELD_AGGREGATORS = {
         if (raw === undefined || raw === null) {
           return { sum: 0, hasValue: false };
         }
-        const num = Number(raw);
-        if (!Number.isFinite(num)) {
+        const num = parseLocalizedNumber(raw);
+        if (num === null) {
           return { sum: 0, hasValue: false };
         }
         return { sum: num, hasValue: true };
@@ -145,15 +218,52 @@ export function syncCalcFields(vals, mapConfig) {
       }
 
       if (Array.isArray(target)) {
-        let changed = false;
-        const updated = target.map((row) => {
-          if (!isPlainObject(row)) return row;
-          if (row[field] === computedValue) return row;
-          changed = true;
-          return { ...row, [field]: computedValue };
-        });
-        if (changed) {
-          next = { ...next, [table]: updated };
+        const sectionFields = collectSectionFields(map, table);
+        const metadata = extractArrayMetadata(target) || {};
+        const metadataHasField = Object.prototype.hasOwnProperty.call(
+          metadata,
+          field,
+        );
+        const missingInRows = !target.some(
+          (row) =>
+            isPlainObject(row) && Object.prototype.hasOwnProperty.call(row, field),
+        );
+
+        let tableChanged = false;
+        let resultRows = target;
+
+        if (target.length > 0) {
+          const mapped = target.map((row) => {
+            if (!isPlainObject(row)) return row;
+            if (row[field] === computedValue) return row;
+            tableChanged = true;
+            return { ...row, [field]: computedValue };
+          });
+          if (tableChanged) {
+            resultRows = assignArrayMetadata(mapped, target);
+          }
+        }
+
+        const shouldUpdateMetadata =
+          sectionFields.has(field) || metadataHasField || missingInRows;
+
+        if (shouldUpdateMetadata) {
+          const ensureClone = () => {
+            if (resultRows === target) {
+              resultRows = assignArrayMetadata(target.slice(), target);
+            }
+            if (!tableChanged && resultRows !== target) {
+              tableChanged = true;
+            }
+          };
+          if ((resultRows?.[field] ?? undefined) !== computedValue) {
+            ensureClone();
+            resultRows[field] = computedValue;
+          }
+        }
+
+        if (tableChanged) {
+          next = { ...next, [table]: resultRows };
         }
       } else if (isPlainObject(target)) {
         if (target[field] === computedValue) continue;

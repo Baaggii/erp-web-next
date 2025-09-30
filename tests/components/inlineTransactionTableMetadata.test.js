@@ -534,6 +534,77 @@ if (typeof mock?.import !== 'function') {
     }
   });
 
+  test('InlineTransactionTable recomputes generated totals for transactions_order', async () => {
+    const reactMock = createReactMock();
+    const onRowsChange = mock.fn(() => {});
+
+    const { default: InlineTransactionTable } = await mock.import(
+      '../../src/erp.mgt.mn/components/InlineTransactionTable.jsx',
+      {
+        react: reactMock.module,
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        '../utils/buildImageName.js': { default: () => ({ name: '' }) },
+        '../utils/slugify.js': { default: (value) => String(value) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/callProcedure.js': { default: async () => ({}) },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    const tableRef = { current: null };
+
+    reactMock.render(InlineTransactionTable, {
+      ref: tableRef,
+      fields: ['ordrsub', 'sp_cost', 'ordrap'],
+      allFields: ['ordrsub', 'sp_cost', 'ordrap'],
+      rows: [{ ordrsub: '1', sp_cost: '10', ordrap: '10' }],
+      defaultValues: {},
+      onRowsChange,
+      minRows: 1,
+      relations: {},
+      relationConfigs: {},
+      relationData: {},
+      fieldTypeMap: { ordrsub: 'number', sp_cost: 'number', ordrap: 'number' },
+      totalAmountFields: [],
+      totalCurrencyFields: ['ordrap'],
+      columnCaseMap: { ordrsub: 'ordrsub', sp_cost: 'sp_cost', ordrap: 'ordrap' },
+      viewSource: {},
+      viewDisplays: {},
+      viewColumns: {},
+      loadView: noop,
+      procTriggers: {},
+      user: {},
+      tableColumns: [
+        { name: 'ordrsub' },
+        { name: 'sp_cost' },
+        {
+          name: 'ordrap',
+          generationExpression: 'IFNULL(`ordrsub`,0) * IFNULL(`sp_cost`,0)',
+        },
+      ],
+      collectRows: true,
+      tableName: 'transactions_order',
+    });
+
+    const tree = reactMock.getTree();
+    const inputs = findAllByType(tree, 'input');
+    assert.equal(inputs.length >= 2, true, 'should render quantity and cost inputs');
+
+    // ordrsub field
+    inputs[0].props.onChange({ target: { value: '5' } });
+    // sp_cost field
+    inputs[1].props.onChange({ target: { value: '20' } });
+
+    const lastCall = onRowsChange.mock.calls[onRowsChange.mock.calls.length - 1];
+    assert.ok(lastCall, 'onRowsChange should be called after edits');
+    const [rowsArg] = lastCall.arguments;
+    assert.equal(rowsArg[0].ordrap, 100);
+    assert.equal(rowsArg.ordrap, 100);
+  });
+
   test('InlineTransactionTable blocks procedure call when required parameters are empty', async () => {
     const reactMock = createReactMock();
     const originalFetch = global.fetch;
@@ -640,6 +711,159 @@ if (typeof mock?.import !== 'function') {
       assert.deepEqual(params, ['ITEM-01', '2024-02-01']);
     } finally {
       global.fetch = originalFetch;
+    }
+  });
+
+  test('InlineTransactionTable resolves procedure params from table metadata', async () => {
+    const reactMock = createReactMock();
+    const originalFetch = global.fetch;
+    const originalDispatch = global.window.dispatchEvent;
+    const toastEvents = [];
+    global.fetch = mock.fn(async () => ({ ok: true, json: async () => ({}) }));
+    const callProcedureMock = mock.fn(async () => ({ sp_selling_price: '125.5000' }));
+    global.window.dispatchEvent = (event) => {
+      toastEvents.push(event);
+    };
+
+    const initRows = [{ sp_selling_code: '' }];
+    initRows.company_id = 'COMP-001';
+    initRows.bmtr_transbranch = 'BR-009';
+    initRows.bmtr_date = '2024-03-15';
+    initRows.bmtr_coupcode = 'CP-777';
+
+    const tableRef = { current: null };
+
+    const { default: InlineTransactionTable } = await mock.import(
+      '../../src/erp.mgt.mn/components/InlineTransactionTable.jsx',
+      {
+        react: reactMock.module,
+        '../hooks/useGeneralConfig.js': {
+          default: () => ({ forms: {}, general: { procToastEnabled: true } }),
+        },
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        '../utils/buildImageName.js': { default: () => ({ name: '' }) },
+        '../utils/slugify.js': { default: (value) => String(value) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/callProcedure.js': { default: callProcedureMock },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    try {
+      reactMock.render(InlineTransactionTable, {
+        ref: tableRef,
+        fields: ['sp_selling_code', 'sp_selling_price'],
+        allFields: [
+          'sp_selling_code',
+          'sp_selling_price',
+          'company_id',
+          'bmtr_transbranch',
+          'bmtr_date',
+          'bmtr_coupcode',
+        ],
+        labels: { sp_selling_code: 'Selling Code', sp_selling_price: 'Selling Price' },
+        rows: initRows,
+        defaultValues: {},
+        onRowsChange: () => {},
+        minRows: 1,
+        relations: {},
+        relationConfigs: {},
+        relationData: {},
+        fieldTypeMap: {},
+        totalAmountFields: [],
+        totalCurrencyFields: [],
+        columnCaseMap: {
+          sp_selling_code: 'sp_selling_code',
+          sp_selling_price: 'sp_selling_price',
+          company_id: 'company_id',
+          bmtr_transbranch: 'bmtr_transbranch',
+          bmtr_date: 'bmtr_date',
+          bmtr_coupcode: 'bmtr_coupcode',
+        },
+        viewSource: {},
+        viewDisplays: {},
+        viewColumns: {},
+        loadView: noop,
+        procTriggers: {
+          sp_selling_code: {
+            name: 'get_selling_price_and_discount',
+            params: [
+              '$current',
+              'company_id',
+              'bmtr_transbranch',
+              'bmtr_date',
+              'bmtr_coupcode',
+            ],
+            outMap: {
+              '$current': 'sp_selling_code',
+              company_id: 'company_id',
+              bmtr_transbranch: 'bmtr_transbranch',
+              bmtr_date: 'bmtr_date',
+              bmtr_coupcode: 'bmtr_coupcode',
+              result_price: 'sp_selling_price',
+            },
+          },
+        },
+        user: {},
+        collectRows: false,
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      const tree = reactMock.getTree();
+      const inputNode = findByType(tree, 'input') || findByType(tree, 'textarea');
+      assert.ok(inputNode, 'selling code input should render');
+
+      inputNode.props.onChange({ target: { value: 'ITEM-001' } });
+      await flushPromises();
+
+      inputNode.props.onKeyDown({
+        key: 'Enter',
+        preventDefault: () => {},
+        target: {
+          value: 'ITEM-001',
+          focus: () => {},
+          select: () => {},
+        },
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      assert.equal(callProcedureMock.mock.callCount(), 1);
+      const [procName, params] = callProcedureMock.mock.calls[0].arguments;
+      assert.equal(procName, 'get_selling_price_and_discount');
+      assert.deepEqual(params, [
+        'ITEM-001',
+        'COMP-001',
+        'BR-009',
+        '2024-03-15',
+        'CP-777',
+      ]);
+
+      assert.ok(tableRef.current, 'table ref should be set');
+      const rows = tableRef.current.getRows();
+      assert.equal(rows[0].sp_selling_price, '125.5000');
+
+      const toastMessages = toastEvents
+        .map((event) => event?.detail?.message)
+        .filter(Boolean);
+      const procToast = toastMessages.find((msg) =>
+        msg.includes('get_selling_price_and_discount'),
+      );
+      assert.ok(procToast, 'procedure toast should be emitted');
+      assert.ok(
+        procToast.includes(
+          'sp_selling_code -> get_selling_price_and_discount(ITEM-001, COMP-001, BR-009, 2024-03-15, CP-777)',
+        ),
+        'toast should include resolved parameter values',
+      );
+    } finally {
+      global.fetch = originalFetch;
+      global.window.dispatchEvent = originalDispatch;
     }
   });
 }

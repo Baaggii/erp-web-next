@@ -789,5 +789,6 @@
   "assembly_price": "Assembly price",
   "reports": "Reports",
   "edit_delete_request": "Edit or delete request",
+  "settings_show_tour_buttons": "ウィンドウヘッダーにツアーボタンを表示するか非表示にします。",
   "system_settings": "System settings"
 }

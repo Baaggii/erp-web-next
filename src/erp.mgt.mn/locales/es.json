@@ -660,6 +660,7 @@
   "settings_company_licenses": "Licencias de empresa",
   "settings_enable_tooltips": "Habilitar tooltips",
   "settings_enable_tours": "Mostrar guía de página",
+  "settings_show_tour_buttons": "Mostrar botones de tour",
   "settings_fetch_error": "Error al obtener la configuración:",
   "settings_fetch_failed": "Error al obtener configuraciones",
   "settings_forms_management": "Gestión de formularios",

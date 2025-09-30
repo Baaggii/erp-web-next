@@ -12,8 +12,10 @@ import {
   listCompanySeedBackupsForUser,
   restoreCompanySeedBackup,
   restoreCompanyFullBackup,
+  listTableColumns,
 } from '../../db/index.js';
 import { hasAction } from '../utils/hasAction.js';
+import { formatDateForDb } from '../utils/formatDate.js';
 
 async function hasSystemSettingsAccess(req) {
   const session =
@@ -70,6 +72,13 @@ export async function updateCompanyHandler(req, res, next) {
     const updates = { ...req.body };
     delete updates.created_by;
     delete updates.created_at;
+    const columns = await listTableColumns('companies');
+    if (columns.includes('updated_by')) {
+      updates.updated_by = req.user.empid;
+    }
+    if (columns.includes('updated_at')) {
+      updates.updated_at = formatDateForDb(new Date());
+    }
     if (!(await hasSystemSettingsAccess(req))) {
       return res.sendStatus(403);
     }

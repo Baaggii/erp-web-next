@@ -7,9 +7,18 @@ export async function getUserSettings(empid, companyId = 0) {
     const filePath = await resolveDataPath('userSettings.json', companyId);
     const data = await fs.readFile(filePath, 'utf8');
     const json = JSON.parse(data || '{}');
-    return json[empid] || {};
+    const settings = { ...(json[empid] || {}) };
+    if (!Object.prototype.hasOwnProperty.call(settings, 'showTourButtons')) {
+      settings.showTourButtons = true;
+    }
+    if (
+      !Object.prototype.hasOwnProperty.call(settings, 'settings_enable_tour_builder')
+    ) {
+      settings.settings_enable_tour_builder = true;
+    }
+    return settings;
   } catch {
-    return {};
+    return { showTourButtons: true, settings_enable_tour_builder: true };
   }
 }
 
@@ -23,7 +32,30 @@ export async function saveUserSettings(empid, settings, companyId = 0) {
   } catch {
     data = {};
   }
-  data[empid] = { ...(data[empid] || {}), ...settings };
+  const normalizedSettings = { ...(settings || {}) };
+  if (Object.prototype.hasOwnProperty.call(normalizedSettings, 'showTourButtons')) {
+    normalizedSettings.showTourButtons = Boolean(normalizedSettings.showTourButtons);
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(
+      normalizedSettings,
+      'settings_enable_tour_builder',
+    )
+  ) {
+    normalizedSettings.settings_enable_tour_builder = Boolean(
+      normalizedSettings.settings_enable_tour_builder,
+    );
+  }
+
+  data[empid] = { ...(data[empid] || {}), ...normalizedSettings };
+  if (!Object.prototype.hasOwnProperty.call(data[empid], 'showTourButtons')) {
+    data[empid].showTourButtons = true;
+  }
+  if (
+    !Object.prototype.hasOwnProperty.call(data[empid], 'settings_enable_tour_builder')
+  ) {
+    data[empid].settings_enable_tour_builder = true;
+  }
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, JSON.stringify(data, null, 2));
   return data[empid];
