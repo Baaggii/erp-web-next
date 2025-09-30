@@ -239,4 +239,102 @@ if (!haveReact) {
     assert.equal(input?.getAttribute('placeholder'), 'YYYY-MM-DD');
     root.unmount();
   });
+
+  test('TableManager hydrates edit modal with non-grid fields', async (t) => {
+    const origFetch = global.fetch;
+    global.fetch = async (url) => {
+      if (url === '/api/tables/test/columns') {
+        return {
+          ok: true,
+          json: async () => [
+            { name: 'id', type: 'int', key: 'PRI' },
+            { name: 'name', type: 'varchar' },
+            { name: 'description', type: 'varchar' },
+          ],
+        };
+      }
+      if (url === '/api/tables/test/relations') {
+        return { ok: true, json: async () => [] };
+      }
+      if (url.startsWith('/api/display_fields?')) {
+        return { ok: true, json: async () => ({ displayFields: [] }) };
+      }
+      if (url.startsWith('/api/proc_triggers')) {
+        return { ok: true, json: async () => [] };
+      }
+      if (url.startsWith('/api/tables/test?')) {
+        return {
+          ok: true,
+          json: async () => ({ rows: [{ id: 1, name: 'Grid Name' }], count: 1 }),
+        };
+      }
+      if (url === '/api/tables/test/1') {
+        return {
+          ok: true,
+          json: async () => ({ row: { id: 1, name: 'Grid Name', description: 'Full description' } }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    const rowCapture = { current: undefined };
+    const { default: TableManager } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/TableManager.jsx',
+      {
+        '../context/AuthContext.jsx': {
+          AuthContext: React.createContext({
+            user: {},
+            company: 1,
+            branch: 1,
+            department: 1,
+            session: {},
+          }),
+        },
+        '../context/ToastContext.jsx': {
+          useToast: () => ({ addToast: () => {} }),
+        },
+        './RowFormModal.jsx': {
+          default: (props) => {
+            rowCapture.current = props.row;
+            return React.createElement('div', null);
+          },
+        },
+        './CascadeDeleteModal.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageViewModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        './ImageSearchModal.jsx': { default: () => null },
+        './Modal.jsx': { default: () => null },
+        './CustomDatePicker.jsx': { default: () => null },
+        '../hooks/useGeneralConfig.js': { default: () => ({}) },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
+        '../utils/buildImageName.js': { default: () => ({}) },
+        '../utils/slugify.js': { default: () => '' },
+        '../utils/apiBase.js': { API_BASE: '' },
+        '../utils/normalizeDateInput.js': { default: (v) => v },
+      },
+    );
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    const ref = React.createRef();
+    await act(async () => {
+      root.render(
+        React.createElement(TableManager, {
+          table: 'test',
+          ref,
+          buttonPerms: { 'Edit transaction': true },
+        }),
+      );
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.ok(!rowCapture.current || rowCapture.current.description === undefined);
+    await act(async () => {
+      await ref.current.openEdit({ id: 1, name: 'Grid Name' });
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(rowCapture.current?.description, 'Full description');
+    root.unmount();
+    global.fetch = origFetch;
+  });
 }
