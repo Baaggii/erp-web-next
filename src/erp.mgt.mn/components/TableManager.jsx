@@ -958,9 +958,16 @@ const TableManager = forwardRef(function TableManager({
 
   function getRowId(row) {
     const keys = getKeyFields();
-    if (keys.length === 0) return undefined;
-    const idVal = keys.length === 1 ? row[keys[0]] : keys.map((k) => row[k]).join('-');
-    return idVal;
+    if (!row || keys.length === 0) return undefined;
+    const values = [];
+    for (const key of keys) {
+      const value = getCase(row, key);
+      if (value === undefined || value === null) {
+        return undefined;
+      }
+      values.push(value);
+    }
+    return values.length === 1 ? values[0] : values.join('-');
   }
 
   function getImageFolder(row) {
