@@ -169,6 +169,11 @@ const TableManager = forwardRef(function TableManager({
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
+  const { user, company, branch, department, session } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
+  const { addToast } = useToast();
+  const isSubordinate = Boolean(session?.senior_empid);
+  const canRequestStatus = isSubordinate;
   const columnCaseMap = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
@@ -353,11 +358,6 @@ const TableManager = forwardRef(function TableManager({
     () => Array.from(requestIdSet).sort().join(','),
     [requestIdSet],
   );
-  const { user, company, branch, department, session } = useContext(AuthContext);
-  const isSubordinate = Boolean(session?.senior_empid);
-  const generalConfig = useGeneralConfig();
-  const { addToast } = useToast();
-  const canRequestStatus = isSubordinate;
 
   function promptRequestReason() {
     return new Promise((resolve) => {
