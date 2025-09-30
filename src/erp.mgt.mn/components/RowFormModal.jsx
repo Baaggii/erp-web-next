@@ -259,9 +259,12 @@ const RowFormModal = function RowFormModal({
       } else if (typ === 'date' || typ === 'datetime') {
         placeholder = 'YYYY-MM-DD';
       }
-      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
+      const rowValue = getRowValueCaseInsensitive(row, c);
+      const raw = row
+        ? String(rowValue ?? '')
+        : String(defaultValues[c] ?? '');
       let val = normalizeDateInput(raw, placeholder);
-      const missing = !row || row[c] === undefined || row[c] === '';
+      const missing = !row || rowValue === undefined || rowValue === '';
       if (missing && !val && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
@@ -610,9 +613,12 @@ const RowFormModal = function RowFormModal({
     if (!visible) return;
     const vals = {};
     columns.forEach((c) => {
-      const raw = row ? String(row[c] ?? '') : String(defaultValues[c] ?? '');
+      const rowValue = getRowValueCaseInsensitive(row, c);
+      const raw = row
+        ? String(rowValue ?? '')
+        : String(defaultValues[c] ?? '');
       let v = normalizeDateInput(raw, placeholders[c]);
-      const missing = !row || row[c] === undefined || row[c] === '';
+      const missing = !row || rowValue === undefined || rowValue === '';
       if (missing && !v && dateField.includes(c)) {
         const now = new Date();
         if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
@@ -633,7 +639,16 @@ const RowFormModal = function RowFormModal({
     inputRefs.current = {};
     setErrors({});
     setFormValuesWithGenerated(() => vals, { notify: false });
-  }, [row, visible, user, company, branch, department, setFormValuesWithGenerated]);
+  }, [
+    row,
+    visible,
+    user,
+    company,
+    branch,
+    department,
+    setFormValuesWithGenerated,
+    getRowValueCaseInsensitive,
+  ]);
 
   function resizeInputs() {
     Object.values({ ...inputRefs.current, ...readonlyRefs.current }).forEach((el) => {

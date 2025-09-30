@@ -18,6 +18,11 @@ try {
 if (!haveReact) {
   test('TableManager hydrates edit modal with missing columns', { skip: true }, () => {});
   test('TableManager handles PK casing differences when editing', { skip: true }, () => {});
+  test(
+    'RowFormModal hydrates form inputs from case-insensitive row keys',
+    { skip: true },
+    () => {},
+  );
 } else {
   test('TableManager hydrates edit modal with missing columns', async (t) => {
     const prevWindow = global.window;
@@ -316,6 +321,141 @@ if (!haveReact) {
       container.remove();
 
       global.fetch = origFetch;
+      global.window = prevWindow;
+      global.document = prevDocument;
+      global.navigator = prevNavigator;
+      dom.window.close();
+    }
+  });
+
+  test('RowFormModal hydrates form inputs from case-insensitive row keys', async (t) => {
+    const prevWindow = global.window;
+    const prevDocument = global.document;
+    const prevNavigator = global.navigator;
+    const prevResizeObserver = global.ResizeObserver;
+    const prevWindowResizeObserver = prevWindow?.ResizeObserver;
+
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+      url: 'http://localhost',
+    });
+
+    global.window = dom.window;
+    global.document = dom.window.document;
+    global.navigator = dom.window.navigator;
+    dom.window.confirm = () => true;
+    dom.window.scrollTo = () => {};
+
+    class ResizeObserverMock {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+
+    global.ResizeObserver = ResizeObserverMock;
+    dom.window.ResizeObserver = ResizeObserverMock;
+
+    const origFetch = global.fetch;
+    global.fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      if (url === '/api/display_fields') {
+        return { ok: true, json: async () => ({}) };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+    dom.window.fetch = global.fetch;
+
+    const authValue = {
+      user: { empid: 'EMP-1' },
+      company: 'COMP-1',
+      branch: 'BR-1',
+      department: 'DEP-1',
+      userSettings: {},
+    };
+
+    const AuthContextMock = React.createContext(authValue);
+
+    const { default: RowFormModal } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/RowFormModal.jsx',
+      {
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './Modal.jsx': {
+          default: ({ children, visible }) =>
+            (visible ? React.createElement('div', { 'data-modal': 'visible' }, children) : null),
+        },
+        './InlineTransactionTable.jsx': {
+          default: React.forwardRef((_props, _ref) => null),
+        },
+        './RowDetailModal.jsx': { default: () => null },
+        './TooltipWrapper.jsx': {
+          default: ({ children }) => React.createElement(React.Fragment, null, children),
+        },
+        '../context/AuthContext.jsx': { AuthContext: AuthContextMock },
+        '../hooks/useGeneralConfig.js': { default: () => ({}) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/normalizeDateInput.js': { default: (v) => v },
+        '../utils/callProcedure.js': { default: async () => ({}) },
+        '../utils/generatedColumns.js': {
+          applyGeneratedColumnEvaluators: () => ({ changed: false }),
+          createGeneratedColumnEvaluator: () => null,
+        },
+        '../utils/apiBase.js': { API_BASE: '' },
+        'react-i18next': {
+          useTranslation: () => ({ t: (_key, opts) => opts?.defaultValue || _key }),
+        },
+      },
+    );
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(
+            AuthContextMock.Provider,
+            { value: authValue },
+            React.createElement(RowFormModal, {
+              visible: true,
+              onCancel: () => {},
+              onSubmit: () => {},
+              columns: ['name', 'secret_value'],
+              row: { NAME: 'Hydrated Name', SECRET_VALUE: 'Hydrated Secret' },
+              labels: { name: 'Name Label', secret_value: 'Secret Label' },
+              fieldTypeMap: {},
+              defaultValues: {},
+              dateField: [],
+              autoFillSession: false,
+            }),
+          ),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      const labels = Array.from(container.querySelectorAll('label'));
+      const nameLabel = labels.find((el) => (el.textContent || '').includes('Name Label'));
+      assert.ok(nameLabel, 'expected Name label to render');
+      const nameInput = nameLabel.parentElement.querySelector('input');
+      assert.ok(nameInput, 'expected Name input to render');
+      assert.equal(nameInput.value, 'Hydrated Name');
+
+      const secretLabel = labels.find((el) => (el.textContent || '').includes('Secret Label'));
+      assert.ok(secretLabel, 'expected Secret label to render');
+      const secretInput = secretLabel.parentElement.querySelector('input');
+      assert.ok(secretInput, 'expected Secret input to render');
+      assert.equal(secretInput.value, 'Hydrated Secret');
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      global.fetch = origFetch;
+      if (prevResizeObserver === undefined) delete global.ResizeObserver;
+      else global.ResizeObserver = prevResizeObserver;
+      if (prevWindow) {
+        if (prevWindowResizeObserver === undefined) delete prevWindow.ResizeObserver;
+        else prevWindow.ResizeObserver = prevWindowResizeObserver;
+      }
       global.window = prevWindow;
       global.document = prevDocument;
       global.navigator = prevNavigator;
