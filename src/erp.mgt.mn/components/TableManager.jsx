@@ -169,6 +169,13 @@ const TableManager = forwardRef(function TableManager({
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
+  const columnCaseMap = useMemo(() => {
+    const map = {};
+    columnMeta.forEach((c) => {
+      map[c.name.toLowerCase()] = c.name;
+    });
+    return map;
+  }, [columnMeta]);
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -386,13 +393,6 @@ const TableManager = forwardRef(function TableManager({
   }, []);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
-  const columnCaseMap = useMemo(() => {
-    const map = {};
-    columnMeta.forEach((c) => {
-      map[c.name.toLowerCase()] = c.name;
-    });
-    return map;
-  }, [columnMeta]);
 
   const fieldTypeMap = useMemo(() => {
     const map = {};
