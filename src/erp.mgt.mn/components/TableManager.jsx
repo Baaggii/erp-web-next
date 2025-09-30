@@ -188,6 +188,132 @@ const TableManager = forwardRef(function TableManager({
   }, []);
   const [deleteInfo, setDeleteInfo] = useState(null); // { id, refs }
   const [showCascade, setShowCascade] = useState(false);
+  const ensureRowCaseConsistency = useCallback(
+    (rowObj) => {
+      if (!rowObj || typeof rowObj !== 'object') return rowObj;
+      const normalized = {};
+      Object.entries(rowObj).forEach(([rawKey, value]) => {
+        if (typeof rawKey !== 'string') return;
+        const mapped = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
+        normalized[mapped] = value;
+      });
+      const canonicalEntries = Object.entries(normalized);
+      canonicalEntries.forEach(([key, value]) => {
+        if (typeof key !== 'string') return;
+        const lowerKey = key.toLowerCase();
+        if (!Object.prototype.hasOwnProperty.call(normalized, lowerKey)) {
+          normalized[lowerKey] = value;
+        }
+      });
+      return normalized;
+    },
+    [columnCaseMap],
+  );
+
+  const hydrateRowForEdit = useCallback(
+    async (rowObj, encodedId) => {
+      if (!rowObj || typeof rowObj !== 'object') return rowObj;
+      const baseRow = ensureRowCaseConsistency(rowObj);
+      if (!table || encodedId === undefined || encodedId === null) {
+        return baseRow;
+      }
+      let tenantInfo = null;
+      try {
+        const ttRes = await fetch(`/api/tenant_tables/${encodeURIComponent(table)}`, {
+          credentials: 'include',
+        });
+        if (ttRes.ok) {
+          tenantInfo = await ttRes.json().catch(() => null);
+        }
+      } catch {
+        tenantInfo = null;
+      }
+      const params = new URLSearchParams();
+      if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
+        const keys = getTenantKeyList(tenantInfo);
+        if (keys.includes('company_id') && company != null) params.set('company_id', company);
+        if (keys.includes('branch_id') && branch != null) params.set('branch_id', branch);
+        if (keys.includes('department_id') && department != null)
+          params.set('department_id', department);
+      }
+      const apiId = formatRowIdForApi(encodedId);
+      if (apiId === undefined || apiId === null) {
+        return baseRow;
+      }
+      let fetchedRow = null;
+      let fetchFailed = false;
+      try {
+        const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(apiId)}${
+          params.toString() ? `?${params.toString()}` : ''
+        }`;
+        const res = await fetch(url, { credentials: 'include' });
+        if (res.ok) {
+          const payload = await res.json().catch(() => {
+            fetchFailed = true;
+            return null;
+          });
+          if (payload) {
+            const candidates = [];
+            if (payload && typeof payload === 'object') {
+              if (payload.row && typeof payload.row === 'object' && !Array.isArray(payload.row)) {
+                candidates.push(payload.row);
+              }
+              if (
+                Array.isArray(payload.rows) &&
+                payload.rows.length > 0 &&
+                typeof payload.rows[0] === 'object'
+              ) {
+                candidates.push(payload.rows[0]);
+              }
+            }
+            if (Array.isArray(payload) && payload.length > 0 && typeof payload[0] === 'object') {
+              candidates.push(payload[0]);
+            }
+            if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+              candidates.push(payload);
+            }
+            const hasKnownColumn = (obj) => {
+              if (!obj || typeof obj !== 'object') return false;
+              return Object.keys(obj).some((key) => {
+                if (typeof key !== 'string') return false;
+                if (key.startsWith('_')) return true;
+                return Boolean(columnCaseMap[String(key).toLowerCase()]);
+              });
+            };
+            fetchedRow = candidates.find((candidate) => hasKnownColumn(candidate)) || null;
+            if (!fetchedRow) {
+              fetchFailed = true;
+            }
+          } else {
+            fetchFailed = true;
+          }
+        } else {
+          fetchFailed = true;
+        }
+      } catch (err) {
+        console.error('Failed to hydrate row for edit', err);
+        fetchFailed = true;
+      }
+      if (fetchFailed) {
+        addToast(t('failed_load_row_data', 'Failed to load row data'), 'error');
+      }
+      if (fetchedRow && typeof fetchedRow === 'object' && !Array.isArray(fetchedRow)) {
+        const normalizedFetched = ensureRowCaseConsistency(fetchedRow);
+        return ensureRowCaseConsistency({ ...baseRow, ...normalizedFetched });
+      }
+      return baseRow;
+    },
+    [
+      addToast,
+      branch,
+      columnCaseMap,
+      company,
+      department,
+      ensureRowCaseConsistency,
+      table,
+      t,
+    ],
+  );
   const [showDetail, setShowDetail] = useState(false);
   const [detailRow, setDetailRow] = useState(null);
   const [detailRefs, setDetailRefs] = useState([]);
@@ -1140,35 +1266,44 @@ const TableManager = forwardRef(function TableManager({
     setShowForm(true);
   }
 
-  async function openEdit(row) {
-    if (getRowId(row) === undefined) {
+  async function openEditInternal(row, nextRequestType = null) {
+    if (!row) return;
+    await ensureColumnMeta();
+    const rowId = getRowId(row);
+    if (rowId === undefined) {
       addToast(
         t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
         'error',
       );
       return;
     }
-    await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
+    const hydrated = await hydrateRowForEdit(row, rowId);
+    let workingRow = hydrated;
+    if (Object.keys(generatedColumnEvaluators).length > 0) {
+      const workingRows = [{ ...hydrated }];
+      const { changed } = applyGeneratedColumnEvaluators({
+        targetRows: workingRows,
+        evaluators: generatedColumnEvaluators,
+        equals: valuesEqual,
+      });
+      if (changed) {
+        workingRow = workingRows[0];
+      }
+    }
+    const gridRow = { ...workingRow, _saved: true };
+    setEditing(workingRow);
+    setGridRows([gridRow]);
     setIsAdding(false);
+    setRequestType(nextRequestType ?? null);
     setShowForm(true);
   }
 
+  async function openEdit(row) {
+    await openEditInternal(row, null);
+  }
+
   async function openRequestEdit(row) {
-    if (getRowId(row) === undefined) {
-      addToast(
-        t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
-        'error',
-      );
-      return;
-    }
-    await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
-    setIsAdding(false);
-    setRequestType('edit');
-    setShowForm(true);
+    await openEditInternal(row, 'edit');
   }
 
   useImperativeHandle(ref, () => ({

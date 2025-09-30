@@ -208,7 +208,7 @@ function InlineTransactionTable(
     [tableRelationsConfig],
   );
 
-  const relatedColumns = React.useMemo(() => {
+  const lookupColumnSet = React.useMemo(() => {
     const set = new Set(Object.keys(relationConfigMap || {}));
     Object.entries(relations || {}).forEach(([rawKey, value]) => {
       if (!value) return;
@@ -222,22 +222,30 @@ function InlineTransactionTable(
         set.add(mapped);
       }
     });
+    Object.keys(viewSourceMap || {}).forEach((key) => set.add(key));
     Object.keys(tableRelationsConfig || {}).forEach((key) => set.add(key));
     return set;
-  }, [relationConfigMapKey, relationsKey, tableRelationsKey, columnCaseMapKey, columnCaseMap]);
+  }, [
+    relationConfigMapKey,
+    relationsKey,
+    tableRelationsKey,
+    columnCaseMapKey,
+    columnCaseMap,
+    viewSourceMap,
+  ]);
 
   // Only columns present in columnCaseMap are evaluated, preventing cross-table false positives.
   const autoSelectConfigs = React.useMemo(() => {
     const map = {};
     Object.entries(columnCaseMap || {}).forEach(([lower, key]) => {
-      if (!relatedColumns.has(key)) return;
+      if (!lookupColumnSet.has(key)) return;
       const cfg = displayIndex[lower];
       if (cfg) {
         map[key] = cfg;
       }
     });
     return map;
-  }, [columnCaseMapKey, displayIndex, relatedColumns]);
+  }, [columnCaseMapKey, displayIndex, lookupColumnSet]);
 
   const combinedViewSource = React.useMemo(() => {
     const map = { ...viewSourceMap };
