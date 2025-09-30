@@ -1114,6 +1114,60 @@ const TableManager = forwardRef(function TableManager({
     setShowForm(true);
   }
 
+  async function loadRowForEdit(row) {
+    const id = getRowId(row);
+    if (id === undefined) return null;
+    const meta = await ensureColumnMeta();
+    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+    const caseMap = { ...columnCaseMap };
+    cols.forEach((c) => {
+      if (c?.name) caseMap[String(c.name).toLowerCase()] = c.name;
+    });
+    try {
+      const res = await fetch(
+        `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}`,
+        { credentials: 'include' },
+      );
+      if (!res.ok) {
+        addToast(
+          t('failed_load_row_details', 'Failed to load row details'),
+          'error',
+        );
+        return null;
+      }
+      const payload = await res.json().catch(() => null);
+      if (!payload || typeof payload !== 'object') {
+        addToast(
+          t('failed_parse_row_details', 'Failed to parse row details'),
+          'error',
+        );
+        return null;
+      }
+      const fetchedRow =
+        payload && typeof payload.row === 'object' ? payload.row : payload;
+      if (!fetchedRow || typeof fetchedRow !== 'object') {
+        addToast(
+          t('failed_parse_row_details', 'Failed to parse row details'),
+          'error',
+        );
+        return null;
+      }
+      const normalized = {};
+      Object.keys(fetchedRow).forEach((key) => {
+        const mapped = caseMap[String(key).toLowerCase()] || key;
+        normalized[mapped] = fetchedRow[key];
+      });
+      return { ...row, ...normalized };
+    } catch (err) {
+      console.error('Failed to load row for edit', err);
+      addToast(
+        t('failed_load_row_details', 'Failed to load row details'),
+        'error',
+      );
+      return null;
+    }
+  }
+
   async function openEdit(row) {
     if (getRowId(row) === undefined) {
       addToast(
@@ -1122,9 +1176,10 @@ const TableManager = forwardRef(function TableManager({
       );
       return;
     }
-    await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
+    const hydrated = await loadRowForEdit(row);
+    if (!hydrated) return;
+    setEditing(hydrated);
+    setGridRows([hydrated]);
     setIsAdding(false);
     setShowForm(true);
   }
@@ -1137,9 +1192,10 @@ const TableManager = forwardRef(function TableManager({
       );
       return;
     }
-    await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
+    const hydrated = await loadRowForEdit(row);
+    if (!hydrated) return;
+    setEditing(hydrated);
+    setGridRows([hydrated]);
     setIsAdding(false);
     setRequestType('edit');
     setShowForm(true);
@@ -1147,6 +1203,7 @@ const TableManager = forwardRef(function TableManager({
 
   useImperativeHandle(ref, () => ({
     openAdd: buttonPerms['New transaction'] ? openAdd : () => {},
+    openEdit: (row) => openEdit(row),
   }));
 
   async function openDetail(row) {
