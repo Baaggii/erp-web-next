@@ -93,8 +93,10 @@ Example snippet:
 Clients can retrieve a list of transaction names via `/api/transaction_forms`.
 Each entry includes the underlying table, `moduleKey` slug and the full
 configuration parsed from the file.  This allows the front‑end to populate
-forms without issuing additional requests or duplicating any parsing logic.
-To obtain a configuration for a specific transaction use
+forms without issuing additional requests or duplicating any parsing logic. Use
+`/api/transaction_forms?mode=all` to receive the complete configuration grouped
+by table, with each form containing its parsed fields alongside the table and
+form name metadata.  To obtain a configuration for a specific transaction use
 `/api/transaction_forms?table=tbl&name=transaction`. New configurations are
 posted with `{ table, name, config }` in the request body and can be removed via
 `DELETE /api/transaction_forms?table=tbl&name=transaction`.
