@@ -89,39 +89,6 @@ export async function getTableRows(req, res, next) {
   }
 }
 
-export async function getTableRow(req, res, next) {
-  try {
-    const table = req.params.table;
-    const id = req.params.id;
-    if (!table) {
-      return res.status(400).json({ message: 'table is required' });
-    }
-    if (id === undefined) {
-      return res.status(400).json({ message: 'id is required' });
-    }
-    const pkCols = await getPrimaryKeyColumns(table);
-    if (!Array.isArray(pkCols) || pkCols.length === 0) {
-      return res.status(404).json({ message: 'Primary key not found' });
-    }
-    const values = pkCols.length === 1 ? [id] : String(id).split('-');
-    if (values.length !== pkCols.length) {
-      return res.status(400).json({ message: 'Invalid primary key value' });
-    }
-    const where = pkCols.map((col) => `\`${col}\` = ?`).join(' AND ');
-    const [rows] = await pool.query(
-      `SELECT * FROM \`${table}\` WHERE ${where} LIMIT 1`,
-      values,
-    );
-    const row = rows[0];
-    if (!row) {
-      return res.status(404).json({ message: 'Row not found' });
-    }
-    res.json({ row });
-  } catch (err) {
-    next(err);
-  }
-}
-
 export async function getTableRelations(req, res, next) {
   try {
     const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
