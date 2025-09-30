@@ -67,6 +67,43 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
+function base64UrlEncode(value) {
+  const str = String(value);
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(str, 'utf8')
+      .toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/g, '');
+  }
+  const encoder = typeof TextEncoder === 'function' ? new TextEncoder() : null;
+  if (encoder) {
+    const bytes = encoder.encode(str);
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += 1) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const btoaImpl =
+      typeof btoa === 'function'
+        ? btoa
+        : typeof window !== 'undefined' && typeof window.btoa === 'function'
+        ? window.btoa.bind(window)
+        : null;
+    if (btoaImpl) {
+      return btoaImpl(binary)
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+    }
+  }
+  return str;
+}
+
+function serializeRowId(values) {
+  if (values.length <= 1) return values[0];
+  return values.map((value) => base64UrlEncode(value)).join('.');
+}
+
 const MAX_WIDTH = ch(40);
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -967,7 +1004,7 @@ const TableManager = forwardRef(function TableManager({
       }
       values.push(value);
     }
-    return values.length === 1 ? values[0] : values.join('-');
+    return serializeRowId(values);
   }
 
   function getImageFolder(row) {

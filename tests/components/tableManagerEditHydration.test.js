@@ -18,6 +18,7 @@ try {
 if (!haveReact) {
   test('TableManager hydrates edit modal with missing columns', { skip: true }, () => {});
   test('TableManager handles PK casing differences when editing', { skip: true }, () => {});
+  test('TableManager hydrates composite keys containing hyphenated values', { skip: true }, () => {});
   test(
     'RowFormModal hydrates form inputs from case-insensitive row keys',
     { skip: true },
@@ -314,6 +315,226 @@ if (!haveReact) {
       assert.equal(toasts.length, 0, 'expected no error toasts');
       assert.deepEqual(invalidDetailCalls, [], 'expected no invalid detail fetches');
       assert.ok(detailCalls.includes('/api/tables/test/42'), 'expected detail fetch for id 42');
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+
+      global.fetch = origFetch;
+      global.window = prevWindow;
+      global.document = prevDocument;
+      global.navigator = prevNavigator;
+      dom.window.close();
+    }
+  });
+
+
+  test('TableManager hydrates composite keys containing hyphenated values', async (t) => {
+    const prevWindow = global.window;
+    const prevDocument = global.document;
+    const prevNavigator = global.navigator;
+
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+      url: 'http://localhost',
+    });
+    global.window = dom.window;
+    global.document = dom.window.document;
+    global.navigator = dom.window.navigator;
+    dom.window.confirm = () => true;
+    dom.window.scrollTo = () => {};
+
+    const toasts = [];
+    const modalProps = [];
+    const detailModalProps = [];
+    const detailFetches = [];
+    const referenceFetches = [];
+    const receivedIds = [];
+
+    const base64UrlEncode = (value) =>
+      Buffer.from(String(value), 'utf8')
+        .toString('base64')
+        .replace(/\+/g, '-')
+        .replace(/\//g, '_')
+        .replace(/=+$/g, '');
+
+    const listRow = {
+      order_code: 'SO-123',
+      line_code: 'ITEM-7',
+      description: 'Composite Row',
+    };
+    const encodedId = `${base64UrlEncode(listRow.order_code)}.${base64UrlEncode(
+      listRow.line_code,
+    )}`;
+
+    const origFetch = global.fetch;
+    global.fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      if (url === '/api/tables/composite/columns') {
+        return {
+          ok: true,
+          json: async () => [
+            { name: 'order_code', key: 'PRI' },
+            { name: 'line_code', key: 'PRI' },
+            { name: 'description' },
+          ],
+        };
+      }
+      if (url === '/api/tables/composite/relations') {
+        return { ok: true, json: async () => [] };
+      }
+      if (url.startsWith('/api/display_fields?')) {
+        return { ok: true, json: async () => ({ displayFields: [] }) };
+      }
+      if (url.startsWith('/api/proc_triggers')) {
+        return { ok: true, json: async () => [] };
+      }
+      if (url === '/api/tenant_tables/composite') {
+        return { ok: true, json: async () => ({ is_shared: true }) };
+      }
+      if (url === `/api/tables/composite/${encodedId}`) {
+        detailFetches.push(url);
+        receivedIds.push(url.split('/').pop());
+        return {
+          ok: true,
+          json: async () => ({
+            order_code: listRow.order_code,
+            line_code: listRow.line_code,
+            description: 'Hydrated description',
+          }),
+        };
+      }
+      if (url === `/api/tables/composite/${encodedId}/references`) {
+        referenceFetches.push(url);
+        return {
+          ok: true,
+          json: async () => [
+            { table: 'shipments', column: 'order_code', count: 1 },
+          ],
+        };
+      }
+      if (url.startsWith('/api/tables/composite?')) {
+        return {
+          ok: true,
+          json: async () => ({ rows: [listRow], count: 1 }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    const RowFormModalStub = (props) => {
+      modalProps.push({ ...props });
+      return null;
+    };
+    const RowDetailModalStub = (props) => {
+      detailModalProps.push({ ...props });
+      return null;
+    };
+
+    const { default: TableManager } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/TableManager.jsx',
+      {
+        '../context/AuthContext.jsx': {
+          AuthContext: React.createContext({ company: 1, session: {} }),
+        },
+        '../context/ToastContext.jsx': {
+          useToast: () => ({
+            addToast: (...args) => {
+              toasts.push(args);
+            },
+          }),
+        },
+        './RowFormModal.jsx': { default: RowFormModalStub },
+        './CascadeDeleteModal.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: RowDetailModalStub },
+        './RowImageViewModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        './ImageSearchModal.jsx': { default: () => null },
+        './Modal.jsx': { default: () => null },
+        './CustomDatePicker.jsx': { default: () => null },
+        '../hooks/useGeneralConfig.js': { default: () => ({}) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/buildImageName.js': { default: () => ({}) },
+        '../utils/slugify.js': { default: () => '' },
+        '../utils/apiBase.js': { API_BASE: '' },
+        '../utils/normalizeDateInput.js': { default: (v) => v },
+      },
+    );
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(TableManager, {
+            table: 'composite',
+            buttonPerms: { 'Edit transaction': true },
+          }),
+        );
+      });
+
+      for (let i = 0; i < 10; i += 1) {
+        if (container.querySelectorAll('button').length > 0) break;
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const editButton = Array.from(container.querySelectorAll('button')).find((btn) =>
+        (btn.textContent || '').includes('Edit'),
+      );
+      assert.ok(editButton, 'expected edit button to be rendered');
+
+      await act(async () => {
+        editButton.dispatchEvent(
+          new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      for (let i = 0; i < 10; i += 1) {
+        const last = modalProps.at(-1);
+        if (last?.visible) break;
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const lastModal = modalProps.at(-1);
+      assert.ok(lastModal?.visible, 'expected edit modal to be visible');
+      assert.equal(receivedIds.at(-1), encodedId);
+      assert.equal(lastModal.row?.order_code, listRow.order_code);
+      assert.equal(lastModal.row?.line_code, listRow.line_code);
+      assert.equal(lastModal.row?.description, 'Hydrated description');
+
+      const viewButton = Array.from(container.querySelectorAll('button')).find((btn) =>
+        (btn.textContent || '').includes('View'),
+      );
+      assert.ok(viewButton, 'expected view button to be rendered');
+
+      await act(async () => {
+        viewButton.dispatchEvent(
+          new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      for (let i = 0; i < 10; i += 1) {
+        const last = detailModalProps.at(-1);
+        if (last?.visible && Array.isArray(last.references) && last.references.length > 0)
+          break;
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const lastDetail = detailModalProps.at(-1);
+      assert.ok(lastDetail?.visible, 'expected detail modal to be visible');
+      assert.deepEqual(lastDetail.references, [
+        { table: 'shipments', column: 'order_code', count: 1 },
+      ]);
+      assert.ok(detailFetches.length > 0, 'expected detail fetch to be called');
+      assert.ok(referenceFetches.length > 0, 'expected references fetch to be called');
+      assert.equal(toasts.length, 0, 'expected no error toasts');
     } finally {
       await act(async () => {
         root.unmount();
