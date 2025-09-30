@@ -5,6 +5,7 @@ import {
   listTableColumns,
   getPrimaryKeyColumns,
 } from '../../db/index.js';
+import { decodeCompositeId } from '../../utils/compositeId.js';
 import { logUserAction } from './userActivityLog.js';
 import { isDeepStrictEqual } from 'util';
 import { formatDateForDb } from '../utils/formatDate.js';
@@ -70,7 +71,7 @@ export async function createRequest({
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
-        const parts = String(recordId).split('-');
+        const parts = decodeCompositeId(recordId, pkCols.length);
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
@@ -91,7 +92,7 @@ export async function createRequest({
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
-        const parts = String(recordId).split('-');
+        const parts = decodeCompositeId(recordId, pkCols.length);
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
@@ -255,7 +256,7 @@ export async function listRequests(filters) {
               );
               original = r[0] || null;
             } else if (pkCols.length > 1) {
-              const parts = String(row.record_id).split('-');
+              const parts = decodeCompositeId(row.record_id, pkCols.length);
               const whereClause = pkCols
                 .map((c) => `\`${c}\` = ?`)
                 .join(' AND ');
