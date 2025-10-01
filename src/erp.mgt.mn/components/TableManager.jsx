@@ -959,8 +959,15 @@ const TableManager = forwardRef(function TableManager({
   function getRowId(row) {
     const keys = getKeyFields();
     if (keys.length === 0) return undefined;
-    const idVal = keys.length === 1 ? row[keys[0]] : keys.map((k) => row[k]).join('-');
-    return idVal;
+    if (keys.length === 1) {
+      return row[keys[0]];
+    }
+    try {
+      return JSON.stringify(keys.map((k) => row[k]));
+    } catch (err) {
+      console.error('Failed to build composite row id', err);
+      return keys.map((k) => row[k]).join('-');
+    }
   }
 
   function getImageFolder(row) {
