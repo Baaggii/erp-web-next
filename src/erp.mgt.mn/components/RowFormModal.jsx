@@ -170,6 +170,10 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [relationConfigsKey, columnCaseMapKey]);
+  const relationConfigMapKey = React.useMemo(
+    () => JSON.stringify(relationConfigMap || {}),
+    [relationConfigMap],
+  );
 
   const displayIndex = React.useMemo(() => {
     const index = {};
@@ -293,10 +297,6 @@ const RowFormModal = function RowFormModal({
     if (match === undefined) return undefined;
     return rowObj[match];
   }, []);
-  const relationConfigMapKey = React.useMemo(
-    () => JSON.stringify(relationConfigMap || {}),
-    [relationConfigMap],
-  );
   const viewSourceMapKey = React.useMemo(
     () => JSON.stringify(viewSourceMap || {}),
     [viewSourceMap],
