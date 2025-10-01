@@ -28,6 +28,111 @@ function mockGetConnection(handler) {
   };
 }
 
+test('getTableRow returns row data with tenant filters', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'id' },
+        { COLUMN_NAME: 'company_id' },
+        { COLUMN_NAME: 'branch_id' },
+        { COLUMN_NAME: 'name' },
+        { COLUMN_NAME: 'is_deleted' },
+      ]];
+    }
+    if (sql.includes("INDEX_NAME = 'PRIMARY'")) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('tenant_tables')) {
+      return [[{ is_shared: 0, seed_on_create: 0 }]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE')) {
+      assert.deepEqual(params, [
+        'users_edit',
+        '5',
+        '3',
+        '7',
+      ]);
+      return [[{ id: 5, company_id: 3, branch_id: 7, name: 'Example' }]];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const req = {
+    params: { table: 'users_edit', id: '5' },
+    query: { company_id: '3', branch_id: '7' },
+    user: { companyId: 9 },
+  };
+  const res = {
+    json(payload) {
+      this.payload = payload;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+  };
+  try {
+    await controller.getTableRow(req, res, (err) => {
+      if (err) throw err;
+    });
+  } finally {
+    restore();
+  }
+  assert.deepEqual(res.payload, {
+    id: 5,
+    company_id: 3,
+    branch_id: 7,
+    name: 'Example',
+  });
+  assert.equal(res.statusCode, undefined);
+});
+
+test('getTableRow returns 404 when no row is found', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'id' },
+        { COLUMN_NAME: 'company_id' },
+        { COLUMN_NAME: 'name' },
+        { COLUMN_NAME: 'is_deleted' },
+      ]];
+    }
+    if (sql.includes("INDEX_NAME = 'PRIMARY'")) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('tenant_tables')) {
+      return [[{ is_shared: 0, seed_on_create: 0 }]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE')) {
+      assert.deepEqual(params, ['users_missing', '99', 2]);
+      return [[]];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const req = {
+    params: { table: 'users_missing', id: '99' },
+    query: {},
+    user: { companyId: 2 },
+  };
+  const res = {
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload) {
+      this.payload = payload;
+    },
+  };
+  try {
+    await controller.getTableRow(req, res, (err) => {
+      if (err) throw err;
+    });
+  } finally {
+    restore();
+  }
+  assert.equal(res.statusCode, 404);
+  assert.deepEqual(res.payload, { message: 'Row not found' });
+});
+
 test('getTableRows forwards error for invalid column', async () => {
   const restore = mockPool(async (sql) => {
     if (sql.includes('information_schema.COLUMNS')) {

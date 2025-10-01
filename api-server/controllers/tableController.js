@@ -12,6 +12,7 @@ import {
   pool,
   getPrimaryKeyColumns,
   getEmploymentSession,
+  getTableRowById,
 } from '../../db/index.js';
 import { moveImagesToDeleted } from '../services/transactionImageService.js';
 import { addMappings } from '../services/headerMappings.js';
@@ -128,6 +129,36 @@ export async function getTableRelations(req, res, next) {
     }
 
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getTableRow(req, res, next) {
+  try {
+    const { table, id } = req.params;
+    const {
+      includeDeleted,
+      ...rawQuery
+    } = req.query || {};
+    const includeDeletedFlag =
+      includeDeleted === '1' || includeDeleted === 'true';
+    const tenantFilters = {};
+    for (const key of ['company_id', 'branch_id', 'department_id']) {
+      const value = rawQuery[key];
+      if (value !== undefined && value !== '') {
+        tenantFilters[key] = value;
+      }
+    }
+    const row = await getTableRowById(table, id, {
+      tenantFilters,
+      includeDeleted: includeDeletedFlag,
+      defaultCompanyId: req.user?.companyId,
+    });
+    if (!row) {
+      return res.status(404).json({ message: 'Row not found' });
+    }
+    res.json(row);
   } catch (err) {
     next(err);
   }
