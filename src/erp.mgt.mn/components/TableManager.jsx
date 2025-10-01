@@ -1123,8 +1123,64 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
+    const id = getRowId(row);
+    addToast(t('loading_record', 'Loading record...'));
+
+    let tenantInfo = null;
+    try {
+      const ttRes = await fetch(
+        `/api/tenant_tables/${encodeURIComponent(table)}`,
+        { credentials: 'include' },
+      );
+      if (ttRes.ok) {
+        tenantInfo = await ttRes.json().catch(() => null);
+      }
+    } catch {
+      tenantInfo = null;
+    }
+
+    const params = new URLSearchParams();
+    if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
+      const keys = getTenantKeyList(tenantInfo);
+      if (keys.includes('company_id') && company != null)
+        params.set('company_id', company);
+      if (keys.includes('branch_id') && branch != null)
+        params.set('branch_id', branch);
+      if (keys.includes('department_id') && department != null)
+        params.set('department_id', department);
+    }
+
+    const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
+      params.toString() ? `?${params.toString()}` : ''
+    }`;
+
+    let payload = null;
+    try {
+      const res = await fetch(url, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to load record');
+      payload = await res.json().catch(() => null);
+    } catch (err) {
+      addToast(t('failed_load_record', 'Failed to load record details'), 'error');
+      return;
+    }
+
+    let record = null;
+    if (payload && typeof payload === 'object') {
+      if (!Array.isArray(payload) && payload.data && typeof payload.data === 'object') {
+        record = payload.data;
+      } else if (!Array.isArray(payload)) {
+        record = payload;
+      }
+    }
+
+    if (!record) {
+      addToast(t('failed_load_record', 'Failed to load record details'), 'error');
+      return;
+    }
+
+    const mergedRow = { ...row, ...record };
+    setEditing(mergedRow);
+    setGridRows([mergedRow]);
     setIsAdding(false);
     setShowForm(true);
   }
