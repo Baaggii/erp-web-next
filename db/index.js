@@ -4142,6 +4142,134 @@ export async function listTableRows(
 }
 
 /**
+ * Fetch a single row by id from a table
+ */
+export async function getTableRowById(
+  tableName,
+  rowId,
+  { tenantFilters = {}, includeDeleted = false, defaultCompanyId } = {},
+) {
+  if (!tableName) {
+    const err = new Error('Table name is required');
+    err.status = 400;
+    throw err;
+  }
+  const columns = await getTableColumnsSafe(tableName);
+  const pkCols = await getPrimaryKeyColumns(tableName);
+  if (!Array.isArray(pkCols) || pkCols.length === 0) {
+    const err = new Error(`Table ${tableName} has no primary or unique key`);
+    err.status = 400;
+    throw err;
+  }
+  await ensureValidColumns(tableName, columns, pkCols);
+  const pkLower = pkCols.map((col) => String(col).toLowerCase());
+  let parts;
+  if (pkCols.length === 1) {
+    if (rowId === undefined || rowId === null || rowId === '') {
+      const err = new Error('Invalid row identifier');
+      err.status = 400;
+      throw err;
+    }
+    parts = [rowId];
+  } else {
+    parts = String(rowId ?? '').split('-');
+    if (parts.length !== pkCols.length || parts.some((part) => part === '')) {
+      const err = new Error('Invalid row identifier');
+      err.status = 400;
+      throw err;
+    }
+  }
+
+  const whereClauses = pkCols.map((col) => `${escapeIdentifier(col)} = ?`);
+  const params = [tableName, ...parts];
+  const normalizedColumns = new Map(
+    columns.map((col) => [String(col).toLowerCase(), col]),
+  );
+  const resolvedFilters = new Map();
+
+  for (const [rawKey, rawValue] of Object.entries(tenantFilters || {})) {
+    if (rawValue === undefined || rawValue === null || rawValue === '') continue;
+    const actual = normalizedColumns.get(String(rawKey).toLowerCase());
+    if (!actual) continue;
+    if (pkLower.includes(String(actual).toLowerCase())) continue;
+    resolvedFilters.set(actual, rawValue);
+  }
+
+  const companyColumn = normalizedColumns.get('company_id');
+  if (
+    companyColumn &&
+    !pkLower.includes('company_id') &&
+    !resolvedFilters.has(companyColumn) &&
+    defaultCompanyId !== undefined &&
+    defaultCompanyId !== null &&
+    defaultCompanyId !== ''
+  ) {
+    resolvedFilters.set(companyColumn, defaultCompanyId);
+  }
+
+  let companyFilterValue = null;
+  for (const [columnName, value] of resolvedFilters.entries()) {
+    await ensureValidColumns(tableName, columns, [columnName]);
+    if (String(columnName).toLowerCase() === 'company_id') {
+      companyFilterValue = value;
+      const flags = await getTenantTableFlags(tableName);
+      if (flags?.isShared) {
+        whereClauses.push('`company_id` IN (' + GLOBAL_COMPANY_ID + ', ?)');
+        params.push(value);
+      } else {
+        whereClauses.push(`${escapeIdentifier(columnName)} = ?`);
+        params.push(value);
+      }
+    } else {
+      whereClauses.push(`${escapeIdentifier(columnName)} = ?`);
+      params.push(value);
+    }
+  }
+
+  if (companyFilterValue == null && companyColumn) {
+    if (pkLower.includes('company_id')) {
+      const idx = pkLower.indexOf('company_id');
+      companyFilterValue = parts[idx];
+    } else if (
+      tenantFilters?.company_id !== undefined &&
+      tenantFilters.company_id !== null &&
+      tenantFilters.company_id !== ''
+    ) {
+      companyFilterValue = tenantFilters.company_id;
+    } else if (
+      defaultCompanyId !== undefined &&
+      defaultCompanyId !== null &&
+      defaultCompanyId !== ''
+    ) {
+      companyFilterValue = defaultCompanyId;
+    }
+  }
+
+  if (!includeDeleted) {
+    const softDeleteColumn = await getSoftDeleteColumn(
+      tableName,
+      companyFilterValue,
+    );
+    if (softDeleteColumn) {
+      const identifier = escapeIdentifier(softDeleteColumn);
+      whereClauses.push(`(${identifier} IS NULL OR ${identifier} IN (0,''))`);
+    }
+  }
+
+  const where = whereClauses.join(' AND ');
+  logDb(
+    `getTableRowById(${tableName}, id=${rowId}) where=${where} params=${JSON.stringify(
+      params.slice(1),
+    )}`,
+  );
+  const [rows] = await pool.query(
+    `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
+    params,
+  );
+  return rows[0] || null;
+}
+
+/**
  * Update a table row by id
  */
 export async function updateTableRow(
