@@ -4158,6 +4158,33 @@ export async function listTableRows(
 /**
  * Fetch a single row by id from a table
  */
+function parseCompositeRowId(rowId, expectedLength) {
+  if (expectedLength <= 0) return [];
+  if (Array.isArray(rowId)) {
+    if (rowId.length === expectedLength) return rowId;
+  } else if (rowId !== undefined && rowId !== null) {
+    const raw = String(rowId);
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length === expectedLength) {
+          return parsed;
+        }
+      } catch {}
+      const legacyParts = raw.split('-');
+      if (
+        legacyParts.length === expectedLength &&
+        legacyParts.every((part) => part !== '')
+      ) {
+        return legacyParts;
+      }
+    }
+  }
+  const err = new Error('Invalid row identifier');
+  err.status = 400;
+  throw err;
+}
+
 export async function getTableRowById(
   tableName,
   rowId,
@@ -4186,12 +4213,7 @@ export async function getTableRowById(
     }
     parts = [rowId];
   } else {
-    parts = String(rowId ?? '').split('-');
-    if (parts.length !== pkCols.length || parts.some((part) => part === '')) {
-      const err = new Error('Invalid row identifier');
-      err.status = 400;
-      throw err;
-    }
+    parts = parseCompositeRowId(rowId, pkCols.length);
   }
 
   const whereClauses = pkCols.map((col) => `${escapeIdentifier(col)} = ?`);
@@ -4338,7 +4360,7 @@ export async function updateTableRow(
     return { [col]: id };
   }
 
-  const parts = String(id).split('-');
+  const parts = parseCompositeRowId(id, pkCols.length);
   let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
   const whereParams = [...parts];
   if (addCompanyFilter) {
@@ -4463,7 +4485,7 @@ export async function deleteTableRow(
     return { [col]: id };
   }
 
-  const parts = String(id).split('-');
+  const parts = parseCompositeRowId(id, pkCols.length);
   let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
   const whereParams = [...parts];
   if (addCompanyFilter) {
@@ -4524,12 +4546,7 @@ async function fetchTenantDefaultRow(tableName, rowId) {
     err.status = 400;
     throw err;
   }
-  const parts = String(rowId ?? '').split('-');
-  if (parts.length !== pkCols.length || parts.some((part) => part === '')) {
-    const err = new Error('Invalid row identifier');
-    err.status = 400;
-    throw err;
-  }
+  const parts = parseCompositeRowId(rowId, pkCols.length);
   const whereClause = pkCols.map((col) => `${escapeIdentifier(col)} = ?`).join(' AND ');
   const params = [tableName, ...parts];
   const pkLower = pkCols.map((c) => c.toLowerCase());

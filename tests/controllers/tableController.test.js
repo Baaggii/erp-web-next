@@ -161,6 +161,71 @@ test('getTableRow returns row data with tenant filters', async () => {
   assert.equal(res.statusCode, undefined);
 });
 
+test('getTableRow supports JSON-encoded composite ids', async () => {
+  const tableName = 'json_get_invoices';
+  const idParts = ['10', 'INV-1', '2023-05-10'];
+  let selectParams;
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'company_id' },
+        { COLUMN_NAME: 'invoice_no' },
+        { COLUMN_NAME: 'trans_date' },
+        { COLUMN_NAME: 'is_deleted' },
+      ]];
+    }
+    if (sql.includes("INDEX_NAME = 'PRIMARY'")) {
+      return [[
+        { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+        { COLUMN_NAME: 'invoice_no', SEQ_IN_INDEX: 2 },
+        { COLUMN_NAME: 'trans_date', SEQ_IN_INDEX: 3 },
+      ]];
+    }
+    if (sql.includes('tenant_tables')) {
+      return [[{ is_shared: 0, seed_on_create: 0 }]];
+    }
+    if (typeof sql === 'string' && sql.startsWith('SELECT * FROM ?? WHERE')) {
+      selectParams = params;
+      return [[
+        {
+          company_id: 10,
+          invoice_no: 'INV-1',
+          trans_date: '2023-05-10',
+        },
+      ]];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const req = {
+    params: { table: tableName, id: JSON.stringify(idParts) },
+    query: {},
+    user: { companyId: 99 },
+  };
+  const res = {
+    json(payload) {
+      this.payload = payload;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+  };
+  try {
+    await controller.getTableRow(req, res, (err) => {
+      if (err) throw err;
+    });
+  } finally {
+    restore();
+  }
+  assert.deepEqual(selectParams, [tableName, ...idParts]);
+  assert.deepEqual(res.payload, {
+    company_id: 10,
+    invoice_no: 'INV-1',
+    trans_date: '2023-05-10',
+  });
+  assert.equal(res.statusCode, undefined);
+});
+
 test('getTableRow returns 404 when no row is found', async () => {
   const restore = mockPool(async (sql, params) => {
     if (sql.includes('information_schema.COLUMNS')) {
@@ -606,6 +671,62 @@ test('updateRow forwards user companyId to updateTableRow', async () => {
   assert.equal(res.code, 204);
 });
 
+test('updateRow supports JSON-encoded composite ids', async () => {
+  const tableName = 'json_update_invoices';
+  const idParts = ['10', 'INV-1', '2023-05-10'];
+  let updateParams;
+  const restore = mockPool(async (sql, params) => {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[
+        { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+        { COLUMN_NAME: 'invoice_no', SEQ_IN_INDEX: 2 },
+        { COLUMN_NAME: 'trans_date', SEQ_IN_INDEX: 3 },
+      ]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'company_id' },
+        { COLUMN_NAME: 'invoice_no' },
+        { COLUMN_NAME: 'trans_date' },
+        { COLUMN_NAME: 'amount' },
+        { COLUMN_NAME: 'updated_at' },
+      ]];
+    }
+    if (sql.startsWith(`SELECT * FROM \`${tableName}\``)) {
+      return [[
+        {
+          company_id: 10,
+          invoice_no: 'INV-1',
+          trans_date: '2023-05-10',
+        },
+      ]];
+    }
+    if (sql.startsWith('UPDATE')) {
+      if (params[0] === tableName) {
+        updateParams = params;
+      }
+      return [{}];
+    }
+    return [[]];
+  });
+  const req = {
+    params: { table: tableName, id: JSON.stringify(idParts) },
+    body: { amount: 5 },
+    user: { empid: 'E1', companyId: 10 },
+  };
+  const res = { locals: {}, sendStatus(code) { this.code = code; } };
+  await controller.updateRow(req, res, (e) => { if (e) throw e; });
+  restore();
+  assert.equal(res.code, 204);
+  assert.ok(updateParams, 'expected update query to run');
+  assert.strictEqual(updateParams[0], tableName);
+  assert.strictEqual(updateParams[1], 5);
+  assert.match(updateParams[2], /\d{4}-\d{2}-\d{2}/);
+  assert.deepEqual(updateParams.slice(-3), idParts);
+});
+
 test('deleteRow forwards user companyId to deleteTableRow', async () => {
   const restore = mockPool(async (sql, params) => {
     if (
@@ -637,6 +758,58 @@ test('deleteRow forwards user companyId to deleteTableRow', async () => {
   await controller.deleteRow(req, res, (e) => { if (e) throw e; });
   restore();
   assert.equal(res.code, 204);
+});
+
+test('deleteRow supports JSON-encoded composite ids', async () => {
+  const tableName = 'json_delete_invoices';
+  const idParts = ['10', 'INV-1', '2023-05-10'];
+  let deleteParams;
+  const restore = mockPool(async (sql, params) => {
+    if (
+      sql.includes('information_schema.STATISTICS') && sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[
+        { COLUMN_NAME: 'company_id', SEQ_IN_INDEX: 1 },
+        { COLUMN_NAME: 'invoice_no', SEQ_IN_INDEX: 2 },
+        { COLUMN_NAME: 'trans_date', SEQ_IN_INDEX: 3 },
+      ]];
+    }
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'company_id' },
+        { COLUMN_NAME: 'invoice_no' },
+        { COLUMN_NAME: 'trans_date' },
+      ]];
+    }
+    if (sql.startsWith(`SELECT * FROM \`${tableName}\``)) {
+      return [[
+        {
+          company_id: 10,
+          invoice_no: 'INV-1',
+          trans_date: '2023-05-10',
+        },
+      ]];
+    }
+    if (sql.startsWith('DELETE')) {
+      if (params[0] === tableName) {
+        deleteParams = params;
+      }
+      return [{}];
+    }
+    return [[]];
+  });
+  const req = {
+    params: { table: tableName, id: JSON.stringify(idParts) },
+    query: {},
+    user: { companyId: 10, empid: 'E1' },
+  };
+  const res = { locals: {}, sendStatus(code) { this.code = code; } };
+  await controller.deleteRow(req, res, (e) => { if (e) throw e; });
+  restore();
+  assert.equal(res.code, 204);
+  assert.ok(deleteParams, 'expected delete query to run');
+  assert.strictEqual(deleteParams[0], tableName);
+  assert.deepEqual(deleteParams.slice(-3), idParts);
 });
 if (typeof mock?.import !== 'function') {
   test('getTableRelations merges database and custom entries', { skip: true }, () => {});
