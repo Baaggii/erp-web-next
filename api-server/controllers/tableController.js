@@ -309,7 +309,14 @@ export async function deleteCustomTableRelation(req, res, next) {
 export async function getTableColumnsMeta(req, res, next) {
   try {
     const cols = await listTableColumnMeta(req.params.table);
-    res.json(cols);
+    const normalized = cols.map((col) => ({
+      ...col,
+      primaryKeyOrdinal:
+        col.primaryKeyOrdinal != null && Number.isFinite(Number(col.primaryKeyOrdinal))
+          ? Number(col.primaryKeyOrdinal)
+          : null,
+    }));
+    res.json(normalized);
   } catch (err) {
     next(err);
   }
