@@ -1012,9 +1012,25 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function getKeyFields() {
-    const keys = columnMeta
+    const keyedColumns = columnMeta
       .filter((c) => c.key === 'PRI')
-      .map((c) => c.name);
+      .map((column, index) => {
+        const rawOrdinal = column?.primaryKeyOrdinal;
+        const numericOrdinal =
+          rawOrdinal != null && Number.isFinite(Number(rawOrdinal))
+            ? Number(rawOrdinal)
+            : null;
+        return { column, index, ordinal: numericOrdinal };
+      });
+    const keys = keyedColumns
+      .sort((a, b) => {
+        if (a.ordinal != null && b.ordinal != null) {
+          if (a.ordinal === b.ordinal) return a.index - b.index;
+          return a.ordinal - b.ordinal;
+        }
+        return a.index - b.index;
+      })
+      .map(({ column }) => column.name);
     let result = keys;
     if (result.length === 0) {
       if (columnMeta.some((c) => c.name === 'id')) result = ['id'];

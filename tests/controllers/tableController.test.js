@@ -28,6 +28,81 @@ function mockGetConnection(handler) {
   };
 }
 
+test('getTableColumnsMeta returns metadata with primary key ordinals', async () => {
+  const restore = mockPool(async (sql, params) => {
+    const text = typeof sql === 'string' ? sql : sql?.sql || '';
+    if (text.includes('information_schema.COLUMNS')) {
+      assert.deepEqual(params, ['tenants']);
+      return [[
+        {
+          COLUMN_NAME: 'tenant_id',
+          COLUMN_KEY: 'PRI',
+          EXTRA: '',
+          GENERATION_EXPRESSION: null,
+          PRIMARY_KEY_ORDINAL: '2',
+        },
+        {
+          COLUMN_NAME: 'code',
+          COLUMN_KEY: 'PRI',
+          EXTRA: '',
+          GENERATION_EXPRESSION: null,
+          PRIMARY_KEY_ORDINAL: 1,
+        },
+        {
+          COLUMN_NAME: 'description',
+          COLUMN_KEY: '',
+          EXTRA: '',
+          GENERATION_EXPRESSION: null,
+          PRIMARY_KEY_ORDINAL: null,
+        },
+      ]];
+    }
+    if (text.includes('table_column_labels')) {
+      return [[]];
+    }
+    return [[]];
+  });
+  const req = { params: { table: 'tenants' } };
+  const res = {
+    json(payload) {
+      this.payload = payload;
+    },
+  };
+  try {
+    await controller.getTableColumnsMeta(req, res, (err) => {
+      if (err) throw err;
+    });
+  } finally {
+    restore();
+  }
+  assert.deepEqual(res.payload, [
+    {
+      name: 'tenant_id',
+      key: 'PRI',
+      extra: '',
+      label: 'tenant_id',
+      generationExpression: null,
+      primaryKeyOrdinal: 2,
+    },
+    {
+      name: 'code',
+      key: 'PRI',
+      extra: '',
+      label: 'code',
+      generationExpression: null,
+      primaryKeyOrdinal: 1,
+    },
+    {
+      name: 'description',
+      key: '',
+      extra: '',
+      label: 'Тайлбар',
+      generationExpression: null,
+      primaryKeyOrdinal: null,
+    },
+  ]);
+});
+
 test('getTableRow returns row data with tenant filters', async () => {
   const restore = mockPool(async (sql, params) => {
     if (sql.includes('information_schema.COLUMNS')) {

@@ -3923,11 +3923,20 @@ export async function saveTableColumnLabels(
 
 export async function listTableColumnMeta(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_KEY, EXTRA, GENERATION_EXPRESSION
-       FROM information_schema.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = ?
-      ORDER BY ORDINAL_POSITION`,
+    `SELECT c.COLUMN_NAME,
+            c.COLUMN_KEY,
+            c.EXTRA,
+            c.GENERATION_EXPRESSION,
+            pk.SEQ_IN_INDEX AS PRIMARY_KEY_ORDINAL
+       FROM information_schema.COLUMNS c
+       LEFT JOIN information_schema.STATISTICS pk
+         ON pk.TABLE_SCHEMA = c.TABLE_SCHEMA
+        AND pk.TABLE_NAME = c.TABLE_NAME
+        AND pk.COLUMN_NAME = c.COLUMN_NAME
+        AND pk.INDEX_NAME = 'PRIMARY'
+      WHERE c.TABLE_SCHEMA = DATABASE()
+        AND c.TABLE_NAME = ?
+      ORDER BY c.ORDINAL_POSITION`,
     [tableName],
   );
   let labels = {};
@@ -3944,13 +3953,18 @@ export async function listTableColumnMeta(tableName) {
   } catch {
     headerMap = {};
   }
-  return rows.map((r) => ({
-    name: r.COLUMN_NAME,
-    key: r.COLUMN_KEY,
-    extra: r.EXTRA,
-    label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
-    generationExpression: r.GENERATION_EXPRESSION ?? null,
-  }));
+  return rows.map((r) => {
+    const ordinal =
+      r.PRIMARY_KEY_ORDINAL != null ? Number(r.PRIMARY_KEY_ORDINAL) : null;
+    return {
+      name: r.COLUMN_NAME,
+      key: r.COLUMN_KEY,
+      extra: r.EXTRA,
+      label: labels[r.COLUMN_NAME] || headerMap[r.COLUMN_NAME] || r.COLUMN_NAME,
+      generationExpression: r.GENERATION_EXPRESSION ?? null,
+      primaryKeyOrdinal: Number.isFinite(ordinal) ? ordinal : null,
+    };
+  });
 }
 
 export async function getPrimaryKeyColumns(tableName) {
