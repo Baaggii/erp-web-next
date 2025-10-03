@@ -110,6 +110,7 @@ CREATE TABLE `code_cashier` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_chiglel` (
   `id` int NOT NULL,
+  `chig_id` varchar(50) DEFAULT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -259,6 +260,7 @@ CREATE TABLE `code_frequency` (
 CREATE TABLE `code_huvaari` (
   `id` int NOT NULL,
   `position_id` int NOT NULL,
+  `baitsaagch_id` varchar(50) DEFAULT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -392,6 +394,7 @@ CREATE TABLE `code_talbai` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_torol` (
   `id` int NOT NULL,
+  `torol_id` varchar(50) DEFAULT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2229,7 +2232,8 @@ ALTER TABLE `code_branches`
 ALTER TABLE `code_cashier`
   ADD PRIMARY KEY (`company_id`, `id`);
 ALTER TABLE `code_chiglel`
-  ADD PRIMARY KEY (`company_id`, `id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_chig_id` (`company_id`, `chig_id`);
 ALTER TABLE `code_department`
   ADD PRIMARY KEY (`company_id`, `id`),
   ADD UNIQUE KEY `uniq_company_department_id` (`company_id`, `department_id`),
@@ -2259,6 +2263,7 @@ ALTER TABLE `code_frequency`
   ADD PRIMARY KEY (`company_id`, `id`);
 ALTER TABLE `code_huvaari`
   ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_baitsaagch_id` (`company_id`, `baitsaagch_id`),
   ADD KEY `position_id` (`company_id`, `position_id`);
 ALTER TABLE `code_incometype`
   ADD PRIMARY KEY (`company_id`, `id`);
@@ -2286,7 +2291,8 @@ ALTER TABLE `code_status`
 ALTER TABLE `code_talbai`
   ADD PRIMARY KEY (`company_id`, `id`);
 ALTER TABLE `code_torol`
-  ADD PRIMARY KEY (`company_id`, `id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_torol_id` (`company_id`, `torol_id`);
 ALTER TABLE `code_transaction`
   ADD PRIMARY KEY (`company_id`, `id`),
   ADD UNIQUE KEY `uniq_UITransType_UITransTypeName_UITrtype` (`company_id`, `UITransType`, `UITransTypeName`, `UITrtype`),
