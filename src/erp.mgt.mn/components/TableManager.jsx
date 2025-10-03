@@ -333,6 +333,21 @@ const TableManager = forwardRef(function TableManager({
     [normalizeTenantKey],
   );
 
+  const appendTenantParam = useCallback(
+    (params, tenantKey, caseMap, value) => {
+      if (!params || value == null || value === '') return;
+      const canonicalKey = resolveCanonicalKey(tenantKey, caseMap);
+      const snakeKey = sanitizeName(tenantKey);
+      if (snakeKey) {
+        params.set(snakeKey, value);
+      }
+      if (canonicalKey && canonicalKey !== snakeKey) {
+        params.set(canonicalKey, value);
+      }
+    },
+    [resolveCanonicalKey],
+  );
+
   const fieldTypeMap = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
@@ -1268,24 +1283,23 @@ const TableManager = forwardRef(function TableManager({
     if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
       if (hasTenantKey(tenantInfo, 'company_id', localCaseMap)) {
         const companyKey = resolveCanonicalKey('company_id', localCaseMap);
-        const rowCompanyId = normalizedRow[companyKey];
-        if (rowCompanyId != null && rowCompanyId !== '') {
-          params.set(companyKey, rowCompanyId);
-        }
+        const rowCompanyId =
+          companyKey != null ? normalizedRow[companyKey] : normalizedRow.company_id;
+        appendTenantParam(params, 'company_id', localCaseMap, rowCompanyId);
       }
       if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
         const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
-        const rowBranchId = normalizedRow[branchKey];
-        if (rowBranchId != null && rowBranchId !== '') {
-          params.set(branchKey, rowBranchId);
-        }
+        const rowBranchId =
+          branchKey != null ? normalizedRow[branchKey] : normalizedRow.branch_id;
+        appendTenantParam(params, 'branch_id', localCaseMap, rowBranchId);
       }
       if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
         const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
-        const rowDepartmentId = normalizedRow[departmentKey];
-        if (rowDepartmentId != null && rowDepartmentId !== '') {
-          params.set(departmentKey, rowDepartmentId);
-        }
+        const rowDepartmentId =
+          departmentKey != null
+            ? normalizedRow[departmentKey]
+            : normalizedRow.department_id;
+        appendTenantParam(params, 'department_id', localCaseMap, rowDepartmentId);
       }
     }
 
@@ -1377,24 +1391,25 @@ const TableManager = forwardRef(function TableManager({
         if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
           if (hasTenantKey(tenantInfo, 'company_id', localCaseMap)) {
             const companyKey = resolveCanonicalKey('company_id', localCaseMap);
-            const rowCompanyId = normalizedRow[companyKey];
-            if (rowCompanyId != null && rowCompanyId !== '') {
-              params.set(companyKey, rowCompanyId);
-            }
+            const rowCompanyId =
+              companyKey != null
+                ? normalizedRow[companyKey]
+                : normalizedRow.company_id;
+            appendTenantParam(params, 'company_id', localCaseMap, rowCompanyId);
           }
           if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
             const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
-            const rowBranchId = normalizedRow[branchKey];
-            if (rowBranchId != null && rowBranchId !== '') {
-              params.set(branchKey, rowBranchId);
-            }
+            const rowBranchId =
+              branchKey != null ? normalizedRow[branchKey] : normalizedRow.branch_id;
+            appendTenantParam(params, 'branch_id', localCaseMap, rowBranchId);
           }
           if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
             const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
-            const rowDepartmentId = normalizedRow[departmentKey];
-            if (rowDepartmentId != null && rowDepartmentId !== '') {
-              params.set(departmentKey, rowDepartmentId);
-            }
+            const rowDepartmentId =
+              departmentKey != null
+                ? normalizedRow[departmentKey]
+                : normalizedRow.department_id;
+            appendTenantParam(params, 'department_id', localCaseMap, rowDepartmentId);
           }
         }
         const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references${
