@@ -8,8 +8,17 @@ import {
 import { logUserAction } from './userActivityLog.js';
 import { isDeepStrictEqual } from 'util';
 import { formatDateForDb } from '../utils/formatDate.js';
+import {
+  createReportApprovalLocks,
+  finalizeReportApprovalRequest,
+  releaseReportApprovalLocks,
+} from './reportApprovals.js';
 
-export const ALLOWED_REQUEST_TYPES = new Set(['edit', 'delete']);
+export const ALLOWED_REQUEST_TYPES = new Set([
+  'edit',
+  'delete',
+  'report_approval',
+]);
 
 async function ensureValidTableName(tableName) {
   const cols = await listTableColumns(tableName);
@@ -27,6 +36,44 @@ function parseProposedData(value) {
   } catch {
     return null;
   }
+}
+
+function normalizeReportApprovalPayload(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const procedure = raw.procedure || raw.procedureName;
+  if (!procedure || typeof procedure !== 'string' || !procedure.trim()) {
+    return null;
+  }
+  const parameters =
+    raw.parameters && typeof raw.parameters === 'object' && !Array.isArray(raw.parameters)
+      ? raw.parameters
+      : {};
+  const txCandidates = Array.isArray(raw.transactions) ? raw.transactions : [];
+  const seen = new Set();
+  const transactions = txCandidates
+    .map((tx) => {
+      if (!tx || typeof tx !== 'object') return null;
+      const table = tx.table || tx.tableName;
+      const recordId =
+        tx.recordId ?? tx.record_id ?? tx.id ?? tx.transactionId;
+      if (!table || !/^[a-zA-Z0-9_]+$/.test(String(table))) return null;
+      if (recordId === undefined || recordId === null || recordId === '') return null;
+      const tableName = String(table);
+      const rid = String(recordId);
+      const key = `${tableName}::${rid}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return { table: tableName, recordId: rid };
+    })
+    .filter(Boolean);
+  if (!transactions.length) {
+    return null;
+  }
+  const normalized = { ...(raw || {}) };
+  normalized.procedure = procedure.trim();
+  normalized.parameters = parameters;
+  normalized.transactions = transactions;
+  return normalized;
 }
 
 export async function createRequest({
@@ -56,9 +103,18 @@ export async function createRequest({
     );
     const seniorRaw = rows[0]?.employment_senior_empid;
     const senior = seniorRaw ? String(seniorRaw).trim().toUpperCase() : null;
-    let finalProposed = proposedData;
+    const parsedInput = parseProposedData(proposedData);
+    let finalProposed = parsedInput ?? proposedData;
     let originalData = null;
-    if (requestType === 'edit') {
+    if (requestType === 'report_approval') {
+      const normalizedPayload = normalizeReportApprovalPayload(parsedInput ?? proposedData);
+      if (!normalizedPayload) {
+        const err = new Error('invalid_report_payload');
+        err.status = 400;
+        throw err;
+      }
+      finalProposed = normalizedPayload;
+    } else if (requestType === 'edit') {
       const pkCols = await getPrimaryKeyColumns(tableName);
       let currentRow = null;
       if (pkCols.length === 1) {
@@ -134,18 +190,35 @@ export async function createRequest({
       ],
     );
     const requestId = result.insertId;
+    const requestAction =
+      requestType === 'edit'
+        ? 'request_edit'
+        : requestType === 'delete'
+        ? 'request_delete'
+        : 'request_report_approval';
     await logUserAction(
       {
         emp_id: empId,
         table_name: tableName,
         record_id: recordId,
-        action: requestType === 'edit' ? 'request_edit' : 'request_delete',
+        action: requestAction,
         details: finalProposed || null,
         request_id: requestId,
         company_id: companyId,
       },
       conn,
     );
+    if (requestType === 'report_approval') {
+      await createReportApprovalLocks(
+        {
+          companyId,
+          requestId,
+          transactions: finalProposed.transactions,
+          createdBy: normalizedEmp,
+        },
+        conn,
+      );
+    }
     if (senior) {
       await conn.query(
         `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
@@ -330,10 +403,15 @@ export async function respondRequest(
       throw new Error('Forbidden');
 
     const proposedData = parseProposedData(req.proposed_data);
+    const requestType = req.request_type;
+    let lockedTransactions = [];
+    let notificationMessage = 'Request approved';
+    let approvalLogAction = 'approve';
+    let approvalLogDetails = { proposed_data: proposedData, notes };
 
     if (status === 'accepted') {
       const data = proposedData;
-      if (req.request_type === 'edit' && data) {
+      if (requestType === 'edit' && data) {
         const columns = await listTableColumns(req.table_name);
         if (columns.includes('updated_by')) data.updated_by = responseEmpid;
         if (columns.includes('updated_at'))
@@ -357,7 +435,7 @@ export async function respondRequest(
           },
           conn,
         );
-      } else if (req.request_type === 'delete') {
+      } else if (requestType === 'delete') {
         await deleteTableRow(
           req.table_name,
           req.record_id,
@@ -376,6 +454,27 @@ export async function respondRequest(
           },
           conn,
         );
+      } else if (requestType === 'report_approval') {
+        const normalizedReport = normalizeReportApprovalPayload(proposedData);
+        if (!normalizedReport) {
+          const err = new Error('invalid_report_payload');
+          err.status = 400;
+          throw err;
+        }
+        lockedTransactions = await finalizeReportApprovalRequest(
+          {
+            companyId: req.company_id,
+            requestId: req.request_id,
+            procedure: normalizedReport.procedure,
+            parameters: normalizedReport.parameters,
+            approvedBy: responseEmpid,
+            transactions: normalizedReport.transactions,
+          },
+          conn,
+        );
+        approvalLogAction = 'approve_report';
+        approvalLogDetails = { proposed_data: normalizedReport, notes };
+        notificationMessage = 'Report approval granted';
       }
       await conn.query(
         `UPDATE pending_request SET status = 'accepted', responded_at = NOW(), response_empid = ?, response_notes = ?, updated_by = ?, updated_at = NOW() WHERE request_id = ?`,
@@ -386,8 +485,8 @@ export async function respondRequest(
           emp_id: responseEmpid,
           table_name: req.table_name,
           record_id: req.record_id,
-          action: 'approve',
-          details: { proposed_data: proposedData, notes },
+          action: approvalLogAction,
+          details: approvalLogDetails,
           request_id: id,
           company_id: req.company_id,
         },
@@ -396,9 +495,28 @@ export async function respondRequest(
       await conn.query(
         `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
          VALUES (?, ?, 'response', ?, ?, ?)`,
-        [req.company_id, req.emp_id, id, 'Request approved', responseEmpid],
+        [
+          req.company_id,
+          req.emp_id,
+          id,
+          notificationMessage,
+          responseEmpid,
+        ],
       );
     } else {
+      let declineLogAction = 'decline';
+      let declineDetails = { proposed_data: proposedData, notes };
+      if (requestType === 'report_approval') {
+        await releaseReportApprovalLocks({ requestId: req.request_id }, conn);
+        const normalizedReport = normalizeReportApprovalPayload(proposedData);
+        if (normalizedReport) {
+          declineDetails = { proposed_data: normalizedReport, notes };
+        }
+        declineLogAction = 'decline_report';
+        notificationMessage = 'Report approval declined';
+      } else {
+        notificationMessage = 'Request declined';
+      }
       await conn.query(
         `UPDATE pending_request SET status = 'declined', responded_at = NOW(), response_empid = ?, response_notes = ?, updated_by = ?, updated_at = NOW() WHERE request_id = ?`,
         [responseEmpid, notes, responseEmpid, id],
@@ -408,8 +526,8 @@ export async function respondRequest(
           emp_id: responseEmpid,
           table_name: req.table_name,
           record_id: req.record_id,
-          action: 'decline',
-          details: { proposed_data: proposedData, notes },
+          action: declineLogAction,
+          details: declineDetails,
           request_id: id,
           company_id: req.company_id,
         },
@@ -418,11 +536,22 @@ export async function respondRequest(
       await conn.query(
         `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
          VALUES (?, ?, 'response', ?, ?, ?)`,
-        [req.company_id, req.emp_id, id, 'Request declined', responseEmpid],
+        [
+          req.company_id,
+          req.emp_id,
+          id,
+          notificationMessage,
+          responseEmpid,
+        ],
       );
     }
     await conn.query('COMMIT');
-    return { requester, status };
+    return {
+      requester,
+      status,
+      requestType,
+      lockedTransactions,
+    };
   } catch (err) {
     await conn.query('ROLLBACK');
     throw err;

@@ -33,6 +33,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       requestType: request_type,
       proposedData: proposed_data,
       requestReason: request_reason,
+      companyId: req.user.companyId,
     });
     const io = req.app.get('io');
     if (io && result.senior_empid) {
@@ -47,6 +48,9 @@ router.post('/', requireAuth, async (req, res, next) => {
   } catch (err) {
     if (err.status === 400 && err.message === 'invalid table_name') {
       return res.status(400).json({ message: 'invalid table_name' });
+    }
+    if (err.status === 400 && err.message === 'invalid_report_payload') {
+      return res.status(400).json({ message: 'invalid report_approval payload' });
     }
     next(err);
   }
@@ -138,11 +142,19 @@ router.put('/:id/respond', requireAuth, async (req, res, next) => {
       io.to(`user:${result.requester}`).emit('requestResolved', {
         requestId: req.params.id,
         status,
+        requestType: result?.requestType,
+        lockedTransactions: result?.lockedTransactions || [],
       });
     }
     res.sendStatus(204);
   } catch (err) {
     if (err.message === 'Forbidden') return res.sendStatus(403);
+    if (err.status === 400 && err.message === 'invalid_report_payload') {
+      return res.status(400).json({ message: 'invalid report_approval payload' });
+    }
+    if (err.status === 423) {
+      return res.status(423).json({ message: err.message });
+    }
     next(err);
   }
 });
