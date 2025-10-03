@@ -27,8 +27,7 @@ undefined the client connects to the same origin as the page.
 ## Local storage keys
 
 Hooks that track notification counts store "seen" markers in `localStorage`
-using a key that includes the employee ID, an optional request-type scope, and
-ends with `-seen`, for example `${empid}-all-incoming-pending-seen` or
-`${empid}-report_approval-outgoing-accepted-seen`. These markers persist across
-logouts so that counts are retained between sessions. New hooks should follow
-the same naming pattern to maintain per-user tracking.
+using a key that includes the employee ID and ends with `-seen`, for example
+`${empid}-incoming-pending-seen`. These markers persist across logouts so that
+counts are retained between sessions. New hooks should follow the same naming
+pattern to maintain per-user tracking.

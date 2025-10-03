@@ -22,29 +22,6 @@ export const ALLOWED_REQUEST_TYPES = new Set([
   'temporary_insert',
 ]);
 
-const REQUEST_TYPE_ALIASES = {
-  changes: ['edit', 'delete'],
-};
-
-function normalizeRequestTypesInput(value) {
-  if (!value) return [];
-  const values = Array.isArray(value) ? value : String(value).split(',');
-  const normalized = [];
-  values.forEach((raw) => {
-    if (raw == null) return;
-    const trimmed = String(raw).trim().toLowerCase();
-    if (!trimmed) return;
-    if (REQUEST_TYPE_ALIASES[trimmed]) {
-      REQUEST_TYPE_ALIASES[trimmed].forEach((alias) => normalized.push(alias));
-      return;
-    }
-    if (ALLOWED_REQUEST_TYPES.has(trimmed)) {
-      normalized.push(trimmed);
-    }
-  });
-  return Array.from(new Set(normalized));
-}
-
 async function ensureValidTableName(tableName) {
   const cols = await listTableColumns(tableName);
   if (!cols.length) {
@@ -322,14 +299,9 @@ export async function listRequests(filters) {
     conditions.push('table_name = ?');
     params.push(table_name);
   }
-  const normalizedRequestTypes = normalizeRequestTypesInput(request_type);
-  if (normalizedRequestTypes.length === 1) {
+  if (request_type) {
     conditions.push('request_type = ?');
-    params.push(normalizedRequestTypes[0]);
-  } else if (normalizedRequestTypes.length > 1) {
-    const placeholders = normalizedRequestTypes.map(() => '?').join(', ');
-    conditions.push(`request_type IN (${placeholders})`);
-    params.push(...normalizedRequestTypes);
+    params.push(request_type);
   }
   const dateColumn =
     date_field === 'responded' ? 'responded_at' : 'created_at';
