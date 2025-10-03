@@ -1,6 +1,9 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import parser from '@babel/parser';
+import _traverse from '@babel/traverse';
+const traverse = _traverse.default ?? _traverse; // works for ESM or CJS
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,18 +25,23 @@ function sanitizeKey(sel) {
   return sel.replace(/^[#.]/, '').replace(/[^\w]/g, '_');
 }
 
-const ATTRIBUTE_REGEX = /(id|data-tour|data-tour-id)\s*=\s*(["'])(.*?)\2/gs;
-
 function parseSelectors(code) {
+  const ast = parser.parse(code, {
+    sourceType: 'module',
+    plugins: ['jsx'],
+  });
   const selectors = [];
-  for (const match of code.matchAll(ATTRIBUTE_REGEX)) {
-    const [, name, , value] = match;
-    if (name === 'id') {
-      selectors.push(`#${value}`);
-    } else {
-      selectors.push(`[${name}="${value}"]`);
-    }
-  }
+  traverse(ast, {
+    JSXAttribute({ node }) {
+      const { name, value } = node;
+      if (!value || value.type !== 'StringLiteral') return;
+      if (name.name === 'id') {
+        selectors.push(`#${value.value}`);
+      } else if (name.name === 'data-tour' || name.name === 'data-tour-id') {
+        selectors.push(`[${name.name}="${value.value}"]`);
+      }
+    },
+  });
   return selectors;
 }
 
