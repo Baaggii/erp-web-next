@@ -270,6 +270,61 @@ export default function Reports() {
     [finalParams],
   );
 
+  const runReport = useCallback(async () => {
+    if (!selectedProc) return;
+    if (!allParamsProvided) {
+      addToast('Missing parameters', 'error');
+      return;
+    }
+    const paramMap = procParams.reduce((acc, p, i) => {
+      acc[p] = finalParams[i];
+      return acc;
+    }, {});
+    const label = getLabel(selectedProc);
+    addToast(`Calling ${label}`, 'info');
+    try {
+      const q = new URLSearchParams();
+      if (branch) q.set('branchId', branch);
+      if (department) q.set('departmentId', department);
+      const res = await fetch(
+        `/api/procedures${q.toString() ? `?${q.toString()}` : ''}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name: selectedProc, params: finalParams }),
+        },
+      );
+      if (res.ok) {
+        const data = await res.json().catch(() => ({ row: [] }));
+        const rows = Array.isArray(data.row) ? data.row : [];
+        addToast(
+          `${label} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
+          'success',
+        );
+        setResult({
+          name: selectedProc,
+          params: paramMap,
+          rows,
+          fieldTypeMap: data.fieldTypeMap || {},
+        });
+      } else {
+        addToast('Failed to run procedure', 'error');
+      }
+    } catch {
+      addToast('Failed to run procedure', 'error');
+    }
+  }, [
+    selectedProc,
+    allParamsProvided,
+    procParams,
+    finalParams,
+    getLabel,
+    addToast,
+    branch,
+    department,
+  ]);
+
   useEffect(() => {
     if (!approvalContext) return;
     if (approvalContext.proposed_data?.procedure !== selectedProc) return;
@@ -513,61 +568,6 @@ export default function Reports() {
     setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
     setEndDate(normalizeDateInput(fmt(end), 'YYYY-MM-DD'));
   }
-
-  const runReport = useCallback(async () => {
-    if (!selectedProc) return;
-    if (!allParamsProvided) {
-      addToast('Missing parameters', 'error');
-      return;
-    }
-    const paramMap = procParams.reduce((acc, p, i) => {
-      acc[p] = finalParams[i];
-      return acc;
-    }, {});
-    const label = getLabel(selectedProc);
-    addToast(`Calling ${label}`, 'info');
-    try {
-      const q = new URLSearchParams();
-      if (branch) q.set('branchId', branch);
-      if (department) q.set('departmentId', department);
-      const res = await fetch(
-        `/api/procedures${q.toString() ? `?${q.toString()}` : ''}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ name: selectedProc, params: finalParams }),
-        },
-      );
-      if (res.ok) {
-        const data = await res.json().catch(() => ({ row: [] }));
-        const rows = Array.isArray(data.row) ? data.row : [];
-        addToast(
-          `${label} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
-          'success',
-        );
-        setResult({
-          name: selectedProc,
-          params: paramMap,
-          rows,
-          fieldTypeMap: data.fieldTypeMap || {},
-        });
-      } else {
-        addToast('Failed to run procedure', 'error');
-      }
-    } catch {
-      addToast('Failed to run procedure', 'error');
-    }
-  }, [
-    selectedProc,
-    allParamsProvided,
-    procParams,
-    finalParams,
-    getLabel,
-    addToast,
-    branch,
-    department,
-  ]);
 
   return (
     <div>
