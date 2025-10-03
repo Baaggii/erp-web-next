@@ -36,11 +36,6 @@ try {
 }
 import { formatDateForDb } from '../utils/formatDate.js';
 
-let getTableRowByIdImpl = getTableRowById;
-export function __setGetTableRowByIdForTest(fn) {
-  getTableRowByIdImpl = typeof fn === 'function' ? fn : getTableRowById;
-}
-
 export async function getTables(req, res, next) {
   try {
     const tables = await listDatabaseTables();
@@ -149,27 +144,13 @@ export async function getTableRow(req, res, next) {
     const includeDeletedFlag =
       includeDeleted === '1' || includeDeleted === 'true';
     const tenantFilters = {};
-    const normalizeTenantKey = (key) => key.toLowerCase().replace(/_/g, '');
-    const tenantKeyMap = {
-      companyid: 'company_id',
-      branchid: 'branch_id',
-      departmentid: 'department_id',
-    };
     for (const key of ['company_id', 'branch_id', 'department_id']) {
       const value = rawQuery[key];
       if (value !== undefined && value !== '') {
         tenantFilters[key] = value;
       }
     }
-    for (const [key, value] of Object.entries(rawQuery)) {
-      if (value === undefined || value === '') continue;
-      const normalized = normalizeTenantKey(key);
-      const snakeCaseKey = tenantKeyMap[normalized];
-      if (snakeCaseKey && tenantFilters[snakeCaseKey] === undefined) {
-        tenantFilters[snakeCaseKey] = value;
-      }
-    }
-    const row = await getTableRowByIdImpl(table, id, {
+    const row = await getTableRowById(table, id, {
       tenantFilters,
       includeDeleted: includeDeletedFlag,
       defaultCompanyId: req.user?.companyId,
