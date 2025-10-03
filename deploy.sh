@@ -1,5 +1,5 @@
 rm -rf node_modules
-npm install -g npm@11.6.0
+npm install -g npm@11.6.1
 npm run build:homepage
 npm run build:erp
 cp src/erp.mgt.mn/.htaccess ~/erp.mgt.mn/.htaccess
