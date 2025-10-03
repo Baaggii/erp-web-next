@@ -194,6 +194,7 @@ CREATE TABLE `code_edhorongo_other` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_expenseangilal` (
   `id` int NOT NULL,
+  `exp_angilal_id` int NOT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -204,6 +205,7 @@ CREATE TABLE `code_expenseangilal` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_expensebalancetype` (
   `id` int NOT NULL,
+  `exp_balance_angilal_id` int NOT NULL,
   `name` varchar(255) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -229,6 +231,7 @@ CREATE TABLE `code_expensebaltype` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_expensetype` (
   `id` int NOT NULL,
+  `expense_type` int NOT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -239,6 +242,7 @@ CREATE TABLE `code_expensetype` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_expenseutga` (
   `id` int NOT NULL,
+  `expense_utga_id` int NOT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -249,6 +253,7 @@ CREATE TABLE `code_expenseutga` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_frequency` (
   `id` int NOT NULL,
+  `frequency_id` int NOT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -271,6 +276,7 @@ CREATE TABLE `code_huvaari` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_incometype` (
   `id` int NOT NULL,
+  `income_type_id` int NOT NULL,
   `name` varchar(255) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2244,9 +2250,11 @@ ALTER TABLE `code_edhorongo`
 ALTER TABLE `code_edhorongo_other`
   ADD PRIMARY KEY (`company_id`, `id`);
 ALTER TABLE `code_expenseangilal`
-  ADD PRIMARY KEY (`company_id`, `id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_exp_angilal_id` (`company_id`, `exp_angilal_id`);
 ALTER TABLE `code_expensebalancetype`
-  ADD PRIMARY KEY (`company_id`, `id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_exp_balance_angilal_id` (`company_id`, `exp_balance_angilal_id`);
 ALTER TABLE `code_expensebaltype`
   ADD PRIMARY KEY (`company_id`, `id`),
   ADD UNIQUE KEY `uniq_k1_k2_k3_k4_k5_k6_` (`company_id`, `k1`, `k2`, `k3`, `k4`, `k5`, `k6_`),
@@ -2256,17 +2264,21 @@ ALTER TABLE `code_expensebaltype`
   ADD KEY `k5` (`company_id`, `k5`),
   ADD KEY `k6_` (`company_id`, `k6_`);
 ALTER TABLE `code_expensetype`
-  ADD PRIMARY KEY (`company_id`, `id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_expense_type` (`company_id`, `expense_type`);
 ALTER TABLE `code_expenseutga`
-  ADD PRIMARY KEY (`company_id`, `id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_expense_utga_id` (`company_id`, `expense_utga_id`);
 ALTER TABLE `code_frequency`
-  ADD PRIMARY KEY (`company_id`, `id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_frequency_id` (`company_id`, `frequency_id`);
 ALTER TABLE `code_huvaari`
   ADD PRIMARY KEY (`company_id`, `id`),
   ADD UNIQUE KEY `uniq_company_baitsaagch_id` (`company_id`, `baitsaagch_id`),
   ADD KEY `position_id` (`company_id`, `position_id`);
 ALTER TABLE `code_incometype`
-  ADD PRIMARY KEY (`company_id`, `id`);
+  ADD PRIMARY KEY (`company_id`, `id`),
+  ADD UNIQUE KEY `uniq_company_income_type_id` (`company_id`, `income_type_id`);
 ALTER TABLE `code_initiator`
   ADD PRIMARY KEY (`company_id`, `id`);
 ALTER TABLE `code_material`
