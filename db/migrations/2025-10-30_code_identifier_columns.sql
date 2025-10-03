@@ -38,3 +38,8 @@ DROP INDEX IF EXISTS `uniq_company_baitsaagch_id` ON `code_huvaari`;
 DROP INDEX IF EXISTS `uniq_company_huvaari_id` ON `code_huvaari`;
 ALTER TABLE `code_huvaari`
   ADD UNIQUE KEY `uniq_company_baitsaagch_id` (`company_id`, `baitsaagch_id`);
+-- Ensure code_chiglel identifiers use integer values and enforced uniqueness
+ALTER TABLE `code_chiglel`
+  MODIFY COLUMN `chig_id` int NOT NULL,
+  DROP INDEX `uniq_company_chig_id`,
+  ADD UNIQUE KEY `uniq_company_chig_id` (`company_id`, `chig_id`);
