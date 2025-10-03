@@ -2231,11 +2231,23 @@ const TableManager = forwardRef(function TableManager({
   });
 
   const lockedDefaults = Object.entries(formConfig?.defaultValues || {})
-    .filter(
-      ([k, v]) =>
-        v !== undefined && v !== '' &&
-        !(formConfig?.editableDefaultFields || []).includes(k)
-    )
+    .filter(([rawKey, value]) => {
+      if (value === undefined || value === '') return false;
+      if ((formConfig?.editableDefaultFields || []).includes(rawKey)) return false;
+
+      const canonicalKey = resolveCanonicalKey(rawKey);
+      const relationKeyMatches = [rawKey, canonicalKey].filter(Boolean);
+      const hasRelationMetadata = relationKeyMatches.some((key) => {
+        if (key == null) return false;
+        return (
+          relationOpts[key] !== undefined ||
+          relationConfigs[key] !== undefined ||
+          viewSourceMap[key] !== undefined
+        );
+      });
+
+      return !hasRelationMetadata;
+    })
     .map(([k]) => k);
 
   const headerFields = formConfig?.headerFields || [];
