@@ -4,4 +4,4 @@ Legacy migrations have been moved to the `archive/` directory. New migrations sh
 
 ## Current migrations
 
-No additional migrations are required at this time. The lookup identifier columns (`chig_id`, `torol_id`, `baitsaagch_id`, and related unique constraints) are now part of the baseline `schema.sql`.
+- `2025-10-30_code_identifier_columns.sql` — adds the `chig_id`, `torol_id`, and `baitsaagch_id` lookup identifiers now represented in the schema baseline.
