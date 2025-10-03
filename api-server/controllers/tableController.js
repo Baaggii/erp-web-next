@@ -309,13 +309,37 @@ export async function deleteCustomTableRelation(req, res, next) {
 export async function getTableColumnsMeta(req, res, next) {
   try {
     const cols = await listTableColumnMeta(req.params.table);
-    const normalized = cols.map((col) => ({
-      ...col,
-      primaryKeyOrdinal:
+    let candidateKey = [];
+    try {
+      candidateKey = await getPrimaryKeyColumns(req.params.table);
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        // eslint-disable-next-line no-console
+        console.warn('Failed to load candidate key metadata', err);
+      }
+    }
+    const candidateOrdinalMap = new Map();
+    candidateKey.forEach((name, idx) => {
+      if (name != null) {
+        candidateOrdinalMap.set(String(name), idx + 1);
+      }
+    });
+    const normalized = cols.map((col) => {
+      const primaryOrdinal =
         col.primaryKeyOrdinal != null && Number.isFinite(Number(col.primaryKeyOrdinal))
           ? Number(col.primaryKeyOrdinal)
-          : null,
-    }));
+          : null;
+      const candidateOrdinalRaw = candidateOrdinalMap.get(col.name);
+      const candidateKeyOrdinal =
+        candidateOrdinalRaw != null && Number.isFinite(Number(candidateOrdinalRaw))
+          ? Number(candidateOrdinalRaw)
+          : null;
+      return {
+        ...col,
+        primaryKeyOrdinal: primaryOrdinal,
+        candidateKeyOrdinal,
+      };
+    });
     res.json(normalized);
   } catch (err) {
     next(err);

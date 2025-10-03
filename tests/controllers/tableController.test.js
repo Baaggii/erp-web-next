@@ -57,6 +57,12 @@ test('getTableColumnsMeta returns metadata with primary key ordinals', async () 
         },
       ]];
     }
+    if (text.includes("INDEX_NAME = 'PRIMARY'")) {
+      return [[
+        { COLUMN_NAME: 'code', SEQ_IN_INDEX: 1 },
+        { COLUMN_NAME: 'tenant_id', SEQ_IN_INDEX: 2 },
+      ]];
+    }
     if (text.includes('table_column_labels')) {
       return [[]];
     }
@@ -83,6 +89,7 @@ test('getTableColumnsMeta returns metadata with primary key ordinals', async () 
       label: 'tenant_id',
       generationExpression: null,
       primaryKeyOrdinal: 2,
+      candidateKeyOrdinal: 2,
     },
     {
       name: 'code',
@@ -91,6 +98,7 @@ test('getTableColumnsMeta returns metadata with primary key ordinals', async () 
       label: 'code',
       generationExpression: null,
       primaryKeyOrdinal: 1,
+      candidateKeyOrdinal: 1,
     },
     {
       name: 'description',
@@ -99,6 +107,7 @@ test('getTableColumnsMeta returns metadata with primary key ordinals', async () 
       label: 'Тайлбар',
       generationExpression: null,
       primaryKeyOrdinal: null,
+      candidateKeyOrdinal: null,
     },
   ]);
 });
