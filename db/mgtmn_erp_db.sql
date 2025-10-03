@@ -414,8 +414,8 @@ CREATE TABLE `code_frequency` (
 
 CREATE TABLE `code_huvaari` (
   `id` int NOT NULL,
-  `huvaari_id` int NOT NULL,
   `position_id` int NOT NULL,
+  `baitsaagch_id` varchar(50) DEFAULT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '2',
   `created_by` varchar(50) DEFAULT NULL,
@@ -4338,6 +4338,7 @@ ALTER TABLE `code_frequency`
 --
 ALTER TABLE `code_huvaari`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_company_baitsaagch_id` (`company_id`,`baitsaagch_id`),
   ADD KEY `position_id` (`position_id`);
 
 --
