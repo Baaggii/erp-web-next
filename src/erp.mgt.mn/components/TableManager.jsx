@@ -1271,8 +1271,6 @@ const TableManager = forwardRef(function TableManager({
         const rowCompanyId = normalizedRow[companyKey];
         if (rowCompanyId != null && rowCompanyId !== '') {
           params.set('company_id', rowCompanyId);
-        } else if (company != null) {
-          params.set('company_id', company);
         }
       }
       if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
@@ -1280,8 +1278,6 @@ const TableManager = forwardRef(function TableManager({
         const rowBranchId = normalizedRow[branchKey];
         if (rowBranchId != null && rowBranchId !== '') {
           params.set('branch_id', rowBranchId);
-        } else if (branch != null) {
-          params.set('branch_id', branch);
         }
       }
       if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
@@ -1289,8 +1285,6 @@ const TableManager = forwardRef(function TableManager({
         const rowDepartmentId = normalizedRow[departmentKey];
         if (rowDepartmentId != null && rowDepartmentId !== '') {
           params.set('department_id', rowDepartmentId);
-        } else if (department != null) {
-          params.set('department_id', department);
         }
       }
     }
@@ -1386,8 +1380,6 @@ const TableManager = forwardRef(function TableManager({
             const rowCompanyId = normalizedRow[companyKey];
             if (rowCompanyId != null && rowCompanyId !== '') {
               params.set('company_id', rowCompanyId);
-            } else if (company != null) {
-              params.set('company_id', company);
             }
           }
           if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
@@ -1395,8 +1387,6 @@ const TableManager = forwardRef(function TableManager({
             const rowBranchId = normalizedRow[branchKey];
             if (rowBranchId != null && rowBranchId !== '') {
               params.set('branch_id', rowBranchId);
-            } else if (branch != null) {
-              params.set('branch_id', branch);
             }
           }
           if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
@@ -1404,8 +1394,6 @@ const TableManager = forwardRef(function TableManager({
             const rowDepartmentId = normalizedRow[departmentKey];
             if (rowDepartmentId != null && rowDepartmentId !== '') {
               params.set('department_id', rowDepartmentId);
-            } else if (department != null) {
-              params.set('department_id', department);
             }
           }
         }
