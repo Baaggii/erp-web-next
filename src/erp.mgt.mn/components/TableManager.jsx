@@ -2990,8 +2990,8 @@ const TableManager = forwardRef(function TableManager({
                   if (r._temporaryStatus) e.stopPropagation();
                   return;
                 }
-
-                openDetail(r);
+                  openDetail(r);
+                }
               }}
               style={{
                 cursor: r._temporaryStatus ? 'default' : 'pointer',
