@@ -233,7 +233,13 @@
         "or_chig",
         "or_av_now",
         "or_vallut_id",
-        "or_valut_choice"
+        "or_valut_choice",
+        "sp_primary_code",
+        "sp_selling_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_manufacturer_id",
+        "sp_cost"
       ],
       "userIdFields": [
         "ortr_confirm_emp",
