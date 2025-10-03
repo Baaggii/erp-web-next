@@ -51,11 +51,14 @@ await test('direct senior can decline request', async () => {
   assert.ok(upd, 'should update status to declined');
 });
 
-await test('respondRequest returns requester and status', async () => {
+await test('respondRequest returns requester metadata', async () => {
   const { restore } = setupRequest();
   const result = await service.respondRequest(1, 's1', 'accepted', 'yes');
   restore();
-  assert.deepEqual(result, { requester: 'E1', status: 'accepted' });
+  assert.equal(result.requester, 'E1');
+  assert.equal(result.status, 'accepted');
+  assert.equal(result.requestType, 'edit');
+  assert.deepEqual(result.lockedTransactions, []);
 });
 
 await test('listRequests normalizes empids in filters', async () => {

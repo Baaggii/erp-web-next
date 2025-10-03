@@ -4340,6 +4340,21 @@ export async function updateTableRow(
   const keys = Object.keys(updates);
   await ensureValidColumns(tableName, columns, keys);
   if (keys.length === 0) return { id };
+  if (tableName && tableName.startsWith('transactions_')) {
+    const locked = await isTransactionLocked(
+      {
+        tableName,
+        recordId: id,
+        companyId,
+      },
+      conn,
+    );
+    if (locked) {
+      const err = new Error('Transaction locked for report approval');
+      err.status = 423;
+      throw err;
+    }
+  }
   const values = Object.values(updates);
   const setClause = keys.map((k) => `\`${k}\` = ?`).join(', ');
 
@@ -4446,11 +4461,31 @@ export async function deleteTableRow(
   const {
     companyIdFilter,
     softDeleteCompanyId,
+    ignoreTransactionLock = false,
   } = options ?? {};
   const effectiveCompanyIdForFilter =
     companyIdFilter !== undefined ? companyIdFilter : companyId;
   const effectiveCompanyIdForSoftDelete =
     softDeleteCompanyId !== undefined ? softDeleteCompanyId : companyId;
+  if (
+    !ignoreTransactionLock &&
+    tableName &&
+    tableName.startsWith('transactions_')
+  ) {
+    const locked = await isTransactionLocked(
+      {
+        tableName,
+        recordId: id,
+        companyId: effectiveCompanyIdForFilter ?? companyId,
+      },
+      conn,
+    );
+    if (locked) {
+      const err = new Error('Transaction locked for report approval');
+      err.status = 423;
+      throw err;
+    }
+  }
   if (tableName === 'company_module_licenses') {
     const [companyId, moduleKey] = String(id).split('-');
     await conn.query(
@@ -4967,7 +5002,230 @@ export async function listTransactions({
   }
 
   const [rows] = await pool.query(sql, qParams);
-  return { rows, count };
+  let lockedSet = new Set();
+  if (table && table.startsWith('transactions_')) {
+    try {
+      const lockedIds = await listLockedTransactions({
+        tableName: table,
+        companyId: company_id,
+      });
+      lockedSet = new Set(lockedIds.map((value) => String(value)));
+    } catch (err) {
+      if (err?.code !== 'ER_NO_SUCH_TABLE') throw err;
+    }
+  }
+  const withLocks = rows.map((row) => ({
+    ...row,
+    locked: lockedSet.has(String(row?.id ?? '')),
+  }));
+  return { rows: withLocks, count };
+}
+
+const REPORT_TRANSACTION_LOCK_STATUS = {
+  pending: 'pending',
+  locked: 'locked',
+};
+
+export async function lockTransactionsForReport(
+  {
+    companyId,
+    requestId,
+    transactions,
+    createdBy,
+    status = REPORT_TRANSACTION_LOCK_STATUS.pending,
+  },
+  conn = pool,
+) {
+  if (!requestId) {
+    const err = new Error('requestId required');
+    err.status = 400;
+    throw err;
+  }
+  const normalized = Array.isArray(transactions)
+    ? transactions
+        .map((tx) => {
+          if (!tx || typeof tx !== 'object') return null;
+          const table = tx.table || tx.tableName;
+          const recordId =
+            tx.recordId ?? tx.record_id ?? tx.id ?? tx.transactionId;
+          if (!table || !/^[a-zA-Z0-9_]+$/.test(String(table))) return null;
+          if (recordId === null || recordId === undefined || recordId === '')
+            return null;
+          return {
+            tableName: String(table),
+            recordId: String(recordId),
+          };
+        })
+        .filter(Boolean)
+    : [];
+  await conn.query(
+    'DELETE FROM report_transaction_locks WHERE request_id = ?',
+    [requestId],
+  );
+  if (!normalized.length) {
+    return [];
+  }
+  const values = normalized
+    .map(() =>
+      ' (?, ?, ?, ?, ?, ?, NULL, NULL, NOW(), NOW()) ',
+    )
+    .join(',');
+  const params = [];
+  normalized.forEach(({ tableName, recordId }) => {
+    params.push(
+      companyId ?? null,
+      requestId,
+      tableName,
+      recordId,
+      status,
+      createdBy ?? null,
+    );
+  });
+  await conn.query(
+    `INSERT INTO report_transaction_locks (
+      company_id,
+      request_id,
+      table_name,
+      record_id,
+      status,
+      created_by,
+      finalized_by,
+      finalized_at,
+      created_at,
+      updated_at
+    ) VALUES ${values} ON DUPLICATE KEY UPDATE
+      status = VALUES(status),
+      created_by = VALUES(created_by),
+      finalized_by = NULL,
+      finalized_at = NULL,
+      updated_at = NOW()`,
+    params,
+  );
+  return normalized;
+}
+
+export async function activateReportTransactionLocks(
+  { requestId, finalizedBy },
+  conn = pool,
+) {
+  if (!requestId) return;
+  await conn.query(
+    `UPDATE report_transaction_locks
+      SET status = ?, finalized_by = ?, finalized_at = NOW(), updated_at = NOW()
+      WHERE request_id = ?`,
+    [REPORT_TRANSACTION_LOCK_STATUS.locked, finalizedBy ?? null, requestId],
+  );
+}
+
+export async function releaseReportTransactionLocks(
+  { requestId },
+  conn = pool,
+) {
+  if (!requestId) return;
+  await conn.query('DELETE FROM report_transaction_locks WHERE request_id = ?', [
+    requestId,
+  ]);
+}
+
+export async function listLockedTransactions(
+  { tableName, companyId, includePending = true } = {},
+  conn = pool,
+) {
+  if (!tableName) return [];
+  const statuses = [REPORT_TRANSACTION_LOCK_STATUS.locked];
+  if (includePending) statuses.push(REPORT_TRANSACTION_LOCK_STATUS.pending);
+  const placeholders = statuses.map(() => '?').join(', ');
+  const params = [tableName];
+  let companyClause = '';
+  if (companyId !== undefined && companyId !== null && companyId !== '') {
+    companyClause = ' AND company_id = ?';
+    params.push(companyId);
+  }
+  params.push(...statuses);
+  try {
+    const [rows] = await conn.query(
+      `SELECT record_id FROM report_transaction_locks
+       WHERE table_name = ?${companyClause}
+         AND status IN (${placeholders})`,
+      params,
+    );
+    return rows.map((row) => String(row.record_id));
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') return [];
+    throw err;
+  }
+}
+
+export async function isTransactionLocked(
+  { tableName, recordId, companyId, includePending = true } = {},
+  conn = pool,
+) {
+  if (!tableName || recordId === undefined || recordId === null) return false;
+  const statuses = [REPORT_TRANSACTION_LOCK_STATUS.locked];
+  if (includePending) statuses.push(REPORT_TRANSACTION_LOCK_STATUS.pending);
+  const placeholders = statuses.map(() => '?').join(', ');
+  const params = [tableName, String(recordId)];
+  let companyClause = '';
+  if (companyId !== undefined && companyId !== null && companyId !== '') {
+    companyClause = ' AND company_id = ?';
+    params.push(companyId);
+  }
+  params.push(...statuses);
+  try {
+    const [rows] = await conn.query(
+      `SELECT 1 FROM report_transaction_locks
+       WHERE table_name = ? AND record_id = ?${companyClause}
+         AND status IN (${placeholders})
+       LIMIT 1`,
+      params,
+    );
+    return rows.length > 0;
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') return false;
+    throw err;
+  }
+}
+
+export async function recordReportApproval(
+  { companyId, requestId, procedureName, parameters, approvedBy },
+  conn = pool,
+) {
+  if (!requestId) {
+    const err = new Error('requestId required');
+    err.status = 400;
+    throw err;
+  }
+  if (!procedureName) {
+    const err = new Error('procedureName required');
+    err.status = 400;
+    throw err;
+  }
+  const paramsJson = JSON.stringify(parameters ?? {});
+  await conn.query(
+    `INSERT INTO report_approvals (
+      company_id,
+      request_id,
+      procedure_name,
+      parameters_json,
+      approved_by,
+      approved_at,
+      created_at,
+      updated_at
+    ) VALUES (?, ?, ?, ?, ?, NOW(), NOW(), NOW())
+    ON DUPLICATE KEY UPDATE
+      procedure_name = VALUES(procedure_name),
+      parameters_json = VALUES(parameters_json),
+      approved_by = VALUES(approved_by),
+      approved_at = NOW(),
+      updated_at = NOW()`,
+    [
+      companyId ?? null,
+      requestId,
+      procedureName,
+      paramsJson,
+      approvedBy ?? null,
+    ],
+  );
 }
 
 export async function callStoredProcedure(name, params = [], aliases = []) {
