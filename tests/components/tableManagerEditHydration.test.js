@@ -534,6 +534,9 @@ if (!haveReact) {
       assert.equal(parsed.searchParams.get('CompanyID'), '41');
       assert.equal(parsed.searchParams.get('BranchID'), '42');
       assert.equal(parsed.searchParams.get('DepartmentID'), '43');
+      assert.equal(parsed.searchParams.get('company_id'), '41');
+      assert.equal(parsed.searchParams.get('branch_id'), '42');
+      assert.equal(parsed.searchParams.get('department_id'), '43');
     } finally {
       await act(async () => {
         root.unmount();
