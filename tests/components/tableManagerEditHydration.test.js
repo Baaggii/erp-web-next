@@ -28,6 +28,11 @@ if (!haveReact) {
     { skip: true },
     () => {},
   );
+  test(
+    'TableManager honors camelCase tenant keys from the API',
+    { skip: true },
+    () => {},
+  );
 } else {
   test('TableManager hydrates edit modal with missing columns', async (t) => {
     const prevWindow = global.window;
@@ -521,6 +526,206 @@ if (!haveReact) {
         parsed.searchParams.get('branch_id'),
         '66',
         'expected branch_id from row to be used',
+      );
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+
+      global.fetch = origFetch;
+      global.window = prevWindow;
+      global.document = prevDocument;
+      global.navigator = prevNavigator;
+      dom.window.close();
+    }
+  });
+
+  test('TableManager honors camelCase tenant keys from the API', async (t) => {
+    const prevWindow = global.window;
+    const prevDocument = global.document;
+    const prevNavigator = global.navigator;
+
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+      url: 'http://localhost',
+    });
+    global.window = dom.window;
+    global.document = dom.window.document;
+    global.navigator = dom.window.navigator;
+    dom.window.confirm = () => true;
+    dom.window.scrollTo = () => {};
+
+    const toasts = [];
+    const modalProps = [];
+    const detailCalls = [];
+
+    const origFetch = global.fetch;
+    global.fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      if (url === '/api/tables/test/columns') {
+        return {
+          ok: true,
+          json: async () => [
+            { name: 'id', key: 'PRI' },
+            { name: 'company_id' },
+            { name: 'branch_id' },
+            { name: 'department_id' },
+            { name: 'name' },
+          ],
+        };
+      }
+      if (url === '/api/tables/test/relations') {
+        return { ok: true, json: async () => [] };
+      }
+      if (url.startsWith('/api/display_fields?')) {
+        return { ok: true, json: async () => ({ displayFields: [] }) };
+      }
+      if (url.startsWith('/api/proc_triggers')) {
+        return { ok: true, json: async () => [] };
+      }
+      if (url === '/api/tenant_tables/test') {
+        return {
+          ok: true,
+          json: async () => ({ tenantKeys: ['CompanyID', 'BranchID', 'DepartmentID'] }),
+        };
+      }
+      if (url.startsWith('/api/tables/test?')) {
+        return {
+          ok: true,
+          json: async () => ({
+            rows: [
+              {
+                id: 1,
+                company_id: 11,
+                branch_id: 22,
+                department_id: 33,
+                name: 'Row 1',
+              },
+            ],
+            count: 1,
+          }),
+        };
+      }
+      if (url.startsWith('/api/tables/test/1')) {
+        detailCalls.push(url);
+        return {
+          ok: true,
+          json: async () => ({
+            id: 1,
+            company_id: 11,
+            branch_id: 22,
+            department_id: 33,
+            name: 'Row 1',
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    const RowFormModalStub = (props) => {
+      modalProps.push({ ...props });
+      return null;
+    };
+
+    const { default: TableManager } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/TableManager.jsx',
+      {
+        '../context/AuthContext.jsx': {
+          AuthContext: React.createContext({
+            company: 100,
+            branch: 200,
+            department: 300,
+            session: {},
+          }),
+        },
+        '../context/ToastContext.jsx': {
+          useToast: () => ({
+            addToast: (...args) => {
+              toasts.push(args);
+            },
+          }),
+        },
+        './RowFormModal.jsx': { default: RowFormModalStub },
+        './CascadeDeleteModal.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageViewModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        './ImageSearchModal.jsx': { default: () => null },
+        './Modal.jsx': { default: () => null },
+        './CustomDatePicker.jsx': { default: () => null },
+        '../hooks/useGeneralConfig.js': { default: () => ({}) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/buildImageName.js': { default: () => ({}) },
+        '../utils/slugify.js': { default: () => '' },
+        '../utils/apiBase.js': { API_BASE: '' },
+        '../utils/normalizeDateInput.js': { default: (v) => v },
+      },
+    );
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(TableManager, {
+            table: 'test',
+            buttonPerms: { 'Edit transaction': true },
+          }),
+        );
+      });
+
+      for (let i = 0; i < 10; i += 1) {
+        if (container.querySelectorAll('button').length > 0) break;
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const editButton = Array.from(container.querySelectorAll('button')).find((btn) =>
+        (btn.textContent || '').includes('Edit'),
+      );
+      assert.ok(editButton, 'expected edit button to be rendered');
+
+      await act(async () => {
+        editButton.dispatchEvent(
+          new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }),
+        );
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      });
+
+      for (let i = 0; i < 10; i += 1) {
+        const last = modalProps.at(-1);
+        if (last?.visible) break;
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      const lastProps = modalProps.at(-1);
+      assert.ok(lastProps?.visible, 'expected modal to be visible');
+      assert.equal(lastProps.row?.company_id, 11);
+      assert.equal(lastProps.row?.branch_id, 22);
+      assert.equal(lastProps.row?.department_id, 33);
+      assert.equal(toasts.length, 0, 'expected no error toasts');
+      assert.ok(detailCalls.length >= 1, 'expected detail fetch to be called');
+
+      const detailUrl = detailCalls.at(-1);
+      assert.ok(detailUrl.includes('?'), 'expected tenant keys to be appended');
+      const parsed = new URL(detailUrl, 'http://localhost');
+      assert.equal(
+        parsed.searchParams.get('company_id'),
+        '11',
+        'expected company_id from row to be used',
+      );
+      assert.equal(
+        parsed.searchParams.get('branch_id'),
+        '22',
+        'expected branch_id from row to be used',
+      );
+      assert.equal(
+        parsed.searchParams.get('department_id'),
+        '33',
+        'expected department_id from row to be used',
       );
     } finally {
       await act(async () => {
