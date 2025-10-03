@@ -170,6 +170,52 @@ test('getTableRow returns row data with tenant filters', async () => {
   assert.equal(res.statusCode, undefined);
 });
 
+test('getTableRow handles camel-cased tenant keys when fetching row data', async () => {
+  const restore = mockPool(async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        { COLUMN_NAME: 'Id' },
+        { COLUMN_NAME: 'CompanyID' },
+        { COLUMN_NAME: 'Name' },
+      ]];
+    }
+    if (sql.includes("INDEX_NAME = 'PRIMARY'")) {
+      return [[{ COLUMN_NAME: 'Id', SEQ_IN_INDEX: 1 }]];
+    }
+    if (sql.includes('tenant_tables')) {
+      return [[{ is_shared: 0, seed_on_create: 0 }]];
+    }
+    if (sql.startsWith('SELECT * FROM ?? WHERE')) {
+      assert.deepEqual(params, ['users_edit', '42', '7']);
+      return [[{ Id: 42, CompanyID: 7, Name: 'Example Camel' }]];
+    }
+    throw new Error(`unexpected query: ${sql}`);
+  });
+  const req = {
+    params: { table: 'users_edit', id: '42' },
+    query: { company_id: '7' },
+    user: { companyId: 3 },
+  };
+  const res = {
+    json(payload) {
+      this.payload = payload;
+    },
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+  };
+  try {
+    await controller.getTableRow(req, res, (err) => {
+      if (err) throw err;
+    });
+  } finally {
+    restore();
+  }
+  assert.deepEqual(res.payload, { Id: 42, CompanyID: 7, Name: 'Example Camel' });
+  assert.equal(res.statusCode, undefined);
+});
+
 test('getTableRow supports JSON-encoded composite ids', async () => {
   const tableName = 'json_get_invoices';
   const idParts = ['10', 'INV-1', '2023-05-10'];

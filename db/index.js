@@ -4203,7 +4203,12 @@ export async function getTableRowById(
     throw err;
   }
   await ensureValidColumns(tableName, columns, pkCols);
+  const sanitizeColumnName = (value) =>
+    String(value).toLowerCase().replace(/_/g, '');
   const pkLower = pkCols.map((col) => String(col).toLowerCase());
+  const pkSanitized = pkCols.map((col) => sanitizeColumnName(col));
+  const pkLowerSet = new Set(pkLower);
+  const pkSanitizedSet = new Set(pkSanitized);
   let parts;
   if (pkCols.length === 1) {
     if (rowId === undefined || rowId === null || rowId === '') {
@@ -4218,23 +4223,37 @@ export async function getTableRowById(
 
   const whereClauses = pkCols.map((col) => `${escapeIdentifier(col)} = ?`);
   const params = [tableName, ...parts];
-  const normalizedColumns = new Map(
-    columns.map((col) => [String(col).toLowerCase(), col]),
-  );
+  const normalizedColumns = new Map();
+  for (const col of columns) {
+    const lower = String(col).toLowerCase();
+    const sanitized = sanitizeColumnName(col);
+    normalizedColumns.set(lower, col);
+    normalizedColumns.set(sanitized, col);
+  }
   const resolvedFilters = new Map();
 
   for (const [rawKey, rawValue] of Object.entries(tenantFilters || {})) {
     if (rawValue === undefined || rawValue === null || rawValue === '') continue;
-    const actual = normalizedColumns.get(String(rawKey).toLowerCase());
+    const lookupLower = String(rawKey).toLowerCase();
+    const lookupSanitized = sanitizeColumnName(rawKey);
+    const actual =
+      normalizedColumns.get(lookupLower) ||
+      normalizedColumns.get(lookupSanitized);
     if (!actual) continue;
-    if (pkLower.includes(String(actual).toLowerCase())) continue;
+    const actualLower = String(actual).toLowerCase();
+    const actualSanitized = sanitizeColumnName(actual);
+    if (pkLowerSet.has(actualLower) || pkSanitizedSet.has(actualSanitized))
+      continue;
     resolvedFilters.set(actual, rawValue);
   }
 
-  const companyColumn = normalizedColumns.get('company_id');
+  const companyKeySanitized = sanitizeColumnName('company_id');
+  const companyColumn =
+    normalizedColumns.get(companyKeySanitized) ||
+    normalizedColumns.get('company_id');
   if (
     companyColumn &&
-    !pkLower.includes('company_id') &&
+    !pkSanitizedSet.has(companyKeySanitized) &&
     !resolvedFilters.has(companyColumn) &&
     defaultCompanyId !== undefined &&
     defaultCompanyId !== null &&
@@ -4246,7 +4265,7 @@ export async function getTableRowById(
   let companyFilterValue = null;
   for (const [columnName, value] of resolvedFilters.entries()) {
     await ensureValidColumns(tableName, columns, [columnName]);
-    if (String(columnName).toLowerCase() === 'company_id') {
+    if (sanitizeColumnName(columnName) === companyKeySanitized) {
       companyFilterValue = value;
       const flags = await getTenantTableFlags(tableName);
       if (flags?.isShared) {
@@ -4263,15 +4282,17 @@ export async function getTableRowById(
   }
 
   if (companyFilterValue == null && companyColumn) {
-    if (pkLower.includes('company_id')) {
-      const idx = pkLower.indexOf('company_id');
+    if (pkSanitizedSet.has(companyKeySanitized)) {
+      const idx = pkSanitized.findIndex((value) => value === companyKeySanitized);
       companyFilterValue = parts[idx];
     } else if (
-      tenantFilters?.company_id !== undefined &&
-      tenantFilters.company_id !== null &&
-      tenantFilters.company_id !== ''
+      Object.entries(tenantFilters || {}).some(([key, val]) => {
+        if (sanitizeColumnName(key) !== companyKeySanitized) return false;
+        if (val === undefined || val === null || val === '') return false;
+        companyFilterValue = val;
+        return true;
+      })
     ) {
-      companyFilterValue = tenantFilters.company_id;
     } else if (
       defaultCompanyId !== undefined &&
       defaultCompanyId !== null &&
