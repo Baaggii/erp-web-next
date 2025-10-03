@@ -1406,6 +1406,7 @@ function InlineTransactionTable(
     const view = combinedViewSource[field];
     if (view && value !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
+      let hasFilter = false;
       const cols = (viewColumns[view] || []).map((c) =>
         typeof c === 'string' ? c : c.name,
       );
@@ -1416,7 +1417,11 @@ function InlineTransactionTable(
         if (pv === undefined || pv === '') return;
         if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
         params.set(f, pv);
+        hasFilter = true;
       });
+      if (!hasFilter) {
+        return;
+      }
       const url = `/api/tables/${encodeURIComponent(view)}?${params.toString()}`;
       if (general.viewToastEnabled) {
         window.dispatchEvent(
