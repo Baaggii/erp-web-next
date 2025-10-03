@@ -49,6 +49,9 @@ speed up loading when the images are viewed.
 - **moduleLabel** – optional label for the parent module
 - **allowedBranches** – restrict usage to these branch IDs
 - **allowedDepartments** – restrict usage to these department IDs
+- **allowTemporaryTransactions** – allow subordinate users to submit the form as
+  a temporary transaction request that requires senior approval before it is
+  written to the live table
 
 The form displays header fields (system filled values) separately from other
 fields. When printing, the `printEmpField` and `printCustField` lists control

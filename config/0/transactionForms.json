@@ -47,6 +47,7 @@
         "or_o_barimt": "0",
         "company_id": ""
       },
+      "allowTemporaryTransactions": true,
       "tooltips": {
         "or_g_id": "tooltip.organization",
         "or_date": "tooltip.date"

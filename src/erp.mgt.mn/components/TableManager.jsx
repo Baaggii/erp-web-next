@@ -143,6 +143,14 @@ const requestStatusColors = {
   declined: '#fee2e2',
 };
 
+const TEMPORARY_REQUEST_TYPE = 'temporary_insert';
+
+const temporaryStatusColors = {
+  pending: '#e0f2fe',
+  accepted: '#dcfce7',
+  declined: '#fee2e2',
+};
+
 const TableManager = forwardRef(function TableManager({
   table,
   refreshId = 0,
@@ -242,11 +250,16 @@ const TableManager = forwardRef(function TableManager({
     () => Array.from(requestIdSet).sort().join(','),
     [requestIdSet],
   );
+  const [temporaryRequests, setTemporaryRequests] = useState([]);
+  const [temporaryRefresh, setTemporaryRefresh] = useState(0);
   const { user, company, branch, department, session } = useContext(AuthContext);
   const isSubordinate = Boolean(session?.senior_empid);
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
+  const canUseTemporaryTransactions = Boolean(
+    formConfig?.allowTemporaryTransactions && isSubordinate,
+  );
 
   function promptRequestReason() {
     return new Promise((resolve) => {
@@ -749,6 +762,68 @@ const TableManager = forwardRef(function TableManager({
   }, [requestStatus, table, user?.empid, dateFilter]);
 
   useEffect(() => {
+    if (!table || !canUseTemporaryTransactions) {
+      setTemporaryRequests([]);
+      return;
+    }
+    let canceled = false;
+    async function loadTemporaryRequests() {
+      try {
+        const params = new URLSearchParams({
+          request_type: TEMPORARY_REQUEST_TYPE,
+          table_name: table,
+          per_page: '200',
+        });
+        const res = await fetch(
+          `${API_BASE}/pending_request/outgoing?${params.toString()}`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) {
+          if (!canceled) setTemporaryRequests([]);
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (canceled) return;
+        const list = Array.isArray(data?.rows) ? data.rows : [];
+        setTemporaryRequests(
+          list.map((item) => {
+            let proposed = item?.proposed_data;
+            if (typeof proposed === 'string') {
+              try {
+                proposed = JSON.parse(proposed);
+              } catch {
+                proposed = {};
+              }
+            }
+            if (!proposed || typeof proposed !== 'object') proposed = {};
+            return {
+              request_id: item?.request_id ?? null,
+              record_id: item?.record_id ?? null,
+              status: item?.status || 'pending',
+              proposed_data: proposed,
+              request_reason: item?.request_reason || '',
+              responded_at: item?.responded_at || null,
+              created_at: item?.created_at || null,
+            };
+          }),
+        );
+      } catch {
+        if (!canceled) setTemporaryRequests([]);
+      }
+    }
+    loadTemporaryRequests();
+    return () => {
+      canceled = true;
+    };
+  }, [
+    table,
+    canUseTemporaryTransactions,
+    temporaryRefresh,
+    refreshId,
+    localRefresh,
+  ]);
+
+  useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
     async function load() {
@@ -1195,7 +1270,9 @@ const TableManager = forwardRef(function TableManager({
     return columnMeta;
   }
 
-  async function openAdd() {
+  async function openAdd(options = {}) {
+    const { requestMode = null } = options || {};
+    setRequestType(requestMode);
     const meta = await ensureColumnMeta();
     const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
     const defaults = {};
@@ -1245,6 +1322,10 @@ const TableManager = forwardRef(function TableManager({
     setGridRows(initialRows);
     setIsAdding(true);
     setShowForm(true);
+  }
+
+  function openTemporaryTransaction() {
+    openAdd({ requestMode: 'temporary' });
   }
 
   async function openEdit(row) {
@@ -1687,6 +1768,81 @@ const TableManager = forwardRef(function TableManager({
           typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
       }
     });
+
+    if (requestType === 'temporary') {
+      const reason = await promptRequestReason();
+      if (!reason || !reason.trim()) {
+        addToast(
+          t('request_reason_required', 'Request reason is required'),
+          'error',
+        );
+        return;
+      }
+      try {
+        const draftRecordId = `temp-${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2, 10)}`;
+        const payload = JSON.parse(JSON.stringify(cleaned));
+        const res = await fetch(`${API_BASE}/pending_request`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            table_name: table,
+            record_id: draftRecordId,
+            request_type: TEMPORARY_REQUEST_TYPE,
+            request_reason: reason,
+            proposed_data: payload,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const requestId = data?.request_id ?? null;
+          const normalizedRecordId = data?.record_id ?? draftRecordId;
+          setTemporaryRequests((prev) => [
+            ...prev,
+            {
+              request_id: requestId,
+              record_id: normalizedRecordId,
+              status: 'pending',
+              proposed_data: payload,
+              request_reason: reason,
+              responded_at: null,
+              created_at: new Date().toISOString(),
+            },
+          ]);
+          setTemporaryRefresh((v) => v + 1);
+          addToast(
+            t(
+              'temporary_request_submitted',
+              'Temporary transaction submitted for approval',
+            ),
+            'success',
+          );
+          setShowForm(false);
+          setEditing(null);
+          setIsAdding(false);
+          setGridRows([]);
+          setRequestType(null);
+        } else if (res.status === 409) {
+          addToast(
+            t('similar_request_pending', 'A similar request is already pending'),
+            'error',
+          );
+        } else {
+          addToast(
+            t('temporary_request_failed', 'Temporary transaction request failed'),
+            'error',
+          );
+        }
+      } catch {
+        addToast(
+          t('temporary_request_failed', 'Temporary transaction request failed'),
+          'error',
+        );
+      }
+      return;
+    }
 
     if (requestType === 'edit') {
       const reason = await promptRequestReason();
@@ -2315,6 +2471,50 @@ const TableManager = forwardRef(function TableManager({
     [columns, totalAmountSet, totalCurrencySet],
   );
 
+  const renderRows = useMemo(() => {
+    if (!temporaryRequests.length) return rows;
+    const seenIds = new Set(
+      rows
+        .map((row) => {
+          const rid = getRowId(row);
+          return rid !== undefined && rid !== null ? String(rid) : null;
+        })
+        .filter((val) => val !== null),
+    );
+    const extras = [];
+    temporaryRequests.forEach((req, index) => {
+      if (!req || typeof req !== 'object') return;
+      const proposed =
+        req.proposed_data && typeof req.proposed_data === 'object'
+          ? req.proposed_data
+          : {};
+      const status = req.status || 'pending';
+      const recordId =
+        req.record_id != null && req.record_id !== ''
+          ? String(req.record_id)
+          : null;
+      if (status === 'accepted' && recordId && seenIds.has(recordId)) {
+        return;
+      }
+      const key = req.request_id != null
+        ? `temp-${req.request_id}`
+        : recordId
+        ? `temp-${recordId}`
+        : req.created_at
+        ? `temp-${req.created_at}`
+        : `temp-${index}`;
+      extras.push({
+        ...proposed,
+        _temporaryStatus: status,
+        _temporaryRequestId: req.request_id ?? null,
+        _temporaryRecordId: recordId,
+        _temporaryReason: req.request_reason || '',
+        _temporaryKey: key,
+      });
+    });
+    return [...rows, ...extras];
+  }, [rows, temporaryRequests, columnMeta]);
+
   const uploadCfg = uploadRow ? getConfigForRow(uploadRow) : {};
 
   return (
@@ -2335,6 +2535,18 @@ const TableManager = forwardRef(function TableManager({
           <TooltipWrapper title={t('add_row', { ns: 'tooltip', defaultValue: 'Add new row' })}>
             <button onClick={openAdd} style={{ marginRight: '0.5rem' }}>
               {addLabel}
+            </button>
+          </TooltipWrapper>
+        )}
+        {canUseTemporaryTransactions && (
+          <TooltipWrapper
+            title={t(
+              'temporary_add_tooltip',
+              { ns: 'tooltip', defaultValue: 'Request a temporary transaction' },
+            )}
+          >
+            <button onClick={openTemporaryTransaction} style={{ marginRight: '0.5rem' }}>
+              {t('temporary_transaction', 'Temporary transaction')}
             </button>
           </TooltipWrapper>
         )}
@@ -2756,25 +2968,36 @@ const TableManager = forwardRef(function TableManager({
           </tr>
         </thead>
         <tbody>
-          {rows.length === 0 && (
+          {renderRows.length === 0 && (
             <tr>
               <td colSpan={columns.length + 2} style={{ textAlign: 'center', padding: '0.5rem' }}>
                 No data.
               </td>
             </tr>
           )}
-          {rows.map((r) => (
+          {renderRows.map((r) => (
             <tr
-              key={r.id || JSON.stringify(r)}
+              key={r._temporaryKey || r.id || JSON.stringify(r)}
               onClick={(e) => {
                 const t = e.target.tagName;
-                if (t !== 'INPUT' && t !== 'BUTTON' && t !== 'SELECT' && t !== 'A') {
+                if (
+                  r._temporaryStatus ||
+                  t === 'INPUT' ||
+                  t === 'BUTTON' ||
+                  t === 'SELECT' ||
+                  t === 'A'
+                ) {
+                  if (r._temporaryStatus) e.stopPropagation();
+                  return;
+                }
                   openDetail(r);
                 }
               }}
               style={{
-                cursor: 'pointer',
-                ...(requestStatusColors[requestStatus]
+                cursor: r._temporaryStatus ? 'default' : 'pointer',
+                ...(temporaryStatusColors[r._temporaryStatus]
+                  ? { backgroundColor: temporaryStatusColors[r._temporaryStatus] }
+                  : requestStatusColors[requestStatus]
                   ? { backgroundColor: requestStatusColors[requestStatus] }
                   : {}),
               }}
@@ -2845,27 +3068,33 @@ const TableManager = forwardRef(function TableManager({
               <td style={actionCellStyle}>
                 {(() => {
                   const rid = getRowId(r);
+                  const isTemporaryRow = Boolean(r._temporaryStatus);
+                  const status = r._temporaryStatus || '';
                   return (
                     <>
-                      <button
-                        onClick={() => openDetail(r)}
-                        style={actionBtnStyle}
-                      >
-                        👁 View
-                      </button>
-                      <button
-                        onClick={() => openImages(r)}
-                        style={actionBtnStyle}
-                      >
-                        🖼 Images
-                      </button>
-                      <button
-                        onClick={() => openUpload(r)}
-                        style={actionBtnStyle}
-                      >
-                        ➕ Add Img
-                      </button>
-                      {!isSubordinate ? (
+                      {!isTemporaryRow && (
+                        <>
+                          <button
+                            onClick={() => openDetail(r)}
+                            style={actionBtnStyle}
+                          >
+                            👁 View
+                          </button>
+                          <button
+                            onClick={() => openImages(r)}
+                            style={actionBtnStyle}
+                          >
+                            🖼 Images
+                          </button>
+                          <button
+                            onClick={() => openUpload(r)}
+                            style={actionBtnStyle}
+                          >
+                            ➕ Add Img
+                          </button>
+                        </>
+                      )}
+                      {!isTemporaryRow && !isSubordinate ? (
                         <>
                           {buttonPerms['Edit transaction'] && (
                             <button
@@ -2903,6 +3132,41 @@ const TableManager = forwardRef(function TableManager({
                             🗑 Request Delete
                           </button>
                         </>
+                      ) : null}
+                      {isTemporaryRow && (
+                        <div
+                          style={{
+                            fontSize: '0.75rem',
+                            lineHeight: 1.2,
+                            color:
+                              status === 'declined'
+                                ? '#b91c1c'
+                                : status === 'accepted'
+                                ? '#166534'
+                                : '#1d4ed8',
+                            maxWidth: 160,
+                          }}
+                        >
+                          {status === 'pending'
+                            ? t(
+                                'temporary_pending',
+                                'Temporary transaction pending approval',
+                              )
+                            : status === 'accepted'
+                            ? t(
+                                'temporary_approved',
+                                'Temporary transaction approved – refresh to view posted row',
+                              )
+                            : t(
+                                'temporary_declined',
+                                'Temporary transaction declined',
+                              )}
+                          {r._temporaryReason && (
+                            <div style={{ marginTop: '0.25rem', color: '#374151' }}>
+                              {t('temporary_reason', 'Reason:')} {r._temporaryReason}
+                            </div>
+                          )}
+                        </div>
                       )}
                     </>
                   );
