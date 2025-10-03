@@ -4,4 +4,14 @@ Legacy migrations have been moved to the `archive/` directory. New migrations sh
 
 ## Current migrations
 
-- `2025-10-30_code_identifier_columns.sql` — adds the `chig_id`, `torol_id`, and `baitsaagch_id` lookup identifiers now represented in the schema baseline.
+No migrations are pending. The baseline schema now mirrors the production snapshot in `db/mgtmn_erp_db.sql` (generated 2025-10-03) so fresh databases already contain the identifier columns and audit metadata that earlier scripts added.
+
+### Coding table indexes
+
+The current schema enforces the following constraints:
+
+- `code_chiglel`: primary key on `id` and unique constraint on (`company_id`, `chig_id`).
+- `code_huvaari`: primary key on `id`, unique constraint on (`company_id`, `baitsaagch_id`), and index on `position_id`.
+- `code_torol`: primary key on `id` and unique constraint on (`torol_id`, `company_id`).
+
+No additional indexes are required at this time.
