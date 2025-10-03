@@ -1076,8 +1076,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   function getKeyFields() {
-    const keyedColumns = columnMeta
-      .filter((c) => c.key === 'PRI')
+    const withPrimaryOrdinals = columnMeta
       .map((column, index) => {
         const rawOrdinal = column?.primaryKeyOrdinal;
         const numericOrdinal =
@@ -1085,24 +1084,50 @@ const TableManager = forwardRef(function TableManager({
             ? Number(rawOrdinal)
             : null;
         return { column, index, ordinal: numericOrdinal };
-      });
-    const keys = keyedColumns
-      .sort((a, b) => {
-        if (a.ordinal != null && b.ordinal != null) {
+      })
+      .filter(({ ordinal }) => ordinal != null);
+    if (withPrimaryOrdinals.length > 0) {
+      return withPrimaryOrdinals
+        .sort((a, b) => {
           if (a.ordinal === b.ordinal) return a.index - b.index;
           return a.ordinal - b.ordinal;
-        }
-        return a.index - b.index;
-      })
-      .map(({ column }) => column.name);
-    let result = keys;
-    if (result.length === 0) {
-      if (columnMeta.some((c) => c.name === 'id')) result = ['id'];
-      else if (rows[0] && Object.prototype.hasOwnProperty.call(rows[0], 'id')) {
-        result = ['id'];
-      }
+        })
+        .map(({ column }) => column.name);
     }
-    return result;
+
+    const withCandidateOrdinals = columnMeta
+      .map((column, index) => {
+        const rawOrdinal = column?.candidateKeyOrdinal;
+        const numericOrdinal =
+          rawOrdinal != null && Number.isFinite(Number(rawOrdinal))
+            ? Number(rawOrdinal)
+            : null;
+        return { column, index, ordinal: numericOrdinal };
+      })
+      .filter(({ ordinal }) => ordinal != null);
+    if (withCandidateOrdinals.length > 0) {
+      return withCandidateOrdinals
+        .sort((a, b) => {
+          if (a.ordinal === b.ordinal) return a.index - b.index;
+          return a.ordinal - b.ordinal;
+        })
+        .map(({ column }) => column.name);
+    }
+
+    const keyedColumns = columnMeta
+      .map((column, index) => ({ column, index }))
+      .filter(({ column }) => column?.key === 'PRI');
+    if (keyedColumns.length > 0) {
+      return keyedColumns
+        .sort((a, b) => a.index - b.index)
+        .map(({ column }) => column.name);
+    }
+
+    if (columnMeta.some((c) => c.name === 'id')) return ['id'];
+    if (rows[0] && Object.prototype.hasOwnProperty.call(rows[0], 'id')) {
+      return ['id'];
+    }
+    return [];
   }
 
   async function ensureColumnMeta() {
