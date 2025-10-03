@@ -1298,7 +1298,13 @@
       "editableFields": [
         "bmtr_consumerid",
         "bmtr_empid",
-        "bmtr_branchid"
+        "bmtr_branchid",
+        "sp_primary_code",
+        "sp_pm_name",
+        "sp_pm_unit_id",
+        "sp_cost",
+        "sp_current_stock",
+        "sp_total_cost"
       ],
       "userIdFields": [
         "bmtr_confirm_emp",
