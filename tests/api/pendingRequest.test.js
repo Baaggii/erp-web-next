@@ -204,8 +204,8 @@ await test(
 await test('createRequest throws 409 on duplicate', async () => {
   const conn = {
     async query(sql, params) {
-      if (sql.startsWith('SELECT employment_senior_empid, employment_senior_plan_empid')) {
-        return [[{ employment_senior_empid: null, employment_senior_plan_empid: null }]];
+      if (sql.startsWith('SELECT employment_senior_empid')) {
+        return [[{ employment_senior_empid: null }]];
       }
       if (sql.startsWith('SELECT request_id, proposed_data FROM pending_request')) {
         return [[{ request_id: 1, proposed_data: JSON.stringify({ a: 1 }) }]];
@@ -233,72 +233,6 @@ await test('createRequest throws 409 on duplicate', async () => {
       }),
       (err) => err.status === 409,
     );
-  } finally {
-    db.pool.getConnection = origGet;
-    db.pool.query = origQuery;
-  }
-});
-
-await test('createRequest uses plan senior for report approvals', async () => {
-  const notifications = [];
-  const lockQueries = [];
-  const conn = {
-    async query(sql, params) {
-      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
-        return [{}];
-      }
-      if (sql.startsWith('SELECT employment_senior_empid, employment_senior_plan_empid')) {
-        return [[{ employment_senior_empid: 'SENIOR1', employment_senior_plan_empid: 'plan123' }]];
-      }
-      if (sql.startsWith('SELECT request_id, proposed_data FROM pending_request')) {
-        return [[]];
-      }
-      if (sql.startsWith('INSERT INTO pending_request')) {
-        return [{ insertId: 42 }];
-      }
-      if (sql.startsWith('INSERT INTO user_activity_log')) {
-        return [{}];
-      }
-      if (sql.startsWith('INSERT INTO notifications')) {
-        notifications.push({ sql, params });
-        return [{}];
-      }
-      if (
-        sql.startsWith('DELETE FROM report_transaction_locks') ||
-        sql.startsWith('INSERT INTO report_transaction_locks')
-      ) {
-        lockQueries.push({ sql, params });
-        return [{}];
-      }
-      throw new Error(`unexpected query: ${sql}`);
-    },
-    release() {},
-  };
-  const origGet = db.pool.getConnection;
-  const origQuery = db.pool.query;
-  db.pool.getConnection = async () => conn;
-  db.pool.query = async (sql, params) => {
-    if (sql.includes('information_schema')) return [[{ COLUMN_NAME: 'id' }]];
-    return [[]];
-  };
-  try {
-    const result = await service.createRequest({
-      tableName: 'tbl_requests',
-      recordId: 5,
-      empId: 'emp5',
-      requestType: 'report_approval',
-      proposedData: {
-        procedure: 'sp_test',
-        parameters: { a: 1 },
-        transactions: [{ table: 'tbl_requests', recordId: '5' }],
-      },
-      requestReason: 'Need approval',
-    });
-    assert.equal(result.senior_empid, 'PLAN123');
-    assert.equal(result.request_id, 42);
-    assert.equal(notifications.length, 1);
-    assert.equal(notifications[0].params[1], 'PLAN123');
-    assert.ok(lockQueries.length >= 1);
   } finally {
     db.pool.getConnection = origGet;
     db.pool.query = origQuery;
@@ -367,7 +301,7 @@ await test('respondRequest succeeds with prior non-pending entries', async () =>
         return [[row]];
       }
       if (sql.startsWith("UPDATE pending_request SET status = 'accepted'")) {
-        const row = rows.find((r) => r.request_id === params[4]);
+        const row = rows.find((r) => r.request_id === params[3]);
         row.status = 'accepted';
         return [{}];
       }
@@ -389,8 +323,8 @@ await test('respondRequest succeeds with prior non-pending entries', async () =>
 await test('second pending request for same record is rejected', async () => {
   const conn = {
     async query(sql, params) {
-      if (sql.startsWith('SELECT employment_senior_empid, employment_senior_plan_empid')) {
-        return [[{ employment_senior_empid: null, employment_senior_plan_empid: null }]];
+      if (sql.startsWith('SELECT employment_senior_empid')) {
+        return [[{ employment_senior_empid: null }]];
       }
       if (sql.startsWith('SELECT request_id, proposed_data FROM pending_request')) {
         return [[{ request_id: 1, proposed_data: JSON.stringify({ a: 1 }) }]];
