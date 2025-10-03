@@ -551,6 +551,195 @@ if (!haveReact) {
     }
   });
 
+  test(
+    'TableManager appends canonical tenant params when metadata uses camel case',
+    async (t) => {
+      const prevWindow = global.window;
+      const prevDocument = global.document;
+      const prevNavigator = global.navigator;
+
+      const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+        url: 'http://localhost',
+      });
+      global.window = dom.window;
+      global.document = dom.window.document;
+      global.navigator = dom.window.navigator;
+      dom.window.confirm = () => true;
+      dom.window.scrollTo = () => {};
+
+      const toasts = [];
+      const modalProps = [];
+      const detailCalls = [];
+
+      const origFetch = global.fetch;
+      global.fetch = async (input) => {
+        const url = typeof input === 'string' ? input : input?.url || '';
+        if (url === '/api/tables/test/columns') {
+          return {
+            ok: true,
+            json: async () => [
+              { name: 'ID', key: 'PRI' },
+              { name: 'Name' },
+              { name: 'CompanyID' },
+              { name: 'BranchID' },
+              { name: 'DepartmentID' },
+            ],
+          };
+        }
+        if (url === '/api/tables/test/relations') {
+          return { ok: true, json: async () => [] };
+        }
+        if (url.startsWith('/api/display_fields?')) {
+          return { ok: true, json: async () => ({ displayFields: [] }) };
+        }
+        if (url.startsWith('/api/proc_triggers')) {
+          return { ok: true, json: async () => [] };
+        }
+        if (url === '/api/tenant_tables/test') {
+          return {
+            ok: true,
+            json: async () => ({ tenantKeys: ['company_id', 'branch_id', 'department_id'] }),
+          };
+        }
+        if (url.startsWith('/api/tables/test?')) {
+          return {
+            ok: true,
+            json: async () => ({
+              rows: [
+                {
+                  ID: 1,
+                  CompanyID: 41,
+                  BranchID: 42,
+                  DepartmentID: 43,
+                  Name: 'Row 1',
+                },
+              ],
+              count: 1,
+            }),
+          };
+        }
+        if (url.startsWith('/api/tables/test/1')) {
+          detailCalls.push(url);
+          return {
+            ok: true,
+            json: async () => ({
+              ID: 1,
+              CompanyID: 41,
+              BranchID: 42,
+              DepartmentID: 43,
+              Name: 'Row 1',
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({}) };
+      };
+
+      const RowFormModalStub = (props) => {
+        modalProps.push({ ...props });
+        return null;
+      };
+
+      const { default: TableManager } = await t.mock.import(
+        '../../src/erp.mgt.mn/components/TableManager.jsx',
+        {
+          '../context/AuthContext.jsx': {
+            AuthContext: React.createContext({
+              company: 10,
+              branch: 20,
+              department: 30,
+              session: {},
+            }),
+          },
+          '../context/ToastContext.jsx': {
+            useToast: () => ({
+              addToast: (...args) => {
+                toasts.push(args);
+              },
+            }),
+          },
+          './RowFormModal.jsx': { default: RowFormModalStub },
+          './CascadeDeleteModal.jsx': { default: () => null },
+          './RowDetailModal.jsx': { default: () => null },
+          './RowImageViewModal.jsx': { default: () => null },
+          './RowImageUploadModal.jsx': { default: () => null },
+          './ImageSearchModal.jsx': { default: () => null },
+          './Modal.jsx': { default: () => null },
+          './CustomDatePicker.jsx': { default: () => null },
+          '../hooks/useGeneralConfig.js': { default: () => ({}) },
+          '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+          '../utils/buildImageName.js': { default: () => ({}) },
+          '../utils/slugify.js': { default: () => '' },
+          '../utils/apiBase.js': { API_BASE: '' },
+          '../utils/normalizeDateInput.js': { default: (v) => v },
+        },
+      );
+
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const root = createRoot(container);
+
+      try {
+        await act(async () => {
+          root.render(
+            React.createElement(TableManager, {
+              table: 'test',
+              buttonPerms: { 'Edit transaction': true },
+            }),
+          );
+        });
+
+        for (let i = 0; i < 10; i += 1) {
+          if (container.querySelectorAll('button').length > 0) break;
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+
+        const editButton = Array.from(container.querySelectorAll('button')).find((btn) =>
+          (btn.textContent || '').includes('Edit'),
+        );
+        assert.ok(editButton, 'expected edit button to be rendered');
+
+        await act(async () => {
+          editButton.dispatchEvent(
+            new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }),
+          );
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        });
+
+        for (let i = 0; i < 10; i += 1) {
+          const last = modalProps.at(-1);
+          if (last?.visible) break;
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((resolve) => setTimeout(resolve, 0));
+        }
+
+        const lastProps = modalProps.at(-1);
+        assert.ok(lastProps?.visible, 'expected modal to be visible');
+        assert.equal(lastProps.row?.CompanyID, 41);
+        assert.equal(toasts.length, 0, 'expected no error toasts');
+
+        const detailUrl = detailCalls.find((val) => !val.includes('/references'));
+        assert.ok(detailUrl, 'expected row detail fetch to be called');
+        assert.ok(detailUrl.includes('?'), 'expected tenant keys to be appended');
+        const parsed = new URL(detailUrl, 'http://localhost');
+        assert.equal(parsed.searchParams.get('CompanyID'), '41');
+        assert.equal(parsed.searchParams.get('BranchID'), '42');
+        assert.equal(parsed.searchParams.get('DepartmentID'), '43');
+      } finally {
+        await act(async () => {
+          root.unmount();
+        });
+        container.remove();
+
+        global.fetch = origFetch;
+        global.window = prevWindow;
+        global.document = prevDocument;
+        global.navigator = prevNavigator;
+        dom.window.close();
+      }
+    },
+  );
+
   test('TableManager skips tenant filters when row values are empty', async (t) => {
     const prevWindow = global.window;
     const prevDocument = global.document;
