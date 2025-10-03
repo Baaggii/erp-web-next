@@ -67,6 +67,32 @@ function sanitizeName(name) {
     .replace(/[^a-z0-9_-]+/gi, '_');
 }
 
+function buildColumnCaseMap(columns) {
+  const map = {};
+  if (!Array.isArray(columns)) return map;
+  columns.forEach((c) => {
+    if (!c?.name) return;
+    const canonical = String(c.name);
+    const lower = canonical.toLowerCase();
+    map[lower] = canonical;
+    const stripped = lower.replace(/_/g, '');
+    if (!map[stripped]) {
+      map[stripped] = canonical;
+    }
+  });
+  return map;
+}
+
+function resolveWithMap(alias, map = {}) {
+  if (alias == null) return alias;
+  const strAlias = typeof alias === 'string' ? alias : String(alias);
+  const lower = strAlias.toLowerCase();
+  if (map && map[lower]) return map[lower];
+  const stripped = lower.replace(/_/g, '');
+  if (map && map[stripped]) return map[stripped];
+  return strAlias;
+}
+
 const MAX_WIDTH = ch(40);
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -256,49 +282,36 @@ const TableManager = forwardRef(function TableManager({
   }, []);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
-  const columnCaseMap = useMemo(() => {
-    const map = {};
-    columnMeta.forEach((c) => {
-      if (!c?.name) return;
-      const lower = String(c.name).toLowerCase();
-      map[lower] = c.name;
-      const stripped = lower.replace(/_/g, '');
-      if (!map[stripped]) {
-        map[stripped] = c.name;
-      }
-    });
-    return map;
-  }, [columnMeta]);
+  const columnCaseMap = useMemo(
+    () => buildColumnCaseMap(columnMeta),
+    [columnMeta],
+  );
 
   const resolveCanonicalKey = useCallback(
-    (alias) => {
-      if (alias == null) return alias;
-      const lower = String(alias).toLowerCase();
-      if (columnCaseMap[lower]) return columnCaseMap[lower];
-      const stripped = lower.replace(/_/g, '');
-      if (columnCaseMap[stripped]) return columnCaseMap[stripped];
-      return typeof alias === 'string' ? alias : String(alias);
+    (alias, caseMap) => {
+      return resolveWithMap(alias, caseMap || columnCaseMap);
     },
     [columnCaseMap],
   );
 
   const normalizeToCanonical = useCallback(
-    (source) => {
+    (source, caseMap) => {
       if (!source || typeof source !== 'object') return {};
       const normalized = {};
+      const map = caseMap || columnCaseMap;
       for (const [rawKey, value] of Object.entries(source)) {
-        const canonicalKey = resolveCanonicalKey(rawKey);
+        const canonicalKey = resolveCanonicalKey(rawKey, map);
         normalized[canonicalKey] = value;
       }
       return normalized;
     },
-    [resolveCanonicalKey],
+    [columnCaseMap, resolveCanonicalKey],
   );
 
   const normalizeTenantKey = useCallback(
-    (alias) => {
+    (alias, caseMap) => {
       if (alias == null) return null;
-      const canonical = resolveCanonicalKey(alias);
+      const canonical = resolveCanonicalKey(alias, caseMap);
       if (!canonical) return null;
       return sanitizeName(canonical).replace(/_/g, '');
     },
@@ -306,13 +319,13 @@ const TableManager = forwardRef(function TableManager({
   );
 
   const hasTenantKey = useCallback(
-    (tenantInfo, key) => {
+    (tenantInfo, key, caseMap) => {
       if (!tenantInfo) return false;
-      const target = normalizeTenantKey(key);
+      const target = normalizeTenantKey(key, caseMap);
       if (!target) return false;
       const keys = getTenantKeyList(tenantInfo);
       for (const rawKey of keys) {
-        const normalized = normalizeTenantKey(rawKey);
+        const normalized = normalizeTenantKey(rawKey, caseMap);
         if (normalized && normalized === target) return true;
       }
       return false;
@@ -1227,11 +1240,16 @@ const TableManager = forwardRef(function TableManager({
       );
       return;
     }
-    await ensureColumnMeta();
+    const meta = await ensureColumnMeta();
+    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+    const localCaseMap =
+      Array.isArray(cols) && cols.length > 0
+        ? buildColumnCaseMap(cols)
+        : columnCaseMap;
     const id = getRowId(row);
     addToast(t('loading_record', 'Loading record...'));
 
-    const normalizedRow = normalizeToCanonical(row);
+    const normalizedRow = normalizeToCanonical(row, localCaseMap);
 
     let tenantInfo = null;
     try {
@@ -1248,8 +1266,8 @@ const TableManager = forwardRef(function TableManager({
 
     const params = new URLSearchParams();
     if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
-      if (hasTenantKey(tenantInfo, 'company_id')) {
-        const companyKey = resolveCanonicalKey('company_id');
+      if (hasTenantKey(tenantInfo, 'company_id', localCaseMap)) {
+        const companyKey = resolveCanonicalKey('company_id', localCaseMap);
         const rowCompanyId = normalizedRow[companyKey];
         if (rowCompanyId != null && rowCompanyId !== '') {
           params.set('company_id', rowCompanyId);
@@ -1257,8 +1275,8 @@ const TableManager = forwardRef(function TableManager({
           params.set('company_id', company);
         }
       }
-      if (hasTenantKey(tenantInfo, 'branch_id')) {
-        const branchKey = resolveCanonicalKey('branch_id');
+      if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
+        const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
         const rowBranchId = normalizedRow[branchKey];
         if (rowBranchId != null && rowBranchId !== '') {
           params.set('branch_id', rowBranchId);
@@ -1266,8 +1284,8 @@ const TableManager = forwardRef(function TableManager({
           params.set('branch_id', branch);
         }
       }
-      if (hasTenantKey(tenantInfo, 'department_id')) {
-        const departmentKey = resolveCanonicalKey('department_id');
+      if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
+        const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
         const rowDepartmentId = normalizedRow[departmentKey];
         if (rowDepartmentId != null && rowDepartmentId !== '') {
           params.set('department_id', rowDepartmentId);
@@ -1305,7 +1323,7 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
 
-    const normalizedRecord = normalizeToCanonical(record);
+    const normalizedRecord = normalizeToCanonical(record, localCaseMap);
     const mergedRow = { ...normalizedRow };
     for (const [key, value] of Object.entries(normalizedRecord)) {
       mergedRow[key] = value;
@@ -1339,7 +1357,13 @@ const TableManager = forwardRef(function TableManager({
 
   async function openDetail(row) {
     setDetailRow(row);
-    const normalizedRow = normalizeToCanonical(row);
+    const meta = await ensureColumnMeta();
+    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+    const localCaseMap =
+      Array.isArray(cols) && cols.length > 0
+        ? buildColumnCaseMap(cols)
+        : columnCaseMap;
+    const normalizedRow = normalizeToCanonical(row, localCaseMap);
     const id = getRowId(row);
     if (id !== undefined) {
       let tenantInfo = null;
@@ -1357,8 +1381,8 @@ const TableManager = forwardRef(function TableManager({
       try {
         const params = new URLSearchParams();
         if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
-          if (hasTenantKey(tenantInfo, 'company_id')) {
-            const companyKey = resolveCanonicalKey('company_id');
+          if (hasTenantKey(tenantInfo, 'company_id', localCaseMap)) {
+            const companyKey = resolveCanonicalKey('company_id', localCaseMap);
             const rowCompanyId = normalizedRow[companyKey];
             if (rowCompanyId != null && rowCompanyId !== '') {
               params.set('company_id', rowCompanyId);
@@ -1366,8 +1390,8 @@ const TableManager = forwardRef(function TableManager({
               params.set('company_id', company);
             }
           }
-          if (hasTenantKey(tenantInfo, 'branch_id')) {
-            const branchKey = resolveCanonicalKey('branch_id');
+          if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
+            const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
             const rowBranchId = normalizedRow[branchKey];
             if (rowBranchId != null && rowBranchId !== '') {
               params.set('branch_id', rowBranchId);
@@ -1375,8 +1399,8 @@ const TableManager = forwardRef(function TableManager({
               params.set('branch_id', branch);
             }
           }
-          if (hasTenantKey(tenantInfo, 'department_id')) {
-            const departmentKey = resolveCanonicalKey('department_id');
+          if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
+            const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
             const rowDepartmentId = normalizedRow[departmentKey];
             if (rowDepartmentId != null && rowDepartmentId !== '') {
               params.set('department_id', rowDepartmentId);
