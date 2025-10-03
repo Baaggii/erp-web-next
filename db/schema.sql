@@ -110,7 +110,7 @@ CREATE TABLE `code_cashier` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_chiglel` (
   `id` int NOT NULL,
-  `chig_id` varchar(50) DEFAULT NULL,
+  `chig_id` int NOT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
