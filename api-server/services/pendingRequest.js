@@ -13,13 +13,11 @@ import {
   finalizeReportApprovalRequest,
   releaseReportApprovalLocks,
 } from './reportApprovals.js';
-import { randomUUID } from 'crypto';
 
 export const ALLOWED_REQUEST_TYPES = new Set([
   'edit',
   'delete',
   'report_approval',
-  'temporary_insert',
 ]);
 
 async function ensureValidTableName(tableName) {
@@ -105,10 +103,6 @@ export async function createRequest({
     );
     const seniorRaw = rows[0]?.employment_senior_empid;
     const senior = seniorRaw ? String(seniorRaw).trim().toUpperCase() : null;
-    let normalizedRecordId =
-      recordId != null && recordId !== ''
-        ? String(recordId).trim()
-        : null;
     const parsedInput = parseProposedData(proposedData);
     let finalProposed = parsedInput ?? proposedData;
     let originalData = null;
@@ -120,17 +114,6 @@ export async function createRequest({
         throw err;
       }
       finalProposed = normalizedPayload;
-    } else if (requestType === 'temporary_insert') {
-      const payload = parsedInput ?? proposedData;
-      if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-        const err = new Error('invalid_insert_payload');
-        err.status = 400;
-        throw err;
-      }
-      finalProposed = payload;
-      if (!normalizedRecordId) {
-        normalizedRecordId = randomUUID();
-      }
     } else if (requestType === 'edit') {
       const pkCols = await getPrimaryKeyColumns(tableName);
       let currentRow = null;
@@ -139,11 +122,11 @@ export async function createRequest({
         const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-          [tableName, normalizedRecordId],
+          [tableName, recordId],
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
-        const parts = String(normalizedRecordId).split('-');
+        const parts = String(recordId).split('-');
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
@@ -160,11 +143,11 @@ export async function createRequest({
         const where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
-          [tableName, normalizedRecordId],
+          [tableName, recordId],
         );
         currentRow = r[0] || null;
       } else if (pkCols.length > 1) {
-        const parts = String(normalizedRecordId).split('-');
+        const parts = String(recordId).split('-');
         const where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
         const [r] = await conn.query(
           `SELECT * FROM ?? WHERE ${where} LIMIT 1`,
@@ -180,7 +163,7 @@ export async function createRequest({
        WHERE company_id = ? AND table_name = ? AND record_id = ? AND emp_id = ?
          AND request_type = ? AND status = 'pending'
        LIMIT 1`,
-      [companyId, tableName, normalizedRecordId, normalizedEmp, requestType],
+      [companyId, tableName, recordId, normalizedEmp, requestType],
     );
     if (existing.length) {
       const existingData = parseProposedData(existing[0].proposed_data);
@@ -196,7 +179,7 @@ export async function createRequest({
       [
         companyId,
         tableName,
-        normalizedRecordId,
+        recordId,
         normalizedEmp,
         senior,
         requestType,
@@ -212,14 +195,12 @@ export async function createRequest({
         ? 'request_edit'
         : requestType === 'delete'
         ? 'request_delete'
-        : requestType === 'temporary_insert'
-        ? 'request_temporary_insert'
         : 'request_report_approval';
     await logUserAction(
       {
         emp_id: empId,
         table_name: tableName,
-        record_id: normalizedRecordId,
+        record_id: recordId,
         action: requestAction,
         details: finalProposed || null,
         request_id: requestId,
@@ -246,13 +227,13 @@ export async function createRequest({
           companyId,
             senior,
             requestId,
-            `Pending ${requestType} request for ${tableName}#${normalizedRecordId}`,
+            `Pending ${requestType} request for ${tableName}#${recordId}`,
             normalizedEmp,
           ],
       );
     }
     await conn.query('COMMIT');
-    return { request_id: requestId, senior_empid: senior, record_id: normalizedRecordId };
+    return { request_id: requestId, senior_empid: senior };
   } catch (err) {
     await conn.query('ROLLBACK');
     throw err;
@@ -427,7 +408,6 @@ export async function respondRequest(
     let notificationMessage = 'Request approved';
     let approvalLogAction = 'approve';
     let approvalLogDetails = { proposed_data: proposedData, notes };
-    let finalRecordId = req.record_id;
 
     if (status === 'accepted') {
       const data = proposedData;
@@ -495,65 +475,16 @@ export async function respondRequest(
         approvalLogAction = 'approve_report';
         approvalLogDetails = { proposed_data: normalizedReport, notes };
         notificationMessage = 'Report approval granted';
-      } else if (requestType === 'temporary_insert') {
-        const payload =
-          proposedData && typeof proposedData === 'object' && !Array.isArray(proposedData)
-            ? { ...proposedData }
-            : null;
-        if (!payload) {
-          const err = new Error('invalid_insert_payload');
-          err.status = 400;
-          throw err;
-        }
-        const columns = await listTableColumns(req.table_name);
-        if (columns.includes('created_by') && payload.created_by === undefined) {
-          payload.created_by = req.emp_id;
-        }
-        if (columns.includes('created_at') && payload.created_at === undefined) {
-          payload.created_at = formatDateForDb(new Date());
-        }
-        const keys = Object.keys(payload);
-        if (keys.length === 0) {
-          const err = new Error('invalid_insert_payload');
-          err.status = 400;
-          throw err;
-        }
-        const colsSql = keys.map((k) => `\`${k}\``).join(', ');
-        const placeholders = keys.map(() => '?').join(', ');
-        const values = keys.map((k) => payload[k]);
-        const [insertResult] = await conn.query(
-          `INSERT INTO ?? (${colsSql}) VALUES (${placeholders})`,
-          [req.table_name, ...values],
-        );
-        const pkCols = await getPrimaryKeyColumns(req.table_name);
-        if (pkCols.length === 1) {
-          const col = pkCols[0];
-          const insertedId =
-            insertResult.insertId && insertResult.insertId !== 0
-              ? insertResult.insertId
-              : payload[col];
-          if (insertedId !== undefined && insertedId !== null && insertedId !== '') {
-            finalRecordId = insertedId;
-          }
-        } else if (pkCols.length > 1) {
-          const parts = pkCols.map((col) => payload[col]);
-          if (parts.every((part) => part !== undefined && part !== null && part !== '')) {
-            finalRecordId = parts.join('-');
-          }
-        }
-        approvalLogAction = 'approve_temporary_insert';
-        approvalLogDetails = { proposed_data: payload, notes };
-        notificationMessage = 'Temporary transaction approved';
       }
       await conn.query(
-        `UPDATE pending_request SET status = 'accepted', responded_at = NOW(), response_empid = ?, response_notes = ?, updated_by = ?, updated_at = NOW(), record_id = ? WHERE request_id = ?`,
-        [responseEmpid, notes, responseEmpid, finalRecordId, id],
+        `UPDATE pending_request SET status = 'accepted', responded_at = NOW(), response_empid = ?, response_notes = ?, updated_by = ?, updated_at = NOW() WHERE request_id = ?`,
+        [responseEmpid, notes, responseEmpid, id],
       );
       await logUserAction(
         {
           emp_id: responseEmpid,
           table_name: req.table_name,
-          record_id: finalRecordId,
+          record_id: req.record_id,
           action: approvalLogAction,
           details: approvalLogDetails,
           request_id: id,
@@ -583,20 +514,18 @@ export async function respondRequest(
         }
         declineLogAction = 'decline_report';
         notificationMessage = 'Report approval declined';
-      } else if (requestType === 'temporary_insert') {
-        notificationMessage = 'Temporary transaction declined';
       } else {
         notificationMessage = 'Request declined';
       }
       await conn.query(
-        `UPDATE pending_request SET status = 'declined', responded_at = NOW(), response_empid = ?, response_notes = ?, updated_by = ?, updated_at = NOW(), record_id = ? WHERE request_id = ?`,
-        [responseEmpid, notes, responseEmpid, finalRecordId, id],
+        `UPDATE pending_request SET status = 'declined', responded_at = NOW(), response_empid = ?, response_notes = ?, updated_by = ?, updated_at = NOW() WHERE request_id = ?`,
+        [responseEmpid, notes, responseEmpid, id],
       );
       await logUserAction(
         {
           emp_id: responseEmpid,
           table_name: req.table_name,
-          record_id: finalRecordId,
+          record_id: req.record_id,
           action: declineLogAction,
           details: declineDetails,
           request_id: id,
