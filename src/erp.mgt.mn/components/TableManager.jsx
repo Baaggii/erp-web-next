@@ -3094,7 +3094,7 @@ const TableManager = forwardRef(function TableManager({
                           </button>
                         </>
                       )}
-                      {!isTemporaryRow && (
+                      {!isTemporaryRow ? (
                         !isSubordinate ? (
                           <>
                             {buttonPerms['Edit transaction'] && (
@@ -3134,7 +3134,7 @@ const TableManager = forwardRef(function TableManager({
                             </button>
                           </>
                         )
-                      )}
+                      ) : null}
                       {isTemporaryRow && (
                         <div
                           style={{
