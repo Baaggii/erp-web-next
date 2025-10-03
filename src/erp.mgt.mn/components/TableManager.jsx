@@ -295,6 +295,31 @@ const TableManager = forwardRef(function TableManager({
     [resolveCanonicalKey],
   );
 
+  const normalizeTenantKey = useCallback(
+    (alias) => {
+      if (alias == null) return null;
+      const canonical = resolveCanonicalKey(alias);
+      if (!canonical) return null;
+      return sanitizeName(canonical).replace(/_/g, '');
+    },
+    [resolveCanonicalKey],
+  );
+
+  const hasTenantKey = useCallback(
+    (tenantInfo, key) => {
+      if (!tenantInfo) return false;
+      const target = normalizeTenantKey(key);
+      if (!target) return false;
+      const keys = getTenantKeyList(tenantInfo);
+      for (const rawKey of keys) {
+        const normalized = normalizeTenantKey(rawKey);
+        if (normalized && normalized === target) return true;
+      }
+      return false;
+    },
+    [normalizeTenantKey],
+  );
+
   const fieldTypeMap = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
@@ -1198,8 +1223,7 @@ const TableManager = forwardRef(function TableManager({
 
     const params = new URLSearchParams();
     if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
-      const keys = getTenantKeyList(tenantInfo);
-      if (keys.includes('company_id')) {
+      if (hasTenantKey(tenantInfo, 'company_id')) {
         const companyKey = resolveCanonicalKey('company_id');
         const rowCompanyId = normalizedRow[companyKey];
         if (rowCompanyId != null && rowCompanyId !== '') {
@@ -1208,7 +1232,7 @@ const TableManager = forwardRef(function TableManager({
           params.set('company_id', company);
         }
       }
-      if (keys.includes('branch_id')) {
+      if (hasTenantKey(tenantInfo, 'branch_id')) {
         const branchKey = resolveCanonicalKey('branch_id');
         const rowBranchId = normalizedRow[branchKey];
         if (rowBranchId != null && rowBranchId !== '') {
@@ -1217,7 +1241,7 @@ const TableManager = forwardRef(function TableManager({
           params.set('branch_id', branch);
         }
       }
-      if (keys.includes('department_id')) {
+      if (hasTenantKey(tenantInfo, 'department_id')) {
         const departmentKey = resolveCanonicalKey('department_id');
         const rowDepartmentId = normalizedRow[departmentKey];
         if (rowDepartmentId != null && rowDepartmentId !== '') {
@@ -1290,6 +1314,7 @@ const TableManager = forwardRef(function TableManager({
 
   async function openDetail(row) {
     setDetailRow(row);
+    const normalizedRow = normalizeToCanonical(row);
     const id = getRowId(row);
     if (id !== undefined) {
       let tenantInfo = null;
@@ -1307,13 +1332,33 @@ const TableManager = forwardRef(function TableManager({
       try {
         const params = new URLSearchParams();
         if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
-          const keys = getTenantKeyList(tenantInfo);
-          if (keys.includes('company_id') && company != null)
-            params.set('company_id', company);
-          if (keys.includes('branch_id') && branch != null)
-            params.set('branch_id', branch);
-          if (keys.includes('department_id') && department != null)
-            params.set('department_id', department);
+          if (hasTenantKey(tenantInfo, 'company_id')) {
+            const companyKey = resolveCanonicalKey('company_id');
+            const rowCompanyId = normalizedRow[companyKey];
+            if (rowCompanyId != null && rowCompanyId !== '') {
+              params.set('company_id', rowCompanyId);
+            } else if (company != null) {
+              params.set('company_id', company);
+            }
+          }
+          if (hasTenantKey(tenantInfo, 'branch_id')) {
+            const branchKey = resolveCanonicalKey('branch_id');
+            const rowBranchId = normalizedRow[branchKey];
+            if (rowBranchId != null && rowBranchId !== '') {
+              params.set('branch_id', rowBranchId);
+            } else if (branch != null) {
+              params.set('branch_id', branch);
+            }
+          }
+          if (hasTenantKey(tenantInfo, 'department_id')) {
+            const departmentKey = resolveCanonicalKey('department_id');
+            const rowDepartmentId = normalizedRow[departmentKey];
+            if (rowDepartmentId != null && rowDepartmentId !== '') {
+              params.set('department_id', rowDepartmentId);
+            } else if (department != null) {
+              params.set('department_id', department);
+            }
+          }
         }
         const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references${
           params.toString() ? `?${params.toString()}` : ''
