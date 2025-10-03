@@ -335,6 +335,26 @@ await test('accepted edit requests show original data', async () => {
   assert.equal(queries.length, 2);
 });
 
+await test('listRequests supports grouped request types', async () => {
+  const origQuery = db.pool.query;
+  const captured = [];
+  db.pool.query = async (sql, params) => {
+    captured.push({ sql, params });
+    if (sql.includes('COUNT')) return [[{ count: 0 }]];
+    if (sql.includes('FROM pending_request')) return [[]];
+    throw new Error('unexpected query');
+  };
+  try {
+    await service.listRequests({ request_type: 'changes' });
+  } finally {
+    db.pool.query = origQuery;
+  }
+  const whereClause = captured.find(({ sql }) => sql.includes('FROM pending_request'))?.sql;
+  assert.ok(whereClause?.includes('IN (?, ?)'));
+  const params = captured.find(({ sql }) => sql.includes('FROM pending_request'))?.params || [];
+  assert.deepEqual(params.slice(0, 2).sort(), ['delete', 'edit']);
+});
+
 await test('respondRequest succeeds with prior non-pending entries', async () => {
   const rows = [
     {

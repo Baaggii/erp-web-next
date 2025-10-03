@@ -4,6 +4,15 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
 const STATUSES = ['pending', 'accepted', 'declined'];
+const KNOWN_REQUEST_TYPES = [
+  'edit',
+  'delete',
+  'report_approval',
+  'temporary_insert',
+];
+const REQUEST_TYPE_ALIASES = {
+  changes: ['edit', 'delete'],
+};
 
 function createInitial() {
   return {
@@ -13,10 +22,56 @@ function createInitial() {
   };
 }
 
+function extractRequestTypeTokens(value) {
+  if (value == null || value === '') return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((v) => extractRequestTypeTokens(v));
+  }
+  const str = String(value);
+  return str
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function resolveRequestType(value) {
+  const tokens = extractRequestTypeTokens(value);
+  if (!tokens.length) {
+    return { key: 'all', query: '', types: [] };
+  }
+  const collected = [];
+  tokens.forEach((token) => {
+    const lower = token.toLowerCase();
+    if (REQUEST_TYPE_ALIASES[lower]) {
+      REQUEST_TYPE_ALIASES[lower].forEach((alias) => collected.push(alias));
+      return;
+    }
+    if (KNOWN_REQUEST_TYPES.includes(lower)) {
+      collected.push(lower);
+    }
+  });
+  if (!collected.length) {
+    return { key: 'all', query: '', types: [] };
+  }
+  const unique = Array.from(new Set(collected));
+  const lastToken = tokens[tokens.length - 1]?.toLowerCase();
+  if (lastToken && REQUEST_TYPE_ALIASES[lastToken]) {
+    return { key: lastToken, query: lastToken, types: unique };
+  }
+  if (tokens.length === 1 && KNOWN_REQUEST_TYPES.includes(tokens[0].toLowerCase())) {
+    const type = tokens[0].toLowerCase();
+    return { key: type, query: type, types: unique };
+  }
+  const key = unique.slice().sort().join('+');
+  const query = unique.join(',');
+  return { key, query, types: unique };
+}
+
 export default function useRequestNotificationCounts(
   seniorEmpId,
   filters,
   empid,
+  requestType,
 ) {
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
@@ -26,9 +81,67 @@ export default function useRequestNotificationCounts(
     Number(cfg?.general?.requestPollingIntervalSeconds) ||
     DEFAULT_POLL_INTERVAL_SECONDS;
 
+  const memoFilters = useMemo(() => filters || {}, [filters]);
+  const filterRequestType = memoFilters?.request_type;
+  const combinedRequestTypeSource = useMemo(() => {
+    const sources = [];
+    if (requestType !== undefined && requestType !== null && requestType !== '') {
+      sources.push(requestType);
+    }
+    if (
+      filterRequestType !== undefined &&
+      filterRequestType !== null &&
+      filterRequestType !== ''
+    ) {
+      sources.push(filterRequestType);
+    }
+    if (!sources.length) return '';
+    if (sources.length === 1) return sources[0];
+    return sources;
+  }, [requestType, filterRequestType]);
+
+  const resolvedRequestType = useMemo(
+    () => resolveRequestType(combinedRequestTypeSource),
+    [combinedRequestTypeSource],
+  );
+
+  const requestTypeKey = resolvedRequestType.key || 'all';
+  const requestTypeQuery = resolvedRequestType.query;
+  const requestTypeMatcherKey = useMemo(
+    () =>
+      resolvedRequestType.types.length
+        ? resolvedRequestType.types.slice().sort().join('|')
+        : '',
+    [resolvedRequestType.types],
+  );
+
+  const requestTypeSet = useMemo(() => {
+    if (!requestTypeMatcherKey) return new Set();
+    return new Set(resolvedRequestType.types.map((t) => t.toLowerCase()));
+  }, [requestTypeMatcherKey, resolvedRequestType.types]);
+
+  const matchesRequestType = useCallback(
+    (type) => {
+      if (!requestTypeSet.size) return true;
+      if (!type) return false;
+      return requestTypeSet.has(String(type).trim().toLowerCase());
+    },
+    [requestTypeSet],
+  );
+
+  const sanitizedFilters = useMemo(() => {
+    const base = memoFilters || {};
+    const cleaned = {};
+    Object.entries(base).forEach(([key, value]) => {
+      if (key === 'request_type') return;
+      cleaned[key] = value;
+    });
+    return cleaned;
+  }, [memoFilters]);
+
   const storageKey = useCallback(
-    (type, status) => `${empid}-${type}-${status}-seen`,
-    [empid],
+    (type, status) => `${empid}-${requestTypeKey}-${type}-${status}-seen`,
+    [empid, requestTypeKey],
   );
 
   const markSeen = useCallback(() => {
@@ -50,8 +163,6 @@ export default function useRequestNotificationCounts(
     });
   }, [storageKey]);
 
-  const memoFilters = useMemo(() => filters || {}, [filters]);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -68,11 +179,14 @@ export default function useRequestNotificationCounts(
                 status,
                 senior_empid: String(seniorEmpId),
               });
-              Object.entries(memoFilters).forEach(([k, v]) => {
+              Object.entries(sanitizedFilters).forEach(([k, v]) => {
                 if (v !== undefined && v !== null && v !== '') {
                   params.append(k, v);
                 }
               });
+              if (requestTypeQuery) {
+                params.append('request_type', requestTypeQuery);
+              }
               const res = await fetch(
                 `/api/pending_request?${params.toString()}`,
                 { credentials: 'include', skipLoader: true },
@@ -111,6 +225,14 @@ export default function useRequestNotificationCounts(
           // Outgoing requests (always for current user)
           try {
             const params = new URLSearchParams({ status });
+            Object.entries(sanitizedFilters).forEach(([k, v]) => {
+              if (v !== undefined && v !== null && v !== '') {
+                params.append(k, v);
+              }
+            });
+            if (requestTypeQuery) {
+              params.append('request_type', requestTypeQuery);
+            }
             const res = await fetch(
               `/api/pending_request/outgoing?${params.toString()}`,
               { credentials: 'include', skipLoader: true },
@@ -170,10 +292,22 @@ export default function useRequestNotificationCounts(
     }
 
     let socket;
+    let handleNewRequest;
+    let handleRequestResolved;
     try {
       socket = connectSocket();
-      socket.on('newRequest', fetchCounts);
-      socket.on('requestResolved', fetchCounts);
+      handleNewRequest = (payload = {}) => {
+        if (matchesRequestType(payload.requestType)) {
+          fetchCounts();
+        }
+      };
+      handleRequestResolved = (payload = {}) => {
+        if (matchesRequestType(payload.requestType)) {
+          fetchCounts();
+        }
+      };
+      socket.on('newRequest', handleNewRequest);
+      socket.on('requestResolved', handleRequestResolved);
       if (pollingEnabled) {
         socket.on('connect_error', startPolling);
         socket.on('disconnect', startPolling);
@@ -186,8 +320,9 @@ export default function useRequestNotificationCounts(
     return () => {
       cancelled = true;
       if (socket) {
-        socket.off('newRequest', fetchCounts);
-        socket.off('requestResolved', fetchCounts);
+        if (handleNewRequest) socket.off('newRequest', handleNewRequest);
+        if (handleRequestResolved)
+          socket.off('requestResolved', handleRequestResolved);
         if (pollingEnabled) {
           socket.off('connect_error', startPolling);
           socket.off('disconnect', startPolling);
@@ -197,7 +332,15 @@ export default function useRequestNotificationCounts(
       }
       stopPolling();
     };
-  }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds, storageKey]);
+  }, [
+    seniorEmpId,
+    sanitizedFilters,
+    pollingEnabled,
+    intervalSeconds,
+    storageKey,
+    requestTypeQuery,
+    matchesRequestType,
+  ]);
 
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||
