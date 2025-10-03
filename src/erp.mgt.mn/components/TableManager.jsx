@@ -1201,7 +1201,24 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
 
-    const mergedRow = { ...row, ...record };
+    const normalizeToCanonical = (source) => {
+      if (!source || typeof source !== 'object') return {};
+      const normalized = {};
+      for (const [rawKey, value] of Object.entries(source)) {
+        const canonicalKey =
+          columnCaseMap[String(rawKey).toLowerCase()] ?? rawKey;
+        normalized[canonicalKey] = value;
+      }
+      return normalized;
+    };
+
+    const normalizedRow = normalizeToCanonical(row);
+    const normalizedRecord = normalizeToCanonical(record);
+    const mergedRow = { ...normalizedRow };
+    for (const [key, value] of Object.entries(normalizedRecord)) {
+      mergedRow[key] = value;
+    }
+
     setEditing(mergedRow);
     setGridRows([mergedRow]);
     setIsAdding(false);
