@@ -1270,21 +1270,21 @@ const TableManager = forwardRef(function TableManager({
         const companyKey = resolveCanonicalKey('company_id', localCaseMap);
         const rowCompanyId = normalizedRow[companyKey];
         if (rowCompanyId != null && rowCompanyId !== '') {
-          params.set('company_id', rowCompanyId);
+          params.set(companyKey, rowCompanyId);
         }
       }
       if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
         const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
         const rowBranchId = normalizedRow[branchKey];
         if (rowBranchId != null && rowBranchId !== '') {
-          params.set('branch_id', rowBranchId);
+          params.set(branchKey, rowBranchId);
         }
       }
       if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
         const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
         const rowDepartmentId = normalizedRow[departmentKey];
         if (rowDepartmentId != null && rowDepartmentId !== '') {
-          params.set('department_id', rowDepartmentId);
+          params.set(departmentKey, rowDepartmentId);
         }
       }
     }
@@ -1379,21 +1379,21 @@ const TableManager = forwardRef(function TableManager({
             const companyKey = resolveCanonicalKey('company_id', localCaseMap);
             const rowCompanyId = normalizedRow[companyKey];
             if (rowCompanyId != null && rowCompanyId !== '') {
-              params.set('company_id', rowCompanyId);
+              params.set(companyKey, rowCompanyId);
             }
           }
           if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
             const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
             const rowBranchId = normalizedRow[branchKey];
             if (rowBranchId != null && rowBranchId !== '') {
-              params.set('branch_id', rowBranchId);
+              params.set(branchKey, rowBranchId);
             }
           }
           if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
             const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
             const rowDepartmentId = normalizedRow[departmentKey];
             if (rowDepartmentId != null && rowDepartmentId !== '') {
-              params.set('department_id', rowDepartmentId);
+              params.set(departmentKey, rowDepartmentId);
             }
           }
         }
