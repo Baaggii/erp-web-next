@@ -3094,44 +3094,46 @@ const TableManager = forwardRef(function TableManager({
                           </button>
                         </>
                       )}
-                      {!isTemporaryRow && !isSubordinate ? (
-                        <>
-                          {buttonPerms['Edit transaction'] && (
+                      {!isTemporaryRow ? (
+                        !isSubordinate ? (
+                          <>
+                            {buttonPerms['Edit transaction'] && (
+                              <button
+                                onClick={() => openEdit(r)}
+                                disabled={rid === undefined}
+                                style={actionBtnStyle}
+                              >
+                                🖉 Edit
+                              </button>
+                            )}
+                            {buttonPerms['Delete transaction'] && (
+                              <button
+                                onClick={() => handleDelete(r)}
+                                disabled={rid === undefined}
+                                style={deleteBtnStyle}
+                              >
+                                ❌ Delete
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          <>
                             <button
-                              onClick={() => openEdit(r)}
+                              onClick={() => openRequestEdit(r)}
                               disabled={rid === undefined}
                               style={actionBtnStyle}
                             >
-                              🖉 Edit
+                              📝 Request Edit
                             </button>
-                          )}
-                          {buttonPerms['Delete transaction'] && (
                             <button
-                              onClick={() => handleDelete(r)}
+                              onClick={() => handleRequestDelete(r)}
                               disabled={rid === undefined}
-                              style={deleteBtnStyle}
+                              style={actionBtnStyle}
                             >
-                              ❌ Delete
+                              🗑 Request Delete
                             </button>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <button
-                            onClick={() => openRequestEdit(r)}
-                            disabled={rid === undefined}
-                            style={actionBtnStyle}
-                          >
-                            📝 Request Edit
-                          </button>
-                          <button
-                            onClick={() => handleRequestDelete(r)}
-                            disabled={rid === undefined}
-                            style={actionBtnStyle}
-                          >
-                            🗑 Request Delete
-                          </button>
-                        </>
+                          </>
+                        )
                       ) : null}
                       {isTemporaryRow && (
                         <div
