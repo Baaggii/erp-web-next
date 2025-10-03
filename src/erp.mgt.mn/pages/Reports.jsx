@@ -245,6 +245,27 @@ export default function Reports() {
     lockInfoMeta.tableName,
   ]);
 
+  useEffect(() => {
+    if (!approvalContext) return;
+    if (approvalContext.proposed_data?.procedure !== selectedProc) return;
+    if (!allParamsProvided) return;
+    if (hasLoadedApprovalResult) return;
+    runReport();
+    setHasLoadedApprovalResult(true);
+  }, [
+    approvalContext,
+    selectedProc,
+    allParamsProvided,
+    hasLoadedApprovalResult,
+    runReport,
+  ]);
+
+  useEffect(() => {
+    if (!approvalContext) {
+      setHasLoadedApprovalResult(false);
+    }
+  }, [approvalContext]);
+
   const autoParams = useMemo(() => {
     return procParams.map((p) => {
       const name = p.toLowerCase();
@@ -269,27 +290,6 @@ export default function Reports() {
     () => finalParams.every((v) => v !== null && v !== ''),
     [finalParams],
   );
-
-  useEffect(() => {
-    if (!approvalContext) return;
-    if (approvalContext.proposed_data?.procedure !== selectedProc) return;
-    if (!allParamsProvided) return;
-    if (hasLoadedApprovalResult) return;
-    runReport();
-    setHasLoadedApprovalResult(true);
-  }, [
-    approvalContext,
-    selectedProc,
-    allParamsProvided,
-    hasLoadedApprovalResult,
-    runReport,
-  ]);
-
-  useEffect(() => {
-    if (!approvalContext) {
-      setHasLoadedApprovalResult(false);
-    }
-  }, [approvalContext]);
 
   const normalizedTransactionsForRequest = useCallback(
     (transactions) => {
