@@ -4,4 +4,7 @@ Legacy migrations have been moved to the `archive/` directory. New migrations sh
 
 ## Current migrations
 
-- `2025-10-30_code_identifier_columns.sql` — adds the `chig_id`, `torol_id`, and `baitsaagch_id` lookup identifiers now represented in the schema baseline.
+All identifier column changes from `2025-10-30_code_identifier_columns.sql` have been
+applied to the live database and folded into `../schema.sql`. The historical script is
+retained under `archive/2025-10-30_code_identifier_columns.sql` for reference, so there
+are currently no pending migrations in this directory.

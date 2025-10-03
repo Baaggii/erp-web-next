@@ -4,7 +4,7 @@ ALTER TABLE `code_chiglel`
   ADD UNIQUE KEY `uniq_company_chig_id` (`company_id`, `chig_id`);
 
 ALTER TABLE `code_torol`
-  ADD COLUMN `torol_id` varchar(50) DEFAULT NULL AFTER `id`,
+  ADD COLUMN `torol_id` int NOT NULL AFTER `id`,
   ADD UNIQUE KEY `uniq_company_torol_id` (`company_id`, `torol_id`);
 
 ALTER TABLE `code_huvaari`

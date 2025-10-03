@@ -642,11 +642,11 @@ CREATE TABLE `code_torol` (
   `id` int NOT NULL,
   `torol_id` int NOT NULL,
   `name` varchar(100) NOT NULL,
-  `company_id` int NOT NULL DEFAULT '2',
-  `created_by` varchar(50) DEFAULT NULL,
+  `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_by` varchar(50) DEFAULT NULL,
+  `created_by` varchar(50) NOT NULL,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -4411,8 +4411,8 @@ ALTER TABLE `code_talbai`
 -- Indexes for table `code_torol`
 --
 ALTER TABLE `code_torol`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `torol_id` (`torol_id`,`company_id`);
+  ADD PRIMARY KEY (`company_id`,`id`),
+  ADD UNIQUE KEY `uniq_company_torol_id` (`company_id`,`torol_id`);
 
 --
 -- Indexes for table `code_transaction`
