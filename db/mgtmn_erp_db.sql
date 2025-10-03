@@ -4337,6 +4337,7 @@ ALTER TABLE `code_frequency`
 --
 ALTER TABLE `code_huvaari`
   ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_company_huvaari_id` (`company_id`,`huvaari_id`),
   ADD KEY `position_id` (`position_id`);
 
 --

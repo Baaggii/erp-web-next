@@ -259,8 +259,8 @@ CREATE TABLE `code_frequency` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 CREATE TABLE `code_huvaari` (
   `id` int NOT NULL,
+  `huvaari_id` int NOT NULL,
   `position_id` int NOT NULL,
-  `baitsaagch_id` varchar(50) DEFAULT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '0',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2263,7 +2263,7 @@ ALTER TABLE `code_frequency`
   ADD PRIMARY KEY (`company_id`, `id`);
 ALTER TABLE `code_huvaari`
   ADD PRIMARY KEY (`company_id`, `id`),
-  ADD UNIQUE KEY `uniq_company_baitsaagch_id` (`company_id`, `baitsaagch_id`),
+  ADD UNIQUE KEY `uniq_company_huvaari_id` (`company_id`, `huvaari_id`),
   ADD KEY `position_id` (`company_id`, `position_id`);
 ALTER TABLE `code_incometype`
   ADD PRIMARY KEY (`company_id`, `id`);
