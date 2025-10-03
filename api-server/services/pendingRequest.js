@@ -100,10 +100,15 @@ export async function createRequest({
   try {
     await conn.query('BEGIN');
     const [rows] = await conn.query(
-      'SELECT employment_senior_empid FROM tbl_employment WHERE employment_emp_id = ? LIMIT 1',
+      'SELECT employment_senior_empid, employment_senior_plan_empid FROM tbl_employment WHERE employment_emp_id = ? LIMIT 1',
       [empId],
     );
-    const seniorRaw = rows[0]?.employment_senior_empid;
+    const seniorRawBase = rows[0]?.employment_senior_empid;
+    const seniorRawPlan = rows[0]?.employment_senior_plan_empid;
+    const seniorRaw =
+      requestType === 'report_approval'
+        ? seniorRawPlan || seniorRawBase
+        : seniorRawBase;
     const senior = seniorRaw ? String(seniorRaw).trim().toUpperCase() : null;
     let normalizedRecordId =
       recordId != null && recordId !== ''
