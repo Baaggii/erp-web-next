@@ -15,7 +15,17 @@ export default function HeaderMenu({ onOpen }) {
   const generalConfig = useGeneralConfig();
   const items = filterHeaderModules(modules, perms, txnModules);
   const headerMap = useHeaderMappings(items.map((m) => m.module_key));
-  const { hasNew } = usePendingRequests();
+  const { hasNew, categories, order } = usePendingRequests();
+
+  const totalPendingIncoming = order.reduce((sum, key) => {
+    const pending = categories?.[key]?.incoming?.pending?.count || 0;
+    return sum + pending;
+  }, 0);
+  const totalNewIncoming = order.reduce((sum, key) => {
+    const entry = categories?.[key]?.incoming?.pending;
+    if (!entry?.hasNew) return sum;
+    return sum + (entry.newCount || 0);
+  }, 0);
 
   // Build a quick lookup map so we can resolve module paths
   const moduleMap = {};
@@ -52,6 +62,12 @@ export default function HeaderMenu({ onOpen }) {
           >
             {badgeKeys.has(m.module_key) && <span style={styles.badge} />}
             {label}
+            {m.module_key === 'requests' && totalPendingIncoming > 0 && (
+              <span style={styles.countBadge}>{totalPendingIncoming}</span>
+            )}
+            {m.module_key === 'requests' && totalNewIncoming > 0 && (
+              <span style={styles.newBadge}>+{totalNewIncoming}</span>
+            )}
           </button>
         );
       })}
@@ -68,7 +84,10 @@ const styles = {
     cursor: 'pointer',
     fontSize: '0.9rem',
     marginRight: '0.75rem',
-    position: 'relative'
+    position: 'relative',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.35rem',
   },
   badge: {
     background: 'red',
@@ -77,5 +96,19 @@ const styles = {
     height: '8px',
     display: 'inline-block',
     marginRight: '4px'
+  },
+  countBadge: {
+    background: '#1d4ed8',
+    color: '#fff',
+    borderRadius: '999px',
+    padding: '0 0.45rem',
+    fontSize: '0.75rem',
+  },
+  newBadge: {
+    background: '#dc2626',
+    color: '#fff',
+    borderRadius: '999px',
+    padding: '0 0.35rem',
+    fontSize: '0.7rem',
   }
 };

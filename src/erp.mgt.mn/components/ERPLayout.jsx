@@ -16,7 +16,10 @@ import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
-import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
+import {
+  PendingRequestContext,
+  REQUEST_CATEGORY_CONFIG,
+} from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS, ACTIONS, EVENTS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
 import { useToast } from "../context/ToastContext.jsx";
@@ -2606,11 +2609,98 @@ export default function ERPLayout() {
     session && user?.empid && !(Number(session.senior_empid) > 0)
       ? user.empid
       : null;
-  const requestNotifications = useRequestNotificationCounts(
+  const changeNotifications = useRequestNotificationCounts(
     seniorEmpId,
     undefined,
     user?.empid,
+    'changes',
   );
+  const reportApprovalNotifications = useRequestNotificationCounts(
+    seniorEmpId,
+    undefined,
+    user?.empid,
+    'report_approval',
+  );
+  const temporaryInsertNotifications = useRequestNotificationCounts(
+    seniorEmpId,
+    undefined,
+    user?.empid,
+    'temporary_insert',
+  );
+
+  const requestNotifications = useMemo(() => {
+    const categoryMap = {
+      changes: changeNotifications,
+      report_approval: reportApprovalNotifications,
+      temporary_insert: temporaryInsertNotifications,
+    };
+
+    const createEmpty = () => ({
+      pending: { count: 0, hasNew: false, newCount: 0 },
+      accepted: { count: 0, hasNew: false, newCount: 0 },
+      declined: { count: 0, hasNew: false, newCount: 0 },
+    });
+
+    const categories = {};
+    REQUEST_CATEGORY_CONFIG.forEach((config) => {
+      const counts = categoryMap[config.key];
+      const incoming = counts?.incoming ? { ...counts.incoming } : createEmpty();
+      const outgoing = counts?.outgoing ? { ...counts.outgoing } : createEmpty();
+      categories[config.key] = {
+        key: config.key,
+        label: config.label,
+        requestType: config.requestType,
+        incoming,
+        outgoing,
+        hasNew: !!counts?.hasNew,
+        markSeen: counts?.markSeen || (() => {}),
+      };
+    });
+
+    const aggregateDirection = (direction) => {
+      const aggregate = createEmpty();
+      ['pending', 'accepted', 'declined'].forEach((status) => {
+        let count = 0;
+        let newCount = 0;
+        let hasNew = false;
+        REQUEST_CATEGORY_CONFIG.forEach((config) => {
+          const entry = categoryMap[config.key]?.[direction]?.[status];
+          if (!entry) return;
+          count += Number(entry.count) || 0;
+          newCount += Number(entry.newCount) || 0;
+          if (entry.hasNew) hasNew = true;
+        });
+        aggregate[status] = { count, newCount, hasNew };
+      });
+      return aggregate;
+    };
+
+    const incoming = aggregateDirection('incoming');
+    const outgoing = aggregateDirection('outgoing');
+
+    const markSeen = () => {
+      REQUEST_CATEGORY_CONFIG.forEach((config) => {
+        const entry = categoryMap[config.key];
+        entry?.markSeen?.();
+      });
+    };
+
+    const hasNew = REQUEST_CATEGORY_CONFIG.some(
+      (config) => categoryMap[config.key]?.hasNew,
+    );
+    return {
+      categories,
+      order: REQUEST_CATEGORY_CONFIG.map((config) => config.key),
+      hasNew,
+      incoming,
+      outgoing,
+      markSeen,
+    };
+  }, [
+    changeNotifications,
+    reportApprovalNotifications,
+    temporaryInsertNotifications,
+  ]);
 
   useEffect(() => {
     const title = titleForPath(location.pathname);
