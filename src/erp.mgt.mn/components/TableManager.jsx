@@ -264,6 +264,19 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [columnMeta]);
 
+  const normalizeToCanonical = useCallback(
+    (source) => {
+      if (!source || typeof source !== 'object') return {};
+      const normalized = {};
+      for (const [rawKey, value] of Object.entries(source)) {
+        const canonicalKey = columnCaseMap[String(rawKey).toLowerCase()] ?? rawKey;
+        normalized[canonicalKey] = value;
+      }
+      return normalized;
+    },
+    [columnCaseMap],
+  );
+
   const fieldTypeMap = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
@@ -1149,6 +1162,8 @@ const TableManager = forwardRef(function TableManager({
     const id = getRowId(row);
     addToast(t('loading_record', 'Loading record...'));
 
+    const normalizedRow = normalizeToCanonical(row);
+
     let tenantInfo = null;
     try {
       const ttRes = await fetch(
@@ -1165,12 +1180,33 @@ const TableManager = forwardRef(function TableManager({
     const params = new URLSearchParams();
     if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
       const keys = getTenantKeyList(tenantInfo);
-      if (keys.includes('company_id') && company != null)
-        params.set('company_id', company);
-      if (keys.includes('branch_id') && branch != null)
-        params.set('branch_id', branch);
-      if (keys.includes('department_id') && department != null)
-        params.set('department_id', department);
+      if (keys.includes('company_id')) {
+        const companyKey = columnCaseMap['company_id'] ?? 'company_id';
+        const rowCompanyId = normalizedRow[companyKey];
+        if (rowCompanyId != null && rowCompanyId !== '') {
+          params.set('company_id', rowCompanyId);
+        } else if (company != null) {
+          params.set('company_id', company);
+        }
+      }
+      if (keys.includes('branch_id')) {
+        const branchKey = columnCaseMap['branch_id'] ?? 'branch_id';
+        const rowBranchId = normalizedRow[branchKey];
+        if (rowBranchId != null && rowBranchId !== '') {
+          params.set('branch_id', rowBranchId);
+        } else if (branch != null) {
+          params.set('branch_id', branch);
+        }
+      }
+      if (keys.includes('department_id')) {
+        const departmentKey = columnCaseMap['department_id'] ?? 'department_id';
+        const rowDepartmentId = normalizedRow[departmentKey];
+        if (rowDepartmentId != null && rowDepartmentId !== '') {
+          params.set('department_id', rowDepartmentId);
+        } else if (department != null) {
+          params.set('department_id', department);
+        }
+      }
     }
 
     const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
@@ -1201,18 +1237,6 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
 
-    const normalizeToCanonical = (source) => {
-      if (!source || typeof source !== 'object') return {};
-      const normalized = {};
-      for (const [rawKey, value] of Object.entries(source)) {
-        const canonicalKey =
-          columnCaseMap[String(rawKey).toLowerCase()] ?? rawKey;
-        normalized[canonicalKey] = value;
-      }
-      return normalized;
-    };
-
-    const normalizedRow = normalizeToCanonical(row);
     const normalizedRecord = normalizeToCanonical(record);
     const mergedRow = { ...normalizedRow };
     for (const [key, value] of Object.entries(normalizedRecord)) {
