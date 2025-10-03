@@ -152,74 +152,6 @@ if (!haveReact) {
     unmount3();
   });
 
-  test('request notification counts honor request type filter', async (t) => {
-    const store = {};
-    global.localStorage = {
-      getItem: (k) => (k in store ? store[k] : null),
-      setItem: (k, v) => {
-        store[k] = String(v);
-      },
-      removeItem: (k) => {
-        delete store[k];
-      },
-      clear: () => {
-        for (const k in store) delete store[k];
-      },
-    };
-    localStorage.clear();
-
-    const seenTypes = [];
-    global.fetch = async (url) => {
-      const u = new URL(url, 'http://example.com');
-      if (
-        u.pathname === '/api/pending_request' ||
-        u.pathname === '/api/pending_request/outgoing'
-      ) {
-        seenTypes.push(u.searchParams.get('request_type'));
-        return { ok: true, json: async () => ({ rows: [], total: 0 }) };
-      }
-      return { ok: true, json: async () => ({}) };
-    };
-
-    const { default: useRequestNotificationCounts } = await t.mock.import(
-      '../../src/erp.mgt.mn/hooks/useRequestNotificationCounts.js',
-      {
-        '../utils/socket.js': {
-          connectSocket: () => ({ on: () => {}, off: () => {} }),
-          disconnectSocket: () => {},
-        },
-        '../hooks/useGeneralConfig.js': {
-          default: () => ({ general: { requestPollingEnabled: false } }),
-        },
-      },
-    );
-
-    const { value, unmount } = renderHook(() =>
-      useRequestNotificationCounts(5, undefined, 'u1', 'report_approval'),
-    );
-    await act(async () => {
-      await Promise.resolve();
-    });
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    assert.ok(seenTypes.every((type) => type === 'report_approval'));
-    assert.equal(
-      localStorage.getItem('u1-report_approval-incoming-pending-seen'),
-      '0',
-    );
-
-    act(() => {
-      value.markSeen();
-    });
-    assert.equal(
-      localStorage.getItem('u1-report_approval-outgoing-accepted-seen'),
-      '0',
-    );
-    unmount();
-  });
-
   test('stale counts cleared when server reports zero', async (t) => {
     const store = {};
     global.localStorage = {
@@ -235,8 +167,8 @@ if (!haveReact) {
       },
     };
     localStorage.clear();
-    localStorage.setItem('u1-all-incoming-pending-seen', '5');
-    localStorage.setItem('u1-all-outgoing-accepted-seen', '3');
+    localStorage.setItem('u1-incoming-pending-seen', '5');
+    localStorage.setItem('u1-outgoing-accepted-seen', '3');
 
     global.fetch = async (url) => {
       const u = new URL(url, 'http://example.com');
@@ -276,8 +208,8 @@ if (!haveReact) {
     assert.equal(value.incoming.pending.newCount, 0);
     assert.equal(value.outgoing.accepted.hasNew, false);
     assert.equal(value.outgoing.accepted.newCount, 0);
-    assert.equal(localStorage.getItem('u1-all-incoming-pending-seen'), '0');
-    assert.equal(localStorage.getItem('u1-all-outgoing-accepted-seen'), '0');
+    assert.equal(localStorage.getItem('u1-incoming-pending-seen'), '0');
+    assert.equal(localStorage.getItem('u1-outgoing-accepted-seen'), '0');
 
     unmount();
   });
