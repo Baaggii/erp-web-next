@@ -1,12 +1,5 @@
--- Add identifier columns for hierarchical code tables
+-- Ensure code_chiglel identifiers use integer values and enforced uniqueness
 ALTER TABLE `code_chiglel`
-  ADD COLUMN `chig_id` varchar(50) DEFAULT NULL AFTER `id`,
+  MODIFY COLUMN `chig_id` int NOT NULL,
+  DROP INDEX `uniq_company_chig_id`,
   ADD UNIQUE KEY `uniq_company_chig_id` (`company_id`, `chig_id`);
-
-ALTER TABLE `code_torol`
-  ADD COLUMN `torol_id` varchar(50) DEFAULT NULL AFTER `id`,
-  ADD UNIQUE KEY `uniq_company_torol_id` (`company_id`, `torol_id`);
-
-ALTER TABLE `code_huvaari`
-  ADD COLUMN `baitsaagch_id` varchar(50) DEFAULT NULL AFTER `position_id`,
-  ADD UNIQUE KEY `uniq_company_baitsaagch_id` (`company_id`, `baitsaagch_id`);

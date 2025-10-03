@@ -4268,7 +4268,8 @@ ALTER TABLE `code_cashier`
 -- Indexes for table `code_chiglel`
 --
 ALTER TABLE `code_chiglel`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_company_chig_id` (`company_id`,`chig_id`);
 
 --
 -- Indexes for table `code_department`
