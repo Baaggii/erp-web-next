@@ -259,22 +259,40 @@ const TableManager = forwardRef(function TableManager({
   const columnCaseMap = useMemo(() => {
     const map = {};
     columnMeta.forEach((c) => {
-      map[c.name.toLowerCase()] = c.name;
+      if (!c?.name) return;
+      const lower = String(c.name).toLowerCase();
+      map[lower] = c.name;
+      const stripped = lower.replace(/_/g, '');
+      if (!map[stripped]) {
+        map[stripped] = c.name;
+      }
     });
     return map;
   }, [columnMeta]);
+
+  const resolveCanonicalKey = useCallback(
+    (alias) => {
+      if (alias == null) return alias;
+      const lower = String(alias).toLowerCase();
+      if (columnCaseMap[lower]) return columnCaseMap[lower];
+      const stripped = lower.replace(/_/g, '');
+      if (columnCaseMap[stripped]) return columnCaseMap[stripped];
+      return typeof alias === 'string' ? alias : String(alias);
+    },
+    [columnCaseMap],
+  );
 
   const normalizeToCanonical = useCallback(
     (source) => {
       if (!source || typeof source !== 'object') return {};
       const normalized = {};
       for (const [rawKey, value] of Object.entries(source)) {
-        const canonicalKey = columnCaseMap[String(rawKey).toLowerCase()] ?? rawKey;
+        const canonicalKey = resolveCanonicalKey(rawKey);
         normalized[canonicalKey] = value;
       }
       return normalized;
     },
-    [columnCaseMap],
+    [resolveCanonicalKey],
   );
 
   const fieldTypeMap = useMemo(() => {
@@ -323,22 +341,22 @@ const TableManager = forwardRef(function TableManager({
         col.generation_expression ??
         null;
       if (!rawName || !expr) return;
-      const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
+      const key = resolveCanonicalKey(rawName);
       if (typeof key !== 'string') return;
       const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
       if (evaluator) evaluators[key] = evaluator;
     });
     return evaluators;
-  }, [columnMeta, columnCaseMap]);
+  }, [columnMeta, columnCaseMap, resolveCanonicalKey]);
 
   const viewSourceMap = useMemo(() => {
     const map = {};
     Object.entries(formConfig?.viewSource || {}).forEach(([k, v]) => {
-      const key = columnCaseMap[k.toLowerCase()] || k;
+      const key = resolveCanonicalKey(k);
       map[key] = v;
     });
     return map;
-  }, [formConfig?.viewSource, columnCaseMap]);
+  }, [formConfig?.viewSource, resolveCanonicalKey]);
 
   const branchIdFields = useMemo(() => {
     if (formConfig?.branchIdFields?.length)
@@ -703,7 +721,7 @@ const TableManager = forwardRef(function TableManager({
         if (canceled) return;
         const map = {};
         rels.forEach((r) => {
-          const key = columnCaseMap[r.COLUMN_NAME.toLowerCase()] || r.COLUMN_NAME;
+          const key = resolveCanonicalKey(r.COLUMN_NAME);
           map[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
@@ -873,7 +891,7 @@ const TableManager = forwardRef(function TableManager({
           setRefRows(rowMap);
           const remap = {};
           Object.entries(cfgMap).forEach(([k, v]) => {
-            const key = columnCaseMap[k.toLowerCase()] || k;
+            const key = resolveCanonicalKey(k);
             remap[key] = v;
           });
           setRelationConfigs(remap);
@@ -890,7 +908,7 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [table, columnCaseMap, company, branch, department]);
+  }, [table, company, branch, department, resolveCanonicalKey]);
 
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
@@ -998,9 +1016,10 @@ const TableManager = forwardRef(function TableManager({
   function getCase(obj, field) {
     if (!obj) return undefined;
     if (obj[field] !== undefined) return obj[field];
-    const lower = field.toLowerCase();
-    if (obj[columnCaseMap[lower]] !== undefined) return obj[columnCaseMap[lower]];
-    const key = Object.keys(obj).find((k) => k.toLowerCase() === lower);
+    const canonical = resolveCanonicalKey(field);
+    if (canonical != null && obj[canonical] !== undefined) return obj[canonical];
+    const lower = String(field).toLowerCase();
+    const key = Object.keys(obj).find((k) => String(k).toLowerCase() === lower);
     return key ? obj[key] : undefined;
   }
 
@@ -1181,7 +1200,7 @@ const TableManager = forwardRef(function TableManager({
     if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
       const keys = getTenantKeyList(tenantInfo);
       if (keys.includes('company_id')) {
-        const companyKey = columnCaseMap['company_id'] ?? 'company_id';
+        const companyKey = resolveCanonicalKey('company_id');
         const rowCompanyId = normalizedRow[companyKey];
         if (rowCompanyId != null && rowCompanyId !== '') {
           params.set('company_id', rowCompanyId);
@@ -1190,7 +1209,7 @@ const TableManager = forwardRef(function TableManager({
         }
       }
       if (keys.includes('branch_id')) {
-        const branchKey = columnCaseMap['branch_id'] ?? 'branch_id';
+        const branchKey = resolveCanonicalKey('branch_id');
         const rowBranchId = normalizedRow[branchKey];
         if (rowBranchId != null && rowBranchId !== '') {
           params.set('branch_id', rowBranchId);
@@ -1199,7 +1218,7 @@ const TableManager = forwardRef(function TableManager({
         }
       }
       if (keys.includes('department_id')) {
-        const departmentKey = columnCaseMap['department_id'] ?? 'department_id';
+        const departmentKey = resolveCanonicalKey('department_id');
         const rowDepartmentId = normalizedRow[departmentKey];
         if (rowDepartmentId != null && rowDepartmentId !== '') {
           params.set('department_id', rowDepartmentId);
@@ -1410,7 +1429,7 @@ const TableManager = forwardRef(function TableManager({
             rowKeyMap[k.toLowerCase()] = k;
           });
           conf.displayFields.forEach((df) => {
-            const key = columnCaseMap[df.toLowerCase()];
+            const key = resolveCanonicalKey(df);
             const rk = rowKeyMap[df.toLowerCase()];
             if (key && rk && row[rk] !== undefined) {
               next[key] = row[rk];
@@ -1479,7 +1498,7 @@ const TableManager = forwardRef(function TableManager({
             if (!e) return e;
             const updated = { ...e };
             Object.entries(row).forEach(([k, v]) => {
-              const key = columnCaseMap[k.toLowerCase()];
+              const key = resolveCanonicalKey(k);
               if (key && updated[key] === undefined) {
                 updated[key] = v;
               }
