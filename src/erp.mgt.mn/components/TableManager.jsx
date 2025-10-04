@@ -1588,8 +1588,14 @@ const TableManager = forwardRef(function TableManager({
     }
 
     let payload = null;
+    let lastResponseInfo = null;
     try {
       const res = await fetch(url, { credentials: 'include' });
+      lastResponseInfo = {
+        status: res?.status,
+        statusText: res?.statusText,
+        url,
+      };
       if (!res.ok) {
         if (txnToastEnabled) {
           addToast(
@@ -1624,6 +1630,19 @@ const TableManager = forwardRef(function TableManager({
         );
       }
     } catch (err) {
+      if (txnToastEnabled) {
+        addToast(
+          `Transaction toast: Edit flow failed ${formatTxnToastPayload({
+            error: {
+              message: err?.message ?? String(err),
+              stack: err?.stack,
+              name: err?.name,
+            },
+            response: lastResponseInfo,
+          })}`,
+          'error',
+        );
+      }
       addToast(t('failed_load_record', 'Failed to load record details'), 'error');
       return;
     }
