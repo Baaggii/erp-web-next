@@ -4341,12 +4341,18 @@ export async function updateTableRow(
   updates,
   companyId,
   conn = pool,
+  options = {},
 ) {
+  const {
+    ignoreTransactionLock = false,
+    mutationContext = null,
+    onLockInvalidation,
+  } = options ?? {};
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(updates);
   await ensureValidColumns(tableName, columns, keys);
   if (keys.length === 0) return { id };
-  if (tableName && tableName.startsWith('transactions_')) {
+  if (!ignoreTransactionLock && tableName && tableName.startsWith('transactions_')) {
     const locked = await isTransactionLocked(
       {
         tableName,
@@ -4387,6 +4393,7 @@ export async function updateTableRow(
     throw err;
   }
 
+  let result;
   if (pkCols.length === 1) {
     const col = pkCols[0];
     let where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
@@ -4399,24 +4406,41 @@ export async function updateTableRow(
       `UPDATE ?? SET ${setClause} WHERE ${where}`,
       [tableName, ...values, ...whereParams],
     );
-    return { [col]: id };
+    result = { [col]: id };
+  } else {
+    const parts = parseCompositeRowId(id, pkCols.length);
+    let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+    const whereParams = [...parts];
+    if (addCompanyFilter) {
+      where += ' AND `company_id` = ?';
+      whereParams.push(companyId);
+    }
+    await conn.query(
+      `UPDATE ?? SET ${setClause} WHERE ${where}`,
+      [tableName, ...values, ...whereParams],
+    );
+    result = {};
+    pkCols.forEach((c, i) => {
+      result[c] = parts[i];
+    });
   }
-
-  const parts = parseCompositeRowId(id, pkCols.length);
-  let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-  const whereParams = [...parts];
-  if (addCompanyFilter) {
-    where += ' AND `company_id` = ?';
-    whereParams.push(companyId);
+  if (tableName && tableName.startsWith('transactions_')) {
+    const lockImpacts = await handleReportLockReapproval({
+      conn,
+      tableName,
+      companyId,
+      recordIds: [String(id)],
+      changedBy:
+        mutationContext?.changedBy ??
+        updates?.updated_by ??
+        updates?.updatedBy ??
+        null,
+      reason: 'update',
+    });
+    if (lockImpacts?.length && typeof onLockInvalidation === 'function') {
+      await onLockInvalidation(lockImpacts);
+    }
   }
-  await conn.query(
-    `UPDATE ?? SET ${setClause} WHERE ${where}`,
-    [tableName, ...values, ...whereParams],
-  );
-  const result = {};
-  pkCols.forEach((c, i) => {
-    result[c] = parts[i];
-  });
   return result;
 }
 
@@ -4427,7 +4451,10 @@ export async function insertTableRow(
   seedRecords,
   overwrite = false,
   userId = null,
+  options = {},
 ) {
+  const { conn = pool, mutationContext = null, onLockInvalidation } =
+    options ?? {};
   const columns = await getTableColumnsSafe(tableName);
   const keys = Object.keys(row);
   logDb(`insertTableRow(${tableName}) columns=${keys.join(', ')}`);
@@ -4436,7 +4463,7 @@ export async function insertTableRow(
   const values = Object.values(row);
   const cols = keys.map((k) => `\`${k}\``).join(', ');
   const placeholders = keys.map(() => '?').join(', ');
-  const [result] = await pool.query(
+  const [result] = await conn.query(
     `INSERT INTO ?? (${cols}) VALUES (${placeholders})`,
     [tableName, ...values],
   );
@@ -4453,7 +4480,33 @@ export async function insertTableRow(
       );
     }
   }
-  return { id: result.insertId };
+  const insertId = result.insertId;
+  let normalizedInsertId =
+    insertId && insertId !== 0 ? String(insertId) : null;
+  if (!normalizedInsertId && row && row.id !== undefined && row.id !== null) {
+    normalizedInsertId = String(row.id);
+  }
+  if (tableName && tableName.startsWith('transactions_')) {
+    const companyIdValue =
+      mutationContext?.companyId ??
+      row?.company_id ??
+      row?.companyId ??
+      null;
+    const changedBy =
+      mutationContext?.changedBy ?? userId ?? row?.created_by ?? null;
+    const lockImpacts = await handleReportLockReapproval({
+      conn,
+      tableName,
+      companyId: companyIdValue,
+      recordIds: normalizedInsertId ? [normalizedInsertId] : [],
+      changedBy,
+      reason: 'insert',
+    });
+    if (lockImpacts?.length && typeof onLockInvalidation === 'function') {
+      await onLockInvalidation(lockImpacts);
+    }
+  }
+  return { id: insertId };
 }
 
 export async function deleteTableRow(
@@ -4468,16 +4521,16 @@ export async function deleteTableRow(
     companyIdFilter,
     softDeleteCompanyId,
     ignoreTransactionLock = false,
+    mutationContext = null,
+    onLockInvalidation,
   } = options ?? {};
   const effectiveCompanyIdForFilter =
     companyIdFilter !== undefined ? companyIdFilter : companyId;
   const effectiveCompanyIdForSoftDelete =
     softDeleteCompanyId !== undefined ? softDeleteCompanyId : companyId;
-  if (
-    !ignoreTransactionLock &&
-    tableName &&
-    tableName.startsWith('transactions_')
-  ) {
+  const isTransactionTable =
+    tableName && tableName.startsWith('transactions_');
+  if (!ignoreTransactionLock && isTransactionTable) {
     const locked = await isTransactionLocked(
       {
         tableName,
@@ -4525,6 +4578,7 @@ export async function deleteTableRow(
     hasCompanyId &&
     !pkLower.includes('company_id');
 
+  let result;
   if (pkCols.length === 1) {
     const col = pkCols[0];
     let where = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
@@ -4544,31 +4598,44 @@ export async function deleteTableRow(
     } else {
       await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...whereParams]);
     }
-    return { [col]: id };
-  }
-
-  const parts = parseCompositeRowId(id, pkCols.length);
-  let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
-  const whereParams = [...parts];
-  if (addCompanyFilter) {
-    where += ' AND `company_id` = ?';
-    whereParams.push(effectiveCompanyIdForFilter);
-  }
-  const { clause, params: softParams, supported } =
-    buildSoftDeleteUpdateClause(columns, softCol, userId);
-  if (supported) {
-    await conn.query(`UPDATE ?? SET ${clause} WHERE ${where}`, [
-      tableName,
-      ...softParams,
-      ...whereParams,
-    ]);
+    result = { [col]: id };
   } else {
-    await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...whereParams]);
+    const parts = parseCompositeRowId(id, pkCols.length);
+    let where = pkCols.map((c) => `\`${c}\` = ?`).join(' AND ');
+    const whereParams = [...parts];
+    if (addCompanyFilter) {
+      where += ' AND `company_id` = ?';
+      whereParams.push(effectiveCompanyIdForFilter);
+    }
+    const { clause, params: softParams, supported } =
+      buildSoftDeleteUpdateClause(columns, softCol, userId);
+    if (supported) {
+      await conn.query(`UPDATE ?? SET ${clause} WHERE ${where}`, [
+        tableName,
+        ...softParams,
+        ...whereParams,
+      ]);
+    } else {
+      await conn.query(`DELETE FROM ?? WHERE ${where}`, [tableName, ...whereParams]);
+    }
+    result = {};
+    pkCols.forEach((c, i) => {
+      result[c] = parts[i];
+    });
   }
-  const result = {};
-  pkCols.forEach((c, i) => {
-    result[c] = parts[i];
-  });
+  if (isTransactionTable) {
+    const lockImpacts = await handleReportLockReapproval({
+      conn,
+      tableName,
+      companyId: effectiveCompanyIdForFilter ?? companyId,
+      recordIds: [String(id)],
+      changedBy: mutationContext?.changedBy ?? userId ?? null,
+      reason: 'delete',
+    });
+    if (lockImpacts?.length && typeof onLockInvalidation === 'function') {
+      await onLockInvalidation(lockImpacts);
+    }
+  }
   return result;
 }
 
@@ -5190,6 +5257,377 @@ export async function isTransactionLocked(
     if (err?.code === 'ER_NO_SUCH_TABLE') return false;
     throw err;
   }
+}
+
+function normalizeLockEmpId(value) {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
+let reportLockStatusColumnCache = null;
+
+async function getReportLockStatusColumnInfo() {
+  if (reportLockStatusColumnCache) return reportLockStatusColumnCache;
+  try {
+    const columns = await getTableColumnsSafe('report_transaction_locks');
+    const lower = new Set(columns.map((c) => String(c).toLowerCase()));
+    reportLockStatusColumnCache = {
+      exists: true,
+      changedBy: lower.has('status_changed_by'),
+      changedAt: lower.has('status_changed_at'),
+    };
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') {
+      reportLockStatusColumnCache = {
+        exists: false,
+        changedBy: false,
+        changedAt: false,
+      };
+    } else {
+      throw err;
+    }
+  }
+  return reportLockStatusColumnCache;
+}
+
+async function setLocksPendingForRecords({
+  conn,
+  tableName,
+  recordIds,
+  companyId,
+  changedBy,
+  columnInfo,
+}) {
+  if (!Array.isArray(recordIds) || recordIds.length === 0) return [];
+  const normalizedIds = recordIds
+    .map((value) => (value === undefined || value === null ? null : String(value)))
+    .filter((value) => value !== null && value !== '');
+  if (normalizedIds.length === 0) return [];
+  const placeholders = normalizedIds.map(() => '?').join(', ');
+  const selectParams = [tableName, ...normalizedIds];
+  let companyClause = '';
+  if (companyId !== undefined && companyId !== null && companyId !== '') {
+    companyClause = ' AND company_id = ?';
+    selectParams.push(companyId);
+  }
+  selectParams.push(REPORT_TRANSACTION_LOCK_STATUS.locked);
+  const [rows] = await conn.query(
+    `SELECT request_id, company_id, record_id
+       FROM report_transaction_locks
+      WHERE table_name = ? AND record_id IN (${placeholders})${companyClause}
+        AND status = ?`,
+    selectParams,
+  );
+  if (!rows.length) return [];
+  const updateAssignments = [
+    'status = ?',
+    'finalized_by = NULL',
+    'finalized_at = NULL',
+    'updated_at = NOW()',
+  ];
+  const updateParams = [REPORT_TRANSACTION_LOCK_STATUS.pending];
+  if (columnInfo?.changedBy) {
+    updateAssignments.push('status_changed_by = ?');
+    updateParams.push(changedBy ?? null);
+  }
+  if (columnInfo?.changedAt) {
+    updateAssignments.push('status_changed_at = NOW()');
+  }
+  const updateWhereParams = [tableName, ...normalizedIds];
+  let updateCompanyClause = '';
+  if (companyId !== undefined && companyId !== null && companyId !== '') {
+    updateCompanyClause = ' AND `company_id` = ?';
+    updateWhereParams.push(companyId);
+  }
+  updateWhereParams.push(REPORT_TRANSACTION_LOCK_STATUS.locked);
+  await conn.query(
+    `UPDATE report_transaction_locks
+        SET ${updateAssignments.join(', ')}
+      WHERE table_name = ? AND record_id IN (${placeholders})${updateCompanyClause}
+        AND status = ?`,
+    [...updateParams, ...updateWhereParams],
+  );
+  return rows.map((row) => ({
+    requestId: row.request_id,
+    companyId: row.company_id ?? companyId ?? null,
+    recordId: String(row.record_id),
+  }));
+}
+
+async function ensurePendingLocksForNewRecord({
+  conn,
+  tableName,
+  recordId,
+  companyId,
+  changedBy,
+  columnInfo,
+}) {
+  if (recordId === undefined || recordId === null || recordId === '') return [];
+  const normalizedId = String(recordId);
+  const params = [tableName];
+  let companyClause = '';
+  if (companyId !== undefined && companyId !== null && companyId !== '') {
+    companyClause = ' AND company_id = ?';
+    params.push(companyId);
+  }
+  params.push(REPORT_TRANSACTION_LOCK_STATUS.locked);
+  const [rows] = await conn.query(
+    `SELECT request_id, company_id, created_by
+       FROM report_transaction_locks
+      WHERE table_name = ?${companyClause}
+        AND status = ?`,
+    params,
+  );
+  if (!rows.length) return [];
+  const distinct = new Map();
+  rows.forEach((row) => {
+    const requestId = row.request_id;
+    if (!requestId || distinct.has(requestId)) return;
+    distinct.set(requestId, {
+      request_id: requestId,
+      company_id: row.company_id ?? companyId ?? null,
+      created_by: row.created_by ?? null,
+    });
+  });
+  const entries = Array.from(distinct.values());
+  if (!entries.length) return [];
+  const insertColumns = [
+    'company_id',
+    'request_id',
+    'table_name',
+    'record_id',
+    'status',
+    'created_by',
+  ];
+  if (columnInfo?.changedBy) insertColumns.push('status_changed_by');
+  if (columnInfo?.changedAt) insertColumns.push('status_changed_at');
+  insertColumns.push('finalized_by', 'finalized_at', 'created_at', 'updated_at');
+  const valueClauses = [];
+  const insertParams = [];
+  for (const entry of entries) {
+    const parts = ['?', '?', '?', '?', '?', '?'];
+    insertParams.push(
+      entry.company_id ?? companyId ?? null,
+      entry.request_id,
+      tableName,
+      normalizedId,
+      REPORT_TRANSACTION_LOCK_STATUS.pending,
+      entry.created_by ?? null,
+    );
+    if (columnInfo?.changedBy) {
+      parts.push('?');
+      insertParams.push(changedBy ?? null);
+    }
+    if (columnInfo?.changedAt) {
+      parts.push('NOW()');
+    }
+    parts.push('NULL', 'NULL', 'NOW()', 'NOW()');
+    valueClauses.push(`(${parts.join(', ')})`);
+  }
+  if (!valueClauses.length) return [];
+  const updateAssignments = [
+    'status = VALUES(status)',
+    'updated_at = NOW()',
+    'finalized_by = NULL',
+    'finalized_at = NULL',
+  ];
+  if (columnInfo?.changedBy) {
+    updateAssignments.push('status_changed_by = VALUES(status_changed_by)');
+  }
+  if (columnInfo?.changedAt) {
+    updateAssignments.push('status_changed_at = NOW()');
+  }
+  await conn.query(
+    `INSERT INTO report_transaction_locks (${insertColumns.join(', ')})
+     VALUES ${valueClauses.join(', ')}
+     ON DUPLICATE KEY UPDATE ${updateAssignments.join(', ')}`,
+    insertParams,
+  );
+  return entries.map((entry) => ({
+    requestId: entry.request_id,
+    companyId: entry.company_id ?? companyId ?? null,
+    recordId: normalizedId,
+  }));
+}
+
+async function fetchReapprovalRecipients(conn, requestIds) {
+  if (!Array.isArray(requestIds) || requestIds.length === 0) return [];
+  const placeholders = requestIds.map(() => '?').join(', ');
+  const [rows] = await conn.query(
+    `SELECT pr.request_id,
+            pr.company_id,
+            pr.emp_id,
+            pr.senior_empid,
+            emp.employment_senior_plan_empid,
+            emp.employment_senior_empid AS legacy_senior
+       FROM pending_request pr
+       LEFT JOIN tbl_employment emp
+         ON emp.employment_emp_id = pr.emp_id
+      WHERE pr.request_id IN (${placeholders})`,
+    requestIds,
+  );
+  return rows.map((row) => {
+    const requester = normalizeLockEmpId(row.emp_id);
+    const planSenior =
+      normalizeLockEmpId(row.employment_senior_plan_empid) ||
+      normalizeLockEmpId(row.senior_empid) ||
+      normalizeLockEmpId(row.legacy_senior);
+    return {
+      requestId: row.request_id,
+      companyId: row.company_id,
+      requester,
+      planSenior,
+    };
+  });
+}
+
+function buildReapprovalMessage({
+  requestId,
+  tableName,
+  recordIds,
+  reason,
+  changedBy,
+}) {
+  const action =
+    reason === 'insert'
+      ? 'New transaction recorded'
+      : reason === 'delete'
+      ? 'Transaction removed'
+      : 'Transaction updated';
+  const ids = Array.isArray(recordIds) ? recordIds : [];
+  let recordSummary = 'records were modified';
+  if (ids.length === 1) {
+    recordSummary = `record ${ids[0]}`;
+  } else if (ids.length > 1) {
+    recordSummary = `records ${ids.join(', ')}`;
+  }
+  const actorSuffix = changedBy ? ` by ${changedBy}` : '';
+  return `Report approval request #${requestId} requires reapproval: ${action} in ${tableName} (${recordSummary})${actorSuffix}.`;
+}
+
+export async function handleReportLockReapproval({
+  conn,
+  tableName,
+  companyId,
+  recordIds = [],
+  changedBy,
+  reason,
+}) {
+  if (!tableName || !tableName.startsWith('transactions_')) return [];
+  const columnInfo = await getReportLockStatusColumnInfo();
+  if (columnInfo?.exists === false) return [];
+  const normalizedChangedBy = normalizeLockEmpId(changedBy);
+  const normalizedCompanyId =
+    companyId !== undefined && companyId !== null && companyId !== ''
+      ? companyId
+      : null;
+  let impacted = [];
+  try {
+    if (reason === 'insert') {
+      const targetId = Array.isArray(recordIds) ? recordIds[0] : recordIds;
+      impacted = await ensurePendingLocksForNewRecord({
+        conn,
+        tableName,
+        recordId: targetId,
+        companyId: normalizedCompanyId,
+        changedBy: normalizedChangedBy,
+        columnInfo,
+      });
+    } else {
+      impacted = await setLocksPendingForRecords({
+        conn,
+        tableName,
+        recordIds,
+        companyId: normalizedCompanyId,
+        changedBy: normalizedChangedBy,
+        columnInfo,
+      });
+    }
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') return [];
+    throw err;
+  }
+  if (!impacted.length) return [];
+  const grouped = new Map();
+  impacted.forEach((row) => {
+    if (!row.requestId) return;
+    const key = row.requestId;
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        requestId: key,
+        companyId: row.companyId ?? normalizedCompanyId ?? null,
+        tableName,
+        reason,
+        recordIds: new Set(),
+      });
+    }
+    grouped.get(key).recordIds.add(String(row.recordId));
+  });
+  if (grouped.size === 0) return [];
+  let recipients = [];
+  try {
+    recipients = await fetchReapprovalRecipients(conn, Array.from(grouped.keys()));
+  } catch (err) {
+    if (err?.code !== 'ER_NO_SUCH_TABLE') throw err;
+  }
+  const notifications = [];
+  const dedupe = new Set();
+  recipients.forEach((meta) => {
+    const entry = grouped.get(meta.requestId);
+    if (!entry) return;
+    const records = Array.from(entry.recordIds);
+    const message = buildReapprovalMessage({
+      requestId: meta.requestId,
+      tableName,
+      recordIds: records,
+      reason,
+      changedBy: normalizedChangedBy,
+    });
+    const pushNotification = (recipient) => {
+      const normalizedRecipient = normalizeLockEmpId(recipient);
+      if (!normalizedRecipient) return;
+      const dedupeKey = `${meta.requestId}:${normalizedRecipient}`;
+      if (dedupe.has(dedupeKey)) return;
+      dedupe.add(dedupeKey);
+      notifications.push({
+        companyId: meta.companyId ?? entry.companyId ?? normalizedCompanyId ?? null,
+        recipient: normalizedRecipient,
+        requestId: meta.requestId,
+        message,
+      });
+    };
+    pushNotification(meta.requester);
+    pushNotification(meta.planSenior);
+  });
+  if (notifications.length) {
+    const values = notifications
+      .map(() => '(?, ?, \'reapproval\', ?, ?, ?)')
+      .join(', ');
+    const params = [];
+    notifications.forEach((notification) => {
+      params.push(
+        notification.companyId ?? normalizedCompanyId ?? null,
+        notification.recipient,
+        notification.requestId,
+        notification.message,
+        normalizedChangedBy ?? null,
+      );
+    });
+    await conn.query(
+      `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
+       VALUES ${values}`,
+      params,
+    );
+  }
+  return Array.from(grouped.values()).map((entry) => ({
+    requestId: entry.requestId,
+    companyId: entry.companyId ?? normalizedCompanyId ?? null,
+    tableName: entry.tableName,
+    reason: entry.reason,
+    recordIds: Array.from(entry.recordIds),
+    changedBy: normalizedChangedBy ?? null,
+  }));
 }
 
 export async function recordReportApproval(

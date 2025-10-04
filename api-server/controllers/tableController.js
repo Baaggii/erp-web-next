@@ -378,6 +378,13 @@ export async function updateRow(req, res, next) {
       req.params.id,
       updates,
       req.user.companyId,
+      undefined,
+      {
+        mutationContext: {
+          changedBy: req.user?.empid,
+          companyId: req.user.companyId,
+        },
+      },
     );
     res.sendStatus(204);
   } catch (err) {
@@ -408,7 +415,20 @@ export async function addRow(req, res, next) {
     if (columns.includes('g_burtgel_id') && row.g_burtgel_id == null) {
       row.g_burtgel_id = row.g_id ?? 0;
     }
-    const result = await insertTableRow(req.params.table, row);
+    const result = await insertTableRow(
+      req.params.table,
+      row,
+      undefined,
+      undefined,
+      false,
+      req.user?.empid ?? null,
+      {
+        mutationContext: {
+          changedBy: req.user?.empid ?? null,
+          companyId: req.user.companyId,
+        },
+      },
+    );
     res.locals.insertId = result?.id;
     res.status(201).json(result);
   } catch (err) {
@@ -445,7 +465,13 @@ export async function deleteRow(req, res, next) {
         id,
         req.user.companyId,
         undefined,
-        req.user?.empid,
+        req.user?.empid ?? null,
+        {
+          mutationContext: {
+            changedBy: req.user?.empid ?? null,
+            companyId: req.user.companyId,
+          },
+        },
       );
     }
     if (row) {
