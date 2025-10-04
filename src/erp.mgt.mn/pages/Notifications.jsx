@@ -356,6 +356,23 @@ export default function NotificationsPage() {
       if (normalizedStatus) params.set('status', normalizedStatus);
       if (req?.request_type) params.set('requestType', req.request_type);
       if (req?.table_name) params.set('table_name', req.table_name);
+      const createdAt = req?.created_at || req?.createdAt;
+      let createdDate = '';
+      if (createdAt) {
+        const parsed = new Date(createdAt);
+        if (!Number.isNaN(parsed.getTime())) {
+          createdDate = formatTimestamp(parsed).slice(0, 10);
+        } else if (typeof createdAt === 'string') {
+          const match = createdAt.match(/^(\d{4}-\d{2}-\d{2})/);
+          if (match) {
+            createdDate = match[1];
+          }
+        }
+      }
+      if (createdDate) {
+        params.set('date_from', createdDate);
+        params.set('date_to', createdDate);
+      }
       params.set('requestId', req?.request_id);
       navigate(`/requests?${params.toString()}`);
     },

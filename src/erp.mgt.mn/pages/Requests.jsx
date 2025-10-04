@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/pages/Requests.jsx
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react';
 import { diff } from 'jsondiffpatch';
 import { useAuth } from '../context/AuthContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
@@ -179,6 +179,8 @@ export default function RequestsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get('tab');
   const initialStatus = searchParams.get('status');
+  const initialDateFrom = (searchParams.get('date_from') || '').trim();
+  const initialDateTo = (searchParams.get('date_to') || '').trim();
 
   // Always default to the user's own outgoing requests. Seniors can
   // still switch to the incoming tab manually.
@@ -196,8 +198,8 @@ export default function RequestsPage() {
   const [requestedEmpid, setRequestedEmpid] = useState('');
   const [tableName, setTableName] = useState('');
   const [status, setStatus] = useState(initialStatus || 'pending');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [dateFrom, setDateFrom] = useState(initialDateFrom);
+  const [dateTo, setDateTo] = useState(initialDateTo);
   const [requestType, setRequestType] = useState('');
   const [dateField, setDateField] = useState('created');
   const [incomingReloadKey, setIncomingReloadKey] = useState(0);
@@ -239,11 +241,32 @@ export default function RequestsPage() {
   }, [requests]);
 
   const headerMap = useHeaderMappings(allFields);
+  const ignoreNextDateChange = useRef(Boolean(initialDateFrom || initialDateTo));
+
   useEffect(() => {
-    const today = formatTimestamp(new Date()).slice(0, 10);
-    setDateFrom(today);
-    setDateTo(today);
-  }, []);
+    const queryDateFrom = (searchParams.get('date_from') || '').trim();
+    const queryDateTo = (searchParams.get('date_to') || '').trim();
+    if (!queryDateFrom && !queryDateTo) return;
+
+    const stateDateFrom = (dateFrom || '').trim();
+    const stateDateTo = (dateTo || '').trim();
+
+    if (queryDateFrom !== stateDateFrom || queryDateTo !== stateDateTo) {
+      ignoreNextDateChange.current = true;
+      setDateFrom(queryDateFrom);
+      setDateTo(queryDateTo);
+    }
+  }, [searchParams, dateFrom, dateTo]);
+
+  useEffect(() => {
+    const queryDateFrom = (searchParams.get('date_from') || '').trim();
+    const queryDateTo = (searchParams.get('date_to') || '').trim();
+    if (!queryDateFrom && !queryDateTo && !dateFrom && !dateTo) {
+      const today = formatTimestamp(new Date()).slice(0, 10);
+      setDateFrom(today);
+      setDateTo(today);
+    }
+  }, [dateFrom, dateTo, searchParams]);
   useEffect(() => {
     const tab = searchParams.get('tab');
     if (tab && tab !== activeTab) {
@@ -256,11 +279,47 @@ export default function RequestsPage() {
   }, [searchParams]);
 
   useEffect(() => {
-    const params = new URLSearchParams();
-    params.set('tab', activeTab);
-    params.set('status', status);
-    setSearchParams(params, { replace: true });
-  }, [activeTab, status, setSearchParams]);
+    const params = new URLSearchParams(searchParams);
+    let changed = false;
+
+    const applyParam = (key, value) => {
+      const normalized = typeof value === 'string' ? value.trim() : value;
+      const existing = params.get(key);
+      if (normalized) {
+        if (existing !== normalized) {
+          params.set(key, normalized);
+          return true;
+        }
+        return false;
+      }
+      if (existing !== null) {
+        params.delete(key);
+        return true;
+      }
+      return false;
+    };
+
+    changed = applyParam('tab', activeTab) || changed;
+    changed = applyParam('status', status) || changed;
+    changed = applyParam('date_from', dateFrom) || changed;
+    changed = applyParam('date_to', dateTo) || changed;
+
+    if (changed) {
+      setSearchParams(params, { replace: true });
+    }
+  }, [activeTab, status, dateFrom, dateTo, searchParams, setSearchParams]);
+
+  const handleDateRangeChange = useCallback(
+    ({ start, end }) => {
+      if (ignoreNextDateChange.current) {
+        ignoreNextDateChange.current = false;
+        return;
+      }
+      setDateFrom(start);
+      setDateTo(end);
+    },
+    [ignoreNextDateChange, setDateFrom, setDateTo],
+  );
   useEffect(() => {
     setIncomingPage(1);
   }, [status, requestedEmpid, tableName, requestType, dateFrom, dateTo, dateField]);
@@ -627,10 +686,7 @@ export default function RequestsPage() {
           <DateRangePicker
             start={dateFrom}
             end={dateTo}
-            onChange={({ start, end }) => {
-              setDateFrom(start);
-              setDateTo(end);
-            }}
+            onChange={handleDateRangeChange}
             style={{ marginLeft: '0.25em' }}
           />
         </label>
