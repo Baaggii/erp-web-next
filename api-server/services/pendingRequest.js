@@ -481,6 +481,30 @@ export async function listRequests(filters) {
     [...params, limit, offset],
   );
 
+  const approvalRequestIds = rows
+    .filter((row) => row.request_type === 'report_approval')
+    .map((row) => row.request_id)
+    .filter((id) => id !== null && id !== undefined);
+  const approvalMap = new Map();
+  if (approvalRequestIds.length) {
+    const placeholders = approvalRequestIds.map(() => '?').join(', ');
+    const [approvalRows] = await pool.query(
+      `SELECT request_id,
+              approved_by,
+              snapshot_file_name,
+              snapshot_file_mime,
+              snapshot_file_size,
+              snapshot_archived_at,
+              snapshot_file_path
+         FROM report_approvals
+        WHERE request_id IN (${placeholders})`,
+      approvalRequestIds,
+    );
+    approvalRows.forEach((row) => {
+      approvalMap.set(row.request_id, row);
+    });
+  }
+
   const result = await Promise.all(
     rows.map(async (row) => {
       const parsed = parseProposedData(row.proposed_data);
@@ -519,6 +543,11 @@ export async function listRequests(filters) {
           ? normalizeReportApprovalPayload(parsed)
           : null;
 
+      const approvalRecord =
+        normalizedReport && approvalMap.size
+          ? approvalMap.get(row.request_id)
+          : null;
+
       const { created_at_fmt, responded_at_fmt, ...rest } = row;
       return {
         ...rest,
@@ -536,6 +565,23 @@ export async function listRequests(filters) {
               requester_empid: rest.emp_id ?? null,
               approver_empid: rest.senior_empid ?? null,
               response_empid: rest.response_empid ?? null,
+              archive:
+                approvalRecord && approvalRecord.snapshot_file_path
+                  ? {
+                      fileName: approvalRecord.snapshot_file_name || null,
+                      mimeType:
+                        approvalRecord.snapshot_file_mime || 'application/json',
+                      byteSize:
+                        approvalRecord.snapshot_file_size === null ||
+                        approvalRecord.snapshot_file_size === undefined
+                          ? null
+                          : Number(approvalRecord.snapshot_file_size),
+                      archivedAt: approvalRecord.snapshot_archived_at
+                        ? new Date(approvalRecord.snapshot_archived_at).toISOString()
+                        : null,
+                      requestId: row.request_id,
+                    }
+                  : null,
             }
           : null,
       };
@@ -702,6 +748,7 @@ export async function respondRequest(
             parameters: normalizedReport.parameters,
             approvedBy: responseEmpid,
             transactions: normalizedReport.transactions,
+            snapshot: normalizedReport.snapshot,
           },
           conn,
         );
