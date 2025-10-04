@@ -1118,6 +1118,27 @@ export default function Reports() {
       meta.request_id ??
       meta.lockRequestId ??
       null;
+    const archiveMeta =
+      meta.archive || meta.snapshotArchive || meta.snapshot_archive || null;
+    const archiveRequestId =
+      archiveMeta?.requestId ?? archiveMeta?.request_id ?? requestId;
+    const archiveUrl = archiveRequestId
+      ? `/api/report_approvals/${encodeURIComponent(archiveRequestId)}/file`
+      : null;
+
+    const formatArchiveSize = (value) => {
+      const num = Number(value);
+      if (!Number.isFinite(num) || num <= 0) return '';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let size = num;
+      let unitIndex = 0;
+      while (size >= 1024 && unitIndex < units.length - 1) {
+        size /= 1024;
+        unitIndex += 1;
+      }
+      const decimals = size >= 100 || unitIndex === 0 ? 0 : 1;
+      return `${size.toFixed(decimals)} ${units[unitIndex]}`;
+    };
 
     function normalizeTransaction(tx) {
       if (!tx || typeof tx !== 'object') return null;
@@ -1337,6 +1358,27 @@ export default function Reports() {
             <p style={{ margin: '0.25rem 0 0' }}>No transactions selected.</p>
           )}
         </div>
+        {archiveMeta && archiveUrl && (
+          <div style={{ marginTop: '0.5rem' }}>
+            <a
+              href={archiveUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View archived report
+            </a>
+            {archiveMeta.archivedAt && (
+              <span style={{ marginLeft: '0.5rem', color: '#6b7280' }}>
+                archived {formatDateTime(archiveMeta.archivedAt)}
+              </span>
+            )}
+            {archiveMeta.byteSize && (
+              <span style={{ marginLeft: '0.5rem', color: '#6b7280' }}>
+                {formatArchiveSize(archiveMeta.byteSize)}
+              </span>
+            )}
+          </div>
+        )}
         <div style={{ marginTop: '0.5rem' }}>
           <strong>Excluded transactions</strong>
           {excludedBuckets.length ? (

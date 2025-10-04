@@ -5718,7 +5718,14 @@ export async function handleReportLockReapproval({
 }
 
 export async function recordReportApproval(
-  { companyId, requestId, procedureName, parameters, approvedBy },
+  {
+    companyId,
+    requestId,
+    procedureName,
+    parameters,
+    approvedBy,
+    snapshotMeta,
+  },
   conn = pool,
 ) {
   if (!requestId) {
@@ -5732,6 +5739,14 @@ export async function recordReportApproval(
     throw err;
   }
   const paramsJson = JSON.stringify(parameters ?? {});
+  const snapshotPath = snapshotMeta?.filePath ?? null;
+  const snapshotName = snapshotMeta?.fileName ?? null;
+  const snapshotMime = snapshotMeta?.mimeType ?? null;
+  const snapshotSize =
+    snapshotMeta?.byteSize === undefined || snapshotMeta?.byteSize === null
+      ? null
+      : Number(snapshotMeta.byteSize);
+  const snapshotArchivedAt = snapshotMeta?.archivedAt ?? null;
   await conn.query(
     `INSERT INTO report_approvals (
       company_id,
@@ -5740,14 +5755,24 @@ export async function recordReportApproval(
       parameters_json,
       approved_by,
       approved_at,
+      snapshot_file_path,
+      snapshot_file_name,
+      snapshot_file_mime,
+      snapshot_file_size,
+      snapshot_archived_at,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, NOW(), NOW(), NOW())
+    ) VALUES (?, ?, ?, ?, ?, NOW(), ?, ?, ?, ?, ?, NOW(), NOW())
     ON DUPLICATE KEY UPDATE
       procedure_name = VALUES(procedure_name),
       parameters_json = VALUES(parameters_json),
       approved_by = VALUES(approved_by),
       approved_at = NOW(),
+      snapshot_file_path = VALUES(snapshot_file_path),
+      snapshot_file_name = VALUES(snapshot_file_name),
+      snapshot_file_mime = VALUES(snapshot_file_mime),
+      snapshot_file_size = VALUES(snapshot_file_size),
+      snapshot_archived_at = VALUES(snapshot_archived_at),
       updated_at = NOW()`,
     [
       companyId ?? null,
@@ -5755,8 +5780,58 @@ export async function recordReportApproval(
       procedureName,
       paramsJson,
       approvedBy ?? null,
+      snapshotPath,
+      snapshotName,
+      snapshotMime,
+      snapshotSize,
+      snapshotArchivedAt,
     ],
   );
+}
+
+export async function getReportApprovalRecord(requestId, conn = pool) {
+  if (!requestId) return null;
+  const [rows] = await conn.query(
+    `SELECT request_id,
+            company_id,
+            procedure_name,
+            parameters_json,
+            approved_by,
+            approved_at,
+            snapshot_file_path,
+            snapshot_file_name,
+            snapshot_file_mime,
+            snapshot_file_size,
+            snapshot_archived_at
+       FROM report_approvals
+      WHERE request_id = ?
+      LIMIT 1`,
+    [requestId],
+  );
+  if (!rows.length) return null;
+  const row = rows[0];
+  let params = {};
+  try {
+    params = row.parameters_json ? JSON.parse(row.parameters_json) : {};
+  } catch {
+    params = {};
+  }
+  return {
+    requestId: row.request_id,
+    companyId: row.company_id ?? null,
+    procedureName: row.procedure_name || null,
+    parameters: params,
+    approvedBy: row.approved_by || null,
+    approvedAt: row.approved_at || null,
+    snapshotFilePath: row.snapshot_file_path || null,
+    snapshotFileName: row.snapshot_file_name || null,
+    snapshotFileMime: row.snapshot_file_mime || null,
+    snapshotFileSize:
+      row.snapshot_file_size === undefined || row.snapshot_file_size === null
+        ? null
+        : Number(row.snapshot_file_size),
+    snapshotArchivedAt: row.snapshot_archived_at || null,
+  };
 }
 
 export async function callStoredProcedure(name, params = [], aliases = []) {
