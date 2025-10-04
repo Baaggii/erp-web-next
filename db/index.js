@@ -5938,11 +5938,30 @@ export async function getProcedureLockCandidates(
       if (reservedKeys.has(key)) continue;
       const tableCandidate = sanitizeTableName(key);
       if (!tableCandidate) continue;
-      const values = toArray(value);
-      values.forEach((record) => {
-        const recordId = normalizeRecordId(record);
-        if (recordId) upsertCandidate(tableCandidate, recordId, extras);
-      });
+
+      if (Array.isArray(value)) {
+        const derivedExtras = { ...extras, table: extras?.table ?? tableCandidate };
+        value.forEach((entry) => collectCandidateValue(entry, derivedExtras));
+        continue;
+      }
+
+      if (value && typeof value === 'object') {
+        const derivedExtras = { ...extras };
+        if (!derivedExtras.table) derivedExtras.table = tableCandidate;
+        collectCandidateValue(value, derivedExtras);
+        continue;
+      }
+
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        const looksJson =
+          (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+          (trimmed.startsWith('[') && trimmed.endsWith(']'));
+        if (looksJson) {
+          const derivedExtras = { ...extras, table: extras?.table ?? tableCandidate };
+          collectCandidateValue(trimmed, derivedExtras);
+        }
+      }
     }
   };
 
@@ -5976,7 +5995,7 @@ export async function getProcedureLockCandidates(
       derivedExtras.context = value.context;
     }
 
-    const tableCandidates = [
+    const explicitTableCandidates = [
       value.lock_table,
       value.lockTable,
       value.lock_table_name,
@@ -5990,6 +6009,14 @@ export async function getProcedureLockCandidates(
     ]
       .map(sanitizeTableName)
       .filter(Boolean);
+
+    const fallbackTable =
+      explicitTableCandidates.length || !extras?.table
+        ? null
+        : sanitizeTableName(extras.table);
+    const tableCandidates = fallbackTable
+      ? [fallbackTable]
+      : explicitTableCandidates;
 
     const recordIdCandidates = [
       value.lock_record_id,
