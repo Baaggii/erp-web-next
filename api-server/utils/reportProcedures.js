@@ -1,7 +1,7 @@
 import { listTransactionNames } from '../services/transactionFormConfig.js';
 import { listAllowedReports } from '../services/reportAccessConfig.js';
 import { getProcTriggers } from '../services/procTriggers.js';
-import { getEmploymentSession } from '../../db/index.js';
+import { getEmploymentSession, listReportProcedures } from '../../db/index.js';
 
 async function getUserContext(user, companyId) {
   const session = await getEmploymentSession(user.empid, companyId);
@@ -54,6 +54,8 @@ export async function listPermittedProcedures(
     ...Object.keys(allowedCfg),
   ]);
 
+  const liveProcedures = new Set(await listReportProcedures(prefix));
+
   const userCtx = await getUserContext(user, companyId);
   const bId = Number(branchId ?? userCtx.branchId);
   const dId = Number(departmentId ?? userCtx.departmentId);
@@ -62,6 +64,7 @@ export async function listPermittedProcedures(
 
   const list = [];
   for (const proc of allProcs) {
+    if (!liveProcedures.has(proc)) continue;
     if (prefix && !proc.toLowerCase().includes(prefix.toLowerCase())) continue;
     const access = allowedCfg[proc];
     if (access) {
