@@ -2661,6 +2661,21 @@ const TableManager = forwardRef(function TableManager({
     return set;
   }, [auditFieldSet]);
   let columns = ordered.filter((c) => !hiddenColumnSet.has(c.toLowerCase()));
+  const formColumnOrder = useMemo(() => {
+    const seen = new Set();
+    const merged = [];
+    ordered.forEach((col) => {
+      if (seen.has(col)) return;
+      seen.add(col);
+      merged.push(col);
+    });
+    allColumns.forEach((col) => {
+      if (seen.has(col)) return;
+      seen.add(col);
+      merged.push(col);
+    });
+    return merged;
+  }, [ordered, allColumns]);
   const provided = Array.isArray(formConfig?.editableFields)
     ? formConfig.editableFields
     : [];
@@ -2733,7 +2748,7 @@ const TableManager = forwardRef(function TableManager({
   if (columnMeta.length === 0 && autoCols.size === 0 && allColumns.includes('id')) {
     autoCols.add('id');
   }
-  let formColumns = ordered.filter((c) => {
+  let formColumns = formColumnOrder.filter((c) => {
     if (autoCols.has(c)) return false;
     const lower = c.toLowerCase();
     if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return false;
