@@ -2820,21 +2820,52 @@ export default function ERPLayout() {
   );
 
   const markWorkflowSeen = useCallback(
-    (workflowKey) => {
+    (workflowKey, scope, statuses) => {
+      const normalizedScope =
+        typeof scope === 'string' ? scope.trim().toLowerCase() : '';
+      const normalizedStatuses = Array.isArray(statuses)
+        ? Array.from(
+            new Set(
+              statuses
+                .map((status) => String(status || '').trim().toLowerCase())
+                .filter(Boolean),
+            ),
+          )
+        : undefined;
+
+      const applyMark = (workflow) => {
+        if (!workflow) return;
+        if (normalizedScope === 'incoming') {
+          if (normalizedStatuses && normalizedStatuses.length) {
+            workflow.markIncoming(normalizedStatuses);
+          } else {
+            workflow.markIncoming();
+          }
+        } else if (normalizedScope === 'outgoing') {
+          if (normalizedStatuses && normalizedStatuses.length) {
+            workflow.markOutgoing(normalizedStatuses);
+          } else {
+            workflow.markOutgoing();
+          }
+        } else {
+          workflow.markSeen();
+        }
+      };
+
       switch (workflowKey) {
         case 'report_approval':
         case 'reportApproval':
-          reportWorkflow.markSeen();
+          applyMark(reportWorkflow);
           break;
         case 'change_requests':
         case 'changeRequests':
-          changeWorkflow.markSeen();
+          applyMark(changeWorkflow);
           break;
         case 'edit':
-          editWorkflow.markSeen();
+          applyMark(editWorkflow);
           break;
         case 'delete':
-          deleteWorkflow.markSeen();
+          applyMark(deleteWorkflow);
           break;
         default:
           markAll();
@@ -2842,10 +2873,10 @@ export default function ERPLayout() {
       }
     },
     [
-      reportWorkflow.markSeen,
-      changeWorkflow.markSeen,
-      editWorkflow.markSeen,
-      deleteWorkflow.markSeen,
+      reportWorkflow,
+      changeWorkflow,
+      editWorkflow,
+      deleteWorkflow,
       markAll,
     ],
   );
