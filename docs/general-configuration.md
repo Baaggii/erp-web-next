@@ -22,7 +22,8 @@
   "general": {
     "aiApiEnabled": false,
     "requestPollingEnabled": false,
-    "requestPollingIntervalSeconds": 30
+    "requestPollingIntervalSeconds": 30,
+    "txnToastEnabled": false
   },
   "images": {
     "basePath": "uploads"
@@ -45,7 +46,9 @@ permission can launch the tour builder to create or edit guides. Other options
 include `requestPollingEnabled`, which determines whether the client
 falls back to periodic API polling when a Socket.IO connection cannot be
 established, and `requestPollingIntervalSeconds`, which sets the polling
-cadence (default 30&nbsp;seconds).
+cadence (default 30&nbsp;seconds). Enable `txnToastEnabled` when you need the
+app to surface debug toasts for transaction fetch/edit flows; it defaults to
+`false` so the extra notifications stay hidden in production.
 
 The **Images** tab exposes `basePath`, `cleanupDays` and an `ignoreOnSearch` list.
 `basePath` sets the root directory for uploaded transaction images. The default
