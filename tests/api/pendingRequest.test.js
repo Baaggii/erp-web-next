@@ -88,6 +88,64 @@ await test('plan senior can approve report approval request', async () => {
   restore();
 });
 
+await test('listRequests returns report approval metadata', async () => {
+  const origQuery = db.pool.query;
+  db.pool.query = async (sql) => {
+    if (sql.includes('COUNT')) return [[{ count: 1 }]];
+    return [
+      [
+        {
+          request_id: 1,
+          table_name: 'report_transaction_locks',
+          record_id: 'demo-1',
+          emp_id: 'E1',
+          senior_empid: 'S1',
+          request_type: 'report_approval',
+          proposed_data: JSON.stringify({
+            procedure: 'demo_proc',
+            parameters: { from: '2024-01-01' },
+            transactions: [{ table: 'transactions_sales', recordId: 10 }],
+            snapshot: {
+              columns: ['id', 'amount'],
+              rows: [
+                { id: 10, amount: 99.5 },
+                { id: 11, amount: 42 },
+              ],
+              fieldTypeMap: { amount: 'number' },
+            },
+            executed_at: '2024-01-01T00:00:00.000Z',
+          }),
+          original_data: null,
+          created_at_fmt: '2024-01-01 12:00:00',
+          responded_at_fmt: null,
+          response_empid: null,
+        },
+      ],
+    ];
+  };
+  const result = await service.listRequests({ request_type: 'report_approval' });
+  db.pool.query = origQuery;
+  assert.equal(result.rows.length, 1);
+  assert.deepEqual(result.rows[0].report_metadata, {
+    procedure: 'demo_proc',
+    parameters: { from: '2024-01-01' },
+    transactions: [{ table: 'transactions_sales', recordId: '10' }],
+    snapshot: {
+      columns: ['id', 'amount'],
+      rows: [
+        { id: 10, amount: 99.5 },
+        { id: 11, amount: 42 },
+      ],
+      fieldTypeMap: { amount: 'number' },
+      rowCount: 2,
+    },
+    executed_at: '2024-01-01T00:00:00.000Z',
+    requester_empid: 'E1',
+    approver_empid: 'S1',
+    response_empid: null,
+  });
+});
+
 await test('listRequests normalizes empids in filters', async () => {
   const origQuery = db.pool.query;
   const queries = [];

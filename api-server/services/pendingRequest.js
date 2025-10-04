@@ -38,6 +38,68 @@ function parseProposedData(value) {
   }
 }
 
+function sanitizeSnapshot(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const output = {};
+  const rawRows = Array.isArray(raw.rows) ? raw.rows : [];
+  const maxRows = 200;
+  const sanitizedRows = rawRows
+    .slice(0, maxRows)
+    .map((row) => {
+      if (!row || typeof row !== 'object') return null;
+      const entries = Object.entries(row).filter(([key]) =>
+        typeof key === 'string' && key.trim(),
+      );
+      return Object.fromEntries(entries);
+    })
+    .filter((row) => row && Object.keys(row).length > 0);
+  output.rows = sanitizedRows;
+  if (typeof raw.rowCount === 'number' && Number.isFinite(raw.rowCount)) {
+    output.rowCount = raw.rowCount;
+  } else if (sanitizedRows.length) {
+    output.rowCount = sanitizedRows.length;
+  }
+  const columns = Array.isArray(raw.columns)
+    ? raw.columns.filter((c) => typeof c === 'string' && c.trim())
+    : sanitizedRows.length > 0
+    ? Object.keys(sanitizedRows[0])
+    : [];
+  output.columns = columns;
+  if (raw.fieldTypeMap && typeof raw.fieldTypeMap === 'object') {
+    output.fieldTypeMap = Object.fromEntries(
+      Object.entries(raw.fieldTypeMap).filter(
+        ([key, value]) => typeof key === 'string' && typeof value === 'string',
+      ),
+    );
+  } else {
+    output.fieldTypeMap = {};
+  }
+  if (raw.label && typeof raw.label === 'string' && raw.label.trim()) {
+    output.label = raw.label.trim();
+  }
+  if (raw.summary && typeof raw.summary === 'string' && raw.summary.trim()) {
+    output.summary = raw.summary.trim();
+  }
+  if (raw.totalRow && typeof raw.totalRow === 'object' && !Array.isArray(raw.totalRow)) {
+    output.totalRow = Object.fromEntries(
+      Object.entries(raw.totalRow).filter(([key]) =>
+        typeof key === 'string' && key.trim(),
+      ),
+    );
+  }
+  if (
+    (!output.rows || output.rows.length === 0) &&
+    (!output.columns || output.columns.length === 0) &&
+    (!output.fieldTypeMap || Object.keys(output.fieldTypeMap).length === 0) &&
+    !output.label &&
+    !output.summary &&
+    !output.totalRow
+  ) {
+    return null;
+  }
+  return output;
+}
+
 function normalizeReportApprovalPayload(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const procedure = raw.procedure || raw.procedureName;
@@ -69,10 +131,20 @@ function normalizeReportApprovalPayload(raw) {
   if (!transactions.length) {
     return null;
   }
+  const snapshot = sanitizeSnapshot(raw.snapshot || raw.reportSnapshot);
+  let executedAt = null;
+  const executedAtValue =
+    raw.executed_at || raw.executedAt || raw.run_at || raw.runAt || null;
+  if (executedAtValue) {
+    const date = new Date(executedAtValue);
+    if (!Number.isNaN(date.getTime())) executedAt = date.toISOString();
+  }
   const normalized = { ...(raw || {}) };
   normalized.procedure = procedure.trim();
   normalized.parameters = parameters;
   normalized.transactions = transactions;
+  if (snapshot) normalized.snapshot = snapshot;
+  normalized.executed_at = executedAt;
   return normalized;
 }
 
@@ -333,47 +405,66 @@ export async function listRequests(filters) {
     [...params, limit, offset],
   );
 
-    const result = await Promise.all(
-      rows.map(async (row) => {
-        const parsed = parseProposedData(row.proposed_data);
-        let original = parseProposedData(row.original_data);
-        if (!original) {
-          try {
-            const pkCols = await getPrimaryKeyColumns(row.table_name);
-            if (pkCols.length === 1) {
-              const col = pkCols[0];
-              const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
-              const [r] = await pool.query(
-                `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-                [row.table_name, row.record_id],
-              );
-              original = r[0] || null;
-            } else if (pkCols.length > 1) {
-              const parts = String(row.record_id).split('-');
-              const whereClause = pkCols
-                .map((c) => `\`${c}\` = ?`)
-                .join(' AND ');
-              const [r] = await pool.query(
-                `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-                [row.table_name, ...parts],
-              );
-              original = r[0] || null;
-            }
-          } catch {
-            original = null;
+  const result = await Promise.all(
+    rows.map(async (row) => {
+      const parsed = parseProposedData(row.proposed_data);
+      let original = parseProposedData(row.original_data);
+      if (row.request_type === 'report_approval') {
+        original = null;
+      } else if (!original) {
+        try {
+          const pkCols = await getPrimaryKeyColumns(row.table_name);
+          if (pkCols.length === 1) {
+            const col = pkCols[0];
+            const whereClause = col === 'id' ? 'id = ?' : `\`${col}\` = ?`;
+            const [r] = await pool.query(
+              `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+              [row.table_name, row.record_id],
+            );
+            original = r[0] || null;
+          } else if (pkCols.length > 1) {
+            const parts = String(row.record_id).split('-');
+            const whereClause = pkCols
+              .map((c) => `\`${c}\` = ?`)
+              .join(' AND ');
+            const [r] = await pool.query(
+              `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+              [row.table_name, ...parts],
+            );
+            original = r[0] || null;
           }
+        } catch {
+          original = null;
         }
+      }
 
-        const { created_at_fmt, responded_at_fmt, ...rest } = row;
-        return {
-          ...rest,
-          created_at: created_at_fmt || null,
-          responded_at: responded_at_fmt || null,
-          proposed_data: parsed,
-          original,
-        };
-      }),
-    );
+      const normalizedReport =
+        row.request_type === 'report_approval' && parsed
+          ? normalizeReportApprovalPayload(parsed)
+          : null;
+
+      const { created_at_fmt, responded_at_fmt, ...rest } = row;
+      return {
+        ...rest,
+        created_at: created_at_fmt || null,
+        responded_at: responded_at_fmt || null,
+        proposed_data: parsed,
+        original,
+        report_metadata: normalizedReport
+          ? {
+              procedure: normalizedReport.procedure,
+              parameters: normalizedReport.parameters,
+              transactions: normalizedReport.transactions,
+              snapshot: normalizedReport.snapshot || null,
+              executed_at: normalizedReport.executed_at || null,
+              requester_empid: rest.emp_id ?? null,
+              approver_empid: rest.senior_empid ?? null,
+              response_empid: rest.response_empid ?? null,
+            }
+          : null,
+      };
+    }),
+  );
 
   return { rows: result, total };
 }
