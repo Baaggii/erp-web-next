@@ -1636,18 +1636,61 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function openRequestEdit(row) {
-    if (getRowId(row) === undefined) {
+    const rowId = getRowId(row);
+    if (rowId === undefined) {
+      if (txnToastEnabled) {
+        addToast(
+          `Transaction toast: Missing primary key for edit request ${formatTxnToastPayload(
+            row,
+          )}`,
+          'info',
+        );
+      }
       addToast(
         t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
         'error',
       );
       return;
     }
-    await ensureColumnMeta();
-    setEditing(row);
-    setGridRows([row]);
+    if (txnToastEnabled) {
+      addToast(
+        `Transaction toast: Request edit start ${formatTxnToastPayload({
+          rowId,
+          reasonModalVisible: showReasonModal,
+        })}`,
+        'info',
+      );
+    }
+    const meta = await ensureColumnMeta();
+    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+    const localCaseMap =
+      Array.isArray(cols) && cols.length > 0
+        ? buildColumnCaseMap(cols)
+        : columnCaseMap;
+    const normalizedRow = normalizeToCanonical(row, localCaseMap);
+    const rowForForm =
+      normalizedRow && Object.keys(normalizedRow).length > 0 ? normalizedRow : row;
+    if (txnToastEnabled) {
+      addToast(
+        `Transaction toast: Request edit normalized payload ${formatTxnToastPayload(
+          rowForForm,
+        )}`,
+        'info',
+      );
+    }
+    setEditing(rowForForm);
+    setGridRows([rowForForm]);
     setIsAdding(false);
     setRequestType('edit');
+    if (txnToastEnabled) {
+      addToast(
+        `Transaction toast: Preparing edit request modal ${formatTxnToastPayload({
+          requestType: 'edit',
+          reasonModalVisible: showReasonModal,
+        })}`,
+        'info',
+      );
+    }
     setShowForm(true);
   }
 
