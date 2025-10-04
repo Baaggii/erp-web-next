@@ -56,6 +56,162 @@ function normalizeEmpId(id) {
     .replace(/^0+/, '');
 }
 
+const approvalNumberFormatter = new Intl.NumberFormat('en-US', {
+  maximumFractionDigits: 2,
+  minimumFractionDigits: 0,
+});
+
+function formatDateTimeDisplay(value) {
+  if (!value) return '—';
+  const d = new Date(value);
+  if (!Number.isNaN(d.getTime())) return formatTimestamp(d);
+  if (typeof value === 'string') return value;
+  return String(value);
+}
+
+function formatReportSnapshotValue(value, column, fieldTypeMap = {}) {
+  if (value === null || value === undefined) return '';
+  const type = fieldTypeMap?.[column];
+  if (type === 'date' || type === 'datetime') {
+    const d = new Date(value);
+    if (!Number.isNaN(d.getTime())) return formatTimestamp(d);
+  }
+  if (typeof value === 'number') {
+    return approvalNumberFormatter.format(value);
+  }
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}/.test(value)) {
+      const d = new Date(value);
+      if (!Number.isNaN(d.getTime())) return formatTimestamp(d);
+    }
+    return value;
+  }
+  return String(value);
+}
+
+function renderReportSnapshot(snapshot) {
+  if (!snapshot || !Array.isArray(snapshot.rows) || snapshot.rows.length === 0) {
+    return <p>No snapshot captured.</p>;
+  }
+  const columns =
+    Array.isArray(snapshot.columns) && snapshot.columns.length
+      ? snapshot.columns
+      : Object.keys(snapshot.rows[0] || {});
+  return (
+    <div
+      style={{
+        maxHeight: '240px',
+        overflow: 'auto',
+        border: '1px solid #d1d5db',
+        borderRadius: '0.5rem',
+        marginTop: '0.5rem',
+      }}
+    >
+      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
+        <thead style={{ background: '#f3f4f6' }}>
+          <tr>
+            {columns.map((col) => (
+              <th
+                key={col}
+                style={{
+                  padding: '0.25rem',
+                  border: '1px solid #d1d5db',
+                  textAlign: 'left',
+                }}
+              >
+                {col}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {snapshot.rows.map((row, idx) => (
+            <tr key={idx}>
+              {columns.map((col) => (
+                <td
+                  key={col}
+                  style={{
+                    padding: '0.25rem',
+                    border: '1px solid #d1d5db',
+                    whiteSpace: 'nowrap',
+                    textOverflow: 'ellipsis',
+                    overflow: 'hidden',
+                    maxWidth: '16rem',
+                  }}
+                >
+                  {formatReportSnapshotValue(row?.[col], col, snapshot.fieldTypeMap || {})}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function renderReportApprovalDetails(meta) {
+  if (!meta) {
+    return <p>No report metadata available.</p>;
+  }
+  const paramEntries = Object.entries(meta.parameters || {});
+  const rowCount =
+    typeof meta.snapshot?.rowCount === 'number'
+      ? meta.snapshot.rowCount
+      : Array.isArray(meta.snapshot?.rows)
+      ? meta.snapshot.rows.length
+      : null;
+  return (
+    <div>
+      <div>
+        <strong>Procedure:</strong> {meta.procedure || '—'}
+      </div>
+      {meta.executed_at && (
+        <div>
+          <strong>Executed:</strong> {formatDateTimeDisplay(meta.executed_at)}
+        </div>
+      )}
+      {rowCount !== null && (
+        <div>
+          <strong>Rows in result:</strong> {rowCount}
+        </div>
+      )}
+      <div style={{ marginTop: '0.5rem' }}>
+        <strong>Parameters</strong>
+        {paramEntries.length ? (
+          <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
+            {paramEntries.map(([key, value]) => (
+              <li key={key}>
+                {key}: {String(value ?? '')}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ margin: '0.25rem 0 0' }}>No parameters provided.</p>
+        )}
+      </div>
+      <div style={{ marginTop: '0.5rem' }}>
+        <strong>Transactions</strong>
+        {Array.isArray(meta.transactions) && meta.transactions.length ? (
+          <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
+            {meta.transactions.map((tx, idx) => (
+              <li key={`${tx.table}-${tx.recordId}-${idx}`}>
+                {tx.table}#{tx.recordId}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p style={{ margin: '0.25rem 0 0' }}>No transactions provided.</p>
+        )}
+      </div>
+      <div style={{ marginTop: '0.5rem' }}>
+        <strong>Snapshot</strong>
+        {renderReportSnapshot(meta.snapshot)}
+      </div>
+    </div>
+  );
+}
+
 export default function RequestsPage() {
   const { user, session } = useAuth();
   const { incoming: incomingCounts, outgoing: outgoingCounts, markSeen } =
@@ -157,7 +313,8 @@ export default function RequestsPage() {
     setOutgoingPage(1);
   }, [status, tableName, requestType, dateFrom, dateTo, dateField]);
   async function enrichRequests(data) {
-    const tables = Array.from(new Set(data.map((r) => r.table_name)));
+    const tableRequests = data.filter((r) => r.request_type !== 'report_approval');
+    const tables = Array.from(new Set(tableRequests.map((r) => r.table_name)));
     await Promise.all(
       tables
         .filter((t) => !configCache.current[t])
@@ -174,8 +331,17 @@ export default function RequestsPage() {
           }
         }),
     );
-
     return data.map((req) => {
+      if (req.request_type === 'report_approval') {
+        return {
+          ...req,
+          original: null,
+          fields: [],
+          notes: '',
+          response_status: null,
+          error: null,
+        };
+      }
       const original = req.original || null;
       const cfg = configCache.current[req.table_name] || { displayFields: [] };
       const visible = cfg.displayFields?.length
@@ -471,6 +637,7 @@ export default function RequestsPage() {
             <option value="">Any</option>
             <option value="edit">Edit Request</option>
             <option value="delete">Delete Request</option>
+            <option value="report_approval">Report Approval</option>
           </select>
         </label>
         <label style={{ marginRight: '0.5em' }}>
@@ -514,6 +681,105 @@ export default function RequestsPage() {
       {loading && <p>Loading...</p>}
       {error && <p style={{ color: 'red' }}>{error}</p>}
       {requests.map((req) => {
+        if (req.request_type === 'report_approval') {
+          const status = req.status || req.response_status || 'pending';
+          const statusLower = status ? String(status).toLowerCase() : 'pending';
+          const userEmp = normalizeEmpId(user.empid);
+          const requesterId = normalizeEmpId(req.emp_id);
+          const isRequester = requesterId === userEmp;
+          const isPending = !statusLower || statusLower === 'pending';
+          const canRespond =
+            activeTab === 'incoming' && !isRequester && isPending;
+          const meta = req.report_metadata || req.proposed_data;
+          const cardStyle = {
+            border: '1px solid #ccc',
+            margin: '1em 0',
+            padding: '1em',
+            background:
+              statusLower === 'accepted'
+                ? '#e6ffed'
+                : statusLower === 'declined'
+                ? '#ffe6e6'
+                : 'transparent',
+          };
+          return (
+            <div key={req.request_id} style={cardStyle}>
+              <h4>
+                Report approval — {meta?.procedure || 'Unknown procedure'}
+              </h4>
+              <p>
+                <strong>Requested by:</strong> {req.emp_id}
+              </p>
+              <p>
+                <strong>Status:</strong>{' '}
+                {status
+                  ? status.charAt(0).toUpperCase() + status.slice(1)
+                  : 'Pending'}
+              </p>
+              <p>
+                <strong>Requested:</strong> {formatDateTimeDisplay(req.created_at)}
+              </p>
+              {req.responded_at && (
+                <p>
+                  <strong>Responded:</strong>{' '}
+                  {formatDateTimeDisplay(req.responded_at)}
+                </p>
+              )}
+              {req.request_reason && (
+                <p>
+                  <strong>Reason:</strong> {req.request_reason}
+                </p>
+              )}
+              {req.response_notes && (
+                <p>
+                  <strong>Response notes:</strong> {req.response_notes}
+                </p>
+              )}
+              <div style={{ marginTop: '0.5rem' }}>
+                {renderReportApprovalDetails(meta)}
+              </div>
+              {activeTab === 'incoming' ? (
+                canRespond ? (
+                  <>
+                    <textarea
+                      placeholder="Response Notes"
+                      value={req.notes}
+                      onChange={(e) =>
+                        updateNotes(req.request_id, e.target.value)
+                      }
+                      style={{
+                        width: '100%',
+                        minHeight: '4em',
+                        marginTop: '0.75rem',
+                      }}
+                    />
+                    <div style={{ marginTop: '0.5em' }}>
+                      <button
+                        onClick={() => respond(req.request_id, 'accepted')}
+                        disabled={!req.notes?.trim()}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        onClick={() => respond(req.request_id, 'declined')}
+                        style={{ marginLeft: '0.5em' }}
+                        disabled={!req.notes?.trim()}
+                      >
+                        Decline
+                      </button>
+                    </div>
+                  </>
+                ) : isRequester ? (
+                  <p style={{ marginTop: '0.5rem' }}>Awaiting senior response…</p>
+                ) : null
+              ) : isRequester && statusLower === 'pending' ? (
+                <p style={{ marginTop: '0.5rem' }}>Awaiting senior response…</p>
+              ) : null}
+              {req.error && <p style={{ color: 'red' }}>{req.error}</p>}
+            </div>
+          );
+        }
+
         const columns = req.fields.map((f) => f.name);
         const fieldMap = {};
         req.fields.forEach((f) => {

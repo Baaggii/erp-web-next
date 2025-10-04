@@ -61,6 +61,7 @@ export default function ReportTable({
   rows = [],
   buttonPerms = {},
   fieldTypeMap = {},
+  onSnapshotReady,
 }) {
   const { user, branch, department } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
@@ -93,6 +94,22 @@ export default function ReportTable({
 
   const columns = rows && rows.length ? Object.keys(rows[0]) : [];
   const columnHeaderMap = useHeaderMappings(columns);
+
+  useEffect(() => {
+    if (typeof onSnapshotReady !== 'function') return;
+    const limit = 200;
+    const snapshotRows = Array.isArray(rows)
+      ? rows.slice(0, limit).map((row) => ({ ...row }))
+      : [];
+    onSnapshotReady({
+      procedure,
+      params,
+      columns,
+      rows: snapshotRows,
+      rowCount: Array.isArray(rows) ? rows.length : 0,
+      fieldTypeMap,
+    });
+  }, [onSnapshotReady, rows, columns, fieldTypeMap, procedure, params]);
 
   const placeholders = useMemo(() => {
     const map = {};
