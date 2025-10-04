@@ -151,6 +151,8 @@ const requestStatusLabels = {
   declined: 'Declined',
 };
 
+const ACTIVE_LOCK_STATUSES = new Set(['pending', 'locked']);
+
 function coalesce(obj, ...keys) {
   if (!obj) return undefined;
   for (const key of keys) {
@@ -189,6 +191,28 @@ function coalesce(obj, ...keys) {
     }
   }
   return undefined;
+}
+
+function normalizeLockStatus(value) {
+  if (value === undefined || value === null) return null;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized || null;
+}
+
+function rowHasActiveLock(row) {
+  if (!row) return false;
+  const metadata = coalesce(row, 'lockMetadata', 'lock_metadata');
+  const statusCandidates = [
+    metadata?.status,
+    coalesce(row, 'lockStatus', 'lock_status', 'requestStatus', 'request_status'),
+  ];
+  for (const candidate of statusCandidates) {
+    const normalized = normalizeLockStatus(candidate);
+    if (normalized && ACTIVE_LOCK_STATUSES.has(normalized)) {
+      return true;
+    }
+  }
+  return Boolean(row.locked);
 }
 
 function formatMetaDate(value) {
@@ -1151,7 +1175,7 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     const lockedEntries = rows.reduce((acc, row) => {
-      if (!row || !row.locked) return acc;
+      if (!rowHasActiveLock(row)) return acc;
       const id = getRowId(row);
       if (id === undefined || id === null) return acc;
       const idStr = String(id);
@@ -3181,7 +3205,7 @@ const TableManager = forwardRef(function TableManager({
             const ridKey =
               rid === undefined || rid === null ? null : String(rid);
             const lockInfo = ridKey ? lockMetadataById[ridKey] : null;
-            const locked = Boolean(r?.locked);
+            const locked = rowHasActiveLock(r);
             const lockCreatedAt =
               formatMetaDate(
                 coalesce(lockInfo, 'created_at', 'createdAt', 'locked_at', 'lockedAt') ||

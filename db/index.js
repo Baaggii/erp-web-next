@@ -5075,22 +5075,109 @@ export async function listTransactions({
   }
 
   const [rows] = await pool.query(sql, qParams);
-  let lockedSet = new Set();
-  if (table && table.startsWith('transactions_')) {
+  const lockStatuses = [
+    REPORT_TRANSACTION_LOCK_STATUS.locked,
+    REPORT_TRANSACTION_LOCK_STATUS.pending,
+  ];
+  const lockStatusSet = new Set(
+    lockStatuses.map((status) => status && status.toLowerCase()),
+  );
+  const recordIds = Array.from(
+    new Set(
+      (Array.isArray(rows) ? rows : [])
+        .map((row) => row?.id)
+        .filter((value) => value !== undefined && value !== null && value !== '')
+        .map((value) => String(value)),
+    ),
+  );
+  const lockMetadataMap = new Map();
+  if (recordIds.length > 0) {
+    const idPlaceholders = recordIds.map(() => '?').join(', ');
+    const statusPlaceholders = lockStatuses.map(() => '?').join(', ');
+    const paramsList = [table];
+    let companyClause = '';
+    if (company_id !== undefined && company_id !== null && company_id !== '') {
+      companyClause = ' AND company_id = ?';
+      paramsList.push(company_id);
+    }
+    paramsList.push(...recordIds);
+    paramsList.push(...lockStatuses);
+    const prioritizeLockRow = (existing, candidate) => {
+      if (!existing) return candidate;
+      if (!candidate) return existing;
+      const normalizeStatus = (value) =>
+        value === undefined || value === null
+          ? null
+          : String(value).trim().toLowerCase() || null;
+      const priority = (status) => {
+        const normalized = normalizeStatus(status);
+        if (normalized === REPORT_TRANSACTION_LOCK_STATUS.locked) return 0;
+        if (normalized === REPORT_TRANSACTION_LOCK_STATUS.pending) return 1;
+        return 2;
+      };
+      const existingPriority = priority(existing.status);
+      const candidatePriority = priority(candidate.status);
+      if (candidatePriority < existingPriority) return candidate;
+      if (existingPriority < candidatePriority) return existing;
+      const extractTimestamp = (row) =>
+        row?.finalized_at ||
+        row?.status_changed_at ||
+        row?.updated_at ||
+        row?.created_at ||
+        null;
+      const existingTimestamp = extractTimestamp(existing);
+      const candidateTimestamp = extractTimestamp(candidate);
+      if (!existingTimestamp) return candidate;
+      if (!candidateTimestamp) return existing;
+      return new Date(candidateTimestamp).getTime() >=
+        new Date(existingTimestamp).getTime()
+        ? candidate
+        : existing;
+    };
     try {
-      const lockedIds = await listLockedTransactions({
-        tableName: table,
-        companyId: company_id,
-      });
-      lockedSet = new Set(lockedIds.map((value) => String(value)));
+      const [lockRows] = await pool.query(
+        `SELECT *
+           FROM report_transaction_locks
+          WHERE table_name = ?${companyClause}
+            AND record_id IN (${idPlaceholders})
+            AND status IN (${statusPlaceholders})`,
+        paramsList,
+      );
+      if (Array.isArray(lockRows)) {
+        lockRows.forEach((lockRow) => {
+          const recordId = lockRow?.record_id;
+          if (recordId === undefined || recordId === null || recordId === '') {
+            return;
+          }
+          const key = String(recordId);
+          const existing = lockMetadataMap.get(key);
+          const resolved = prioritizeLockRow(existing, lockRow);
+          lockMetadataMap.set(key, resolved || null);
+        });
+      }
     } catch (err) {
       if (err?.code !== 'ER_NO_SUCH_TABLE') throw err;
     }
   }
-  const withLocks = rows.map((row) => ({
-    ...row,
-    locked: lockedSet.has(String(row?.id ?? '')),
-  }));
+  const withLocks = (Array.isArray(rows) ? rows : []).map((row) => {
+    const recordId = row?.id;
+    const key =
+      recordId === undefined || recordId === null || recordId === ''
+        ? null
+        : String(recordId);
+    const metadata = key ? lockMetadataMap.get(key) || null : null;
+    const normalizedStatus =
+      metadata?.status === undefined || metadata?.status === null
+        ? null
+        : String(metadata.status).trim().toLowerCase() || null;
+    const lockedFromMetadata =
+      normalizedStatus && lockStatusSet.has(normalizedStatus);
+    return {
+      ...row,
+      locked: Boolean(row?.locked) || Boolean(lockedFromMetadata),
+      lockMetadata: metadata,
+    };
+  });
   return { rows: withLocks, count };
 }
 
