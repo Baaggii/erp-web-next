@@ -1177,7 +1177,7 @@ CREATE TABLE `payments` (
 CREATE TABLE `pending_request` (
   `request_id` bigint NOT NULL,
   `table_name` varchar(100) NOT NULL,
-  `record_id` bigint NOT NULL,
+  `record_id` varchar(191) NOT NULL,
   `emp_id` varchar(10) NOT NULL,
   `senior_empid` varchar(10) NOT NULL,
   `request_type` enum('edit','delete') NOT NULL,
@@ -4073,7 +4073,7 @@ CREATE TABLE `user_activity_log` (
   `log_id` bigint NOT NULL,
   `emp_id` varchar(10) NOT NULL,
   `table_name` varchar(100) NOT NULL,
-  `record_id` bigint NOT NULL,
+  `record_id` varchar(191) NOT NULL,
   `action` enum('create','update','delete','request_edit','request_delete','approve','decline') NOT NULL,
   `details` json DEFAULT NULL,
   `request_id` bigint DEFAULT NULL,
@@ -4861,7 +4861,8 @@ ALTER TABLE `users`
 -- Indexes for table `user_activity_log`
 --
 ALTER TABLE `user_activity_log`
-  ADD PRIMARY KEY (`log_id`);
+  ADD PRIMARY KEY (`log_id`),
+  ADD CONSTRAINT `fk_activity_request` FOREIGN KEY (`request_id`) REFERENCES `pending_request` (`request_id`);
 
 --
 -- Indexes for table `user_levels`
