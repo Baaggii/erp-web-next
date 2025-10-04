@@ -18,6 +18,7 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import CustomDatePicker from '../components/CustomDatePicker.jsx';
 import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
 
 const DATE_PARAM_ALLOWLIST = new Set([
   'startdt',
@@ -715,7 +716,7 @@ useEffect(() => {
                       const key = name || String(i);
                       const val = manualParams[key] || '';
                       return (
-                        <input
+                        <AutoSizingTextInput
                           key={key}
                           type="text"
                           placeholder={name}
