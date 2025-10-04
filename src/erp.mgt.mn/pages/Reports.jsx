@@ -73,6 +73,8 @@ export default function Reports() {
   const [snapshot, setSnapshot] = useState(null);
   const [lockCandidates, setLockCandidates] = useState([]);
   const [lockSelections, setLockSelections] = useState({});
+  const [lockExclusions, setLockExclusions] = useState({});
+  const [pendingExclusion, setPendingExclusion] = useState(null);
   const [lockFetchPending, setLockFetchPending] = useState(false);
   const [lockFetchError, setLockFetchError] = useState('');
   const [lockAcknowledged, setLockAcknowledged] = useState(false);
@@ -187,6 +189,8 @@ export default function Reports() {
     setSnapshot(null);
     setLockCandidates([]);
     setLockSelections({});
+    setLockExclusions({});
+    setPendingExclusion(null);
     setLockFetchError('');
     setLockFetchPending(false);
     setLockAcknowledged(false);
@@ -198,6 +202,8 @@ export default function Reports() {
     if (!result || !result.name) {
       setLockCandidates([]);
       setLockSelections({});
+      setLockExclusions({});
+      setPendingExclusion(null);
       setLockFetchError('');
       setLockFetchPending(false);
       return () => {
@@ -276,6 +282,8 @@ export default function Reports() {
         if (cancelled) return;
         setLockCandidates([]);
         setLockSelections({});
+        setLockExclusions({});
+        setPendingExclusion(null);
         setLockFetchError(err?.message || 'Failed to load lock candidates');
       } finally {
         if (!cancelled) {
@@ -498,6 +506,8 @@ export default function Reports() {
         setSnapshot(null);
         setLockCandidates([]);
         setLockSelections({});
+        setLockExclusions({});
+        setPendingExclusion(null);
         setLockFetchError('');
         setLockFetchPending(false);
         setLockAcknowledged(false);
@@ -576,6 +586,13 @@ export default function Reports() {
 
   const toggleAllLocks = useCallback(
     (checked) => {
+      if (!checked) {
+        addToast(
+          'Clear individual checkboxes to exclude transactions and provide a justification.',
+          'error',
+        );
+        return;
+      }
       setLockSelections((prev) => {
         const next = { ...prev };
         lockCandidates.forEach((candidate) => {
@@ -585,12 +602,26 @@ export default function Reports() {
             next[key] = false;
             return;
           }
-          next[key] = checked;
+          next[key] = true;
         });
         return next;
       });
+      setLockExclusions((prev) => {
+        if (!prev || Object.keys(prev).length === 0) return prev;
+        const next = { ...prev };
+        let changed = false;
+        lockCandidates.forEach((candidate) => {
+          const key = getCandidateKey(candidate);
+          if (key && next[key]) {
+            delete next[key];
+            changed = true;
+          }
+        });
+        if (!changed) return prev;
+        return next;
+      });
     },
-    [lockCandidates, getCandidateKey],
+    [addToast, lockCandidates, getCandidateKey],
   );
 
   const lockBuckets = useMemo(() => {
@@ -637,9 +668,165 @@ export default function Reports() {
     });
   }, [lockCandidates]);
 
-  const updateLockSelection = useCallback((key, checked) => {
-    setLockSelections((prev) => ({ ...prev, [key]: checked }));
+  const lockCandidateMap = useMemo(() => {
+    const map = new Map();
+    lockCandidates.forEach((candidate) => {
+      const key = getCandidateKey(candidate);
+      if (key) {
+        map.set(key, candidate);
+      }
+    });
+    return map;
+  }, [lockCandidates, getCandidateKey]);
+
+  useEffect(() => {
+    setLockExclusions((prev) => {
+      if (!prev || Object.keys(prev).length === 0) return prev;
+      let changed = false;
+      const next = {};
+      Object.entries(prev).forEach(([key, info]) => {
+        const candidate = lockCandidateMap.get(key);
+        if (!candidate) {
+          changed = true;
+          return;
+        }
+        const updatedInfo = {
+          ...info,
+          table:
+            candidate?.tableName ??
+            candidate?.table ??
+            info.table ??
+            '',
+          recordId: String(
+            candidate?.recordId ?? candidate?.id ?? info.recordId ?? '',
+          ),
+          label: candidate?.label ?? info.label ?? '',
+          description: candidate?.description ?? info.description ?? '',
+        };
+        if (
+          updatedInfo.table !== info.table ||
+          updatedInfo.recordId !== info.recordId ||
+          updatedInfo.label !== info.label ||
+          updatedInfo.description !== info.description
+        ) {
+          changed = true;
+        }
+        next[key] = updatedInfo;
+      });
+      if (!changed) return prev;
+      return next;
+    });
+  }, [lockCandidateMap]);
+
+  useEffect(() => {
+    if (!pendingExclusion) return;
+    const candidate = lockCandidateMap.get(pendingExclusion.key);
+    if (!candidate) {
+      setPendingExclusion(null);
+      return;
+    }
+    if (candidate !== pendingExclusion.candidate) {
+      setPendingExclusion((prev) =>
+        prev ? { ...prev, candidate } : prev,
+      );
+    }
+  }, [pendingExclusion, lockCandidateMap]);
+
+  const updateLockSelection = useCallback(
+    (key, checked) => {
+      setLockSelections((prev) => ({ ...prev, [key]: checked }));
+      if (checked) {
+        setLockExclusions((prev) => {
+          if (!prev || !prev[key]) return prev;
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+      }
+    },
+    [],
+  );
+
+  const handleLockCheckboxChange = useCallback(
+    (candidate, checked) => {
+      const key = getCandidateKey(candidate);
+      if (!key) return;
+      if (candidate?.locked) return;
+      if (checked) {
+        updateLockSelection(key, true);
+        return;
+      }
+      const existingReason = lockExclusions[key]?.reason || '';
+      setPendingExclusion({
+        key,
+        candidate,
+        reason: existingReason,
+        error: '',
+      });
+    },
+    [getCandidateKey, lockExclusions, updateLockSelection],
+  );
+
+  const handleEditExclusion = useCallback(
+    (key) => {
+      const candidate = lockCandidateMap.get(key);
+      if (!candidate) return;
+      const existingReason = lockExclusions[key]?.reason || '';
+      setPendingExclusion({ key, candidate, reason: existingReason, error: '' });
+    },
+    [lockCandidateMap, lockExclusions],
+  );
+
+  const confirmPendingExclusion = useCallback(() => {
+    if (!pendingExclusion) return;
+    const trimmed = pendingExclusion.reason.trim();
+    if (!trimmed) {
+      setPendingExclusion((prev) =>
+        prev ? { ...prev, error: 'Reason is required.' } : prev,
+      );
+      return;
+    }
+    updateLockSelection(pendingExclusion.key, false);
+    setLockExclusions((prev) => ({
+      ...prev,
+      [pendingExclusion.key]: {
+        reason: trimmed,
+        table:
+          pendingExclusion.candidate?.tableName ??
+          pendingExclusion.candidate?.table ??
+          '',
+        recordId: String(
+          pendingExclusion.candidate?.recordId ??
+            pendingExclusion.candidate?.id ??
+            '',
+        ),
+        label: pendingExclusion.candidate?.label ?? '',
+        description: pendingExclusion.candidate?.description ?? '',
+      },
+    }));
+    setPendingExclusion(null);
+  }, [pendingExclusion, updateLockSelection]);
+
+  const cancelPendingExclusion = useCallback(() => {
+    setPendingExclusion(null);
   }, []);
+
+  const updatePendingExclusionReason = useCallback((value) => {
+    setPendingExclusion((prev) =>
+      prev ? { ...prev, reason: value, error: '' } : prev,
+    );
+  }, []);
+
+  const excludedLockCount = useMemo(() => {
+    if (!Array.isArray(lockCandidates) || lockCandidates.length === 0) {
+      return 0;
+    }
+    return lockCandidates.reduce((count, candidate) => {
+      if (candidate?.locked) return count;
+      const key = getCandidateKey(candidate);
+      return lockSelections[key] ? count : count + 1;
+    }, 0);
+  }, [lockCandidates, lockSelections, getCandidateKey]);
 
   const formatSnapshotCell = useCallback(
     (value, column, fieldTypes = {}) => {
@@ -801,6 +988,16 @@ export default function Reports() {
       return <p>No report metadata available.</p>;
     }
     const paramEntries = Object.entries(meta.parameters || {});
+    const transactions = Array.isArray(meta.transactions)
+      ? meta.transactions
+      : Array.isArray(meta.transaction_list)
+      ? meta.transaction_list
+      : [];
+    const excludedTransactions = Array.isArray(meta.excludedTransactions)
+      ? meta.excludedTransactions
+      : Array.isArray(meta.excluded_transactions)
+      ? meta.excluded_transactions
+      : [];
     const rowCount =
       typeof meta.snapshot?.rowCount === 'number'
         ? meta.snapshot.rowCount
@@ -838,16 +1035,43 @@ export default function Reports() {
         </div>
         <div style={{ marginTop: '0.5rem' }}>
           <strong>Transactions</strong>
-          {Array.isArray(meta.transactions) && meta.transactions.length ? (
+          {transactions.length ? (
             <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
-              {meta.transactions.map((tx, idx) => (
-                <li key={`${tx.table}-${tx.recordId}-${idx}`}>
-                  {tx.table}#{tx.recordId}
-                </li>
-              ))}
+              {transactions.map((tx, idx) => {
+                const table = tx.table || tx.tableName || tx.table_name || '—';
+                const recordId =
+                  tx.recordId ?? tx.record_id ?? tx.id ?? tx.recordID ?? '—';
+                return (
+                  <li key={`${table}-${recordId}-${idx}`}>
+                    {table}#{recordId}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p style={{ margin: '0.25rem 0 0' }}>No transactions selected.</p>
+          )}
+        </div>
+        <div style={{ marginTop: '0.5rem' }}>
+          <strong>Excluded transactions</strong>
+          {excludedTransactions.length ? (
+            <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
+              {excludedTransactions.map((tx, idx) => {
+                const table = tx.table || tx.tableName || tx.table_name || '—';
+                const recordId =
+                  tx.recordId ?? tx.record_id ?? tx.id ?? tx.recordID ?? '—';
+                const reason =
+                  tx.reason || tx.justification || tx.explanation || '';
+                return (
+                  <li key={`${table}-${recordId}-excluded-${idx}`}>
+                    {table}#{recordId}
+                    {reason ? ` — ${reason}` : ''}
+                  </li>
+                );
+              })}
+            </ul>
+          ) : (
+            <p style={{ margin: '0.25rem 0 0' }}>No transactions excluded.</p>
           )}
         </div>
         <div style={{ marginTop: '0.5rem' }}>
@@ -896,6 +1120,22 @@ export default function Reports() {
       addToast('Unable to capture report snapshot', 'error');
       return;
     }
+    const excludedTransactions = lockCandidates
+      .filter((candidate) => !candidate?.locked)
+      .filter((candidate) => !lockSelections[getCandidateKey(candidate)])
+      .map((candidate) => {
+        const key = getCandidateKey(candidate);
+        const info = lockExclusions[key];
+        return {
+          table: candidate.tableName,
+          recordId: String(candidate.recordId),
+          reason: info?.reason?.trim() || '',
+        };
+      });
+    if (excludedTransactions.some((tx) => !tx.reason)) {
+      addToast('Provide a reason for each excluded transaction', 'error');
+      return;
+    }
     const proposedData = {
       procedure: snapshot?.procedure || result.name,
       parameters: snapshot?.params || result.params,
@@ -905,6 +1145,7 @@ export default function Reports() {
           table: candidate.tableName,
           recordId: String(candidate.recordId),
         })),
+      excludedTransactions,
       snapshot: {
         columns: snapshot?.columns || [],
         rows: snapshot?.rows || [],
@@ -1213,6 +1454,13 @@ export default function Reports() {
                         cannot be selected.
                       </p>
                     )}
+                    {excludedLockCount > 0 && (
+                      <p style={{ marginTop: '0.5rem' }}>
+                        {excludedLockCount} transaction
+                        {excludedLockCount === 1 ? '' : 's'} excluded from locking
+                        with justification.
+                      </p>
+                    )}
                     <div style={{ marginTop: '0.75rem' }}>
                       {lockBuckets.map((bucket, idx) => {
                         const bucketEligibleCount = bucket.candidates.reduce(
@@ -1314,6 +1562,7 @@ export default function Reports() {
                                     const checked = locked
                                       ? false
                                       : Boolean(lockSelections[key]);
+                                    const exclusionInfo = lockExclusions[key];
                                     const detailText = candidate?.label
                                       ? candidate?.description
                                         ? `${candidate.label} — ${candidate.description}`
@@ -1325,23 +1574,29 @@ export default function Reports() {
                                           .toUpperCase() +
                                         candidate.lockStatus.slice(1)
                                       : '';
-                                    const statusColor = locked
-                                      ? '#b91c1c'
-                                      : '#047857';
-                                    const statusText = locked
-                                      ? `Locked${statusLabel ? ` (${statusLabel})` : ''}`
-                                      : 'Eligible';
-                                    const lockedByText = locked
-                                      ? `Locked by ${
-                                          candidate?.lockedBy || 'unknown'
-                                        }${
-                                          candidate?.lockedAt
-                                            ? ` on ${formatDateTime(
-                                                candidate.lockedAt,
-                                              )}`
-                                            : ''
-                                        }`
-                                      : 'Selectable for approval';
+                                    let statusColor = '#047857';
+                                    let statusText = 'Will lock';
+                                    let statusDetails = 'Selectable for approval';
+                                    if (locked) {
+                                      statusColor = '#b91c1c';
+                                      statusText = `Locked${
+                                        statusLabel ? ` (${statusLabel})` : ''
+                                      }`;
+                                      statusDetails = `Locked by ${
+                                        candidate?.lockedBy || 'unknown'
+                                      }${
+                                        candidate?.lockedAt
+                                          ? ` on ${formatDateTime(candidate.lockedAt)}`
+                                          : ''
+                                      }`;
+                                    } else if (!checked) {
+                                      statusColor = '#92400e';
+                                      statusText = 'Excluded from locking';
+                                      statusDetails =
+                                        exclusionInfo?.reason
+                                          ? `Reason: ${exclusionInfo.reason}`
+                                          : 'Provide a reason to exclude this transaction.';
+                                    }
                                     return (
                                       <tr
                                         key={
@@ -1359,13 +1614,12 @@ export default function Reports() {
                                             type="checkbox"
                                             checked={checked}
                                             disabled={locked}
-                                            onChange={(e) => {
-                                              if (!key) return;
-                                              updateLockSelection(
-                                                key,
+                                            onChange={(e) =>
+                                              handleLockCheckboxChange(
+                                                candidate,
                                                 e.target.checked,
-                                              );
-                                            }}
+                                              )
+                                            }
                                           />
                                         </td>
                                         <td
@@ -1408,8 +1662,21 @@ export default function Reports() {
                                               fontSize: '0.875rem',
                                             }}
                                           >
-                                            {lockedByText}
+                                            {statusDetails}
                                           </div>
+                                          {!locked && !checked && key && (
+                                            <div style={{ marginTop: '0.5rem' }}>
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  handleEditExclusion(key)
+                                                }
+                                                style={{ fontSize: '0.85rem' }}
+                                              >
+                                                Edit reason
+                                              </button>
+                                            </div>
+                                          )}
                                         </td>
                                         <td
                                           style={{
@@ -1509,6 +1776,77 @@ export default function Reports() {
           )}
         </>
       )}
+      <Modal
+        open={Boolean(pendingExclusion)}
+        onClose={cancelPendingExclusion}
+        title="Exclude transaction"
+        width="500px"
+      >
+        {pendingExclusion ? (
+          <div>
+            <p>
+              Provide a justification for excluding{' '}
+              <strong>
+                {pendingExclusion.candidate?.tableName ||
+                  pendingExclusion.candidate?.table ||
+                  'record'}
+                #{
+                  pendingExclusion.candidate?.recordId ??
+                  pendingExclusion.candidate?.id ??
+                  '—'
+                }
+              </strong>{' '}
+              from the approval request.
+            </p>
+            {(pendingExclusion.candidate?.label ||
+              pendingExclusion.candidate?.description) && (
+              <p style={{ marginTop: '0.25rem' }}>
+                {pendingExclusion.candidate?.label && (
+                  <span>
+                    <strong>Label:</strong>{' '}
+                    {pendingExclusion.candidate.label}
+                    <br />
+                  </span>
+                )}
+                {pendingExclusion.candidate?.description && (
+                  <span>
+                    <strong>Description:</strong>{' '}
+                    {pendingExclusion.candidate.description}
+                  </span>
+                )}
+              </p>
+            )}
+            <label style={{ display: 'block', marginTop: '0.5rem' }}>
+              <span style={{ fontWeight: 'bold' }}>Exclusion reason</span>
+              <textarea
+                value={pendingExclusion.reason}
+                onChange={(e) => updatePendingExclusionReason(e.target.value)}
+                style={{
+                  width: '100%',
+                  minHeight: '5rem',
+                  marginTop: '0.25rem',
+                }}
+                placeholder="Explain why this transaction should remain unlocked"
+              />
+            </label>
+            {pendingExclusion.error && (
+              <p style={{ color: 'red', marginTop: '0.25rem' }}>
+                {pendingExclusion.error}
+              </p>
+            )}
+            <div style={{ marginTop: '0.75rem' }}>
+              <button onClick={confirmPendingExclusion}>Save exclusion</button>
+              <button
+                type="button"
+                onClick={cancelPendingExclusion}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
       {showApprovalControls && (
         <Modal
           open={approvalModalOpen}
