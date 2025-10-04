@@ -5877,14 +5877,14 @@ export async function getProcedureLockCandidates(
     return [value];
   };
 
-  const parseCandidateString = (raw) => {
+  const parseCandidateString = (raw, extras = {}) => {
     if (typeof raw !== 'string') return;
     const trimmed = raw.trim();
     if (!trimmed) return;
     try {
       const parsed = JSON.parse(trimmed);
       if (parsed !== null) {
-        collectCandidateValue(parsed);
+        collectCandidateValue(parsed, extras);
         return;
       }
     } catch {}
@@ -5895,7 +5895,7 @@ export async function getProcedureLockCandidates(
         const tablePart = trimmed.slice(0, idx).trim();
         const idPart = trimmed.slice(idx + 1).trim();
         if (tablePart && idPart) {
-          upsertCandidate(tablePart, idPart);
+          upsertCandidate(tablePart, idPart, extras);
           return;
         }
       }
@@ -5968,7 +5968,7 @@ export async function getProcedureLockCandidates(
   const collectCandidateValue = (value, extras = {}) => {
     if (value === undefined || value === null) return;
     if (typeof value === 'string') {
-      parseCandidateString(value);
+      parseCandidateString(value, extras);
       return;
     }
     if (Array.isArray(value)) {
