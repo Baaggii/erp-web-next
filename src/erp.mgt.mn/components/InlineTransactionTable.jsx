@@ -2077,8 +2077,87 @@ function InlineTransactionTable(
 
 const FwdInlineTransactionTable = forwardRef(InlineTransactionTable);
 
+const ROW_KEY_CANDIDATES = [
+  '__rowKey',
+  '__key',
+  'rowKey',
+  'key',
+  'id',
+  'Id',
+  'ID',
+  'uuid',
+  'UUID',
+  'rowId',
+  'row_id',
+  'RowId',
+  'RowID',
+  'rowid',
+  'RowNo',
+  'rowNo',
+  'code',
+  'Code',
+  'pk',
+  'PK',
+  'primaryKey',
+  'PrimaryKey',
+  '_id',
+  '_ID',
+  '_rowid',
+  '_ROWID_',
+];
+
+function pickRowIdentifier(record) {
+  if (!record || typeof record !== 'object') return null;
+  for (const key of ROW_KEY_CANDIDATES) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) {
+      const value = record[key];
+      if (value !== undefined && value !== null && value !== '') {
+        return String(value);
+      }
+    }
+  }
+  return null;
+}
+
+function safeSerializeRow(row) {
+  if (!row || typeof row !== 'object') return '';
+  try {
+    return JSON.stringify(row);
+  } catch {
+    return Object.keys(row)
+      .sort()
+      .map((key) => `${key}:${String(row[key])}`)
+      .join('|');
+  }
+}
+
+function getRowSignature(row) {
+  if (!row || typeof row !== 'object') return '';
+  const direct = pickRowIdentifier(row);
+  if (direct) return direct;
+  const fromMeta = pickRowIdentifier(row.__meta) ?? pickRowIdentifier(row.meta);
+  if (fromMeta) return fromMeta;
+  return safeSerializeRow(row);
+}
+
+function getRowsSignature(rows) {
+  if (!Array.isArray(rows)) {
+    return rows == null ? 'null' : 'non-array';
+  }
+  const metadata = extractArrayMetadata(rows) || {};
+  const metadataSignature = Object.entries(metadata)
+    .map(([key, value]) => `${key}:${value}`)
+    .sort()
+    .join('|');
+  const rowKeys = rows.map((row) => getRowSignature(row)).join('|');
+  return `${rows.length}|${metadataSignature}|${rowKeys}`;
+}
+
 function areEqual(prev, next) {
-  return prev.tableName === next.tableName && prev.configHash === next.configHash;
+  if (prev.tableName !== next.tableName) return false;
+  if (prev.configHash !== next.configHash) return false;
+  if (prev.rows === next.rows) return true;
+  return getRowsSignature(prev.rows) === getRowsSignature(next.rows);
 }
 
 export default React.memo(FwdInlineTransactionTable, areEqual);
