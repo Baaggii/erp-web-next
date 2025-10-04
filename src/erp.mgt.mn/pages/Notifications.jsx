@@ -179,18 +179,16 @@ export default function NotificationsPage() {
     workflows?.changeRequests?.outgoing?.pending?.count,
   ]);
 
+  const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
+  const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
+  const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
+
   useEffect(() => {
-    if (!temporary) return;
+    if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
     let cancelled = false;
     setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
-    const reviewPromise =
-      typeof temporary.fetchScopeEntries === 'function'
-        ? temporary.fetchScopeEntries('review', SECTION_LIMIT)
-        : Promise.resolve([]);
-    const createdPromise =
-      typeof temporary.fetchScopeEntries === 'function'
-        ? temporary.fetchScopeEntries('created', SECTION_LIMIT)
-        : Promise.resolve([]);
+    const reviewPromise = temporaryFetchScopeEntries('review', SECTION_LIMIT);
+    const createdPromise = temporaryFetchScopeEntries('created', SECTION_LIMIT);
     Promise.all([reviewPromise, createdPromise])
       .then(([review, created]) => {
         if (!cancelled) {
@@ -216,10 +214,9 @@ export default function NotificationsPage() {
     };
   }, [
     t,
-    temporary?.counts?.review?.count,
-    temporary?.counts?.created?.count,
-    temporary?.fetchScopeEntries,
-    temporary,
+    temporaryReviewCount,
+    temporaryCreatedCount,
+    temporaryFetchScopeEntries,
   ]);
 
   const reportPending = useMemo(() => {
@@ -261,7 +258,7 @@ export default function NotificationsPage() {
     (scope) => {
       temporary?.markScopeSeen?.(scope);
     },
-    [temporary],
+    [temporary?.markScopeSeen],
   );
 
   const openRequest = useCallback(

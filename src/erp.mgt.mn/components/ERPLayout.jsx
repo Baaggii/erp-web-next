@@ -2771,20 +2771,61 @@ export default function ERPLayout() {
     };
   }, [reportNotifications, editNotifications, deleteNotifications]);
 
+  const {
+    counts: temporaryCounts,
+    hasNew: temporaryHasNew,
+    markScopeSeen: rawTemporaryMarkScopeSeen,
+    markAllSeen: rawTemporaryMarkAllSeen,
+    fetchScopeEntries: rawTemporaryFetchScopeEntries,
+  } = temporaryNotifications || {};
+
+  const markTemporaryScopeSeen = useCallback(
+    (...args) => rawTemporaryMarkScopeSeen?.(...args),
+    [rawTemporaryMarkScopeSeen],
+  );
+
+  const markTemporaryAllSeen = useCallback(
+    () => rawTemporaryMarkAllSeen?.(),
+    [rawTemporaryMarkAllSeen],
+  );
+
+  const fetchTemporaryScopeEntries = useCallback(
+    (...args) => rawTemporaryFetchScopeEntries?.(...args),
+    [rawTemporaryFetchScopeEntries],
+  );
+
+  const temporaryCreatedCount = Number(temporaryCounts?.created?.count) || 0;
+  const temporaryCreatedNewCount = Number(temporaryCounts?.created?.newCount) || 0;
+  const temporaryReviewCount = Number(temporaryCounts?.review?.count) || 0;
+  const temporaryReviewNewCount = Number(temporaryCounts?.review?.newCount) || 0;
+
+  const temporaryValue = useMemo(
+    () => ({
+      counts: temporaryCounts,
+      hasNew: temporaryHasNew,
+      markScopeSeen: markTemporaryScopeSeen,
+      markAllSeen: markTemporaryAllSeen,
+      fetchScopeEntries: fetchTemporaryScopeEntries,
+    }),
+    [
+      temporaryCreatedCount,
+      temporaryCreatedNewCount,
+      temporaryReviewCount,
+      temporaryReviewNewCount,
+      temporaryHasNew,
+      markTemporaryScopeSeen,
+      markTemporaryAllSeen,
+      fetchTemporaryScopeEntries,
+    ],
+  );
+
   const pendingRequestValue = useMemo(
     () => ({
       ...pendingRequestSummary.contextValue,
-      temporary: {
-        counts: temporaryNotifications.counts,
-        hasNew: temporaryNotifications.hasNew,
-        markScopeSeen: temporaryNotifications.markScopeSeen,
-        markAllSeen: temporaryNotifications.markAllSeen,
-        fetchScopeEntries: temporaryNotifications.fetchScopeEntries,
-      },
-      anyHasNew:
-        pendingRequestSummary.requestHasNew || temporaryNotifications.hasNew,
+      temporary: temporaryValue,
+      anyHasNew: pendingRequestSummary.requestHasNew || temporaryHasNew,
     }),
-    [pendingRequestSummary, temporaryNotifications],
+    [pendingRequestSummary, temporaryHasNew, temporaryValue],
   );
 
   useEffect(() => {
