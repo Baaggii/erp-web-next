@@ -74,7 +74,7 @@ await test('respondRequest returns requester metadata', async () => {
 });
 
 await test('plan senior can approve report approval request', async () => {
-  const { restore } = setupRequest({
+  const { conn, restore } = setupRequest({
     request_type: 'report_approval',
     senior_empid: null,
     employment_senior_plan_empid: 'PS1',
@@ -86,6 +86,31 @@ await test('plan senior can approve report approval request', async () => {
   });
   await service.respondRequest(1, 'ps1', 'accepted', 'ok');
   restore();
+  const auditLog = conn.queries.find((q) =>
+    q.sql.startsWith('INSERT INTO user_activity_log') &&
+    q.params?.[4] === 'approve_report',
+  );
+  assert.ok(auditLog, 'should log approve_report action');
+});
+
+await test('declining report approval logs decline_report action', async () => {
+  const { conn, restore } = setupRequest({
+    request_type: 'report_approval',
+    senior_empid: null,
+    employment_senior_plan_empid: 'PS1',
+    proposed_data: JSON.stringify({
+      procedure: 'demo',
+      transactions: [{ table: 'foo', recordId: '1' }],
+      parameters: {},
+    }),
+  });
+  await service.respondRequest(1, 'ps1', 'declined', 'needs work');
+  restore();
+  const auditLog = conn.queries.find((q) =>
+    q.sql.startsWith('INSERT INTO user_activity_log') &&
+    q.params?.[4] === 'decline_report',
+  );
+  assert.ok(auditLog, 'should log decline_report action');
 });
 
 await test('listRequests returns report approval metadata', async () => {
@@ -375,6 +400,11 @@ await test('createRequest uses plan senior for report approvals', async () => {
       q.sql.startsWith('INSERT INTO pending_request'),
     );
     assert.equal(insert.params[4], 'PS1');
+    const auditLog = conn.queries.find((q) =>
+      q.sql.startsWith('INSERT INTO user_activity_log'),
+    );
+    assert.ok(auditLog, 'should insert audit log entry');
+    assert.equal(auditLog.params[4], 'request_report_approval');
   } finally {
     db.pool.getConnection = origGet;
     db.pool.query = origQuery;
