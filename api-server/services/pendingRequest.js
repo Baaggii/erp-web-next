@@ -534,6 +534,14 @@ export async function respondRequest(
     let notificationMessage = 'Request approved';
     let approvalLogAction = 'approve';
     let approvalLogDetails = { proposed_data: proposedData, notes };
+    const lockImpacts = [];
+    const trackLockImpacts = async (impacts) => {
+      if (!Array.isArray(impacts) || impacts.length === 0) return;
+      impacts.forEach((impact) => {
+        if (!impact) return;
+        lockImpacts.push({ ...impact });
+      });
+    };
 
     if (status === 'accepted') {
       const data = proposedData;
@@ -548,6 +556,14 @@ export async function respondRequest(
           data,
           req.company_id,
           conn,
+          {
+            ignoreTransactionLock: true,
+            mutationContext: {
+              changedBy: responder,
+              companyId: req.company_id,
+            },
+            onLockInvalidation: trackLockImpacts,
+          },
         );
         await logUserAction(
           {
@@ -555,7 +571,10 @@ export async function respondRequest(
             table_name: req.table_name,
             record_id: req.record_id,
             action: 'update',
-            details: data,
+            details:
+              lockImpacts.length > 0
+                ? { ...data, report_lock_impacts: lockImpacts }
+                : data,
             request_id: id,
             company_id: req.company_id,
           },
@@ -567,7 +586,15 @@ export async function respondRequest(
           req.record_id,
           req.company_id,
           conn,
-          responseEmpid,
+          responder,
+          {
+            ignoreTransactionLock: true,
+            mutationContext: {
+              changedBy: responder,
+              companyId: req.company_id,
+            },
+            onLockInvalidation: trackLockImpacts,
+          },
         );
         await logUserAction(
           {
@@ -575,6 +602,10 @@ export async function respondRequest(
             table_name: req.table_name,
             record_id: req.record_id,
             action: 'delete',
+            details:
+              lockImpacts.length > 0
+                ? { report_lock_impacts: lockImpacts }
+                : null,
             request_id: id,
             company_id: req.company_id,
           },
@@ -601,6 +632,12 @@ export async function respondRequest(
         approvalLogAction = 'approve_report';
         approvalLogDetails = { proposed_data: normalizedReport, notes };
         notificationMessage = 'Report approval granted';
+      }
+      if (lockImpacts.length > 0) {
+        approvalLogDetails = {
+          ...approvalLogDetails,
+          report_lock_impacts: lockImpacts,
+        };
       }
       await conn.query(
         `UPDATE pending_request SET status = 'accepted', responded_at = NOW(), response_empid = ?, response_notes = ?, updated_by = ?, updated_at = NOW() WHERE request_id = ?`,
