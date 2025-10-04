@@ -2709,23 +2709,36 @@ export default function ERPLayout() {
     session && user?.empid && !hasSupervisor ? user.empid : null;
   const seniorPlanEmpId = hasSupervisor ? session?.senior_plan_empid : null;
 
+  const reportFilters = useMemo(
+    () => ({ request_type: 'report_approval' }),
+    [],
+  );
+  const editFilters = useMemo(
+    () => ({ request_type: 'edit' }),
+    [],
+  );
+  const deleteFilters = useMemo(
+    () => ({ request_type: 'delete' }),
+    [],
+  );
+
   const reportNotifications = useRequestNotificationCounts(
     seniorEmpId,
-    { request_type: 'report_approval' },
+    reportFilters,
     user?.empid,
     seniorPlanEmpId,
     { storageNamespace: 'report_approval' },
   );
   const editNotifications = useRequestNotificationCounts(
     seniorEmpId,
-    { request_type: 'edit' },
+    editFilters,
     user?.empid,
     seniorPlanEmpId,
     { storageNamespace: 'request_edit' },
   );
   const deleteNotifications = useRequestNotificationCounts(
     seniorEmpId,
-    { request_type: 'delete' },
+    deleteFilters,
     user?.empid,
     seniorPlanEmpId,
     { storageNamespace: 'request_delete' },

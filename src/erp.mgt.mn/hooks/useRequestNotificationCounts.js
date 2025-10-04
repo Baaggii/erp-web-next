@@ -125,7 +125,7 @@ export default function useRequestNotificationCounts(
     [markStatusesAsSeen],
   );
 
-  const memoFilters = useMemo(() => filters || {}, [filters]);
+  const memoFilters = useMemo(() => (filters ? { ...filters } : {}), [filterKey]);
   const supervisorIds = useMemo(() => {
     const ids = [];
     if (seniorEmpId) ids.push(String(seniorEmpId).trim());
@@ -295,7 +295,7 @@ export default function useRequestNotificationCounts(
       }
       stopPolling();
     };
-  }, [supervisorIds, memoFilters, pollingEnabled, intervalSeconds, storageKey]);
+  }, [supervisorIds, filterKey, pollingEnabled, intervalSeconds, storageKey]);
 
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||
