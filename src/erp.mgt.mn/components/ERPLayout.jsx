@@ -3438,6 +3438,8 @@ function MainWindow({ title }) {
 
   const derivedPageKey = useMemo(() => derivePageKey(location.pathname), [location.pathname]);
 
+  const tabKeys = useMemo(() => new Set(tabs.map((tab) => tab.key)), [tabs]);
+
   // Store rendered outlet by path once the route changes. Avoid tracking
   // the `outlet` object itself to prevent endless updates caused by React
   // creating a new element on every render.
@@ -3446,11 +3448,12 @@ function MainWindow({ title }) {
   }, [location.pathname, setTabContent]);
 
   useEffect(() => {
+    if (!tabKeys.has(location.pathname)) return;
     if (!activeKey || activeKey === location.pathname) return;
     if (typeof activeKey !== 'string') return;
     if (!activeKey.startsWith('/')) return;
     navigate(activeKey);
-  }, [activeKey, location.pathname, navigate]);
+  }, [activeKey, location.pathname, navigate, tabKeys, tabs]);
 
   function handleSwitch(key) {
     switchTab(key);
