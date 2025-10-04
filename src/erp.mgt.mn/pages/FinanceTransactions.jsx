@@ -19,6 +19,43 @@ import CustomDatePicker from '../components/CustomDatePicker.jsx';
 import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 
+const DATE_PARAM_ALLOWLIST = new Set([
+  'startdt',
+  'enddt',
+  'fromdt',
+  'todt',
+  'startdatetime',
+  'enddatetime',
+  'fromdatetime',
+  'todatetime',
+]);
+
+function normalizeParamName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function isLikelyDateField(name) {
+  const normalized = normalizeParamName(name);
+  if (!normalized) return false;
+  if (normalized.includes('date')) return true;
+  if (DATE_PARAM_ALLOWLIST.has(normalized)) return true;
+  return false;
+}
+
+function isStartDateParam(name) {
+  if (!isLikelyDateField(name)) return false;
+  const normalized = normalizeParamName(name);
+  return normalized.includes('start') || normalized.includes('from');
+}
+
+function isEndDateParam(name) {
+  if (!isLikelyDateField(name)) return false;
+  const normalized = normalizeParamName(name);
+  return normalized.includes('end') || normalized.includes('to');
+}
+
 function isEqual(a, b) {
   try {
     return JSON.stringify(a) === JSON.stringify(b);
@@ -338,17 +375,45 @@ useEffect(() => {
 
 
   const transactionNames = useMemo(() => Object.keys(configs), [configs]);
+  const dateParamInfo = useMemo(() => {
+    const info = {
+      hasStartDateParam: false,
+      hasEndDateParam: false,
+      managedIndices: new Set(),
+      startIndices: new Set(),
+      endIndices: new Set(),
+    };
+    procParams.forEach((param, index) => {
+      if (typeof param !== 'string') return;
+      if (isStartDateParam(param)) {
+        info.hasStartDateParam = true;
+        info.managedIndices.add(index);
+        info.startIndices.add(index);
+      }
+      if (isEndDateParam(param)) {
+        info.hasEndDateParam = true;
+        info.managedIndices.add(index);
+        info.endIndices.add(index);
+      }
+    });
+    return info;
+  }, [procParams]);
+
+  const { hasStartDateParam, hasEndDateParam, managedIndices, startIndices, endIndices } =
+    dateParamInfo;
+  const hasDateParams = hasStartDateParam || hasEndDateParam;
+
   const autoParams = useMemo(() => {
-    return procParams.map((p) => {
-      const name = p.toLowerCase();
-      if (name.includes('start') || name.includes('from')) return startDate || null;
-      if (name.includes('end') || name.includes('to')) return endDate || null;
+    return procParams.map((p, index) => {
+      if (startIndices.has(index)) return startDate || null;
+      if (endIndices.has(index)) return endDate || null;
+      const name = typeof p === 'string' ? p.toLowerCase() : '';
       if (name.includes('branch')) return branch || null;
       if (name.includes('company')) return company ?? null;
       if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
       return null;
     });
-  }, [procParams, startDate, endDate, company, branch, user]);
+  }, [procParams, startIndices, endIndices, startDate, endDate, company, branch, user]);
 
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
@@ -406,8 +471,12 @@ useEffect(() => {
     }
     const fmt = (d) =>
       d instanceof Date ? formatTimestamp(d).slice(0, 10) : '';
-    setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
-    setEndDate(normalizeDateInput(fmt(end), 'YYYY-MM-DD'));
+    if (hasStartDateParam) {
+      setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
+    }
+    if (hasEndDateParam) {
+      setEndDate(normalizeDateInput(fmt(end), 'YYYY-MM-DD'));
+    }
   }
 
   async function runReport() {
@@ -514,36 +583,43 @@ useEffect(() => {
                 </select>
                 {selectedProc && (
                   <div style={{ marginTop: '0.5rem' }}>
-                    <select
-                      value={datePreset}
-                      onChange={handlePresetChange}
-                      style={{ marginRight: '0.5rem' }}
-                    >
-                      <option value="custom">Custom</option>
-                      <option value="month">This month</option>
-                      <option value="q1">Quarter #1</option>
-                      <option value="q2">Quarter #2</option>
-                      <option value="q3">Quarter #3</option>
-                      <option value="q4">Quarter #4</option>
-                      <option value="quarter">This quarter</option>
-                      <option value="year">This year</option>
-                    </select>
-                    <CustomDatePicker
-                      value={startDate}
-                      onChange={(v) => {
-                        setStartDate(normalizeDateInput(v, 'YYYY-MM-DD'));
-                        setDatePreset('custom');
-                      }}
-                    />
-                    <CustomDatePicker
-                      value={endDate}
-                      onChange={(v) => {
-                        setEndDate(normalizeDateInput(v, 'YYYY-MM-DD'));
-                        setDatePreset('custom');
-                      }}
-                      style={{ marginLeft: '0.5rem' }}
-                    />
+                    {hasDateParams && (
+                      <select
+                        value={datePreset}
+                        onChange={handlePresetChange}
+                        style={{ marginRight: '0.5rem' }}
+                      >
+                        <option value="custom">Custom</option>
+                        <option value="month">This month</option>
+                        <option value="q1">Quarter #1</option>
+                        <option value="q2">Quarter #2</option>
+                        <option value="q3">Quarter #3</option>
+                        <option value="q4">Quarter #4</option>
+                        <option value="quarter">This quarter</option>
+                        <option value="year">This year</option>
+                      </select>
+                    )}
+                    {hasStartDateParam && (
+                      <CustomDatePicker
+                        value={startDate}
+                        onChange={(v) => {
+                          setStartDate(normalizeDateInput(v, 'YYYY-MM-DD'));
+                          setDatePreset('custom');
+                        }}
+                      />
+                    )}
+                    {hasEndDateParam && (
+                      <CustomDatePicker
+                        value={endDate}
+                        onChange={(v) => {
+                          setEndDate(normalizeDateInput(v, 'YYYY-MM-DD'));
+                          setDatePreset('custom');
+                        }}
+                        style={{ marginLeft: hasStartDateParam ? '0.5rem' : undefined }}
+                      />
+                    )}
                     {procParams.map((p, i) => {
+                      if (managedIndices.has(i)) return null;
                       if (autoParams[i] !== null) return null;
                       const val = manualParams[p] || '';
                       return (
