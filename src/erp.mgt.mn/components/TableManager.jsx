@@ -203,6 +203,7 @@ const TableManager = forwardRef(function TableManager({
   refreshId = 0,
   formConfig = null,
   allConfigs = {},
+  formName = '',
   initialPerPage = 10,
   addLabel = 'Мөр нэмэх',
   showTable = true,
@@ -248,6 +249,11 @@ const TableManager = forwardRef(function TableManager({
   const [procTriggers, setProcTriggers] = useState({});
   const [lockMetadataById, setLockMetadataById] = useState({});
   const lockSignatureRef = useRef('');
+  const [temporarySummary, setTemporarySummary] = useState(null);
+  const [temporaryScope, setTemporaryScope] = useState('created');
+  const [temporaryList, setTemporaryList] = useState([]);
+  const [showTemporaryModal, setShowTemporaryModal] = useState(false);
+  const [temporaryLoading, setTemporaryLoading] = useState(false);
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -339,6 +345,29 @@ const TableManager = forwardRef(function TableManager({
     window.addEventListener('click', hideMenu);
     return () => window.removeEventListener('click', hideMenu);
   }, []);
+
+  const refreshTemporarySummary = useCallback(async () => {
+    if (!supportsTemporary) {
+      setTemporarySummary(null);
+      setTemporaryScope('created');
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/transaction_temporaries/summary`, {
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('failed');
+      const data = await res.json();
+      setTemporarySummary(data);
+      if (data?.reviewPending > 0) {
+        setTemporaryScope('review');
+      } else {
+        setTemporaryScope('created');
+      }
+    } catch {
+      setTemporarySummary((prev) => prev || { createdPending: 0, reviewPending: 0 });
+    }
+  }, [supportsTemporary]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
@@ -496,6 +525,15 @@ const TableManager = forwardRef(function TableManager({
     return defaultFields.filter(f => validCols.has(f));
   }, [formConfig, validCols]);
 
+  const supportsTemporary = useMemo(() => {
+    if (!formConfig) return false;
+    const flag =
+      formConfig.supportsTemporarySubmission ??
+      formConfig.allowTemporarySubmission ??
+      false;
+    return Boolean(flag);
+  }, [formConfig]);
+
   function computeAutoInc(meta) {
     const auto = meta
       .filter(
@@ -568,6 +606,10 @@ const TableManager = forwardRef(function TableManager({
       canceled = true;
     };
   }, [table]);
+
+  useEffect(() => {
+    refreshTemporarySummary();
+  }, [refreshTemporarySummary, table, refreshId]);
 
   useEffect(() => {
     const views = Array.from(new Set(Object.values(viewSourceMap)));
@@ -2016,6 +2058,85 @@ const TableManager = forwardRef(function TableManager({
     }
   }
 
+  async function handleSaveTemporary(submission) {
+    if (!supportsTemporary) return false;
+    if (!submission || typeof submission !== 'object') return false;
+    const normalizedValues = submission.values || submission;
+    const merged = { ...(editing || {}) };
+    Object.entries(normalizedValues).forEach(([k, v]) => {
+      merged[k] = v;
+    });
+    Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
+      if (merged[k] === undefined || merged[k] === '') merged[k] = v;
+    });
+    if (isAdding && autoFillSession) {
+      const columns = new Set(allColumns);
+      userIdFields.forEach((f) => {
+        if (columns.has(f)) merged[f] = user?.empid;
+      });
+      branchIdFields.forEach((f) => {
+        if (columns.has(f) && branch !== undefined) merged[f] = branch;
+      });
+      departmentIdFields.forEach((f) => {
+        if (columns.has(f) && department !== undefined) merged[f] = department;
+      });
+      companyIdFields.forEach((f) => {
+        if (columns.has(f) && company !== undefined) merged[f] = company;
+      });
+    }
+
+    const cleaned = {};
+    const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
+    Object.entries(merged).forEach(([k, v]) => {
+      const lower = k.toLowerCase();
+      if (skipFields.has(k) || k.startsWith('_')) return;
+      if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
+      if (v !== '') {
+        cleaned[k] =
+          typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
+      }
+    });
+
+    const body = {
+      table,
+      formName: formName || formConfig?.moduleLabel || null,
+      configName: formName || null,
+      moduleKey: formConfig?.moduleKey || null,
+      payload: {
+        values: normalizedValues,
+        submittedAt: new Date().toISOString(),
+      },
+      rawValues: merged,
+      cleanedValues: cleaned,
+      tenant: {
+        company_id: company ?? null,
+        branch_id: branch ?? null,
+        department_id: department ?? null,
+      },
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/transaction_temporaries`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error('Failed');
+      addToast(t('temporary_saved', 'Saved as temporary draft'), 'success');
+      setShowForm(false);
+      setEditing(null);
+      setIsAdding(false);
+      setGridRows([]);
+      await refreshTemporarySummary();
+      return true;
+    } catch (err) {
+      console.error('Temporary save failed', err);
+      addToast(t('temporary_save_failed', 'Failed to save temporary draft'), 'error');
+      return false;
+    }
+  }
+
   async function executeDeleteRow(id, cascade) {
     const res = await fetch(
       `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
@@ -2279,6 +2400,81 @@ const TableManager = forwardRef(function TableManager({
     setLocalRefresh((r) => r + 1);
   }
 
+  const fetchTemporaryList = useCallback(
+    async (scopeOverride) => {
+      if (!supportsTemporary) return;
+      const scope = scopeOverride || temporaryScope;
+      const params = new URLSearchParams();
+      params.set('scope', scope);
+      if (table) params.set('table', table);
+      setTemporaryLoading(true);
+      try {
+        const res = await fetch(
+          `${API_BASE}/transaction_temporaries?${params.toString()}`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) throw new Error('Failed to load temporaries');
+        const data = await res.json().catch(() => ({}));
+        setTemporaryScope(scope);
+        setTemporaryList(Array.isArray(data.rows) ? data.rows : []);
+      } catch (err) {
+        console.error('Failed to load temporaries', err);
+        setTemporaryList([]);
+      } finally {
+        setTemporaryLoading(false);
+      }
+    },
+    [supportsTemporary, table, temporaryScope],
+  );
+
+  async function promoteTemporary(id) {
+    if (!supportsTemporary) return;
+    if (!window.confirm(t('promote_temporary_confirm', 'Promote temporary record?')))
+      return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/promote`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+        },
+      );
+      if (!res.ok) throw new Error('Failed to promote');
+      addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
+      await refreshTemporarySummary();
+      await fetchTemporaryList(temporaryScope);
+      setLocalRefresh((r) => r + 1);
+    } catch (err) {
+      console.error(err);
+      addToast(t('temporary_promote_failed', 'Failed to promote temporary'), 'error');
+    }
+  }
+
+  async function rejectTemporary(id) {
+    if (!supportsTemporary) return;
+    const notes = window.prompt(t('temporary_reject_reason', 'Enter rejection notes'));
+    if (!notes || !notes.trim()) return;
+    try {
+      const res = await fetch(
+        `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/reject`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ notes }),
+        },
+      );
+      if (!res.ok) throw new Error('Failed to reject');
+      addToast(t('temporary_rejected', 'Temporary rejected'), 'success');
+      await refreshTemporarySummary();
+      await fetchTemporaryList(temporaryScope);
+    } catch (err) {
+      console.error(err);
+      addToast(t('temporary_reject_failed', 'Failed to reject temporary'), 'error');
+    }
+  }
+
   if (!table) return null;
 
   const allColumns =
@@ -2494,6 +2690,12 @@ const TableManager = forwardRef(function TableManager({
 
   const uploadCfg = uploadRow ? getConfigForRow(uploadRow) : {};
 
+  const temporaryBadgeCount = useMemo(() => {
+    if (!temporarySummary) return 0;
+    if (temporarySummary.reviewPending > 0) return temporarySummary.reviewPending;
+    return temporarySummary.createdPending ?? 0;
+  }, [temporarySummary]);
+
   return (
     <div>
       <div
@@ -2530,6 +2732,40 @@ const TableManager = forwardRef(function TableManager({
             Refresh Table
           </button>
         </TooltipWrapper>
+        {supportsTemporary && (
+          <TooltipWrapper
+            title={t('temporary_queue', {
+              ns: 'tooltip',
+              defaultValue: 'View temporary submissions',
+            })}
+          >
+            <button
+              onClick={() => {
+                setShowTemporaryModal(true);
+                fetchTemporaryList(
+                  temporarySummary?.reviewPending > 0 ? 'review' : 'created',
+                );
+              }}
+              style={{ marginRight: '0.5rem', position: 'relative' }}
+            >
+              {t('temporaries', 'Temporaries')}
+              {temporaryBadgeCount > 0 && (
+                <span
+                  style={{
+                    marginLeft: '0.5rem',
+                    background: '#2563eb',
+                    color: '#fff',
+                    borderRadius: '999px',
+                    padding: '0 0.5rem',
+                    fontSize: '0.75rem',
+                  }}
+                >
+                  {temporaryBadgeCount}
+                </span>
+              )}
+            </button>
+          </TooltipWrapper>
+        )}
         {selectedRows.size > 0 && buttonPerms['Delete transaction'] && (
           <TooltipWrapper title={t('delete_selected', { ns: 'tooltip', defaultValue: 'Remove selected rows' })}>
             <button onClick={handleDeleteSelected}>Delete Selected</button>
@@ -3480,6 +3716,7 @@ const TableManager = forwardRef(function TableManager({
           setRequestType(null);
         }}
         onSubmit={handleSubmit}
+        onSaveTemporary={supportsTemporary ? handleSaveTemporary : null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
@@ -3516,6 +3753,8 @@ const TableManager = forwardRef(function TableManager({
         onRowsChange={handleRowsChange}
         autoFillSession={autoFillSession}
         scope="forms"
+        allowTemporarySave={supportsTemporary}
+        isAdding={isAdding}
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -3566,6 +3805,179 @@ const TableManager = forwardRef(function TableManager({
         columnCaseMap={columnCaseMap}
         configs={allConfigs}
       />
+      <Modal
+        visible={showTemporaryModal}
+        onClose={() => setShowTemporaryModal(false)}
+        title={t('temporary_modal_title', 'Temporary submissions')}
+        width="70vw"
+      >
+        {!supportsTemporary && (
+          <p>{t('temporary_not_supported', 'Temporary submissions are not available for this form.')}</p>
+        )}
+        {supportsTemporary && (
+          <div>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <button
+                type="button"
+                onClick={() => fetchTemporaryList('created')}
+                disabled={temporaryScope === 'created'}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  backgroundColor: temporaryScope === 'created' ? '#2563eb' : '#e5e7eb',
+                  color: temporaryScope === 'created' ? '#fff' : '#111827',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: temporaryScope === 'created' ? 'default' : 'pointer',
+                }}
+              >
+                {t('temporary_my_drafts', 'My drafts')}
+                {temporarySummary?.createdPending
+                  ? ` (${temporarySummary.createdPending})`
+                  : ''}
+              </button>
+              <button
+                type="button"
+                onClick={() => fetchTemporaryList('review')}
+                disabled={temporaryScope === 'review'}
+                style={{
+                  padding: '0.35rem 0.75rem',
+                  backgroundColor: temporaryScope === 'review' ? '#2563eb' : '#e5e7eb',
+                  color: temporaryScope === 'review' ? '#fff' : '#111827',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: temporaryScope === 'review' ? 'default' : 'pointer',
+                }}
+              >
+                {t('temporary_review_queue', 'Review queue')}
+                {temporarySummary?.reviewPending
+                  ? ` (${temporarySummary.reviewPending})`
+                  : ''}
+              </button>
+            </div>
+            {temporaryLoading ? (
+              <p>{t('loading', 'Loading')}...</p>
+            ) : temporaryList.length === 0 ? (
+              <p>{t('temporary_empty', 'No temporary submissions found.')}</p>
+            ) : (
+              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>#</th>
+                      <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>{t('table', 'Table')}</th>
+                      <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>{t('created_by', 'Created by')}</th>
+                      <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>{t('status', 'Status')}</th>
+                      <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>{t('created_at', 'Created at')}</th>
+                      <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>{t('details', 'Details')}</th>
+                      {temporaryScope === 'review' && (
+                        <th
+                          style={{
+                            borderBottom: '1px solid #d1d5db',
+                            textAlign: 'right',
+                            padding: '0.25rem',
+                          }}
+                        >
+                          {t('actions', 'Actions')}
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {temporaryList.map((entry) => (
+                      <tr key={entry.id}>
+                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.id}</td>
+                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                          <div style={{ fontWeight: 600 }}>{entry.formName || '-'}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>{entry.tableName}</div>
+                        </td>
+                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.createdBy}</td>
+                        <td
+                          style={{
+                            borderBottom: '1px solid #f3f4f6',
+                            padding: '0.25rem',
+                            textTransform: 'capitalize',
+                          }}
+                        >
+                          {entry.status}
+                        </td>
+                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                          {formatTimestamp(entry.createdAt)}
+                        </td>
+                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                          <pre
+                            style={{
+                              background: '#f9fafb',
+                              padding: '0.5rem',
+                              borderRadius: '4px',
+                              maxHeight: '12rem',
+                              overflow: 'auto',
+                              fontSize: '0.75rem',
+                            }}
+                          >
+                            {JSON.stringify(
+                              entry.cleanedValues || entry.payload?.values || {},
+                              null,
+                              2,
+                            )}
+                          </pre>
+                        </td>
+                        {temporaryScope === 'review' && (
+                          <td
+                            style={{
+                              borderBottom: '1px solid #f3f4f6',
+                              padding: '0.25rem',
+                              textAlign: 'right',
+                              whiteSpace: 'nowrap',
+                            }}
+                          >
+                            {entry.status === 'pending' ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => promoteTemporary(entry.id)}
+                                  style={{
+                                    marginRight: '0.25rem',
+                                    padding: '0.25rem 0.5rem',
+                                    backgroundColor: '#16a34a',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                  }}
+                                >
+                                  {t('promote', 'Promote')}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => rejectTemporary(entry.id)}
+                                  style={{
+                                    padding: '0.25rem 0.5rem',
+                                    backgroundColor: '#dc2626',
+                                    color: '#fff',
+                                    border: 'none',
+                                    borderRadius: '4px',
+                                  }}
+                                >
+                                  {t('reject', 'Reject')}
+                                </button>
+                              </>
+                            ) : (
+                              <span style={{ fontSize: '0.8rem', color: '#4b5563' }}>
+                                {entry.status === 'promoted'
+                                  ? t('temporary_promoted_short', 'Promoted')
+                                  : t('temporary_rejected_short', 'Rejected')}
+                              </span>
+                            )}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
       <ImageSearchModal
         visible={showSearch}
         term={searchTerm}

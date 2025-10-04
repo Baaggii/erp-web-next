@@ -89,6 +89,13 @@ function parseEntry(raw = {}) {
       : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
     procedures: arrify(raw.procedures || raw.procedure),
+    supportsTemporarySubmission:
+      Boolean(
+        raw.supportsTemporarySubmission ??
+          raw.allowTemporarySubmission ??
+          raw.supportsTemporary ??
+          false,
+      ),
   };
 }
 
@@ -203,6 +210,8 @@ export async function setFormConfig(
     detectFields = [],
     detectField = '',
     procedures = [],
+    supportsTemporarySubmission,
+    allowTemporarySubmission,
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -252,6 +261,9 @@ export async function setFormConfig(
     allowedBranches: ab,
     allowedDepartments: ad,
     procedures: arrify(procedures),
+    allowTemporarySubmission: Boolean(
+      supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
+    ),
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);

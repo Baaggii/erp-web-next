@@ -1,6 +1,7 @@
 {
   "transactions_income": {
     "Кассын орлого (Бэлэн)": {
+      "allowTemporarySubmission": true,
       "visibleFields": [
         "or_g_id",
         "or_burtgel",
