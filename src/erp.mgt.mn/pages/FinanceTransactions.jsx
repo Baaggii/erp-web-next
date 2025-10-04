@@ -127,10 +127,24 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const prevSessionRef = useRef({});
   const prevConfigRef = useRef(null);
   const controlRefs = useRef([]);
+  const prevNameRef = useRef();
+
+  const reportProcPrefix = generalConfig?.general?.reportProcPrefix || '';
+
+  const availableProcedures = useMemo(() => {
+    const formConfig = configs[name];
+    if (!formConfig || typeof formConfig !== 'object') return [];
+    const { procedures } = formConfig;
+    if (!Array.isArray(procedures) || procedures.length === 0) return [];
+    const normalized = procedures.filter((proc) => typeof proc === 'string');
+    if (!reportProcPrefix) return normalized;
+    const prefixLower = reportProcPrefix.toLowerCase();
+    return normalized.filter((proc) => proc.toLowerCase().includes(prefixLower));
+  }, [configs, name, reportProcPrefix]);
 
   const procMap = useHeaderMappings(
-    config?.procedures
-      ? [...config.procedures, selectedProc].filter(Boolean)
+    availableProcedures.length > 0
+      ? [...availableProcedures, selectedProc].filter(Boolean)
       : selectedProc
       ? [selectedProc]
       : [],
@@ -314,59 +328,59 @@ useEffect(() => {
   }, [configs]);
 
   useEffect(() => {
-  console.log('FinanceTransactions fetch config effect');
-  if (!table || !name) {
-    if (config !== null) setConfig(null);
-    return;
-  }
-  let canceled = false;
-  fetch(
-    `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
-    { credentials: 'include' }
-  )
-    .then((res) => {
-      if (canceled) return null;
-      if (!res.ok) {
-        addToast('Failed to load transaction configuration', 'error');
-        return null;
-      }
-      return res.json().catch(() => null);
-    })
-    .then((cfg) => {
-      if (canceled) return;
-      if (cfg && cfg.moduleKey) {
-        const prefix = generalConfig?.general?.reportProcPrefix || '';
-        let nextCfg = cfg;
-        if (prefix && Array.isArray(cfg.procedures)) {
-          nextCfg = {
-            ...cfg,
-            procedures: cfg.procedures.filter((p) =>
-              p.toLowerCase().includes(prefix.toLowerCase()),
-            ),
-          };
+    console.log('FinanceTransactions fetch config effect');
+    if (!table || !name) {
+      if (config !== null) setConfig(null);
+      return;
+    }
+    let canceled = false;
+    fetch(
+      `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
+      { credentials: 'include' }
+    )
+      .then((res) => {
+        if (canceled) return null;
+        if (!res.ok) {
+          addToast('Failed to load transaction configuration', 'error');
+          return null;
         }
-        if (!isEqual(nextCfg, prevConfigRef.current)) {
-          setConfig(nextCfg);
-          prevConfigRef.current = nextCfg;
+        return res.json().catch(() => null);
+      })
+      .then((cfg) => {
+        if (canceled) return;
+        if (cfg && cfg.moduleKey) {
+          const prefix = reportProcPrefix;
+          let nextCfg = cfg;
+          if (prefix && Array.isArray(cfg.procedures)) {
+            nextCfg = {
+              ...cfg,
+              procedures: cfg.procedures.filter((p) =>
+                p.toLowerCase().includes(prefix.toLowerCase()),
+              ),
+            };
+          }
+          if (!isEqual(nextCfg, prevConfigRef.current)) {
+            setConfig(nextCfg);
+            prevConfigRef.current = nextCfg;
+          }
+          setShowTable(true);
+        } else {
+          if (config !== null) setConfig(null);
+          setShowTable(false);
+          addToast('Transaction configuration not found', 'error');
         }
-        setShowTable(true);
-      } else {
-        if (config !== null) setConfig(null);
-        setShowTable(false);
-        addToast('Transaction configuration not found', 'error');
-      }
-    })
-    .catch(() => {
-      if (!canceled) {
-        if (config !== null) setConfig(null);
-        setShowTable(false);
-        addToast('Failed to load transaction configuration', 'error');
-      }
-    });
-  return () => {
-    canceled = true;
-  };
-}, [table, name, addToast, generalConfig?.general?.reportProcPrefix]);
+      })
+      .catch(() => {
+        if (!canceled) {
+          if (config !== null) setConfig(null);
+          setShowTable(false);
+          addToast('Failed to load transaction configuration', 'error');
+        }
+      });
+    return () => {
+      canceled = true;
+    };
+  }, [table, name, addToast, reportProcPrefix]);
 
   useEffect(() => {
     if (!selectedProc) {
@@ -383,11 +397,17 @@ useEffect(() => {
   }, [selectedProc]);
 
   useEffect(() => {
+    if (prevNameRef.current === name) return;
+    prevNameRef.current = name;
     setSelectedProc('');
     setStartDate('');
     setEndDate('');
     setDatePreset('custom');
     setManualParams({});
+    setProcParams([]);
+    setReportResult(null);
+    setConfig(null);
+    prevConfigRef.current = null;
   }, [name]);
 
   useEffect(() => {
@@ -631,7 +651,7 @@ useEffect(() => {
                 ))}
               </select>
             </div>
-            {config?.procedures?.length > 0 && (
+            {availableProcedures.length > 0 && (
               <div style={{ marginLeft: '1rem' }}>
                 <span style={{ marginRight: '0.5rem' }}>REPORTS</span>
                 <select
@@ -639,7 +659,7 @@ useEffect(() => {
                   onChange={(e) => setSelectedProc(e.target.value)}
                 >
                   <option value="">-- select --</option>
-                  {config.procedures.map((p) => (
+                  {availableProcedures.map((p) => (
                     <option key={p} value={p}>
                       {getProcLabel(p)}
                     </option>

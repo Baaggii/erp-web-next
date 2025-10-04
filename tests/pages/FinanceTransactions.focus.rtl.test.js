@@ -29,6 +29,11 @@ try {
 if (!haveRTL) {
   test('FinanceTransactions focuses the first parameter control after selecting a report', { skip: true }, () => {});
   test('FinanceTransactions advances focus with Enter and runs the report from the last control', { skip: true }, () => {});
+  test(
+    'FinanceTransactions updates available procedures immediately when switching forms sharing a table',
+    { skip: true },
+    () => {},
+  );
 } else {
   function setupDom() {
     const dom = new JSDOM('<!doctype html><html><body></body></html>', {
@@ -319,6 +324,102 @@ if (!haveRTL) {
           const runCalls = calls.filter((call) => call.url === '/api/procedures');
           assert.equal(runCalls.length, 1);
           assert.equal(runCalls[0].options?.method, 'POST');
+        });
+      } finally {
+        await cleanupAll();
+      }
+    },
+  );
+
+  test(
+    'FinanceTransactions updates available procedures immediately when switching forms sharing a table',
+    async () => {
+      const addToastStub = mock.fn();
+      let resolveFormBConfig;
+      const fetchStub = mock.fn(async (url) => {
+        if (url.startsWith('/api/transaction_forms?moduleKey=finance_transactions')) {
+          return {
+            ok: true,
+            json: async () => ({
+              FormA: {
+                moduleKey: 'finance_transactions',
+                table: 'shared_table',
+                procedures: ['proc_a'],
+              },
+              FormB: {
+                moduleKey: 'finance_transactions',
+                table: 'shared_table',
+                procedures: ['proc_b'],
+              },
+            }),
+          };
+        }
+        if (url.startsWith('/api/transaction_forms?table=shared_table&name=FormA')) {
+          return {
+            ok: true,
+            json: async () => ({
+              moduleKey: 'finance_transactions',
+              table: 'shared_table',
+              procedures: ['proc_a'],
+            }),
+          };
+        }
+        if (url.startsWith('/api/transaction_forms?table=shared_table&name=FormB')) {
+          return {
+            ok: true,
+            json: () =>
+              new Promise((resolve) => {
+                resolveFormBConfig = () =>
+                  resolve({
+                    moduleKey: 'finance_transactions',
+                    table: 'shared_table',
+                    procedures: ['proc_b'],
+                  });
+              }),
+          };
+        }
+        return { ok: true, json: async () => ({}) };
+      });
+
+      const { cleanupAll, user } = await renderFinanceTransactions(fetchStub, addToastStub);
+
+      try {
+        const transactionSelect = await screen.findByRole('combobox');
+
+        await waitFor(() => {
+          const optionValues = Array.from(transactionSelect.options).map((opt) => opt.value);
+          assert.ok(optionValues.includes('FormA'));
+          assert.ok(optionValues.includes('FormB'));
+        });
+
+        await user.selectOptions(transactionSelect, 'FormA');
+
+        await waitFor(() => {
+          const selects = screen.getAllByRole('combobox');
+          assert.equal(selects.length, 2);
+          const optionValues = Array.from(selects[1].options).map((opt) => opt.value);
+          assert.deepEqual(optionValues, ['', 'proc_a']);
+        });
+
+        await user.selectOptions(transactionSelect, 'FormB');
+
+        await waitFor(() => {
+          const selects = screen.getAllByRole('combobox');
+          assert.equal(selects.length, 2);
+          const [, procedureSelect] = selects;
+          const optionValues = Array.from(procedureSelect.options).map((opt) => opt.value);
+          assert.deepEqual(optionValues, ['', 'proc_b']);
+          assert.equal(procedureSelect.value, '');
+        });
+
+        assert.equal(typeof resolveFormBConfig, 'function');
+        resolveFormBConfig();
+
+        await waitFor(() => {
+          const selects = screen.getAllByRole('combobox');
+          const [, procedureSelect] = selects;
+          const optionValues = Array.from(procedureSelect.options).map((opt) => opt.value);
+          assert.deepEqual(optionValues, ['', 'proc_b']);
         });
       } finally {
         await cleanupAll();
