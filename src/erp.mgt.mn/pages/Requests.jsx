@@ -61,10 +61,9 @@ export default function RequestsPage() {
   const { incoming: incomingCounts, outgoing: outgoingCounts, markSeen } =
     usePendingRequests();
 
-  const seniorEmpId =
-    session && user?.empid && !(Number(session.senior_empid) > 0)
-      ? user.empid
-      : null;
+  const hasSupervisor =
+    Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
+  const seniorEmpId = session && user?.empid && !hasSupervisor ? user.empid : null;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = searchParams.get('tab');

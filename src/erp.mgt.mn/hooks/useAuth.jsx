@@ -47,6 +47,11 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       } else {
         delete stored.senior_empid;
       }
+      if (data.session.senior_plan_empid) {
+        stored.senior_plan_empid = data.session.senior_plan_empid;
+      } else {
+        delete stored.senior_plan_empid;
+      }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {
       /* ignore storage errors */
@@ -89,6 +94,11 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
         stored.senior_empid = data.session.senior_empid;
       } else {
         delete stored.senior_empid;
+      }
+      if (data.session.senior_plan_empid) {
+        stored.senior_plan_empid = data.session.senior_plan_empid;
+      } else {
+        delete stored.senior_plan_empid;
       }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {

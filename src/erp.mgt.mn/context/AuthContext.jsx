@@ -57,9 +57,16 @@ export default function AuthContextProvider({ children }) {
         setDepartment(data.department ?? null);
         trackSetState('AuthContext.setPosition');
         setPosition(data.position ?? null);
+        const sessionUpdates = {};
         if (data.senior_empid) {
+          sessionUpdates.senior_empid = data.senior_empid;
+        }
+        if (data.senior_plan_empid) {
+          sessionUpdates.senior_plan_empid = data.senior_plan_empid;
+        }
+        if (Object.keys(sessionUpdates).length) {
           trackSetState('AuthContext.setSession');
-          setSession((s) => ({ ...(s || {}), senior_empid: data.senior_empid }));
+          setSession((s) => ({ ...(s || {}), ...sessionUpdates }));
         }
       } catch {
         // ignore parse errors
@@ -75,13 +82,28 @@ export default function AuthContextProvider({ children }) {
       department,
       position,
       senior_empid: session?.senior_empid,
+      senior_plan_empid: session?.senior_plan_empid,
     };
-    if (company || branch || department || position || session?.senior_empid) {
+    if (
+      company ||
+      branch ||
+      department ||
+      position ||
+      session?.senior_empid ||
+      session?.senior_plan_empid
+    ) {
       localStorage.setItem('erp_session_ids', JSON.stringify(data));
     } else {
       localStorage.removeItem('erp_session_ids');
     }
-  }, [company, branch, department, position, session?.senior_empid]);
+  }, [
+    company,
+    branch,
+    department,
+    position,
+    session?.senior_empid,
+    session?.senior_plan_empid,
+  ]);
 
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {

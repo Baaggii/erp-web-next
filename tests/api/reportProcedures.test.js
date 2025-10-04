@@ -49,6 +49,7 @@ test('listPermittedProcedures merges trigger procedures and respects filters', a
           department_name: 'Operations',
           position_id: 0,
           senior_empid: null,
+          senior_plan_empid: null,
           employee_name: 'Tester',
           user_level: 5,
           user_level_name: 'Level 5',

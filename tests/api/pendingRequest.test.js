@@ -10,16 +10,28 @@ function setupRequest(overrides = {}) {
     record_id: 1,
     emp_id: 'E1',
     senior_empid: 'S1',
+    senior_plan_empid: overrides.senior_plan_empid ?? null,
     request_type: 'edit',
     proposed_data: null,
     ...overrides,
+  };
+  const employmentRow = {
+    employment_senior_empid:
+      overrides.employment_senior_empid ?? overrides.senior_empid ?? null,
+    employment_senior_plan_empid:
+      overrides.employment_senior_plan_empid ??
+      overrides.senior_plan_empid ??
+      null,
   };
   const conn = {
     queries: [],
     async query(sql, params) {
       this.queries.push({ sql, params });
-      if (sql.startsWith('SELECT')) {
+      if (sql.includes('FROM pending_request')) {
         return [[req]];
+      }
+      if (sql.includes('FROM tbl_employment')) {
+        return [[employmentRow]];
       }
       return [{}];
     },
@@ -59,6 +71,21 @@ await test('respondRequest returns requester metadata', async () => {
   assert.equal(result.status, 'accepted');
   assert.equal(result.requestType, 'edit');
   assert.deepEqual(result.lockedTransactions, []);
+});
+
+await test('plan senior can approve report approval request', async () => {
+  const { restore } = setupRequest({
+    request_type: 'report_approval',
+    senior_empid: null,
+    employment_senior_plan_empid: 'PS1',
+    proposed_data: JSON.stringify({
+      procedure: 'demo',
+      transactions: [{ table: 'foo', recordId: '1' }],
+      parameters: {},
+    }),
+  });
+  await service.respondRequest(1, 'ps1', 'accepted', 'ok');
+  restore();
 });
 
 await test('listRequests normalizes empids in filters', async () => {
@@ -233,6 +260,116 @@ await test('createRequest throws 409 on duplicate', async () => {
       }),
       (err) => err.status === 409,
     );
+  } finally {
+    db.pool.getConnection = origGet;
+    db.pool.query = origQuery;
+  }
+});
+
+await test('createRequest uses plan senior for report approvals', async () => {
+  const conn = {
+    queries: [],
+    async query(sql, params) {
+      this.queries.push({ sql, params });
+      if (sql.startsWith('BEGIN') || sql.startsWith('COMMIT')) return [{}];
+      if (sql.startsWith('SELECT employment_senior_empid')) {
+        return [[
+          {
+            employment_senior_empid: 'S1',
+            employment_senior_plan_empid: 'PS1',
+          },
+        ]];
+      }
+      if (sql.startsWith('SELECT request_id, proposed_data FROM pending_request')) {
+        return [[]];
+      }
+      if (sql.startsWith('INSERT INTO pending_request')) {
+        return [{ insertId: 10 }];
+      }
+      return [{}];
+    },
+    release() {},
+  };
+  const origGet = db.pool.getConnection;
+  const origQuery = db.pool.query;
+  db.pool.getConnection = async () => conn;
+  db.pool.query = async (sql) => {
+    if (sql.includes('information_schema')) return [[{ COLUMN_NAME: 'id' }]];
+    return [[]];
+  };
+  try {
+    const payload = {
+      procedure: 'demo_proc',
+      transactions: [{ table: 'foo', recordId: 1 }],
+      parameters: {},
+    };
+    const result = await service.createRequest({
+      tableName: 'foo',
+      recordId: 1,
+      empId: 'e1',
+      requestType: 'report_approval',
+      proposedData: payload,
+      requestReason: 'demo',
+    });
+    assert.equal(result.senior_empid, 'PS1');
+    assert.equal(result.senior_plan_empid, 'PS1');
+    const insert = conn.queries.find((q) =>
+      q.sql.startsWith('INSERT INTO pending_request'),
+    );
+    assert.equal(insert.params[4], 'PS1');
+  } finally {
+    db.pool.getConnection = origGet;
+    db.pool.query = origQuery;
+  }
+});
+
+await test('createRequest falls back to legacy senior when plan senior missing', async () => {
+  const conn = {
+    queries: [],
+    async query(sql, params) {
+      this.queries.push({ sql, params });
+      if (sql.startsWith('BEGIN') || sql.startsWith('COMMIT')) return [{}];
+      if (sql.startsWith('SELECT employment_senior_empid')) {
+        return [[
+          {
+            employment_senior_empid: 'S1',
+            employment_senior_plan_empid: null,
+          },
+        ]];
+      }
+      if (sql.startsWith('SELECT request_id, proposed_data FROM pending_request')) {
+        return [[]];
+      }
+      if (sql.startsWith('INSERT INTO pending_request')) {
+        return [{ insertId: 11 }];
+      }
+      return [{}];
+    },
+    release() {},
+  };
+  const origGet = db.pool.getConnection;
+  const origQuery = db.pool.query;
+  db.pool.getConnection = async () => conn;
+  db.pool.query = async (sql) => {
+    if (sql.includes('information_schema')) return [[{ COLUMN_NAME: 'id' }]];
+    return [[]];
+  };
+  try {
+    const payload = {
+      procedure: 'demo_proc',
+      transactions: [{ table: 'foo', recordId: 1 }],
+      parameters: {},
+    };
+    const result = await service.createRequest({
+      tableName: 'foo',
+      recordId: 1,
+      empId: 'e1',
+      requestType: 'report_approval',
+      proposedData: payload,
+      requestReason: 'demo',
+    });
+    assert.equal(result.senior_empid, 'S1');
+    assert.equal(result.senior_plan_empid, null);
   } finally {
     db.pool.getConnection = origGet;
     db.pool.query = origQuery;

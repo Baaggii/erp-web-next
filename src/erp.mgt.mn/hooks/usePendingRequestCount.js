@@ -11,7 +11,12 @@ const DEFAULT_POLL_INTERVAL_SECONDS = 30;
  * @param {string|number} empid Current user's employee ID
  * @returns {{count:number, hasNew:boolean, markSeen:()=>void}}
  */
-export default function usePendingRequestCount(seniorEmpId, filters, empid) {
+export default function usePendingRequestCount(
+  seniorEmpId,
+  filters,
+  empid,
+  seniorPlanEmpId,
+) {
   const storageKey = useMemo(() => `${empid}-pendingSeen`, [empid]);
   const [count, setCount] = useState(0);
   const [seen, setSeen] = useState(() =>
@@ -32,16 +37,23 @@ export default function usePendingRequestCount(seniorEmpId, filters, empid) {
   };
 
   const memoFilters = useMemo(() => filters || {}, [filters]);
+  const effectiveSeniorEmpId = useMemo(() => {
+    const type = memoFilters.request_type ?? memoFilters.requestType;
+    if (type === 'report_approval' && seniorPlanEmpId) {
+      return seniorPlanEmpId;
+    }
+    return seniorEmpId;
+  }, [memoFilters, seniorEmpId, seniorPlanEmpId]);
 
   useEffect(() => {
-    if (!seniorEmpId) {
+    if (!effectiveSeniorEmpId) {
       setCount(0);
       return undefined;
     }
 
     const params = new URLSearchParams({
       status: 'pending',
-      senior_empid: String(seniorEmpId),
+      senior_empid: String(effectiveSeniorEmpId),
     });
     Object.entries(memoFilters).forEach(([k, v]) => {
       if (v !== undefined && v !== null && v !== '') {
@@ -133,7 +145,13 @@ export default function usePendingRequestCount(seniorEmpId, filters, empid) {
       window.removeEventListener('pending-request-seen', handleSeen);
       window.removeEventListener('pending-request-new', handleNew);
     };
-  }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds, storageKey]);
+  }, [
+    effectiveSeniorEmpId,
+    memoFilters,
+    pollingEnabled,
+    intervalSeconds,
+    storageKey,
+  ]);
 
   return { count, hasNew, markSeen };
 }

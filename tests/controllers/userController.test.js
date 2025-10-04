@@ -34,6 +34,7 @@ test('listUsers defaults to req.user.companyId and returns users', async (t) => 
         department_id: 0,
         position_id: 0,
         senior_empid: 0,
+        senior_plan_empid: 0,
         permission_list: '',
       }]];
     }

@@ -2602,14 +2602,15 @@ export default function ERPLayout() {
   } = useTabs();
   const txnModules = useTxnModules();
 
+  const hasSupervisor =
+    Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
   const seniorEmpId =
-    session && user?.empid && !(Number(session.senior_empid) > 0)
-      ? user.empid
-      : null;
+    session && user?.empid && !hasSupervisor ? user.empid : null;
   const requestNotifications = useRequestNotificationCounts(
     seniorEmpId,
     undefined,
     user?.empid,
+    null,
   );
 
   useEffect(() => {

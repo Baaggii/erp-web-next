@@ -98,6 +98,7 @@ test('populatePermissions succeeds with system_settings permission', async () =>
         department_name: 'Dept',
         position_id: 1,
         senior_empid: null,
+        senior_plan_empid: null,
         employee_name: 'Emp',
         user_level: 1,
         user_level_name: 'Admin',

@@ -243,7 +243,9 @@ const TableManager = forwardRef(function TableManager({
     [requestIdSet],
   );
   const { user, company, branch, department, session } = useContext(AuthContext);
-  const isSubordinate = Boolean(session?.senior_empid);
+  const isSubordinate = Boolean(
+    session?.senior_empid || session?.senior_plan_empid,
+  );
   const generalConfig = useGeneralConfig();
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
