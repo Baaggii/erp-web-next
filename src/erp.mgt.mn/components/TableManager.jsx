@@ -199,6 +199,18 @@ function normalizeLockStatus(value) {
   return normalized || null;
 }
 
+function isTruthyFlag(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) return false;
+  if (['false', '0', 'no', 'off', 'inactive', 'disabled'].includes(normalized)) {
+    return false;
+  }
+  return true;
+}
+
 function rowHasActiveLock(row) {
   if (!row) return false;
   const metadata = coalesce(row, 'lockMetadata', 'lock_metadata');
@@ -3462,8 +3474,24 @@ const TableManager = forwardRef(function TableManager({
                         ➕ Add Img
                       </button>,
                     );
-                    const actionLocked = locked;
-                    if (!isSubordinate && !actionLocked) {
+                    const explicitRequestOnlyValue =
+                      coalesce(
+                        lockInfo,
+                        'requires_request',
+                        'require_request',
+                        'request_only',
+                        'force_request',
+                      ) ??
+                      coalesce(
+                        r,
+                        'requires_request',
+                        'require_request',
+                        'request_only',
+                        'force_request',
+                      );
+                    const actionLocked =
+                      locked || isTruthyFlag(explicitRequestOnlyValue);
+                    if (!actionLocked) {
                       if (buttonPerms['Edit transaction']) {
                         actionButtons.push(
                           <button
