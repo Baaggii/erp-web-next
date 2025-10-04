@@ -126,6 +126,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const sessionLoaded = useRef(false);
   const prevSessionRef = useRef({});
   const prevConfigRef = useRef(null);
+  const controlRefs = useRef([]);
 
   const procMap = useHeaderMappings(
     config?.procedures
@@ -424,6 +425,19 @@ useEffect(() => {
     dateParamInfo;
   const hasDateParams = hasStartDateParam || hasEndDateParam;
 
+  useEffect(() => {
+    if (!selectedProc) return;
+    const timer = setTimeout(() => {
+      const nodes = controlRefs.current.filter(
+        (node) => node && typeof node.focus === 'function',
+      );
+      if (nodes.length > 0) {
+        nodes[0].focus();
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [selectedProc, procParams, hasDateParams, hasStartDateParam, hasEndDateParam]);
+
   const autoParams = useMemo(() => {
     return procParams.map((p, index) => {
       if (startIndices.has(index)) return startDate || null;
@@ -556,6 +570,32 @@ useEffect(() => {
 
   const caption = 'Гүйлгээ сонгоно уу';
 
+  controlRefs.current = [];
+
+  function registerControlRef() {
+    const index = controlRefs.current.length;
+    controlRefs.current[index] = null;
+    return (node) => {
+      controlRefs.current[index] = node;
+    };
+  }
+
+  function handleControlKeyDown(event) {
+    if (event.key !== 'Enter') return;
+    const nodes = controlRefs.current.filter(
+      (node) => node && typeof node.focus === 'function',
+    );
+    const currentIndex = nodes.indexOf(event.currentTarget);
+    if (currentIndex === -1) return;
+    event.preventDefault();
+    const nextIndex = currentIndex + 1;
+    if (nextIndex < nodes.length) {
+      nodes[nextIndex].focus();
+    } else {
+      runReport();
+    }
+  }
+
   return (
     <div>
       <h2>{moduleLabel || 'Гүйлгээ'}</h2>
@@ -612,6 +652,8 @@ useEffect(() => {
                         value={datePreset}
                         onChange={handlePresetChange}
                         style={{ marginRight: '0.5rem' }}
+                        ref={registerControlRef()}
+                        onKeyDown={handleControlKeyDown}
                       >
                         <option value="custom">Custom</option>
                         <option value="month">This month</option>
@@ -630,6 +672,8 @@ useEffect(() => {
                           setStartDate(normalizeDateInput(v, 'YYYY-MM-DD'));
                           setDatePreset('custom');
                         }}
+                        inputRef={registerControlRef()}
+                        onKeyDown={handleControlKeyDown}
                       />
                     )}
                     {hasEndDateParam && (
@@ -640,6 +684,8 @@ useEffect(() => {
                           setDatePreset('custom');
                         }}
                         style={{ marginLeft: hasStartDateParam ? '0.5rem' : undefined }}
+                        inputRef={registerControlRef()}
+                        onKeyDown={handleControlKeyDown}
                       />
                     )}
                     {procParams.map((p, i) => {
@@ -658,6 +704,8 @@ useEffect(() => {
                             setManualParams((m) => ({ ...m, [key]: e.target.value }))
                           }
                           style={{ marginLeft: '0.5rem' }}
+                          ref={registerControlRef()}
+                          onKeyDown={handleControlKeyDown}
                         />
                       );
                     })}
@@ -665,6 +713,8 @@ useEffect(() => {
                       onClick={runReport}
                       style={{ marginLeft: '0.5rem' }}
                       disabled={!allParamsProvided}
+                      ref={registerControlRef()}
+                      onKeyDown={handleControlKeyDown}
                     >
                       Run
                     </button>
