@@ -70,6 +70,18 @@ export default function Reports() {
   const [datePreset, setDatePreset] = useState('custom');
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
+  const [snapshot, setSnapshot] = useState(null);
+  const [selectedTransactions, setSelectedTransactions] = useState([]);
+  const [newTxTable, setNewTxTable] = useState('');
+  const [newTxId, setNewTxId] = useState('');
+  const [approvalReason, setApprovalReason] = useState('');
+  const [requestingApproval, setRequestingApproval] = useState(false);
+  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
+  const [approvalRefreshKey, setApprovalRefreshKey] = useState(0);
+  const [approvalLoading, setApprovalLoading] = useState(false);
+  const [approvalError, setApprovalError] = useState('');
+  const [approvalData, setApprovalData] = useState({ incoming: [], outgoing: [] });
+  const [respondingRequestId, setRespondingRequestId] = useState(null);
   const presetSelectRef = useRef(null);
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
@@ -570,6 +582,9 @@ export default function Reports() {
   }
 
   const openApprovalModal = useCallback(() => {
+    setApprovalData({ incoming: [], outgoing: [] });
+    setApprovalError('');
+    setApprovalLoading(false);
     setApprovalModalOpen(true);
     setApprovalRefreshKey((k) => k + 1);
   }, []);
@@ -684,6 +699,7 @@ export default function Reports() {
     async function loadApprovals() {
       setApprovalLoading(true);
       setApprovalError('');
+      setApprovalData({ incoming: [], outgoing: [] });
       let outgoingRows = [];
       let incomingRows = [];
       let errorMsg = '';
