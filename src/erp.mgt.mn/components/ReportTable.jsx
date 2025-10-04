@@ -97,9 +97,8 @@ export default function ReportTable({
 
   useEffect(() => {
     if (typeof onSnapshotReady !== 'function') return;
-    const limit = 200;
     const snapshotRows = Array.isArray(rows)
-      ? rows.slice(0, limit).map((row) => ({ ...row }))
+      ? rows.map((row) => (row && typeof row === 'object' ? { ...row } : row))
       : [];
     onSnapshotReady({
       procedure,

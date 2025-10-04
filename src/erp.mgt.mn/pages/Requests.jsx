@@ -9,6 +9,7 @@ import { translateToMn } from '../utils/translateToMn.js';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useSearchParams } from 'react-router-dom';
 import DateRangePicker from '../components/DateRangePicker.jsx';
+import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 function ch(n) {
@@ -90,63 +91,17 @@ function formatReportSnapshotValue(value, column, fieldTypeMap = {}) {
 }
 
 function renderReportSnapshot(snapshot) {
-  if (!snapshot || !Array.isArray(snapshot.rows) || snapshot.rows.length === 0) {
+  if (!snapshot || typeof snapshot !== 'object') {
     return <p>No snapshot captured.</p>;
   }
-  const columns =
-    Array.isArray(snapshot.columns) && snapshot.columns.length
-      ? snapshot.columns
-      : Object.keys(snapshot.rows[0] || {});
   return (
-    <div
-      style={{
-        maxHeight: '240px',
-        overflow: 'auto',
-        border: '1px solid #d1d5db',
-        borderRadius: '0.5rem',
-        marginTop: '0.5rem',
-      }}
-    >
-      <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-        <thead style={{ background: '#f3f4f6' }}>
-          <tr>
-            {columns.map((col) => (
-              <th
-                key={col}
-                style={{
-                  padding: '0.25rem',
-                  border: '1px solid #d1d5db',
-                  textAlign: 'left',
-                }}
-              >
-                {col}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {snapshot.rows.map((row, idx) => (
-            <tr key={idx}>
-              {columns.map((col) => (
-                <td
-                  key={col}
-                  style={{
-                    padding: '0.25rem',
-                    border: '1px solid #d1d5db',
-                    whiteSpace: 'nowrap',
-                    textOverflow: 'ellipsis',
-                    overflow: 'hidden',
-                    maxWidth: '16rem',
-                  }}
-                >
-                  {formatReportSnapshotValue(row?.[col], col, snapshot.fieldTypeMap || {})}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <ReportSnapshotViewer
+      snapshot={snapshot}
+      emptyMessage="No snapshot captured."
+      formatValue={(value, column, fieldTypeMap) =>
+        formatReportSnapshotValue(value, column, fieldTypeMap)
+      }
+    />
   );
 }
 

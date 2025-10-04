@@ -13,6 +13,17 @@ import {
   finalizeReportApprovalRequest,
   releaseReportApprovalLocks,
 } from './reportApprovals.js';
+import { storeSnapshotArtifact } from './reportSnapshotArtifacts.js';
+
+const SNAPSHOT_MAX_INLINE_ROWS = Number(
+  process.env.REPORT_APPROVAL_MAX_INLINE_ROWS || 1000,
+);
+const SNAPSHOT_MAX_INLINE_BYTES = Number(
+  process.env.REPORT_APPROVAL_MAX_INLINE_BYTES || 2 * 1024 * 1024,
+);
+const SNAPSHOT_PREVIEW_ROWS = Number(
+  process.env.REPORT_APPROVAL_PREVIEW_ROWS || 200,
+);
 
 export const ALLOWED_REQUEST_TYPES = new Set([
   'edit',
@@ -40,11 +51,18 @@ function parseProposedData(value) {
 
 function sanitizeSnapshot(raw) {
   if (!raw || typeof raw !== 'object') return null;
-  const output = {};
+  if (raw.version && Number(raw.version) >= 2) {
+    const cloned = { ...raw };
+    cloned.rows = Array.isArray(raw.rows) ? raw.rows : [];
+    cloned.fieldTypeMap =
+      raw.fieldTypeMap && typeof raw.fieldTypeMap === 'object'
+        ? raw.fieldTypeMap
+        : {};
+    return cloned;
+  }
+  const output = { version: 2 };
   const rawRows = Array.isArray(raw.rows) ? raw.rows : [];
-  const maxRows = 200;
   const sanitizedRows = rawRows
-    .slice(0, maxRows)
     .map((row) => {
       if (!row || typeof row !== 'object') return null;
       const entries = Object.entries(row).filter(([key]) =>
@@ -53,18 +71,21 @@ function sanitizeSnapshot(raw) {
       return Object.fromEntries(entries);
     })
     .filter((row) => row && Object.keys(row).length > 0);
-  output.rows = sanitizedRows;
-  if (typeof raw.rowCount === 'number' && Number.isFinite(raw.rowCount)) {
-    output.rowCount = raw.rowCount;
-  } else if (sanitizedRows.length) {
-    output.rowCount = sanitizedRows.length;
-  }
+
+  const rowCount = (() => {
+    if (typeof raw.rowCount === 'number' && Number.isFinite(raw.rowCount)) {
+      return raw.rowCount;
+    }
+    return sanitizedRows.length;
+  })();
+
   const columns = Array.isArray(raw.columns)
     ? raw.columns.filter((c) => typeof c === 'string' && c.trim())
     : sanitizedRows.length > 0
     ? Object.keys(sanitizedRows[0])
     : [];
   output.columns = columns;
+
   if (raw.fieldTypeMap && typeof raw.fieldTypeMap === 'object') {
     output.fieldTypeMap = Object.fromEntries(
       Object.entries(raw.fieldTypeMap).filter(
@@ -74,6 +95,56 @@ function sanitizeSnapshot(raw) {
   } else {
     output.fieldTypeMap = {};
   }
+
+  let inlineRows = sanitizedRows;
+  let artifactMeta = null;
+  const shouldPersist = (() => {
+    if (sanitizedRows.length === 0) return false;
+    if (sanitizedRows.length > SNAPSHOT_MAX_INLINE_ROWS) return true;
+    try {
+      const size = Buffer.byteLength(JSON.stringify(sanitizedRows));
+      return size > SNAPSHOT_MAX_INLINE_BYTES;
+    } catch {
+      return true;
+    }
+  })();
+
+  if (shouldPersist) {
+    inlineRows = sanitizedRows.slice(0, SNAPSHOT_PREVIEW_ROWS);
+    try {
+      artifactMeta = storeSnapshotArtifact({
+        rows: sanitizedRows,
+        columns,
+        fieldTypeMap: output.fieldTypeMap,
+        procedure: raw.procedure || raw.procedureName || null,
+        params:
+          (raw.params && typeof raw.params === 'object' && !Array.isArray(raw.params)
+            ? raw.params
+            : null) ||
+          (raw.parameters &&
+          typeof raw.parameters === 'object' &&
+          !Array.isArray(raw.parameters)
+            ? raw.parameters
+            : {}),
+      });
+    } catch (err) {
+      artifactMeta = null;
+    }
+  }
+
+  output.rows = inlineRows;
+  output.rowCount = rowCount;
+  if (artifactMeta) {
+    output.artifact = {
+      id: artifactMeta.id,
+      fileName: artifactMeta.fileName,
+      byteSize: artifactMeta.byteSize,
+      rowCount: artifactMeta.rowCount,
+      createdAt: artifactMeta.createdAt,
+    };
+    output.previewRowCount = inlineRows.length;
+  }
+
   if (raw.label && typeof raw.label === 'string' && raw.label.trim()) {
     output.label = raw.label.trim();
   }
@@ -93,12 +164,17 @@ function sanitizeSnapshot(raw) {
     (!output.fieldTypeMap || Object.keys(output.fieldTypeMap).length === 0) &&
     !output.label &&
     !output.summary &&
-    !output.totalRow
+    !output.totalRow &&
+    !artifactMeta
   ) {
     return null;
   }
   return output;
 }
+
+export const __test__ = {
+  sanitizeSnapshot,
+};
 
 function normalizeReportApprovalPayload(raw) {
   if (!raw || typeof raw !== 'object') return null;

@@ -52,6 +52,7 @@ import pendingRequestRoutes from "./routes/pending_request.js";
 import activityLogRoutes from "./routes/user_activity_log.js";
 import userSettingsRoutes from "./routes/user_settings.js";
 import translationRoutes from "./routes/translations.js";
+import snapshotArtifactRoutes from "./routes/report_snapshot_artifacts.js";
 import tourRoutes from "./routes/tours.js";
 import manualTranslationsRoutes from "./routes/manual_translations.js";
 
@@ -163,6 +164,7 @@ app.use("/api/tenant_tables", tenantTablesRoutes);
 app.use("/api/permissions", permissionsRoutes);
 app.use("/api/config", configRoutes);
 app.use("/api/pending_request", pendingRequestRoutes);
+app.use("/api/report_snapshot_artifacts", snapshotArtifactRoutes);
 app.use("/api/user/settings", userSettingsRoutes);
 app.use("/api/user_activity_log", activityLogRoutes);
 app.use("/api/translations", translationRoutes);

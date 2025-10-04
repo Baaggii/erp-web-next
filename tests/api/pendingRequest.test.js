@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as service from '../../api-server/services/pendingRequest.js';
+import {
+  loadSnapshotArtifactPage,
+  deleteSnapshotArtifact,
+} from '../../api-server/services/reportSnapshotArtifacts.js';
 import * as db from '../../db/index.js';
 
 function setupRequest(overrides = {}) {
@@ -151,24 +155,47 @@ await test('listRequests returns report approval metadata', async () => {
   const result = await service.listRequests({ request_type: 'report_approval' });
   db.pool.query = origQuery;
   assert.equal(result.rows.length, 1);
-  assert.deepEqual(result.rows[0].report_metadata, {
+  const meta = result.rows[0].report_metadata;
+  assert.equal(meta.procedure, 'demo_proc');
+  assert.deepEqual(meta.parameters, { from: '2024-01-01' });
+  assert.deepEqual(meta.transactions, [{ table: 'transactions_sales', recordId: '10' }]);
+  assert.ok(meta.snapshot);
+  assert.equal(meta.snapshot.rowCount, 2);
+  assert.equal(meta.snapshot.version, 2);
+  assert.deepEqual(meta.snapshot.columns, ['id', 'amount']);
+  assert.deepEqual(meta.snapshot.rows, [
+    { id: 10, amount: 99.5 },
+    { id: 11, amount: 42 },
+  ]);
+  assert.deepEqual(meta.snapshot.fieldTypeMap, { amount: 'number' });
+  assert.equal(meta.snapshot.artifact, undefined);
+  assert.equal(meta.executed_at, '2024-01-01T00:00:00.000Z');
+  assert.equal(meta.requester_empid, 'E1');
+  assert.equal(meta.approver_empid, 'S1');
+  assert.equal(meta.response_empid, null);
+});
+
+await test('sanitizeSnapshot streams large dataset to artifact', async () => {
+  const rows = Array.from({ length: 1200 }, (_, idx) => ({ id: idx + 1, value: `row-${idx + 1}` }));
+  const snapshot = service.__test__.sanitizeSnapshot({
+    rows,
+    columns: ['id', 'value'],
+    rowCount: rows.length,
     procedure: 'demo_proc',
-    parameters: { from: '2024-01-01' },
-    transactions: [{ table: 'transactions_sales', recordId: '10' }],
-    snapshot: {
-      columns: ['id', 'amount'],
-      rows: [
-        { id: 10, amount: 99.5 },
-        { id: 11, amount: 42 },
-      ],
-      fieldTypeMap: { amount: 'number' },
-      rowCount: 2,
-    },
-    executed_at: '2024-01-01T00:00:00.000Z',
-    requester_empid: 'E1',
-    approver_empid: 'S1',
-    response_empid: null,
+    params: { foo: 'bar' },
   });
+  assert.ok(snapshot.artifact?.id, 'artifact id should be present');
+  assert.equal(snapshot.version, 2);
+  assert.equal(snapshot.rowCount, rows.length);
+  assert.equal(snapshot.rows.length, 200);
+  const page1 = loadSnapshotArtifactPage(snapshot.artifact.id, 1, 500);
+  const page3 = loadSnapshotArtifactPage(snapshot.artifact.id, 3, 500);
+  assert.equal(page1.rowCount, rows.length);
+  assert.equal(page1.rows.length, 500);
+  assert.equal(page3.rows.length, 200);
+  assert.deepEqual(page1.columns, ['id', 'value']);
+  assert.deepEqual(page1.fieldTypeMap, {});
+  deleteSnapshotArtifact(snapshot.artifact.id);
 });
 
 await test('listRequests normalizes empids in filters', async () => {
