@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/pages/Reports.jsx
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
@@ -23,6 +23,11 @@ export default function Reports() {
   const [datePreset, setDatePreset] = useState('custom');
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
+  const presetSelectRef = useRef(null);
+  const startDateRef = useRef(null);
+  const endDateRef = useRef(null);
+  const manualInputRefs = useRef({});
+  const runButtonRef = useRef(null);
   const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
   const procMap = useHeaderMappings(procNames);
 
@@ -121,6 +126,45 @@ export default function Reports() {
     });
   }, [procParams, startDate, endDate, company, branch, department, user]);
 
+  const manualParamNames = useMemo(() => {
+    return procParams.reduce((list, param, index) => {
+      if (managedIndices.has(index)) return list;
+      if (autoParams[index] !== null) return list;
+      list.push(param);
+      return list;
+    }, []);
+  }, [procParams, managedIndices, autoParams]);
+
+  const activeControlRefs = useMemo(() => {
+    const refs = [];
+    if (hasDateParams) refs.push(presetSelectRef);
+    if (hasStartParam) refs.push(startDateRef);
+    if (hasEndParam) refs.push(endDateRef);
+
+    const manualRefNames = new Set(manualParamNames);
+    Object.keys(manualInputRefs.current).forEach((name) => {
+      if (!manualRefNames.has(name)) delete manualInputRefs.current[name];
+    });
+
+    manualParamNames.forEach((name) => {
+      if (!manualInputRefs.current[name]) {
+        manualInputRefs.current[name] = React.createRef();
+      }
+      refs.push(manualInputRefs.current[name]);
+    });
+
+    refs.push(runButtonRef);
+    return refs;
+  }, [hasDateParams, hasStartParam, hasEndParam, manualParamNames]);
+
+  useEffect(() => {
+    if (!selectedProc) return;
+    const firstFocusable = activeControlRefs.find((ref) => ref?.current);
+    if (firstFocusable) {
+      firstFocusable.current.focus();
+    }
+  }, [selectedProc, activeControlRefs]);
+
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
@@ -132,6 +176,19 @@ export default function Reports() {
     () => finalParams.every((v) => v !== null && v !== ''),
     [finalParams],
   );
+
+  function handleParameterKeyDown(event, currentRef) {
+    if (event.key !== 'Enter') return;
+    const currentIndex = activeControlRefs.findIndex((ref) => ref === currentRef);
+    if (currentIndex === -1) return;
+    event.preventDefault();
+    const nextRef = activeControlRefs[currentIndex + 1];
+    if (nextRef?.current) {
+      nextRef.current.focus();
+      return;
+    }
+    runReport();
+  }
 
   function handlePresetChange(e) {
     const value = e.target.value;
@@ -262,6 +319,8 @@ export default function Reports() {
                 value={datePreset}
                 onChange={handlePresetChange}
                 style={{ marginRight: '0.5rem' }}
+                ref={presetSelectRef}
+                onKeyDown={(event) => handleParameterKeyDown(event, presetSelectRef)}
               >
                 <option value="custom">Custom</option>
                 <option value="month">This month</option>
@@ -280,6 +339,8 @@ export default function Reports() {
                   setStartDate(normalizeDateInput(v, 'YYYY-MM-DD'));
                   setDatePreset('custom');
                 }}
+                inputRef={startDateRef}
+                onKeyDown={(event) => handleParameterKeyDown(event, startDateRef)}
               />
             )}
             {hasEndParam && (
@@ -290,12 +351,15 @@ export default function Reports() {
                   setDatePreset('custom');
                 }}
                 style={{ marginLeft: '0.5rem' }}
+                inputRef={endDateRef}
+                onKeyDown={(event) => handleParameterKeyDown(event, endDateRef)}
               />
             )}
             {procParams.map((p, i) => {
               if (managedIndices.has(i)) return null;
               if (autoParams[i] !== null) return null;
               const val = manualParams[p] || '';
+              const inputRef = manualInputRefs.current[p];
               return (
                 <input
                   key={p}
@@ -306,6 +370,8 @@ export default function Reports() {
                     setManualParams((m) => ({ ...m, [p]: e.target.value }))
                   }
                   style={{ marginLeft: '0.5rem' }}
+                  ref={inputRef}
+                  onKeyDown={(event) => handleParameterKeyDown(event, inputRef)}
                 />
               );
             })}
@@ -313,6 +379,8 @@ export default function Reports() {
               onClick={runReport}
               style={{ marginLeft: '0.5rem' }}
               disabled={!allParamsProvided}
+              ref={runButtonRef}
+              onKeyDown={(event) => handleParameterKeyDown(event, runButtonRef)}
             >
               Run
             </button>
