@@ -11,6 +11,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import ReportTable from '../components/ReportTable.jsx';
+import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import CustomDatePicker from '../components/CustomDatePicker.jsx';
@@ -870,67 +871,17 @@ export default function Reports() {
   }, []);
 
   function renderSnapshotTable(snapshotData) {
-    if (
-      !snapshotData ||
-      !Array.isArray(snapshotData.rows) ||
-      snapshotData.rows.length === 0
-    ) {
+    if (!snapshotData || typeof snapshotData !== 'object') {
       return <p style={{ marginTop: '0.25rem' }}>No snapshot captured.</p>;
     }
-    const cols =
-      Array.isArray(snapshotData.columns) && snapshotData.columns.length
-        ? snapshotData.columns
-        : Object.keys(snapshotData.rows[0] || {});
     return (
-      <div
-        style={{
-          maxHeight: '300px',
-          overflow: 'auto',
-          border: '1px solid #d1d5db',
-          borderRadius: '0.5rem',
-          marginTop: '0.5rem',
-        }}
-      >
-        <table style={{ borderCollapse: 'collapse', width: '100%' }}>
-          <thead style={{ background: '#f3f4f6' }}>
-            <tr>
-              {cols.map((col) => (
-                <th
-                  key={col}
-                  style={{
-                    padding: '0.25rem',
-                    border: '1px solid #d1d5db',
-                    textAlign: 'left',
-                  }}
-                >
-                  {col}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {snapshotData.rows.map((row, idx) => (
-              <tr key={idx}>
-                {cols.map((col) => (
-                  <td
-                    key={col}
-                    style={{
-                      padding: '0.25rem',
-                      border: '1px solid #d1d5db',
-                      whiteSpace: 'nowrap',
-                      maxWidth: '16rem',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                    }}
-                  >
-                    {formatSnapshotCell(row?.[col], col, snapshotData.fieldTypeMap || {})}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      <ReportSnapshotViewer
+        snapshot={snapshotData}
+        emptyMessage="No snapshot captured."
+        formatValue={(value, column, fieldTypes) =>
+          formatSnapshotCell(value, column, fieldTypes)
+        }
+      />
     );
   }
 

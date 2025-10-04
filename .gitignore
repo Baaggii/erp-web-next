@@ -26,3 +26,4 @@ uploads/*
 !uploads/txn_images/test_cleanup/
 !uploads/txn_images/test_cleanup/.gitkeep
 !config/.gitkeep
+api-server/data/report-snapshots/
