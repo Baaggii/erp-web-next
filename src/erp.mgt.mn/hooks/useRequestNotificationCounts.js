@@ -5,6 +5,35 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
 const STATUSES = ['pending', 'accepted', 'declined'];
 
+function normalizeStatuses(statuses) {
+  if (!statuses) return STATUSES;
+  if (Array.isArray(statuses)) {
+    const normalized = statuses
+      .map((status) => String(status || '').toLowerCase())
+      .filter((status) => STATUSES.includes(status));
+    return normalized.length > 0 ? normalized : STATUSES;
+  }
+  const status = String(statuses || '').toLowerCase();
+  return STATUSES.includes(status) ? [status] : STATUSES;
+}
+
+function stringifyFilters(filters) {
+  if (!filters) return '';
+  const entries = Object.entries(filters)
+    .filter(([, value]) => value !== undefined && value !== null && value !== '')
+    .flatMap(([key, value]) => {
+      if (Array.isArray(value)) {
+        return value
+          .filter((v) => v !== undefined && v !== null && v !== '')
+          .map((v) => [key, String(v)]);
+      }
+      return [[key, String(value)]];
+    })
+    .map(([key, value]) => `${key}:${value}`);
+  if (!entries.length) return '';
+  return entries.sort().join('|');
+}
+
 function createInitial() {
   return {
     pending: { count: 0, hasNew: false, newCount: 0 },
@@ -18,6 +47,7 @@ export default function useRequestNotificationCounts(
   filters,
   empid,
   seniorPlanEmpId,
+  options = {},
 ) {
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
@@ -27,29 +57,73 @@ export default function useRequestNotificationCounts(
     Number(cfg?.general?.requestPollingIntervalSeconds) ||
     DEFAULT_POLL_INTERVAL_SECONDS;
 
+  const filterKey = useMemo(() => stringifyFilters(filters), [filters]);
+  const optionNamespace = options ? options.storageNamespace : undefined;
+  const storageNamespace = useMemo(() => {
+    if (optionNamespace !== undefined && optionNamespace !== null && optionNamespace !== '') {
+      return String(optionNamespace);
+    }
+    return filterKey;
+  }, [filterKey, optionNamespace]);
+  const storageBase = useMemo(() => {
+    const id = empid != null && empid !== '' ? String(empid).trim() : 'anonymous';
+    return id || 'anonymous';
+  }, [empid]);
+
   const storageKey = useCallback(
-    (type, status) => `${empid}-${type}-${status}-seen`,
-    [empid],
+    (type, status) => {
+      const suffix = storageNamespace ? `-${storageNamespace}` : '';
+      return `${storageBase}-${type}-${status}-seen${suffix}`;
+    },
+    [storageBase, storageNamespace],
+  );
+
+  const markStatusesAsSeen = useCallback(
+    (type, statuses) => {
+      const list = normalizeStatuses(statuses);
+      if (type === 'incoming') {
+        setIncoming((prev) => {
+          const next = { ...prev };
+          list.forEach((status) => {
+            const current = prev[status] || { count: 0, hasNew: false, newCount: 0 };
+            localStorage.setItem(storageKey('incoming', status), String(current.count));
+            next[status] = { ...current, hasNew: false, newCount: 0 };
+          });
+          return next;
+        });
+      } else if (type === 'outgoing') {
+        setOutgoing((prev) => {
+          const next = { ...prev };
+          list.forEach((status) => {
+            const current = prev[status] || { count: 0, hasNew: false, newCount: 0 };
+            localStorage.setItem(storageKey('outgoing', status), String(current.count));
+            next[status] = { ...current, hasNew: false, newCount: 0 };
+          });
+          return next;
+        });
+      }
+    },
+    [storageKey],
   );
 
   const markSeen = useCallback(() => {
-    setIncoming((prev) => {
-      const next = { ...prev };
-      STATUSES.forEach((s) => {
-        localStorage.setItem(storageKey('incoming', s), String(prev[s].count));
-        next[s] = { ...prev[s], hasNew: false, newCount: 0 };
-      });
-      return next;
-    });
-    setOutgoing((prev) => {
-      const next = { ...prev };
-      STATUSES.forEach((s) => {
-        localStorage.setItem(storageKey('outgoing', s), String(prev[s].count));
-        next[s] = { ...prev[s], hasNew: false, newCount: 0 };
-      });
-      return next;
-    });
-  }, [storageKey]);
+    markStatusesAsSeen('incoming');
+    markStatusesAsSeen('outgoing');
+  }, [markStatusesAsSeen]);
+
+  const markIncoming = useCallback(
+    (statuses) => {
+      markStatusesAsSeen('incoming', statuses);
+    },
+    [markStatusesAsSeen],
+  );
+
+  const markOutgoing = useCallback(
+    (statuses) => {
+      markStatusesAsSeen('outgoing', statuses);
+    },
+    [markStatusesAsSeen],
+  );
 
   const memoFilters = useMemo(() => filters || {}, [filters]);
   const supervisorIds = useMemo(() => {
@@ -79,7 +153,11 @@ export default function useRequestNotificationCounts(
                     senior_empid: id,
                   });
                   Object.entries(memoFilters).forEach(([k, v]) => {
-                    if (v !== undefined && v !== null && v !== '') {
+                    if (Array.isArray(v)) {
+                      v
+                        .filter((value) => value !== undefined && value !== null && value !== '')
+                        .forEach((value) => params.append(k, value));
+                    } else if (v !== undefined && v !== null && v !== '') {
                       params.append(k, v);
                     }
                   });
@@ -122,10 +200,19 @@ export default function useRequestNotificationCounts(
           // Outgoing requests (always for current user)
           try {
             const params = new URLSearchParams({ status });
-            const res = await fetch(
-              `/api/pending_request/outgoing?${params.toString()}`,
-              { credentials: 'include', skipLoader: true },
-            );
+            Object.entries(memoFilters).forEach(([k, v]) => {
+              if (Array.isArray(v)) {
+                v
+                  .filter((value) => value !== undefined && value !== null && value !== '')
+                  .forEach((value) => params.append(k, value));
+              } else if (v !== undefined && v !== null && v !== '') {
+                params.append(k, v);
+              }
+            });
+            const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
+              credentials: 'include',
+              skipLoader: true,
+            });
             let c = 0;
             if (res.ok) {
               const data = await res.json().catch(() => 0);
@@ -214,6 +301,14 @@ export default function useRequestNotificationCounts(
     STATUSES.some((s) => incoming[s].hasNew) ||
     ['accepted', 'declined'].some((s) => outgoing[s].hasNew);
 
-  return { incoming, outgoing, hasNew, markSeen };
+  return {
+    incoming,
+    outgoing,
+    hasNew,
+    markSeen,
+    markIncoming,
+    markOutgoing,
+    markStatuses: markStatusesAsSeen,
+  };
 }
 

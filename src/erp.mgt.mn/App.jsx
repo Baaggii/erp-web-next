@@ -46,6 +46,7 @@ import UserManualExportPage from './pages/UserManualExport.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import UserSettingsPage from './pages/UserSettings.jsx';
 import AllowedReportsConfigPage from './pages/AllowedReportsConfig.jsx';
+import NotificationsPage from './pages/Notifications.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -193,6 +194,7 @@ function AuthedApp() {
     <ErrorBoundary>
       <Routes>
         <Route path="/" element={<ERPLayout />}>
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="requests" element={<RequestsPage />} />
           {roots.map(renderRoute)}
         </Route>

@@ -16,6 +16,7 @@ import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
+import useTemporaryNotificationCounts from "../hooks/useTemporaryNotificationCounts.js";
 import useBuildUpdateNotice from "../hooks/useBuildUpdateNotice.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS, ACTIONS, EVENTS } from "react-joyride";
@@ -118,6 +119,66 @@ const INTERACTIVE_DESCENDANT_SELECTORS = [
   "[role=\"option\"]",
   "[tabindex]:not([tabindex=\"-1\"])",
 ];
+
+const REQUEST_STATUS_KEYS = ['pending', 'accepted', 'declined'];
+
+function createEmptyStatusMap() {
+  return REQUEST_STATUS_KEYS.reduce((acc, key) => {
+    acc[key] = { count: 0, newCount: 0, hasNew: false };
+    return acc;
+  }, {});
+}
+
+function mergeStatusMaps(maps) {
+  const result = createEmptyStatusMap();
+  REQUEST_STATUS_KEYS.forEach((status) => {
+    maps.forEach((map) => {
+      if (!map || !map[status]) return;
+      const entry = map[status];
+      result[status] = {
+        count: result[status].count + (Number(entry.count) || 0),
+        newCount: result[status].newCount + (Number(entry.newCount) || 0),
+        hasNew: result[status].hasNew || Boolean(entry.hasNew),
+      };
+    });
+  });
+  return result;
+}
+
+function hasAnyNew(incoming, outgoing) {
+  return (
+    REQUEST_STATUS_KEYS.some((status) => incoming?.[status]?.hasNew) ||
+    REQUEST_STATUS_KEYS.some((status) => outgoing?.[status]?.hasNew)
+  );
+}
+
+function buildWorkflowEntry(sources) {
+  const incoming = mergeStatusMaps(sources.map((src) => src?.incoming));
+  const outgoing = mergeStatusMaps(sources.map((src) => src?.outgoing));
+  const workflowHasNew = hasAnyNew(incoming, outgoing);
+  const markSeen = () => {
+    sources.forEach((src) => {
+      if (src && typeof src.markSeen === 'function') {
+        src.markSeen();
+      }
+    });
+  };
+  const markIncoming = (statuses) => {
+    sources.forEach((src) => {
+      if (src && typeof src.markIncoming === 'function') {
+        src.markIncoming(statuses);
+      }
+    });
+  };
+  const markOutgoing = (statuses) => {
+    sources.forEach((src) => {
+      if (src && typeof src.markOutgoing === 'function') {
+        src.markOutgoing(statuses);
+      }
+    });
+  };
+  return { incoming, outgoing, hasNew: workflowHasNew, markSeen, markIncoming, markOutgoing };
+}
 
 function coerceSelectorValue(value) {
   if (typeof value === "string") return value;
@@ -1191,6 +1252,7 @@ export default function ERPLayout() {
         "settings_translations",
         "Edit Translations",
       );
+    map['/notifications'] = t('notifications', 'Notifications');
     return map;
   }, [moduleMap, t]);
   const validPaths = useMemo(() => {
@@ -1198,6 +1260,7 @@ export default function ERPLayout() {
     modules.forEach((m) => {
       paths.add(modulePath(m, moduleMap));
     });
+    paths.add('/notifications');
     return paths;
   }, [modules, moduleMap]);
   const { addToast } = useToast();
@@ -2608,11 +2671,120 @@ export default function ERPLayout() {
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
   const seniorEmpId =
     session && user?.empid && !hasSupervisor ? user.empid : null;
-  const requestNotifications = useRequestNotificationCounts(
+  const seniorPlanEmpId = hasSupervisor ? session?.senior_plan_empid : null;
+
+  const reportNotifications = useRequestNotificationCounts(
     seniorEmpId,
-    undefined,
+    { request_type: 'report_approval' },
     user?.empid,
-    null,
+    seniorPlanEmpId,
+    { storageNamespace: 'report_approval' },
+  );
+  const editNotifications = useRequestNotificationCounts(
+    seniorEmpId,
+    { request_type: 'edit' },
+    user?.empid,
+    seniorPlanEmpId,
+    { storageNamespace: 'request_edit' },
+  );
+  const deleteNotifications = useRequestNotificationCounts(
+    seniorEmpId,
+    { request_type: 'delete' },
+    user?.empid,
+    seniorPlanEmpId,
+    { storageNamespace: 'request_delete' },
+  );
+  const temporaryNotifications = useTemporaryNotificationCounts(user?.empid);
+
+  const pendingRequestSummary = useMemo(() => {
+    const reportWorkflow = buildWorkflowEntry([reportNotifications]);
+    const editWorkflow = buildWorkflowEntry([editNotifications]);
+    const deleteWorkflow = buildWorkflowEntry([deleteNotifications]);
+    const changeWorkflow = buildWorkflowEntry([editNotifications, deleteNotifications]);
+
+    const aggregatedIncoming = mergeStatusMaps([
+      reportNotifications?.incoming,
+      editNotifications?.incoming,
+      deleteNotifications?.incoming,
+    ]);
+    const aggregatedOutgoing = mergeStatusMaps([
+      reportNotifications?.outgoing,
+      editNotifications?.outgoing,
+      deleteNotifications?.outgoing,
+    ]);
+    const requestHasNew = hasAnyNew(aggregatedIncoming, aggregatedOutgoing);
+
+    const markAll = () => {
+      reportWorkflow.markSeen();
+      editWorkflow.markSeen();
+      deleteWorkflow.markSeen();
+    };
+    const markIncomingStatuses = (statuses) => {
+      reportWorkflow.markIncoming(statuses);
+      editWorkflow.markIncoming(statuses);
+      deleteWorkflow.markIncoming(statuses);
+    };
+    const markOutgoingStatuses = (statuses) => {
+      reportWorkflow.markOutgoing(statuses);
+      editWorkflow.markOutgoing(statuses);
+      deleteWorkflow.markOutgoing(statuses);
+    };
+    const markWorkflowSeen = (workflowKey) => {
+      switch (workflowKey) {
+        case 'report_approval':
+        case 'reportApproval':
+          reportWorkflow.markSeen();
+          break;
+        case 'change_requests':
+        case 'changeRequests':
+          changeWorkflow.markSeen();
+          break;
+        case 'edit':
+          editWorkflow.markSeen();
+          break;
+        case 'delete':
+          deleteWorkflow.markSeen();
+          break;
+        default:
+          markAll();
+          break;
+      }
+    };
+
+    return {
+      contextValue: {
+        incoming: aggregatedIncoming,
+        outgoing: aggregatedOutgoing,
+        hasNew: requestHasNew,
+        markSeen: markAll,
+        markIncoming: markIncomingStatuses,
+        markOutgoing: markOutgoingStatuses,
+        markWorkflowSeen,
+        workflows: {
+          reportApproval: reportWorkflow,
+          changeRequests: changeWorkflow,
+          edit: editWorkflow,
+          delete: deleteWorkflow,
+        },
+      },
+      requestHasNew,
+    };
+  }, [reportNotifications, editNotifications, deleteNotifications]);
+
+  const pendingRequestValue = useMemo(
+    () => ({
+      ...pendingRequestSummary.contextValue,
+      temporary: {
+        counts: temporaryNotifications.counts,
+        hasNew: temporaryNotifications.hasNew,
+        markScopeSeen: temporaryNotifications.markScopeSeen,
+        markAllSeen: temporaryNotifications.markAllSeen,
+        fetchScopeEntries: temporaryNotifications.fetchScopeEntries,
+      },
+      anyHasNew:
+        pendingRequestSummary.requestHasNew || temporaryNotifications.hasNew,
+    }),
+    [pendingRequestSummary, temporaryNotifications],
   );
 
   useEffect(() => {
@@ -2693,7 +2865,7 @@ export default function ERPLayout() {
           onSelectStep={handleTourStepJump}
         />
       )}
-      <PendingRequestContext.Provider value={requestNotifications}>
+      <PendingRequestContext.Provider value={pendingRequestValue}>
         <div style={styles.container}>
           <Joyride
             steps={tourSteps}
@@ -2772,6 +2944,7 @@ export function Header({
 }) {
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
+  const { anyHasNew } = useContext(PendingRequestContext);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -2807,6 +2980,17 @@ export function Header({
           🗔 {t("home")}
         </button>
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
+        <button
+          style={styles.iconBtn}
+          onClick={() =>
+            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
+          }
+        >
+          <span style={styles.inlineButtonContent}>
+            {anyHasNew && <span style={styles.notificationDot} />}
+            <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
+          </span>
+        </button>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
       {hasUpdateAvailable && (
@@ -2859,7 +3043,7 @@ function Sidebar({ onOpen, open, isMobile }) {
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
-  const { hasNew } = useContext(PendingRequestContext);
+  const { hasNew, anyHasNew } = useContext(PendingRequestContext);
 
   if (!perms) return null;
 
@@ -2943,6 +3127,17 @@ function Sidebar({ onOpen, open, isMobile }) {
       style={styles.sidebar(isMobile, open)}
     >
       <nav className="menu-container">
+        <button
+          key="__notifications"
+          onClick={() =>
+            onOpen('/notifications', t('notifications', 'Notifications'), 'notifications')
+          }
+          className="menu-item"
+          style={styles.menuItem({ isActive: location.pathname === '/notifications' })}
+        >
+          {anyHasNew && <span style={styles.badge} />}
+          {t('notifications', 'Notifications')}
+        </button>
         {roots.map((m) =>
           m.children.length > 0 ? (
             <SidebarGroup
@@ -3063,7 +3258,7 @@ function MainWindow({ title }) {
   const outlet = useOutlet();
   const navigate = useNavigate();
   const { tabs, activeKey, switchTab, closeTab, setTabContent, cache } = useTabs();
-  const { hasNew } = useContext(PendingRequestContext);
+  const { hasNew, anyHasNew } = useContext(PendingRequestContext);
   const {
     startTour,
     getTourForPath,
@@ -3075,7 +3270,17 @@ function MainWindow({ title }) {
   const { userSettings, session } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const generalConfig = useGeneralConfig();
-  const badgePaths = hasNew ? new Set(['/', '/requests']) : new Set();
+  const badgePaths = useMemo(() => {
+    const paths = new Set();
+    if (hasNew) {
+      paths.add('/');
+      paths.add('/requests');
+    }
+    if (anyHasNew) {
+      paths.add('/notifications');
+    }
+    return paths;
+  }, [anyHasNew, hasNew]);
 
   const derivedPageKey = useMemo(() => derivePageKey(location.pathname), [location.pathname]);
 
@@ -3351,6 +3556,19 @@ const styles = {
     cursor: "pointer",
     fontSize: "0.9rem",
     padding: "0.25rem 0.5rem",
+  },
+  inlineButtonContent: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "0.35rem",
+  },
+  notificationDot: {
+    display: "inline-block",
+    width: "0.5rem",
+    height: "0.5rem",
+    borderRadius: "50%",
+    backgroundColor: "#f87171",
+    marginRight: "0.25rem",
   },
   userSection: {
     display: "flex",
