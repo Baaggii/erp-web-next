@@ -22,7 +22,7 @@ test('listPermittedProcedures merges trigger procedures and respects filters', a
     },
   });
   await writeJsonConfig(companyId, 'report_management/allowedReports.json', {
-    restricted_trigger: { branches: [99], departments: [], permissions: [] },
+    deleted_proc: { branches: [], departments: [], permissions: [] },
   });
   await writeJsonConfig(companyId, 'tableDisplayFields.json', {
     companies: { idField: 'id', displayFields: ['name'] },
@@ -36,7 +36,25 @@ test('listPermittedProcedures merges trigger procedures and respects filters', a
   pool.query = async (sql, params) => {
     if (typeof sql === 'string' && sql.startsWith('SHOW TRIGGERS')) {
       triggerTables.push(params?.[0]);
-      return [[{ Statement: 'CALL trigger_proc(NEW.id); CALL restricted_trigger(NEW.id);' }]];
+      return [[{ Statement: 'CALL trigger_proc(NEW.id); CALL deleted_proc(NEW.id);' }]];
+    }
+    if (
+      typeof sql === 'string' &&
+      sql.includes('FROM information_schema.ROUTINES')
+    ) {
+      const search = Array.isArray(params) && params[0]
+        ? params[0].replace(/%/g, '')
+        : '';
+      if (!search) {
+        return [[
+          { ROUTINE_NAME: 'form_proc' },
+          { ROUTINE_NAME: 'trigger_proc' },
+        ]];
+      }
+      if (search === 'trigger') {
+        return [[{ ROUTINE_NAME: 'trigger_proc' }]];
+      }
+      return [[]];
     }
     if (typeof sql === 'string' && sql.includes('FROM tbl_employment')) {
       return [[
@@ -64,6 +82,7 @@ test('listPermittedProcedures merges trigger procedures and respects filters', a
     assert.deepEqual([...new Set(triggerTables)], ['tbl_sales']);
     const baseNames = base.procedures.map((p) => p.name).sort();
     assert.deepEqual(baseNames, ['form_proc', 'trigger_proc']);
+    assert.ok(!baseNames.includes('deleted_proc'));
 
     const prefixed = await listPermittedProcedures({ prefix: 'trigger' }, companyId, {
       empid: 'emp1',
