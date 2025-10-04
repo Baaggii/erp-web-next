@@ -12,6 +12,43 @@ import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import Modal from '../components/Modal.jsx';
 
+const DATE_PARAM_ALLOWLIST = new Set([
+  'startdt',
+  'enddt',
+  'fromdt',
+  'todt',
+  'startdatetime',
+  'enddatetime',
+  'fromdatetime',
+  'todatetime',
+]);
+
+function normalizeParamName(name) {
+  return String(name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function isLikelyDateField(name) {
+  const normalized = normalizeParamName(name);
+  if (!normalized) return false;
+  if (normalized.includes('date')) return true;
+  if (DATE_PARAM_ALLOWLIST.has(normalized)) return true;
+  return false;
+}
+
+function isStartDateParam(name) {
+  if (!isLikelyDateField(name)) return false;
+  const normalized = normalizeParamName(name);
+  return normalized.includes('start') || normalized.includes('from');
+}
+
+function isEndDateParam(name) {
+  if (!isLikelyDateField(name)) return false;
+  const normalized = normalizeParamName(name);
+  return normalized.includes('end') || normalized.includes('to');
+}
+
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 
 export default function Reports() {
@@ -113,38 +150,51 @@ export default function Reports() {
       hasStartParam: false,
       hasEndParam: false,
       managedIndices: new Set(),
+      startIndices: new Set(),
+      endIndices: new Set(),
     };
     procParams.forEach((param, index) => {
-      const name = param.toLowerCase();
-      const isStart = name.includes('start') || name.includes('from');
-      const isEnd = name.includes('end') || name.includes('to');
-      if (isStart) {
+      if (typeof param !== 'string') return;
+      if (isStartDateParam(param)) {
         info.hasStartParam = true;
         info.managedIndices.add(index);
+        info.startIndices.add(index);
       }
-      if (isEnd) {
+      if (isEndDateParam(param)) {
         info.hasEndParam = true;
         info.managedIndices.add(index);
+        info.endIndices.add(index);
       }
     });
     return info;
   }, [procParams]);
 
-  const { hasStartParam, hasEndParam, managedIndices } = dateParamInfo;
+  const { hasStartParam, hasEndParam, managedIndices, startIndices, endIndices } =
+    dateParamInfo;
   const hasDateParams = hasStartParam || hasEndParam;
 
   const autoParams = useMemo(() => {
-    return procParams.map((p) => {
-      const name = p.toLowerCase();
-      if (name.includes('start') || name.includes('from')) return startDate || null;
-      if (name.includes('end') || name.includes('to')) return endDate || null;
+    return procParams.map((p, index) => {
+      if (startIndices.has(index)) return startDate || null;
+      if (endIndices.has(index)) return endDate || null;
+      const name = typeof p === 'string' ? p.toLowerCase() : '';
       if (name.includes('branch')) return branch ?? null;
       if (name.includes('department')) return department ?? null;
       if (name.includes('company')) return company ?? null;
       if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
       return null;
     });
-  }, [procParams, startDate, endDate, company, branch, department, user]);
+  }, [
+    procParams,
+    startIndices,
+    endIndices,
+    startDate,
+    endDate,
+    company,
+    branch,
+    department,
+    user,
+  ]);
 
   const manualParamNames = useMemo(() => {
     return procParams.reduce((list, param, index) => {
