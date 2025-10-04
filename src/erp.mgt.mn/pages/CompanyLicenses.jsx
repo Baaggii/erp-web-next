@@ -1,6 +1,8 @@
 // src/erp.mgt.mn/pages/CompanyLicenses.jsx
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
+import { refreshModules } from '../hooks/useModules.js';
 
 export default function CompanyLicenses() {
   const [licenses, setLicenses] = useState([]);
@@ -27,12 +29,14 @@ export default function CompanyLicenses() {
   }
 
   async function handleToggle(l) {
+    const targetCompanyId =
+      l.company_id ?? (filterCompanyId !== '' ? filterCompanyId : undefined);
     const res = await fetch('/api/company_modules', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({
-        companyId: l.company_id || filterCompanyId,
+        companyId: targetCompanyId ?? '',
         moduleKey: l.module_key,
         licensed: l.licensed ? 0 : 1,
       }),
@@ -42,6 +46,12 @@ export default function CompanyLicenses() {
       return;
     }
     loadLicenses(filterCompanyId);
+    if (targetCompanyId != null && String(targetCompanyId) !== '') {
+      refreshCompanyModules(targetCompanyId);
+      if (company != null && String(targetCompanyId) === String(company)) {
+        refreshModules();
+      }
+    }
   }
 
   return (
