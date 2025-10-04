@@ -1,9 +1,35 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import parser from '@babel/parser';
-import _traverse from '@babel/traverse';
-const traverse = _traverse.default ?? _traverse; // works for ESM or CJS
+
+let parser = null;
+let traverse = null;
+try {
+  const parserMod = await import('@babel/parser');
+  parser = parserMod.default ?? parserMod;
+  try {
+    const traverseModule = await import('@babel/traverse');
+    const candidates = [
+      traverseModule?.default,
+      traverseModule?.default?.default,
+      traverseModule?.traverse,
+      traverseModule,
+    ];
+    for (const candidate of candidates) {
+      if (typeof candidate === 'function') {
+        traverse = candidate;
+        break;
+      }
+    }
+    if (!traverse) parser = null;
+  } catch {
+    parser = null;
+    traverse = null;
+  }
+} catch {
+  parser = null;
+  traverse = null;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,24 +51,55 @@ function sanitizeKey(sel) {
   return sel.replace(/^[#.]/, '').replace(/[^\w]/g, '_');
 }
 
-function parseSelectors(code) {
-  const ast = parser.parse(code, {
-    sourceType: 'module',
-    plugins: ['jsx'],
-  });
+function parseSelectorsWithBabel(code) {
+  if (!parser || !traverse) return null;
+  try {
+    const ast = parser.parse(code, {
+      sourceType: 'module',
+      plugins: ['jsx'],
+    });
+    const selectors = [];
+    traverse(ast, {
+      JSXAttribute({ node }) {
+        const { name, value } = node;
+        if (!value || value.type !== 'StringLiteral') return;
+        if (name.name === 'id') {
+          selectors.push(`#${value.value}`);
+        } else if (name.name === 'data-tour' || name.name === 'data-tour-id') {
+          selectors.push(`[${name.name}="${value.value}"]`);
+        }
+      },
+    });
+    return selectors;
+  } catch {
+    return null;
+  }
+}
+
+const ATTR_REGEX = /(id|data-tour(?:-id)?)\s*=\s*(["'])([^"']+)\2/g;
+
+function parseSelectorsWithRegex(code) {
   const selectors = [];
-  traverse(ast, {
-    JSXAttribute({ node }) {
-      const { name, value } = node;
-      if (!value || value.type !== 'StringLiteral') return;
-      if (name.name === 'id') {
-        selectors.push(`#${value.value}`);
-      } else if (name.name === 'data-tour' || name.name === 'data-tour-id') {
-        selectors.push(`[${name.name}="${value.value}"]`);
-      }
-    },
-  });
+  const seen = new Set();
+  let match;
+  while ((match = ATTR_REGEX.exec(code))) {
+    const [, attr, , value] = match;
+    if (!value) continue;
+    const selector = attr === 'id' ? `#${value}` : `[${attr}="${value}"]`;
+    if (seen.has(selector)) continue;
+    seen.add(selector);
+    selectors.push(selector);
+  }
+  ATTR_REGEX.lastIndex = 0;
   return selectors;
+}
+
+function parseSelectors(code) {
+  const babelSelectors = parseSelectorsWithBabel(code);
+  if (Array.isArray(babelSelectors)) {
+    return babelSelectors;
+  }
+  return parseSelectorsWithRegex(code);
 }
 
 async function generate() {
