@@ -425,6 +425,24 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
+              title={t('txn_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Display debug toasts for transaction fetches',
+              })}
+            >
+              <label>
+                Show Transaction Toasts{' '}
+                <input
+                  name="txnToastEnabled"
+                  type="checkbox"
+                  checked={active.txnToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
               title={t('proc_toast_enabled', {
                 ns: 'tooltip',
                 defaultValue: 'Display procedure messages as toasts',
