@@ -152,32 +152,68 @@ function hasAnyNew(incoming, outgoing) {
   );
 }
 
-function buildWorkflowEntry(sources) {
-  const incoming = mergeStatusMaps(sources.map((src) => src?.incoming));
-  const outgoing = mergeStatusMaps(sources.map((src) => src?.outgoing));
-  const workflowHasNew = hasAnyNew(incoming, outgoing);
-  const markSeen = () => {
+function useWorkflowEntry(...rawSources) {
+  const sources = useMemo(
+    () => rawSources.filter(Boolean),
+    rawSources,
+  );
+
+  const incoming = useMemo(
+    () => mergeStatusMaps(sources.map((src) => src?.incoming)),
+    [sources],
+  );
+
+  const outgoing = useMemo(
+    () => mergeStatusMaps(sources.map((src) => src?.outgoing)),
+    [sources],
+  );
+
+  const workflowHasNew = useMemo(
+    () => hasAnyNew(incoming, outgoing),
+    [incoming, outgoing],
+  );
+
+  const markSeen = useCallback(() => {
     sources.forEach((src) => {
       if (src && typeof src.markSeen === 'function') {
         src.markSeen();
       }
     });
-  };
-  const markIncoming = (statuses) => {
-    sources.forEach((src) => {
-      if (src && typeof src.markIncoming === 'function') {
-        src.markIncoming(statuses);
-      }
-    });
-  };
-  const markOutgoing = (statuses) => {
-    sources.forEach((src) => {
-      if (src && typeof src.markOutgoing === 'function') {
-        src.markOutgoing(statuses);
-      }
-    });
-  };
-  return { incoming, outgoing, hasNew: workflowHasNew, markSeen, markIncoming, markOutgoing };
+  }, [sources]);
+
+  const markIncoming = useCallback(
+    (statuses) => {
+      sources.forEach((src) => {
+        if (src && typeof src.markIncoming === 'function') {
+          src.markIncoming(statuses);
+        }
+      });
+    },
+    [sources],
+  );
+
+  const markOutgoing = useCallback(
+    (statuses) => {
+      sources.forEach((src) => {
+        if (src && typeof src.markOutgoing === 'function') {
+          src.markOutgoing(statuses);
+        }
+      });
+    },
+    [sources],
+  );
+
+  return useMemo(
+    () => ({
+      incoming,
+      outgoing,
+      hasNew: workflowHasNew,
+      markSeen,
+      markIncoming,
+      markOutgoing,
+    }),
+    [incoming, outgoing, workflowHasNew, markSeen, markIncoming, markOutgoing],
+  );
 }
 
 function coerceSelectorValue(value) {
@@ -2696,40 +2732,82 @@ export default function ERPLayout() {
   );
   const temporaryNotifications = useTemporaryNotificationCounts(user?.empid);
 
-  const pendingRequestSummary = useMemo(() => {
-    const reportWorkflow = buildWorkflowEntry([reportNotifications]);
-    const editWorkflow = buildWorkflowEntry([editNotifications]);
-    const deleteWorkflow = buildWorkflowEntry([deleteNotifications]);
-    const changeWorkflow = buildWorkflowEntry([editNotifications, deleteNotifications]);
+  const reportWorkflow = useWorkflowEntry(reportNotifications);
+  const editWorkflow = useWorkflowEntry(editNotifications);
+  const deleteWorkflow = useWorkflowEntry(deleteNotifications);
+  const changeWorkflow = useWorkflowEntry(editNotifications, deleteNotifications);
 
-    const aggregatedIncoming = mergeStatusMaps([
-      reportNotifications?.incoming,
-      editNotifications?.incoming,
-      deleteNotifications?.incoming,
-    ]);
-    const aggregatedOutgoing = mergeStatusMaps([
-      reportNotifications?.outgoing,
-      editNotifications?.outgoing,
-      deleteNotifications?.outgoing,
-    ]);
-    const requestHasNew = hasAnyNew(aggregatedIncoming, aggregatedOutgoing);
+  const aggregatedIncoming = useMemo(
+    () =>
+      mergeStatusMaps([
+        reportWorkflow.incoming,
+        editWorkflow.incoming,
+        deleteWorkflow.incoming,
+      ]),
+    [
+      reportWorkflow.incoming,
+      editWorkflow.incoming,
+      deleteWorkflow.incoming,
+    ],
+  );
 
-    const markAll = () => {
-      reportWorkflow.markSeen();
-      editWorkflow.markSeen();
-      deleteWorkflow.markSeen();
-    };
-    const markIncomingStatuses = (statuses) => {
+  const aggregatedOutgoing = useMemo(
+    () =>
+      mergeStatusMaps([
+        reportWorkflow.outgoing,
+        editWorkflow.outgoing,
+        deleteWorkflow.outgoing,
+      ]),
+    [
+      reportWorkflow.outgoing,
+      editWorkflow.outgoing,
+      deleteWorkflow.outgoing,
+    ],
+  );
+
+  const requestHasNew = useMemo(
+    () => hasAnyNew(aggregatedIncoming, aggregatedOutgoing),
+    [aggregatedIncoming, aggregatedOutgoing],
+  );
+
+  const markAll = useCallback(() => {
+    reportWorkflow.markSeen();
+    editWorkflow.markSeen();
+    deleteWorkflow.markSeen();
+  }, [
+    reportWorkflow.markSeen,
+    editWorkflow.markSeen,
+    deleteWorkflow.markSeen,
+  ]);
+
+  const markIncomingStatuses = useCallback(
+    (statuses) => {
       reportWorkflow.markIncoming(statuses);
       editWorkflow.markIncoming(statuses);
       deleteWorkflow.markIncoming(statuses);
-    };
-    const markOutgoingStatuses = (statuses) => {
+    },
+    [
+      reportWorkflow.markIncoming,
+      editWorkflow.markIncoming,
+      deleteWorkflow.markIncoming,
+    ],
+  );
+
+  const markOutgoingStatuses = useCallback(
+    (statuses) => {
       reportWorkflow.markOutgoing(statuses);
       editWorkflow.markOutgoing(statuses);
       deleteWorkflow.markOutgoing(statuses);
-    };
-    const markWorkflowSeen = (workflowKey) => {
+    },
+    [
+      reportWorkflow.markOutgoing,
+      editWorkflow.markOutgoing,
+      deleteWorkflow.markOutgoing,
+    ],
+  );
+
+  const markWorkflowSeen = useCallback(
+    (workflowKey) => {
       switch (workflowKey) {
         case 'report_approval':
         case 'reportApproval':
@@ -2749,9 +2827,18 @@ export default function ERPLayout() {
           markAll();
           break;
       }
-    };
+    },
+    [
+      reportWorkflow.markSeen,
+      changeWorkflow.markSeen,
+      editWorkflow.markSeen,
+      deleteWorkflow.markSeen,
+      markAll,
+    ],
+  );
 
-    return {
+  const pendingRequestSummary = useMemo(
+    () => ({
       contextValue: {
         incoming: aggregatedIncoming,
         outgoing: aggregatedOutgoing,
@@ -2768,8 +2855,21 @@ export default function ERPLayout() {
         },
       },
       requestHasNew,
-    };
-  }, [reportNotifications, editNotifications, deleteNotifications]);
+    }),
+    [
+      aggregatedIncoming,
+      aggregatedOutgoing,
+      requestHasNew,
+      markAll,
+      markIncomingStatuses,
+      markOutgoingStatuses,
+      markWorkflowSeen,
+      reportWorkflow,
+      changeWorkflow,
+      editWorkflow,
+      deleteWorkflow,
+    ],
+  );
 
   const {
     counts: temporaryCounts,
