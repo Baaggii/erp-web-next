@@ -140,8 +140,63 @@ const deleteBtnStyle = {
 const requestStatusColors = {
   pending: '#fef9c3',
   accepted: '#d1fae5',
+  approved: '#d1fae5',
   declined: '#fee2e2',
 };
+
+const requestStatusLabels = {
+  pending: 'Pending',
+  accepted: 'Approved',
+  approved: 'Approved',
+  declined: 'Declined',
+};
+
+function coalesce(obj, ...keys) {
+  if (!obj) return undefined;
+  for (const key of keys) {
+    if (key == null) continue;
+    if (Array.isArray(key)) {
+      const nested = coalesce(obj, ...key);
+      if (nested !== undefined && nested !== null && nested !== '') {
+        return nested;
+      }
+      continue;
+    }
+    if (obj[key] !== undefined && obj[key] !== null && obj[key] !== '') {
+      return obj[key];
+    }
+    const camel = key
+      .toString()
+      .replace(/_([a-z])/g, (_, c) => c.toUpperCase())
+      .replace(/^[A-Z]/, (c) => c.toLowerCase());
+    if (
+      obj[camel] !== undefined &&
+      obj[camel] !== null &&
+      obj[camel] !== ''
+    ) {
+      return obj[camel];
+    }
+    const snake = key
+      .toString()
+      .replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`)
+      .replace(/^_/, '');
+    if (
+      obj[snake] !== undefined &&
+      obj[snake] !== null &&
+      obj[snake] !== ''
+    ) {
+      return obj[snake];
+    }
+  }
+  return undefined;
+}
+
+function formatMetaDate(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return formatTimestamp(date);
+}
 
 const TableManager = forwardRef(function TableManager({
   table,
@@ -191,6 +246,8 @@ const TableManager = forwardRef(function TableManager({
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
   const [procTriggers, setProcTriggers] = useState({});
+  const [lockMetadataById, setLockMetadataById] = useState({});
+  const lockSignatureRef = useRef('');
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -1042,6 +1099,87 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     setSelectedRows(new Set());
   }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
+
+  useEffect(() => {
+    if (!table || !Array.isArray(rows) || rows.length === 0) {
+      if (lockSignatureRef.current) lockSignatureRef.current = '';
+      if (Object.keys(lockMetadataById).length > 0) {
+        setLockMetadataById({});
+      }
+      return;
+    }
+    const lockedEntries = rows.reduce((acc, row) => {
+      if (!row || !row.locked) return acc;
+      const id = getRowId(row);
+      if (id === undefined || id === null) return acc;
+      const idStr = String(id);
+      const versionParts = [
+        coalesce(row, 'lock_version', 'lockVersion', 'lock_updated_at', 'lockUpdatedAt'),
+        coalesce(row, 'locked_at', 'lockedAt'),
+        coalesce(row, 'request_status', 'requestStatus'),
+      ]
+        .filter((v) => v !== undefined && v !== null && v !== '')
+        .map(String);
+      acc.push({
+        id: idStr,
+        version: versionParts.join('|'),
+      });
+      return acc;
+    }, []);
+    const lockedIds = lockedEntries.map((entry) => entry.id).sort();
+    const versionSignature = lockedEntries
+      .map((entry) => `${entry.id}:${entry.version}`)
+      .sort()
+      .join(',');
+    const signature = `${table}::${company ?? ''}::${versionSignature}`;
+    if (!lockedIds.length) {
+      if (lockSignatureRef.current !== signature) {
+        lockSignatureRef.current = signature;
+      }
+      if (Object.keys(lockMetadataById).length > 0) {
+        setLockMetadataById({});
+      }
+      return;
+    }
+    if (lockSignatureRef.current === signature) return;
+    lockSignatureRef.current = signature;
+    let canceled = false;
+    (async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set('table_name', table);
+        lockedIds.forEach((id) => params.append('record_id', id));
+        if (company !== undefined && company !== null && company !== '') {
+          params.set('company_id', company);
+        }
+        const res = await fetch(
+          `${API_BASE}/report_transaction_locks/metadata?${params.toString()}`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) throw new Error('Failed to load lock metadata');
+        const data = await res.json().catch(() => ({}));
+        if (canceled) return;
+        const list = Array.isArray(data) ? data : data.rows || [];
+        const map = {};
+        list.forEach((item) => {
+          const recordId = coalesce(item, 'record_id', 'recordId', 'id');
+          if (recordId === undefined || recordId === null || recordId === '') {
+            return;
+          }
+          map[String(recordId)] = item;
+        });
+        setLockMetadataById(map);
+      } catch (err) {
+        if (!canceled) {
+          lockSignatureRef.current = '';
+          setLockMetadataById({});
+        }
+      }
+    })();
+    return () => {
+      canceled = true;
+    };
+  }, [rows, table, company, lockMetadataById]);
 
   function getRowId(row) {
     const keys = getKeyFields();
@@ -2802,35 +2940,133 @@ const TableManager = forwardRef(function TableManager({
               </td>
             </tr>
           )}
-          {rows.map((r) => (
-            <tr
-              key={r.id || JSON.stringify(r)}
-              onClick={(e) => {
-                const t = e.target.tagName;
-                if (t !== 'INPUT' && t !== 'BUTTON' && t !== 'SELECT' && t !== 'A') {
-                  openDetail(r);
-                }
-              }}
-              style={{
-                cursor: 'pointer',
-                ...(requestStatusColors[requestStatus]
-                  ? { backgroundColor: requestStatusColors[requestStatus] }
-                  : {}),
-              }}
-            >
-              <td style={{ padding: '0.5rem', border: '1px solid #d1d5db', width: 60, textAlign: 'center' }}>
-                {(() => {
-                  const rid = getRowId(r);
-                  return (
+          {rows.map((r) => {
+            const rid = getRowId(r);
+            const ridKey =
+              rid === undefined || rid === null ? null : String(rid);
+            const lockInfo = ridKey ? lockMetadataById[ridKey] : null;
+            const locked = Boolean(r?.locked);
+            const lockCreatedAt =
+              formatMetaDate(
+                coalesce(lockInfo, 'created_at', 'createdAt', 'locked_at', 'lockedAt') ||
+                  coalesce(r, 'locked_at'),
+              ) || null;
+            const lockApprovedAt =
+              formatMetaDate(
+                coalesce(lockInfo, 'approved_at', 'approvedAt', 'activated_at', 'activatedAt'),
+              ) || null;
+            const lockedBy =
+              coalesce(
+                lockInfo,
+                'locked_by_name',
+                'locked_by',
+                'created_by_name',
+                'created_by',
+              ) ||
+              coalesce(r, 'locked_by_name', 'locked_by');
+            const approvedBy =
+              coalesce(lockInfo, 'approved_by_name', 'approved_by', 'activated_by_name', 'activated_by');
+            const requestInfo =
+              coalesce(lockInfo, 'request', 'latest_request') ||
+              (locked ? lockInfo : null);
+            const requestStatusRaw = (
+              coalesce(requestInfo, 'status', 'request_status') ||
+              coalesce(lockInfo, 'request_status') ||
+              coalesce(r, 'request_status') ||
+              ''
+            )
+              .toString()
+              .trim()
+              .toLowerCase();
+            const requestStatusLabel = requestStatusLabels[requestStatusRaw] || '';
+            const requestStatusColor = requestStatusColors[requestStatusRaw];
+            const requestReason =
+              coalesce(requestInfo, 'request_reason', 'reason') ||
+              coalesce(lockInfo, 'request_reason');
+            const approvalLinkRaw =
+              coalesce(
+                lockInfo,
+                'approval_url',
+                'report_url',
+                'request_url',
+                'context_url',
+                'link',
+              ) ||
+              '';
+            const approvalRequestId = coalesce(lockInfo, 'request_id', 'requestId');
+            const approvalLink = approvalLinkRaw
+              ? approvalLinkRaw
+              : approvalRequestId
+              ? `#/erp/requests?requestId=${approvalRequestId}`
+              : '';
+            const tooltipParts = [];
+            if (lockedBy) tooltipParts.push(`Locked by: ${lockedBy}`);
+            if (lockCreatedAt) tooltipParts.push(`Locked at: ${lockCreatedAt}`);
+            if (approvedBy) tooltipParts.push(`Approved by: ${approvedBy}`);
+            if (lockApprovedAt) tooltipParts.push(`Approved at: ${lockApprovedAt}`);
+            if (requestStatusLabel)
+              tooltipParts.push(`Request status: ${requestStatusLabel}`);
+            if (requestReason)
+              tooltipParts.push(`Reason: ${String(requestReason).substring(0, 200)}`);
+            const lockTooltip = tooltipParts.join('\n');
+            return (
+              <tr
+                key={r.id || JSON.stringify(r)}
+                onClick={(e) => {
+                  const t = e.target.tagName;
+                  if (t !== 'INPUT' && t !== 'BUTTON' && t !== 'SELECT' && t !== 'A') {
+                    openDetail(r);
+                  }
+                }}
+                style={{
+                  cursor: 'pointer',
+                  ...(requestStatusColors[requestStatus]
+                    ? { backgroundColor: requestStatusColors[requestStatus] }
+                    : {}),
+                }}
+              >
+                <td
+                  style={{
+                    padding: '0.5rem',
+                    border: '1px solid #d1d5db',
+                    width: 60,
+                    textAlign: 'center',
+                  }}
+                >
+                  <div
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                      gap: '0.25rem',
+                    }}
+                  >
+                    {locked && (
+                      <TooltipWrapper title={lockTooltip || 'Locked'}>
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.25rem',
+                            backgroundColor: '#1f2937',
+                            color: 'white',
+                            borderRadius: '9999px',
+                            fontSize: '0.65rem',
+                            padding: '0.15rem 0.5rem',
+                          }}
+                        >
+                          🔒 Locked
+                        </span>
+                      </TooltipWrapper>
+                    )}
                     <input
                       type="checkbox"
                       disabled={rid === undefined}
                       checked={rid !== undefined && selectedRows.has(rid)}
                       onChange={() => rid !== undefined && toggleRow(rid)}
                     />
-                  );
-                })()}
-              </td>
+                  </div>
+                </td>
               {columns.map((c) => {
                 const w = columnWidths[c];
                 const style = {
@@ -2881,74 +3117,217 @@ const TableManager = forwardRef(function TableManager({
                   </td>
                 );
               })}
-              <td style={actionCellStyle}>
-                {(() => {
-                  const rid = getRowId(r);
-                  return (
-                    <>
+                <td style={actionCellStyle}>
+                  {(() => {
+                    const actionButtons = [];
+                    actionButtons.push(
                       <button
+                        key="view"
                         onClick={() => openDetail(r)}
                         style={actionBtnStyle}
                       >
                         👁 View
-                      </button>
+                      </button>,
+                    );
+                    actionButtons.push(
                       <button
+                        key="images"
                         onClick={() => openImages(r)}
                         style={actionBtnStyle}
                       >
                         🖼 Images
-                      </button>
+                      </button>,
+                    );
+                    actionButtons.push(
                       <button
+                        key="upload"
                         onClick={() => openUpload(r)}
                         style={actionBtnStyle}
                       >
                         ➕ Add Img
-                      </button>
-                      {!isSubordinate ? (
-                        <>
-                          {buttonPerms['Edit transaction'] && (
-                            <button
-                              onClick={() => openEdit(r)}
-                              disabled={rid === undefined}
-                              style={actionBtnStyle}
-                            >
-                              🖉 Edit
-                            </button>
-                          )}
-                          {buttonPerms['Delete transaction'] && (
-                            <button
-                              onClick={() => handleDelete(r)}
-                              disabled={rid === undefined}
-                              style={deleteBtnStyle}
-                            >
-                              ❌ Delete
-                            </button>
-                          )}
-                        </>
-                      ) : (
-                        <>
+                      </button>,
+                    );
+                    const actionLocked = locked;
+                    if (!isSubordinate && !actionLocked) {
+                      if (buttonPerms['Edit transaction']) {
+                        actionButtons.push(
                           <button
-                            onClick={() => openRequestEdit(r)}
+                            key="edit"
+                            onClick={() => openEdit(r)}
                             disabled={rid === undefined}
                             style={actionBtnStyle}
                           >
-                            📝 Request Edit
-                          </button>
+                            🖉 Edit
+                          </button>,
+                        );
+                      }
+                      if (buttonPerms['Delete transaction']) {
+                        actionButtons.push(
                           <button
-                            onClick={() => handleRequestDelete(r)}
+                            key="delete"
+                            onClick={() => handleDelete(r)}
                             disabled={rid === undefined}
-                            style={actionBtnStyle}
+                            style={deleteBtnStyle}
                           >
-                            🗑 Request Delete
-                          </button>
-                        </>
-                      )}
-                    </>
-                  );
-                })()}
-              </td>
-            </tr>
-      ))}
+                            ❌ Delete
+                          </button>,
+                        );
+                      }
+                    } else {
+                      actionButtons.push(
+                        <button
+                          key="request-edit"
+                          onClick={() => openRequestEdit(r)}
+                          disabled={rid === undefined}
+                          style={actionBtnStyle}
+                        >
+                          📝 Request Edit
+                        </button>,
+                      );
+                      actionButtons.push(
+                        <button
+                          key="request-delete"
+                          onClick={() => handleRequestDelete(r)}
+                          disabled={rid === undefined}
+                          style={actionBtnStyle}
+                        >
+                          🗑 Request Delete
+                        </button>,
+                      );
+                    }
+                    const requestMeta = [];
+                    if (locked && lockedBy) {
+                      requestMeta.push(
+                        <div
+                          key="locked-by"
+                          style={{
+                            display: 'flex',
+                            gap: '0.25rem',
+                            justifyContent: 'flex-end',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            color: '#374151',
+                          }}
+                        >
+                          <TooltipWrapper title={lockTooltip || 'Locked'}>
+                            <span
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '0.25rem',
+                                backgroundColor: '#1f2937',
+                                color: 'white',
+                                borderRadius: '9999px',
+                                fontSize: '0.65rem',
+                                padding: '0.15rem 0.5rem',
+                              }}
+                            >
+                              🔒 Locked
+                            </span>
+                          </TooltipWrapper>
+                          <span style={{ fontSize: '0.7rem' }}>by {lockedBy}</span>
+                        </div>,
+                      );
+                    }
+                    if (requestStatusLabel) {
+                      requestMeta.push(
+                        <div
+                          key="request-status"
+                          style={{
+                            display: 'flex',
+                            gap: '0.25rem',
+                            justifyContent: 'flex-end',
+                            flexWrap: 'wrap',
+                            alignItems: 'center',
+                            fontSize: '0.7rem',
+                            color: '#374151',
+                          }}
+                        >
+                          <span
+                            style={{
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              borderRadius: '9999px',
+                              padding: '0.15rem 0.6rem',
+                              backgroundColor: requestStatusColor || '#e5e7eb',
+                              fontWeight: 600,
+                            }}
+                          >
+                            {requestStatusLabel}
+                          </span>
+                          {requestReason && (
+                            <TooltipWrapper title={String(requestReason)}>
+                              <span
+                                style={{
+                                  display: 'inline-flex',
+                                  width: '1rem',
+                                  height: '1rem',
+                                  borderRadius: '9999px',
+                                  justifyContent: 'center',
+                                  alignItems: 'center',
+                                  backgroundColor: '#f3f4f6',
+                                  fontSize: '0.65rem',
+                                  color: '#111827',
+                                }}
+                              >
+                                i
+                              </span>
+                            </TooltipWrapper>
+                          )}
+                          {approvalLink && (
+                            <a
+                              href={approvalLink}
+                              style={{
+                                color: '#2563eb',
+                                textDecoration: 'underline',
+                              }}
+                              onClick={(event) => event.stopPropagation()}
+                            >
+                              View approval
+                            </a>
+                          )}
+                        </div>,
+                      );
+                    }
+                    return (
+                      <div
+                        style={{
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'flex-end',
+                          gap: '0.35rem',
+                          width: '100%',
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            justifyContent: 'flex-end',
+                            gap: '0.25rem',
+                          }}
+                        >
+                          {actionButtons}
+                        </div>
+                        {requestMeta.length > 0 && (
+                          <div
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '0.2rem',
+                              width: '100%',
+                            }}
+                          >
+                            {requestMeta}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </td>
+              </tr>
+            );
+          })}
       </tbody>
       {showTotals && (
         <tfoot>
