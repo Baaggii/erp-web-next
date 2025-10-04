@@ -20,6 +20,14 @@ if (typeof mock.import !== 'function') {
         indexRef.current += 1;
         return [states[idx], setter];
       },
+      useRef(initial) {
+        const idx = indexRef.current;
+        if (states.length <= idx) {
+          states[idx] = { current: initial };
+        }
+        indexRef.current += 1;
+        return states[idx];
+      },
       useEffect(fn) {
         fn();
       },
@@ -97,6 +105,7 @@ if (typeof mock.import !== 'function') {
         react: {
           default: reactMock,
           useState: reactMock.useState,
+          useRef: reactMock.useRef,
           useEffect: reactMock.useEffect,
           useMemo: reactMock.useMemo,
           useContext: reactMock.useContext,
@@ -189,6 +198,7 @@ if (typeof mock.import !== 'function') {
         react: {
           default: reactMock,
           useState: reactMock.useState,
+          useRef: reactMock.useRef,
           useEffect: reactMock.useEffect,
           useMemo: reactMock.useMemo,
           useContext: reactMock.useContext,
@@ -237,6 +247,131 @@ if (typeof mock.import !== 'function') {
 
     const datePickers = collectNodes(tree, (node) => node.type === 'CustomDatePicker');
     assert.equal(datePickers.length, 0, 'Date pickers should not render without date params');
+
+    delete global.fetch;
+  });
+
+  test('Reports keeps year/month parameters manual and posts raw values', async () => {
+    const fetchCalls = [];
+    global.fetch = async (url, options = {}) => {
+      fetchCalls.push({ url, options });
+      if (url.startsWith('/api/report_procedures')) {
+        return {
+          ok: true,
+          json: async () => ({ procedures: [{ name: 'report_with_period_parts' }] }),
+        };
+      }
+      if (url.startsWith('/api/procedures/report_with_period_parts/params')) {
+        return {
+          ok: true,
+          json: async () => ({
+            parameters: ['start_year', 'start_month', 'end_year', 'end_month'],
+          }),
+        };
+      }
+      if (url.startsWith('/api/procedures') && options.method === 'POST') {
+        return { ok: true, json: async () => ({ row: [], fieldTypeMap: {} }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    const states = [];
+    const setters = [];
+    const indexRef = { current: 0 };
+    const contextValue = { company: 99, branch: 'B-77', department: 'D-8', user: { empid: 123 } };
+    const reactMock = createReactStub(states, setters, indexRef, contextValue);
+
+    const { default: ReportsPage } = await mock.import(
+      '../../src/erp.mgt.mn/pages/Reports.jsx',
+      {
+        react: {
+          default: reactMock,
+          useState: reactMock.useState,
+          useRef: reactMock.useRef,
+          useEffect: reactMock.useEffect,
+          useMemo: reactMock.useMemo,
+          useContext: reactMock.useContext,
+          createElement: reactMock.createElement,
+          Fragment: reactMock.Fragment,
+        },
+        '../context/AuthContext.jsx': { AuthContext: {} },
+        '../context/ToastContext.jsx': { useToast: () => ({ addToast: () => {} }) },
+        '../hooks/useGeneralConfig.js': { default: () => ({ general: {} }) },
+        '../hooks/useHeaderMappings.js': { default: () => ({}) },
+        '../hooks/useButtonPerms.js': { default: () => ({}) },
+        '../components/CustomDatePicker.jsx': {
+          default: (props) => ({ type: 'CustomDatePicker', props }),
+        },
+        '../components/ReportTable.jsx': { default: () => null },
+        '../utils/formatTimestamp.js': { default: (date) => date.toISOString() },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    function render() {
+      indexRef.current = 0;
+      return ReportsPage();
+    }
+
+    render();
+    await Promise.resolve();
+    await Promise.resolve();
+    let tree = render();
+
+    const procedureSelect = collectNodes(
+      tree,
+      (node) => node.type === 'select' && hasOptionWithValue(node, ''),
+    )[0];
+    assert.ok(procedureSelect, 'Procedure select not found');
+
+    procedureSelect.props.onChange({ target: { value: 'report_with_period_parts' } });
+
+    tree = render();
+    await Promise.resolve();
+    await Promise.resolve();
+    tree = render();
+
+    const presetSelects = collectNodes(tree, (node) =>
+      node.type === 'select' && hasOptionWithValue(node, 'custom'),
+    );
+    assert.equal(presetSelects.length, 0, 'Preset select should not show for manual periods');
+
+    const datePickers = collectNodes(tree, (node) => node.type === 'CustomDatePicker');
+    assert.equal(datePickers.length, 0, 'Date pickers should not render for manual periods');
+
+    const expectInputs = [
+      ['start_year', '2023'],
+      ['start_month', '01'],
+      ['end_year', '2024'],
+      ['end_month', '02'],
+    ];
+
+    for (const [placeholder, value] of expectInputs) {
+      const inputNode = collectNodes(
+        tree,
+        (node) => node.type === 'input' && node.props?.placeholder === placeholder,
+      )[0];
+      assert.ok(inputNode, `Input for ${placeholder} not rendered`);
+      inputNode.props.onChange({ target: { value } });
+      tree = render();
+    }
+
+    const runButton = collectNodes(tree, (node) => node.type === 'button')[0];
+    assert.ok(runButton, 'Run button missing');
+    assert.equal(runButton.props.disabled, false, 'Run button should be enabled once filled');
+
+    await runButton.props.onClick();
+
+    const postCall = fetchCalls.find(
+      ({ url, options }) => url.startsWith('/api/procedures') && options.method === 'POST',
+    );
+    assert.ok(postCall, 'Procedure POST call not captured');
+    const parsedBody = JSON.parse(postCall.options.body);
+    assert.deepEqual(
+      parsedBody.params,
+      ['2023', '01', '2024', '02'],
+      'Manual period parameters should post raw strings',
+    );
 
     delete global.fetch;
   });
