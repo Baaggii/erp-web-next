@@ -334,8 +334,23 @@ const TableManager = forwardRef(function TableManager({
     session?.senior_empid || session?.senior_plan_empid,
   );
   const generalConfig = useGeneralConfig();
+  const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
+
+  const formatTxnToastPayload = useCallback((value) => {
+    const maxLength = 500;
+    if (value === undefined) return 'undefined';
+    if (value === null) return 'null';
+    try {
+      const json = JSON.stringify(value);
+      if (typeof json === 'string') {
+        return json.length > maxLength ? `${json.slice(0, maxLength)}…` : json;
+      }
+    } catch {}
+    const str = String(value);
+    return str.length > maxLength ? `${str.slice(0, maxLength)}…` : str;
+  }, []);
 
   function promptRequestReason() {
     return new Promise((resolve) => {
@@ -1456,6 +1471,12 @@ const TableManager = forwardRef(function TableManager({
 
   async function openEdit(row) {
     if (getRowId(row) === undefined) {
+      if (txnToastEnabled) {
+        addToast(
+          'Transaction toast: Missing primary key for edit operation',
+          'info',
+        );
+      }
       addToast(
         t('cannot_edit_without_pk', 'Cannot edit rows without a primary key'),
         'error',
@@ -1468,6 +1489,16 @@ const TableManager = forwardRef(function TableManager({
       Array.isArray(cols) && cols.length > 0
         ? buildColumnCaseMap(cols)
         : columnCaseMap;
+    if (txnToastEnabled) {
+      const resolvedKeys = Object.keys(localCaseMap || {});
+      addToast(
+        `Transaction toast: Resolved key columns ${formatTxnToastPayload({
+          count: resolvedKeys.length,
+          sample: resolvedKeys.slice(0, 10),
+        })}`,
+        'info',
+      );
+    }
     const id = getRowId(row);
     addToast(t('loading_record', 'Loading record...'));
 
@@ -1527,16 +1558,34 @@ const TableManager = forwardRef(function TableManager({
         );
       }
     }
+    if (txnToastEnabled) {
+      const paramEntries = Array.from(params.entries());
+      addToast(
+        `Transaction toast: Tenant params ${formatTxnToastPayload(
+          paramEntries.length > 0 ? paramEntries : 'none',
+        )}`,
+        'info',
+      );
+    }
 
     const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}${
       params.toString() ? `?${params.toString()}` : ''
     }`;
+    if (txnToastEnabled) {
+      addToast(`Transaction toast: Fetch URL ${url}`, 'info');
+    }
 
     let payload = null;
     try {
       const res = await fetch(url, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to load record');
       payload = await res.json().catch(() => null);
+      if (txnToastEnabled) {
+        addToast(
+          `Transaction toast: Success payload ${formatTxnToastPayload(payload)}`,
+          'info',
+        );
+      }
     } catch (err) {
       addToast(t('failed_load_record', 'Failed to load record details'), 'error');
       return;
@@ -1552,6 +1601,12 @@ const TableManager = forwardRef(function TableManager({
     }
 
     if (!record) {
+      if (txnToastEnabled) {
+        addToast(
+          `Transaction toast: Record not found ${formatTxnToastPayload(payload)}`,
+          'info',
+        );
+      }
       addToast(t('failed_load_record', 'Failed to load record details'), 'error');
       return;
     }
