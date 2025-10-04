@@ -18,6 +18,7 @@ import CustomDatePicker from '../components/CustomDatePicker.jsx';
 import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import Modal from '../components/Modal.jsx';
+import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
 
 const DATE_PARAM_ALLOWLIST = new Set([
   'startdt',
@@ -1670,7 +1671,7 @@ export default function Reports() {
               const val = manualParams[p] || '';
               const inputRef = manualInputRefs.current[p];
               return (
-                <input
+                <AutoSizingTextInput
                   key={p}
                   type="text"
                   placeholder={p}
