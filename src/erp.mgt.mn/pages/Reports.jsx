@@ -86,6 +86,10 @@ export default function Reports() {
   const [approvalError, setApprovalError] = useState('');
   const [approvalData, setApprovalData] = useState({ incoming: [], outgoing: [] });
   const [respondingRequestId, setRespondingRequestId] = useState(null);
+  const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
+  const expandedTransactionDetailsRef = useRef(expandedTransactionDetails);
+  const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
+  const requestLockDetailsRef = useRef(requestLockDetailsState);
   const presetSelectRef = useRef(null);
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
@@ -93,6 +97,12 @@ export default function Reports() {
   const runButtonRef = useRef(null);
   const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
   const procMap = useHeaderMappings(procNames);
+  useEffect(() => {
+    expandedTransactionDetailsRef.current = expandedTransactionDetails;
+  }, [expandedTransactionDetails]);
+  useEffect(() => {
+    requestLockDetailsRef.current = requestLockDetailsState;
+  }, [requestLockDetailsState]);
   const lockParamSignature = useMemo(() => {
     if (!result || !Array.isArray(result.orderedParams)) return '';
     try {
@@ -983,7 +993,154 @@ export default function Reports() {
     );
   }
 
-  function renderReportMetadata(meta) {
+  const ensureRequestLockDetails = useCallback(
+    async (requestId) => {
+      if (requestId === undefined || requestId === null) return null;
+      const normalizedId = String(requestId);
+      const existing = requestLockDetailsRef.current[normalizedId];
+      if (existing?.status === 'loaded' || existing?.status === 'loading') {
+        return existing;
+      }
+      setRequestLockDetailsState((prev) => ({
+        ...prev,
+        [normalizedId]: {
+          status: 'loading',
+          locks: [],
+          lookup: {},
+          error: '',
+        },
+      }));
+      try {
+        const res = await fetch(
+          `/api/report_approvals/${encodeURIComponent(normalizedId)}/locks`,
+          { credentials: 'include' },
+        );
+        if (!res.ok) {
+          throw new Error('Failed to load transaction details');
+        }
+        const data = await res.json().catch(() => ({}));
+        const rawLocks = Array.isArray(data?.locks)
+          ? data.locks
+          : Array.isArray(data?.items)
+          ? data.items
+          : Array.isArray(data?.transactions)
+          ? data.transactions
+          : Array.isArray(data)
+          ? data
+          : [];
+        const normalizedLocks = rawLocks
+          .map((lock) => {
+            if (!lock || typeof lock !== 'object') return null;
+            const tableName =
+              lock.tableName ??
+              lock.table ??
+              lock.table_name ??
+              '';
+            const rawId =
+              lock.recordId ??
+              lock.record_id ??
+              lock.id ??
+              lock.recordID;
+            if (!tableName || rawId === undefined || rawId === null) {
+              return null;
+            }
+            const recordId = String(rawId);
+            const key = `${tableName}#${recordId}`;
+            let snapshotColumns = Array.isArray(lock.snapshotColumns)
+              ? lock.snapshotColumns.filter(Boolean)
+              : Array.isArray(lock.columns)
+              ? lock.columns.filter(Boolean)
+              : [];
+            let fieldTypeMap =
+              lock.snapshotFieldTypeMap || lock.fieldTypeMap || {};
+            let snapshot = null;
+            if (lock.snapshot && typeof lock.snapshot === 'object') {
+              if (Array.isArray(lock.snapshot.rows)) {
+                const row = lock.snapshot.rows[0];
+                if (row && typeof row === 'object') {
+                  snapshot = row;
+                  if (!snapshotColumns.length) {
+                    if (
+                      Array.isArray(lock.snapshot.columns) &&
+                      lock.snapshot.columns.length
+                    ) {
+                      snapshotColumns = lock.snapshot.columns.filter(Boolean);
+                    } else {
+                      snapshotColumns = Object.keys(row);
+                    }
+                  }
+                  if (!fieldTypeMap || Object.keys(fieldTypeMap).length === 0) {
+                    fieldTypeMap = lock.snapshot.fieldTypeMap || {};
+                  }
+                }
+              } else {
+                snapshot = lock.snapshot;
+              }
+            } else if (
+              lock.row &&
+              typeof lock.row === 'object' &&
+              !Array.isArray(lock.row)
+            ) {
+              snapshot = lock.row;
+            }
+            return {
+              key,
+              tableName,
+              recordId,
+              snapshot,
+              snapshotColumns,
+              snapshotFieldTypeMap: fieldTypeMap || {},
+            };
+          })
+          .filter(Boolean);
+        const lookup = normalizedLocks.reduce((acc, lock) => {
+          acc[lock.key] = lock;
+          return acc;
+        }, {});
+        const value = {
+          status: 'loaded',
+          locks: normalizedLocks,
+          lookup,
+          error: '',
+        };
+        setRequestLockDetailsState((prev) => ({
+          ...prev,
+          [normalizedId]: value,
+        }));
+        return value;
+      } catch (err) {
+        const message = err?.message || 'Failed to load transaction details';
+        const value = {
+          status: 'error',
+          locks: [],
+          lookup: {},
+          error: message,
+        };
+        setRequestLockDetailsState((prev) => ({
+          ...prev,
+          [normalizedId]: value,
+        }));
+        return value;
+      }
+    },
+    [],
+  );
+
+  const handleTransactionDetailsToggle = useCallback(
+    async (detailKey, requestId, shouldFetch = true) => {
+      const nextOpen = !expandedTransactionDetailsRef.current[detailKey];
+      setExpandedTransactionDetails((prev) => ({
+        ...prev,
+        [detailKey]: nextOpen,
+      }));
+      if (nextOpen && requestId !== undefined && requestId !== null && shouldFetch) {
+        await ensureRequestLockDetails(requestId);
+      }
+    },
+    [ensureRequestLockDetails],
+  );
+
+  function renderReportMetadata(meta, options = {}) {
     if (!meta) {
       return <p>No report metadata available.</p>;
     }
@@ -1004,6 +1161,190 @@ export default function Reports() {
         : Array.isArray(meta.snapshot?.rows)
         ? meta.snapshot.rows.length
         : null;
+    const requestId =
+      options.requestId ??
+      meta.requestId ??
+      meta.request_id ??
+      meta.lockRequestId ??
+      null;
+
+    function normalizeTransaction(tx) {
+      if (!tx || typeof tx !== 'object') return null;
+      const tableName =
+        tx.table || tx.tableName || tx.table_name || '—';
+      const rawId =
+        tx.recordId ?? tx.record_id ?? tx.id ?? tx.recordID ?? tx.RecordId;
+      if (!tableName || rawId === undefined || rawId === null) return null;
+      const recordId = String(rawId);
+      const key = `${tableName}#${recordId}`;
+      const label = tx.label || tx.description || tx.note || '';
+      const reason =
+        tx.reason || tx.justification || tx.explanation || tx.exclude_reason || '';
+      const snapshot =
+        tx.snapshot && typeof tx.snapshot === 'object' ? tx.snapshot : null;
+      const snapshotColumns = Array.isArray(tx.snapshotColumns)
+        ? tx.snapshotColumns.filter(Boolean)
+        : Array.isArray(tx.columns)
+        ? tx.columns.filter(Boolean)
+        : [];
+      const snapshotFieldTypeMap =
+        tx.snapshotFieldTypeMap || tx.fieldTypeMap || {};
+      return {
+        key,
+        tableName,
+        recordId,
+        label,
+        reason,
+        snapshot,
+        snapshotColumns,
+        snapshotFieldTypeMap,
+      };
+    }
+
+    function buildBuckets(list) {
+      if (!Array.isArray(list) || list.length === 0) return [];
+      const map = new Map();
+      list.forEach((item) => {
+        if (!item) return;
+        const bucketKey = item.tableName || '—';
+        if (!map.has(bucketKey)) {
+          map.set(bucketKey, []);
+        }
+        map.get(bucketKey).push(item);
+      });
+      return Array.from(map.entries())
+        .map(([tableName, records]) => ({
+          tableName,
+          records: records
+            .slice()
+            .sort((a, b) => String(a.recordId).localeCompare(String(b.recordId))),
+        }))
+        .sort((a, b) => String(a.tableName).localeCompare(String(b.tableName)));
+    }
+
+    const normalizedTransactions = transactions
+      .map((tx) => normalizeTransaction(tx))
+      .filter(Boolean);
+    const normalizedExcluded = excludedTransactions
+      .map((tx) => normalizeTransaction(tx))
+      .filter(Boolean);
+    const transactionBuckets = buildBuckets(normalizedTransactions);
+    const excludedBuckets = buildBuckets(normalizedExcluded);
+
+    const renderExpandedContent = (record) => {
+      if (record.snapshot && typeof record.snapshot === 'object') {
+        return (
+          <div style={{ marginTop: '0.25rem' }}>
+            {renderCandidateSnapshot(record, record.snapshotColumns || [])}
+          </div>
+        );
+      }
+      if (requestId === null || requestId === undefined) {
+        return (
+          <p style={{ margin: '0.25rem 0 0' }}>
+            Additional details unavailable without an approval request.
+          </p>
+        );
+      }
+      const entry = requestLockDetailsState[String(requestId)];
+      if (!entry || entry.status === 'loading') {
+        return <p style={{ margin: '0.25rem 0 0' }}>Loading details…</p>;
+      }
+      if (entry.status === 'error') {
+        return (
+          <p style={{ margin: '0.25rem 0 0' }}>
+            {entry.error || 'Failed to load details.'}
+          </p>
+        );
+      }
+      const candidate =
+        entry.lookup?.[record.key] ||
+        entry.locks?.find((lock) => lock.key === record.key);
+      if (
+        candidate &&
+        candidate.snapshot &&
+        typeof candidate.snapshot === 'object'
+      ) {
+        const fallbackColumns = Array.isArray(candidate.snapshotColumns)
+          ? candidate.snapshotColumns
+          : record.snapshotColumns || [];
+        return (
+          <div style={{ marginTop: '0.25rem' }}>
+            {renderCandidateSnapshot(candidate, fallbackColumns)}
+          </div>
+        );
+      }
+      return (
+        <p style={{ margin: '0.25rem 0 0' }}>
+          No additional details found for this record.
+        </p>
+      );
+    };
+
+    const renderBucket = (bucket, listType) => {
+      const count = bucket.records.length;
+      const summary = `${bucket.tableName} — ${count} transaction${
+        count === 1 ? '' : 's'
+      }`;
+      const shouldDefaultOpen =
+        listType === 'selected'
+          ? transactionBuckets.length === 1
+          : excludedBuckets.length === 1;
+      return (
+        <details
+          key={`${listType}-${bucket.tableName}`}
+          style={{ margin: '0.25rem 0' }}
+          open={shouldDefaultOpen}
+        >
+          <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>
+            {summary}
+          </summary>
+          <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
+            {bucket.records.map((record) => {
+              const detailKey = `${requestId ?? 'meta'}|${listType}|${record.key}`;
+              const isExpanded = Boolean(expandedTransactionDetails[detailKey]);
+              const hasSnapshot = Boolean(record.snapshot);
+              const hasRequestContext =
+                requestId !== null && requestId !== undefined;
+              const canToggle = hasSnapshot || hasRequestContext;
+              return (
+                <li key={detailKey} style={{ margin: '0.5rem 0' }}>
+                  <div>
+                    <span style={{ fontWeight: 'bold' }}>#{record.recordId}</span>
+                    {record.label && ` — ${record.label}`}
+                  </div>
+                  {record.reason && (
+                    <div style={{ marginTop: '0.25rem' }}>
+                      {listType === 'excluded' ? 'Reason: ' : ''}
+                      {record.reason}
+                    </div>
+                  )}
+                  {canToggle && (
+                    <div style={{ marginTop: '0.25rem' }}>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleTransactionDetailsToggle(
+                            detailKey,
+                            hasRequestContext ? requestId : null,
+                            !hasSnapshot,
+                          )
+                        }
+                        style={{ fontSize: '0.85rem' }}
+                      >
+                        {isExpanded ? 'Hide details' : 'View details'}
+                      </button>
+                    </div>
+                  )}
+                  {isExpanded && renderExpandedContent(record)}
+                </li>
+              );
+            })}
+          </ul>
+        </details>
+      );
+    };
+
     return (
       <div>
         <div>
@@ -1035,41 +1376,22 @@ export default function Reports() {
         </div>
         <div style={{ marginTop: '0.5rem' }}>
           <strong>Transactions</strong>
-          {transactions.length ? (
-            <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
-              {transactions.map((tx, idx) => {
-                const table = tx.table || tx.tableName || tx.table_name || '—';
-                const recordId =
-                  tx.recordId ?? tx.record_id ?? tx.id ?? tx.recordID ?? '—';
-                return (
-                  <li key={`${table}-${recordId}-${idx}`}>
-                    {table}#{recordId}
-                  </li>
-                );
-              })}
-            </ul>
+          {transactionBuckets.length ? (
+            <div style={{ margin: '0.25rem 0 0' }}>
+              {transactionBuckets.map((bucket) =>
+                renderBucket(bucket, 'selected'),
+              )}
+            </div>
           ) : (
             <p style={{ margin: '0.25rem 0 0' }}>No transactions selected.</p>
           )}
         </div>
         <div style={{ marginTop: '0.5rem' }}>
           <strong>Excluded transactions</strong>
-          {excludedTransactions.length ? (
-            <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
-              {excludedTransactions.map((tx, idx) => {
-                const table = tx.table || tx.tableName || tx.table_name || '—';
-                const recordId =
-                  tx.recordId ?? tx.record_id ?? tx.id ?? tx.recordID ?? '—';
-                const reason =
-                  tx.reason || tx.justification || tx.explanation || '';
-                return (
-                  <li key={`${table}-${recordId}-excluded-${idx}`}>
-                    {table}#{recordId}
-                    {reason ? ` — ${reason}` : ''}
-                  </li>
-                );
-              })}
-            </ul>
+          {excludedBuckets.length ? (
+            <div style={{ margin: '0.25rem 0 0' }}>
+              {excludedBuckets.map((bucket) => renderBucket(bucket, 'excluded'))}
+            </div>
           ) : (
             <p style={{ margin: '0.25rem 0 0' }}>No transactions excluded.</p>
           )}
@@ -1901,7 +2223,9 @@ export default function Reports() {
                             </div>
                           )}
                           <div style={{ marginTop: '0.5rem' }}>
-                            {renderReportMetadata(meta)}
+                            {renderReportMetadata(meta, {
+                              requestId: req.request_id,
+                            })}
                           </div>
                         </div>
                       </details>
@@ -1938,7 +2262,9 @@ export default function Reports() {
                               </div>
                             )}
                             <div style={{ marginTop: '0.5rem' }}>
-                              {renderReportMetadata(meta)}
+                              {renderReportMetadata(meta, {
+                                requestId: req.request_id,
+                              })}
                             </div>
                             <div style={{ marginTop: '0.75rem' }}>
                               <button
