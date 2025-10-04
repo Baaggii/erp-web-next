@@ -2755,33 +2755,72 @@ const TableManager = forwardRef(function TableManager({
     return true;
   });
 
-  const lockedDefaults = Object.entries(formConfig?.defaultValues || {})
-    .filter(([rawKey, value]) => {
-      if (value === undefined || value === '') return false;
-      if ((formConfig?.editableDefaultFields || []).includes(rawKey)) return false;
+  const lockedDefaults = Array.from(
+    new Set(
+      Object.entries(formConfig?.defaultValues || {})
+        .filter(([rawKey, value]) => {
+          if (value === undefined || value === '') return false;
+          if ((formConfig?.editableDefaultFields || []).includes(rawKey)) return false;
 
-      const canonicalKey = resolveCanonicalKey(rawKey);
-      const relationKeyMatches = [rawKey, canonicalKey].filter(Boolean);
-      const hasRelationMetadata = relationKeyMatches.some((key) => {
-        if (key == null) return false;
-        return (
-          relationOpts[key] !== undefined ||
-          relationConfigs[key] !== undefined ||
-          viewSourceMap[key] !== undefined
-        );
+          const canonicalKey = resolveCanonicalKey(rawKey);
+          const relationKeyMatches = [rawKey, canonicalKey].filter(Boolean);
+          const hasRelationMetadata = relationKeyMatches.some((key) => {
+            if (key == null) return false;
+            return (
+              relationOpts[key] !== undefined ||
+              relationConfigs[key] !== undefined ||
+              viewSourceMap[key] !== undefined
+            );
+          });
+          return !hasRelationMetadata;
+        })
+        .map(([k]) => resolveCanonicalKey(k))
+        .filter(Boolean),
+    ),
+  );
+
+  const canonicalizeFormFields = useCallback(
+    (fields) => {
+      const seen = new Set();
+      const canonical = [];
+      (fields || []).forEach((field) => {
+        const resolved = resolveCanonicalKey(field);
+        if (!resolved || seen.has(resolved)) return;
+        seen.add(resolved);
+        canonical.push(resolved);
       });
+      if (canonical.length <= 1) return canonical;
+      const ordered = formColumnOrder.filter((key) => seen.has(key));
+      if (ordered.length === canonical.length) return ordered;
+      if (ordered.length > 0) {
+        const remaining = canonical.filter((key) => !ordered.includes(key));
+        return [...ordered, ...remaining];
+      }
+      return canonical;
+    },
+    [formColumnOrder, resolveCanonicalKey],
+  );
 
-      return !hasRelationMetadata;
-    })
-    .map(([k]) => k);
+  const headerFields = useMemo(
+    () => canonicalizeFormFields(formConfig?.headerFields || []),
+    [canonicalizeFormFields, formConfig?.headerFields],
+  );
 
-  const headerFields = formConfig?.headerFields || [];
+  const mainFields = useMemo(
+    () => canonicalizeFormFields(formConfig?.mainFields || []),
+    [canonicalizeFormFields, formConfig?.mainFields],
+  );
 
-  const mainFields = formConfig?.mainFields || [];
+  const footerFields = useMemo(
+    () => canonicalizeFormFields(formConfig?.footerFields || []),
+    [canonicalizeFormFields, formConfig?.footerFields],
+  );
 
-  const footerFields = formConfig?.footerFields || [];
-
-  const sectionFields = new Set([...headerFields, ...mainFields, ...footerFields]);
+  const sectionFields = new Set([
+    ...(headerFields || []),
+    ...(mainFields || []),
+    ...(footerFields || []),
+  ]);
   sectionFields.forEach((f) => {
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
@@ -2798,6 +2837,7 @@ const TableManager = forwardRef(function TableManager({
   } else {
     disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
   }
+  disabledFields = canonicalizeFormFields(disabledFields) || [];
 
   const totalAmountSet = useMemo(
     () => new Set(formConfig?.totalAmountFields || []),
