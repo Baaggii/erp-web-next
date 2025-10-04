@@ -12,6 +12,11 @@ if (typeof mock.import !== 'function') {
     { skip: true },
     () => {},
   );
+  test(
+    'FinanceTransactions keeps manual period parts and posts raw values',
+    { skip: true },
+    () => {},
+  );
 } else {
   function createReactStub(states, setters, indexRef, contextValue) {
     const reactMock = {
@@ -396,6 +401,202 @@ if (typeof mock.import !== 'function') {
 
     const datePickers = collectNodes(tree, (node) => node.type === 'CustomDatePicker');
     assert.equal(datePickers.length, 0, 'Date pickers should not render');
+
+    delete global.fetch;
+  });
+
+  test('FinanceTransactions keeps manual period parts and posts raw values', async () => {
+    const fetchCalls = [];
+    global.fetch = async (url, options = {}) => {
+      fetchCalls.push({ url, options });
+      if (url.includes('moduleKey=finance_transactions')) {
+        return {
+          ok: true,
+          json: async () => ({
+            ManualPeriod: {
+              moduleKey: 'finance_transactions',
+              table: 'finance_table',
+              procedures: ['proc_manual_period'],
+              allowedBranches: [],
+              allowedDepartments: [],
+            },
+          }),
+        };
+      }
+      if (url.includes('/api/transaction_forms?table=finance_table&name=ManualPeriod')) {
+        return {
+          ok: true,
+          json: async () => ({
+            moduleKey: 'finance_transactions',
+            table: 'finance_table',
+            procedures: ['proc_manual_period'],
+          }),
+        };
+      }
+      if (url.includes('/api/procedures/proc_manual_period/params')) {
+        return {
+          ok: true,
+          json: async () => ({
+            parameters: ['start_year', 'start_month', 'end_year', 'end_month'],
+          }),
+        };
+      }
+      if (url.startsWith('/api/procedures') && options.method === 'POST') {
+        return { ok: true, json: async () => ({ row: [], fieldTypeMap: {} }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    const states = [];
+    const setters = [];
+    const indexRef = { current: 0 };
+    const contextValue = {
+      company: 42,
+      branch: 'BR-P',
+      department: 'DEP-P',
+      user: { empid: 'EMP-P' },
+      permissions: { finance_transactions: true },
+    };
+    const reactMock = createReactStub(states, setters, indexRef, contextValue);
+
+    const sessionStore = { current: {} };
+    const searchParamsState = { current: new URLSearchParams() };
+
+    const { default: FinanceTransactionsPage } = await mock.import(
+      '../../src/erp.mgt.mn/pages/FinanceTransactions.jsx',
+      {
+        react: {
+          default: reactMock,
+          useState: reactMock.useState,
+          useRef: reactMock.useRef,
+          useEffect: reactMock.useEffect,
+          useMemo: reactMock.useMemo,
+          useContext: reactMock.useContext,
+          createElement: reactMock.createElement,
+          Fragment: reactMock.Fragment,
+        },
+        'react-router-dom': {
+          useSearchParams: () => [
+            searchParamsState.current,
+            (update) => {
+              if (typeof update === 'function') {
+                const next = update(searchParamsState.current);
+                if (next instanceof URLSearchParams) {
+                  searchParamsState.current = next;
+                }
+              } else if (update instanceof URLSearchParams) {
+                searchParamsState.current = update;
+              } else if (update) {
+                searchParamsState.current = new URLSearchParams(update);
+              }
+            },
+          ],
+        },
+        '../components/TableManager.jsx': { default: () => null },
+        '../components/ReportTable.jsx': { default: () => null },
+        '../context/AuthContext.jsx': { AuthContext: {} },
+        '../context/ToastContext.jsx': { useToast: () => ({ addToast: () => {} }) },
+        '../context/TxnSessionContext.jsx': {
+          useTxnSession: () => [
+            sessionStore.current,
+            (value) => {
+              sessionStore.current =
+                typeof value === 'function' ? value(sessionStore.current) : value;
+            },
+          ],
+        },
+        '../hooks/useGeneralConfig.js': { default: () => ({ general: {} }) },
+        '../hooks/useHeaderMappings.js': { default: () => ({}) },
+        '../hooks/useButtonPerms.js': { default: () => ({}) },
+        '../hooks/useCompanyModules.js': {
+          useCompanyModules: () => ({ finance_transactions: true }),
+        },
+        '../components/CustomDatePicker.jsx': {
+          default: (props) => ({ type: 'CustomDatePicker', props }),
+        },
+        '../utils/formatTimestamp.js': { default: (date) => date.toISOString() },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    function render() {
+      indexRef.current = 0;
+      return FinanceTransactionsPage({ moduleKey: 'finance_transactions' });
+    }
+
+    render();
+    await Promise.resolve();
+    await Promise.resolve();
+    let tree = render();
+
+    const transactionSelect = collectNodes(
+      tree,
+      (node) => node.type === 'select' && hasOptionWithValue(node, 'ManualPeriod'),
+    )[0];
+    assert.ok(transactionSelect, 'Transaction select not found');
+
+    transactionSelect.props.onChange({ target: { value: 'ManualPeriod' } });
+
+    tree = render();
+    await Promise.resolve();
+    await Promise.resolve();
+    tree = render();
+
+    const procedureSelect = collectNodes(
+      tree,
+      (node) => node.type === 'select' && hasOptionWithValue(node, 'proc_manual_period'),
+    )[0];
+    assert.ok(procedureSelect, 'Procedure select not found');
+
+    procedureSelect.props.onChange({ target: { value: 'proc_manual_period' } });
+
+    tree = render();
+    await Promise.resolve();
+    await Promise.resolve();
+    tree = render();
+
+    const presetSelects = collectNodes(
+      tree,
+      (node) => node.type === 'select' && hasOptionWithValue(node, 'custom'),
+    );
+    assert.equal(presetSelects.length, 0, 'Preset select should stay hidden');
+
+    const datePickers = collectNodes(tree, (node) => node.type === 'CustomDatePicker');
+    assert.equal(datePickers.length, 0, 'Date pickers should not render');
+
+    const expectedInputs = [
+      ['start_year', '2023'],
+      ['start_month', '01'],
+      ['end_year', '2024'],
+      ['end_month', '02'],
+    ];
+
+    for (const [placeholder, value] of expectedInputs) {
+      const inputNode = collectNodes(
+        tree,
+        (node) => node.type === 'input' && node.props?.placeholder === placeholder,
+      )[0];
+      assert.ok(inputNode, `Input for ${placeholder} not rendered`);
+      inputNode.props.onChange({ target: { value } });
+      tree = render();
+    }
+
+    const runButton = collectNodes(tree, (node) => node.type === 'button')[0];
+    assert.ok(runButton, 'Run button missing');
+    assert.equal(runButton.props.disabled, false, 'Run button should enable once filled');
+
+    await runButton.props.onClick();
+
+    const postCall = fetchCalls.find(
+      ({ url, options }) => url.startsWith('/api/procedures') && options.method === 'POST',
+    );
+    assert.ok(postCall, 'Procedure POST call not made');
+    const parsedBody = JSON.parse(postCall.options.body);
+    assert.deepEqual(
+      parsedBody.params,
+      ['2023', '01', '2024', '02'],
+      'Manual period parameters should post exact values',
+    );
 
     delete global.fetch;
   });
