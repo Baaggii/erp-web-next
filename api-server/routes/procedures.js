@@ -5,6 +5,7 @@ import {
   listStoredProcedures,
   getProcedureParams,
   getProcedureRawRows,
+  getProcedureLockCandidates,
 } from '../../db/index.js';
 import { listPermittedProcedures } from '../utils/reportProcedures.js';
 
@@ -43,6 +44,31 @@ router.get('/:name/params', requireAuth, async (req, res, next) => {
       return res.status(403).json({ message: 'Procedure not allowed' });
     const parameters = await getProcedureParams(req.params.name);
     res.json({ parameters });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/locks', requireAuth, async (req, res, next) => {
+  try {
+    const { name, params, aliases } = req.body || {};
+    if (!name) return res.status(400).json({ message: 'name required' });
+    const { branchId, departmentId } = req.query;
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const { procedures } = await listPermittedProcedures(
+      { branchId, departmentId },
+      companyId,
+      req.user,
+    );
+    const allowed = new Set(procedures.map((p) => p.name));
+    if (!allowed.has(name))
+      return res.status(403).json({ message: 'Procedure not allowed' });
+    const lockCandidates = await getProcedureLockCandidates(
+      name,
+      Array.isArray(params) ? params : [],
+      Array.isArray(aliases) ? aliases : [],
+    );
+    res.json({ lockCandidates });
   } catch (err) {
     next(err);
   }

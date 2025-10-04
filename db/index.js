@@ -5717,6 +5717,332 @@ export async function callStoredProcedure(name, params = [], aliases = []) {
   }
 }
 
+export async function getProcedureLockCandidates(
+  name,
+  params = [],
+  aliases = [],
+) {
+  const conn = await pool.getConnection();
+  const candidates = new Map();
+
+  const candidateVariables = [
+    '@__report_lock_candidates',
+    '@_report_lock_candidates',
+    '@report_lock_candidates',
+  ];
+
+  const sanitizeTableName = (value) => {
+    if (value === undefined || value === null) return null;
+    const str = String(value).trim();
+    if (!str) return null;
+    if (!/^[a-zA-Z0-9_]+$/.test(str)) return null;
+    return str;
+  };
+
+  const normalizeRecordId = (value) => {
+    if (value === undefined || value === null) return null;
+    const str = String(value).trim();
+    return str ? str : null;
+  };
+
+  const mergeCandidateExtras = (existing, extras = {}) => {
+    if (!existing) return extras;
+    const merged = { ...existing };
+    if (extras?.label && !merged.label) merged.label = String(extras.label);
+    if (extras?.description && !merged.description)
+      merged.description = String(extras.description);
+    if (extras?.context && !merged.context)
+      merged.context = extras.context;
+    return merged;
+  };
+
+  const upsertCandidate = (tableName, recordId, extras = {}) => {
+    const table = sanitizeTableName(tableName);
+    const recId = normalizeRecordId(recordId);
+    if (!table || !recId) return;
+    const key = `${table}#${recId}`;
+    const existing = candidates.get(key);
+    const mergedExtras = mergeCandidateExtras(existing, extras);
+    const next = {
+      tableName: table,
+      recordId: recId,
+      key,
+    };
+    if (mergedExtras.label) next.label = String(mergedExtras.label);
+    if (mergedExtras.description)
+      next.description = String(mergedExtras.description);
+    if (mergedExtras.context) next.context = mergedExtras.context;
+    candidates.set(key, next);
+  };
+
+  const toArray = (value) => {
+    if (value === undefined || value === null) return [];
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      const parts = value
+        .split(/[,;\s]+/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+      return parts;
+    }
+    return [value];
+  };
+
+  const parseCandidateString = (raw) => {
+    if (typeof raw !== 'string') return;
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed !== null) {
+        collectCandidateValue(parsed);
+        return;
+      }
+    } catch {}
+    const delimiters = ['#', ':', '|', '@'];
+    for (const delim of delimiters) {
+      const idx = trimmed.indexOf(delim);
+      if (idx > 0) {
+        const tablePart = trimmed.slice(0, idx).trim();
+        const idPart = trimmed.slice(idx + 1).trim();
+        if (tablePart && idPart) {
+          upsertCandidate(tablePart, idPart);
+          return;
+        }
+      }
+    }
+  };
+
+  const collectFromObjectMap = (obj, extras = {}) => {
+    if (!obj || typeof obj !== 'object') return;
+    const reservedKeys = new Set([
+      'table',
+      'table_name',
+      'tableName',
+      'lock_table',
+      'lockTable',
+      'lock_table_name',
+      'lockTableName',
+      'recordId',
+      'record_id',
+      'lock_record_id',
+      'lockRecordId',
+      'recordIds',
+      'record_ids',
+      'lock_record_ids',
+      'lockRecordIds',
+      'ids',
+      'records',
+      'id',
+      'transaction_id',
+      'transactionId',
+      'tx_id',
+      'txId',
+      'label',
+      'title',
+      'description',
+      'note',
+      'notes',
+      'context',
+    ]);
+    for (const [key, value] of Object.entries(obj)) {
+      if (reservedKeys.has(key)) continue;
+      const tableCandidate = sanitizeTableName(key);
+      if (!tableCandidate) continue;
+      const values = toArray(value);
+      values.forEach((record) => {
+        const recordId = normalizeRecordId(record);
+        if (recordId) upsertCandidate(tableCandidate, recordId, extras);
+      });
+    }
+  };
+
+  const collectCandidateValue = (value, extras = {}) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string') {
+      parseCandidateString(value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((entry) => collectCandidateValue(entry, extras));
+      return;
+    }
+    if (typeof value !== 'object') {
+      const recordId = normalizeRecordId(value);
+      if (recordId && extras.table) {
+        upsertCandidate(extras.table, recordId, extras);
+      }
+      return;
+    }
+
+    const derivedExtras = { ...extras };
+    if (value.label ?? value.title) {
+      derivedExtras.label = value.label ?? value.title;
+    }
+    if (value.description ?? value.note ?? value.notes) {
+      derivedExtras.description =
+        value.description ?? value.note ?? value.notes;
+    }
+    if (value.context && typeof value.context === 'object') {
+      derivedExtras.context = value.context;
+    }
+
+    const tableCandidates = [
+      value.lock_table,
+      value.lockTable,
+      value.lock_table_name,
+      value.lockTableName,
+      value.table,
+      value.table_name,
+      value.tableName,
+      value.source_table,
+      value.transaction_table,
+      value.tx_table,
+    ]
+      .map(sanitizeTableName)
+      .filter(Boolean);
+
+    const recordIdCandidates = [
+      value.lock_record_id,
+      value.lockRecordId,
+      value.record_id,
+      value.recordId,
+      value.transaction_id,
+      value.transactionId,
+      value.tx_id,
+      value.txId,
+      value.id,
+    ]
+      .map(normalizeRecordId)
+      .filter(Boolean);
+
+    if (recordIdCandidates.length && tableCandidates.length) {
+      recordIdCandidates.forEach((id) => {
+        tableCandidates.forEach((table) => {
+          upsertCandidate(table, id, derivedExtras);
+        });
+      });
+    }
+
+    const listCandidates = [
+      value.lock_record_ids,
+      value.lockRecordIds,
+      value.record_ids,
+      value.recordIds,
+      value.ids,
+    ];
+    listCandidates.forEach((list) => {
+      const arr = toArray(list)
+        .map(normalizeRecordId)
+        .filter(Boolean);
+      if (!arr.length || !tableCandidates.length) return;
+      arr.forEach((id) => {
+        tableCandidates.forEach((table) => {
+          upsertCandidate(table, id, derivedExtras);
+        });
+      });
+    });
+
+    if (Array.isArray(value.records)) {
+      value.records.forEach((record) => {
+        if (!record || typeof record !== 'object') return;
+        const recordTables = [
+          record.lock_table,
+          record.lockTable,
+          record.table,
+          record.table_name,
+          record.tableName,
+        ]
+          .map(sanitizeTableName)
+          .filter(Boolean);
+        const recordIds = [
+          record.lock_record_id,
+          record.lockRecordId,
+          record.record_id,
+          record.recordId,
+          record.id,
+        ]
+          .map(normalizeRecordId)
+          .filter(Boolean);
+        const tablesToUse = recordTables.length ? recordTables : tableCandidates;
+        recordIds.forEach((id) => {
+          tablesToUse.forEach((table) => {
+            upsertCandidate(table, id, derivedExtras);
+          });
+        });
+      });
+    }
+
+    collectFromObjectMap(value, derivedExtras);
+  };
+
+  try {
+    for (const variable of candidateVariables) {
+      try {
+        await conn.query(`SET ${variable} = JSON_ARRAY()`);
+      } catch {
+        await conn.query(`SET ${variable} = '[]'`);
+      }
+    }
+
+    const callParts = [];
+    const callArgs = [];
+    const outVars = [];
+
+    for (let i = 0; i < params.length; i += 1) {
+      const alias = aliases[i];
+      const value = params[i];
+      const cleanVal = value === '' || value === undefined ? null : value;
+      if (alias) {
+        const varName = `@_${name}_${i}`;
+        await conn.query(`SET ${varName} = ?`, [cleanVal]);
+        callParts.push(varName);
+        outVars.push([alias, varName]);
+      } else {
+        callParts.push('?');
+        callArgs.push(cleanVal);
+      }
+    }
+
+    const sql = `CALL ${name}(${callParts.join(', ')})`;
+    const [callResult] = await conn.query(sql, callArgs);
+
+    if (outVars.length > 0) {
+      const selectSql =
+        'SELECT ' + outVars.map(([n, v]) => `${v} AS \`${n}\``).join(', ');
+      await conn.query(selectSql);
+    }
+
+    const [varRows] = await conn.query(
+      'SELECT @__report_lock_candidates AS strict, @_report_lock_candidates AS secondary, @report_lock_candidates AS legacy',
+    );
+    if (Array.isArray(varRows) && varRows[0]) {
+      const values = [
+        varRows[0].strict,
+        varRows[0].secondary,
+        varRows[0].legacy,
+      ];
+      values.forEach((val) => collectCandidateValue(val));
+    }
+
+    if (Array.isArray(callResult)) {
+      callResult.forEach((resultSet) => {
+        if (Array.isArray(resultSet)) {
+          resultSet.forEach((row) => collectCandidateValue(row));
+        } else {
+          collectCandidateValue(resultSet);
+        }
+      });
+    } else {
+      collectCandidateValue(callResult);
+    }
+
+    return Array.from(candidates.values());
+  } finally {
+    conn.release();
+  }
+}
+
 export async function listStoredProcedures(prefix = '') {
   const [rows] = await pool.query(
     'SHOW PROCEDURE STATUS WHERE Db = DATABASE()'
