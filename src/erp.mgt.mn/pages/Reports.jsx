@@ -71,9 +71,11 @@ export default function Reports() {
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const [snapshot, setSnapshot] = useState(null);
-  const [selectedTransactions, setSelectedTransactions] = useState([]);
-  const [newTxTable, setNewTxTable] = useState('');
-  const [newTxId, setNewTxId] = useState('');
+  const [lockCandidates, setLockCandidates] = useState([]);
+  const [lockSelections, setLockSelections] = useState({});
+  const [lockFetchPending, setLockFetchPending] = useState(false);
+  const [lockFetchError, setLockFetchError] = useState('');
+  const [lockAcknowledged, setLockAcknowledged] = useState(false);
   const [approvalReason, setApprovalReason] = useState('');
   const [requestingApproval, setRequestingApproval] = useState(false);
   const [approvalModalOpen, setApprovalModalOpen] = useState(false);
@@ -89,6 +91,29 @@ export default function Reports() {
   const runButtonRef = useRef(null);
   const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
   const procMap = useHeaderMappings(procNames);
+  const lockParamSignature = useMemo(() => {
+    if (!result || !Array.isArray(result.orderedParams)) return '';
+    try {
+      return JSON.stringify(result.orderedParams);
+    } catch {
+      return '';
+    }
+  }, [result]);
+
+  const getCandidateKey = useCallback((candidate) => {
+    if (!candidate || typeof candidate !== 'object') return '';
+    if (candidate.key) return String(candidate.key);
+    const table = candidate.tableName ?? candidate.table;
+    const recordId =
+      candidate.recordId ??
+      candidate.record_id ??
+      candidate.id ??
+      candidate.recordID;
+    if (table === undefined || table === null) return '';
+    const normalizedTable = String(table);
+    if (recordId === undefined || recordId === null) return `${normalizedTable}#`;
+    return `${normalizedTable}#${recordId}`;
+  }, []);
 
   const handleSnapshotReady = useCallback((data) => {
     setSnapshot(data || null);
@@ -158,10 +183,111 @@ export default function Reports() {
   useEffect(() => {
     setResult(null);
     setManualParams({});
-    setSelectedTransactions([]);
     setApprovalReason('');
     setSnapshot(null);
+    setLockCandidates([]);
+    setLockSelections({});
+    setLockFetchError('');
+    setLockFetchPending(false);
+    setLockAcknowledged(false);
   }, [selectedProc]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLockAcknowledged(false);
+    if (!result || !result.name) {
+      setLockCandidates([]);
+      setLockSelections({});
+      setLockFetchError('');
+      setLockFetchPending(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    async function fetchLockCandidates() {
+      setLockFetchPending(true);
+      setLockFetchError('');
+      const params = new URLSearchParams();
+      if (branch) params.set('branchId', branch);
+      if (department) params.set('departmentId', department);
+      try {
+        const res = await fetch(
+          `/api/procedures/locks${
+            params.toString() ? `?${params.toString()}` : ''
+          }`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              name: result.name,
+              params: Array.isArray(result.orderedParams)
+                ? result.orderedParams
+                : [],
+            }),
+          },
+        );
+        if (!res.ok) {
+          throw new Error('Failed to load lock candidates');
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.lockCandidates)
+          ? data.lockCandidates
+          : [];
+        const normalized = list
+          .map((candidate) => {
+            if (!candidate || typeof candidate !== 'object') return null;
+            const tableName =
+              typeof candidate.tableName === 'string'
+                ? candidate.tableName
+                : typeof candidate.table === 'string'
+                ? candidate.table
+                : null;
+            const rawId =
+              candidate.recordId ??
+              candidate.record_id ??
+              candidate.id ??
+              candidate.recordID;
+            if (!tableName || rawId === null || rawId === undefined) {
+              return null;
+            }
+            const recordId = String(rawId);
+            const key = candidate.key ?? `${tableName}#${recordId}`;
+            const next = { ...candidate, tableName, recordId, key };
+            if (candidate.table === undefined) next.table = tableName;
+            return next;
+          })
+          .filter(Boolean);
+        if (cancelled) return;
+        setLockCandidates(normalized);
+        const initialSelections = {};
+        normalized.forEach((candidate) => {
+          initialSelections[getCandidateKey(candidate)] = true;
+        });
+        setLockSelections(initialSelections);
+        setLockFetchError('');
+      } catch (err) {
+        if (cancelled) return;
+        setLockCandidates([]);
+        setLockSelections({});
+        setLockFetchError(err?.message || 'Failed to load lock candidates');
+      } finally {
+        if (!cancelled) {
+          setLockFetchPending(false);
+        }
+      }
+    }
+    fetchLockCandidates();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    result,
+    lockParamSignature,
+    branch,
+    department,
+    getCandidateKey,
+  ]);
 
   const dateParamInfo = useMemo(() => {
     const info = {
@@ -362,16 +488,20 @@ export default function Reports() {
           `${label} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
           'success',
         );
-        setSelectedTransactions([]);
         setApprovalReason('');
         setSnapshot(null);
+        setLockCandidates([]);
+        setLockSelections({});
+        setLockFetchError('');
+        setLockFetchPending(false);
+        setLockAcknowledged(false);
         setResult({
           name: selectedProc,
           params: paramMap,
           rows,
           fieldTypeMap: data.fieldTypeMap || {},
+          orderedParams: finalParams,
         });
-        setNewTxId('');
       } else {
         addToast('Failed to run procedure', 'error');
       }
@@ -388,6 +518,49 @@ export default function Reports() {
       }),
     [],
   );
+
+  const selectedLockCount = useMemo(() => {
+    if (!Array.isArray(lockCandidates) || lockCandidates.length === 0)
+      return 0;
+    return lockCandidates.reduce((count, candidate) => {
+      const key = getCandidateKey(candidate);
+      return lockSelections[key] ? count + 1 : count;
+    }, 0);
+  }, [lockCandidates, lockSelections, getCandidateKey]);
+
+  const allLocksSelected = useMemo(() => {
+    if (!Array.isArray(lockCandidates) || lockCandidates.length === 0) {
+      return false;
+    }
+    return lockCandidates.every((candidate) =>
+      lockSelections[getCandidateKey(candidate)],
+    );
+  }, [lockCandidates, lockSelections, getCandidateKey]);
+
+  const showLockDetails = useMemo(
+    () =>
+      lockCandidates.some(
+        (candidate) => candidate?.label || candidate?.description,
+      ),
+    [lockCandidates],
+  );
+
+  const toggleAllLocks = useCallback(
+    (checked) => {
+      setLockSelections((prev) => {
+        const next = { ...prev };
+        lockCandidates.forEach((candidate) => {
+          next[getCandidateKey(candidate)] = checked;
+        });
+        return next;
+      });
+    },
+    [lockCandidates, getCandidateKey],
+  );
+
+  const updateLockSelection = useCallback((key, checked) => {
+    setLockSelections((prev) => ({ ...prev, [key]: checked }));
+  }, []);
 
   const formatSnapshotCell = useCallback(
     (value, column, fieldTypes = {}) => {
@@ -547,40 +720,6 @@ export default function Reports() {
     );
   }
 
-  function handleAddTransaction(e) {
-    e.preventDefault();
-    const table = newTxTable.trim();
-    const recordId = newTxId.trim();
-    if (!table) {
-      addToast('Transaction table is required', 'error');
-      return;
-    }
-    if (!/^[a-zA-Z0-9_]+$/.test(table)) {
-      addToast(
-        'Table name may only include letters, numbers and underscores',
-        'error',
-      );
-      return;
-    }
-    if (!recordId) {
-      addToast('Transaction ID is required', 'error');
-      return;
-    }
-    setSelectedTransactions((prev) => {
-      const exists = prev.some(
-        (tx) => tx.table === table && String(tx.recordId) === recordId,
-      );
-      if (exists) return prev;
-      return [...prev, { table, recordId }];
-    });
-    setNewTxTable(table);
-    setNewTxId('');
-  }
-
-  function handleRemoveTransaction(index) {
-    setSelectedTransactions((prev) => prev.filter((_, idx) => idx !== index));
-  }
-
   const openApprovalModal = useCallback(() => {
     setApprovalData({ incoming: [], outgoing: [] });
     setApprovalError('');
@@ -595,8 +734,19 @@ export default function Reports() {
       addToast('Run a report before requesting approval', 'error');
       return;
     }
-    if (!selectedTransactions.length) {
+    if (lockFetchPending) {
+      addToast('Lock candidates are still loading', 'error');
+      return;
+    }
+    if (!selectedLockCount) {
       addToast('Add at least one transaction to request approval', 'error');
+      return;
+    }
+    if (!lockAcknowledged) {
+      addToast(
+        'You must acknowledge responsibility for the listed transactions',
+        'error',
+      );
       return;
     }
     const reason = approvalReason.trim();
@@ -611,10 +761,12 @@ export default function Reports() {
     const proposedData = {
       procedure: snapshot?.procedure || result.name,
       parameters: snapshot?.params || result.params,
-      transactions: selectedTransactions.map((tx) => ({
-        table: tx.table,
-        recordId: String(tx.recordId),
-      })),
+      transactions: lockCandidates
+        .filter((candidate) => lockSelections[getCandidateKey(candidate)])
+        .map((candidate) => ({
+          table: candidate.tableName,
+          recordId: String(candidate.recordId),
+        })),
       snapshot: {
         columns: snapshot?.columns || [],
         rows: snapshot?.rows || [],
@@ -645,8 +797,8 @@ export default function Reports() {
         throw new Error(err.message || 'Failed to submit approval request');
       }
       addToast('Report approval request submitted', 'success');
-      setSelectedTransactions([]);
       setApprovalReason('');
+      setLockAcknowledged(false);
       window.dispatchEvent(new Event('pending-request-refresh'));
       setApprovalRefreshKey((k) => k + 1);
     } catch (err) {
@@ -880,114 +1032,173 @@ export default function Reports() {
                 Select the transactions that should be locked and provide a reason for
                 your plan senior.
               </p>
-              <form
-                onSubmit={handleAddTransaction}
+              <div style={{ marginTop: '0.75rem' }}>
+                <strong>Transactions marked for locking</strong>
+                {lockFetchPending ? (
+                  <p style={{ marginTop: '0.5rem' }}>Loading lock candidates…</p>
+                ) : lockFetchError ? (
+                  <p style={{ marginTop: '0.5rem', color: 'red' }}>
+                    {lockFetchError}
+                  </p>
+                ) : lockCandidates.length ? (
+                  <>
+                    <div style={{ marginTop: '0.5rem' }}>
+                      <label
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={allLocksSelected}
+                          onChange={(e) => toggleAllLocks(e.target.checked)}
+                        />
+                        <span>
+                          Select all transactions ({selectedLockCount}/
+                          {lockCandidates.length})
+                        </span>
+                      </label>
+                    </div>
+                    <div
+                      style={{
+                        marginTop: '0.5rem',
+                        overflowX: 'auto',
+                      }}
+                    >
+                      <table
+                        style={{
+                          borderCollapse: 'collapse',
+                          width: '100%',
+                          maxWidth: '40rem',
+                        }}
+                      >
+                        <thead style={{ background: '#e5e7eb' }}>
+                          <tr>
+                            <th
+                              style={{
+                                textAlign: 'left',
+                                padding: '0.25rem',
+                                border: '1px solid #d1d5db',
+                              }}
+                            >
+                              Lock
+                            </th>
+                            <th
+                              style={{
+                                textAlign: 'left',
+                                padding: '0.25rem',
+                                border: '1px solid #d1d5db',
+                              }}
+                            >
+                              Table
+                            </th>
+                            <th
+                              style={{
+                                textAlign: 'left',
+                                padding: '0.25rem',
+                                border: '1px solid #d1d5db',
+                              }}
+                            >
+                              Record ID
+                            </th>
+                            {showLockDetails && (
+                              <th
+                                style={{
+                                  textAlign: 'left',
+                                  padding: '0.25rem',
+                                  border: '1px solid #d1d5db',
+                                }}
+                              >
+                                Details
+                              </th>
+                            )}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {lockCandidates.map((candidate) => {
+                            const key = getCandidateKey(candidate);
+                            const checked = Boolean(lockSelections[key]);
+                            const detailText = candidate.label
+                              ? candidate.description
+                                ? `${candidate.label} — ${candidate.description}`
+                                : candidate.label
+                              : candidate.description || '';
+                            return (
+                              <tr key={key || `${candidate.tableName}-${candidate.recordId}`}>
+                                <td
+                                  style={{
+                                    padding: '0.25rem',
+                                    border: '1px solid #d1d5db',
+                                  }}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) =>
+                                      updateLockSelection(key, e.target.checked)
+                                    }
+                                  />
+                                </td>
+                                <td
+                                  style={{
+                                    padding: '0.25rem',
+                                    border: '1px solid #d1d5db',
+                                  }}
+                                >
+                                  {candidate.tableName}
+                                </td>
+                                <td
+                                  style={{
+                                    padding: '0.25rem',
+                                    border: '1px solid #d1d5db',
+                                  }}
+                                >
+                                  {candidate.recordId}
+                                </td>
+                                {showLockDetails && (
+                                  <td
+                                    style={{
+                                      padding: '0.25rem',
+                                      border: '1px solid #d1d5db',
+                                    }}
+                                  >
+                                    {detailText || '—'}
+                                  </td>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                ) : (
+                  <p style={{ marginTop: '0.5rem' }}>
+                    No transactions were reported for locking.
+                  </p>
+                )}
+              </div>
+              <label
                 style={{
                   display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
+                  alignItems: 'flex-start',
                   gap: '0.5rem',
                   marginTop: '0.75rem',
                 }}
               >
                 <input
-                  type="text"
-                  value={newTxTable}
-                  onChange={(e) => setNewTxTable(e.target.value)}
-                  placeholder="Transaction table"
-                  style={{ minWidth: '12rem' }}
+                  type="checkbox"
+                  checked={lockAcknowledged}
+                  onChange={(e) => setLockAcknowledged(e.target.checked)}
+                  style={{ marginTop: '0.2rem' }}
                 />
-                <input
-                  type="text"
-                  value={newTxId}
-                  onChange={(e) => setNewTxId(e.target.value)}
-                  placeholder="Record ID"
-                  style={{ minWidth: '8rem' }}
-                />
-                <button type="submit">Add transaction</button>
-              </form>
-              <div style={{ marginTop: '0.75rem' }}>
-                {selectedTransactions.length ? (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table
-                      style={{
-                        borderCollapse: 'collapse',
-                        width: '100%',
-                        maxWidth: '40rem',
-                      }}
-                    >
-                      <thead style={{ background: '#e5e7eb' }}>
-                        <tr>
-                          <th
-                            style={{
-                              textAlign: 'left',
-                              padding: '0.25rem',
-                              border: '1px solid #d1d5db',
-                            }}
-                          >
-                            Table
-                          </th>
-                          <th
-                            style={{
-                              textAlign: 'left',
-                              padding: '0.25rem',
-                              border: '1px solid #d1d5db',
-                            }}
-                          >
-                            Record ID
-                          </th>
-                          <th
-                            style={{
-                              textAlign: 'left',
-                              padding: '0.25rem',
-                              border: '1px solid #d1d5db',
-                            }}
-                          >
-                            Actions
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {selectedTransactions.map((tx, idx) => (
-                          <tr key={`${tx.table}-${tx.recordId}-${idx}`}>
-                            <td
-                              style={{
-                                padding: '0.25rem',
-                                border: '1px solid #d1d5db',
-                              }}
-                            >
-                              {tx.table}
-                            </td>
-                            <td
-                              style={{
-                                padding: '0.25rem',
-                                border: '1px solid #d1d5db',
-                              }}
-                            >
-                              {tx.recordId}
-                            </td>
-                            <td
-                              style={{
-                                padding: '0.25rem',
-                                border: '1px solid #d1d5db',
-                              }}
-                            >
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveTransaction(idx)}
-                              >
-                                Remove
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <p>No transactions selected yet.</p>
-                )}
-              </div>
+                <span>
+                  I have reviewed all listed transactions and accept
+                  responsibility for requesting these locks.
+                </span>
+              </label>
               <div style={{ marginTop: '0.75rem' }}>
                 <label style={{ display: 'block', fontWeight: 'bold' }}>
                   Approval reason
@@ -1004,7 +1215,9 @@ export default function Reports() {
                   onClick={handleRequestApproval}
                   disabled={
                     requestingApproval ||
-                    !selectedTransactions.length ||
+                    lockFetchPending ||
+                    !selectedLockCount ||
+                    !lockAcknowledged ||
                     !approvalReason.trim() ||
                     !snapshot
                   }
