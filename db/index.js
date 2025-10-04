@@ -5721,7 +5721,9 @@ export async function getProcedureLockCandidates(
   name,
   params = [],
   aliases = [],
+  options = {},
 ) {
+  const { companyId } = options || {};
   const conn = await pool.getConnection();
   const candidates = new Map();
 
@@ -6037,7 +6039,142 @@ export async function getProcedureLockCandidates(
       collectCandidateValue(callResult);
     }
 
-    return Array.from(candidates.values());
+    const flatCandidates = Array.from(candidates.values());
+    if (!flatCandidates.length) {
+      return flatCandidates;
+    }
+
+    const bucketMap = new Map();
+    flatCandidates.forEach((candidate) => {
+      const table = candidate?.tableName;
+      const recordId = candidate?.recordId;
+      if (!table || recordId === undefined || recordId === null) return;
+      if (!bucketMap.has(table)) {
+        bucketMap.set(table, {
+          tableName: table,
+          recordIds: new Set(),
+          candidates: [],
+        });
+      }
+      const bucket = bucketMap.get(table);
+      bucket.recordIds.add(String(recordId));
+      bucket.candidates.push(candidate);
+    });
+
+    const statusOrder = [
+      REPORT_TRANSACTION_LOCK_STATUS.locked,
+      REPORT_TRANSACTION_LOCK_STATUS.pending,
+    ];
+
+    const resolveLockMetadata = (existing, nextRow) => {
+      if (!existing) return nextRow;
+      if (!nextRow) return existing;
+      const priority = (status) => {
+        if (status === REPORT_TRANSACTION_LOCK_STATUS.locked) return 0;
+        if (status === REPORT_TRANSACTION_LOCK_STATUS.pending) return 1;
+        return 2;
+      };
+      const existingPriority = priority(existing.status);
+      const nextPriority = priority(nextRow.status);
+      if (nextPriority < existingPriority) return nextRow;
+      if (existingPriority < nextPriority) return existing;
+      const existingTimestamp =
+        existing.updated_at || existing.status_changed_at || existing.created_at;
+      const nextTimestamp =
+        nextRow.updated_at || nextRow.status_changed_at || nextRow.created_at;
+      if (!existingTimestamp) return nextRow;
+      if (!nextTimestamp) return existing;
+      return new Date(nextTimestamp).getTime() >=
+        new Date(existingTimestamp).getTime()
+        ? nextRow
+        : existing;
+    };
+
+    for (const bucket of bucketMap.values()) {
+      const recordIds = Array.from(bucket.recordIds);
+      const lockMap = new Map();
+
+      if (recordIds.length) {
+        const idPlaceholders = recordIds.map(() => '?').join(', ');
+        const statusPlaceholders = statusOrder.map(() => '?').join(', ');
+        const paramsList = [bucket.tableName];
+        let companyClause = '';
+        if (companyId !== undefined && companyId !== null && companyId !== '') {
+          companyClause = ' AND company_id = ?';
+          paramsList.push(companyId);
+        }
+        paramsList.push(...recordIds);
+        paramsList.push(...statusOrder);
+        try {
+          const [lockRows] = await conn.query(
+            `SELECT *
+               FROM report_transaction_locks
+              WHERE table_name = ?${companyClause}
+                AND record_id IN (${idPlaceholders})
+                AND status IN (${statusPlaceholders})`,
+            paramsList,
+          );
+          if (Array.isArray(lockRows)) {
+            lockRows.forEach((row) => {
+              const recordId = row?.record_id;
+              if (recordId === undefined || recordId === null) return;
+              const key = String(recordId);
+              const existing = lockMap.get(key);
+              const resolved = resolveLockMetadata(existing, row);
+              lockMap.set(key, resolved);
+            });
+          }
+        } catch (err) {
+          if (err?.code !== 'ER_NO_SUCH_TABLE') throw err;
+        }
+      }
+
+      for (const candidate of bucket.candidates) {
+        const recordId = String(candidate.recordId);
+        const lockRow = lockMap.get(recordId) || null;
+        const lockStatus = lockRow?.status || null;
+        const locked = statusOrder.includes(lockStatus);
+        const lockedBy =
+          lockRow?.finalized_by ??
+          lockRow?.status_changed_by ??
+          lockRow?.created_by ??
+          null;
+        const lockedAt =
+          lockRow?.finalized_at ??
+          lockRow?.status_changed_at ??
+          lockRow?.updated_at ??
+          lockRow?.created_at ??
+          null;
+
+        candidate.locked = Boolean(locked);
+        candidate.lockStatus = lockStatus;
+        candidate.lockedBy = lockedBy;
+        candidate.lockedAt = lockedAt;
+        candidate.lockMetadata = lockRow;
+
+        try {
+          const snapshotRow = await getTableRowById(bucket.tableName, recordId, {
+            defaultCompanyId: companyId,
+            includeDeleted: true,
+          });
+          if (snapshotRow && typeof snapshotRow === 'object') {
+            candidate.snapshot = snapshotRow;
+            candidate.snapshotColumns = Object.keys(snapshotRow);
+          } else {
+            candidate.snapshot = null;
+            candidate.snapshotColumns = [];
+          }
+        } catch (err) {
+          candidate.snapshot = null;
+          candidate.snapshotColumns = [];
+          if (err?.code && err.code !== 'ER_NO_SUCH_TABLE') {
+            throw err;
+          }
+        }
+      }
+    }
+
+    return flatCandidates;
   } finally {
     conn.release();
   }

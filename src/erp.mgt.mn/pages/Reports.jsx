@@ -262,7 +262,13 @@ export default function Reports() {
         setLockCandidates(normalized);
         const initialSelections = {};
         normalized.forEach((candidate) => {
-          initialSelections[getCandidateKey(candidate)] = true;
+          const key = getCandidateKey(candidate);
+          if (!key) return;
+          if (candidate?.locked) {
+            initialSelections[key] = false;
+          } else {
+            initialSelections[key] = true;
+          }
         });
         setLockSelections(initialSelections);
         setLockFetchError('');
@@ -523,16 +529,39 @@ export default function Reports() {
     if (!Array.isArray(lockCandidates) || lockCandidates.length === 0)
       return 0;
     return lockCandidates.reduce((count, candidate) => {
+      if (candidate?.locked) return count;
       const key = getCandidateKey(candidate);
       return lockSelections[key] ? count + 1 : count;
     }, 0);
   }, [lockCandidates, lockSelections, getCandidateKey]);
 
+  const eligibleLockCount = useMemo(() => {
+    if (!Array.isArray(lockCandidates) || lockCandidates.length === 0) {
+      return 0;
+    }
+    return lockCandidates.reduce(
+      (count, candidate) => (candidate?.locked ? count : count + 1),
+      0,
+    );
+  }, [lockCandidates]);
+
+  const lockedCandidateCount = useMemo(() => {
+    if (!Array.isArray(lockCandidates) || lockCandidates.length === 0) {
+      return 0;
+    }
+    return lockCandidates.reduce(
+      (count, candidate) => (candidate?.locked ? count + 1 : count),
+      0,
+    );
+  }, [lockCandidates]);
+
   const allLocksSelected = useMemo(() => {
     if (!Array.isArray(lockCandidates) || lockCandidates.length === 0) {
       return false;
     }
-    return lockCandidates.every((candidate) =>
+    const eligible = lockCandidates.filter((candidate) => !candidate?.locked);
+    if (!eligible.length) return false;
+    return eligible.every((candidate) =>
       lockSelections[getCandidateKey(candidate)],
     );
   }, [lockCandidates, lockSelections, getCandidateKey]);
@@ -550,13 +579,63 @@ export default function Reports() {
       setLockSelections((prev) => {
         const next = { ...prev };
         lockCandidates.forEach((candidate) => {
-          next[getCandidateKey(candidate)] = checked;
+          const key = getCandidateKey(candidate);
+          if (!key) return;
+          if (candidate?.locked) {
+            next[key] = false;
+            return;
+          }
+          next[key] = checked;
         });
         return next;
       });
     },
     [lockCandidates, getCandidateKey],
   );
+
+  const lockBuckets = useMemo(() => {
+    if (!Array.isArray(lockCandidates) || lockCandidates.length === 0) {
+      return [];
+    }
+    const bucketMap = new Map();
+    lockCandidates.forEach((candidate) => {
+      const tableName = candidate?.tableName ?? candidate?.table;
+      if (!tableName) return;
+      if (!bucketMap.has(tableName)) {
+        bucketMap.set(tableName, { tableName, candidates: [] });
+      }
+      bucketMap.get(tableName).candidates.push(candidate);
+    });
+    const buckets = Array.from(bucketMap.values()).sort((a, b) =>
+      String(a.tableName).localeCompare(String(b.tableName)),
+    );
+    return buckets.map((bucket) => {
+      const sortedCandidates = [...bucket.candidates].sort((a, b) =>
+        String(a?.recordId ?? '').localeCompare(String(b?.recordId ?? '')),
+      );
+      const columnSet = new Set();
+      sortedCandidates.forEach((candidate) => {
+        if (Array.isArray(candidate?.snapshotColumns)) {
+          candidate.snapshotColumns.forEach((col) => {
+            if (col) columnSet.add(col);
+          });
+        } else if (
+          candidate?.snapshot &&
+          typeof candidate.snapshot === 'object' &&
+          candidate.snapshot !== null
+        ) {
+          Object.keys(candidate.snapshot).forEach((col) => {
+            if (col) columnSet.add(col);
+          });
+        }
+      });
+      return {
+        tableName: bucket.tableName,
+        candidates: sortedCandidates,
+        columns: Array.from(columnSet),
+      };
+    });
+  }, [lockCandidates]);
 
   const updateLockSelection = useCallback((key, checked) => {
     setLockSelections((prev) => ({ ...prev, [key]: checked }));
@@ -655,6 +734,65 @@ export default function Reports() {
           </tbody>
         </table>
       </div>
+    );
+  }
+
+  function renderCandidateSnapshot(candidate, fallbackColumns = []) {
+    const snapshot = candidate?.snapshot;
+    if (!snapshot || typeof snapshot !== 'object') {
+      return (
+        <p style={{ margin: '0.25rem 0 0' }}>Snapshot unavailable.</p>
+      );
+    }
+    const explicitColumns = Array.isArray(candidate?.snapshotColumns)
+      ? candidate.snapshotColumns.filter(Boolean)
+      : [];
+    const columns =
+      explicitColumns.length > 0
+        ? explicitColumns
+        : fallbackColumns.length > 0
+        ? fallbackColumns
+        : Object.keys(snapshot);
+    if (!columns.length) {
+      return (
+        <p style={{ margin: '0.25rem 0 0' }}>Snapshot unavailable.</p>
+      );
+    }
+    const fieldTypes =
+      candidate?.snapshotFieldTypeMap || candidate?.fieldTypeMap || {};
+    return (
+      <table
+        style={{
+          borderCollapse: 'collapse',
+          width: '100%',
+        }}
+      >
+        <tbody>
+          {columns.map((col) => (
+            <tr key={col}>
+              <th
+                style={{
+                  textAlign: 'left',
+                  padding: '0.25rem',
+                  border: '1px solid #d1d5db',
+                  background: '#f3f4f6',
+                  width: '35%',
+                }}
+              >
+                {col}
+              </th>
+              <td
+                style={{
+                  padding: '0.25rem',
+                  border: '1px solid #d1d5db',
+                }}
+              >
+                {formatSnapshotCell(snapshot?.[col], col, fieldTypes)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     );
   }
 
@@ -1040,138 +1178,273 @@ export default function Reports() {
                   <p style={{ marginTop: '0.5rem', color: 'red' }}>
                     {lockFetchError}
                   </p>
-                ) : lockCandidates.length ? (
+                ) : lockBuckets.length ? (
                   <>
-                    <div style={{ marginTop: '0.5rem' }}>
-                      <label
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: '0.5rem',
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={allLocksSelected}
-                          onChange={(e) => toggleAllLocks(e.target.checked)}
-                        />
-                        <span>
-                          Select all transactions ({selectedLockCount}/
-                          {lockCandidates.length})
-                        </span>
-                      </label>
-                    </div>
-                    <div
-                      style={{
-                        marginTop: '0.5rem',
-                        overflowX: 'auto',
-                      }}
-                    >
-                      <table
-                        style={{
-                          borderCollapse: 'collapse',
-                          width: '100%',
-                          maxWidth: '40rem',
-                        }}
-                      >
-                        <thead style={{ background: '#e5e7eb' }}>
-                          <tr>
-                            <th
-                              style={{
-                                textAlign: 'left',
-                                padding: '0.25rem',
-                                border: '1px solid #d1d5db',
-                              }}
+                    {eligibleLockCount > 0 ? (
+                      <div style={{ marginTop: '0.5rem' }}>
+                        <label
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={allLocksSelected}
+                            onChange={(e) => toggleAllLocks(e.target.checked)}
+                            disabled={eligibleLockCount === 0}
+                          />
+                          <span>
+                            Select all eligible transactions ({selectedLockCount}/
+                            {eligibleLockCount})
+                          </span>
+                        </label>
+                      </div>
+                    ) : (
+                      <p style={{ marginTop: '0.5rem' }}>
+                        No eligible transactions are available for locking.
+                      </p>
+                    )}
+                    {lockedCandidateCount > 0 && (
+                      <p style={{ marginTop: '0.5rem', color: '#b45309' }}>
+                        {lockedCandidateCount} transaction
+                        {lockedCandidateCount === 1 ? '' : 's'} already locked and
+                        cannot be selected.
+                      </p>
+                    )}
+                    <div style={{ marginTop: '0.75rem' }}>
+                      {lockBuckets.map((bucket, idx) => {
+                        const bucketEligibleCount = bucket.candidates.reduce(
+                          (count, candidate) =>
+                            candidate?.locked ? count : count + 1,
+                          0,
+                        );
+                        return (
+                          <details
+                            key={bucket.tableName || idx}
+                            style={{
+                              marginBottom: '0.75rem',
+                              background: '#ffffff',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '0.5rem',
+                              padding: '0.5rem 0.75rem',
+                            }}
+                            open={lockBuckets.length === 1}
+                          >
+                            <summary
+                              style={{ cursor: 'pointer', fontWeight: 'bold' }}
                             >
-                              Lock
-                            </th>
-                            <th
-                              style={{
-                                textAlign: 'left',
-                                padding: '0.25rem',
-                                border: '1px solid #d1d5db',
-                              }}
-                            >
-                              Table
-                            </th>
-                            <th
-                              style={{
-                                textAlign: 'left',
-                                padding: '0.25rem',
-                                border: '1px solid #d1d5db',
-                              }}
-                            >
-                              Record ID
-                            </th>
-                            {showLockDetails && (
-                              <th
+                              {bucket.tableName} — {bucket.candidates.length}{' '}
+                              transaction
+                              {bucket.candidates.length === 1 ? '' : 's'}
+                              {bucketEligibleCount !== bucket.candidates.length && (
+                                <span
+                                  style={{
+                                    fontWeight: 'normal',
+                                    marginLeft: '0.25rem',
+                                  }}
+                                >
+                                  ({bucketEligibleCount} eligible)
+                                </span>
+                              )}
+                            </summary>
+                            <div style={{ marginTop: '0.5rem', overflowX: 'auto' }}>
+                              <table
                                 style={{
-                                  textAlign: 'left',
-                                  padding: '0.25rem',
-                                  border: '1px solid #d1d5db',
+                                  borderCollapse: 'collapse',
+                                  width: '100%',
                                 }}
                               >
-                                Details
-                              </th>
-                            )}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {lockCandidates.map((candidate) => {
-                            const key = getCandidateKey(candidate);
-                            const checked = Boolean(lockSelections[key]);
-                            const detailText = candidate.label
-                              ? candidate.description
-                                ? `${candidate.label} — ${candidate.description}`
-                                : candidate.label
-                              : candidate.description || '';
-                            return (
-                              <tr key={key || `${candidate.tableName}-${candidate.recordId}`}>
-                                <td
-                                  style={{
-                                    padding: '0.25rem',
-                                    border: '1px solid #d1d5db',
-                                  }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={(e) =>
-                                      updateLockSelection(key, e.target.checked)
-                                    }
-                                  />
-                                </td>
-                                <td
-                                  style={{
-                                    padding: '0.25rem',
-                                    border: '1px solid #d1d5db',
-                                  }}
-                                >
-                                  {candidate.tableName}
-                                </td>
-                                <td
-                                  style={{
-                                    padding: '0.25rem',
-                                    border: '1px solid #d1d5db',
-                                  }}
-                                >
-                                  {candidate.recordId}
-                                </td>
-                                {showLockDetails && (
-                                  <td
-                                    style={{
-                                      padding: '0.25rem',
-                                      border: '1px solid #d1d5db',
-                                    }}
-                                  >
-                                    {detailText || '—'}
-                                  </td>
-                                )}
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
+                                <thead style={{ background: '#e5e7eb' }}>
+                                  <tr>
+                                    <th
+                                      style={{
+                                        textAlign: 'left',
+                                        padding: '0.25rem',
+                                        border: '1px solid #d1d5db',
+                                      }}
+                                    >
+                                      Lock
+                                    </th>
+                                    <th
+                                      style={{
+                                        textAlign: 'left',
+                                        padding: '0.25rem',
+                                        border: '1px solid #d1d5db',
+                                      }}
+                                    >
+                                      Record ID
+                                    </th>
+                                    {showLockDetails && (
+                                      <th
+                                        style={{
+                                          textAlign: 'left',
+                                          padding: '0.25rem',
+                                          border: '1px solid #d1d5db',
+                                        }}
+                                      >
+                                        Details
+                                      </th>
+                                    )}
+                                    <th
+                                      style={{
+                                        textAlign: 'left',
+                                        padding: '0.25rem',
+                                        border: '1px solid #d1d5db',
+                                      }}
+                                    >
+                                      Status
+                                    </th>
+                                    <th
+                                      style={{
+                                        textAlign: 'left',
+                                        padding: '0.25rem',
+                                        border: '1px solid #d1d5db',
+                                      }}
+                                    >
+                                      Snapshot
+                                    </th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {bucket.candidates.map((candidate) => {
+                                    const key = getCandidateKey(candidate);
+                                    const locked = Boolean(candidate?.locked);
+                                    const checked = locked
+                                      ? false
+                                      : Boolean(lockSelections[key]);
+                                    const detailText = candidate?.label
+                                      ? candidate?.description
+                                        ? `${candidate.label} — ${candidate.description}`
+                                        : candidate.label
+                                      : candidate?.description || '';
+                                    const statusLabel = candidate?.lockStatus
+                                      ? candidate.lockStatus
+                                          .charAt(0)
+                                          .toUpperCase() +
+                                        candidate.lockStatus.slice(1)
+                                      : '';
+                                    const statusColor = locked
+                                      ? '#b91c1c'
+                                      : '#047857';
+                                    const statusText = locked
+                                      ? `Locked${statusLabel ? ` (${statusLabel})` : ''}`
+                                      : 'Eligible';
+                                    const lockedByText = locked
+                                      ? `Locked by ${
+                                          candidate?.lockedBy || 'unknown'
+                                        }${
+                                          candidate?.lockedAt
+                                            ? ` on ${formatDateTime(
+                                                candidate.lockedAt,
+                                              )}`
+                                            : ''
+                                        }`
+                                      : 'Selectable for approval';
+                                    return (
+                                      <tr
+                                        key={
+                                          key ||
+                                          `${bucket.tableName}-${candidate.recordId}`
+                                        }
+                                      >
+                                        <td
+                                          style={{
+                                            padding: '0.25rem',
+                                            border: '1px solid #d1d5db',
+                                          }}
+                                        >
+                                          <input
+                                            type="checkbox"
+                                            checked={checked}
+                                            disabled={locked}
+                                            onChange={(e) => {
+                                              if (!key) return;
+                                              updateLockSelection(
+                                                key,
+                                                e.target.checked,
+                                              );
+                                            }}
+                                          />
+                                        </td>
+                                        <td
+                                          style={{
+                                            padding: '0.25rem',
+                                            border: '1px solid #d1d5db',
+                                            whiteSpace: 'nowrap',
+                                          }}
+                                        >
+                                          {candidate.recordId}
+                                        </td>
+                                        {showLockDetails && (
+                                          <td
+                                            style={{
+                                              padding: '0.25rem',
+                                              border: '1px solid #d1d5db',
+                                            }}
+                                          >
+                                            {detailText || '—'}
+                                          </td>
+                                        )}
+                                        <td
+                                          style={{
+                                            padding: '0.25rem',
+                                            border: '1px solid #d1d5db',
+                                            minWidth: '12rem',
+                                          }}
+                                        >
+                                          <div
+                                            style={{
+                                              color: statusColor,
+                                              fontWeight: 'bold',
+                                            }}
+                                          >
+                                            {statusText}
+                                          </div>
+                                          <div
+                                            style={{
+                                              marginTop: '0.125rem',
+                                              fontSize: '0.875rem',
+                                            }}
+                                          >
+                                            {lockedByText}
+                                          </div>
+                                        </td>
+                                        <td
+                                          style={{
+                                            padding: '0.25rem',
+                                            border: '1px solid #d1d5db',
+                                            minWidth: '10rem',
+                                          }}
+                                        >
+                                          {candidate?.snapshot ? (
+                                            <details>
+                                              <summary
+                                                style={{ cursor: 'pointer' }}
+                                              >
+                                                View snapshot
+                                              </summary>
+                                              <div style={{ marginTop: '0.25rem' }}>
+                                                {renderCandidateSnapshot(
+                                                  candidate,
+                                                  bucket.columns,
+                                                )}
+                                              </div>
+                                            </details>
+                                          ) : (
+                                            <span>—</span>
+                                          )}
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </details>
+                        );
+                      })}
                     </div>
                   </>
                 ) : (

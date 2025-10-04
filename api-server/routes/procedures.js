@@ -67,6 +67,7 @@ router.post('/locks', requireAuth, async (req, res, next) => {
       name,
       Array.isArray(params) ? params : [],
       Array.isArray(aliases) ? aliases : [],
+      { companyId },
     );
     res.json({ lockCandidates });
   } catch (err) {
