@@ -258,12 +258,6 @@ export default function NotificationsPage() {
     workflows?.changeRequests?.outgoing?.declined?.count,
   ]);
 
-  useEffect(() => {
-    if (typeof markWorkflowSeen !== 'function') return;
-    markWorkflowSeen('reportApproval', 'outgoing', ['accepted', 'declined']);
-    markWorkflowSeen('changeRequests', 'outgoing', ['accepted', 'declined']);
-  }, [markWorkflowSeen]);
-
   const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
   const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;

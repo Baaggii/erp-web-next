@@ -1,4 +1,4 @@
-import React, { useContext, useState, useEffect, useRef } from 'react';
+import React, { useContext, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import PendingRequestWidget from '../components/PendingRequestWidget.jsx';
 import OutgoingRequestWidget from '../components/OutgoingRequestWidget.jsx';
@@ -13,17 +13,16 @@ export default function DashboardPage() {
   const [active, setActive] = useState('general');
   useTour('dashboard');
 
-  const prevTab = useRef('general');
-  useEffect(() => {
-    if (prevTab.current === 'audition' && active !== 'audition') {
+  const handleMarkAuditionRead = () => {
+    if (typeof markSeen === 'function') {
       markSeen();
     }
-    prevTab.current = active;
-  }, [active, markSeen]);
+  };
 
-  useEffect(() => () => {
-    if (prevTab.current === 'audition') markSeen();
-  }, [markSeen]);
+  const auditionNewCount =
+    (Number(outgoing?.accepted?.newCount) || 0) +
+    (Number(outgoing?.declined?.newCount) || 0);
+  const auditionHasNew = Boolean(hasNew || auditionNewCount);
 
   const dotBadgeStyle = {
     background: 'red',
@@ -82,8 +81,8 @@ export default function DashboardPage() {
         {tabButton(
           'audition',
           t('audition', 'Audition'),
-          outgoing.accepted.newCount + outgoing.declined.newCount,
-          hasNew,
+          auditionNewCount,
+          auditionHasNew,
         )}
         {tabButton('plans', t('plans', 'Plans'))}
       </div>
@@ -124,12 +123,31 @@ export default function DashboardPage() {
       )}
 
       {active === 'audition' && (
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <div style={{ ...cardStyle, flex: '1 1 300px' }}>
-            <PendingRequestWidget />
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button
+              type="button"
+              onClick={handleMarkAuditionRead}
+              disabled={!auditionHasNew}
+              style={{
+                padding: '0.4rem 0.8rem',
+                borderRadius: '4px',
+                border: '1px solid #2563eb',
+                background: auditionHasNew ? '#2563eb' : '#e5e7eb',
+                color: auditionHasNew ? '#ffffff' : '#6b7280',
+                cursor: auditionHasNew ? 'pointer' : 'not-allowed',
+              }}
+            >
+              {t('mark_audition_read', 'Mark audition items read')}
+            </button>
           </div>
-          <div style={{ ...cardStyle, flex: '1 1 300px' }}>
-            <OutgoingRequestWidget />
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ ...cardStyle, flex: '1 1 300px' }}>
+              <PendingRequestWidget />
+            </div>
+            <div style={{ ...cardStyle, flex: '1 1 300px' }}>
+              <OutgoingRequestWidget />
+            </div>
           </div>
         </div>
       )}
