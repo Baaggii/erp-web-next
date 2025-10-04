@@ -346,6 +346,15 @@ const TableManager = forwardRef(function TableManager({
     return () => window.removeEventListener('click', hideMenu);
   }, []);
 
+  const supportsTemporary = useMemo(() => {
+    if (!formConfig) return false;
+    const flag =
+      formConfig.supportsTemporarySubmission ??
+      formConfig.allowTemporarySubmission ??
+      false;
+    return Boolean(flag);
+  }, [formConfig]);
+
   const refreshTemporarySummary = useCallback(async () => {
     if (!supportsTemporary) {
       setTemporarySummary(null);
@@ -524,15 +533,6 @@ const TableManager = forwardRef(function TableManager({
     const defaultFields = ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'];
     return defaultFields.filter(f => validCols.has(f));
   }, [formConfig, validCols]);
-
-  const supportsTemporary = useMemo(() => {
-    if (!formConfig) return false;
-    const flag =
-      formConfig.supportsTemporarySubmission ??
-      formConfig.allowTemporarySubmission ??
-      false;
-    return Boolean(flag);
-  }, [formConfig]);
 
   function computeAutoInc(meta) {
     const auto = meta
