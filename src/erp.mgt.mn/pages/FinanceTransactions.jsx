@@ -594,6 +594,7 @@ useEffect(() => {
             refreshId={refreshId}
             formConfig={config}
             allConfigs={configs}
+            formName={name}
             initialPerPage={10}
             addLabel="Гүйлгээ нэмэх"
             showTable={showTable}

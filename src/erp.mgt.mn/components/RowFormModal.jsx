@@ -66,6 +66,9 @@ const RowFormModal = function RowFormModal({
   procTriggers = {},
   autoFillSession = true,
   tableColumns = [],
+  onSaveTemporary = null,
+  allowTemporarySave = false,
+  isAdding = false,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -1396,6 +1399,41 @@ const RowFormModal = function RowFormModal({
     }
   }
 
+  async function handleTemporarySave() {
+    if (!allowTemporarySave || !onSaveTemporary) return;
+    if (useGrid && tableRef.current) {
+      alert(
+        t(
+          'temporary_save_grid_not_supported',
+          'Saving as temporary is not available for grid-based forms yet.',
+        ),
+      );
+      return;
+    }
+    const merged = { ...extraVals, ...formVals };
+    if (merged.seedRecords && merged.seedTables) {
+      const set = new Set(merged.seedTables);
+      const filtered = {};
+      Object.entries(merged.seedRecords).forEach(([tbl, recs]) => {
+        if (set.has(tbl)) filtered[tbl] = recs;
+      });
+      merged.seedRecords = filtered;
+    }
+    const normalized = {};
+    Object.entries(merged).forEach(([k, v]) => {
+      let val = normalizeDateInput(v, placeholders[k]);
+      if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+        val = normalizeNumberInput(val);
+      }
+      normalized[k] = val;
+    });
+    try {
+      await Promise.resolve(onSaveTemporary({ values: normalized }));
+    } catch (err) {
+      console.error('Temporary save failed', err);
+    }
+  }
+
   async function submitForm() {
     if (submitLocked) return;
     setSubmitLocked(true);
@@ -2203,6 +2241,15 @@ const RowFormModal = function RowFormModal({
           >
             {t('printCust', 'Print Cust')}
           </button>
+          {allowTemporarySave && isAdding && onSaveTemporary && (
+            <button
+              type="button"
+              onClick={handleTemporarySave}
+              className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
+            >
+              {t('save_temporary', 'Save as Temporary')}
+            </button>
+          )}
           <button
             type="button"
             onClick={onCancel}
