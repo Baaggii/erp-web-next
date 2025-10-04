@@ -3452,8 +3452,8 @@ function MainWindow({ title }) {
     if (!activeKey || activeKey === location.pathname) return;
     if (typeof activeKey !== 'string') return;
     if (!activeKey.startsWith('/')) return;
-    navigate(activeKey);
-  }, [activeKey, location.pathname, navigate, tabKeys, tabs]);
+    switchTab(location.pathname);
+  }, [activeKey, location.pathname, switchTab, tabKeys]);
 
   function handleSwitch(key) {
     switchTab(key);
