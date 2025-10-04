@@ -44,6 +44,7 @@ Two SQL utilities assist with default module permissions:
 * `db/migrations/2025-07-25_inventory_triggers.sql` – recreates inventory and expense triggers so they call the read‑only procedures without modifying their own tables.
 * `db/migrations/2025-09-02_standardize_audit_columns.sql` – normalizes `created_at`, `created_by`, `updated_at`, `updated_by`, and `deleted_at` across every base table and backfills existing rows with a fallback `created_by = 'system'`. Re-run this migration after pulling to align live databases with the schema.
 * `db/migrations/2025-09-05_users_created_trigger.sql` – recreates the `users_bi` trigger so inserts automatically fill any missing audit timestamps or actors for the `users` table.
+* `db/migrations/2025-11-01_report_approval_archives.sql` – adds archive metadata columns to `report_approvals`. Run this migration (via the standard runner or `mysql -e "$(cat db/migrations/2025-11-01_report_approval_archives.sql)"`) to backfill live databases before approving new reports.
 
 Run the script after applying the migration to initialize permissions for all roles.
 

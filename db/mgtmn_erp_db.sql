@@ -1200,6 +1200,59 @@ CREATE TABLE `pending_request` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `report_transaction_locks`
+--
+
+CREATE TABLE `report_transaction_locks` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `company_id` int DEFAULT NULL,
+  `request_id` bigint NOT NULL,
+  `table_name` varchar(128) NOT NULL,
+  `record_id` varchar(191) NOT NULL,
+  `status` enum('pending','locked') NOT NULL DEFAULT 'pending',
+  `created_by` varchar(64) DEFAULT NULL,
+  `status_changed_by` varchar(64) DEFAULT NULL,
+  `status_changed_at` datetime DEFAULT NULL,
+  `finalized_by` varchar(64) DEFAULT NULL,
+  `finalized_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_report_locks_request_record` (`request_id`,`table_name`,`record_id`),
+  KEY `idx_report_locks_request` (`request_id`),
+  KEY `idx_report_locks_table` (`table_name`),
+  KEY `idx_report_locks_company` (`company_id`),
+  KEY `idx_report_locks_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `report_approvals`
+--
+
+CREATE TABLE `report_approvals` (
+  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `company_id` int DEFAULT NULL,
+  `request_id` bigint NOT NULL,
+  `procedure_name` varchar(191) NOT NULL,
+  `parameters_json` json NOT NULL,
+  `approved_by` varchar(64) DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
+  `snapshot_file_path` varchar(255) DEFAULT NULL,
+  `snapshot_file_name` varchar(191) DEFAULT NULL,
+  `snapshot_file_mime` varchar(64) DEFAULT NULL,
+  `snapshot_file_size` bigint DEFAULT NULL,
+  `snapshot_archived_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uniq_report_approvals_request` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `report_definitions`
 --
 
