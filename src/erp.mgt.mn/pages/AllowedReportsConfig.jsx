@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
+import { refreshModules } from '../hooks/useModules.js';
 
 export default function AllowedReportsConfig() {
   const { addToast } = useToast();
@@ -160,6 +161,7 @@ export default function AllowedReportsConfig() {
         throw new Error(msg);
       }
       setReports((prev) => ({ ...prev, [proc]: payload }));
+      refreshModules();
       addToast('Saved', 'success');
     } catch (err) {
       addToast(err.message || 'Failed to save', 'error');
@@ -181,6 +183,7 @@ export default function AllowedReportsConfig() {
         return copy;
       });
       if (proc === p) handleNew();
+      refreshModules();
       addToast('Deleted', 'success');
     } catch {
       addToast('Failed to delete', 'error');

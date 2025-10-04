@@ -16,6 +16,7 @@ import { useIsLoading } from "../context/LoadingContext.jsx";
 import Spinner from "./Spinner.jsx";
 import useHeaderMappings from "../hooks/useHeaderMappings.js";
 import useRequestNotificationCounts from "../hooks/useRequestNotificationCounts.js";
+import useBuildUpdateNotice from "../hooks/useBuildUpdateNotice.js";
 import { PendingRequestContext } from "../context/PendingRequestContext.jsx";
 import Joyride, { STATUS, ACTIONS, EVENTS } from "react-joyride";
 import ErrorBoundary from "../components/ErrorBoundary.jsx";
@@ -517,6 +518,7 @@ export default function ERPLayout() {
   const { user, setUser, session, userSettings, updateUserSettings } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const { t } = useContext(LangContext);
+  const { hasUpdateAvailable } = useBuildUpdateNotice();
   const renderCount = useRef(0);
   useEffect(() => {
   renderCount.current++;
@@ -2734,6 +2736,7 @@ export default function ERPLayout() {
             onToggleSidebar={() => setSidebarOpen((o) => !o)}
             onOpen={handleOpen}
             onResetGuide={resetGuide}
+            hasUpdateAvailable={hasUpdateAvailable}
           />
           <div style={styles.body(isMobile)}>
             {isMobile && sidebarOpen && (
@@ -2757,9 +2760,28 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
-function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen, onResetGuide }) {
+export function Header({
+  user,
+  onLogout,
+  onHome,
+  isMobile,
+  onToggleSidebar,
+  onOpen,
+  onResetGuide,
+  hasUpdateAvailable = false,
+}) {
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
+  const handleRefresh = () => {
+    if (typeof window === 'undefined' || !window?.location) return;
+    try {
+      window.location.reload(true);
+    } catch (err) {
+      if (typeof window.location.reload === 'function') {
+        window.location.reload();
+      }
+    }
+  };
 
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
@@ -2787,6 +2809,11 @@ function Header({ user, onLogout, onHome, isMobile, onToggleSidebar, onOpen, onR
         <button style={styles.iconBtn}>🗗 {t("windows")}</button>
         <button style={styles.iconBtn}>❔ {t("help")}</button>
       </nav>
+      {hasUpdateAvailable && (
+        <button type="button" style={styles.updateButton} onClick={handleRefresh}>
+          🔄 {t('refresh_to_update', 'Refresh to update')}
+        </button>
+      )}
       <HeaderMenu onOpen={onOpen} />
       {session && (
         <span style={styles.locationInfo}>
@@ -3304,6 +3331,18 @@ const styles = {
     overflowX: "auto",
     whiteSpace: "nowrap",
     flexGrow: 1,
+  },
+  updateButton: {
+    backgroundColor: "#f97316",
+    color: "#111827",
+    border: "none",
+    borderRadius: "4px",
+    padding: "0.35rem 0.75rem",
+    fontWeight: "bold",
+    cursor: "pointer",
+    marginRight: "0.75rem",
+    flexShrink: 0,
+    boxShadow: "0 0 0 2px rgba(249, 115, 22, 0.3)",
   },
   iconBtn: {
     background: "transparent",

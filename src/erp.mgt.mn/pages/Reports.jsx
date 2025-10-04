@@ -1,5 +1,6 @@
 // src/erp.mgt.mn/pages/Reports.jsx
 import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
@@ -26,18 +27,11 @@ export default function Reports() {
   const [datePreset, setDatePreset] = useState('custom');
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
-  const [snapshot, setSnapshot] = useState(null);
-  const [selectedTransactions, setSelectedTransactions] = useState([]);
-  const [newTxTable, setNewTxTable] = useState('');
-  const [newTxId, setNewTxId] = useState('');
-  const [approvalReason, setApprovalReason] = useState('');
-  const [requestingApproval, setRequestingApproval] = useState(false);
-  const [approvalModalOpen, setApprovalModalOpen] = useState(false);
-  const [approvalData, setApprovalData] = useState({ incoming: [], outgoing: [] });
-  const [approvalLoading, setApprovalLoading] = useState(false);
-  const [approvalError, setApprovalError] = useState('');
-  const [approvalRefreshKey, setApprovalRefreshKey] = useState(0);
-  const [respondingRequestId, setRespondingRequestId] = useState(null);
+  const presetSelectRef = useRef(null);
+  const startDateRef = useRef(null);
+  const endDateRef = useRef(null);
+  const manualInputRefs = useRef({});
+  const runButtonRef = useRef(null);
   const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
   const procMap = useHeaderMappings(procNames);
 
@@ -114,6 +108,31 @@ export default function Reports() {
     setSnapshot(null);
   }, [selectedProc]);
 
+  const dateParamInfo = useMemo(() => {
+    const info = {
+      hasStartParam: false,
+      hasEndParam: false,
+      managedIndices: new Set(),
+    };
+    procParams.forEach((param, index) => {
+      const name = param.toLowerCase();
+      const isStart = name.includes('start') || name.includes('from');
+      const isEnd = name.includes('end') || name.includes('to');
+      if (isStart) {
+        info.hasStartParam = true;
+        info.managedIndices.add(index);
+      }
+      if (isEnd) {
+        info.hasEndParam = true;
+        info.managedIndices.add(index);
+      }
+    });
+    return info;
+  }, [procParams]);
+
+  const { hasStartParam, hasEndParam, managedIndices } = dateParamInfo;
+  const hasDateParams = hasStartParam || hasEndParam;
+
   const autoParams = useMemo(() => {
     return procParams.map((p) => {
       const name = p.toLowerCase();
@@ -127,6 +146,45 @@ export default function Reports() {
     });
   }, [procParams, startDate, endDate, company, branch, department, user]);
 
+  const manualParamNames = useMemo(() => {
+    return procParams.reduce((list, param, index) => {
+      if (managedIndices.has(index)) return list;
+      if (autoParams[index] !== null) return list;
+      list.push(param);
+      return list;
+    }, []);
+  }, [procParams, managedIndices, autoParams]);
+
+  const activeControlRefs = useMemo(() => {
+    const refs = [];
+    if (hasDateParams) refs.push(presetSelectRef);
+    if (hasStartParam) refs.push(startDateRef);
+    if (hasEndParam) refs.push(endDateRef);
+
+    const manualRefNames = new Set(manualParamNames);
+    Object.keys(manualInputRefs.current).forEach((name) => {
+      if (!manualRefNames.has(name)) delete manualInputRefs.current[name];
+    });
+
+    manualParamNames.forEach((name) => {
+      if (!manualInputRefs.current[name]) {
+        manualInputRefs.current[name] = React.createRef();
+      }
+      refs.push(manualInputRefs.current[name]);
+    });
+
+    refs.push(runButtonRef);
+    return refs;
+  }, [hasDateParams, hasStartParam, hasEndParam, manualParamNames]);
+
+  useEffect(() => {
+    if (!selectedProc) return;
+    const firstFocusable = activeControlRefs.find((ref) => ref?.current);
+    if (firstFocusable) {
+      firstFocusable.current.focus();
+    }
+  }, [selectedProc, activeControlRefs]);
+
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
@@ -138,6 +196,19 @@ export default function Reports() {
     () => finalParams.every((v) => v !== null && v !== ''),
     [finalParams],
   );
+
+  function handleParameterKeyDown(event, currentRef) {
+    if (event.key !== 'Enter') return;
+    const currentIndex = activeControlRefs.findIndex((ref) => ref === currentRef);
+    if (currentIndex === -1) return;
+    event.preventDefault();
+    const nextRef = activeControlRefs[currentIndex + 1];
+    if (nextRef?.current) {
+      nextRef.current.focus();
+      return;
+    }
+    runReport();
+  }
 
   function handlePresetChange(e) {
     const value = e.target.value;
@@ -183,8 +254,12 @@ export default function Reports() {
     }
     const fmt = (d) =>
       d instanceof Date ? formatTimestamp(d).slice(0, 10) : '';
-    setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
-    setEndDate(normalizeDateInput(fmt(end), 'YYYY-MM-DD'));
+    if (hasStartParam) {
+      setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
+    }
+    if (hasEndParam) {
+      setEndDate(normalizeDateInput(fmt(end), 'YYYY-MM-DD'));
+    }
   }
 
   async function runReport() {
@@ -630,10 +705,13 @@ export default function Reports() {
         )}
         {selectedProc && (
           <div style={{ marginTop: '0.5rem' }}>
+            {hasDateParams && (
               <select
                 value={datePreset}
                 onChange={handlePresetChange}
                 style={{ marginRight: '0.5rem' }}
+                ref={presetSelectRef}
+                onKeyDown={(event) => handleParameterKeyDown(event, presetSelectRef)}
               >
                 <option value="custom">Custom</option>
                 <option value="month">This month</option>
@@ -644,13 +722,19 @@ export default function Reports() {
                 <option value="quarter">This quarter</option>
                 <option value="year">This year</option>
               </select>
+            )}
+            {hasStartParam && (
               <CustomDatePicker
                 value={startDate}
                 onChange={(v) => {
                   setStartDate(normalizeDateInput(v, 'YYYY-MM-DD'));
                   setDatePreset('custom');
                 }}
+                inputRef={startDateRef}
+                onKeyDown={(event) => handleParameterKeyDown(event, startDateRef)}
               />
+            )}
+            {hasEndParam && (
               <CustomDatePicker
                 value={endDate}
                 onChange={(v) => {
@@ -658,31 +742,40 @@ export default function Reports() {
                   setDatePreset('custom');
                 }}
                 style={{ marginLeft: '0.5rem' }}
+                inputRef={endDateRef}
+                onKeyDown={(event) => handleParameterKeyDown(event, endDateRef)}
               />
-              {procParams.map((p, i) => {
-                if (autoParams[i] !== null) return null;
-                const val = manualParams[p] || '';
-                return (
-                  <input
-                    key={p}
-                    type="text"
-                    placeholder={p}
-                    value={val}
-                    onChange={(e) =>
-                      setManualParams((m) => ({ ...m, [p]: e.target.value }))
-                    }
-                    style={{ marginLeft: '0.5rem' }}
-                  />
-                );
-              })}
-              <button
-                onClick={runReport}
-                style={{ marginLeft: '0.5rem' }}
-                disabled={!allParamsProvided}
-              >
-                Run
-              </button>
-            </div>
+            )}
+            {procParams.map((p, i) => {
+              if (managedIndices.has(i)) return null;
+              if (autoParams[i] !== null) return null;
+              const val = manualParams[p] || '';
+              const inputRef = manualInputRefs.current[p];
+              return (
+                <input
+                  key={p}
+                  type="text"
+                  placeholder={p}
+                  value={val}
+                  onChange={(e) =>
+                    setManualParams((m) => ({ ...m, [p]: e.target.value }))
+                  }
+                  style={{ marginLeft: '0.5rem' }}
+                  ref={inputRef}
+                  onKeyDown={(event) => handleParameterKeyDown(event, inputRef)}
+                />
+              );
+            })}
+            <button
+              onClick={runReport}
+              style={{ marginLeft: '0.5rem' }}
+              disabled={!allParamsProvided}
+              ref={runButtonRef}
+              onKeyDown={(event) => handleParameterKeyDown(event, runButtonRef)}
+            >
+              Run
+            </button>
+          </div>
         )}
       </div>
       {showApprovalControls && (
