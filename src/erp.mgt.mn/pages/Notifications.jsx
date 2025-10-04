@@ -22,6 +22,10 @@ function dedupeRequests(list) {
   });
 }
 
+function createEmptyResponses() {
+  return { accepted: [], declined: [] };
+}
+
 export default function NotificationsPage() {
   const { workflows, markWorkflowSeen, temporary } = usePendingRequests();
   const { user, session } = useAuth();
@@ -30,12 +34,14 @@ export default function NotificationsPage() {
   const [reportState, setReportState] = useState({
     incoming: [],
     outgoing: [],
+    responses: createEmptyResponses(),
     loading: true,
     error: '',
   });
   const [changeState, setChangeState] = useState({
     incoming: [],
     outgoing: [],
+    responses: createEmptyResponses(),
     loading: true,
     error: '',
   });
@@ -60,9 +66,22 @@ export default function NotificationsPage() {
   }, [seniorEmpId, seniorPlanEmpId]);
 
   const fetchRequests = useCallback(
-    async (types) => {
+    async (types, statuses = ['pending']) => {
+      const normalizedStatuses = Array.isArray(statuses)
+        ? Array.from(
+            new Set(
+              statuses
+                .map((status) => String(status || '').trim().toLowerCase())
+                .filter(Boolean),
+            ),
+          )
+        : [];
+      if (!normalizedStatuses.includes('pending')) {
+        normalizedStatuses.unshift('pending');
+      }
+
       const incomingLists = [];
-      const outgoingLists = [];
+      const outgoingStatusLists = new Map();
       await Promise.all(
         types.map(async (type) => {
           if (supervisorIds.length) {
@@ -94,43 +113,83 @@ export default function NotificationsPage() {
             );
           }
 
-          try {
-            const params = new URLSearchParams({
-              status: 'pending',
-              request_type: type,
-              per_page: String(SECTION_LIMIT),
-              page: '1',
-            });
-            const res = await fetch(`/api/pending_request/outgoing?${params.toString()}`, {
-              credentials: 'include',
-              skipLoader: true,
-            });
-            if (res.ok) {
-              const data = await res.json().catch(() => ({}));
-              const rows = Array.isArray(data?.rows) ? data.rows : [];
-              outgoingLists.push(
-                rows.map((row) => ({ ...row, request_type: row.request_type || type })),
-              );
-            }
-          } catch {
-            // ignore
-          }
+          await Promise.all(
+            normalizedStatuses.map(async (status) => {
+              try {
+                const params = new URLSearchParams({
+                  status,
+                  request_type: type,
+                  per_page: String(SECTION_LIMIT),
+                  page: '1',
+                });
+                const res = await fetch(
+                  `/api/pending_request/outgoing?${params.toString()}`,
+                  {
+                    credentials: 'include',
+                    skipLoader: true,
+                  },
+                );
+                if (res.ok) {
+                  const data = await res.json().catch(() => ({}));
+                  const rows = Array.isArray(data?.rows) ? data.rows : [];
+                  const withMeta = rows.map((row) => {
+                    const resolvedStatus = row.status || row.response_status || status;
+                    return {
+                      ...row,
+                      request_type: row.request_type || type,
+                      status: resolvedStatus
+                        ? String(resolvedStatus).trim().toLowerCase()
+                        : status,
+                    };
+                  });
+                  const prev = outgoingStatusLists.get(status) || [];
+                  outgoingStatusLists.set(status, prev.concat(withMeta));
+                }
+              } catch {
+                // ignore
+              }
+            }),
+          );
         }),
       );
 
       const incoming = dedupeRequests(incomingLists.flat()).slice(0, SECTION_LIMIT);
-      const outgoing = dedupeRequests(outgoingLists.flat()).slice(0, SECTION_LIMIT);
-      return { incoming, outgoing };
+      const outgoing = dedupeRequests(outgoingStatusLists.get('pending') || []).slice(
+        0,
+        SECTION_LIMIT,
+      );
+      const responses = normalizedStatuses
+        .filter((status) => status !== 'pending')
+        .reduce((acc, status) => {
+          const list = outgoingStatusLists.get(status) || [];
+          acc[status] = dedupeRequests(list).slice(0, SECTION_LIMIT);
+          return acc;
+        }, {});
+      return { incoming, outgoing, responses };
     },
     [supervisorIds],
   );
 
   useEffect(() => {
     let cancelled = false;
-    setReportState((prev) => ({ ...prev, loading: true, error: '' }));
-    fetchRequests(['report_approval'])
+    setReportState((prev) => ({
+      ...prev,
+      loading: true,
+      error: '',
+      responses: prev.responses || createEmptyResponses(),
+    }));
+    fetchRequests(['report_approval'], ['pending', 'accepted', 'declined'])
       .then((data) => {
-        if (!cancelled) setReportState({ ...data, loading: false, error: '' });
+        if (!cancelled)
+          setReportState({
+            ...data,
+            responses: {
+              accepted: data.responses?.accepted || [],
+              declined: data.responses?.declined || [],
+            },
+            loading: false,
+            error: '',
+          });
       })
       .catch(() => {
         if (!cancelled)
@@ -139,6 +198,7 @@ export default function NotificationsPage() {
             loading: false,
             incoming: [],
             outgoing: [],
+            responses: createEmptyResponses(),
             error: t('notifications_report_error', 'Failed to load report approvals'),
           }));
       });
@@ -150,14 +210,30 @@ export default function NotificationsPage() {
     t,
     workflows?.reportApproval?.incoming?.pending?.count,
     workflows?.reportApproval?.outgoing?.pending?.count,
+    workflows?.reportApproval?.outgoing?.accepted?.count,
+    workflows?.reportApproval?.outgoing?.declined?.count,
   ]);
 
   useEffect(() => {
     let cancelled = false;
-    setChangeState((prev) => ({ ...prev, loading: true, error: '' }));
-    fetchRequests(['edit', 'delete'])
+    setChangeState((prev) => ({
+      ...prev,
+      loading: true,
+      error: '',
+      responses: prev.responses || createEmptyResponses(),
+    }));
+    fetchRequests(['edit', 'delete'], ['pending', 'accepted', 'declined'])
       .then((data) => {
-        if (!cancelled) setChangeState({ ...data, loading: false, error: '' });
+        if (!cancelled)
+          setChangeState({
+            ...data,
+            responses: {
+              accepted: data.responses?.accepted || [],
+              declined: data.responses?.declined || [],
+            },
+            loading: false,
+            error: '',
+          });
       })
       .catch(() => {
         if (!cancelled)
@@ -166,6 +242,7 @@ export default function NotificationsPage() {
             loading: false,
             incoming: [],
             outgoing: [],
+            responses: createEmptyResponses(),
             error: t('notifications_change_error', 'Failed to load change requests'),
           }));
       });
@@ -177,7 +254,15 @@ export default function NotificationsPage() {
     t,
     workflows?.changeRequests?.incoming?.pending?.count,
     workflows?.changeRequests?.outgoing?.pending?.count,
+    workflows?.changeRequests?.outgoing?.accepted?.count,
+    workflows?.changeRequests?.outgoing?.declined?.count,
   ]);
+
+  useEffect(() => {
+    if (typeof markWorkflowSeen !== 'function') return;
+    markWorkflowSeen('reportApproval', 'outgoing', ['accepted', 'declined']);
+    markWorkflowSeen('changeRequests', 'outgoing', ['accepted', 'declined']);
+  }, [markWorkflowSeen]);
 
   const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
   const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
@@ -262,10 +347,13 @@ export default function NotificationsPage() {
   );
 
   const openRequest = useCallback(
-    (req, tab) => {
+    (req, tab, statusOverride) => {
       const params = new URLSearchParams();
       params.set('tab', tab);
-      params.set('status', 'pending');
+      const normalizedStatus = statusOverride
+        ? String(statusOverride).trim().toLowerCase()
+        : 'pending';
+      if (normalizedStatus) params.set('status', normalizedStatus);
       if (req?.request_type) params.set('requestType', req.request_type);
       if (req?.table_name) params.set('table_name', req.table_name);
       params.set('requestId', req?.request_id);
@@ -317,6 +405,124 @@ export default function NotificationsPage() {
       </li>
     );
   };
+
+  const getStatusPillStyle = useCallback((status) => {
+    const base = {
+      display: 'inline-flex',
+      alignItems: 'center',
+      borderRadius: '9999px',
+      padding: '0.1rem 0.5rem',
+      fontSize: '0.75rem',
+      textTransform: 'capitalize',
+    };
+    if (status === 'accepted') {
+      return { ...base, backgroundColor: '#dcfce7', color: '#166534' };
+    }
+    if (status === 'declined') {
+      return { ...base, backgroundColor: '#fee2e2', color: '#991b1b' };
+    }
+    return { ...base, backgroundColor: '#e5e7eb', color: '#374151' };
+  }, []);
+
+  const renderResponseItem = (req) => {
+    const statusRaw = req?.status || req?.response_status;
+    const status = statusRaw ? String(statusRaw).trim().toLowerCase() : '';
+    const responded = req?.responded_at || req?.respondedAt;
+    const responder =
+      req?.response_empid || req?.responseEmpid || req?.response_emp_id || req?.responded_by;
+    const summary = req?.response_notes || req?.responseNotes;
+    const created = req?.created_at || req?.createdAt;
+    return (
+      <li key={`${req.request_id}-${status || 'response'}`} style={styles.listItem}>
+        <div style={styles.listBody}>
+          <div style={styles.listTitleRow}>
+            <span style={styles.listTitle}>
+              {req.request_type ? req.request_type.replace(/_/g, ' ') : 'request'}
+            </span>
+            {status && <span style={getStatusPillStyle(status)}>{status}</span>}
+          </div>
+          <div style={styles.listMeta}>
+            {responder && (
+              <span>
+                {t('notifications_responder', 'Responder')}: {responder}
+              </span>
+            )}
+            {responded && (
+              <span>
+                {t('notifications_responded_at', 'Responded')}: {formatTimestamp(responded)}
+              </span>
+            )}
+            {!responded && created && (
+              <span>
+                {t('notifications_requested_at', 'Created')}: {formatTimestamp(created)}
+              </span>
+            )}
+            {req.table_name && (
+              <span>
+                {t('notifications_table', 'Table')}: {req.table_name}
+              </span>
+            )}
+          </div>
+          {summary && <div style={styles.listSummary}>{summary}</div>}
+        </div>
+        <button style={styles.listAction} onClick={() => openRequest(req, 'outgoing', status)}>
+          {t('notifications_view_request', 'View request')}
+        </button>
+      </li>
+    );
+  };
+
+  const combineResponses = useCallback((responses) => {
+    if (!responses || typeof responses !== 'object') return [];
+    const statuses = ['accepted', 'declined'];
+    const seen = new Set();
+    const list = [];
+    statuses.forEach((status) => {
+      const entries = Array.isArray(responses[status]) ? responses[status] : [];
+      entries.forEach((entry) => {
+        if (!entry) return;
+        const normalizedStatus = entry.status
+          ? String(entry.status).trim().toLowerCase()
+          : status;
+        const key = `${entry.request_id || ''}-${normalizedStatus}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        list.push({ ...entry, status: normalizedStatus });
+      });
+    });
+    list.sort((a, b) => {
+      const aTime = new Date(
+        a?.responded_at ||
+          a?.respondedAt ||
+          a?.updated_at ||
+          a?.updatedAt ||
+          a?.created_at ||
+          a?.createdAt ||
+          0,
+      ).getTime();
+      const bTime = new Date(
+        b?.responded_at ||
+          b?.respondedAt ||
+          b?.updated_at ||
+          b?.updatedAt ||
+          b?.created_at ||
+          b?.createdAt ||
+          0,
+      ).getTime();
+      return bTime - aTime;
+    });
+    return list;
+  }, []);
+
+  const reportResponses = useMemo(
+    () => combineResponses(reportState.responses),
+    [combineResponses, reportState.responses],
+  );
+
+  const changeResponses = useMemo(
+    () => combineResponses(changeState.responses),
+    [combineResponses, changeState.responses],
+  );
 
   const renderTemporaryItem = (entry, scope) => (
     <li key={`${scope}-${entry.id}`} style={styles.listItem}>
@@ -388,13 +594,30 @@ export default function NotificationsPage() {
             </div>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_outgoing', 'Outgoing')}</h3>
-              {reportState.outgoing.length === 0 ? (
-                <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-              ) : (
-                <ul style={styles.list}>
-                  {reportState.outgoing.map((req) => renderRequestItem(req, 'outgoing'))}
-                </ul>
-              )}
+              <div style={styles.subSection}>
+                <h4 style={styles.subSectionTitle}>
+                  {t('notifications_requests_section', 'Requests')}
+                </h4>
+                {reportState.outgoing.length === 0 ? (
+                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
+                ) : (
+                  <ul style={styles.list}>
+                    {reportState.outgoing.map((req) => renderRequestItem(req, 'outgoing'))}
+                  </ul>
+                )}
+              </div>
+              <div style={styles.subSection}>
+                <h4 style={styles.subSectionTitle}>
+                  {t('notifications_responses_section', 'Responses')}
+                </h4>
+                {reportResponses.length === 0 ? (
+                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
+                ) : (
+                  <ul style={styles.list}>
+                    {reportResponses.map((req) => renderResponseItem(req))}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -438,13 +661,30 @@ export default function NotificationsPage() {
             </div>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_outgoing', 'Outgoing')}</h3>
-              {changeState.outgoing.length === 0 ? (
-                <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
-              ) : (
-                <ul style={styles.list}>
-                  {changeState.outgoing.map((req) => renderRequestItem(req, 'outgoing'))}
-                </ul>
-              )}
+              <div style={styles.subSection}>
+                <h4 style={styles.subSectionTitle}>
+                  {t('notifications_requests_section', 'Requests')}
+                </h4>
+                {changeState.outgoing.length === 0 ? (
+                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
+                ) : (
+                  <ul style={styles.list}>
+                    {changeState.outgoing.map((req) => renderRequestItem(req, 'outgoing'))}
+                  </ul>
+                )}
+              </div>
+              <div style={styles.subSection}>
+                <h4 style={styles.subSectionTitle}>
+                  {t('notifications_responses_section', 'Responses')}
+                </h4>
+                {changeResponses.length === 0 ? (
+                  <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
+                ) : (
+                  <ul style={styles.list}>
+                    {changeResponses.map((req) => renderResponseItem(req))}
+                  </ul>
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -604,6 +844,12 @@ const styles = {
     flexDirection: 'column',
     gap: '0.35rem',
   },
+  listTitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: '0.5rem',
+  },
   listTitle: {
     fontWeight: 600,
     textTransform: 'capitalize',
@@ -636,5 +882,15 @@ const styles = {
   },
   errorText: {
     color: '#dc2626',
+  },
+  subSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  subSectionTitle: {
+    margin: 0,
+    fontSize: '0.9rem',
+    fontWeight: 600,
   },
 };
