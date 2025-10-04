@@ -1356,9 +1356,8 @@ export default function Reports() {
   }
 
   const openApprovalModal = useCallback(() => {
-    setApprovalData({ incoming: [], outgoing: [] });
     setApprovalError('');
-    setApprovalLoading(false);
+    setApprovalLoading(true);
     setApprovalModalOpen(true);
     setApprovalRefreshKey((k) => k + 1);
   }, []);
@@ -1503,7 +1502,6 @@ export default function Reports() {
     async function loadApprovals() {
       setApprovalLoading(true);
       setApprovalError('');
-      setApprovalData({ incoming: [], outgoing: [] });
       let outgoingRows = [];
       let incomingRows = [];
       let errorMsg = '';
@@ -1544,7 +1542,9 @@ export default function Reports() {
         }
       }
       if (!cancelled) {
-        setApprovalData({ incoming: incomingRows, outgoing: outgoingRows });
+        if (!errorMsg) {
+          setApprovalData({ incoming: incomingRows, outgoing: outgoingRows });
+        }
         setApprovalError(errorMsg);
         setApprovalLoading(false);
       }
