@@ -40,22 +40,24 @@ export async function login(req, res, next) {
       session.user_level,
       session.company_id,
     );
-    const {
-      company_id: company,
-      branch_id: branch,
-      department_id: department,
-      position_id,
-      position,
-      senior_empid,
-    } = session || {};
+  const {
+    company_id: company,
+    branch_id: branch,
+    department_id: department,
+    position_id,
+    position,
+    senior_empid,
+    senior_plan_empid,
+  } = session || {};
 
-    const payload = {
-      id: user.id,
-      empid: user.empid,
-      position,
-      companyId: company,
-      userLevel: session.user_level,
-    };
+  const payload = {
+    id: user.id,
+    empid: user.empid,
+    position,
+    companyId: company,
+    userLevel: session.user_level,
+    seniorPlanEmpid: senior_plan_empid || null,
+  };
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
 
@@ -84,6 +86,7 @@ export async function login(req, res, next) {
       position_id,
       position,
       senior_empid,
+      senior_plan_empid,
       session,
       permissions,
     });
@@ -115,6 +118,7 @@ export async function getProfile(req, res) {
     position_id,
     position,
     senior_empid,
+    senior_plan_empid,
   } = session || {};
   res.json({
     id: req.user.id,
@@ -129,6 +133,7 @@ export async function getProfile(req, res) {
     position_id,
     position,
     senior_empid,
+    senior_plan_empid,
     session,
     permissions,
   });
@@ -168,6 +173,7 @@ export async function refresh(req, res) {
       position_id,
       position,
       senior_empid,
+      senior_plan_empid,
     } = session || {};
     const newPayload = {
       id: user.id,
@@ -175,6 +181,7 @@ export async function refresh(req, res) {
       position,
       companyId: company,
       userLevel: session.user_level,
+      seniorPlanEmpid: senior_plan_empid || null,
     };
     const newAccess = jwtService.sign(newPayload);
     const newRefresh = jwtService.signRefresh(newPayload);
@@ -203,6 +210,7 @@ export async function refresh(req, res) {
       position_id,
       position,
       senior_empid,
+      senior_plan_empid,
       session,
       permissions,
     });

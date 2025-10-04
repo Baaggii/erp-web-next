@@ -517,6 +517,7 @@ function mapEmploymentRow(row) {
     department_id,
     position_id,
     senior_empid,
+    senior_plan_empid,
     permission_list,
     ...rest
   } = row;
@@ -548,6 +549,7 @@ function mapEmploymentRow(row) {
     department_id,
     position_id,
     senior_empid,
+    senior_plan_empid,
     ...rest,
     permissions,
   };
@@ -584,6 +586,7 @@ export async function getEmploymentSessions(empid) {
         ${deptName} AS department_name,
         e.employment_position_id AS position_id,
         e.employment_senior_empid AS senior_empid,
+        e.employment_senior_plan_empid AS senior_plan_empid,
         ${empName} AS employee_name,
         e.employment_user_level AS user_level,
         ul.name AS user_level_name,
@@ -601,6 +604,7 @@ export async function getEmploymentSessions(empid) {
               e.employment_department_id, department_name,
               e.employment_position_id,
               e.employment_senior_empid,
+              e.employment_senior_plan_empid,
               employee_name, e.employment_user_level, ul.name
     ORDER BY company_name, department_name, branch_name, user_level_name`,
     [empid],
@@ -641,6 +645,7 @@ export async function getEmploymentSession(empid, companyId) {
           ${deptName} AS department_name,
           e.employment_position_id AS position_id,
           e.employment_senior_empid AS senior_empid,
+          e.employment_senior_plan_empid AS senior_plan_empid,
           ${empName} AS employee_name,
           e.employment_user_level AS user_level,
           ul.name AS user_level_name,
@@ -658,6 +663,7 @@ export async function getEmploymentSession(empid, companyId) {
                 e.employment_department_id, department_name,
                 e.employment_position_id,
                 e.employment_senior_empid,
+                e.employment_senior_plan_empid,
                 employee_name, e.employment_user_level, ul.name
        ORDER BY company_name, department_name, branch_name, user_level_name
        LIMIT 1`,

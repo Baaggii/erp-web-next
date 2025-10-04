@@ -17,6 +17,7 @@ export default function useRequestNotificationCounts(
   seniorEmpId,
   filters,
   empid,
+  seniorPlanEmpId,
 ) {
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
@@ -51,6 +52,12 @@ export default function useRequestNotificationCounts(
   }, [storageKey]);
 
   const memoFilters = useMemo(() => filters || {}, [filters]);
+  const supervisorIds = useMemo(() => {
+    const ids = [];
+    if (seniorEmpId) ids.push(String(seniorEmpId).trim());
+    if (seniorPlanEmpId) ids.push(String(seniorPlanEmpId).trim());
+    return Array.from(new Set(ids.filter(Boolean)));
+  }, [seniorEmpId, seniorPlanEmpId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -62,41 +69,45 @@ export default function useRequestNotificationCounts(
       await Promise.all(
         STATUSES.map(async (status) => {
           // Incoming requests (for seniors)
-          if (seniorEmpId) {
+          if (supervisorIds.length) {
             try {
-              const params = new URLSearchParams({
-                status,
-                senior_empid: String(seniorEmpId),
-              });
-              Object.entries(memoFilters).forEach(([k, v]) => {
-                if (v !== undefined && v !== null && v !== '') {
-                  params.append(k, v);
-                }
-              });
-              const res = await fetch(
-                `/api/pending_request?${params.toString()}`,
-                { credentials: 'include', skipLoader: true },
+              let combined = 0;
+              await Promise.all(
+                supervisorIds.map(async (id) => {
+                  const params = new URLSearchParams({
+                    status,
+                    senior_empid: id,
+                  });
+                  Object.entries(memoFilters).forEach(([k, v]) => {
+                    if (v !== undefined && v !== null && v !== '') {
+                      params.append(k, v);
+                    }
+                  });
+                  const res = await fetch(
+                    `/api/pending_request?${params.toString()}`,
+                    { credentials: 'include', skipLoader: true },
+                  );
+                  if (res.ok) {
+                    const data = await res.json().catch(() => 0);
+                    if (typeof data === 'number') combined += data;
+                    else if (Array.isArray(data)) combined += data.length;
+                    else combined += Number(data?.count ?? data?.total) || 0;
+                  }
+                }),
               );
-              let c = 0;
-              if (res.ok) {
-                const data = await res.json().catch(() => 0);
-                if (typeof data === 'number') c = data;
-                else if (Array.isArray(data)) c = data.length;
-                else c = Number(data?.count ?? data?.total) || 0;
-              }
               const seenKey = storageKey('incoming', status);
-              if (c === 0) {
+              if (combined === 0) {
                 localStorage.setItem(seenKey, '0');
                 newIncoming[status] = { count: 0, hasNew: false, newCount: 0 };
               } else {
                 const storedSeen = localStorage.getItem(seenKey);
-                const seen = storedSeen === null ? c : Number(storedSeen);
+                const seen = storedSeen === null ? combined : Number(storedSeen);
                 if (storedSeen === null) {
-                  localStorage.setItem(seenKey, String(c));
+                  localStorage.setItem(seenKey, String(combined));
                 }
-                const delta = Math.max(0, c - seen);
+                const delta = Math.max(0, combined - seen);
                 newIncoming[status] = {
-                  count: c,
+                  count: combined,
                   hasNew: delta > 0,
                   newCount: delta,
                 };
@@ -197,7 +208,7 @@ export default function useRequestNotificationCounts(
       }
       stopPolling();
     };
-  }, [seniorEmpId, memoFilters, pollingEnabled, intervalSeconds, storageKey]);
+  }, [supervisorIds, memoFilters, pollingEnabled, intervalSeconds, storageKey]);
 
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||

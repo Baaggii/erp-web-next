@@ -30,8 +30,8 @@ function createRes() {
 
 test('login prompts for company selection when companyId undefined', async () => {
   const sessions = [
-    { company_id: 0, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '' },
-    { company_id: 1, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '' },
+    { company_id: 0, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '' },
+    { company_id: 1, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '' },
   ];
   const restore = mockPoolSequential([
     [[{ id: 1, empid: 1, password: 'hashed' }]],
@@ -49,8 +49,8 @@ test('login prompts for company selection when companyId undefined', async () =>
 
 test('login succeeds when companyId is 0', async () => {
   const sessions = [
-    { company_id: 0, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '' },
-    { company_id: 1, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '' },
+    { company_id: 0, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '' },
+    { company_id: 1, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '' },
   ];
   const restore = mockPoolSequential([
     [[{ id: 1, empid: 1, password: 'hashed' }]],
@@ -64,4 +64,6 @@ test('login succeeds when companyId is 0', async () => {
   assert.equal(res.code, 200);
   assert.equal(res.body.company, 0);
   assert.equal(res.body.session.company_id, 0);
+  assert.equal(res.body.senior_plan_empid, null);
+  assert.equal(res.body.session.senior_plan_empid, null);
 });

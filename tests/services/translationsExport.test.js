@@ -47,6 +47,7 @@ test('login succeeds after exporting translations', async () => {
       position_id: 1,
       position: 'P',
       senior_empid: null,
+      senior_plan_empid: null,
       employee_name: 'Emp0',
       user_level: 1,
       user_level_name: 'Admin',

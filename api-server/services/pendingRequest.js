@@ -76,6 +76,12 @@ function normalizeReportApprovalPayload(raw) {
   return normalized;
 }
 
+function normalizeSupervisorEmpId(value) {
+  if (value === undefined || value === null) return null;
+  const trimmed = String(value).trim();
+  return trimmed ? trimmed.toUpperCase() : null;
+}
+
 export async function createRequest({
   tableName,
   recordId,
@@ -98,11 +104,22 @@ export async function createRequest({
   try {
     await conn.query('BEGIN');
     const [rows] = await conn.query(
-      'SELECT employment_senior_empid FROM tbl_employment WHERE employment_emp_id = ? LIMIT 1',
+      `SELECT employment_senior_empid, employment_senior_plan_empid
+         FROM tbl_employment
+        WHERE employment_emp_id = ?
+        LIMIT 1`,
       [empId],
     );
-    const seniorRaw = rows[0]?.employment_senior_empid;
-    const senior = seniorRaw ? String(seniorRaw).trim().toUpperCase() : null;
+    const seniorPlan = normalizeSupervisorEmpId(
+      rows[0]?.employment_senior_plan_empid,
+    );
+    const seniorLegacy = normalizeSupervisorEmpId(
+      rows[0]?.employment_senior_empid,
+    );
+    const senior =
+      requestType === 'report_approval'
+        ? seniorPlan || seniorLegacy
+        : seniorLegacy;
     const parsedInput = parseProposedData(proposedData);
     let finalProposed = parsedInput ?? proposedData;
     let originalData = null;
@@ -225,15 +242,19 @@ export async function createRequest({
          VALUES (?, ?, 'request', ?, ?, ?)`,
         [
           companyId,
-            senior,
-            requestId,
-            `Pending ${requestType} request for ${tableName}#${recordId}`,
-            normalizedEmp,
-          ],
+          senior,
+          requestId,
+          `Pending ${requestType} request for ${tableName}#${recordId}`,
+          normalizedEmp,
+        ],
       );
     }
     await conn.query('COMMIT');
-    return { request_id: requestId, senior_empid: senior };
+    return {
+      request_id: requestId,
+      senior_empid: senior,
+      senior_plan_empid: seniorPlan,
+    };
   } catch (err) {
     await conn.query('ROLLBACK');
     throw err;
@@ -395,9 +416,23 @@ export async function respondRequest(
     const req = rows[0];
     if (!req) throw new Error('Request not found');
     const responder = String(responseEmpid).trim().toUpperCase();
-    const senior = req.senior_empid
-      ? String(req.senior_empid).trim().toUpperCase()
-      : null;
+    let senior = normalizeSupervisorEmpId(req.senior_empid);
+    if (req.request_type === 'report_approval') {
+      const [seniorRows] = await conn.query(
+        `SELECT employment_senior_plan_empid, employment_senior_empid
+           FROM tbl_employment
+          WHERE employment_emp_id = ?
+          LIMIT 1`,
+        [req.emp_id],
+      );
+      const dbPlan = normalizeSupervisorEmpId(
+        seniorRows[0]?.employment_senior_plan_empid,
+      );
+      const dbLegacy = normalizeSupervisorEmpId(
+        seniorRows[0]?.employment_senior_empid,
+      );
+      senior = dbPlan || senior || dbLegacy;
+    }
     const requester = String(req.emp_id).trim().toUpperCase();
     if (responder !== requester && responder !== senior)
       throw new Error('Forbidden');

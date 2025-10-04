@@ -1637,6 +1637,7 @@ CREATE TABLE `tbl_employment` (
   `employment_date` date NOT NULL,
   `employment_user_level` int DEFAULT NULL,
   `employment_senior_empid` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `employment_senior_plan_empid` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `company_id` int NOT NULL DEFAULT '2',
   `created_by` varchar(50) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -4657,7 +4658,8 @@ ALTER TABLE `tbl_employment`
   ADD KEY `employment_branch_id` (`employment_branch_id`),
   ADD KEY `employment_department_id` (`employment_department_id`),
   ADD KEY `employment_user_level` (`employment_user_level`),
-  ADD KEY `tbl_employment_ibfk_6` (`employment_senior_empid`);
+  ADD KEY `tbl_employment_ibfk_6` (`employment_senior_empid`),
+  ADD KEY `tbl_employment_ibfk_7` (`employment_senior_plan_empid`);
 
 --
 -- Indexes for table `tbl_employment_other`
@@ -5562,7 +5564,8 @@ ALTER TABLE `tbl_employment`
   ADD CONSTRAINT `tbl_employment_ibfk_2` FOREIGN KEY (`employment_emp_id`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `tbl_employment_ibfk_3` FOREIGN KEY (`employment_branch_id`) REFERENCES `code_branches` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `tbl_employment_ibfk_5` FOREIGN KEY (`employment_user_level`) REFERENCES `user_levels` (`userlevel_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `tbl_employment_ibfk_6` FOREIGN KEY (`employment_senior_empid`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `tbl_employment_ibfk_6` FOREIGN KEY (`employment_senior_empid`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `tbl_employment_ibfk_7` FOREIGN KEY (`employment_senior_plan_empid`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `tbl_expenseorg`
