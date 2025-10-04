@@ -83,6 +83,31 @@ export default function Reports() {
     setManualParams({});
   }, [selectedProc]);
 
+  const dateParamInfo = useMemo(() => {
+    const info = {
+      hasStartParam: false,
+      hasEndParam: false,
+      managedIndices: new Set(),
+    };
+    procParams.forEach((param, index) => {
+      const name = param.toLowerCase();
+      const isStart = name.includes('start') || name.includes('from');
+      const isEnd = name.includes('end') || name.includes('to');
+      if (isStart) {
+        info.hasStartParam = true;
+        info.managedIndices.add(index);
+      }
+      if (isEnd) {
+        info.hasEndParam = true;
+        info.managedIndices.add(index);
+      }
+    });
+    return info;
+  }, [procParams]);
+
+  const { hasStartParam, hasEndParam, managedIndices } = dateParamInfo;
+  const hasDateParams = hasStartParam || hasEndParam;
+
   const autoParams = useMemo(() => {
     return procParams.map((p) => {
       const name = p.toLowerCase();
@@ -152,8 +177,12 @@ export default function Reports() {
     }
     const fmt = (d) =>
       d instanceof Date ? formatTimestamp(d).slice(0, 10) : '';
-    setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
-    setEndDate(normalizeDateInput(fmt(end), 'YYYY-MM-DD'));
+    if (hasStartParam) {
+      setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
+    }
+    if (hasEndParam) {
+      setEndDate(normalizeDateInput(fmt(end), 'YYYY-MM-DD'));
+    }
   }
 
   async function runReport() {
@@ -228,6 +257,7 @@ export default function Reports() {
         )}
         {selectedProc && (
           <div style={{ marginTop: '0.5rem' }}>
+            {hasDateParams && (
               <select
                 value={datePreset}
                 onChange={handlePresetChange}
@@ -242,6 +272,8 @@ export default function Reports() {
                 <option value="quarter">This quarter</option>
                 <option value="year">This year</option>
               </select>
+            )}
+            {hasStartParam && (
               <CustomDatePicker
                 value={startDate}
                 onChange={(v) => {
@@ -249,6 +281,8 @@ export default function Reports() {
                   setDatePreset('custom');
                 }}
               />
+            )}
+            {hasEndParam && (
               <CustomDatePicker
                 value={endDate}
                 onChange={(v) => {
@@ -257,30 +291,32 @@ export default function Reports() {
                 }}
                 style={{ marginLeft: '0.5rem' }}
               />
-              {procParams.map((p, i) => {
-                if (autoParams[i] !== null) return null;
-                const val = manualParams[p] || '';
-                return (
-                  <input
-                    key={p}
-                    type="text"
-                    placeholder={p}
-                    value={val}
-                    onChange={(e) =>
-                      setManualParams((m) => ({ ...m, [p]: e.target.value }))
-                    }
-                    style={{ marginLeft: '0.5rem' }}
-                  />
-                );
-              })}
-              <button
-                onClick={runReport}
-                style={{ marginLeft: '0.5rem' }}
-                disabled={!allParamsProvided}
-              >
-                Run
-              </button>
-            </div>
+            )}
+            {procParams.map((p, i) => {
+              if (managedIndices.has(i)) return null;
+              if (autoParams[i] !== null) return null;
+              const val = manualParams[p] || '';
+              return (
+                <input
+                  key={p}
+                  type="text"
+                  placeholder={p}
+                  value={val}
+                  onChange={(e) =>
+                    setManualParams((m) => ({ ...m, [p]: e.target.value }))
+                  }
+                  style={{ marginLeft: '0.5rem' }}
+                />
+              );
+            })}
+            <button
+              onClick={runReport}
+              style={{ marginLeft: '0.5rem' }}
+              disabled={!allParamsProvided}
+            >
+              Run
+            </button>
+          </div>
         )}
       </div>
       {result && (
