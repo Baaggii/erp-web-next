@@ -1590,8 +1590,33 @@ const TableManager = forwardRef(function TableManager({
     let payload = null;
     try {
       const res = await fetch(url, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load record');
-      payload = await res.json().catch(() => null);
+      if (!res.ok) {
+        if (txnToastEnabled) {
+          addToast(
+            `Transaction toast: Record fetch failed ${formatTxnToastPayload({
+              status: res.status,
+              statusText: res.statusText,
+            })}`,
+            'error',
+          );
+        }
+        throw new Error('Failed to load record');
+      }
+      try {
+        payload = await res.json();
+      } catch (jsonErr) {
+        if (txnToastEnabled) {
+          addToast(
+            `Transaction toast: Record fetch parse failed ${formatTxnToastPayload({
+              status: res.status,
+              statusText: res.statusText,
+              error: jsonErr?.message ?? String(jsonErr),
+            })}`,
+            'error',
+          );
+        }
+        throw jsonErr;
+      }
       if (txnToastEnabled) {
         addToast(
           `Transaction toast: Success payload ${formatTxnToastPayload(payload)}`,
@@ -1624,9 +1649,25 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const normalizedRecord = normalizeToCanonical(record, localCaseMap);
+    if (txnToastEnabled) {
+      addToast(
+        `Transaction toast: Canonical record ${formatTxnToastPayload(normalizedRecord)}`,
+        'info',
+      );
+    }
     const mergedRow = { ...normalizedRow };
     for (const [key, value] of Object.entries(normalizedRecord)) {
       mergedRow[key] = value;
+    }
+
+    if (txnToastEnabled) {
+      addToast(
+        `Transaction toast: Edit modal payload ${formatTxnToastPayload({
+          mergedRow,
+          willOpenModal: true,
+        })}`,
+        'info',
+      );
     }
 
     setEditing(mergedRow);
