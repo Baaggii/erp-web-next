@@ -5889,15 +5889,33 @@ export async function getProcedureLockCandidates(
       }
     } catch {}
     const delimiters = ['#', ':', '|', '@'];
+    let firstIdx = -1;
+    let firstDelim = null;
     for (const delim of delimiters) {
       const idx = trimmed.indexOf(delim);
-      if (idx > 0) {
-        const tablePart = trimmed.slice(0, idx).trim();
-        const idPart = trimmed.slice(idx + 1).trim();
-        if (tablePart && idPart) {
+      if (idx > 0 && (firstIdx === -1 || idx < firstIdx)) {
+        firstIdx = idx;
+        firstDelim = delim;
+      }
+    }
+    if (firstIdx > 0 && firstDelim) {
+      const tablePart = trimmed.slice(0, firstIdx).trim();
+      const idPart = trimmed.slice(firstIdx + 1).trim();
+      if (tablePart && idPart) {
+        const tokens = toArray(idPart);
+        if (tokens.length === 0) {
           upsertCandidate(tablePart, idPart, extras);
           return;
         }
+        tokens.forEach((token) => {
+          if (!token) return;
+          if (delimiters.some((delim) => token.includes(delim))) {
+            parseCandidateString(token, extras);
+            return;
+          }
+          upsertCandidate(tablePart, token, extras);
+        });
+        return;
       }
     }
   };
