@@ -3,13 +3,28 @@ import { useEffect, useRef, useState } from 'react';
 const MODULE_SELECTOR = 'script[type="module"][src]';
 const MODULE_SRC_REGEX = /<script[^>]*type=["']module["'][^>]*src=["']([^"']+)["'][^>]*>/i;
 
+function normalizeModuleUrl(url) {
+  if (!url || typeof url !== 'string') return null;
+
+  try {
+    const base = typeof window !== 'undefined' ? window.location.href : undefined;
+    const parsed = base ? new URL(url, base) : new URL(url);
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.href;
+  } catch (err) {
+    const [stripped] = url.split(/[?#]/);
+    return stripped || null;
+  }
+}
+
 function getCurrentModuleUrl() {
   if (typeof document === 'undefined') return null;
   try {
     if (typeof document.querySelector === 'function') {
       const script = document.querySelector(MODULE_SELECTOR);
       if (script && typeof script.getAttribute === 'function') {
-        return script.getAttribute('src');
+        return normalizeModuleUrl(script.getAttribute('src'));
       }
     }
   } catch (err) {
@@ -26,17 +41,21 @@ function extractModuleUrlFromHtml(html) {
 
 export default function useBuildUpdateNotice({ intervalMs = 30000 } = {}) {
   const [currentBundleUrl, setCurrentBundleUrl] = useState(() => getCurrentModuleUrl());
-  const [latestBundleUrl, setLatestBundleUrl] = useState(null);
+  const [latestBundleUrl, setLatestBundleUrl] = useState(currentBundleUrl);
   const [hasUpdateAvailable, setHasUpdateAvailable] = useState(false);
   const bundleUrlRef = useRef(currentBundleUrl);
+  const latestBundleUrlRef = useRef(currentBundleUrl);
 
   useEffect(() => {
     if (typeof window === 'undefined' || typeof fetch !== 'function') {
       return undefined;
     }
 
-    bundleUrlRef.current = getCurrentModuleUrl();
-    setCurrentBundleUrl(bundleUrlRef.current);
+    const normalizedCurrentUrl = getCurrentModuleUrl();
+    bundleUrlRef.current = normalizedCurrentUrl;
+    latestBundleUrlRef.current = normalizedCurrentUrl;
+    setCurrentBundleUrl(normalizedCurrentUrl);
+    setLatestBundleUrl(normalizedCurrentUrl);
 
     let cancelled = false;
     let intervalId = null;
@@ -47,24 +66,32 @@ export default function useBuildUpdateNotice({ intervalMs = 30000 } = {}) {
         if (!response?.ok) return;
         const html = await response.text();
         const moduleUrl = extractModuleUrlFromHtml(html);
-        if (!moduleUrl) return;
+        const normalizedModuleUrl = normalizeModuleUrl(moduleUrl);
+        if (!normalizedModuleUrl) return;
 
-        setLatestBundleUrl(moduleUrl);
+        if (latestBundleUrlRef.current !== normalizedModuleUrl) {
+          latestBundleUrlRef.current = normalizedModuleUrl;
+          if (!cancelled) {
+            setLatestBundleUrl(normalizedModuleUrl);
+          }
+        }
 
         const previousUrl = bundleUrlRef.current;
         if (!previousUrl) {
-          bundleUrlRef.current = moduleUrl;
+          bundleUrlRef.current = normalizedModuleUrl;
           if (!cancelled) {
-            setCurrentBundleUrl(moduleUrl);
+            setCurrentBundleUrl(normalizedModuleUrl);
           }
           return;
         }
 
-        if (moduleUrl !== previousUrl) {
+        if (normalizedModuleUrl !== previousUrl) {
           if (!cancelled) {
-            setHasUpdateAvailable(true);
+            setHasUpdateAvailable((prev) => (prev ? prev : true));
           }
         }
+
+        bundleUrlRef.current = normalizedModuleUrl;
       } catch (err) {
         console.warn('useBuildUpdateNotice: polling failed', err);
       }
