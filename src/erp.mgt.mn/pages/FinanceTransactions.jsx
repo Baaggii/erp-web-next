@@ -36,23 +36,44 @@ function normalizeParamName(name) {
     .replace(/[^a-z0-9]/g, '');
 }
 
-function isLikelyDateField(name) {
+function getParamName(param) {
+  if (!param) return '';
+  if (typeof param === 'string') return param;
+  if (typeof param === 'object') {
+    if (param.name) return param.name;
+    if (param.parameterName) return param.parameterName;
+  }
+  return '';
+}
+
+function getParamType(param) {
+  if (param && typeof param === 'object') {
+    if (typeof param.dataType === 'string') return param.dataType;
+    if (typeof param.type === 'string') return param.type;
+  }
+  return '';
+}
+
+function isLikelyDateField(param) {
+  const name = getParamName(param);
   const normalized = normalizeParamName(name);
   if (!normalized) return false;
   if (normalized.includes('date')) return true;
   if (DATE_PARAM_ALLOWLIST.has(normalized)) return true;
+  const paramType = getParamType(param).toLowerCase();
+  if (paramType.includes('date')) return true;
   return false;
 }
 
-function isStartDateParam(name) {
-  if (!isLikelyDateField(name)) return false;
-  const normalized = normalizeParamName(name);
+function isStartDateParam(param) {
+  if (!isLikelyDateField(param)) return false;
+  const normalized = normalizeParamName(getParamName(param));
   return normalized.includes('start') || normalized.includes('from');
 }
 
-function isEndDateParam(name) {
-  if (!isLikelyDateField(name)) return false;
-  const normalized = normalizeParamName(name);
+function isEndDateParam(param) {
+  if (!isLikelyDateField(param)) return false;
+  const normalized = normalizeParamName(getParamName(param));
   return normalized.includes('end') || normalized.includes('to');
 }
 
@@ -384,7 +405,7 @@ useEffect(() => {
       endIndices: new Set(),
     };
     procParams.forEach((param, index) => {
-      if (typeof param !== 'string') return;
+      if (!getParamName(param)) return;
       if (isStartDateParam(param)) {
         info.hasStartDateParam = true;
         info.managedIndices.add(index);
@@ -407,10 +428,11 @@ useEffect(() => {
     return procParams.map((p, index) => {
       if (startIndices.has(index)) return startDate || null;
       if (endIndices.has(index)) return endDate || null;
-      const name = typeof p === 'string' ? p.toLowerCase() : '';
-      if (name.includes('branch')) return branch || null;
-      if (name.includes('company')) return company ?? null;
-      if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
+      const normalized = normalizeParamName(getParamName(p));
+      if (normalized.includes('branch')) return branch || null;
+      if (normalized.includes('company')) return company ?? null;
+      if (normalized.includes('user') || normalized.includes('emp'))
+        return user?.empid ?? null;
       return null;
     });
   }, [procParams, startIndices, endIndices, startDate, endDate, company, branch, user]);
@@ -418,7 +440,8 @@ useEffect(() => {
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
-      return auto ?? manualParams[p] ?? null;
+      const key = getParamName(p) || String(i);
+      return auto ?? manualParams[key] ?? null;
     });
   }, [procParams, autoParams, manualParams]);
 
@@ -486,7 +509,8 @@ useEffect(() => {
       return;
     }
     const paramMap = procParams.reduce((acc, p, i) => {
-      acc[p] = finalParams[i];
+      const key = getParamName(p) || String(i);
+      acc[key] = finalParams[i];
       return acc;
     }, {});
     const label = getProcLabel(selectedProc);
@@ -621,15 +645,17 @@ useEffect(() => {
                     {procParams.map((p, i) => {
                       if (managedIndices.has(i)) return null;
                       if (autoParams[i] !== null) return null;
-                      const val = manualParams[p] || '';
+                      const name = getParamName(p);
+                      const key = name || String(i);
+                      const val = manualParams[key] || '';
                       return (
                         <input
-                          key={p}
+                          key={key}
                           type="text"
-                          placeholder={p}
+                          placeholder={name}
                           value={val}
                           onChange={(e) =>
-                            setManualParams((m) => ({ ...m, [p]: e.target.value }))
+                            setManualParams((m) => ({ ...m, [key]: e.target.value }))
                           }
                           style={{ marginLeft: '0.5rem' }}
                         />
