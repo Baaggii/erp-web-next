@@ -388,9 +388,15 @@ export default function RequestsPage() {
   }
 
   useEffect(() => {
+    if (!dateFrom || !dateTo) return;
+    if (activeTab === 'incoming' || activeTab === 'outgoing') {
+      markSeen();
+    }
+  }, [activeTab, dateFrom, dateTo, markSeen]);
+
+  useEffect(() => {
     if (activeTab !== 'incoming' || !seniorEmpId || !dateFrom || !dateTo)
       return;
-    markSeen();
     async function load() {
       debugLog('Loading pending requests');
       setIncomingLoading(true);
@@ -428,7 +434,6 @@ export default function RequestsPage() {
       load();
     }, [
       activeTab,
-      markSeen,
       seniorEmpId,
       status,
       requestedEmpid,
@@ -444,7 +449,6 @@ export default function RequestsPage() {
 
   useEffect(() => {
     if (activeTab !== 'outgoing' || !dateFrom || !dateTo) return;
-    markSeen();
     async function load() {
       setOutgoingLoading(true);
       setOutgoingError(null);
@@ -478,7 +482,6 @@ export default function RequestsPage() {
       load();
     }, [
       activeTab,
-      markSeen,
       user?.empid,
       status,
       tableName,
