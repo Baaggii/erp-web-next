@@ -1294,7 +1294,7 @@ export default function Reports() {
         <details
           key={`${listType}-${bucket.tableName}`}
           style={{ margin: '0.25rem 0' }}
-          open={shouldDefaultOpen}
+          defaultOpen={shouldDefaultOpen}
         >
           <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>
             {summary}
