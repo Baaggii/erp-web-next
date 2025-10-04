@@ -113,10 +113,13 @@ const RowFormModal = function RowFormModal({
   }, []);
   const headerSet = new Set(headerFields);
   const footerSet = new Set(footerFields);
-  const userIdSet = new Set(userIdFields);
-  const branchIdSet = new Set(branchIdFields);
-  const departmentIdSet = new Set(departmentIdFields);
-  const companyIdSet = new Set(companyIdFields);
+  const userIdSet = React.useMemo(() => new Set(userIdFields || []), [userIdFields]);
+  const branchIdSet = React.useMemo(() => new Set(branchIdFields || []), [branchIdFields]);
+  const departmentIdSet = React.useMemo(
+    () => new Set(departmentIdFields || []),
+    [departmentIdFields],
+  );
+  const companyIdSet = React.useMemo(() => new Set(companyIdFields || []), [companyIdFields]);
   const requiredFieldSet = React.useMemo(
     () => new Set((requiredFields || []).map((f) => f.toLowerCase())),
     [requiredFields],
@@ -726,7 +729,23 @@ const RowFormModal = function RowFormModal({
     inputRefs.current = {};
     setErrors({});
     setFormValuesWithGenerated(() => vals, { notify: false });
-  }, [row, visible, user, company, branch, department, setFormValuesWithGenerated]);
+  }, [
+    row,
+    visible,
+    user,
+    company,
+    branch,
+    department,
+    columns,
+    placeholders,
+    defaultValues,
+    dateField,
+    userIdSet,
+    branchIdSet,
+    departmentIdSet,
+    companyIdSet,
+    setFormValuesWithGenerated,
+  ]);
 
   function resizeInputs() {
     Object.values({ ...inputRefs.current, ...readonlyRefs.current }).forEach((el) => {
