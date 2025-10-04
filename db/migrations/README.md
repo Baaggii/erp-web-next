@@ -5,6 +5,7 @@ Legacy migrations have been moved to the `archive/` directory. New migrations sh
 ## Current migrations
 
 - `2025-10-05_employment_plan_senior.sql`: Adds `employment_senior_plan_empid` to `tbl_employment`, indexes it, and seeds the column from `employment_senior_empid` for existing records.
+- `2025-10-16_pending_request_record_id_varchar.sql`: Converts `pending_request.record_id` and `user_activity_log.record_id` to `VARCHAR(191)` and re-applies related indexes/constraints.
 
 No migrations are pending. The baseline schema now mirrors the production snapshot in `db/mgtmn_erp_db.sql` (generated 2025-10-03) so fresh databases already contain the identifier columns and audit metadata that earlier scripts added.
 
