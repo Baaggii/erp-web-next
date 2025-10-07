@@ -251,7 +251,7 @@ export async function createRequest({
   const conn = await pool.getConnection();
   try {
     await conn.query('BEGIN');
-    const [employmentRows] = await conn.query(
+    const [rows] = await conn.query(
       `SELECT employment_senior_empid, employment_senior_plan_empid
          FROM tbl_employment
         WHERE employment_emp_id = ?
@@ -259,10 +259,10 @@ export async function createRequest({
       [empId],
     );
     const seniorPlan = normalizeSupervisorEmpId(
-      employmentRows[0]?.employment_senior_plan_empid,
+      rows[0]?.employment_senior_plan_empid,
     );
     const seniorLegacy = normalizeSupervisorEmpId(
-      employmentRows[0]?.employment_senior_empid,
+      rows[0]?.employment_senior_empid,
     );
     const senior =
       requestType === 'report_approval'
@@ -555,7 +555,7 @@ export async function listRequests(filters) {
   }
 
   const result = await Promise.all(
-    requestRows.map(async (row) => {
+    rows.map(async (row) => {
       const parsed = parseProposedData(row.proposed_data);
       let original = parseProposedData(row.original_data);
       if (row.request_type === 'report_approval') {
@@ -682,11 +682,11 @@ export async function respondRequest(
   const conn = await pool.getConnection();
   try {
     await conn.query('BEGIN');
-    const [requestRows] = await conn.query(
+    const [rows] = await conn.query(
       'SELECT * FROM pending_request WHERE request_id = ?',
       [id],
     );
-    const req = requestRows[0];
+    const req = rows[0];
     if (!req) throw new Error('Request not found');
     const responder = String(responseEmpid).trim().toUpperCase();
     let senior = normalizeSupervisorEmpId(req.senior_empid);
