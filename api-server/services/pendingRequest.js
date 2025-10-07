@@ -495,12 +495,8 @@ export async function listRequests(filters) {
   const limit = Number(per_page) > 0 ? Number(per_page) : 2;
   const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
 
-  const [idRows] = await pool.query(
-    `SELECT request_id
-       FROM pending_request
-       ${where}
-      ORDER BY ${dateColumn} DESC, request_id DESC
-      LIMIT ? OFFSET ?`,
+  const [rows] = await pool.query(
+    `SELECT *, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt FROM pending_request ${where} ORDER BY ${dateColumn} DESC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
 
