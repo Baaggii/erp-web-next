@@ -423,6 +423,7 @@ export function buildValidationPrompt({ candidate, base, lang, metadata }) {
   const metaLine = metaParts.length ? metaParts.join(', ') : 'none provided';
   return [
     'You are a meticulous translation validator. Determine whether the proposed translation is a faithful rendering of the base text, uses the requested target language, respects placeholders, and fits the supplied module/context metadata.',
+    'Reject translations that leave the text in the source language, that mix in Latin characters when the target language uses Cyrillic, or that read as gibberish. Confirm that Mongolian ("mn") results are natural-sounding Mongolian written in Cyrillic.',
     'Respond ONLY with JSON using the shape {"valid":boolean,"reason":string,"languageConfidence":number}. If invalid, explain why in "reason" in English. If valid, set reason to an empty string.',
     `Base text: """${base ?? ''}"""`,
     `Proposed translation: """${candidate ?? ''}"""`,
