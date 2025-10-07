@@ -1442,11 +1442,27 @@ export default function ERPLayout() {
                 return prevSteps;
               }
 
-              const fallbackSelectorRaw = findVisibleFallbackSelector(currentStep);
-              const fallbackSelector =
-                typeof fallbackSelectorRaw === "string"
-                  ? fallbackSelectorRaw.trim()
-                  : "";
+              const fallbackSelectorInfo = findVisibleFallbackSelector(currentStep);
+              const fallbackSelectorCandidates = Array.isArray(
+                fallbackSelectorInfo?.highlightSelectors,
+              )
+                ? fallbackSelectorInfo.highlightSelectors
+                    .map((value) => (typeof value === "string" ? value.trim() : ""))
+                    .filter(Boolean)
+                : [];
+              const fallbackSelectorPrimaryCandidate = fallbackSelectorCandidates[0];
+              const fallbackSelector = fallbackSelectorPrimaryCandidate
+                ? fallbackSelectorPrimaryCandidate
+                : typeof fallbackSelectorInfo === "string"
+                  ? fallbackSelectorInfo.trim()
+                  : typeof fallbackSelectorInfo?.selector === "string"
+                    ? fallbackSelectorInfo.selector.trim()
+                    : "";
+              const fallbackHighlightSelectors = fallbackSelectorCandidates.length
+                ? fallbackSelectorCandidates
+                : fallbackSelector
+                  ? [fallbackSelector]
+                  : [];
               if (!fallbackSelector) {
                 return prevSteps;
               }
@@ -1494,11 +1510,12 @@ export default function ERPLayout() {
               }
               const normalizedOriginalSelectors = Array.from(combinedSelectorsSet);
 
+              const fallbackHighlightSet = new Set(fallbackHighlightSelectors);
               const fallbackWatchSelectors = [trimmedTarget, trimmedSelector]
                 .map((value) => (typeof value === "string" ? value.trim() : ""))
                 .filter((value, idx, arr) => {
                   if (!value) return false;
-                  if (value === fallbackSelector) return false;
+                  if (fallbackHighlightSet.has(value)) return false;
                   return arr.indexOf(value) === idx;
                 });
 
@@ -1734,14 +1751,46 @@ export default function ERPLayout() {
                       updatedPauseStep.missingTargetPauseWatchSelectors = normalizedWatch;
                       mutated = true;
                     }
+                    const normalizedPauseSelectors = Array.isArray(
+                      updatedPauseStep.selectors,
+                    )
+                      ? updatedPauseStep.selectors
+                          .map((value) =>
+                            typeof value === "string" ? value.trim() : "",
+                          )
+                          .filter(Boolean)
+                      : [];
+                    const normalizedPauseHighlights = Array.isArray(
+                      updatedPauseStep.highlightSelectors,
+                    )
+                      ? updatedPauseStep.highlightSelectors
+                          .map((value) =>
+                            typeof value === "string" ? value.trim() : "",
+                          )
+                          .filter(Boolean)
+                      : [];
+                    const selectorsChanged =
+                      normalizedPauseSelectors.length !==
+                        fallbackHighlightSelectors.length ||
+                      normalizedPauseSelectors.some(
+                        (value, idx) => value !== fallbackHighlightSelectors[idx],
+                      );
+                    const highlightChanged =
+                      normalizedPauseHighlights.length !==
+                        fallbackHighlightSelectors.length ||
+                      normalizedPauseHighlights.some(
+                        (value, idx) => value !== fallbackHighlightSelectors[idx],
+                      );
                     if (
                       updatedPauseStep.target !== fallbackSelector ||
-                      updatedPauseStep.selector !== fallbackSelector
+                      updatedPauseStep.selector !== fallbackSelector ||
+                      selectorsChanged ||
+                      highlightChanged
                     ) {
                       updatedPauseStep.target = fallbackSelector;
                       updatedPauseStep.selector = fallbackSelector;
-                      updatedPauseStep.selectors = [fallbackSelector];
-                      updatedPauseStep.highlightSelectors = [fallbackSelector];
+                      updatedPauseStep.selectors = [...fallbackHighlightSelectors];
+                      updatedPauseStep.highlightSelectors = [...fallbackHighlightSelectors];
                       mutated = true;
                     }
                     const previousMarkerValue =
@@ -1884,8 +1933,8 @@ export default function ERPLayout() {
                 id: pauseStepId,
                 target: fallbackSelector,
                 selector: fallbackSelector,
-                selectors: [fallbackSelector],
-                highlightSelectors: [fallbackSelector],
+                selectors: [...fallbackHighlightSelectors],
+                highlightSelectors: [...fallbackHighlightSelectors],
                 content: placeholderContent,
                 missingTarget: combinedMessage,
                 missingTargetPauseStep: true,

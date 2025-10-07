@@ -67,7 +67,9 @@ test("findVisibleFallbackSelector returns first visible highlight selector", () 
 
   const result = findVisibleFallbackSelector(step, query);
 
-  assert.equal(result, "#fallback");
+  assert.equal(result.selector, "#fallback");
+  assert.deepEqual(result.highlightSelectors, ["#fallback"]);
+  assert.equal(result.derivedFrom, "highlight");
 });
 
 test("findVisibleFallbackSelector skips hidden targets and pauses on visible parent", () => {
@@ -99,5 +101,38 @@ test("findVisibleFallbackSelector skips hidden targets and pauses on visible par
 
   const result = findVisibleFallbackSelector(step, query);
 
-  assert.equal(result, "#alpha");
+  assert.equal(result.selector, "#alpha");
+  assert.equal(result.derivedFrom, "selector-ancestor");
+  assert.deepEqual(result.highlightSelectors, ["#alpha"]);
+});
+
+test("findVisibleFallbackSelector walks DOM ancestry for hidden target", () => {
+  const target = {
+    offsetParent: null,
+    offsetWidth: 0,
+    offsetHeight: 0,
+    getBoundingClientRect: () => ({ width: 0, height: 0 }),
+    parentElement: null,
+  };
+  const ancestor = {
+    offsetParent: {},
+    offsetWidth: 200,
+    offsetHeight: 40,
+    getBoundingClientRect: () => ({ width: 200, height: 40 }),
+    tagName: "SECTION",
+    classList: [],
+    parentElement: null,
+  };
+  target.parentElement = ancestor;
+  const step = { target: "#alpha" };
+  const elements = {
+    "#alpha": target,
+  };
+  const query = (selector) => elements[selector] || null;
+
+  const result = findVisibleFallbackSelector(step, query);
+
+  assert.equal(result.selector, "section");
+  assert.equal(result.derivedFrom, "dom-ancestor");
+  assert.deepEqual(result.highlightSelectors, ["section"]);
 });
