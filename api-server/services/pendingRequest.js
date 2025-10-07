@@ -251,7 +251,7 @@ export async function createRequest({
   const conn = await pool.getConnection();
   try {
     await conn.query('BEGIN');
-    const [rows] = await conn.query(
+    const [employmentRows] = await conn.query(
       `SELECT employment_senior_empid, employment_senior_plan_empid
          FROM tbl_employment
         WHERE employment_emp_id = ?
@@ -259,10 +259,10 @@ export async function createRequest({
       [empId],
     );
     const seniorPlan = normalizeSupervisorEmpId(
-      rows[0]?.employment_senior_plan_empid,
+      employmentRows[0]?.employment_senior_plan_empid,
     );
     const seniorLegacy = normalizeSupervisorEmpId(
-      rows[0]?.employment_senior_empid,
+      employmentRows[0]?.employment_senior_empid,
     );
     const senior =
       requestType === 'report_approval'
@@ -423,65 +423,118 @@ export async function listRequests(filters) {
     date_field = 'created',
     page = 1,
     per_page = 2,
+    count_only = false,
   } = filters || {};
+
+  const countOnly =
+    typeof count_only === 'string'
+      ? ['1', 'true', 'yes'].includes(count_only.trim().toLowerCase())
+      : Boolean(count_only);
 
   const conditions = [];
   const params = [];
 
-  if (status) {
-    conditions.push('LOWER(TRIM(status)) = ?');
-    params.push(String(status).trim().toLowerCase());
+  const normalizedStatus =
+    typeof status === 'string' ? status.trim().toLowerCase() : null;
+  if (normalizedStatus) {
+    conditions.push('status = ?');
+    params.push(normalizedStatus);
   }
-  if (senior_empid) {
-    conditions.push('UPPER(TRIM(senior_empid)) = ?');
-    params.push(String(senior_empid).trim().toUpperCase());
+
+  const normalizedSenior = normalizeSupervisorEmpId(senior_empid);
+  if (normalizedSenior) {
+    conditions.push('senior_empid = ?');
+    params.push(normalizedSenior);
   }
-  if (requested_empid) {
-    conditions.push('UPPER(TRIM(emp_id)) = ?');
-    params.push(String(requested_empid).trim().toUpperCase());
+
+  const normalizedRequester = normalizeSupervisorEmpId(requested_empid);
+  if (normalizedRequester) {
+    conditions.push('emp_id = ?');
+    params.push(normalizedRequester);
   }
+
   if (table_name) {
     conditions.push('table_name = ?');
     params.push(table_name);
   }
-  if (request_type) {
+
+  const normalizedRequestType =
+    typeof request_type === 'string' ? request_type.trim() : null;
+  if (normalizedRequestType) {
     conditions.push('request_type = ?');
-    params.push(request_type);
+    params.push(normalizedRequestType);
   }
+
   const dateColumn =
     date_field === 'responded' ? 'responded_at' : 'created_at';
-  if (date_from || date_to) {
-    if (date_from && date_to) {
-      conditions.push(`DATE(${dateColumn}) BETWEEN ? AND ?`);
-      params.push(date_from, date_to);
-    } else {
-      if (date_from) {
-        conditions.push(`${dateColumn} >= ?`);
-        params.push(date_from);
-      }
-      if (date_to) {
-        conditions.push(`${dateColumn} < DATE_ADD(?, INTERVAL 1 DAY)`);
-        params.push(date_to);
-      }
-    }
+
+  const normalizedDateFrom =
+    typeof date_from === 'string' ? date_from.trim() : date_from;
+  const normalizedDateTo = typeof date_to === 'string' ? date_to.trim() : date_to;
+
+  if (normalizedDateFrom) {
+    conditions.push(`${dateColumn} >= ?`);
+    params.push(normalizedDateFrom);
+  }
+  if (normalizedDateTo) {
+    conditions.push(`${dateColumn} < DATE_ADD(?, INTERVAL 1 DAY)`);
+    params.push(normalizedDateTo);
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const limit = Number(per_page) > 0 ? Number(per_page) : 2;
-  const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
-
   const [countRows] = await pool.query(
     `SELECT COUNT(*) as count FROM pending_request ${where}`,
     params,
   );
   const total = countRows[0]?.count || 0;
 
-  const [rows] = await pool.query(
-    `SELECT *, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt FROM pending_request ${where} ORDER BY ${dateColumn} DESC LIMIT ? OFFSET ?`,
+  if (countOnly) {
+    return { rows: [], total };
+  }
+
+  const limit = Number(per_page) > 0 ? Number(per_page) : 2;
+  const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
+
+  const [idRows] = await pool.query(
+    `SELECT request_id
+       FROM pending_request
+       ${where}
+      ORDER BY ${dateColumn} DESC, request_id DESC
+      LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
 
-  const approvalRequestIds = rows
+  const requestIds = idRows
+    .map((row) => row?.request_id)
+    .filter((id) => id !== null && id !== undefined);
+
+  if (!requestIds.length) {
+    return { rows: [], total };
+  }
+
+  const placeholders = requestIds.map(() => '?').join(', ');
+  const [requestRows] = await pool.query(
+    `SELECT *,
+            DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt,
+            DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt
+       FROM pending_request
+      WHERE request_id IN (${placeholders})`,
+    requestIds,
+  );
+
+  const orderLookup = new Map();
+  requestIds.forEach((id, index) => {
+    orderLookup.set(String(id), index);
+  });
+
+  requestRows.sort((a, b) => {
+    const aIdx = orderLookup.get(String(a.request_id));
+    const bIdx = orderLookup.get(String(b.request_id));
+    if (aIdx === undefined || bIdx === undefined) return 0;
+    return aIdx - bIdx;
+  });
+
+  const approvalRequestIds = requestRows
     .filter((row) => row.request_type === 'report_approval')
     .map((row) => row.request_id)
     .filter((id) => id !== null && id !== undefined);
@@ -506,7 +559,7 @@ export async function listRequests(filters) {
   }
 
   const result = await Promise.all(
-    rows.map(async (row) => {
+    requestRows.map(async (row) => {
       const parsed = parseProposedData(row.proposed_data);
       let original = parseProposedData(row.original_data);
       if (row.request_type === 'report_approval') {
@@ -593,7 +646,17 @@ export async function listRequests(filters) {
 
 export async function listRequestsByEmp(
   emp_id,
-  { status, table_name, request_type, date_from, date_to, date_field, page, per_page } = {},
+  {
+    status,
+    table_name,
+    request_type,
+    date_from,
+    date_to,
+    date_field,
+    page,
+    per_page,
+    count_only,
+  } = {},
 ) {
   return listRequests({
     requested_empid: emp_id,
@@ -605,6 +668,7 @@ export async function listRequestsByEmp(
     date_field,
     page,
     per_page,
+    count_only,
   });
 }
 
@@ -622,11 +686,11 @@ export async function respondRequest(
   const conn = await pool.getConnection();
   try {
     await conn.query('BEGIN');
-    const [rows] = await conn.query(
+    const [requestRows] = await conn.query(
       'SELECT * FROM pending_request WHERE request_id = ?',
       [id],
     );
-    const req = rows[0];
+    const req = requestRows[0];
     if (!req) throw new Error('Request not found');
     const responder = String(responseEmpid).trim().toUpperCase();
     let senior = normalizeSupervisorEmpId(req.senior_empid);
