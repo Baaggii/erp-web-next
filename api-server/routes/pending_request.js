@@ -67,7 +67,12 @@ router.get('/outgoing', requireAuth, async (req, res, next) => {
       date_field,
       page,
       per_page,
+      count_only,
     } = req.query;
+    const normalizedCountOnly =
+      typeof count_only === 'string'
+        ? ['1', 'true', 'yes'].includes(count_only.trim().toLowerCase())
+        : Boolean(count_only);
     const { rows, total } = await listRequestsByEmp(req.user.empid, {
       status,
       table_name,
@@ -77,6 +82,7 @@ router.get('/outgoing', requireAuth, async (req, res, next) => {
       date_field,
       page,
       per_page,
+      count_only: normalizedCountOnly,
     });
     const pageNum = Number(page) > 0 ? Number(page) : 1;
     const perPageNum = Number(per_page) > 0 ? Number(per_page) : 2;
@@ -98,9 +104,14 @@ router.get('/', requireAuth, async (req, res, next) => {
       date_field,
       page,
       per_page,
+      count_only,
     } = req.query;
 
     const empid = String(req.user.empid).trim().toUpperCase();
+    const normalizedCountOnly =
+      typeof count_only === 'string'
+        ? ['1', 'true', 'yes'].includes(count_only.trim().toLowerCase())
+        : Boolean(count_only);
 
     const { rows, total } = await listRequests({
       status,
@@ -113,6 +124,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       date_field,
       page,
       per_page,
+      count_only: normalizedCountOnly,
     });
     const pageNum = Number(page) > 0 ? Number(page) : 1;
     const perPageNum = Number(per_page) > 0 ? Number(per_page) : 2;
