@@ -411,19 +411,6 @@ export async function createRequest({
   }
 }
 
-function normalizeDateInput(value, type = 'start') {
-  if (!value) return null;
-  let trimmed = String(value).trim();
-  if (!trimmed) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    return type === 'start' ? `${trimmed} 00:00:00` : trimmed;
-  }
-  if (trimmed.includes('T')) {
-    trimmed = trimmed.replace('T', ' ').replace(/Z$/, '');
-  }
-  return trimmed;
-}
-
 export async function listRequests(filters) {
   const {
     status,
@@ -470,21 +457,17 @@ export async function listRequests(filters) {
   const dateColumn =
     date_field === 'responded' ? 'responded_at' : 'created_at';
   if (date_from || date_to) {
-    const normalizedFrom = normalizeDateInput(date_from, 'start');
-    const normalizedTo = normalizeDateInput(date_to, 'end');
-    if (date_from && date_to && normalizedFrom && normalizedTo) {
-      conditions.push(`${dateColumn} >= ?`);
-      params.push(normalizedFrom);
-      conditions.push(`${dateColumn} < DATE_ADD(?, INTERVAL 1 DAY)`);
-      params.push(normalizedTo);
+    if (date_from && date_to) {
+      conditions.push(`DATE(${dateColumn}) BETWEEN ? AND ?`);
+      params.push(date_from, date_to);
     } else {
-      if (normalizedFrom) {
+      if (date_from) {
         conditions.push(`${dateColumn} >= ?`);
-        params.push(normalizedFrom);
+        params.push(date_from);
       }
-      if (normalizedTo) {
+      if (date_to) {
         conditions.push(`${dateColumn} < DATE_ADD(?, INTERVAL 1 DAY)`);
-        params.push(normalizedTo);
+        params.push(date_to);
       }
     }
   }

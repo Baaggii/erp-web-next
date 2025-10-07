@@ -250,12 +250,11 @@ await test('listRequests filters by date range', async () => {
   };
   await service.listRequests({ date_from: '2024-01-01', date_to: '2024-01-31' });
   db.pool.query = origQuery;
-  assert.ok(queries[1].sql.includes('created_at >= ?'));
-  assert.ok(queries[1].sql.includes('created_at < DATE_ADD(?, INTERVAL 1 DAY)'));
+  assert.ok(queries[1].sql.includes('DATE(created_at) BETWEEN ? AND ?'));
   assert.ok(queries[1].sql.includes('LIMIT ? OFFSET ?'));
   assert.deepEqual(
     queries[1].params,
-    ['2024-01-01 00:00:00', '2024-01-31', 2, 0],
+    ['2024-01-01', '2024-01-31', 2, 0],
   );
 });
 
@@ -271,11 +270,10 @@ await test('listRequests returns requests from entire day when date range is sin
   db.pool.query = origQuery;
   assert.equal(result.rows.length, 1);
   assert.equal(result.rows[0].request_id, 1);
-  assert.ok(queries[1].sql.includes('created_at >= ?'));
-  assert.ok(queries[1].sql.includes('created_at < DATE_ADD(?, INTERVAL 1 DAY)'));
+  assert.ok(queries[1].sql.includes('DATE(created_at) BETWEEN ? AND ?'));
   assert.deepEqual(
     queries[1].params,
-    ['2024-06-06 00:00:00', '2024-06-06', 2, 0],
+    ['2024-06-06', '2024-06-06', 2, 0],
   );
 });
 
