@@ -1140,6 +1140,8 @@ export default function Reports() {
         'excluded_transactions',
         'lockCandidates',
         'lock_candidates',
+        'lockBundle',
+        'lock_bundle',
         'rows',
         'columns',
         'fieldTypes',
@@ -1169,13 +1171,21 @@ export default function Reports() {
         if (visited.has(value)) return;
         visited.add(value);
         const tableCandidate =
-          value.table || value.tableName || value.table_name || fallbackTable || '';
+          value.table ||
+          value.tableName ||
+          value.table_name ||
+          value.lock_table ||
+          value.lockTable ||
+          fallbackTable ||
+          '';
         const rawId =
           value.recordId ??
           value.record_id ??
           value.id ??
           value.recordID ??
-          value.RecordId;
+          value.RecordId ??
+          value.lock_record_id ??
+          value.lockRecordId;
         if (
           tableCandidate &&
           rawId !== undefined &&
@@ -1191,7 +1201,9 @@ export default function Reports() {
           value.recordIDs ||
           value.ids ||
           value.items ||
-          value.records;
+          value.records ||
+          value.lock_record_ids ||
+          value.lockRecordIds;
         if (tableCandidate && Array.isArray(idList) && idList.length) {
           idList.forEach((item) => {
             if (item && typeof item === 'object') {
@@ -1250,22 +1262,41 @@ export default function Reports() {
     };
 
     const paramEntries = Object.entries(meta.parameters || {});
-    const transactions = collectTransactionsFromSource(
-      meta.transactions ??
-        meta.transaction_list ??
-        meta.transactionList ??
-        meta.transaction_map ??
-        meta.transactionMap ??
-        meta.lockCandidates ??
-        meta.lock_candidates ??
-        null,
-    );
-    const excludedTransactions = collectTransactionsFromSource(
-      meta.excludedTransactions ??
-        meta.excluded_transactions ??
-        meta.excludedTransactionList ??
-        meta.excluded_transaction_list ??
-        null,
+    const transactionSources = [
+      meta.transactions,
+      meta.transaction_list,
+      meta.transactionList,
+      meta.transaction_map,
+      meta.transactionMap,
+      meta.lockCandidates,
+      meta.lock_candidates,
+      meta.lockBundle,
+      meta.lock_bundle,
+      meta.lockBundle?.locks,
+      meta.lock_bundle?.locks,
+      meta.lockBundle?.records,
+      meta.lock_bundle?.records,
+      meta.lockBundle?.items,
+      meta.lock_bundle?.items,
+    ];
+    const transactions = transactionSources.reduce((list, source) => {
+      collectTransactionsFromSource(source).forEach((item) => list.push(item));
+      return list;
+    }, []);
+    const excludedTransactionSources = [
+      meta.excludedTransactions,
+      meta.excluded_transactions,
+      meta.excludedTransactionList,
+      meta.excluded_transaction_list,
+      meta.excludedLockBundle,
+      meta.excluded_lock_bundle,
+    ];
+    const excludedTransactions = excludedTransactionSources.reduce(
+      (list, source) => {
+        collectTransactionsFromSource(source).forEach((item) => list.push(item));
+        return list;
+      },
+      [],
     );
     const rowCount =
       typeof meta.snapshot?.rowCount === 'number'
@@ -1304,15 +1335,32 @@ export default function Reports() {
     function normalizeTransaction(tx) {
       if (!tx || typeof tx !== 'object') return null;
       const tableName =
-        tx.table || tx.tableName || tx.table_name || '—';
+        tx.table ||
+        tx.tableName ||
+        tx.table_name ||
+        tx.lock_table ||
+        tx.lockTable ||
+        '—';
       const rawId =
-        tx.recordId ?? tx.record_id ?? tx.id ?? tx.recordID ?? tx.RecordId;
+        tx.recordId ??
+        tx.record_id ??
+        tx.id ??
+        tx.recordID ??
+        tx.RecordId ??
+        tx.lock_record_id ??
+        tx.lockRecordId;
       if (!tableName || rawId === undefined || rawId === null) return null;
       const recordId = String(rawId);
       const key = `${tableName}#${recordId}`;
       const label = tx.label || tx.description || tx.note || '';
       const reason =
-        tx.reason || tx.justification || tx.explanation || tx.exclude_reason || '';
+        tx.reason ||
+        tx.justification ||
+        tx.explanation ||
+        tx.exclude_reason ||
+        tx.lock_reason ||
+        tx.lockReason ||
+        '';
       const snapshot =
         tx.snapshot && typeof tx.snapshot === 'object' ? tx.snapshot : null;
       const snapshotColumns = Array.isArray(tx.snapshotColumns)
@@ -1355,14 +1403,26 @@ export default function Reports() {
         .sort((a, b) => String(a.tableName).localeCompare(String(b.tableName)));
     }
 
-    const normalizedTransactions = transactions
-      .map((tx) => normalizeTransaction(tx))
-      .filter(Boolean);
-    const normalizedExcluded = excludedTransactions
-      .map((tx) => normalizeTransaction(tx))
-      .filter(Boolean);
+    const normalizeUnique = (list) => {
+      const map = new Map();
+      list.forEach((tx) => {
+        const normalized = normalizeTransaction(tx);
+        if (!normalized) return;
+        map.set(normalized.key, normalized);
+      });
+      return Array.from(map.values());
+    };
+
+    const normalizedTransactions = normalizeUnique(transactions);
+    const normalizedExcluded = normalizeUnique(excludedTransactions);
     const transactionBuckets = buildBuckets(normalizedTransactions);
     const excludedBuckets = buildBuckets(normalizedExcluded);
+    const hasSelectedDetails = transactionBuckets.some((bucket) =>
+      bucket.records.some((record) => record?.label),
+    );
+    const hasExcludedDetails = excludedBuckets.some((bucket) =>
+      bucket.records.some((record) => record?.label),
+    );
 
     const renderExpandedContent = (record) => {
       if (record.snapshot && typeof record.snapshot === 'object') {
@@ -1414,7 +1474,7 @@ export default function Reports() {
       );
     };
 
-    const renderBucket = (bucket, listType) => {
+    const renderBucket = (bucket, listType, showDetailsColumn) => {
       const count = bucket.records.length;
       const summary = `${bucket.tableName} — ${count} transaction${
         count === 1 ? '' : 's'
@@ -1432,48 +1492,181 @@ export default function Reports() {
           <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>
             {summary}
           </summary>
-          <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
-            {bucket.records.map((record) => {
-              const detailKey = `${requestId ?? 'meta'}|${listType}|${record.key}`;
-              const isExpanded = Boolean(expandedTransactionDetails[detailKey]);
-              const hasSnapshot = Boolean(record.snapshot);
-              const hasRequestContext =
-                requestId !== null && requestId !== undefined;
-              const canToggle = hasSnapshot || hasRequestContext;
-              return (
-                <li key={detailKey} style={{ margin: '0.5rem 0' }}>
-                  <div>
-                    <span style={{ fontWeight: 'bold' }}>#{record.recordId}</span>
-                    {record.label && ` — ${record.label}`}
-                  </div>
-                  {record.reason && (
-                    <div style={{ marginTop: '0.25rem' }}>
-                      {listType === 'excluded' ? 'Reason: ' : ''}
-                      {record.reason}
-                    </div>
+          <div style={{ margin: '0.25rem 0 0', overflowX: 'auto' }}>
+            <table
+              style={{
+                borderCollapse: 'collapse',
+                width: '100%',
+                minWidth: showDetailsColumn ? '40rem' : '32rem',
+              }}
+            >
+              <thead style={{ background: '#e5e7eb' }}>
+                <tr>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      width: '4rem',
+                    }}
+                  >
+                    Lock
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Record ID
+                  </th>
+                  {showDetailsColumn && (
+                    <th
+                      style={{
+                        textAlign: 'left',
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                      }}
+                    >
+                      Details
+                    </th>
                   )}
-                  {canToggle && (
-                    <div style={{ marginTop: '0.25rem' }}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleTransactionDetailsToggle(
-                            detailKey,
-                            hasRequestContext ? requestId : null,
-                            !hasSnapshot,
-                          )
-                        }
-                        style={{ fontSize: '0.85rem' }}
-                      >
-                        {isExpanded ? 'Hide details' : 'View details'}
-                      </button>
-                    </div>
-                  )}
-                  {isExpanded && renderExpandedContent(record)}
-                </li>
-              );
-            })}
-          </ul>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      minWidth: '12rem',
+                    }}
+                  >
+                    Status
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      minWidth: '12rem',
+                    }}
+                  >
+                    Snapshot
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {bucket.records.map((record, idx) => {
+                  const detailKey = `${requestId ?? 'meta'}|${listType}|${record.key}`;
+                  const isExpanded = Boolean(expandedTransactionDetails[detailKey]);
+                  const hasSnapshot = Boolean(record.snapshot);
+                  const hasRequestContext =
+                    requestId !== null && requestId !== undefined;
+                  const canToggle = hasSnapshot || hasRequestContext;
+                  const statusColor =
+                    listType === 'excluded' ? '#b91c1c' : '#047857';
+                  const statusText = listType === 'excluded' ? 'Excluded' : 'Included';
+                  const statusDetails =
+                    listType === 'excluded'
+                      ? record.reason
+                        ? `Reason: ${record.reason}`
+                        : 'Reason not provided.'
+                      : record.reason || 'Submitted for locking.';
+                  return (
+                    <React.Fragment key={detailKey}>
+                      <tr>
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          {idx + 1}
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {record.recordId}
+                        </td>
+                        {showDetailsColumn && (
+                          <td
+                            style={{
+                              padding: '0.25rem',
+                              border: '1px solid #d1d5db',
+                            }}
+                          >
+                            {record.label || '—'}
+                          </td>
+                        )}
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          <div
+                            style={{
+                              color: statusColor,
+                              fontWeight: 'bold',
+                            }}
+                          >
+                            {statusText}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: '0.125rem',
+                              fontSize: '0.875rem',
+                            }}
+                          >
+                            {statusDetails}
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          {canToggle ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleTransactionDetailsToggle(
+                                    detailKey,
+                                    hasRequestContext ? requestId : null,
+                                    !hasSnapshot,
+                                  )
+                                }
+                                style={{ fontSize: '0.85rem' }}
+                              >
+                                {isExpanded
+                                  ? 'Hide details'
+                                  : hasSnapshot
+                                  ? 'View snapshot'
+                                  : 'View details'}
+                              </button>
+                              {isExpanded && (
+                                <div style={{ marginTop: '0.25rem' }}>
+                                  {renderExpandedContent(record)}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </details>
       );
     };
@@ -1512,7 +1705,7 @@ export default function Reports() {
           {transactionBuckets.length ? (
             <div style={{ margin: '0.25rem 0 0' }}>
               {transactionBuckets.map((bucket) =>
-                renderBucket(bucket, 'selected'),
+                renderBucket(bucket, 'selected', hasSelectedDetails),
               )}
             </div>
           ) : (
@@ -1544,7 +1737,9 @@ export default function Reports() {
           <strong>Excluded transactions</strong>
           {excludedBuckets.length ? (
             <div style={{ margin: '0.25rem 0 0' }}>
-              {excludedBuckets.map((bucket) => renderBucket(bucket, 'excluded'))}
+              {excludedBuckets.map((bucket) =>
+                renderBucket(bucket, 'excluded', hasExcludedDetails),
+              )}
             </div>
           ) : (
             <p style={{ margin: '0.25rem 0 0' }}>No transactions excluded.</p>
