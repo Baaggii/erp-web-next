@@ -1417,6 +1417,12 @@ export default function Reports() {
     const normalizedExcluded = normalizeUnique(excludedTransactions);
     const transactionBuckets = buildBuckets(normalizedTransactions);
     const excludedBuckets = buildBuckets(normalizedExcluded);
+    const hasSelectedDetails = transactionBuckets.some((bucket) =>
+      bucket.records.some((record) => record?.label),
+    );
+    const hasExcludedDetails = excludedBuckets.some((bucket) =>
+      bucket.records.some((record) => record?.label),
+    );
 
     const renderExpandedContent = (record) => {
       if (record.snapshot && typeof record.snapshot === 'object') {
@@ -1468,7 +1474,7 @@ export default function Reports() {
       );
     };
 
-    const renderBucket = (bucket, listType) => {
+    const renderBucket = (bucket, listType, showDetailsColumn) => {
       const count = bucket.records.length;
       const summary = `${bucket.tableName} — ${count} transaction${
         count === 1 ? '' : 's'
@@ -1486,48 +1492,181 @@ export default function Reports() {
           <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>
             {summary}
           </summary>
-          <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
-            {bucket.records.map((record) => {
-              const detailKey = `${requestId ?? 'meta'}|${listType}|${record.key}`;
-              const isExpanded = Boolean(expandedTransactionDetails[detailKey]);
-              const hasSnapshot = Boolean(record.snapshot);
-              const hasRequestContext =
-                requestId !== null && requestId !== undefined;
-              const canToggle = hasSnapshot || hasRequestContext;
-              return (
-                <li key={detailKey} style={{ margin: '0.5rem 0' }}>
-                  <div>
-                    <span style={{ fontWeight: 'bold' }}>#{record.recordId}</span>
-                    {record.label && ` — ${record.label}`}
-                  </div>
-                  {record.reason && (
-                    <div style={{ marginTop: '0.25rem' }}>
-                      {listType === 'excluded' ? 'Reason: ' : ''}
-                      {record.reason}
-                    </div>
+          <div style={{ margin: '0.25rem 0 0', overflowX: 'auto' }}>
+            <table
+              style={{
+                borderCollapse: 'collapse',
+                width: '100%',
+                minWidth: showDetailsColumn ? '40rem' : '32rem',
+              }}
+            >
+              <thead style={{ background: '#e5e7eb' }}>
+                <tr>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      width: '4rem',
+                    }}
+                  >
+                    Lock
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Record ID
+                  </th>
+                  {showDetailsColumn && (
+                    <th
+                      style={{
+                        textAlign: 'left',
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                      }}
+                    >
+                      Details
+                    </th>
                   )}
-                  {canToggle && (
-                    <div style={{ marginTop: '0.25rem' }}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleTransactionDetailsToggle(
-                            detailKey,
-                            hasRequestContext ? requestId : null,
-                            !hasSnapshot,
-                          )
-                        }
-                        style={{ fontSize: '0.85rem' }}
-                      >
-                        {isExpanded ? 'Hide details' : 'View details'}
-                      </button>
-                    </div>
-                  )}
-                  {isExpanded && renderExpandedContent(record)}
-                </li>
-              );
-            })}
-          </ul>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      minWidth: '12rem',
+                    }}
+                  >
+                    Status
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      minWidth: '12rem',
+                    }}
+                  >
+                    Snapshot
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {bucket.records.map((record, idx) => {
+                  const detailKey = `${requestId ?? 'meta'}|${listType}|${record.key}`;
+                  const isExpanded = Boolean(expandedTransactionDetails[detailKey]);
+                  const hasSnapshot = Boolean(record.snapshot);
+                  const hasRequestContext =
+                    requestId !== null && requestId !== undefined;
+                  const canToggle = hasSnapshot || hasRequestContext;
+                  const statusColor =
+                    listType === 'excluded' ? '#b91c1c' : '#047857';
+                  const statusText = listType === 'excluded' ? 'Excluded' : 'Included';
+                  const statusDetails =
+                    listType === 'excluded'
+                      ? record.reason
+                        ? `Reason: ${record.reason}`
+                        : 'Reason not provided.'
+                      : record.reason || 'Submitted for locking.';
+                  return (
+                    <React.Fragment key={detailKey}>
+                      <tr>
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          {idx + 1}
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {record.recordId}
+                        </td>
+                        {showDetailsColumn && (
+                          <td
+                            style={{
+                              padding: '0.25rem',
+                              border: '1px solid #d1d5db',
+                            }}
+                          >
+                            {record.label || '—'}
+                          </td>
+                        )}
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          <div
+                            style={{
+                              color: statusColor,
+                              fontWeight: 'bold',
+                            }}
+                          >
+                            {statusText}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: '0.125rem',
+                              fontSize: '0.875rem',
+                            }}
+                          >
+                            {statusDetails}
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          {canToggle ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleTransactionDetailsToggle(
+                                    detailKey,
+                                    hasRequestContext ? requestId : null,
+                                    !hasSnapshot,
+                                  )
+                                }
+                                style={{ fontSize: '0.85rem' }}
+                              >
+                                {isExpanded
+                                  ? 'Hide details'
+                                  : hasSnapshot
+                                  ? 'View snapshot'
+                                  : 'View details'}
+                              </button>
+                              {isExpanded && (
+                                <div style={{ marginTop: '0.25rem' }}>
+                                  {renderExpandedContent(record)}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </details>
       );
     };
@@ -1566,7 +1705,7 @@ export default function Reports() {
           {transactionBuckets.length ? (
             <div style={{ margin: '0.25rem 0 0' }}>
               {transactionBuckets.map((bucket) =>
-                renderBucket(bucket, 'selected'),
+                renderBucket(bucket, 'selected', hasSelectedDetails),
               )}
             </div>
           ) : (
@@ -1598,7 +1737,9 @@ export default function Reports() {
           <strong>Excluded transactions</strong>
           {excludedBuckets.length ? (
             <div style={{ margin: '0.25rem 0 0' }}>
-              {excludedBuckets.map((bucket) => renderBucket(bucket, 'excluded'))}
+              {excludedBuckets.map((bucket) =>
+                renderBucket(bucket, 'excluded', hasExcludedDetails),
+              )}
             </div>
           ) : (
             <p style={{ margin: '0.25rem 0 0' }}>No transactions excluded.</p>
