@@ -481,6 +481,13 @@ export const pool = mysql.createPool({
   multipleStatements: true,
 });
 
+function normalizeDateTimeInput(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.valueOf())) return null;
+  return date.toISOString().slice(0, 19).replace('T', ' ');
+}
+
 /**
  * Test database connection
  */
@@ -5746,7 +5753,7 @@ export async function recordReportApproval(
     snapshotMeta?.byteSize === undefined || snapshotMeta?.byteSize === null
       ? null
       : Number(snapshotMeta.byteSize);
-  const snapshotArchivedAt = snapshotMeta?.archivedAt ?? null;
+  const snapshotArchivedAt = normalizeDateTimeInput(snapshotMeta?.archivedAt);
   await conn.query(
     `INSERT INTO report_approvals (
       company_id,
