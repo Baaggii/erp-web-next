@@ -1140,6 +1140,8 @@ export default function Reports() {
         'excluded_transactions',
         'lockCandidates',
         'lock_candidates',
+        'lockBundle',
+        'lock_bundle',
         'rows',
         'columns',
         'fieldTypes',
@@ -1169,13 +1171,21 @@ export default function Reports() {
         if (visited.has(value)) return;
         visited.add(value);
         const tableCandidate =
-          value.table || value.tableName || value.table_name || fallbackTable || '';
+          value.table ||
+          value.tableName ||
+          value.table_name ||
+          value.lock_table ||
+          value.lockTable ||
+          fallbackTable ||
+          '';
         const rawId =
           value.recordId ??
           value.record_id ??
           value.id ??
           value.recordID ??
-          value.RecordId;
+          value.RecordId ??
+          value.lock_record_id ??
+          value.lockRecordId;
         if (
           tableCandidate &&
           rawId !== undefined &&
@@ -1191,7 +1201,9 @@ export default function Reports() {
           value.recordIDs ||
           value.ids ||
           value.items ||
-          value.records;
+          value.records ||
+          value.lock_record_ids ||
+          value.lockRecordIds;
         if (tableCandidate && Array.isArray(idList) && idList.length) {
           idList.forEach((item) => {
             if (item && typeof item === 'object') {
@@ -1250,22 +1262,41 @@ export default function Reports() {
     };
 
     const paramEntries = Object.entries(meta.parameters || {});
-    const transactions = collectTransactionsFromSource(
-      meta.transactions ??
-        meta.transaction_list ??
-        meta.transactionList ??
-        meta.transaction_map ??
-        meta.transactionMap ??
-        meta.lockCandidates ??
-        meta.lock_candidates ??
-        null,
-    );
-    const excludedTransactions = collectTransactionsFromSource(
-      meta.excludedTransactions ??
-        meta.excluded_transactions ??
-        meta.excludedTransactionList ??
-        meta.excluded_transaction_list ??
-        null,
+    const transactionSources = [
+      meta.transactions,
+      meta.transaction_list,
+      meta.transactionList,
+      meta.transaction_map,
+      meta.transactionMap,
+      meta.lockCandidates,
+      meta.lock_candidates,
+      meta.lockBundle,
+      meta.lock_bundle,
+      meta.lockBundle?.locks,
+      meta.lock_bundle?.locks,
+      meta.lockBundle?.records,
+      meta.lock_bundle?.records,
+      meta.lockBundle?.items,
+      meta.lock_bundle?.items,
+    ];
+    const transactions = transactionSources.reduce((list, source) => {
+      collectTransactionsFromSource(source).forEach((item) => list.push(item));
+      return list;
+    }, []);
+    const excludedTransactionSources = [
+      meta.excludedTransactions,
+      meta.excluded_transactions,
+      meta.excludedTransactionList,
+      meta.excluded_transaction_list,
+      meta.excludedLockBundle,
+      meta.excluded_lock_bundle,
+    ];
+    const excludedTransactions = excludedTransactionSources.reduce(
+      (list, source) => {
+        collectTransactionsFromSource(source).forEach((item) => list.push(item));
+        return list;
+      },
+      [],
     );
     const rowCount =
       typeof meta.snapshot?.rowCount === 'number'
@@ -1304,15 +1335,32 @@ export default function Reports() {
     function normalizeTransaction(tx) {
       if (!tx || typeof tx !== 'object') return null;
       const tableName =
-        tx.table || tx.tableName || tx.table_name || '—';
+        tx.table ||
+        tx.tableName ||
+        tx.table_name ||
+        tx.lock_table ||
+        tx.lockTable ||
+        '—';
       const rawId =
-        tx.recordId ?? tx.record_id ?? tx.id ?? tx.recordID ?? tx.RecordId;
+        tx.recordId ??
+        tx.record_id ??
+        tx.id ??
+        tx.recordID ??
+        tx.RecordId ??
+        tx.lock_record_id ??
+        tx.lockRecordId;
       if (!tableName || rawId === undefined || rawId === null) return null;
       const recordId = String(rawId);
       const key = `${tableName}#${recordId}`;
       const label = tx.label || tx.description || tx.note || '';
       const reason =
-        tx.reason || tx.justification || tx.explanation || tx.exclude_reason || '';
+        tx.reason ||
+        tx.justification ||
+        tx.explanation ||
+        tx.exclude_reason ||
+        tx.lock_reason ||
+        tx.lockReason ||
+        '';
       const snapshot =
         tx.snapshot && typeof tx.snapshot === 'object' ? tx.snapshot : null;
       const snapshotColumns = Array.isArray(tx.snapshotColumns)
@@ -1355,12 +1403,18 @@ export default function Reports() {
         .sort((a, b) => String(a.tableName).localeCompare(String(b.tableName)));
     }
 
-    const normalizedTransactions = transactions
-      .map((tx) => normalizeTransaction(tx))
-      .filter(Boolean);
-    const normalizedExcluded = excludedTransactions
-      .map((tx) => normalizeTransaction(tx))
-      .filter(Boolean);
+    const normalizeUnique = (list) => {
+      const map = new Map();
+      list.forEach((tx) => {
+        const normalized = normalizeTransaction(tx);
+        if (!normalized) return;
+        map.set(normalized.key, normalized);
+      });
+      return Array.from(map.values());
+    };
+
+    const normalizedTransactions = normalizeUnique(transactions);
+    const normalizedExcluded = normalizeUnique(excludedTransactions);
     const transactionBuckets = buildBuckets(normalizedTransactions);
     const excludedBuckets = buildBuckets(normalizedExcluded);
 
