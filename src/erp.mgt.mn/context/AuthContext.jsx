@@ -112,7 +112,6 @@ export default function AuthContextProvider({ children }) {
       try {
         const res = await fetch(`${API_BASE}/auth/me`, {
           credentials: 'include',
-          skipErrorToast: true,
         });
 
         if (res.ok) {
