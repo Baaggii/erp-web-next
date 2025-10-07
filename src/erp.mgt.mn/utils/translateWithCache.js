@@ -617,6 +617,7 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
     metadata,
   });
   const summary = summarizeHeuristic(heuristics);
+  const requiresRemoteValidation = lang === 'mn';
   const result = {
     valid: false,
     reason: '',
@@ -632,7 +633,16 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
     return {
       ...result,
       reason: heuristics.reasons[0] || 'failed_heuristics',
-      needsRetry: true,
+      needsRetry: false,
+    };
+  }
+
+  const shouldUseHeuristicsOnly = heuristics.status === 'pass' && !requiresRemoteValidation;
+
+  if (shouldUseHeuristicsOnly) {
+    return {
+      ...result,
+      valid: true,
     };
   }
 
@@ -666,6 +676,17 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
         languageConfidence: viaPrompt.languageConfidence,
       };
     }
+  }
+
+  if (heuristics.status === 'pass' && !requiresRemoteValidation) {
+    return {
+      ...result,
+      valid: true,
+      reason: '',
+      needsRetry: false,
+      attemptedRemote: Boolean(viaEndpoint),
+      remoteSource: viaEndpoint?.status ? `status_${viaEndpoint.status}` : null,
+    };
   }
 
   return {
