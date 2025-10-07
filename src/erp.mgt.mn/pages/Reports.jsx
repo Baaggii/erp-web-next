@@ -114,20 +114,41 @@ export default function Reports() {
     }
   }, [result]);
 
-  const getCandidateKey = useCallback((candidate) => {
+  const getCandidateTable = useCallback((candidate) => {
     if (!candidate || typeof candidate !== 'object') return '';
-    if (candidate.key) return String(candidate.key);
-    const table = candidate.tableName ?? candidate.table;
-    const recordId =
-      candidate.recordId ??
-      candidate.record_id ??
-      candidate.id ??
-      candidate.recordID;
-    if (table === undefined || table === null) return '';
-    const normalizedTable = String(table);
-    if (recordId === undefined || recordId === null) return `${normalizedTable}#`;
-    return `${normalizedTable}#${recordId}`;
+    const tableSources = [
+      candidate.tableName,
+      candidate.table,
+      candidate.table_name,
+      candidate.lockTable,
+      candidate.lock_table,
+      candidate.lockTableName,
+      candidate.lock_table_name,
+    ];
+    for (const source of tableSources) {
+      if (source === undefined || source === null) continue;
+      const str = String(source).trim();
+      if (str) return str;
+    }
+    return '';
   }, []);
+
+  const getCandidateKey = useCallback(
+    (candidate) => {
+      if (!candidate || typeof candidate !== 'object') return '';
+      if (candidate.key) return String(candidate.key);
+      const table = getCandidateTable(candidate);
+      if (!table) return '';
+      const recordId =
+        candidate.recordId ??
+        candidate.record_id ??
+        candidate.id ??
+        candidate.recordID;
+      if (recordId === undefined || recordId === null) return `${table}#`;
+      return `${table}#${recordId}`;
+    },
+    [getCandidateTable],
+  );
 
   const handleSnapshotReady = useCallback((data) => {
     setSnapshot(data || null);
@@ -255,12 +276,7 @@ export default function Reports() {
         const normalized = list
           .map((candidate) => {
             if (!candidate || typeof candidate !== 'object') return null;
-            const tableName =
-              typeof candidate.tableName === 'string'
-                ? candidate.tableName
-                : typeof candidate.table === 'string'
-                ? candidate.table
-                : null;
+            const tableName = getCandidateTable(candidate);
             const rawId =
               candidate.recordId ??
               candidate.record_id ??
@@ -313,6 +329,7 @@ export default function Reports() {
     branch,
     department,
     getCandidateKey,
+    getCandidateTable,
   ]);
 
   const dateParamInfo = useMemo(() => {
@@ -642,7 +659,7 @@ export default function Reports() {
     }
     const bucketMap = new Map();
     lockCandidates.forEach((candidate) => {
-      const tableName = candidate?.tableName ?? candidate?.table;
+      const tableName = candidate?.tableName || getCandidateTable(candidate);
       if (!tableName) return;
       if (!bucketMap.has(tableName)) {
         bucketMap.set(tableName, { tableName, candidates: [] });
@@ -678,7 +695,7 @@ export default function Reports() {
         columns: Array.from(columnSet),
       };
     });
-  }, [lockCandidates]);
+  }, [lockCandidates, getCandidateTable]);
 
   const lockCandidateMap = useMemo(() => {
     const map = new Map();
@@ -1441,12 +1458,15 @@ export default function Reports() {
       .map((candidate) => {
         const key = getCandidateKey(candidate);
         const info = lockExclusions[key];
+        const tableName = candidate.tableName || getCandidateTable(candidate);
+        if (!tableName) return null;
         return {
-          table: candidate.tableName,
+          table: tableName,
           recordId: String(candidate.recordId),
           reason: info?.reason?.trim() || '',
         };
-      });
+      })
+      .filter(Boolean);
     if (excludedTransactions.some((tx) => !tx.reason)) {
       addToast('Provide a reason for each excluded transaction', 'error');
       return;
@@ -1456,10 +1476,15 @@ export default function Reports() {
       parameters: snapshot?.params || result.params,
       transactions: lockCandidates
         .filter((candidate) => lockSelections[getCandidateKey(candidate)])
-        .map((candidate) => ({
-          table: candidate.tableName,
-          recordId: String(candidate.recordId),
-        })),
+        .map((candidate) => {
+          const tableName = candidate.tableName || getCandidateTable(candidate);
+          if (!tableName) return null;
+          return {
+            table: tableName,
+            recordId: String(candidate.recordId),
+          };
+        })
+        .filter(Boolean),
       excludedTransactions,
       snapshot: {
         columns: snapshot?.columns || [],
