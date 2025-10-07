@@ -1138,6 +1138,8 @@ export default function Reports() {
         'proposed_data',
         'excludedTransactions',
         'excluded_transactions',
+        'lockCandidates',
+        'lock_candidates',
         'rows',
         'columns',
         'fieldTypes',
@@ -1202,10 +1204,6 @@ export default function Reports() {
         }
         Object.keys(value).forEach((key) => {
           if (['table', 'tableName', 'table_name'].includes(key)) return;
-          if (key === 'lockCandidates' || key === 'lock_candidates') {
-            visit(value[key], '');
-            return;
-          }
           if (
             [
               'recordId',

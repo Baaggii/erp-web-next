@@ -164,9 +164,36 @@ function isMeaningfulText(value) {
   return !NUMERIC_OR_SYMBOLS_ONLY_REGEX.test(trimmed);
 }
 
-function getMeaningfulTranslationSource(entry) {
+function getMeaningfulTranslationSource(entry, languages = []) {
   if (!entry) {
     return null;
+  }
+
+  const values = entry.values ?? {};
+  const preferredOrder = [];
+  const seen = new Set();
+
+  const addLang = (lang) => {
+    if (!lang) return;
+    if (seen.has(lang)) return;
+    seen.add(lang);
+    preferredOrder.push(lang);
+  };
+
+  addLang('en');
+  addLang('mn');
+  for (const lang of languages) {
+    addLang(lang);
+  }
+  for (const lang of Object.keys(values)) {
+    addLang(lang);
+  }
+
+  for (const lang of preferredOrder) {
+    const text = toTrimmedString(values[lang]);
+    if (isMeaningfulText(text)) {
+      return { field: lang, text };
+    }
   }
 
   const keyText = toTrimmedString(entry.key);
@@ -174,15 +201,14 @@ function getMeaningfulTranslationSource(entry) {
     return { field: 'key', text: keyText };
   }
 
-  const values = entry.values ?? {};
-  const enText = toTrimmedString(values.en);
-  if (isMeaningfulText(enText)) {
-    return { field: 'en', text: enText };
+  const moduleText = toTrimmedString(entry.module);
+  if (isMeaningfulText(moduleText)) {
+    return { field: 'module', text: moduleText };
   }
 
-  const mnText = toTrimmedString(values.mn);
-  if (isMeaningfulText(mnText)) {
-    return { field: 'mn', text: mnText };
+  const contextText = toTrimmedString(entry.context);
+  if (isMeaningfulText(contextText)) {
+    return { field: 'context', text: contextText };
   }
 
   return null;
@@ -576,9 +602,17 @@ export default function ManualTranslationsTab() {
         ...(entry.translatedBy ?? {}),
         [lang]: MANUAL_ENTRY_PROVIDER,
       };
+      const fallbackOrigin = normalizeOrigin(entry.type) || toTrimmedString(entry.type);
       if (entry.translatedBySources) {
+        const existingOrigin = entry.translatedBySources[lang];
+        const normalizedExisting = normalizeOrigin(existingOrigin);
         entry.translatedBySources = {
           ...entry.translatedBySources,
+          [lang]: normalizedExisting || fallbackOrigin || entry.translatedBySources[lang] || 'unknown',
+        };
+      } else {
+        entry.translatedBySources = {
+          [lang]: fallbackOrigin || 'unknown',
         };
       }
       copy[index] = entry;
@@ -699,6 +733,7 @@ export default function ManualTranslationsTab() {
     const allEntries = [...entries];
     const original = [...allEntries];
     const restLanguages = languages.filter((l) => l !== 'en' && l !== 'mn');
+    const languageSet = new Set(languages);
     const updated = [];
     const pending = [];
     const notCompleted = [];
@@ -722,8 +757,13 @@ export default function ManualTranslationsTab() {
         page: newEntry.page,
         type: newEntry.type,
       };
-      const translateEntry = (targetLang, text) =>
-        translateWithCache(targetLang, text, undefined, entryMetadata);
+      const translateEntry = (targetLang, text, sourceLang) => {
+        if (!text) return null;
+        const metadata = sourceLang
+          ? { ...entryMetadata, sourceLang }
+          : entryMetadata;
+        return translateWithCache(targetLang, text, undefined, metadata);
+      };
       let en = toTrimmedString(newEntry.values.en);
       let mn = toTrimmedString(newEntry.values.mn);
       let changed = false;
@@ -745,11 +785,12 @@ export default function ManualTranslationsTab() {
       const hasMeaningfulEn = isMeaningfulText(en);
       const hasMeaningfulMn = isMeaningfulText(mn);
 
-      const attemptTranslation = async (targetLang) => {
+      const attemptTranslation = async (targetLang, preferredSource) => {
         if (abortRef.current || rateLimited) {
           return false;
         }
-        const sourceInfo = getMeaningfulTranslationSource(newEntry);
+        const sourceInfo =
+          preferredSource ?? getMeaningfulTranslationSource(newEntry, languages);
         if (!sourceInfo || !isMeaningfulText(sourceInfo.text)) {
           needsManualReview = true;
           return false;
@@ -760,7 +801,15 @@ export default function ManualTranslationsTab() {
             return false;
           }
           await delay();
-          const translated = await translateEntry(targetLang, sourceInfo.text);
+          const sourceLang =
+            sourceInfo.field && languageSet.has(sourceInfo.field)
+              ? sourceInfo.field
+              : null;
+          const translated = await translateEntry(
+            targetLang,
+            sourceInfo.text,
+            sourceLang,
+          );
           if (translated?.text && !translated.needsRetry) {
             newEntry.values[targetLang] = translated.text;
             const provider = normalizeProvider(translated.source);
@@ -804,46 +853,19 @@ export default function ManualTranslationsTab() {
           (lang) => !isMeaningfulText(newEntry.values[lang]),
         );
         if (missingBefore.length) {
-          const sourceInfo = getMeaningfulTranslationSource(newEntry);
-          if (!sourceInfo || !isMeaningfulText(sourceInfo.text)) {
-            needsManualReview = true;
-          } else {
-            for (const lang of missingBefore) {
-              if (abortRef.current || rateLimited) break;
-              if (!isMeaningfulText(sourceInfo.text)) {
-                needsManualReview = true;
-                break;
-              }
-              try {
-                await delay();
-                const translated = await translateEntry(lang, sourceInfo.text);
-                if (translated?.text && !translated.needsRetry) {
-                  newEntry.values[lang] = translated.text;
-                  const provider = normalizeProvider(translated.source);
-                  const origin = normalizeOrigin(
-                    newEntry.translatedBySources?.[lang] ?? newEntry.type,
-                  );
-                  newEntry.translatedBy[lang] = provider;
-                  newEntry.translatedBySources[lang] = origin;
-                  captureTranslationSource(lang, provider, origin);
-                  changed = true;
-                } else if (translated?.needsRetry) {
-                  needsManualReview = true;
-                }
-              } catch (err) {
-                if (err.rateLimited) {
-                  abortRef.current = true;
-                  rateLimited = true;
-                }
-              }
-            }
+          const englishSource = isMeaningfulText(en)
+            ? { field: 'en', text: en }
+            : null;
+          for (const lang of missingBefore) {
             if (abortRef.current || rateLimited) break;
-            const missingAfter = restLanguages.filter(
-              (lang) => !isMeaningfulText(newEntry.values[lang]),
-            );
-            if (missingAfter.length) {
-              needsManualReview = true;
-            }
+            await attemptTranslation(lang, englishSource);
+          }
+          if (abortRef.current || rateLimited) break;
+          const missingAfter = restLanguages.filter(
+            (lang) => !isMeaningfulText(newEntry.values[lang]),
+          );
+          if (missingAfter.length) {
+            needsManualReview = true;
           }
         }
       }

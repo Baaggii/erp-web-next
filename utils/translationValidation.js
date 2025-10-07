@@ -203,6 +203,10 @@ const accentRegex = /[áéíóúüñçàèìòùâêîôûäëïöüãõåæœß
 const placeholderRegex = /{{\s*[^}]+\s*}}|%[-+]?\d*(?:\.\d+)?[sdif]|\{\d+\}|\$\{[^}]+\}|:[a-zA-Z_][\w-]*|<[^>]+>/g;
 const asciiWordRegex = /^[a-z]+$/;
 const nonAsciiRegex = /[^\u0000-\u007F]/;
+const cyrillicScriptRegex = /[\u0400-\u052F\u2DE0-\u2DFF\uA640-\uA69F\u1C80-\u1C8F]/g;
+const mongolianScriptRegex = /[\u1800-\u18AF]/g;
+const tibetanScriptRegex = /[\u0F00-\u0FFF]/g;
+const latinScriptRegex = /[A-Za-z\u00C0-\u024F]/g;
 
 export function normalizeText(text) {
   if (typeof text !== "string") return String(text ?? "").trim();
@@ -222,6 +226,24 @@ function tokenizeWords(text) {
       .toLowerCase()
       .match(/[a-záéíóúüñçàèìòùâêîôûäëïöüãõåæœßÿčšžğışășț]+/g) || []
   );
+}
+
+function countScriptCharacters(text, regex) {
+  if (!text || !regex) return 0;
+  const matches = text.match(regex);
+  return matches ? matches.length : 0;
+}
+
+function analyzeScripts(text) {
+  if (!text) {
+    return { cyrillic: 0, latin: 0, mongolian: 0, tibetan: 0 };
+  }
+  return {
+    cyrillic: countScriptCharacters(text, cyrillicScriptRegex),
+    latin: countScriptCharacters(text, latinScriptRegex),
+    mongolian: countScriptCharacters(text, mongolianScriptRegex),
+    tibetan: countScriptCharacters(text, tibetanScriptRegex),
+  };
 }
 
 function englishCoverage(words) {
@@ -311,6 +333,7 @@ export function evaluateTranslationCandidate({
 
   const words = tokenizeWords(normalizedCandidate);
   result.english = englishCoverage(words);
+  const scriptStats = analyzeScripts(normalizedCandidate);
 
   if (normalizedBase.split(" ").length > 3 && words.length <= 1) {
     result.status = "fail";
@@ -341,6 +364,38 @@ export function evaluateTranslationCandidate({
     ) {
       result.status = "retry";
       result.reasons.push("no_language_signal");
+    }
+  }
+
+  if (lang === "mn") {
+    if (scriptStats.tibetan > 0) {
+      result.status = "fail";
+      result.reasons.push("contains_tibetan_script");
+      return result;
+    }
+    const cyrillicLetters = scriptStats.cyrillic;
+    const latinLetters = scriptStats.latin;
+    const mongolianLetters = scriptStats.mongolian;
+    const totalLetters = cyrillicLetters + latinLetters + mongolianLetters;
+    if (!cyrillicLetters || totalLetters === 0) {
+      result.status = "fail";
+      result.reasons.push("no_cyrillic_content");
+      return result;
+    }
+    const cyrillicRatio = cyrillicLetters / totalLetters;
+    if (cyrillicRatio < 0.6) {
+      result.status = "fail";
+      result.reasons.push("insufficient_cyrillic_ratio");
+      return result;
+    }
+    if (latinLetters > 0 && latinLetters >= cyrillicLetters) {
+      result.status = "fail";
+      result.reasons.push("excessive_latin_script");
+      return result;
+    }
+    if (cyrillicLetters < 3 && normalizedCandidate.length > 3) {
+      result.status = result.status === "pass" ? "retry" : result.status;
+      result.reasons.push("limited_cyrillic_content");
     }
   }
 
