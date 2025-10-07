@@ -423,7 +423,13 @@ export async function listRequests(filters) {
     date_field = 'created',
     page = 1,
     per_page = 2,
+    count_only = false,
   } = filters || {};
+
+  const countOnly =
+    typeof count_only === 'string'
+      ? ['1', 'true', 'yes'].includes(count_only.trim().toLowerCase())
+      : Boolean(count_only);
 
   const conditions = [];
   const params = [];
@@ -467,19 +473,57 @@ export async function listRequests(filters) {
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const limit = Number(per_page) > 0 ? Number(per_page) : 2;
-  const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
-
   const [countRows] = await pool.query(
     `SELECT COUNT(*) as count FROM pending_request ${where}`,
     params,
   );
   const total = countRows[0]?.count || 0;
 
-  const [rows] = await pool.query(
-    `SELECT *, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt FROM pending_request ${where} ORDER BY ${dateColumn} DESC LIMIT ? OFFSET ?`,
+  if (countOnly) {
+    return { rows: [], total };
+  }
+
+  const limit = Number(per_page) > 0 ? Number(per_page) : 2;
+  const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
+
+  const [idRows] = await pool.query(
+    `SELECT request_id
+       FROM pending_request
+       ${where}
+      ORDER BY ${dateColumn} DESC, request_id DESC
+      LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
+
+  const requestIds = idRows
+    .map((row) => row?.request_id)
+    .filter((id) => id !== null && id !== undefined);
+
+  if (!requestIds.length) {
+    return { rows: [], total };
+  }
+
+  const placeholders = requestIds.map(() => '?').join(', ');
+  const [rows] = await pool.query(
+    `SELECT *,
+            DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt,
+            DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt
+       FROM pending_request
+      WHERE request_id IN (${placeholders})`,
+    requestIds,
+  );
+
+  const orderLookup = new Map();
+  requestIds.forEach((id, index) => {
+    orderLookup.set(String(id), index);
+  });
+
+  rows.sort((a, b) => {
+    const aIdx = orderLookup.get(String(a.request_id));
+    const bIdx = orderLookup.get(String(b.request_id));
+    if (aIdx === undefined || bIdx === undefined) return 0;
+    return aIdx - bIdx;
+  });
 
   const approvalRequestIds = rows
     .filter((row) => row.request_type === 'report_approval')
@@ -593,7 +637,17 @@ export async function listRequests(filters) {
 
 export async function listRequestsByEmp(
   emp_id,
-  { status, table_name, request_type, date_from, date_to, date_field, page, per_page } = {},
+  {
+    status,
+    table_name,
+    request_type,
+    date_from,
+    date_to,
+    date_field,
+    page,
+    per_page,
+    count_only,
+  } = {},
 ) {
   return listRequests({
     requested_empid: emp_id,
@@ -605,6 +659,7 @@ export async function listRequestsByEmp(
     date_field,
     page,
     per_page,
+    count_only,
   });
 }
 
