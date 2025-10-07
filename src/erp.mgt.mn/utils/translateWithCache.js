@@ -649,14 +649,28 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
   const payload = { candidate, base, lang, metadata };
   const viaEndpoint = await requestValidationViaEndpoint(payload);
   if (viaEndpoint?.ok) {
+    const remoteNeedsRetry =
+      typeof viaEndpoint.needsRetry === 'boolean'
+        ? viaEndpoint.needsRetry
+        : !viaEndpoint.valid;
+    const lowConfidence =
+      typeof viaEndpoint.languageConfidence === 'number' &&
+      viaEndpoint.languageConfidence < 0.65;
+    const combinedNeedsRetry =
+      remoteNeedsRetry || heuristicsSuggestRetry || lowConfidence;
+    const reason =
+      viaEndpoint.reason ||
+      (lowConfidence ? 'low_language_confidence' : '') ||
+      primaryHeuristicReason ||
+      (combinedNeedsRetry ? 'validation_failed' : '');
     return {
       ...result,
-      valid: Boolean(viaEndpoint.valid),
-      reason: viaEndpoint.reason || '',
-      needsRetry:
-        typeof viaEndpoint.needsRetry === 'boolean'
-          ? viaEndpoint.needsRetry
-          : !viaEndpoint.valid,
+      valid:
+        Boolean(viaEndpoint.valid) &&
+        !heuristicsSuggestRetry &&
+        !lowConfidence,
+      reason,
+      needsRetry: combinedNeedsRetry,
       attemptedRemote: true,
       remoteSource: viaEndpoint.strategy || viaEndpoint.source || 'api',
       languageConfidence: viaEndpoint.languageConfidence ?? null,
@@ -666,11 +680,20 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
   if (viaEndpoint && viaEndpoint.status === 404) {
     const viaPrompt = await requestValidationViaPrompt(payload);
     if (viaPrompt?.ok) {
+      const promptNeedsRetry =
+        typeof viaPrompt.needsRetry === 'boolean'
+          ? viaPrompt.needsRetry
+          : !viaPrompt.valid;
+      const combinedNeedsRetry = promptNeedsRetry || heuristicsSuggestRetry;
+      const reason =
+        viaPrompt.reason ||
+        primaryHeuristicReason ||
+        (combinedNeedsRetry ? 'validation_failed' : '');
       return {
         ...result,
-        valid: Boolean(viaPrompt.valid),
-        reason: viaPrompt.reason || '',
-        needsRetry: Boolean(viaPrompt.needsRetry),
+        valid: Boolean(viaPrompt.valid) && !heuristicsSuggestRetry,
+        reason,
+        needsRetry: combinedNeedsRetry,
         attemptedRemote: true,
         remoteSource: viaPrompt.source,
         languageConfidence: viaPrompt.languageConfidence,
@@ -692,6 +715,7 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
   return {
     ...result,
     reason:
+      primaryHeuristicReason ||
       heuristics.reasons[0] ||
       (viaEndpoint?.status ? `validation_http_${viaEndpoint.status}` : 'validation_unavailable'),
     needsRetry: true,
