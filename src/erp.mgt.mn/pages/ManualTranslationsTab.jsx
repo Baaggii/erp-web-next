@@ -789,20 +789,8 @@ export default function ManualTranslationsTab() {
         if (abortRef.current || rateLimited) {
           return false;
         }
-        let sourceInfo = preferredSource ?? null;
-        if (newEntry.type === 'tooltip' && targetLang !== 'en') {
-          const englishText = toTrimmedString(newEntry.values.en);
-          if (!isMeaningfulText(englishText)) {
-            needsManualReview = true;
-            return false;
-          }
-          if (!sourceInfo || sourceInfo.field !== 'en') {
-            sourceInfo = { field: 'en', text: englishText };
-          }
-        }
-        if (!sourceInfo) {
-          sourceInfo = getMeaningfulTranslationSource(newEntry, languages);
-        }
+        const sourceInfo =
+          preferredSource ?? getMeaningfulTranslationSource(newEntry, languages);
         if (!sourceInfo || !isMeaningfulText(sourceInfo.text)) {
           needsManualReview = true;
           return false;

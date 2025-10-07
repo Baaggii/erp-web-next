@@ -207,18 +207,6 @@ const cyrillicScriptRegex = /[\u0400-\u052F\u2DE0-\u2DFF\uA640-\uA69F\u1C80-\u1C
 const mongolianScriptRegex = /[\u1800-\u18AF]/g;
 const tibetanScriptRegex = /[\u0F00-\u0FFF]/g;
 const latinScriptRegex = /[A-Za-z\u00C0-\u024F]/g;
-const mongolianVowelRegex = /[АаЭэИиОоӨөУуҮүЫыЯяЮюЁёЕеҮүӨө]/;
-const cyrillicWordRegex = /[А-Яа-яЁёӨөҮүЫыЭэЯяЮюИиЙй]+/g;
-
-function measureContentLength(text) {
-  if (!text) return 0;
-  return text.replace(/\s+/g, '').length;
-}
-
-function stripPlaceholders(text) {
-  if (!text) return '';
-  return text.replace(placeholderRegex, ' ');
-}
 
 export function normalizeText(text) {
   if (typeof text !== "string") return String(text ?? "").trim();
@@ -345,8 +333,7 @@ export function evaluateTranslationCandidate({
 
   const words = tokenizeWords(normalizedCandidate);
   result.english = englishCoverage(words);
-  const scriptAnalysisText = stripPlaceholders(normalizedCandidate);
-  const scriptStats = analyzeScripts(scriptAnalysisText);
+  const scriptStats = analyzeScripts(normalizedCandidate);
 
   if (normalizedBase.split(" ").length > 3 && words.length <= 1) {
     result.status = "fail";
@@ -401,78 +388,10 @@ export function evaluateTranslationCandidate({
       result.reasons.push("insufficient_cyrillic_ratio");
       return result;
     }
-    if (latinLetters > 0) {
+    if (latinLetters > 0 && latinLetters >= cyrillicLetters) {
       result.status = "fail";
-      result.reasons.push("contains_latin_script");
+      result.reasons.push("excessive_latin_script");
       return result;
-    }
-    if (/[A-Za-z]/.test(scriptAnalysisText)) {
-      result.status = "fail";
-      result.reasons.push("contains_latin_script");
-      return result;
-    }
-    const cyrillicOnly = scriptAnalysisText
-      .replace(/[^А-Яа-яЁёӨөҮүЫыЭэЯяЮюИиЙй\s]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    if (cyrillicOnly) {
-      const wordsOnly = cyrillicOnly.split(/\s+/);
-      const distinctLetters = new Set(cyrillicOnly.replace(/\s+/g, ""));
-      if (distinctLetters.size < 2) {
-        result.status = "fail";
-        result.reasons.push("insufficient_character_variety");
-        return result;
-      }
-      const baseWordCount = normalizedBase.split(/\s+/).filter(Boolean).length;
-      const requiresDetail = normalizedBase.length > 15 || baseWordCount > 3;
-      const baseCharCount = measureContentLength(
-        stripPlaceholders(normalizedBase),
-      );
-      const hasSubstantiveWord = wordsOnly.some((word) => word.length >= 3);
-      if (requiresDetail && !hasSubstantiveWord) {
-        result.status = "fail";
-        result.reasons.push("insufficient_word_length");
-        return result;
-      }
-      if (!mongolianVowelRegex.test(cyrillicOnly)) {
-        result.status = "fail";
-        result.reasons.push("missing_mongolian_vowel");
-        return result;
-      }
-      const collapsed = cyrillicOnly.replace(/\s+/g, "");
-      if (/(.)\1{3,}/u.test(collapsed)) {
-        result.status = "fail";
-        result.reasons.push("repeated_character_sequences");
-        return result;
-      }
-      const cyrillicWords = cyrillicOnly.match(cyrillicWordRegex) || [];
-      const meaningfulWords = cyrillicWords.filter((word) => word.length >= 3);
-      const uniqueMeaningfulWords = new Set(
-        meaningfulWords.map((word) => word.toLowerCase()),
-      );
-      if (
-        requiresDetail &&
-        uniqueMeaningfulWords.size < Math.min(3, Math.max(2, Math.ceil(baseWordCount / 2)))
-      ) {
-        result.status = "fail";
-        result.reasons.push("insufficient_context_words");
-        return result;
-      }
-      const vowelMatches = cyrillicOnly.match(mongolianVowelRegex) || [];
-      if (cyrillicOnly.length >= 6 && vowelMatches.length < 2) {
-        result.status = "fail";
-        result.reasons.push("insufficient_vowel_content");
-        return result;
-      }
-      if (
-        requiresDetail &&
-        baseCharCount >= 18 &&
-        measureContentLength(cyrillicOnly) < Math.max(12, Math.floor(baseCharCount * 0.45))
-      ) {
-        result.status = "fail";
-        result.reasons.push("insufficient_content_length");
-        return result;
-      }
     }
     if (cyrillicLetters < 3 && normalizedCandidate.length > 3) {
       result.status = result.status === "pass" ? "retry" : result.status;
@@ -505,7 +424,6 @@ export function buildValidationPrompt({ candidate, base, lang, metadata }) {
   return [
     'You are a meticulous translation validator. Determine whether the proposed translation is a faithful rendering of the base text, uses the requested target language, respects placeholders, and fits the supplied module/context metadata.',
     'Reject translations that leave the text in the source language, that mix in Latin characters when the target language uses Cyrillic, or that read as gibberish. Confirm that Mongolian ("mn") results are natural-sounding Mongolian written in Cyrillic.',
-    'Evaluate whether the translation clearly expresses the same business meaning as the base sentence; flag anything vague, literal-transliterated, or semantically incorrect.',
     'Respond ONLY with JSON using the shape {"valid":boolean,"reason":string,"languageConfidence":number}. If invalid, explain why in "reason" in English. If valid, set reason to an empty string.',
     `Base text: """${base ?? ''}"""`,
     `Proposed translation: """${candidate ?? ''}"""`,

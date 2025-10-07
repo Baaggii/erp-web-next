@@ -105,17 +105,622 @@ function renderReportSnapshot(snapshot) {
   );
 }
 
-function renderReportApprovalDetails(meta) {
-  if (!meta) {
+function renderTransactionSnapshot(record, fallbackColumns = []) {
+  const snapshot = record?.snapshot;
+  if (!snapshot || typeof snapshot !== 'object') {
+    return <p style={{ margin: '0.25rem 0 0' }}>Snapshot unavailable.</p>;
+  }
+  const explicitColumns = Array.isArray(record?.snapshotColumns)
+    ? record.snapshotColumns.filter(Boolean)
+    : [];
+  const columns =
+    explicitColumns.length > 0
+      ? explicitColumns
+      : fallbackColumns.length > 0
+      ? fallbackColumns
+      : Object.keys(snapshot);
+  if (!columns.length) {
+    return <p style={{ margin: '0.25rem 0 0' }}>Snapshot unavailable.</p>;
+  }
+  const fieldTypes = record?.snapshotFieldTypeMap || record?.fieldTypeMap || {};
+  return (
+    <table
+      style={{
+        borderCollapse: 'collapse',
+        width: '100%',
+      }}
+    >
+      <tbody>
+        {columns.map((col) => (
+          <tr key={col}>
+            <th
+              style={{
+                textAlign: 'left',
+                padding: '0.25rem',
+                border: '1px solid #d1d5db',
+                background: '#f3f4f6',
+                width: '35%',
+              }}
+            >
+              {col}
+            </th>
+            <td
+              style={{
+                padding: '0.25rem',
+                border: '1px solid #d1d5db',
+              }}
+            >
+              {formatReportSnapshotValue(snapshot?.[col], col, fieldTypes)}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+const APPROVAL_TRANSACTION_IGNORED_KEYS = new Set([
+  'parameters',
+  'snapshot',
+  'snapshotColumns',
+  'snapshot_columns',
+  'snapshotFieldTypeMap',
+  'snapshot_field_type_map',
+  'fieldTypeMap',
+  'field_type_map',
+  'archive',
+  'snapshotArchive',
+  'snapshot_archive',
+  'requestId',
+  'request_id',
+  'lockRequestId',
+  'lock_request_id',
+  'metadata',
+  'report_metadata',
+  'proposed_data',
+  'excludedTransactions',
+  'excluded_transactions',
+  'lockCandidates',
+  'lock_candidates',
+  'lockBundle',
+  'lock_bundle',
+  'rows',
+  'columns',
+  'fieldTypes',
+  'field_types',
+  'rowCount',
+  'row_count',
+  'count',
+  'total',
+]);
+
+function collectApprovalTransactionsFromSource(
+  source,
+  results,
+  visited,
+  fallbackTable = '',
+) {
+  if (source === null || source === undefined) return;
+  if (Array.isArray(source)) {
+    source.forEach((item) =>
+      collectApprovalTransactionsFromSource(item, results, visited, fallbackTable),
+    );
+    return;
+  }
+  if (typeof source !== 'object') {
+    if (
+      fallbackTable &&
+      (typeof source === 'string' || typeof source === 'number')
+    ) {
+      results.push({ table: fallbackTable, recordId: source });
+    }
+    return;
+  }
+  if (visited.has(source)) return;
+  visited.add(source);
+  const tableCandidate =
+    source.table ||
+    source.tableName ||
+    source.table_name ||
+    source.lock_table ||
+    source.lockTable ||
+    fallbackTable ||
+    '';
+  const rawId =
+    source.recordId ??
+    source.record_id ??
+    source.id ??
+    source.recordID ??
+    source.RecordId ??
+    source.lock_record_id ??
+    source.lockRecordId;
+  if (
+    tableCandidate &&
+    rawId !== undefined &&
+    rawId !== null &&
+    (typeof rawId === 'string' || typeof rawId === 'number')
+  ) {
+    results.push({ ...source, table: tableCandidate, recordId: rawId });
+    return;
+  }
+  const idList =
+    source.recordIds ||
+    source.record_ids ||
+    source.recordIDs ||
+    source.ids ||
+    source.items ||
+    source.records ||
+    source.lock_record_ids ||
+    source.lockRecordIds;
+  if (tableCandidate && Array.isArray(idList) && idList.length) {
+    idList.forEach((item) => {
+      if (item && typeof item === 'object') {
+        collectApprovalTransactionsFromSource(
+          { ...item, table: tableCandidate },
+          results,
+          visited,
+          tableCandidate,
+        );
+      } else if (item !== undefined && item !== null) {
+        collectApprovalTransactionsFromSource(
+          item,
+          results,
+          visited,
+          tableCandidate,
+        );
+      }
+    });
+    return;
+  }
+  Object.keys(source).forEach((key) => {
+    if (['table', 'tableName', 'table_name'].includes(key)) return;
+    if (
+      [
+        'recordId',
+        'record_id',
+        'recordIds',
+        'record_ids',
+        'recordIDs',
+        'recordID',
+        'ids',
+        'items',
+        'records',
+      ].includes(key)
+    ) {
+      return;
+    }
+    if (APPROVAL_TRANSACTION_IGNORED_KEYS.has(key)) return;
+    const child = source[key];
+    const nextFallback =
+      tableCandidate ||
+      fallbackTable ||
+      (Array.isArray(child) || (child && typeof child === 'object') ? key : '');
+    collectApprovalTransactionsFromSource(
+      child,
+      results,
+      visited,
+      nextFallback,
+    );
+  });
+}
+
+function gatherApprovalTransactionsFromSources(sources = []) {
+  const results = [];
+  const visited = new WeakSet();
+  sources.forEach((source) =>
+    collectApprovalTransactionsFromSource(source, results, visited, ''),
+  );
+  return results;
+}
+
+function normalizeApprovalTransaction(tx) {
+  if (!tx || typeof tx !== 'object') return null;
+  const tableName =
+    tx.table ||
+    tx.tableName ||
+    tx.table_name ||
+    tx.lock_table ||
+    tx.lockTable ||
+    '—';
+  const rawId =
+    tx.recordId ??
+    tx.record_id ??
+    tx.id ??
+    tx.recordID ??
+    tx.RecordId ??
+    tx.lock_record_id ??
+    tx.lockRecordId;
+  if (!tableName || rawId === undefined || rawId === null) return null;
+  const recordId = String(rawId);
+  const key = `${tableName}#${recordId}`;
+  const label = tx.label || tx.description || tx.note || '';
+  const reason =
+    tx.reason ||
+    tx.justification ||
+    tx.explanation ||
+    tx.exclude_reason ||
+    tx.lock_reason ||
+    tx.lockReason ||
+    '';
+  const snapshot =
+    tx.snapshot && typeof tx.snapshot === 'object' ? tx.snapshot : null;
+  const snapshotColumns = Array.isArray(tx.snapshotColumns)
+    ? tx.snapshotColumns.filter(Boolean)
+    : Array.isArray(tx.columns)
+    ? tx.columns.filter(Boolean)
+    : [];
+  const snapshotFieldTypeMap = tx.snapshotFieldTypeMap || tx.fieldTypeMap || {};
+  const lockStatus = tx.lockStatus || tx.status || '';
+  const lockedBy = tx.lockedBy || tx.locked_by || '';
+  const lockedAt = tx.lockedAt || tx.locked_at || '';
+  const locked = Boolean(tx.locked || tx.is_locked || tx.isLocked);
+  return {
+    key,
+    tableName,
+    recordId,
+    label,
+    reason,
+    snapshot,
+    snapshotColumns,
+    snapshotFieldTypeMap,
+    lockStatus,
+    lockedBy,
+    lockedAt,
+    locked,
+  };
+}
+
+function normalizeApprovalTransactionList(list = []) {
+  const map = new Map();
+  list.forEach((tx) => {
+    const normalized = normalizeApprovalTransaction(tx);
+    if (!normalized) return;
+    map.set(normalized.key, normalized);
+  });
+  return Array.from(map.values());
+}
+
+function buildApprovalTransactionBuckets(list = []) {
+  if (!Array.isArray(list) || list.length === 0) return [];
+  const bucketMap = new Map();
+  list.forEach((item) => {
+    if (!item) return;
+    const bucketKey = item.tableName || '—';
+    if (!bucketMap.has(bucketKey)) {
+      bucketMap.set(bucketKey, []);
+    }
+    bucketMap.get(bucketKey).push(item);
+  });
+  return Array.from(bucketMap.entries())
+    .map(([tableName, records]) => {
+      const sortedRecords = records
+        .slice()
+        .sort((a, b) => String(a.recordId).localeCompare(String(b.recordId)));
+      const columnSet = new Set();
+      sortedRecords.forEach((record) => {
+        if (Array.isArray(record.snapshotColumns) && record.snapshotColumns.length) {
+          record.snapshotColumns.forEach((col) => {
+            if (col) columnSet.add(col);
+          });
+        } else if (record.snapshot && typeof record.snapshot === 'object') {
+          Object.keys(record.snapshot).forEach((col) => {
+            if (col) columnSet.add(col);
+          });
+        }
+      });
+      return {
+        tableName,
+        records: sortedRecords,
+        columns: Array.from(columnSet),
+      };
+    })
+    .sort((a, b) => String(a.tableName).localeCompare(String(b.tableName)));
+}
+
+function ReportApprovalDetails({ meta, requestId }) {
+  const [expandedSnapshots, setExpandedSnapshots] = useState({});
+
+  useEffect(() => {
+    setExpandedSnapshots({});
+  }, [meta]);
+
+  const toggleSnapshot = useCallback((key) => {
+    setExpandedSnapshots((prev) => ({
+      ...prev,
+      [key]: !prev[key],
+    }));
+  }, []);
+
+  if (!meta || typeof meta !== 'object') {
     return <p>No report metadata available.</p>;
   }
+
   const paramEntries = Object.entries(meta.parameters || {});
+
+  const {
+    transactionBuckets,
+    excludedBuckets,
+    hasSelectedDetails,
+    hasExcludedDetails,
+  } = useMemo(() => {
+    const transactionSources = [
+      meta.transactions,
+      meta.transaction_list,
+      meta.transactionList,
+      meta.transaction_map,
+      meta.transactionMap,
+      meta.lockCandidates,
+      meta.lock_candidates,
+      meta.lockBundle,
+      meta.lock_bundle,
+      meta.lockBundle?.locks,
+      meta.lock_bundle?.locks,
+      meta.lockBundle?.records,
+      meta.lock_bundle?.records,
+      meta.lockBundle?.items,
+      meta.lock_bundle?.items,
+    ];
+    const excludedSources = [
+      meta.excludedTransactions,
+      meta.excluded_transactions,
+      meta.excludedTransactionList,
+      meta.excluded_transaction_list,
+      meta.excludedLockBundle,
+      meta.excluded_lock_bundle,
+    ];
+    const normalizedTransactions = normalizeApprovalTransactionList(
+      gatherApprovalTransactionsFromSources(transactionSources),
+    );
+    const normalizedExcluded = normalizeApprovalTransactionList(
+      gatherApprovalTransactionsFromSources(excludedSources),
+    );
+    return {
+      transactionBuckets: buildApprovalTransactionBuckets(normalizedTransactions),
+      excludedBuckets: buildApprovalTransactionBuckets(normalizedExcluded),
+      hasSelectedDetails: normalizedTransactions.some((record) => record?.label),
+      hasExcludedDetails: normalizedExcluded.some((record) => record?.label),
+    };
+  }, [meta]);
+
   const rowCount =
     typeof meta.snapshot?.rowCount === 'number'
       ? meta.snapshot.rowCount
       : Array.isArray(meta.snapshot?.rows)
       ? meta.snapshot.rows.length
       : null;
+
+  const archiveMeta =
+    meta.archive || meta.snapshotArchive || meta.snapshot_archive || null;
+  const archiveRequestId =
+    archiveMeta?.requestId ?? archiveMeta?.request_id ?? requestId ?? null;
+  const archiveUrl = archiveRequestId
+    ? `/api/report_approvals/${encodeURIComponent(archiveRequestId)}/file`
+    : null;
+
+  const formatArchiveSize = (value) => {
+    const num = Number(value);
+    if (!Number.isFinite(num) || num <= 0) return '';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let size = num;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    const decimals = size >= 100 || unitIndex === 0 ? 0 : 1;
+    return `${size.toFixed(decimals)} ${units[unitIndex]}`;
+  };
+
+  const renderBucket = (bucket, listType, showDetailsColumn) => {
+    const count = bucket.records.length;
+    const summary = `${bucket.tableName} — ${count} transaction${
+      count === 1 ? '' : 's'
+    }`;
+    const shouldDefaultOpen =
+      listType === 'selected'
+        ? transactionBuckets.length === 1
+        : excludedBuckets.length === 1;
+    return (
+      <details
+        key={`${listType}-${bucket.tableName}`}
+        style={{ margin: '0.25rem 0' }}
+        open={shouldDefaultOpen}
+      >
+        <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>
+          {summary}
+        </summary>
+        <div style={{ margin: '0.25rem 0 0', overflowX: 'auto' }}>
+          <table
+            style={{
+              borderCollapse: 'collapse',
+              width: '100%',
+              minWidth: showDetailsColumn ? '40rem' : '32rem',
+            }}
+          >
+            <thead style={{ background: '#e5e7eb' }}>
+              <tr>
+                <th
+                  style={{
+                    textAlign: 'left',
+                    padding: '0.25rem',
+                    border: '1px solid #d1d5db',
+                    width: '4rem',
+                  }}
+                >
+                  #
+                </th>
+                <th
+                  style={{
+                    textAlign: 'left',
+                    padding: '0.25rem',
+                    border: '1px solid #d1d5db',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  Record ID
+                </th>
+                {showDetailsColumn && (
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                    }}
+                  >
+                    Details
+                  </th>
+                )}
+                <th
+                  style={{
+                    textAlign: 'left',
+                    padding: '0.25rem',
+                    border: '1px solid #d1d5db',
+                    minWidth: '12rem',
+                  }}
+                >
+                  Status
+                </th>
+                <th
+                  style={{
+                    textAlign: 'left',
+                    padding: '0.25rem',
+                    border: '1px solid #d1d5db',
+                    minWidth: '12rem',
+                  }}
+                >
+                  Snapshot
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {bucket.records.map((record, idx) => {
+                const detailKey = `${listType}|${bucket.tableName}|${record.key}`;
+                const isExpanded = Boolean(expandedSnapshots[detailKey]);
+                const hasSnapshot = Boolean(
+                  record.snapshot && typeof record.snapshot === 'object',
+                );
+                const statusColor =
+                  listType === 'excluded' ? '#b91c1c' : '#047857';
+                const statusText =
+                  listType === 'excluded' ? 'Excluded' : 'Included';
+                const statusDetails =
+                  listType === 'excluded'
+                    ? record.reason
+                      ? `Reason: ${record.reason}`
+                      : 'Reason not provided.'
+                    : record.reason || 'Submitted for locking.';
+                return (
+                  <tr key={detailKey}>
+                    <td
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                      }}
+                    >
+                      {idx + 1}
+                    </td>
+                    <td
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {record.recordId}
+                    </td>
+                    {showDetailsColumn && (
+                      <td
+                        style={{
+                          padding: '0.25rem',
+                          border: '1px solid #d1d5db',
+                        }}
+                      >
+                        {record.label || '—'}
+                      </td>
+                    )}
+                    <td
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                      }}
+                    >
+                      <div
+                        style={{
+                          color: statusColor,
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {statusText}
+                      </div>
+                      <div
+                        style={{
+                          marginTop: '0.125rem',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        {statusDetails}
+                      </div>
+                      {record.lockStatus && (
+                        <div
+                          style={{
+                            marginTop: '0.125rem',
+                            fontSize: '0.875rem',
+                            color: '#6b7280',
+                          }}
+                        >
+                          Status: {record.lockStatus}
+                        </div>
+                      )}
+                      {record.locked && (
+                        <div
+                          style={{
+                            marginTop: '0.125rem',
+                            fontSize: '0.875rem',
+                            color: '#6b7280',
+                          }}
+                        >
+                          Locked by {record.lockedBy || 'unknown'}
+                          {record.lockedAt
+                            ? ` on ${formatDateTimeDisplay(record.lockedAt)}`
+                            : ''}
+                        </div>
+                      )}
+                    </td>
+                    <td
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                      }}
+                    >
+                      {hasSnapshot ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => toggleSnapshot(detailKey)}
+                            style={{ fontSize: '0.85rem' }}
+                          >
+                            {isExpanded ? 'Hide snapshot' : 'View snapshot'}
+                          </button>
+                          {isExpanded && (
+                            <div style={{ marginTop: '0.25rem' }}>
+                              {renderTransactionSnapshot(record, bucket.columns)}
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <span>—</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    );
+  };
+
   return (
     <div>
       <div>
@@ -147,16 +752,43 @@ function renderReportApprovalDetails(meta) {
       </div>
       <div style={{ marginTop: '0.5rem' }}>
         <strong>Transactions</strong>
-        {Array.isArray(meta.transactions) && meta.transactions.length ? (
-          <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
-            {meta.transactions.map((tx, idx) => (
-              <li key={`${tx.table}-${tx.recordId}-${idx}`}>
-                {tx.table}#{tx.recordId}
-              </li>
-            ))}
-          </ul>
+        {transactionBuckets.length ? (
+          <div style={{ margin: '0.25rem 0 0' }}>
+            {transactionBuckets.map((bucket) =>
+              renderBucket(bucket, 'selected', hasSelectedDetails),
+            )}
+          </div>
         ) : (
           <p style={{ margin: '0.25rem 0 0' }}>No transactions provided.</p>
+        )}
+      </div>
+      {archiveMeta && archiveUrl && (
+        <div style={{ marginTop: '0.5rem' }}>
+          <a href={archiveUrl} target="_blank" rel="noopener noreferrer">
+            View archived report
+          </a>
+          {archiveMeta.archivedAt && (
+            <span style={{ marginLeft: '0.5rem', color: '#6b7280' }}>
+              archived {formatDateTimeDisplay(archiveMeta.archivedAt)}
+            </span>
+          )}
+          {archiveMeta.byteSize && (
+            <span style={{ marginLeft: '0.5rem', color: '#6b7280' }}>
+              {formatArchiveSize(archiveMeta.byteSize)}
+            </span>
+          )}
+        </div>
+      )}
+      <div style={{ marginTop: '0.5rem' }}>
+        <strong>Excluded transactions</strong>
+        {excludedBuckets.length ? (
+          <div style={{ margin: '0.25rem 0 0' }}>
+            {excludedBuckets.map((bucket) =>
+              renderBucket(bucket, 'excluded', hasExcludedDetails),
+            )}
+          </div>
+        ) : (
+          <p style={{ margin: '0.25rem 0 0' }}>No transactions excluded.</p>
         )}
       </div>
       <div style={{ marginTop: '0.5rem' }}>
@@ -750,7 +1382,7 @@ export default function RequestsPage() {
                 </p>
               )}
               <div style={{ marginTop: '0.5rem' }}>
-                {renderReportApprovalDetails(meta)}
+                <ReportApprovalDetails meta={meta} requestId={req.request_id} />
               </div>
               {activeTab === 'incoming' ? (
                 canRespond ? (
