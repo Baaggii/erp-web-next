@@ -398,6 +398,13 @@ function sanitizeTourStepsForRestart(steps) {
         sanitized.selector = sanitized.selector.trim();
       }
 
+      if ("__runId" in sanitized) {
+        delete sanitized.__runId;
+      }
+      if ("runId" in sanitized) {
+        delete sanitized.runId;
+      }
+
       delete sanitized.missingTarget;
       delete sanitized.missingTargetOriginalTarget;
       delete sanitized.missingTargetOriginalSelectors;
@@ -632,19 +639,34 @@ export default function ERPLayout() {
   const [isMobile, setIsMobile] = useState(() => window.innerWidth < 768);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [tourSteps, setTourSteps] = useState([]);
+  const tourStepsRef = useRef(tourSteps);
   const [tourStepIndex, setTourStepIndex] = useState(0);
   const [runTour, setRunTour] = useState(false);
   const tourRunIdRef = useRef(0);
   const activeTourRunIdRef = useRef(0);
   const [activeTourRunId, setActiveTourRunId] = useState(0);
   const [currentTourPage, setCurrentTourPage] = useState('');
+  const currentTourPageRef = useRef('');
   const [currentTourPath, setCurrentTourPath] = useState('');
+  const currentTourPathRef = useRef('');
   const toursByPageRef = useRef({});
   const toursByPathRef = useRef({});
   const [tourRegistryVersion, setTourRegistryVersion] = useState(0);
   const [tourBuilderState, setTourBuilderState] = useState(null);
   const [tourViewerState, setTourViewerState] = useState(null);
   const [multiSpotlightActive, setMultiSpotlightActive] = useState(false);
+  useEffect(() => {
+    tourStepsRef.current = tourSteps;
+  }, [tourSteps]);
+
+  useEffect(() => {
+    currentTourPageRef.current = currentTourPage;
+  }, [currentTourPage]);
+
+  useEffect(() => {
+    currentTourPathRef.current = currentTourPath;
+  }, [currentTourPath]);
+
   const updateViewerIndex = useCallback((nextIndex) => {
     setTourViewerState((prev) =>
       prev ? { ...prev, currentStepIndex: nextIndex } : prev,
@@ -974,16 +996,6 @@ export default function ERPLayout() {
     setTourViewerState(null);
   }, []);
 
-  const endTour = useCallback(() => {
-    removeExtraSpotlights();
-    stopMissingTargetWatcher();
-    setRunTour(false);
-    setTourSteps([]);
-    setTourStepIndex(0);
-    setCurrentTourPage("");
-    setCurrentTourPath("");
-    closeTourViewer();
-  }, [closeTourViewer, removeExtraSpotlights, stopMissingTargetWatcher]);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener('resize', handler);
@@ -1030,6 +1042,26 @@ export default function ERPLayout() {
     },
     [normalizePath],
   );
+
+  const restoreCurrentTourDefinition = useCallback(() => {
+    const pageKey = currentTourPageRef.current;
+    if (!pageKey) return;
+
+    const latestSteps = tourStepsRef.current;
+    const sanitizedSteps = sanitizeTourStepsForRestart(latestSteps);
+    const storedEntry = toursByPageRef.current[pageKey];
+    const pathValue =
+      currentTourPathRef.current || storedEntry?.path || undefined;
+
+    if (sanitizedSteps.length) {
+      registerTourEntry(pageKey, sanitizedSteps, pathValue);
+      return;
+    }
+
+    if (storedEntry) {
+      registerTourEntry(storedEntry.pageKey, storedEntry.steps, storedEntry.path);
+    }
+  }, [registerTourEntry]);
 
   const startTour = useCallback(
     (pageKey, stepsInput = [], options = {}) => {
@@ -1093,6 +1125,23 @@ export default function ERPLayout() {
       userSettings,
     ],
   );
+
+  const endTour = useCallback(() => {
+    restoreCurrentTourDefinition();
+    removeExtraSpotlights();
+    stopMissingTargetWatcher();
+    setRunTour(false);
+    setTourSteps([]);
+    setTourStepIndex(0);
+    setCurrentTourPage("");
+    setCurrentTourPath("");
+    closeTourViewer();
+  }, [
+    closeTourViewer,
+    removeExtraSpotlights,
+    restoreCurrentTourDefinition,
+    stopMissingTargetWatcher,
+  ]);
 
   const ensureTourDefinition = useCallback(
     async ({ pageKey, path, forceReload = false, signal } = {}) => {
