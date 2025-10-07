@@ -16,6 +16,7 @@ const defaultWorkflow = {
   markSeen: () => {},
   markIncoming: () => {},
   markOutgoing: () => {},
+  refresh: () => Promise.resolve(),
 };
 const defaultTemporaryCounts = {
   created: { count: 0, hasNew: false, newCount: 0 },

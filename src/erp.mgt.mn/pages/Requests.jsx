@@ -801,8 +801,12 @@ function ReportApprovalDetails({ meta, requestId }) {
 
 export default function RequestsPage() {
   const { user, session } = useAuth();
-  const { incoming: incomingCounts, outgoing: outgoingCounts, markSeen } =
-    usePendingRequests();
+  const {
+    incoming: incomingCounts,
+    outgoing: outgoingCounts,
+    markSeen,
+    workflows,
+  } = usePendingRequests();
 
   const hasSupervisor =
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
@@ -1184,6 +1188,26 @@ export default function RequestsPage() {
             : r,
         ),
       );
+
+      const refreshers = Object.values(workflows || {})
+        .map((workflow) => {
+          if (workflow && typeof workflow.refresh === 'function') {
+            try {
+              return workflow.refresh();
+            } catch (err) {
+              console.error('Failed to refresh workflow counts', err);
+              return null;
+            }
+          }
+          return null;
+        })
+        .filter(Boolean);
+
+      if (refreshers.length) {
+        await Promise.allSettled(refreshers);
+      }
+
+      setIncomingReloadKey((key) => key + 1);
     } catch (err) {
       setIncomingRequests((reqs) =>
         reqs.map((r) =>
