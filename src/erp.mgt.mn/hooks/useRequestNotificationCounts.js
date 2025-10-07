@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { connectSocket, disconnectSocket } from '../utils/socket.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
@@ -51,6 +51,7 @@ export default function useRequestNotificationCounts(
 ) {
   const [incoming, setIncoming] = useState(createInitial);
   const [outgoing, setOutgoing] = useState(createInitial);
+  const fetchCountsRef = useRef(() => Promise.resolve());
   const cfg = useGeneralConfig();
   const pollingEnabled = !!cfg?.general?.requestPollingEnabled;
   const intervalSeconds =
@@ -151,6 +152,7 @@ export default function useRequestNotificationCounts(
                   const params = new URLSearchParams({
                     status,
                     senior_empid: id,
+                    count_only: '1',
                   });
                   Object.entries(memoFilters).forEach(([k, v]) => {
                     if (Array.isArray(v)) {
@@ -200,6 +202,7 @@ export default function useRequestNotificationCounts(
           // Outgoing requests (always for current user)
           try {
             const params = new URLSearchParams({ status });
+            params.append('count_only', '1');
             Object.entries(memoFilters).forEach(([k, v]) => {
               if (Array.isArray(v)) {
                 v
@@ -253,6 +256,7 @@ export default function useRequestNotificationCounts(
       }
     }
 
+    fetchCountsRef.current = fetchCounts;
     fetchCounts();
     let timer;
 
@@ -283,6 +287,7 @@ export default function useRequestNotificationCounts(
 
     return () => {
       cancelled = true;
+      fetchCountsRef.current = () => Promise.resolve();
       if (socket) {
         socket.off('newRequest', fetchCounts);
         socket.off('requestResolved', fetchCounts);
@@ -297,6 +302,14 @@ export default function useRequestNotificationCounts(
     };
   }, [supervisorIds, filterKey, pollingEnabled, intervalSeconds, storageKey]);
 
+  const refresh = useCallback(() => {
+    try {
+      return fetchCountsRef.current();
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  }, []);
+
   const hasNew =
     STATUSES.some((s) => incoming[s].hasNew) ||
     ['accepted', 'declined'].some((s) => outgoing[s].hasNew);
@@ -309,6 +322,7 @@ export default function useRequestNotificationCounts(
     markIncoming,
     markOutgoing,
     markStatuses: markStatusesAsSeen,
+    refresh,
   };
 }
 
