@@ -257,7 +257,7 @@ const RETRY_REASON_HINTS = {
   limited_cyrillic_content:
     'Add more substantial Mongolian words written in Cyrillic.',
   insufficient_character_variety:
-    'Use a variety of Mongolian letters to form meaningful words, not repeated single characters.',
+    'Use natural Mongolian words instead of repeating the same few characters.',
   insufficient_word_length:
     'Include meaningful Mongolian words that are at least a few letters long.',
   missing_mongolian_vowel:
