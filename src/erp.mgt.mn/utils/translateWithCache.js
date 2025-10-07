@@ -161,11 +161,6 @@ const LANGUAGE_LABELS = {
   ko: 'Korean',
 };
 
-const MAX_ATTEMPTS_BY_LANG = {
-  mn: 7,
-};
-const DEFAULT_MAX_ATTEMPTS = 4;
-
 function getLanguageLabel(lang) {
   if (!lang) return 'the target language';
   const lower = String(lang).toLowerCase();
@@ -267,14 +262,6 @@ const RETRY_REASON_HINTS = {
     'Include meaningful Mongolian words that are at least a few letters long.',
   missing_mongolian_vowel:
     'Use natural Mongolian vocabulary that includes appropriate vowels.',
-  insufficient_unique_words:
-    'Add at least two different meaningful Mongolian words when the text requires detail.',
-  insufficient_vowel_content:
-    'Increase the number of Mongolian vowels so the sentence reads naturally.',
-  repeated_character_sequences:
-    'Avoid repeating the same Cyrillic character several times in a row; write fluent Mongolian instead.',
-  low_language_confidence:
-    'Produce a clearer Mongolian sentence with natural wording so language detection is confident.',
   metadata_not_reflected:
     'Incorporate key terminology from the provided module/context when appropriate.',
   no_language_signal:
@@ -630,9 +617,7 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
     metadata,
   });
   const summary = summarizeHeuristic(heuristics);
-  const heuristicsSuggestRetry = heuristics.status === 'retry';
-  const primaryHeuristicReason =
-    heuristics.reasons[0] || (heuristicsSuggestRetry ? 'validation_failed' : '');
+  const requiresRemoteValidation = lang === 'mn';
   const result = {
     valid: false,
     reason: '',
@@ -648,7 +633,16 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
     return {
       ...result,
       reason: heuristics.reasons[0] || 'failed_heuristics',
-      needsRetry: true,
+      needsRetry: false,
+    };
+  }
+
+  const shouldUseHeuristicsOnly = heuristics.status === 'pass' && !requiresRemoteValidation;
+
+  if (shouldUseHeuristicsOnly) {
+    return {
+      ...result,
+      valid: true,
     };
   }
 
@@ -705,6 +699,17 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
         languageConfidence: viaPrompt.languageConfidence,
       };
     }
+  }
+
+  if (heuristics.status === 'pass' && !requiresRemoteValidation) {
+    return {
+      ...result,
+      valid: true,
+      reason: '',
+      needsRetry: false,
+      attemptedRemote: Boolean(viaEndpoint),
+      remoteSource: viaEndpoint?.status ? `status_${viaEndpoint.status}` : null,
+    };
   }
 
   return {
@@ -819,8 +824,7 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
     }
   }
 
-  const normalizedLang = String(lang || '').toLowerCase();
-  const maxAttempts = MAX_ATTEMPTS_BY_LANG[normalizedLang] || DEFAULT_MAX_ATTEMPTS;
+  const maxAttempts = String(lang).toLowerCase() === 'mn' ? 5 : 3;
   const seenCandidates = [];
   let translationRecord = null;
   let translatedText = null;
