@@ -114,20 +114,41 @@ export default function Reports() {
     }
   }, [result]);
 
-  const getCandidateKey = useCallback((candidate) => {
+  const getCandidateTable = useCallback((candidate) => {
     if (!candidate || typeof candidate !== 'object') return '';
-    if (candidate.key) return String(candidate.key);
-    const table = candidate.tableName ?? candidate.table;
-    const recordId =
-      candidate.recordId ??
-      candidate.record_id ??
-      candidate.id ??
-      candidate.recordID;
-    if (table === undefined || table === null) return '';
-    const normalizedTable = String(table);
-    if (recordId === undefined || recordId === null) return `${normalizedTable}#`;
-    return `${normalizedTable}#${recordId}`;
+    const tableSources = [
+      candidate.tableName,
+      candidate.table,
+      candidate.table_name,
+      candidate.lockTable,
+      candidate.lock_table,
+      candidate.lockTableName,
+      candidate.lock_table_name,
+    ];
+    for (const source of tableSources) {
+      if (source === undefined || source === null) continue;
+      const str = String(source).trim();
+      if (str) return str;
+    }
+    return '';
   }, []);
+
+  const getCandidateKey = useCallback(
+    (candidate) => {
+      if (!candidate || typeof candidate !== 'object') return '';
+      if (candidate.key) return String(candidate.key);
+      const table = getCandidateTable(candidate);
+      if (!table) return '';
+      const recordId =
+        candidate.recordId ??
+        candidate.record_id ??
+        candidate.id ??
+        candidate.recordID;
+      if (recordId === undefined || recordId === null) return `${table}#`;
+      return `${table}#${recordId}`;
+    },
+    [getCandidateTable],
+  );
 
   const handleSnapshotReady = useCallback((data) => {
     setSnapshot(data || null);
@@ -255,12 +276,7 @@ export default function Reports() {
         const normalized = list
           .map((candidate) => {
             if (!candidate || typeof candidate !== 'object') return null;
-            const tableName =
-              typeof candidate.tableName === 'string'
-                ? candidate.tableName
-                : typeof candidate.table === 'string'
-                ? candidate.table
-                : null;
+            const tableName = getCandidateTable(candidate);
             const rawId =
               candidate.recordId ??
               candidate.record_id ??
@@ -313,6 +329,7 @@ export default function Reports() {
     branch,
     department,
     getCandidateKey,
+    getCandidateTable,
   ]);
 
   const dateParamInfo = useMemo(() => {
@@ -642,7 +659,7 @@ export default function Reports() {
     }
     const bucketMap = new Map();
     lockCandidates.forEach((candidate) => {
-      const tableName = candidate?.tableName ?? candidate?.table;
+      const tableName = candidate?.tableName || getCandidateTable(candidate);
       if (!tableName) return;
       if (!bucketMap.has(tableName)) {
         bucketMap.set(tableName, { tableName, candidates: [] });
@@ -678,7 +695,7 @@ export default function Reports() {
         columns: Array.from(columnSet),
       };
     });
-  }, [lockCandidates]);
+  }, [lockCandidates, getCandidateTable]);
 
   const lockCandidateMap = useMemo(() => {
     const map = new Map();
@@ -1096,17 +1113,191 @@ export default function Reports() {
     if (!meta) {
       return <p>No report metadata available.</p>;
     }
+    const collectTransactionsFromSource = (source) => {
+      if (!source) return [];
+      const results = [];
+      const visited = new WeakSet();
+      const ignoredKeys = new Set([
+        'parameters',
+        'snapshot',
+        'snapshotColumns',
+        'snapshot_columns',
+        'snapshotFieldTypeMap',
+        'snapshot_field_type_map',
+        'fieldTypeMap',
+        'field_type_map',
+        'archive',
+        'snapshotArchive',
+        'snapshot_archive',
+        'requestId',
+        'request_id',
+        'lockRequestId',
+        'lock_request_id',
+        'metadata',
+        'report_metadata',
+        'proposed_data',
+        'excludedTransactions',
+        'excluded_transactions',
+        'lockCandidates',
+        'lock_candidates',
+        'lockBundle',
+        'lock_bundle',
+        'rows',
+        'columns',
+        'fieldTypes',
+        'field_types',
+        'rowCount',
+        'row_count',
+        'count',
+        'total',
+      ]);
+      const visit = (value, fallbackTable) => {
+        if (value === null || value === undefined) return;
+        if (Array.isArray(value)) {
+          value.forEach((item) => visit(item, fallbackTable));
+          return;
+        }
+        if (typeof value !== 'object') {
+          if (
+            fallbackTable &&
+            value !== null &&
+            value !== undefined &&
+            (typeof value === 'string' || typeof value === 'number')
+          ) {
+            results.push({ table: fallbackTable, recordId: value });
+          }
+          return;
+        }
+        if (visited.has(value)) return;
+        visited.add(value);
+        const tableCandidate =
+          value.table ||
+          value.tableName ||
+          value.table_name ||
+          value.lock_table ||
+          value.lockTable ||
+          fallbackTable ||
+          '';
+        const rawId =
+          value.recordId ??
+          value.record_id ??
+          value.id ??
+          value.recordID ??
+          value.RecordId ??
+          value.lock_record_id ??
+          value.lockRecordId;
+        if (
+          tableCandidate &&
+          rawId !== undefined &&
+          rawId !== null &&
+          (typeof rawId === 'string' || typeof rawId === 'number')
+        ) {
+          results.push({ ...value, table: tableCandidate, recordId: rawId });
+          return;
+        }
+        const idList =
+          value.recordIds ||
+          value.record_ids ||
+          value.recordIDs ||
+          value.ids ||
+          value.items ||
+          value.records ||
+          value.lock_record_ids ||
+          value.lockRecordIds;
+        if (tableCandidate && Array.isArray(idList) && idList.length) {
+          idList.forEach((item) => {
+            if (item && typeof item === 'object') {
+              visit({ ...item, table: tableCandidate }, tableCandidate);
+            } else if (item !== undefined && item !== null) {
+              visit(item, tableCandidate);
+            }
+          });
+          return;
+        }
+        Object.keys(value).forEach((key) => {
+          if (['table', 'tableName', 'table_name'].includes(key)) return;
+          if (
+            [
+              'recordId',
+              'record_id',
+              'recordIds',
+              'record_ids',
+              'recordIDs',
+              'recordID',
+              'ids',
+              'items',
+              'records',
+            ].includes(key)
+          ) {
+            return;
+          }
+          if (ignoredKeys.has(key)) return;
+          const child = value[key];
+          const nextFallback =
+            tableCandidate ||
+            fallbackTable ||
+            (Array.isArray(child) || (child && typeof child === 'object') ? key : '');
+          visit(child, nextFallback);
+        });
+      };
+      visit(source, '');
+      const seen = new Set();
+      const unique = [];
+      results.forEach((item) => {
+        if (!item || typeof item !== 'object') return;
+        const tableName = item.table || item.tableName || item.table_name || '';
+        const rawId =
+          item.recordId ??
+          item.record_id ??
+          item.id ??
+          item.recordID ??
+          item.RecordId ??
+          '';
+        const key = `${tableName}#${rawId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        unique.push(item);
+      });
+      return unique;
+    };
+
     const paramEntries = Object.entries(meta.parameters || {});
-    const transactions = Array.isArray(meta.transactions)
-      ? meta.transactions
-      : Array.isArray(meta.transaction_list)
-      ? meta.transaction_list
-      : [];
-    const excludedTransactions = Array.isArray(meta.excludedTransactions)
-      ? meta.excludedTransactions
-      : Array.isArray(meta.excluded_transactions)
-      ? meta.excluded_transactions
-      : [];
+    const transactionSources = [
+      meta.transactions,
+      meta.transaction_list,
+      meta.transactionList,
+      meta.transaction_map,
+      meta.transactionMap,
+      meta.lockCandidates,
+      meta.lock_candidates,
+      meta.lockBundle,
+      meta.lock_bundle,
+      meta.lockBundle?.locks,
+      meta.lock_bundle?.locks,
+      meta.lockBundle?.records,
+      meta.lock_bundle?.records,
+      meta.lockBundle?.items,
+      meta.lock_bundle?.items,
+    ];
+    const transactions = transactionSources.reduce((list, source) => {
+      collectTransactionsFromSource(source).forEach((item) => list.push(item));
+      return list;
+    }, []);
+    const excludedTransactionSources = [
+      meta.excludedTransactions,
+      meta.excluded_transactions,
+      meta.excludedTransactionList,
+      meta.excluded_transaction_list,
+      meta.excludedLockBundle,
+      meta.excluded_lock_bundle,
+    ];
+    const excludedTransactions = excludedTransactionSources.reduce(
+      (list, source) => {
+        collectTransactionsFromSource(source).forEach((item) => list.push(item));
+        return list;
+      },
+      [],
+    );
     const rowCount =
       typeof meta.snapshot?.rowCount === 'number'
         ? meta.snapshot.rowCount
@@ -1144,15 +1335,32 @@ export default function Reports() {
     function normalizeTransaction(tx) {
       if (!tx || typeof tx !== 'object') return null;
       const tableName =
-        tx.table || tx.tableName || tx.table_name || '—';
+        tx.table ||
+        tx.tableName ||
+        tx.table_name ||
+        tx.lock_table ||
+        tx.lockTable ||
+        '—';
       const rawId =
-        tx.recordId ?? tx.record_id ?? tx.id ?? tx.recordID ?? tx.RecordId;
+        tx.recordId ??
+        tx.record_id ??
+        tx.id ??
+        tx.recordID ??
+        tx.RecordId ??
+        tx.lock_record_id ??
+        tx.lockRecordId;
       if (!tableName || rawId === undefined || rawId === null) return null;
       const recordId = String(rawId);
       const key = `${tableName}#${recordId}`;
       const label = tx.label || tx.description || tx.note || '';
       const reason =
-        tx.reason || tx.justification || tx.explanation || tx.exclude_reason || '';
+        tx.reason ||
+        tx.justification ||
+        tx.explanation ||
+        tx.exclude_reason ||
+        tx.lock_reason ||
+        tx.lockReason ||
+        '';
       const snapshot =
         tx.snapshot && typeof tx.snapshot === 'object' ? tx.snapshot : null;
       const snapshotColumns = Array.isArray(tx.snapshotColumns)
@@ -1195,12 +1403,18 @@ export default function Reports() {
         .sort((a, b) => String(a.tableName).localeCompare(String(b.tableName)));
     }
 
-    const normalizedTransactions = transactions
-      .map((tx) => normalizeTransaction(tx))
-      .filter(Boolean);
-    const normalizedExcluded = excludedTransactions
-      .map((tx) => normalizeTransaction(tx))
-      .filter(Boolean);
+    const normalizeUnique = (list) => {
+      const map = new Map();
+      list.forEach((tx) => {
+        const normalized = normalizeTransaction(tx);
+        if (!normalized) return;
+        map.set(normalized.key, normalized);
+      });
+      return Array.from(map.values());
+    };
+
+    const normalizedTransactions = normalizeUnique(transactions);
+    const normalizedExcluded = normalizeUnique(excludedTransactions);
     const transactionBuckets = buildBuckets(normalizedTransactions);
     const excludedBuckets = buildBuckets(normalizedExcluded);
 
@@ -1441,12 +1655,15 @@ export default function Reports() {
       .map((candidate) => {
         const key = getCandidateKey(candidate);
         const info = lockExclusions[key];
+        const tableName = candidate.tableName || getCandidateTable(candidate);
+        if (!tableName) return null;
         return {
-          table: candidate.tableName,
+          table: tableName,
           recordId: String(candidate.recordId),
           reason: info?.reason?.trim() || '',
         };
-      });
+      })
+      .filter(Boolean);
     if (excludedTransactions.some((tx) => !tx.reason)) {
       addToast('Provide a reason for each excluded transaction', 'error');
       return;
@@ -1456,10 +1673,15 @@ export default function Reports() {
       parameters: snapshot?.params || result.params,
       transactions: lockCandidates
         .filter((candidate) => lockSelections[getCandidateKey(candidate)])
-        .map((candidate) => ({
-          table: candidate.tableName,
-          recordId: String(candidate.recordId),
-        })),
+        .map((candidate) => {
+          const tableName = candidate.tableName || getCandidateTable(candidate);
+          if (!tableName) return null;
+          return {
+            table: tableName,
+            recordId: String(candidate.recordId),
+          };
+        })
+        .filter(Boolean),
       excludedTransactions,
       snapshot: {
         columns: snapshot?.columns || [],
