@@ -602,9 +602,17 @@ export default function ManualTranslationsTab() {
         ...(entry.translatedBy ?? {}),
         [lang]: MANUAL_ENTRY_PROVIDER,
       };
+      const fallbackOrigin = normalizeOrigin(entry.type) || toTrimmedString(entry.type);
       if (entry.translatedBySources) {
+        const existingOrigin = entry.translatedBySources[lang];
+        const normalizedExisting = normalizeOrigin(existingOrigin);
         entry.translatedBySources = {
           ...entry.translatedBySources,
+          [lang]: normalizedExisting || fallbackOrigin || entry.translatedBySources[lang] || 'unknown',
+        };
+      } else {
+        entry.translatedBySources = {
+          [lang]: fallbackOrigin || 'unknown',
         };
       }
       copy[index] = entry;
