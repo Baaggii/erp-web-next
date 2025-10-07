@@ -5,7 +5,6 @@ const originalFetch = window.fetch.bind(window);
 let tokenPromise;
 let cachedToken;
 let lastTokenErrorMessage;
-let tokenWarningLogged = false;
 const controllers = new Set();
 
 function abortAll() {
@@ -27,7 +26,6 @@ window.addEventListener('auth:logout', () => {
   cachedToken = undefined;
   tokenPromise = undefined;
   lastTokenErrorMessage = undefined;
-  tokenWarningLogged = false;
 });
 
 function dispatchStart(key) {
@@ -170,7 +168,6 @@ async function getToken({ suppressToast = false } = {}) {
   try {
     const token = await ensureToken();
     lastTokenErrorMessage = undefined;
-    tokenWarningLogged = false;
     return token;
   } catch (err) {
     const message = err?.message || 'Unable to fetch CSRF token.';
@@ -182,14 +179,7 @@ async function getToken({ suppressToast = false } = {}) {
       );
       lastTokenErrorMessage = message;
     }
-    if (!tokenWarningLogged && typeof console !== 'undefined') {
-      console.warn(
-        'Failed to fetch CSRF token. Continuing without one; some requests may be rejected by the server.',
-        err,
-      );
-      tokenWarningLogged = true;
-    }
-    return null;
+    throw err;
   }
 }
 
@@ -208,14 +198,12 @@ window.fetch = async (url, options = {}, _retry) => {
   const method = (opts.method || 'GET').toUpperCase();
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
     const token = await getToken({ suppressToast: skipErrorToast });
-    if (token) {
-      if (typeof Headers !== 'undefined') {
-        const headers = new Headers(opts.headers || {});
-        headers.set('X-CSRF-Token', token);
-        opts.headers = headers;
-      } else {
-        opts.headers = { ...(opts.headers || {}), 'X-CSRF-Token': token };
-      }
+    if (typeof Headers !== 'undefined') {
+      const headers = new Headers(opts.headers || {});
+      headers.set('X-CSRF-Token', token);
+      opts.headers = headers;
+    } else {
+      opts.headers = { ...(opts.headers || {}), 'X-CSRF-Token': token };
     }
     opts.credentials = opts.credentials || 'include';
   }
