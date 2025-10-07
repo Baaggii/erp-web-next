@@ -434,51 +434,42 @@ export async function listRequests(filters) {
   const conditions = [];
   const params = [];
 
-  const normalizedStatus =
-    typeof status === 'string' ? status.trim().toLowerCase() : null;
-  if (normalizedStatus) {
-    conditions.push('status = ?');
-    params.push(normalizedStatus);
+  if (status) {
+    conditions.push('LOWER(TRIM(status)) = ?');
+    params.push(String(status).trim().toLowerCase());
   }
-
-  const normalizedSenior = normalizeSupervisorEmpId(senior_empid);
-  if (normalizedSenior) {
-    conditions.push('senior_empid = ?');
-    params.push(normalizedSenior);
+  if (senior_empid) {
+    conditions.push('UPPER(TRIM(senior_empid)) = ?');
+    params.push(String(senior_empid).trim().toUpperCase());
   }
-
-  const normalizedRequester = normalizeSupervisorEmpId(requested_empid);
-  if (normalizedRequester) {
-    conditions.push('emp_id = ?');
-    params.push(normalizedRequester);
+  if (requested_empid) {
+    conditions.push('UPPER(TRIM(emp_id)) = ?');
+    params.push(String(requested_empid).trim().toUpperCase());
   }
-
   if (table_name) {
     conditions.push('table_name = ?');
     params.push(table_name);
   }
-
-  const normalizedRequestType =
-    typeof request_type === 'string' ? request_type.trim() : null;
-  if (normalizedRequestType) {
+  if (request_type) {
     conditions.push('request_type = ?');
-    params.push(normalizedRequestType);
+    params.push(request_type);
   }
-
   const dateColumn =
     date_field === 'responded' ? 'responded_at' : 'created_at';
-
-  const normalizedDateFrom =
-    typeof date_from === 'string' ? date_from.trim() : date_from;
-  const normalizedDateTo = typeof date_to === 'string' ? date_to.trim() : date_to;
-
-  if (normalizedDateFrom) {
-    conditions.push(`${dateColumn} >= ?`);
-    params.push(normalizedDateFrom);
-  }
-  if (normalizedDateTo) {
-    conditions.push(`${dateColumn} < DATE_ADD(?, INTERVAL 1 DAY)`);
-    params.push(normalizedDateTo);
+  if (date_from || date_to) {
+    if (date_from && date_to) {
+      conditions.push(`DATE(${dateColumn}) BETWEEN ? AND ?`);
+      params.push(date_from, date_to);
+    } else {
+      if (date_from) {
+        conditions.push(`${dateColumn} >= ?`);
+        params.push(date_from);
+      }
+      if (date_to) {
+        conditions.push(`${dateColumn} < DATE_ADD(?, INTERVAL 1 DAY)`);
+        params.push(date_to);
+      }
+    }
   }
 
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -499,36 +490,6 @@ export async function listRequests(filters) {
     `SELECT *, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt FROM pending_request ${where} ORDER BY ${dateColumn} DESC LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
-
-  const requestIds = idRows
-    .map((row) => row?.request_id)
-    .filter((id) => id !== null && id !== undefined);
-
-  if (!requestIds.length) {
-    return { rows: [], total };
-  }
-
-  const placeholders = requestIds.map(() => '?').join(', ');
-  const [rows] = await pool.query(
-    `SELECT *,
-            DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt,
-            DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt
-       FROM pending_request
-      WHERE request_id IN (${placeholders})`,
-    requestIds,
-  );
-
-  const orderLookup = new Map();
-  requestIds.forEach((id, index) => {
-    orderLookup.set(String(id), index);
-  });
-
-  rows.sort((a, b) => {
-    const aIdx = orderLookup.get(String(a.request_id));
-    const bIdx = orderLookup.get(String(b.request_id));
-    if (aIdx === undefined || bIdx === undefined) return 0;
-    return aIdx - bIdx;
-  });
 
   const approvalRequestIds = rows
     .filter((row) => row.request_type === 'report_approval')
