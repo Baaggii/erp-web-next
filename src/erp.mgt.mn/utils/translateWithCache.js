@@ -487,13 +487,6 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
     };
   }
 
-  if (heuristics.status === 'pass') {
-    return {
-      ...result,
-      valid: true,
-    };
-  }
-
   const payload = { candidate, base, lang, metadata };
   const viaEndpoint = await requestValidationViaEndpoint(payload);
   if (viaEndpoint?.ok) {
