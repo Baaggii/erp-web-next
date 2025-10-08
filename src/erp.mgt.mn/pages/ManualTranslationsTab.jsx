@@ -42,6 +42,8 @@ function getTranslatorLabel(source) {
 }
 
 const MANUAL_ENTRY_PROVIDER = 'manual-entry';
+const TRANSLATION_MODEL_PRESETS = ['', 'gpt-4o', 'gpt-4o-mini', 'gpt-3.5-turbo'];
+const CUSTOM_MODEL_SENTINEL = '__custom__';
 
 function normalizeProvider(provider) {
   if (typeof provider !== 'string') {
@@ -226,6 +228,21 @@ function getProviderGridStyle(count) {
 export default function ManualTranslationsTab() {
   const { t } = useContext(I18nContext);
   const { addToast } = useToast();
+  const modelPreferenceRef = useRef(null);
+  if (modelPreferenceRef.current === null) {
+    modelPreferenceRef.current = (() => {
+      if (typeof window === 'undefined') return '';
+      try {
+        return localStorage.getItem('manual-translation-model') || '';
+      } catch {
+        return '';
+      }
+    })();
+  }
+  const initialModelPreference = modelPreferenceRef.current;
+  const initialModelIsCustom =
+    Boolean(initialModelPreference) &&
+    !TRANSLATION_MODEL_PRESETS.includes(initialModelPreference);
   const [languages, setLanguages] = useState([]);
   const [entries, setEntries] = useState([]);
   const [page, setPage] = useState(1);
@@ -235,6 +252,15 @@ export default function ManualTranslationsTab() {
   const [activeRow, setActiveRow] = useState(null);
   const [savingLanguage, setSavingLanguage] = useState(null);
   const [translationSources, setTranslationSources] = useState([]);
+  const [selectedTranslationModel, setSelectedTranslationModel] = useState(
+    initialModelPreference || '',
+  );
+  const [customTranslationModel, setCustomTranslationModel] = useState(
+    initialModelIsCustom ? initialModelPreference : '',
+  );
+  const [useCustomTranslationModel, setUseCustomTranslationModel] = useState(
+    initialModelIsCustom,
+  );
   const [columnWidths, setColumnWidths] = useState({});
   const abortRef = useRef(false);
   const processingRef = useRef(false);
@@ -724,6 +750,120 @@ export default function ManualTranslationsTab() {
     setTranslationSources([]);
   };
 
+  useEffect(() => {
+    if (useCustomTranslationModel) {
+      if (!customTranslationModel && selectedTranslationModel) {
+        setCustomTranslationModel(selectedTranslationModel);
+      }
+    } else if (
+      selectedTranslationModel &&
+      !TRANSLATION_MODEL_PRESETS.includes(selectedTranslationModel)
+    ) {
+      setUseCustomTranslationModel(true);
+      setCustomTranslationModel(selectedTranslationModel);
+    }
+  }, [
+    customTranslationModel,
+    selectedTranslationModel,
+    useCustomTranslationModel,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const trimmed = (selectedTranslationModel || '').trim();
+      if (trimmed) {
+        localStorage.setItem('manual-translation-model', trimmed);
+      } else {
+        localStorage.removeItem('manual-translation-model');
+      }
+    } catch {}
+  }, [selectedTranslationModel]);
+
+  const handleModelPresetChange = (value) => {
+    if (value === CUSTOM_MODEL_SENTINEL) {
+      setUseCustomTranslationModel(true);
+      if (customTranslationModel) {
+        setSelectedTranslationModel(customTranslationModel);
+      } else {
+        setSelectedTranslationModel('');
+      }
+      return;
+    }
+    setUseCustomTranslationModel(false);
+    setCustomTranslationModel('');
+    setSelectedTranslationModel(value);
+  };
+
+  const renderModelSelector = () => {
+    const presetValue = useCustomTranslationModel
+      ? CUSTOM_MODEL_SENTINEL
+      : selectedTranslationModel;
+    return (
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          flexWrap: 'wrap',
+        }}
+      >
+        <label
+          htmlFor="translation-model-select"
+          style={{ fontWeight: 600, fontSize: '0.875rem' }}
+        >
+          {t('translationModelLabel', 'Translation model')}
+        </label>
+        <select
+          id="translation-model-select"
+          value={presetValue}
+          onChange={(event) => handleModelPresetChange(event.target.value)}
+          style={{
+            padding: '0.25rem 0.5rem',
+            borderRadius: '0.375rem',
+            border: '1px solid #d1d5db',
+            fontSize: '0.875rem',
+            minWidth: '9rem',
+          }}
+        >
+          <option value="">
+            {t('translationModelAuto', 'Auto (recommended)')}
+          </option>
+          {TRANSLATION_MODEL_PRESETS.filter((model) => model).map((model) => (
+            <option key={model} value={model}>
+              {model}
+            </option>
+          ))}
+          <option value={CUSTOM_MODEL_SENTINEL}>
+            {t('translationModelCustom', 'Custom…')}
+          </option>
+        </select>
+        {useCustomTranslationModel && (
+          <input
+            type="text"
+            value={customTranslationModel}
+            onChange={(event) => {
+              const value = event.target.value.trim();
+              setCustomTranslationModel(value);
+              setSelectedTranslationModel(value);
+            }}
+            placeholder={t(
+              'translationModelCustomPlaceholder',
+              'Enter model id',
+            )}
+            style={{
+              padding: '0.25rem 0.5rem',
+              borderRadius: '0.375rem',
+              border: '1px solid #d1d5db',
+              fontSize: '0.875rem',
+              minWidth: '12rem',
+            }}
+          />
+        )}
+      </div>
+    );
+  };
+
   async function completeAll() {
     if (processingRef.current) return;
     abortRef.current = false;
@@ -762,7 +902,15 @@ export default function ManualTranslationsTab() {
         const metadata = sourceLang
           ? { ...entryMetadata, sourceLang }
           : entryMetadata;
-        return translateWithCache(targetLang, text, undefined, metadata);
+        const trimmedModel = (selectedTranslationModel || '').trim();
+        const options = trimmedModel ? { model: trimmedModel } : undefined;
+        return translateWithCache(
+          targetLang,
+          text,
+          undefined,
+          metadata,
+          options,
+        );
       };
       let en = toTrimmedString(newEntry.values.en);
       let mn = toTrimmedString(newEntry.values.mn);
@@ -1036,7 +1184,16 @@ export default function ManualTranslationsTab() {
           )}
         </div>
       )}
-      <div style={{ marginBottom: '0.5rem', display: 'flex', gap: '0.5rem' }}>
+      <div
+        style={{
+          marginBottom: '0.5rem',
+          display: 'flex',
+          gap: '0.5rem',
+          flexWrap: 'wrap',
+          alignItems: 'center',
+        }}
+      >
+        {renderModelSelector()}
         <button type="button" onClick={addRow}>{t('addRow', 'Add Row')}</button>
         <button
           type="button"
