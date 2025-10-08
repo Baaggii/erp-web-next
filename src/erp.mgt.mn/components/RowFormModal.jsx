@@ -69,6 +69,7 @@ const RowFormModal = function RowFormModal({
   onSaveTemporary = null,
   allowTemporarySave = false,
   isAdding = false,
+  canPost = true,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -904,8 +905,10 @@ const RowFormModal = function RowFormModal({
       return;
     }
     if (!next) {
-      submitForm();
-      if (onNextForm) onNextForm();
+      if (canPost) {
+        submitForm();
+        if (onNextForm) onNextForm();
+      }
     }
   }
 
@@ -1435,12 +1438,89 @@ const RowFormModal = function RowFormModal({
   async function handleTemporarySave() {
     if (!allowTemporarySave || !onSaveTemporary) return;
     if (useGrid && tableRef.current) {
-      alert(
-        t(
-          'temporary_save_grid_not_supported',
-          'Saving as temporary is not available for grid-based forms yet.',
-        ),
-      );
+      if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
+        alert('Тэмдэглэсэн талбаруудыг засна уу.');
+        return;
+      }
+      const rows = tableRef.current.getRows();
+      const cleanedRows = [];
+      const rawRows = [];
+      let hasMissing = false;
+      let hasInvalid = false;
+      rows.forEach((r) => {
+        const hasValue = Object.values(r).some((v) => {
+          if (v === null || v === undefined || v === '') return false;
+          if (typeof v === 'object' && 'value' in v) return v.value !== '';
+          return true;
+        });
+        if (!hasValue) return;
+        const normalized = {};
+        Object.entries(r).forEach(([k, v]) => {
+          const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+          let val = normalizeDateInput(raw, placeholders[k]);
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
+          }
+          normalized[k] = val;
+        });
+        requiredFields.forEach((f) => {
+          if (
+            normalized[f] === '' ||
+            normalized[f] === null ||
+            normalized[f] === undefined
+          )
+            hasMissing = true;
+          if (
+            (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+            normalized[f] !== '' &&
+            !/code/i.test(f) &&
+            isNaN(Number(normalizeNumberInput(normalized[f])))
+          )
+            hasInvalid = true;
+          const ph = placeholders[f];
+          if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
+        });
+        cleanedRows.push(normalized);
+        rawRows.push(r);
+      });
+      if (hasMissing) {
+        alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+        return;
+      }
+      if (hasInvalid) {
+        alert('Буруу утгуудыг засна уу.');
+        return;
+      }
+      if (cleanedRows.length === 0) {
+        return;
+      }
+      const mergedExtra = { ...extraVals };
+      if (mergedExtra.seedRecords && mergedExtra.seedTables) {
+        const set = new Set(mergedExtra.seedTables);
+        const filtered = {};
+        Object.entries(mergedExtra.seedRecords).forEach(([tbl, recs]) => {
+          if (set.has(tbl)) filtered[tbl] = recs;
+        });
+        mergedExtra.seedRecords = filtered;
+      }
+      const normalizedExtra = {};
+      Object.entries(mergedExtra).forEach(([k, v]) => {
+        let val = normalizeDateInput(v, placeholders[k]);
+        if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+          val = normalizeNumberInput(val);
+        }
+        normalizedExtra[k] = val;
+      });
+      try {
+        await Promise.resolve(
+          onSaveTemporary({
+            values: { ...normalizedExtra, rows: cleanedRows },
+            rawRows,
+          }),
+        );
+      } catch (err) {
+        console.error('Temporary save failed', err);
+      }
       return;
     }
     const merged = { ...extraVals, ...formVals };
@@ -1468,6 +1548,15 @@ const RowFormModal = function RowFormModal({
   }
 
   async function submitForm() {
+    if (!canPost) {
+      alert(
+        t(
+          'temporary_post_not_allowed',
+          'You do not have permission to post this transaction.',
+        ),
+      );
+      return;
+    }
     if (submitLocked) return;
     setSubmitLocked(true);
     if (useGrid && tableRef.current) {
@@ -2290,13 +2379,23 @@ const RowFormModal = function RowFormModal({
           >
             {t('cancel', 'Cancel')}
           </button>
-          <button
-            type="submit"
-            className="px-3 py-1 bg-blue-600 text-white rounded"
-          >
-            {t('post', 'Post')}
-          </button>
+          {canPost && (
+            <button
+              type="submit"
+              className="px-3 py-1 bg-blue-600 text-white rounded"
+            >
+              {t('post', 'Post')}
+            </button>
+          )}
         </div>
+        {!canPost && allowTemporarySave && (
+          <div className="mt-2 text-sm text-gray-600">
+            {t(
+              'temporary_post_hint',
+              'This form only allows temporary submissions for your branch/department.',
+            )}
+          </div>
+        )}
         <div className="text-sm text-gray-600">
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>
