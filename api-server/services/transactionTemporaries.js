@@ -70,7 +70,7 @@ async function ensureTemporaryTable(conn = pool) {
 
 async function insertNotification(
   conn,
-  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'transaction_temporary' },
+  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'request' },
 ) {
   const recipient = normalizeEmpId(recipientEmpId);
   if (!recipient) return;
