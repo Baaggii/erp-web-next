@@ -737,7 +737,13 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
   };
 }
 
-export default async function translateWithCache(lang, key, fallback, metadata) {
+export default async function translateWithCache(
+  lang,
+  key,
+  fallback,
+  metadata,
+  options = {},
+) {
   const entryType = metadata?.type;
   const isTooltip = entryType === 'tooltip';
   const locales = isTooltip ? await loadTooltipLocale(lang) : await loadLocale(lang);
@@ -853,6 +859,8 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
         attempt,
         feedback: buildRetryFeedback(previousValidation),
         previousCandidates: seenCandidates.slice(),
+        model: options?.model,
+        key: normalizedMetadata?.key || key,
       });
     } catch (err) {
       if (err.rateLimited) throw err;
