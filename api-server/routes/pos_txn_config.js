@@ -8,10 +8,6 @@ import {
   filterPosConfigsByAccess,
   hasPosTransactionAccess,
 } from '../services/posTransactionConfig.js';
-import {
-  resolveScopedCompanyId,
-  pickFirstScopeValue,
-} from '../utils/requestScopes.js';
 
 const router = express.Router();
 
