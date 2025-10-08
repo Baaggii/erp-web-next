@@ -649,6 +649,33 @@ export default function FormsManagement() {
               />
             </label>
 
+            <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                checked={Boolean(config.allowTemporarySubmission)}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setConfig((c) => ({
+                    ...c,
+                    allowTemporarySubmission: checked,
+                    supportsTemporarySubmission: checked,
+                  }));
+                }}
+              />
+              <span>
+                {t(
+                  'allow_temporary_submission',
+                  'Allow temporary transaction submissions',
+                )}
+              </span>
+            </label>
+            <small style={{ color: '#666', marginLeft: '1.5rem', display: 'block' }}>
+              {t(
+                'allow_temporary_submission_hint',
+                'When enabled, users can save drafts that require senior confirmation before posting.',
+              )}
+            </small>
+
             {name && <button onClick={handleDelete}>Delete</button>}
           </div>
           <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
