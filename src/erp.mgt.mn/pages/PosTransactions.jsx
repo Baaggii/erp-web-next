@@ -21,6 +21,10 @@ import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
+import {
   isPlainRecord,
   assignArrayMetadata,
   cloneArrayWithMetadata,
