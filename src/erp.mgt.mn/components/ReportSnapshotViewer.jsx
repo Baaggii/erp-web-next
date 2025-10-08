@@ -40,6 +40,18 @@ export default function ReportSnapshotViewer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [artifact, setArtifact] = useState(snapshot?.artifact || null);
+  const totalRow = useMemo(() => {
+    if (
+      snapshot &&
+      typeof snapshot === 'object' &&
+      !Array.isArray(snapshot.totalRow) &&
+      snapshot.totalRow &&
+      typeof snapshot.totalRow === 'object'
+    ) {
+      return snapshot.totalRow;
+    }
+    return null;
+  }, [snapshot]);
 
   useEffect(() => {
     setPageRows(initialRows);
@@ -107,12 +119,15 @@ export default function ReportSnapshotViewer({
     if (pageRows.length > 0) {
       return Object.keys(pageRows[0]);
     }
+    if (totalRow) {
+      return Object.keys(totalRow);
+    }
     return [];
-  }, [snapshot?.columns, pageRows]);
+  }, [snapshot?.columns, pageRows, totalRow]);
 
   const fieldTypeMap = snapshot?.fieldTypeMap || {};
 
-  if (!columns.length && totalRows === 0) {
+  if (!columns.length && totalRows === 0 && !totalRow) {
     return <p style={style}>{emptyMessage}</p>;
   }
 
@@ -201,32 +216,53 @@ export default function ReportSnapshotViewer({
                 Loading…
               </td>
             </tr>
-          ) : pageRows.length === 0 ? (
+          ) : pageRows.length === 0 && !totalRow ? (
             <tr>
               <td colSpan={columns.length} style={{ padding: '0.75rem', textAlign: 'center' }}>
                 {emptyMessage}
               </td>
             </tr>
           ) : (
-            pageRows.map((row, idx) => (
-              <tr key={idx}>
-                {columns.map((col) => (
-                  <td
-                    key={col}
-                    style={{
-                      padding: '0.25rem',
-                      border: '1px solid #d1d5db',
-                      whiteSpace: 'nowrap',
-                      textOverflow: 'ellipsis',
-                      overflow: 'hidden',
-                      maxWidth: '16rem',
-                    }}
-                  >
-                    {formatValue(row?.[col], col, fieldTypeMap)}
-                  </td>
-                ))}
-              </tr>
-            ))
+            <>
+              {pageRows.map((row, idx) => (
+                <tr key={idx}>
+                  {columns.map((col) => (
+                    <td
+                      key={col}
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis',
+                        overflow: 'hidden',
+                        maxWidth: '16rem',
+                      }}
+                    >
+                      {formatValue(row?.[col], col, fieldTypeMap)}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              {totalRow && (
+                <tr style={{ background: '#f3f4f6', fontWeight: 'bold' }}>
+                  {columns.map((col) => (
+                    <td
+                      key={col}
+                      style={{
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                        whiteSpace: 'nowrap',
+                        textOverflow: 'ellipsis',
+                        overflow: 'hidden',
+                        maxWidth: '16rem',
+                      }}
+                    >
+                      {formatValue(totalRow?.[col], col, fieldTypeMap)}
+                    </td>
+                  ))}
+                </tr>
+              )}
+            </>
           )}
         </tbody>
       </table>
