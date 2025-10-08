@@ -28,6 +28,12 @@ function arrify(val) {
 }
 
 function parseEntry(raw = {}) {
+  const temporaryFlag = Boolean(
+    raw.supportsTemporarySubmission ??
+      raw.allowTemporarySubmission ??
+      raw.supportsTemporary ??
+      false,
+  );
   return {
     visibleFields: Array.isArray(raw.visibleFields)
       ? raw.visibleFields.map(String)
@@ -87,15 +93,20 @@ function parseEntry(raw = {}) {
     allowedDepartments: Array.isArray(raw.allowedDepartments)
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    temporaryAllowedBranches: Array.isArray(raw.temporaryAllowedBranches)
+      ? raw.temporaryAllowedBranches
+          .map((v) => Number(v))
+          .filter((v) => !Number.isNaN(v))
+      : [],
+    temporaryAllowedDepartments: Array.isArray(raw.temporaryAllowedDepartments)
+      ? raw.temporaryAllowedDepartments
+          .map((v) => Number(v))
+          .filter((v) => !Number.isNaN(v))
+      : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
     procedures: arrify(raw.procedures || raw.procedure),
-    supportsTemporarySubmission:
-      Boolean(
-        raw.supportsTemporarySubmission ??
-          raw.allowTemporarySubmission ??
-          raw.supportsTemporary ??
-          false,
-      ),
+    supportsTemporarySubmission: temporaryFlag,
+    allowTemporarySubmission: temporaryFlag,
   };
 }
 
@@ -157,11 +168,53 @@ export async function listTransactionNames(
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
       const modKey = parsed.moduleKey;
-      const allowed = parsed.allowedBranches;
-      const deptAllowed = parsed.allowedDepartments;
       if (moduleKey && moduleKey !== modKey) continue;
-      if (bId != null && allowed.length > 0 && !allowed.includes(bId)) continue;
-      if (dId != null && deptAllowed.length > 0 && !deptAllowed.includes(dId)) continue;
+
+      const allowedBranches = Array.isArray(parsed.allowedBranches)
+        ? parsed.allowedBranches
+        : [];
+      const allowedDepartments = Array.isArray(parsed.allowedDepartments)
+        ? parsed.allowedDepartments
+        : [];
+      const tempBranches = Array.isArray(parsed.temporaryAllowedBranches)
+        ? parsed.temporaryAllowedBranches
+        : [];
+      const tempDepartments = Array.isArray(parsed.temporaryAllowedDepartments)
+        ? parsed.temporaryAllowedDepartments
+        : [];
+
+      const branchAllowed =
+        allowedBranches.length === 0 ||
+        bId == null ||
+        allowedBranches.includes(bId);
+      const departmentAllowed =
+        allowedDepartments.length === 0 ||
+        dId == null ||
+        allowedDepartments.includes(dId);
+
+      let permitted = branchAllowed && departmentAllowed;
+
+      if (!permitted) {
+        const tempEnabled = Boolean(
+          parsed.supportsTemporarySubmission ||
+            parsed.allowTemporarySubmission ||
+            parsed.supportsTemporary,
+        );
+        if (tempEnabled) {
+          const tempBranchAllowed =
+            tempBranches.length === 0 ||
+            bId == null ||
+            tempBranches.includes(bId);
+          const tempDepartmentAllowed =
+            tempDepartments.length === 0 ||
+            dId == null ||
+            tempDepartments.includes(dId);
+          permitted = tempBranchAllowed && tempDepartmentAllowed;
+        }
+      }
+
+      if (!permitted) continue;
+
       result[name] = { table: tbl, ...parsed };
     }
   }
@@ -186,6 +239,8 @@ export async function setFormConfig(
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
+    temporaryAllowedBranches = [],
+    temporaryAllowedDepartments = [],
     moduleKey: parentModuleKey = '',
     moduleLabel,
     userIdField,
@@ -226,6 +281,12 @@ export async function setFormConfig(
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
+  const tab = Array.isArray(temporaryAllowedBranches)
+    ? temporaryAllowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+    : [];
+  const tad = Array.isArray(temporaryAllowedDepartments)
+    ? temporaryAllowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+    : [];
   const { cfg } = await readConfig(companyId);
   if (!cfg[table]) cfg[table] = {};
   cfg[table][name] = {
@@ -260,8 +321,13 @@ export async function setFormConfig(
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
+    temporaryAllowedBranches: tab,
+    temporaryAllowedDepartments: tad,
     procedures: arrify(procedures),
     allowTemporarySubmission: Boolean(
+      supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
+    ),
+    supportsTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),
   };
