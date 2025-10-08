@@ -464,6 +464,11 @@ const TableManager = forwardRef(function TableManager({
     setQueuedTemporaryTrigger(externalTemporaryTrigger);
   }, [externalTemporaryTrigger]);
 
+  useEffect(() => {
+    if (!externalTemporaryTrigger) return;
+    setQueuedTemporaryTrigger(externalTemporaryTrigger);
+  }, [externalTemporaryTrigger]);
+
   const refreshTemporarySummary = useCallback(async () => {
     if (!supportsTemporary) {
       setTemporarySummary(null);
@@ -2773,14 +2778,10 @@ const TableManager = forwardRef(function TableManager({
       queuedTemporaryTrigger.scope ||
       (temporarySummary?.reviewPending > 0 ? 'review' : 'created');
 
-    const focusId =
-      queuedTemporaryTrigger.id !== undefined && queuedTemporaryTrigger.id !== null
-        ? String(queuedTemporaryTrigger.id)
-        : null;
     lastExternalTriggerRef.current = triggerKey;
     setTemporaryScope(scopeToOpen);
     setShowTemporaryModal(true);
-    fetchTemporaryList(scopeToOpen, { focusId });
+    fetchTemporaryList(scopeToOpen);
   }, [
     fetchTemporaryList,
     queuedTemporaryTrigger,
@@ -2788,23 +2789,6 @@ const TableManager = forwardRef(function TableManager({
     table,
     temporarySummary,
   ]);
-
-  useEffect(() => {
-    if (!showTemporaryModal) {
-      setTemporaryFocusId(null);
-    }
-  }, [showTemporaryModal]);
-
-  useEffect(() => {
-    if (!showTemporaryModal) return;
-    if (!temporaryFocusId) return;
-    const map = temporaryRowRefs.current;
-    if (!map) return;
-    const node = map.get(temporaryFocusId);
-    if (node && typeof node.scrollIntoView === 'function') {
-      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-  }, [showTemporaryModal, temporaryFocusId]);
 
   async function promoteTemporary(id) {
     if (!supportsTemporary) return;
