@@ -41,58 +41,14 @@ export default function ReportSnapshotViewer({
   const [error, setError] = useState('');
   const [artifact, setArtifact] = useState(snapshot?.artifact || null);
   const totalRow = useMemo(() => {
-    if (!snapshot || typeof snapshot !== 'object') return null;
-    const collectColumns = () => {
-      const set = new Set();
-      const addColumns = (cols) => {
-        if (!Array.isArray(cols)) return;
-        cols.forEach((col) => {
-          if (typeof col !== 'string') return;
-          const trimmed = col.trim();
-          if (!trimmed) return;
-          set.add(trimmed);
-        });
-      };
-      addColumns(snapshot.columns);
-      addColumns(snapshot.columnNames);
-      addColumns(snapshot.headers);
-      return Array.from(set);
-    };
-    const columns = collectColumns();
-    const normalizeRow = (row) => {
-      if (!row) return null;
-      if (Array.isArray(row)) {
-        const mappedColumns = columns.length
-          ? columns
-          : row.map((_, idx) => `column_${idx + 1}`);
-        if (!mappedColumns.length) return null;
-        return Object.fromEntries(
-          mappedColumns.map((col, idx) => [col, row[idx]]),
-        );
-      }
-      if (typeof row === 'object') {
-        return row;
-      }
-      return null;
-    };
-    const candidateKeys = [
-      'totalRow',
-      'total_row',
-      'total',
-      'footer',
-      'summaryRow',
-      'summary_row',
-      'totals',
-      'grandTotal',
-      'grand_total',
-    ];
-    for (const key of candidateKeys) {
-      const value = snapshot[key];
-      if (!value) continue;
-      const normalized = normalizeRow(value);
-      if (normalized && Object.keys(normalized).length) {
-        return normalized;
-      }
+    if (
+      snapshot &&
+      typeof snapshot === 'object' &&
+      !Array.isArray(snapshot.totalRow) &&
+      snapshot.totalRow &&
+      typeof snapshot.totalRow === 'object'
+    ) {
+      return snapshot.totalRow;
     }
     return null;
   }, [snapshot]);
@@ -157,35 +113,17 @@ export default function ReportSnapshotViewer({
   }, [artifact?.id, page, perPage]);
 
   const columns = useMemo(() => {
-    const set = new Set();
-    const addColumns = (cols) => {
-      if (!Array.isArray(cols)) return;
-      cols.forEach((col) => {
-        if (typeof col !== 'string') return;
-        const trimmed = col.trim();
-        if (!trimmed) return;
-        set.add(trimmed);
-      });
-    };
-    addColumns(snapshot?.columns);
-    addColumns(snapshot?.columnNames);
-    addColumns(snapshot?.headers);
+    if (Array.isArray(snapshot?.columns) && snapshot.columns.length) {
+      return snapshot.columns;
+    }
     if (pageRows.length > 0) {
-      Object.keys(pageRows[0]).forEach((col) => {
-        if (typeof col === 'string' && col.trim()) {
-          set.add(col.trim());
-        }
-      });
+      return Object.keys(pageRows[0]);
     }
     if (totalRow) {
-      Object.keys(totalRow).forEach((col) => {
-        if (typeof col === 'string' && col.trim()) {
-          set.add(col.trim());
-        }
-      });
+      return Object.keys(totalRow);
     }
-    return Array.from(set);
-  }, [snapshot?.columns, snapshot?.columnNames, snapshot?.headers, pageRows, totalRow]);
+    return [];
+  }, [snapshot?.columns, pageRows, totalRow]);
 
   const fieldTypeMap = snapshot?.fieldTypeMap || {};
 
