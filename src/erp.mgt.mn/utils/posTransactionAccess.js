@@ -17,17 +17,38 @@ function normalizeAccessList(list) {
 function matchesScope(list, value) {
   if (!Array.isArray(list) || list.length === 0) return true;
   const normalizedValue = normalizeAccessValue(value);
-  if (normalizedValue === null) return false;
+  if (normalizedValue === null) return true;
   return list.includes(normalizedValue);
 }
 
 export function hasPosTransactionAccess(info, branchId, departmentId) {
   if (!info || typeof info !== 'object') return true;
+  const branchValue = normalizeAccessValue(branchId);
+  const departmentValue = normalizeAccessValue(departmentId);
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
+  const generalAllowed =
+    matchesScope(allowedBranches, branchValue) &&
+    matchesScope(allowedDepartments, departmentValue);
+
+  if (generalAllowed) return true;
+
+  const temporaryEnabled = Boolean(
+    info.supportsTemporarySubmission ??
+      info.allowTemporarySubmission ??
+      info.supportsTemporary ??
+      false,
+  );
+  if (!temporaryEnabled) return false;
+
+  const temporaryBranches = normalizeAccessList(info.temporaryAllowedBranches);
+  const temporaryDepartments = normalizeAccessList(
+    info.temporaryAllowedDepartments,
+  );
+
   return (
-    matchesScope(allowedBranches, branchId) &&
-    matchesScope(allowedDepartments, departmentId)
+    matchesScope(temporaryBranches, branchValue) &&
+    matchesScope(temporaryDepartments, departmentValue)
   );
 }
 

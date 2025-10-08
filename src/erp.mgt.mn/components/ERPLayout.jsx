@@ -43,6 +43,9 @@ export const TourContext = React.createContext({
   ensureTourDefinition: () => Promise.resolve(null),
   saveTourDefinition: () => Promise.resolve(null),
   deleteTourDefinition: () => Promise.resolve(false),
+  isTourGuideMode: true,
+  setTourGuideMode: () => {},
+  toggleTourGuideMode: () => {},
 });
 export const useTour = (pageKey, options = {}) => {
   const { startTour, ensureTourDefinition } = useContext(TourContext);
@@ -655,6 +658,7 @@ export default function ERPLayout() {
   const [tourBuilderState, setTourBuilderState] = useState(null);
   const [tourViewerState, setTourViewerState] = useState(null);
   const [multiSpotlightActive, setMultiSpotlightActive] = useState(false);
+  const [isTourGuideMode, setIsTourGuideMode] = useState(true);
   useEffect(() => {
     tourStepsRef.current = tourSteps;
   }, [tourSteps]);
@@ -666,6 +670,10 @@ export default function ERPLayout() {
   useEffect(() => {
     currentTourPathRef.current = currentTourPath;
   }, [currentTourPath]);
+
+  const toggleTourGuideMode = useCallback(() => {
+    setIsTourGuideMode((prev) => !prev);
+  }, []);
 
   const updateViewerIndex = useCallback((nextIndex) => {
     setTourViewerState((prev) =>
@@ -1110,6 +1118,7 @@ export default function ERPLayout() {
         setTourSteps(joyrideSteps);
         setCurrentTourPage(pageKey);
         setCurrentTourPath(entry?.path || normalizePath(targetPath));
+        setIsTourGuideMode(true);
         setRunTour(true);
         return true;
       }
@@ -1130,6 +1139,7 @@ export default function ERPLayout() {
     restoreCurrentTourDefinition();
     removeExtraSpotlights();
     stopMissingTargetWatcher();
+    setIsTourGuideMode(true);
     setRunTour(false);
     setTourSteps([]);
     setTourStepIndex(0);
@@ -3112,6 +3122,9 @@ export default function ERPLayout() {
       ensureTourDefinition,
       saveTourDefinition,
       deleteTourDefinition,
+      isTourGuideMode,
+      setTourGuideMode: setIsTourGuideMode,
+      toggleTourGuideMode,
     }),
     [
       deleteTourDefinition,
@@ -3128,6 +3141,8 @@ export default function ERPLayout() {
       tourStepIndex,
       tourViewerState,
       activeTourRunId,
+      isTourGuideMode,
+      toggleTourGuideMode,
     ],
   );
 
@@ -3146,6 +3161,8 @@ export default function ERPLayout() {
           onClose={closeTourViewer}
           onEndTour={endTour}
           onSelectStep={handleTourStepJump}
+          guideMode={isTourGuideMode}
+          onToggleGuideMode={toggleTourGuideMode}
         />
       )}
       <PendingRequestContext.Provider value={pendingRequestValue}>
@@ -3168,6 +3185,7 @@ export default function ERPLayout() {
             styles={{
               overlay: {
                 backgroundColor: joyrideOverlayColor,
+                pointerEvents: isTourGuideMode ? 'none' : 'auto',
               },
               spotlight: {
                 borderRadius: 12,
