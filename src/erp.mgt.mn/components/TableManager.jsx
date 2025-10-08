@@ -28,11 +28,16 @@ import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   applyGeneratedColumnEvaluators,
   createGeneratedColumnEvaluator,
   valuesEqual,
 } from '../utils/generatedColumns.js';
+
+if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
+  window.canPostTransactions = false;
+}
 
 function ch(n) {
   return Math.round(n * 8);
@@ -2079,6 +2084,16 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSubmit(values) {
+    if (!canPostTransactions) {
+      addToast(
+        t(
+          'temporary_post_not_allowed',
+          'You do not have permission to post this transaction.',
+        ),
+        'error',
+      );
+      return false;
+    }
     const columns = new Set(allColumns);
     const merged = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -4095,6 +4110,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         allowTemporarySave={supportsTemporary}
         isAdding={isAdding}
+        canPost={canPostTransactions}
       />
       <CascadeDeleteModal
         visible={showCascade}
