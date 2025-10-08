@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import normalizeSnapshotDataset from '../utils/normalizeSnapshot.js';
 
 const DEFAULT_PER_PAGE = 50;
 const PER_PAGE_OPTIONS = [25, 50, 100, 250];
@@ -22,16 +23,13 @@ export default function ReportSnapshotViewer({
   emptyMessage = 'No snapshot captured.',
   style = {},
 }) {
-  const initialRows = useMemo(
-    () => (Array.isArray(snapshot?.rows) ? snapshot.rows : []),
-    [snapshot?.rows],
+  const normalizedSnapshot = useMemo(
+    () => normalizeSnapshotDataset(snapshot),
+    [snapshot],
   );
-  const initialRowCount = useMemo(() => {
-    if (typeof snapshot?.rowCount === 'number' && Number.isFinite(snapshot.rowCount)) {
-      return snapshot.rowCount;
-    }
-    return initialRows.length;
-  }, [snapshot?.rowCount, initialRows]);
+
+  const initialRows = normalizedSnapshot.rows;
+  const initialRowCount = normalizedSnapshot.rowCount;
 
   const [pageRows, setPageRows] = useState(initialRows);
   const [page, setPage] = useState(1);
@@ -39,28 +37,17 @@ export default function ReportSnapshotViewer({
   const [totalRows, setTotalRows] = useState(initialRowCount);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [artifact, setArtifact] = useState(snapshot?.artifact || null);
-  const totalRow = useMemo(() => {
-    if (
-      snapshot &&
-      typeof snapshot === 'object' &&
-      !Array.isArray(snapshot.totalRow) &&
-      snapshot.totalRow &&
-      typeof snapshot.totalRow === 'object'
-    ) {
-      return snapshot.totalRow;
-    }
-    return null;
-  }, [snapshot]);
+  const [artifact, setArtifact] = useState(normalizedSnapshot.artifact || null);
+  const totalRow = normalizedSnapshot.totalRow;
 
   useEffect(() => {
     setPageRows(initialRows);
     setPage(1);
     setPerPage(DEFAULT_PER_PAGE);
     setTotalRows(initialRowCount);
-    setArtifact(snapshot?.artifact || null);
+    setArtifact(normalizedSnapshot.artifact || null);
     setError('');
-  }, [initialRows, initialRowCount, snapshot?.artifact]);
+  }, [initialRows, initialRowCount, normalizedSnapshot.artifact]);
 
   useEffect(() => {
     let cancelled = false;
@@ -113,8 +100,8 @@ export default function ReportSnapshotViewer({
   }, [artifact?.id, page, perPage]);
 
   const columns = useMemo(() => {
-    if (Array.isArray(snapshot?.columns) && snapshot.columns.length) {
-      return snapshot.columns;
+    if (Array.isArray(normalizedSnapshot.columns) && normalizedSnapshot.columns.length) {
+      return normalizedSnapshot.columns;
     }
     if (pageRows.length > 0) {
       return Object.keys(pageRows[0]);
@@ -123,9 +110,9 @@ export default function ReportSnapshotViewer({
       return Object.keys(totalRow);
     }
     return [];
-  }, [snapshot?.columns, pageRows, totalRow]);
+  }, [normalizedSnapshot.columns, pageRows, totalRow]);
 
-  const fieldTypeMap = snapshot?.fieldTypeMap || {};
+  const fieldTypeMap = normalizedSnapshot.fieldTypeMap || {};
 
   if (!columns.length && totalRows === 0 && !totalRow) {
     return <p style={style}>{emptyMessage}</p>;
