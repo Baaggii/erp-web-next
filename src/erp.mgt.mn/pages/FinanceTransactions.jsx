@@ -304,8 +304,7 @@ useEffect(() => {
           if (!info || typeof info !== 'object') return;
           const mKey = info.moduleKey;
           if (mKey !== moduleKey) return;
-          const hasAccess = hasTransactionFormAccess(info, branchId, departmentId);
-          if (!hasAccess && !info?.temporaryReviewer) return;
+          if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
           if (
             perms &&
             Object.prototype.hasOwnProperty.call(perms, mKey) &&

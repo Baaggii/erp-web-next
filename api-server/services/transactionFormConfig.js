@@ -229,20 +229,9 @@ export async function listTransactionNames(
         }
       }
 
-      const reviewerOverride =
-        reviewerConfigs.has(String(name)) || reviewerTables.has(String(tbl));
-
-      if (!permitted && reviewerOverride) {
-        permitted = true;
-      }
-
       if (!permitted) continue;
 
-      result[name] = {
-        table: tbl,
-        ...parsed,
-        temporaryReviewer: reviewerOverride,
-      };
+      result[name] = { table: tbl, ...parsed };
     }
   }
   return { names: result, isDefault };
