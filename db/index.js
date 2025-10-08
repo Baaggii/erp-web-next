@@ -101,10 +101,6 @@ const softDeleteConfigCache = new Map();
 
 const tenantTableKeyConfigCache = new Map();
 
-function normalizeColumnKey(value) {
-  return String(value ?? '').toLowerCase().replace(/_/g, '');
-}
-
 const DEFAULT_TENANT_KEY_ALIASES = [
   {
     key: "company_id",
@@ -126,20 +122,6 @@ const DEFAULT_TENANT_KEY_ALIASES = [
     ],
   },
 ];
-
-const tenantKeyAliasLookup = new Map();
-for (const { key, aliases } of DEFAULT_TENANT_KEY_ALIASES) {
-  const canonical = normalizeColumnKey(key);
-  if (!canonical) continue;
-  tenantKeyAliasLookup.set(canonical, canonical);
-  if (Array.isArray(aliases)) {
-    for (const alias of aliases) {
-      const normalized = normalizeColumnKey(alias);
-      if (!normalized) continue;
-      tenantKeyAliasLookup.set(normalized, canonical);
-    }
-  }
-}
 
 function escapeIdentifier(name) {
   return `\`${String(name).replace(/`/g, "``")}\``;
@@ -179,177 +161,6 @@ async function loadTenantTableKeyConfig(companyId = GLOBAL_COMPANY_ID) {
     }
   }
   return tenantTableKeyConfigCache.get(companyId);
-}
-
-const uniqueIndexCache = new Map();
-
-async function listTableUniqueIndexes(tableName) {
-  if (!tableName) return [];
-  if (uniqueIndexCache.has(tableName)) {
-    return uniqueIndexCache.get(tableName);
-  }
-
-  let rows = [];
-  try {
-    [rows] = await pool.query(
-      `SELECT INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX
-         FROM information_schema.STATISTICS
-        WHERE TABLE_SCHEMA = DATABASE()
-          AND TABLE_NAME = ?
-          AND NON_UNIQUE = 0
-        ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
-      [tableName],
-    );
-  } catch (err) {
-    if (err?.code === "ER_NO_SUCH_TABLE") {
-      uniqueIndexCache.set(tableName, []);
-      return [];
-    }
-    throw err;
-  }
-
-  const groups = new Map();
-  for (const row of rows || []) {
-    const indexName = row?.INDEX_NAME;
-    const columnName = row?.COLUMN_NAME;
-    const seq = Number(row?.SEQ_IN_INDEX);
-    if (!indexName || !columnName || !Number.isFinite(seq)) continue;
-    if (!groups.has(indexName)) {
-      groups.set(indexName, []);
-    }
-    const bucket = groups.get(indexName);
-    bucket[seq - 1] = columnName;
-  }
-
-  const indexes = [];
-  for (const [indexName, columns] of groups.entries()) {
-    const filtered = (columns || []).filter(Boolean);
-    if (!filtered.length) continue;
-    indexes.push({ indexName, columns: filtered });
-  }
-
-  indexes.sort((a, b) => {
-    if (a.columns.length !== b.columns.length) {
-      return a.columns.length - b.columns.length;
-    }
-    return String(a.indexName).localeCompare(String(b.indexName));
-  });
-
-  uniqueIndexCache.set(tableName, indexes);
-  return indexes;
-}
-
-async function fetchSnapshotRowByAlternateKey(
-  tableName,
-  recordId,
-  { companyId, tenantFilters } = {},
-) {
-  if (
-    recordId === undefined ||
-    recordId === null ||
-    (typeof recordId === "string" && !recordId.trim())
-  ) {
-    return null;
-  }
-
-  const normalizedRecordId =
-    typeof recordId === "string" ? recordId.trim() : recordId;
-  const uniqueIndexes = await listTableUniqueIndexes(tableName);
-  if (!uniqueIndexes.length) {
-    return null;
-  }
-
-  const pkColumns = await getPrimaryKeyColumns(tableName);
-  const pkSignature = pkColumns
-    .map((col) => normalizeColumnKey(col))
-    .join("|");
-
-  const knownValues = new Map();
-  const setKnownValue = (key, value) => {
-    if (value === undefined || value === null || value === "") return;
-    const normalized = normalizeColumnKey(key);
-    if (!normalized) return;
-    knownValues.set(normalized, value);
-    const canonical = tenantKeyAliasLookup.get(normalized);
-    if (canonical && canonical !== normalized) {
-      knownValues.set(canonical, value);
-    }
-  };
-
-  setKnownValue("company_id", companyId);
-  if (tenantFilters && typeof tenantFilters === "object") {
-    for (const [key, value] of Object.entries(tenantFilters)) {
-      setKnownValue(key, value);
-    }
-  }
-
-  const resolveKnownValue = (column) => {
-    const normalized = normalizeColumnKey(column);
-    if (!normalized) return undefined;
-    if (knownValues.has(normalized)) {
-      return knownValues.get(normalized);
-    }
-    const canonical = tenantKeyAliasLookup.get(normalized);
-    if (canonical && knownValues.has(canonical)) {
-      return knownValues.get(canonical);
-    }
-    return undefined;
-  };
-
-  for (const { columns } of uniqueIndexes) {
-    if (!Array.isArray(columns) || !columns.length) continue;
-    const signature = columns.map((col) => normalizeColumnKey(col)).join("|");
-    if (signature && signature === pkSignature) {
-      continue;
-    }
-
-    const values = [];
-    let recordColumn = null;
-    let skip = false;
-
-    for (const column of columns) {
-      const knownValue = resolveKnownValue(column);
-      if (knownValue !== undefined && knownValue !== null && knownValue !== "") {
-        values.push(knownValue);
-        continue;
-      }
-      if (recordColumn) {
-        skip = true;
-        break;
-      }
-      recordColumn = column;
-      values.push(normalizedRecordId);
-    }
-
-    if (skip || !recordColumn) {
-      continue;
-    }
-
-    if (values.some((value) => value === undefined || value === null || value === "")) {
-      continue;
-    }
-
-    const whereClause = columns
-      .map((column) => `${escapeIdentifier(column)} = ?`)
-      .join(" AND ");
-
-    try {
-      const [rows] = await pool.query(
-        `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-        [tableName, ...values],
-      );
-      if (rows && rows[0]) {
-        return rows[0];
-      }
-    } catch (err) {
-      if (err?.code === "ER_NO_SUCH_TABLE") {
-        return null;
-      }
-      throw err;
-    }
-  }
-
-  return null;
 }
 const SOFT_DELETE_CANDIDATES = [
   "is_deleted",
@@ -6081,7 +5892,7 @@ export async function getProcedureLockCandidates(
   aliases = [],
   options = {},
 ) {
-  const { companyId, tenantFilters } = options || {};
+  const { companyId } = options || {};
   const conn = await pool.getConnection();
   const candidates = new Map();
 
@@ -6555,31 +6366,24 @@ export async function getProcedureLockCandidates(
         candidate.lockedAt = lockedAt;
         candidate.lockMetadata = lockRow;
 
-        let snapshotRow = null;
         try {
-          snapshotRow = await getTableRowById(bucket.tableName, recordId, {
+          const snapshotRow = await getTableRowById(bucket.tableName, recordId, {
             defaultCompanyId: companyId,
             includeDeleted: true,
           });
-        } catch (err) {
-          if (err?.status !== 400 && err?.code !== 'ER_NO_SUCH_TABLE') {
-            throw err;
+          if (snapshotRow && typeof snapshotRow === 'object') {
+            candidate.snapshot = snapshotRow;
+            candidate.snapshotColumns = Object.keys(snapshotRow);
+          } else {
+            candidate.snapshot = null;
+            candidate.snapshotColumns = [];
           }
-        }
-
-        if (!snapshotRow) {
-          snapshotRow = await fetchSnapshotRowByAlternateKey(bucket.tableName, recordId, {
-            companyId,
-            tenantFilters,
-          });
-        }
-
-        if (snapshotRow && typeof snapshotRow === 'object') {
-          candidate.snapshot = snapshotRow;
-          candidate.snapshotColumns = Object.keys(snapshotRow);
-        } else {
+        } catch (err) {
           candidate.snapshot = null;
           candidate.snapshotColumns = [];
+          if (err?.code && err.code !== 'ER_NO_SUCH_TABLE') {
+            throw err;
+          }
         }
       }
     }
