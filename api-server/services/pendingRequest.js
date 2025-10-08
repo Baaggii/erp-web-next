@@ -311,17 +311,18 @@ function extractSnapshotFromContainer(container) {
   }
 
   if (Array.isArray(container.rows)) {
-    const columns = sanitizeColumns(container.columns || []);
-    const firstRow = container.rows.find((row) => row && (typeof row === 'object' || Array.isArray(row)));
-    const normalized = normalizeSnapshotRow(firstRow, columns);
-    if (normalized) {
-      const resolvedColumns = columns.length ? columns : Object.keys(normalized);
+    const firstRow = container.rows.find(
+      (row) => row && typeof row === 'object' && !Array.isArray(row),
+    );
+    const sanitizedRow = sanitizeRowObject(firstRow);
+    if (sanitizedRow) {
+      const columns = sanitizeColumns(container.columns || []);
       const fieldTypeMap = sanitizeFieldTypeMap(
         container.fieldTypeMap || container.snapshotFieldTypeMap || {},
       );
       return {
-        snapshot: normalized,
-        columns: resolvedColumns,
+        snapshot: sanitizedRow,
+        columns: columns.length ? columns : Object.keys(sanitizedRow),
         fieldTypeMap,
       };
     }
@@ -339,12 +340,11 @@ function extractSnapshotFromContainer(container) {
   ];
   for (const key of nestedKeys) {
     if (!container[key]) continue;
-    const columns = sanitizeColumns(container.columns || []);
-    const normalized = normalizeSnapshotRow(container[key], columns);
-    if (normalized) {
+    const sanitizedRow = sanitizeRowObject(container[key]);
+    if (sanitizedRow) {
       return {
-        snapshot: normalized,
-        columns: columns.length ? columns : Object.keys(normalized),
+        snapshot: sanitizedRow,
+        columns: Object.keys(sanitizedRow),
         fieldTypeMap: sanitizeFieldTypeMap(
           container.fieldTypeMap || container.snapshotFieldTypeMap || {},
         ),
@@ -352,7 +352,7 @@ function extractSnapshotFromContainer(container) {
     }
   }
 
-  const direct = normalizeSnapshotRow(container);
+  const direct = sanitizeRowObject(container);
   if (direct) {
     return {
       snapshot: direct,
