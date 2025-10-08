@@ -162,6 +162,165 @@ test('getProcedureLockCandidates preserves table context for JSON strings', asyn
   }
 });
 
+test('getProcedureLockCandidates recovers snapshots using partial unique indexes', async () => {
+  const queryLog = [];
+  let released = false;
+
+  const mockConn = {
+    async query(sql, params) {
+      if (/^SET @/.test(sql)) {
+        return [[], []];
+      }
+      if (sql.startsWith('CALL ')) {
+        return [
+          [
+            [
+              {
+                lock_table: 'tbl_contracter',
+                lock_record_id: 'W10',
+                label: 'Contracter W10',
+              },
+            ],
+          ],
+          [],
+        ];
+      }
+      if (sql === STRICT_SESSION_VAR_QUERY) {
+        return [[{ strict: null, secondary: null, legacy: null }], []];
+      }
+      if (sql.includes('FROM report_transaction_locks')) {
+        return [[], []];
+      }
+      throw new Error(`Unexpected connection query: ${sql}`);
+    },
+    release() {
+      released = true;
+    },
+  };
+
+  const originalGetConnection = db.pool.getConnection;
+  const originalQuery = db.pool.query;
+
+  const restoreGetConnection = () => {
+    if (originalGetConnection === undefined) {
+      delete db.pool.getConnection;
+    } else {
+      db.pool.getConnection = originalGetConnection;
+    }
+  };
+  const restoreQuery = () => {
+    db.pool.query = originalQuery;
+  };
+
+  db.pool.getConnection = async () => mockConn;
+  db.pool.query = async (sql, params = []) => {
+    queryLog.push([sql, params]);
+    if (sql.includes('FROM information_schema.COLUMNS')) {
+      const table = params?.[0];
+      if (table === 'tbl_contracter') {
+        return [
+          [
+            { COLUMN_NAME: 'id' },
+            { COLUMN_NAME: 'manuf_id' },
+            { COLUMN_NAME: 'company_id' },
+            { COLUMN_NAME: 'manuf_rd' },
+            { COLUMN_NAME: 'manuf_phone' },
+            { COLUMN_NAME: 'deleted_at' },
+          ],
+          [],
+        ];
+      }
+      return [[{ COLUMN_NAME: 'id' }], []];
+    }
+    if (
+      sql.includes('FROM information_schema.STATISTICS') &&
+      sql.includes("INDEX_NAME = 'PRIMARY'")
+    ) {
+      return [[{ COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 }], []];
+    }
+    if (
+      sql.includes('FROM information_schema.STATISTICS') &&
+      sql.includes('NON_UNIQUE = 0')
+    ) {
+      const table = params?.[0];
+      if (table === 'tbl_contracter') {
+        return [
+          [
+            { INDEX_NAME: 'PRIMARY', COLUMN_NAME: 'id', SEQ_IN_INDEX: 1 },
+            {
+              INDEX_NAME: 'uniq_manuf_id_manuf_rd_manuf_phone',
+              COLUMN_NAME: 'manuf_id',
+              SEQ_IN_INDEX: 1,
+            },
+            {
+              INDEX_NAME: 'uniq_manuf_id_manuf_rd_manuf_phone',
+              COLUMN_NAME: 'manuf_rd',
+              SEQ_IN_INDEX: 2,
+            },
+            {
+              INDEX_NAME: 'uniq_manuf_id_manuf_rd_manuf_phone',
+              COLUMN_NAME: 'manuf_phone',
+              SEQ_IN_INDEX: 3,
+            },
+          ],
+          [],
+        ];
+      }
+      return [[], []];
+    }
+    if (sql.includes('FROM tenant_tables')) {
+      return [[], []];
+    }
+    if (/SELECT \* FROM \?\? WHERE/.test(sql) && sql.includes('LIMIT 1')) {
+      return [[], []];
+    }
+    if (/SELECT \* FROM \?\? WHERE/.test(sql) && sql.includes('LIMIT 2')) {
+      return [
+        [
+          {
+            id: 5,
+            manuf_id: 'W10',
+            company_id: 1,
+            manuf_rd: 'Alpha Manufacturing',
+            manuf_phone: '77110022',
+            deleted_at: null,
+          },
+        ],
+        [],
+      ];
+    }
+    throw new Error(`Unexpected pool query: ${sql}`);
+  };
+
+  try {
+    const candidates = await db.getProcedureLockCandidates(
+      'sp_partial_unique',
+      [],
+      [],
+      { companyId: 1 },
+    );
+
+    const contracter = candidates.find(
+      (c) => c.tableName === 'tbl_contracter' && c.recordId === 'W10',
+    );
+    assert.ok(contracter, 'should include tbl_contracter candidate');
+    assert.ok(contracter.snapshot, 'snapshot should be populated from fallback');
+    assert.equal(contracter.snapshot?.manuf_id, 'W10');
+    assert.deepEqual(
+      new Set(contracter.snapshotColumns || []),
+      new Set(['id', 'manuf_id', 'company_id', 'manuf_rd', 'manuf_phone', 'deleted_at']),
+    );
+    assert.ok(released, 'connection should be released');
+    assert.ok(
+      queryLog.some(([sql]) => /LIMIT 2/.test(sql)),
+      'should query using fallback lookup',
+    );
+  } finally {
+    restoreGetConnection();
+    restoreQuery();
+  }
+});
+
 test('getProcedureLockCandidates splits repeated table strings into distinct candidates', async () => {
   const queryLog = [];
   let released = false;
