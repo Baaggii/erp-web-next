@@ -19,6 +19,10 @@ import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import Modal from '../components/Modal.jsx';
 import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
+import {
+  normalizeSnapshotRecord,
+  resolveSnapshotSource,
+} from '../utils/normalizeSnapshot.js';
 
 const DATE_PARAM_ALLOWLIST = new Set([
   'startdt',
@@ -287,7 +291,47 @@ export default function Reports() {
             }
             const recordId = String(rawId);
             const key = candidate.key ?? `${tableName}#${recordId}`;
-            const next = { ...candidate, tableName, recordId, key };
+            const rawSnapshot =
+              resolveSnapshotSource(candidate) ||
+              (candidate.snapshot &&
+              typeof candidate.snapshot === 'object' &&
+              !Array.isArray(candidate.snapshot)
+                ? candidate.snapshot
+                : null);
+            const {
+              row: normalizedSnapshot,
+              columns: derivedColumns,
+              fieldTypeMap,
+            } = normalizeSnapshotRecord(rawSnapshot || {});
+            let snapshotColumns = Array.isArray(candidate.snapshotColumns)
+              ? candidate.snapshotColumns
+              : Array.isArray(candidate.snapshot_columns)
+              ? candidate.snapshot_columns
+              : Array.isArray(candidate.columns)
+              ? candidate.columns
+              : [];
+            snapshotColumns = snapshotColumns
+              .map((col) => (col === null || col === undefined ? '' : String(col)))
+              .filter(Boolean);
+            if (!snapshotColumns.length) {
+              snapshotColumns = derivedColumns;
+            }
+            const snapshotFieldTypeMap =
+              candidate.snapshotFieldTypeMap ||
+              candidate.snapshot_field_type_map ||
+              candidate.fieldTypeMap ||
+              candidate.field_type_map ||
+              fieldTypeMap ||
+              {};
+            const next = {
+              ...candidate,
+              tableName,
+              recordId,
+              key,
+              snapshot: normalizedSnapshot,
+              snapshotColumns,
+              snapshotFieldTypeMap,
+            };
             if (candidate.table === undefined) next.table = tableName;
             return next;
           })
@@ -1015,50 +1059,45 @@ export default function Reports() {
             }
             const recordId = String(rawId);
             const key = `${tableName}#${recordId}`;
+            const rawSnapshot =
+              resolveSnapshotSource(lock) ||
+              (lock.snapshot &&
+              typeof lock.snapshot === 'object' &&
+              !Array.isArray(lock.snapshot)
+                ? lock.snapshot
+                : null);
+            const {
+              row: normalizedSnapshot,
+              columns: derivedColumns,
+              fieldTypeMap,
+            } = normalizeSnapshotRecord(rawSnapshot || {});
             let snapshotColumns = Array.isArray(lock.snapshotColumns)
-              ? lock.snapshotColumns.filter(Boolean)
+              ? lock.snapshotColumns
+              : Array.isArray(lock.snapshot_columns)
+              ? lock.snapshot_columns
               : Array.isArray(lock.columns)
-              ? lock.columns.filter(Boolean)
+              ? lock.columns
               : [];
-            let fieldTypeMap =
-              lock.snapshotFieldTypeMap || lock.fieldTypeMap || {};
-            let snapshot = null;
-            if (lock.snapshot && typeof lock.snapshot === 'object') {
-              if (Array.isArray(lock.snapshot.rows)) {
-                const row = lock.snapshot.rows[0];
-                if (row && typeof row === 'object') {
-                  snapshot = row;
-                  if (!snapshotColumns.length) {
-                    if (
-                      Array.isArray(lock.snapshot.columns) &&
-                      lock.snapshot.columns.length
-                    ) {
-                      snapshotColumns = lock.snapshot.columns.filter(Boolean);
-                    } else {
-                      snapshotColumns = Object.keys(row);
-                    }
-                  }
-                  if (!fieldTypeMap || Object.keys(fieldTypeMap).length === 0) {
-                    fieldTypeMap = lock.snapshot.fieldTypeMap || {};
-                  }
-                }
-              } else {
-                snapshot = lock.snapshot;
-              }
-            } else if (
-              lock.row &&
-              typeof lock.row === 'object' &&
-              !Array.isArray(lock.row)
-            ) {
-              snapshot = lock.row;
+            snapshotColumns = snapshotColumns
+              .map((col) => (col === null || col === undefined ? '' : String(col)))
+              .filter(Boolean);
+            if (!snapshotColumns.length) {
+              snapshotColumns = derivedColumns;
             }
+            const snapshotFieldTypeMap =
+              lock.snapshotFieldTypeMap ||
+              lock.snapshot_field_type_map ||
+              lock.fieldTypeMap ||
+              lock.field_type_map ||
+              fieldTypeMap ||
+              {};
             return {
               key,
               tableName,
               recordId,
-              snapshot,
+              snapshot: normalizedSnapshot,
               snapshotColumns,
-              snapshotFieldTypeMap: fieldTypeMap || {},
+              snapshotFieldTypeMap,
             };
           })
           .filter(Boolean);
@@ -1361,15 +1400,38 @@ export default function Reports() {
         tx.lock_reason ||
         tx.lockReason ||
         '';
-      const snapshot =
-        tx.snapshot && typeof tx.snapshot === 'object' ? tx.snapshot : null;
-      const snapshotColumns = Array.isArray(tx.snapshotColumns)
-        ? tx.snapshotColumns.filter(Boolean)
+      const rawSnapshot =
+        resolveSnapshotSource(tx) ||
+        (tx.snapshot &&
+        typeof tx.snapshot === 'object' &&
+        !Array.isArray(tx.snapshot)
+          ? tx.snapshot
+          : null);
+      const {
+        row: snapshot,
+        columns: derivedColumns,
+        fieldTypeMap,
+      } = normalizeSnapshotRecord(rawSnapshot || {});
+      let snapshotColumns = Array.isArray(tx.snapshotColumns)
+        ? tx.snapshotColumns
+        : Array.isArray(tx.snapshot_columns)
+        ? tx.snapshot_columns
         : Array.isArray(tx.columns)
-        ? tx.columns.filter(Boolean)
+        ? tx.columns
         : [];
+      snapshotColumns = snapshotColumns
+        .map((col) => (col === null || col === undefined ? '' : String(col)))
+        .filter(Boolean);
+      if (!snapshotColumns.length) {
+        snapshotColumns = derivedColumns;
+      }
       const snapshotFieldTypeMap =
-        tx.snapshotFieldTypeMap || tx.fieldTypeMap || {};
+        tx.snapshotFieldTypeMap ||
+        tx.snapshot_field_type_map ||
+        tx.fieldTypeMap ||
+        tx.field_type_map ||
+        fieldTypeMap ||
+        {};
       return {
         key,
         tableName,
