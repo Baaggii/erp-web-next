@@ -168,11 +168,53 @@ export async function listTransactionNames(
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
       const modKey = parsed.moduleKey;
-      const allowed = parsed.allowedBranches;
-      const deptAllowed = parsed.allowedDepartments;
       if (moduleKey && moduleKey !== modKey) continue;
-      if (bId != null && allowed.length > 0 && !allowed.includes(bId)) continue;
-      if (dId != null && deptAllowed.length > 0 && !deptAllowed.includes(dId)) continue;
+
+      const allowedBranches = Array.isArray(parsed.allowedBranches)
+        ? parsed.allowedBranches
+        : [];
+      const allowedDepartments = Array.isArray(parsed.allowedDepartments)
+        ? parsed.allowedDepartments
+        : [];
+      const tempBranches = Array.isArray(parsed.temporaryAllowedBranches)
+        ? parsed.temporaryAllowedBranches
+        : [];
+      const tempDepartments = Array.isArray(parsed.temporaryAllowedDepartments)
+        ? parsed.temporaryAllowedDepartments
+        : [];
+
+      const branchAllowed =
+        allowedBranches.length === 0 ||
+        bId == null ||
+        allowedBranches.includes(bId);
+      const departmentAllowed =
+        allowedDepartments.length === 0 ||
+        dId == null ||
+        allowedDepartments.includes(dId);
+
+      let permitted = branchAllowed && departmentAllowed;
+
+      if (!permitted) {
+        const tempEnabled = Boolean(
+          parsed.supportsTemporarySubmission ||
+            parsed.allowTemporarySubmission ||
+            parsed.supportsTemporary,
+        );
+        if (tempEnabled) {
+          const tempBranchAllowed =
+            tempBranches.length === 0 ||
+            bId == null ||
+            tempBranches.includes(bId);
+          const tempDepartmentAllowed =
+            tempDepartments.length === 0 ||
+            dId == null ||
+            tempDepartments.includes(dId);
+          permitted = tempBranchAllowed && tempDepartmentAllowed;
+        }
+      }
+
+      if (!permitted) continue;
+
       result[name] = { table: tbl, ...parsed };
     }
   }
