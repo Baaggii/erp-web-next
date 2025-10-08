@@ -56,33 +56,11 @@ function normalizeStoredAccessList(list) {
 
 export function hasPosTransactionAccess(config, branchId, departmentId) {
   if (!config || typeof config !== 'object') return true;
-  const branchValue = normalizeAccessValue(branchId);
-  const departmentValue = normalizeAccessValue(departmentId);
-
   const allowedBranches = normalizeAccessList(config.allowedBranches);
   const allowedDepartments = normalizeAccessList(config.allowedDepartments);
-
-  const generalAllowed =
-    matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue);
-
-  if (generalAllowed) return true;
-
-  const temporaryEnabled = Boolean(
-    config.supportsTemporarySubmission ??
-      config.allowTemporarySubmission ??
-      config.supportsTemporary ??
-      false,
-  );
-
-  if (!temporaryEnabled) return false;
-
-  const tempBranches = normalizeAccessList(config.temporaryAllowedBranches);
-  const tempDepartments = normalizeAccessList(config.temporaryAllowedDepartments);
-
   return (
-    matchesScope(tempBranches, branchValue) &&
-    matchesScope(tempDepartments, departmentValue)
+    matchesScope(allowedBranches, branchId) &&
+    matchesScope(allowedDepartments, departmentId)
   );
 }
 
@@ -119,12 +97,6 @@ export async function setConfig(name, config = {}, companyId = 0) {
     ...config,
     allowedBranches: normalizeStoredAccessList(config.allowedBranches),
     allowedDepartments: normalizeStoredAccessList(config.allowedDepartments),
-    temporaryAllowedBranches: normalizeStoredAccessList(
-      config.temporaryAllowedBranches,
-    ),
-    temporaryAllowedDepartments: normalizeStoredAccessList(
-      config.temporaryAllowedDepartments,
-    ),
     procedures: Array.isArray(config.procedures)
       ? config.procedures
           .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
