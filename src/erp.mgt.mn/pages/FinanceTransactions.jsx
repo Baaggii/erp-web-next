@@ -20,6 +20,10 @@ import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
 
 const DATE_PARAM_ALLOWLIST = new Set([
   'startdt',
@@ -310,17 +314,9 @@ useEffect(() => {
           const mKey = info.moduleKey;
           if (mKey !== moduleKey) return;
           if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
-          if (
-            perms &&
-            Object.prototype.hasOwnProperty.call(perms, mKey) &&
-            !perms[mKey]
-          )
+          if (!isModulePermissionGranted(perms, mKey))
             return;
-          if (
-            licensed &&
-            Object.prototype.hasOwnProperty.call(licensed, mKey) &&
-            !licensed[mKey]
-          )
+          if (!isModuleLicensed(licensed, mKey))
             return;
           filtered[n] = info;
         });
@@ -708,14 +704,7 @@ useEffect(() => {
   }
 
   if (!perms || !licensed) return <p>Ачааллаж байна...</p>;
-  if (
-    (perms &&
-      Object.prototype.hasOwnProperty.call(perms, moduleKey) &&
-      !perms[moduleKey]) ||
-    (licensed &&
-      Object.prototype.hasOwnProperty.call(licensed, moduleKey) &&
-      !licensed[moduleKey])
-  )
+  if (!isModulePermissionGranted(perms, moduleKey) || !isModuleLicensed(licensed, moduleKey))
     return <p>Нэвтрэх эрхгүй.</p>;
 
   const caption = 'Гүйлгээ сонгоно уу';
