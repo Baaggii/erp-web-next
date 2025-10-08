@@ -18,7 +18,7 @@ import { debugLog } from '../utils/debug.js';
 import { syncCalcFields } from '../utils/syncCalcFields.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
-import { hasPosTransactionAccess } from '../utils/posTransactionAccess.js';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   isPlainRecord,
   assignArrayMetadata,
@@ -463,7 +463,7 @@ export default function PosTransactionsPage() {
     const filtered = {};
     entries.forEach(([cfgName, cfgValue]) => {
       if (!cfgValue || typeof cfgValue !== 'object') return;
-      if (hasPosTransactionAccess(cfgValue, branch, department)) {
+      if (hasTransactionFormAccess(cfgValue, branch, department)) {
         filtered[cfgName] = cfgValue;
       }
     });

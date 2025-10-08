@@ -34,7 +34,7 @@ function normalizeAccessList(list) {
 function matchesScope(list, value) {
   if (!Array.isArray(list) || list.length === 0) return true;
   const normalizedValue = normalizeAccessValue(value);
-  if (normalizedValue === null) return false;
+  if (normalizedValue === null) return true;
   return list.includes(normalizedValue);
 }
 

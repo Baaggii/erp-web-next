@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
+import { listReviewerTemporaryForms } from './transactionTemporaries.js';
 
   async function readConfig(companyId = 0) {
     const { path: filePath, isDefault } = await getConfigPath(
@@ -157,13 +158,28 @@ export async function findTableByProcedure(proc, companyId = 0) {
 }
 
 export async function listTransactionNames(
-  { moduleKey, branchId, departmentId } = {},
+  { moduleKey, branchId, departmentId, empId } = {},
   companyId = 0,
 ) {
   const { cfg, isDefault } = await readConfig(companyId);
   const result = {};
   const bId = branchId ? Number(branchId) : null;
   const dId = departmentId ? Number(departmentId) : null;
+  let reviewerTables = new Set();
+  let reviewerConfigs = new Set();
+  if (empId) {
+    try {
+      const reviewer = await listReviewerTemporaryForms(empId, companyId, {
+        status: 'pending',
+      });
+      reviewerTables = new Set((reviewer?.tables || []).map((v) => String(v)));
+      reviewerConfigs = new Set((reviewer?.configs || []).map((v) => String(v)));
+    } catch (err) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('Failed to load reviewer temporary forms', err);
+      }
+    }
+  }
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);

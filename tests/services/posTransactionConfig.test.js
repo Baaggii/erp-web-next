@@ -19,8 +19,8 @@ test('hasPosTransactionAccess enforces branch and department restrictions', () =
   assert.equal(hasPosTransactionAccess(config, '2', '10'), true);
   assert.equal(hasPosTransactionAccess(config, 3, 10), false);
   assert.equal(hasPosTransactionAccess(config, 1, '11'), false);
-  assert.equal(hasPosTransactionAccess(config, null, '10'), false);
-  assert.equal(hasPosTransactionAccess(config, undefined, undefined), false);
+  assert.equal(hasPosTransactionAccess(config, null, '10'), true);
+  assert.equal(hasPosTransactionAccess(config, undefined, undefined), true);
 });
 
 test('filterPosConfigsByAccess returns only permitted configurations', () => {
