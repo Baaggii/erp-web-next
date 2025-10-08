@@ -257,7 +257,7 @@ const RETRY_REASON_HINTS = {
   limited_cyrillic_content:
     'Add more substantial Mongolian words written in Cyrillic.',
   insufficient_character_variety:
-    'Use a variety of Mongolian letters to form meaningful words, not repeated single characters.',
+    'Use natural Mongolian words instead of repeating the same few characters.',
   insufficient_word_length:
     'Include meaningful Mongolian words that are at least a few letters long.',
   missing_mongolian_vowel:
@@ -474,10 +474,19 @@ async function requestTranslation(text, lang, metadata, options = {}) {
   if (aiDisabled) return null;
   try {
     const prompt = buildPrompt(text, lang, metadata, options);
+    const payload = {
+      prompt,
+      task: 'translation',
+      lang,
+      metadata,
+      key: metadata?.key || options.key,
+      attempt: options.attempt,
+      model: options.model,
+    };
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(payload),
       skipErrorToast: true,
       skipLoader: true,
     });
@@ -575,7 +584,11 @@ async function requestValidationViaPrompt(payload) {
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({
+        prompt,
+        task: 'validation',
+        lang: payload?.lang,
+      }),
       skipErrorToast: true,
       skipLoader: true,
     });
