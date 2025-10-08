@@ -17,21 +17,8 @@ const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const companyId = resolveScopedCompanyId(
-      req.query.companyId,
-      req.user.companyId,
-    );
-    const { name } = req.query;
-    const branchId = pickFirstScopeValue(
-      req.query.branchId,
-      req.query.branch_id,
-      req.query.branch,
-    );
-    const departmentId = pickFirstScopeValue(
-      req.query.departmentId,
-      req.query.department_id,
-      req.query.department,
-    );
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const { name, branchId, departmentId } = req.query;
     if (name) {
       const { config, isDefault } = await getConfig(name, companyId);
       if (!config) {
@@ -45,11 +32,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       res.json({ ...config, isDefault });
     } else {
       const { config, isDefault } = await getAllConfigs(companyId);
-      const filtered = filterPosConfigsByAccess(
-        config,
-        branchId,
-        departmentId,
-      );
+      const filtered = filterPosConfigsByAccess(config, branchId, departmentId);
       res.json({ ...filtered, isDefault });
     }
   } catch (err) {

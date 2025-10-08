@@ -130,6 +130,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const prevConfigRef = useRef(null);
   const controlRefs = useRef([]);
   const prevNameRef = useRef();
+  const [temporaryLaunch, setTemporaryLaunch] = useState(null);
 
   const reportProcPrefix = generalConfig?.general?.reportProcPrefix || '';
 
@@ -248,6 +249,36 @@ useEffect(() => {
   }, [name, paramKey]);
 
   useEffect(() => {
+    const openParam = searchParams.get('temporaryOpen');
+    const shouldOpen =
+      openParam !== null &&
+      openParam !== '0' &&
+      openParam.toLowerCase?.() !== 'false';
+    if (!shouldOpen) return;
+    const scopeParam = (searchParams.get('temporaryScope') || '').toLowerCase();
+    const configParam = searchParams.get(paramKey) || searchParams.get('temporaryConfig');
+    const tableParam = searchParams.get('temporaryTable');
+    const focusParam = searchParams.get('temporaryId');
+    const nextLaunch = {
+      open: true,
+      scope: scopeParam === 'created' ? 'created' : 'review',
+      configName: configParam || '',
+      tableName: tableParam || '',
+      focusId: focusParam ? Number(focusParam) || null : null,
+    };
+    setTemporaryLaunch((prev) => (isEqual(prev, nextLaunch) ? prev : nextLaunch));
+    setSearchParams((prev) => {
+      const sp = new URLSearchParams(prev);
+      sp.delete('temporaryOpen');
+      sp.delete('temporaryScope');
+      sp.delete('temporaryId');
+      sp.delete('temporaryTable');
+      sp.delete('temporaryConfig');
+      return sp;
+    });
+  }, [paramKey, searchParams, setSearchParams]);
+
+  useEffect(() => {
     console.log('FinanceTransactions load forms effect');
     const params = new URLSearchParams();
     if (moduleKey) params.set('moduleKey', moduleKey);
@@ -293,12 +324,35 @@ useEffect(() => {
           const tbl = filtered[name].table ?? filtered[name];
           if (tbl !== table) setTable(tbl);
         }
+        if (temporaryLaunch?.open && temporaryLaunch.configName) {
+          if (filtered[temporaryLaunch.configName]) {
+            if (name !== temporaryLaunch.configName) {
+              setName(temporaryLaunch.configName);
+            }
+          } else if (Object.keys(filtered).length > 0) {
+            addToast(
+              'Temporary review form is not available with your current access.',
+              'error',
+            );
+            setTemporaryLaunch(null);
+          }
+        }
       })
       .catch(() => {
         addToast('Failed to load transaction forms', 'error');
         setConfigs({});
       });
-  }, [moduleKey, company, branch, department, perms, licensed]);
+  }, [
+    moduleKey,
+    company,
+    branch,
+    department,
+    perms,
+    licensed,
+    temporaryLaunch,
+    name,
+    addToast,
+  ]);
 
   useEffect(() => {
     console.log('FinanceTransactions table sync effect');
@@ -317,6 +371,20 @@ useEffect(() => {
       }
     }
   }, [name, configs]);
+
+  useEffect(() => {
+    if (!temporaryLaunch?.open) return;
+    if (temporaryLaunch.configName && temporaryLaunch.configName !== name) return;
+    if (!showTable) setShowTable(true);
+  }, [temporaryLaunch, name, showTable]);
+
+  const temporaryLaunchToken = useMemo(() => {
+    if (!temporaryLaunch?.open) return '';
+    const parts = [moduleKey, temporaryLaunch.scope || 'review'];
+    if (temporaryLaunch.configName) parts.push(temporaryLaunch.configName);
+    if (temporaryLaunch.focusId != null) parts.push(String(temporaryLaunch.focusId));
+    return parts.join(':');
+  }, [moduleKey, temporaryLaunch]);
 
   useEffect(() => {
     console.log('FinanceTransactions configs empty effect');
@@ -601,6 +669,12 @@ useEffect(() => {
     };
   }
 
+  const shouldOpenTemporaryModal = useMemo(() => {
+    if (!temporaryLaunch?.open) return false;
+    if (temporaryLaunch.configName && temporaryLaunch.configName !== name) return false;
+    return true;
+  }, [temporaryLaunch, name]);
+
   function handleControlKeyDown(event) {
     if (event.key !== 'Enter') return;
     const nodes = controlRefs.current.filter(
@@ -772,6 +846,10 @@ useEffect(() => {
             addLabel="Гүйлгээ нэмэх"
             showTable={showTable}
             buttonPerms={buttonPerms}
+            initialTemporaryOpen={shouldOpenTemporaryModal}
+            initialTemporaryScope={temporaryLaunch?.scope || 'review'}
+            initialTemporaryFocusId={temporaryLaunch?.focusId ?? null}
+            temporaryLaunchToken={shouldOpenTemporaryModal ? temporaryLaunchToken : ''}
           />
         </>
       )}

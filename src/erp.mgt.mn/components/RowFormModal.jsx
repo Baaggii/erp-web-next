@@ -69,6 +69,7 @@ const RowFormModal = function RowFormModal({
   onSaveTemporary = null,
   allowTemporarySave = false,
   isAdding = false,
+  canPost = true,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -904,8 +905,10 @@ const RowFormModal = function RowFormModal({
       return;
     }
     if (!next) {
-      submitForm();
-      if (onNextForm) onNextForm();
+      if (canPost) {
+        submitForm();
+        if (onNextForm) onNextForm();
+      }
     }
   }
 
@@ -1545,6 +1548,15 @@ const RowFormModal = function RowFormModal({
   }
 
   async function submitForm() {
+    if (!canPost) {
+      alert(
+        t(
+          'temporary_post_not_allowed',
+          'You do not have permission to post this transaction.',
+        ),
+      );
+      return;
+    }
     if (submitLocked) return;
     setSubmitLocked(true);
     if (useGrid && tableRef.current) {
@@ -2367,13 +2379,23 @@ const RowFormModal = function RowFormModal({
           >
             {t('cancel', 'Cancel')}
           </button>
-          <button
-            type="submit"
-            className="px-3 py-1 bg-blue-600 text-white rounded"
-          >
-            {t('post', 'Post')}
-          </button>
+          {canPost && (
+            <button
+              type="submit"
+              className="px-3 py-1 bg-blue-600 text-white rounded"
+            >
+              {t('post', 'Post')}
+            </button>
+          )}
         </div>
+        {!canPost && allowTemporarySave && (
+          <div className="mt-2 text-sm text-gray-600">
+            {t(
+              'temporary_post_hint',
+              'This form only allows temporary submissions for your branch/department.',
+            )}
+          </div>
+        )}
         <div className="text-sm text-gray-600">
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>

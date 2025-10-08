@@ -18,7 +18,7 @@ export async function listPermittedProcedures(
   user,
 ) {
   const { names: forms, isDefault: formsDefault } = await listTransactionNames(
-    { branchId, departmentId },
+    { branchId, departmentId, empId: user?.empid },
     companyId,
   );
   const { config: allowedCfg, isDefault: accessDefault } =

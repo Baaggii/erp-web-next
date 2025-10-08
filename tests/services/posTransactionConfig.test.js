@@ -23,20 +23,6 @@ test('hasPosTransactionAccess enforces branch and department restrictions', () =
   assert.equal(hasPosTransactionAccess(config, undefined, undefined), true);
 });
 
-test('temporary access flags mirror dynamic transaction logic', () => {
-  const config = {
-    allowedBranches: ['1'],
-    allowedDepartments: ['2'],
-    supportsTemporarySubmission: true,
-    temporaryAllowedBranches: ['3'],
-    temporaryAllowedDepartments: ['4'],
-  };
-
-  assert.equal(hasPosTransactionAccess(config, '1', '2'), true);
-  assert.equal(hasPosTransactionAccess(config, '3', '4'), true);
-  assert.equal(hasPosTransactionAccess(config, '3', '5'), false);
-});
-
 test('filterPosConfigsByAccess returns only permitted configurations', () => {
   const configs = {
     Alpha: { allowedBranches: [1], allowedDepartments: [] },

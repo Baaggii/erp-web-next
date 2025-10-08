@@ -101,6 +101,10 @@ const softDeleteConfigCache = new Map();
 
 const tenantTableKeyConfigCache = new Map();
 
+function normalizeColumnKey(value) {
+  return String(value ?? '').toLowerCase().replace(/_/g, '');
+}
+
 const DEFAULT_TENANT_KEY_ALIASES = [
   {
     key: "company_id",
@@ -122,6 +126,20 @@ const DEFAULT_TENANT_KEY_ALIASES = [
     ],
   },
 ];
+
+const tenantKeyAliasLookup = new Map();
+for (const { key, aliases } of DEFAULT_TENANT_KEY_ALIASES) {
+  const canonical = normalizeColumnKey(key);
+  if (!canonical) continue;
+  tenantKeyAliasLookup.set(canonical, canonical);
+  if (Array.isArray(aliases)) {
+    for (const alias of aliases) {
+      const normalized = normalizeColumnKey(alias);
+      if (!normalized) continue;
+      tenantKeyAliasLookup.set(normalized, canonical);
+    }
+  }
+}
 
 function escapeIdentifier(name) {
   return `\`${String(name).replace(/`/g, "``")}\``;
@@ -161,6 +179,274 @@ async function loadTenantTableKeyConfig(companyId = GLOBAL_COMPANY_ID) {
     }
   }
   return tenantTableKeyConfigCache.get(companyId);
+}
+
+const uniqueIndexCache = new Map();
+
+async function listTableUniqueIndexes(tableName) {
+  if (!tableName) return [];
+  if (uniqueIndexCache.has(tableName)) {
+    return uniqueIndexCache.get(tableName);
+  }
+
+  let rows = [];
+  try {
+    [rows] = await pool.query(
+      `SELECT INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX
+         FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND NON_UNIQUE = 0
+        ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
+      [tableName],
+    );
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      uniqueIndexCache.set(tableName, []);
+      return [];
+    }
+    throw err;
+  }
+
+  const groups = new Map();
+  for (const row of rows || []) {
+    const indexName = row?.INDEX_NAME;
+    const columnName = row?.COLUMN_NAME;
+    const seq = Number(row?.SEQ_IN_INDEX);
+    if (!indexName || !columnName || !Number.isFinite(seq)) continue;
+    if (!groups.has(indexName)) {
+      groups.set(indexName, []);
+    }
+    const bucket = groups.get(indexName);
+    bucket[seq - 1] = columnName;
+  }
+
+  const indexes = [];
+  for (const [indexName, columns] of groups.entries()) {
+    const filtered = (columns || []).filter(Boolean);
+    if (!filtered.length) continue;
+    indexes.push({ indexName, columns: filtered });
+  }
+
+  indexes.sort((a, b) => {
+    if (a.columns.length !== b.columns.length) {
+      return a.columns.length - b.columns.length;
+    }
+    return String(a.indexName).localeCompare(String(b.indexName));
+  });
+
+  uniqueIndexCache.set(tableName, indexes);
+  return indexes;
+}
+
+async function fetchSnapshotRowByAlternateKey(
+  tableName,
+  recordId,
+  { companyId, tenantFilters } = {},
+) {
+  if (
+    recordId === undefined ||
+    recordId === null ||
+    (typeof recordId === "string" && !recordId.trim())
+  ) {
+    return null;
+  }
+
+  const normalizedRecordId =
+    typeof recordId === "string" ? recordId.trim() : recordId;
+  const uniqueIndexes = await listTableUniqueIndexes(tableName);
+  if (!uniqueIndexes.length) {
+    return null;
+  }
+
+  const pkColumns = await getPrimaryKeyColumns(tableName);
+  const pkSignature = pkColumns
+    .map((col) => normalizeColumnKey(col))
+    .join("|");
+
+  const knownValues = new Map();
+  const setKnownValue = (key, value) => {
+    if (value === undefined || value === null || value === "") return;
+    const normalized = normalizeColumnKey(key);
+    if (!normalized) return;
+    knownValues.set(normalized, value);
+    const canonical = tenantKeyAliasLookup.get(normalized);
+    if (canonical && canonical !== normalized) {
+      knownValues.set(canonical, value);
+    }
+  };
+
+  setKnownValue("company_id", companyId);
+  if (tenantFilters && typeof tenantFilters === "object") {
+    for (const [key, value] of Object.entries(tenantFilters)) {
+      setKnownValue(key, value);
+    }
+  }
+
+  const resolveKnownValue = (column) => {
+    const normalized = normalizeColumnKey(column);
+    if (!normalized) return undefined;
+    if (knownValues.has(normalized)) {
+      return knownValues.get(normalized);
+    }
+    const canonical = tenantKeyAliasLookup.get(normalized);
+    if (canonical && knownValues.has(canonical)) {
+      return knownValues.get(canonical);
+    }
+    return undefined;
+  };
+
+  const fallbackChecks = [];
+
+  for (const { columns } of uniqueIndexes) {
+    if (!Array.isArray(columns) || !columns.length) continue;
+    const signature = columns.map((col) => normalizeColumnKey(col)).join("|");
+    if (signature && signature === pkSignature) {
+      continue;
+    }
+
+    const knownAssignments = [];
+    const values = [];
+    let recordColumn = null;
+    let missingRequiredValue = false;
+
+    for (const column of columns) {
+      const knownValue = resolveKnownValue(column);
+      if (knownValue !== undefined && knownValue !== null && knownValue !== "") {
+        values.push(knownValue);
+        knownAssignments.push({ column, value: knownValue });
+        continue;
+      }
+      if (!recordColumn) {
+        recordColumn = column;
+        values.push(normalizedRecordId);
+        continue;
+      }
+      missingRequiredValue = true;
+    }
+
+    if (!recordColumn) {
+      continue;
+    }
+
+    fallbackChecks.push({ recordColumn, knownAssignments });
+
+    if (values.some((value) => value === undefined || value === null || value === "")) {
+      continue;
+    }
+
+    if (missingRequiredValue) {
+      continue;
+    }
+
+    const whereClause = columns
+      .map((column) => `${escapeIdentifier(column)} = ?`)
+      .join(" AND ");
+
+    try {
+      const [rows] = await pool.query(
+        `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+        [tableName, ...values],
+      );
+      if (rows && rows[0]) {
+        return rows[0];
+      }
+    } catch (err) {
+      if (err?.code === "ER_NO_SUCH_TABLE") {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  if (!fallbackChecks.length) {
+    return null;
+  }
+
+  fallbackChecks.sort((a, b) => b.knownAssignments.length - a.knownAssignments.length);
+
+  const triedFallback = new Set();
+
+  for (const { recordColumn, knownAssignments } of fallbackChecks) {
+    const normalizedRecordKey = normalizeColumnKey(recordColumn);
+    if (!normalizedRecordKey) continue;
+    const signatureParts = [normalizedRecordKey];
+    const assignmentKeys = knownAssignments
+      .map(({ column }) => normalizeColumnKey(column))
+      .filter(Boolean)
+      .sort();
+    signatureParts.push(...assignmentKeys);
+    const signature = signatureParts.join("|");
+    if (triedFallback.has(signature)) {
+      continue;
+    }
+    triedFallback.add(signature);
+
+    const whereParts = [];
+    const params = [tableName];
+    const usedColumns = new Set();
+
+    for (const { column, value } of knownAssignments) {
+      if (value === undefined || value === null || value === "") continue;
+      const normalized = normalizeColumnKey(column);
+      if (!normalized) continue;
+      whereParts.push(`${escapeIdentifier(column)} = ?`);
+      params.push(value);
+      usedColumns.add(normalized);
+    }
+
+    if (!usedColumns.has(normalizedRecordKey)) {
+      whereParts.push(`${escapeIdentifier(recordColumn)} = ?`);
+      params.push(normalizedRecordId);
+      usedColumns.add(normalizedRecordKey);
+    }
+
+    if (tenantFilters && typeof tenantFilters === "object") {
+      for (const [column, value] of Object.entries(tenantFilters)) {
+        if (value === undefined || value === null || value === "") continue;
+        const normalized = normalizeColumnKey(column);
+        if (!normalized || usedColumns.has(normalized)) continue;
+        whereParts.push(`${escapeIdentifier(column)} = ?`);
+        params.push(value);
+        usedColumns.add(normalized);
+      }
+    }
+
+    const normalizedCompanyKey = normalizeColumnKey("company_id");
+    if (
+      companyId !== undefined &&
+      companyId !== null &&
+      companyId !== "" &&
+      !usedColumns.has(normalizedCompanyKey)
+    ) {
+      whereParts.push("`company_id` = ?");
+      params.push(companyId);
+      usedColumns.add(normalizedCompanyKey);
+    }
+
+    if (!whereParts.length) {
+      continue;
+    }
+
+    const whereClause = whereParts.join(" AND ");
+
+    try {
+      const [rows] = await pool.query(
+        `SELECT * FROM ?? WHERE ${whereClause} LIMIT 2`,
+        params,
+      );
+      if (Array.isArray(rows) && rows.length === 1) {
+        return rows[0];
+      }
+    } catch (err) {
+      if (err?.code === "ER_NO_SUCH_TABLE") {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  return null;
 }
 const SOFT_DELETE_CANDIDATES = [
   "is_deleted",
@@ -5892,7 +6178,7 @@ export async function getProcedureLockCandidates(
   aliases = [],
   options = {},
 ) {
-  const { companyId } = options || {};
+  const { companyId, tenantFilters } = options || {};
   const conn = await pool.getConnection();
   const candidates = new Map();
 
@@ -6366,24 +6652,31 @@ export async function getProcedureLockCandidates(
         candidate.lockedAt = lockedAt;
         candidate.lockMetadata = lockRow;
 
+        let snapshotRow = null;
         try {
-          const snapshotRow = await getTableRowById(bucket.tableName, recordId, {
+          snapshotRow = await getTableRowById(bucket.tableName, recordId, {
             defaultCompanyId: companyId,
             includeDeleted: true,
           });
-          if (snapshotRow && typeof snapshotRow === 'object') {
-            candidate.snapshot = snapshotRow;
-            candidate.snapshotColumns = Object.keys(snapshotRow);
-          } else {
-            candidate.snapshot = null;
-            candidate.snapshotColumns = [];
-          }
         } catch (err) {
-          candidate.snapshot = null;
-          candidate.snapshotColumns = [];
-          if (err?.code && err.code !== 'ER_NO_SUCH_TABLE') {
+          if (err?.status !== 400 && err?.code !== 'ER_NO_SUCH_TABLE') {
             throw err;
           }
+        }
+
+        if (!snapshotRow) {
+          snapshotRow = await fetchSnapshotRowByAlternateKey(bucket.tableName, recordId, {
+            companyId,
+            tenantFilters,
+          });
+        }
+
+        if (snapshotRow && typeof snapshotRow === 'object') {
+          candidate.snapshot = snapshotRow;
+          candidate.snapshotColumns = Object.keys(snapshotRow);
+        } else {
+          candidate.snapshot = null;
+          candidate.snapshotColumns = [];
         }
       }
     }

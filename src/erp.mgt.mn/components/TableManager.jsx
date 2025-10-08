@@ -28,11 +28,16 @@ import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   applyGeneratedColumnEvaluators,
   createGeneratedColumnEvaluator,
   valuesEqual,
 } from '../utils/generatedColumns.js';
+
+if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
+  window.canPostTransactions = false;
+}
 
 function ch(n) {
   return Math.round(n * 8);
@@ -245,6 +250,10 @@ const TableManager = forwardRef(function TableManager({
   showTable = true,
   buttonPerms = {},
   autoFillSession = true,
+  initialTemporaryOpen = false,
+  initialTemporaryScope = 'review',
+  initialTemporaryFocusId = null,
+  temporaryLaunchToken = '',
 }, ref) {
   const { t } = useTranslation(['translation', 'tooltip']);
   const mounted = useRef(false);
@@ -290,6 +299,9 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryList, setTemporaryList] = useState([]);
   const [showTemporaryModal, setShowTemporaryModal] = useState(false);
   const [temporaryLoading, setTemporaryLoading] = useState(false);
+  const [temporaryFocusId, setTemporaryFocusId] = useState(null);
+  const temporaryListContainerRef = useRef(null);
+  const temporaryLaunchTokenRef = useRef('');
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -442,7 +454,7 @@ const TableManager = forwardRef(function TableManager({
   }, [branch, department, formConfig]);
 
   const refreshTemporarySummary = useCallback(async () => {
-    if (!supportsTemporary) {
+    if (!temporaryFeatureEnabled) {
       setTemporarySummary(null);
       setTemporaryScope('created');
       return;
@@ -462,7 +474,7 @@ const TableManager = forwardRef(function TableManager({
     } catch {
       setTemporarySummary((prev) => prev || { createdPending: 0, reviewPending: 0 });
     }
-  }, [supportsTemporary]);
+  }, [temporaryFeatureEnabled]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
@@ -2079,6 +2091,16 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSubmit(values) {
+    if (!canPostTransactions) {
+      addToast(
+        t(
+          'temporary_post_not_allowed',
+          'You do not have permission to post this transaction.',
+        ),
+        'error',
+      );
+      return false;
+    }
     const columns = new Set(allColumns);
     const merged = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -2288,7 +2310,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSaveTemporary(submission) {
-    if (!supportsTemporary) return false;
+    if (!canCreateTemporary) return false;
     if (!submission || typeof submission !== 'object') return false;
     const normalizedValues = submission.values || submission;
     const rawOverride = submission.rawValues && typeof submission.rawValues === 'object'
@@ -2670,8 +2692,8 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const fetchTemporaryList = useCallback(
-    async (scopeOverride) => {
-      if (!supportsTemporary) return;
+    async (scopeOverride, options = {}) => {
+      if (!temporaryFeatureEnabled) return;
       const scope = scopeOverride || temporaryScope;
       const params = new URLSearchParams();
       params.set('scope', scope);
@@ -2686,6 +2708,12 @@ const TableManager = forwardRef(function TableManager({
         const data = await res.json().catch(() => ({}));
         setTemporaryScope(scope);
         setTemporaryList(Array.isArray(data.rows) ? data.rows : []);
+        if (Object.prototype.hasOwnProperty.call(options, 'focusId')) {
+          const focus = options.focusId != null ? Number(options.focusId) || null : null;
+          setTemporaryFocusId(focus);
+        } else if (scopeOverride) {
+          setTemporaryFocusId(null);
+        }
       } catch (err) {
         console.error('Failed to load temporaries', err);
         setTemporaryList([]);
@@ -2693,11 +2721,51 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryLoading(false);
       }
     },
-    [supportsTemporary, table, temporaryScope],
+    [temporaryFeatureEnabled, table, temporaryScope],
   );
 
+  useEffect(() => {
+    if (!temporaryFeatureEnabled) return;
+    if (!initialTemporaryOpen) return;
+    if (!temporaryLaunchToken) return;
+    if (temporaryLaunchTokenRef.current === temporaryLaunchToken) return;
+    temporaryLaunchTokenRef.current = temporaryLaunchToken;
+    const scope = initialTemporaryScope === 'created' ? 'created' : 'review';
+    setShowTemporaryModal(true);
+    fetchTemporaryList(scope, { focusId: initialTemporaryFocusId });
+  }, [
+    temporaryFeatureEnabled,
+    initialTemporaryOpen,
+    initialTemporaryScope,
+    initialTemporaryFocusId,
+    temporaryLaunchToken,
+    fetchTemporaryList,
+  ]);
+
+  useEffect(() => {
+    if (!showTemporaryModal) return;
+    if (temporaryFocusId == null) return;
+    const container = temporaryListContainerRef.current;
+    if (!container) return;
+    const row = container.querySelector(
+      `[data-temporary-id="${String(temporaryFocusId)}"]`,
+    );
+    if (row && typeof row.scrollIntoView === 'function') {
+      try {
+        row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      } catch {
+        row.scrollIntoView({ block: 'center' });
+      }
+    }
+  }, [temporaryList, temporaryFocusId, showTemporaryModal]);
+
+  useEffect(() => {
+    if (showTemporaryModal) return;
+    setTemporaryFocusId(null);
+  }, [showTemporaryModal]);
+
   async function promoteTemporary(id) {
-    if (!supportsTemporary) return;
+    if (!temporaryFeatureEnabled) return;
     if (!window.confirm(t('promote_temporary_confirm', 'Promote temporary record?')))
       return;
     try {
@@ -2721,7 +2789,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function rejectTemporary(id) {
-    if (!supportsTemporary) return;
+    if (!temporaryFeatureEnabled) return;
     const notes = window.prompt(t('temporary_reject_reason', 'Enter rejection notes'));
     if (!notes || !notes.trim()) return;
     try {
@@ -3056,7 +3124,7 @@ const TableManager = forwardRef(function TableManager({
             Refresh Table
           </button>
         </TooltipWrapper>
-        {supportsTemporary && (
+        {temporaryFeatureEnabled && (
           <TooltipWrapper
             title={t('temporary_queue', {
               ns: 'tooltip',
@@ -4056,7 +4124,7 @@ const TableManager = forwardRef(function TableManager({
           setRequestType(null);
         }}
         onSubmit={handleSubmit}
-        onSaveTemporary={supportsTemporary ? handleSaveTemporary : null}
+        onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
@@ -4093,8 +4161,9 @@ const TableManager = forwardRef(function TableManager({
         onRowsChange={handleRowsChange}
         autoFillSession={autoFillSession}
         scope="forms"
-        allowTemporarySave={supportsTemporary}
+        allowTemporarySave={canCreateTemporary}
         isAdding={isAdding}
+        canPost={canPostTransactions}
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -4151,10 +4220,10 @@ const TableManager = forwardRef(function TableManager({
         title={t('temporary_modal_title', 'Temporary submissions')}
         width="70vw"
       >
-        {!supportsTemporary && (
+        {!temporaryFeatureEnabled && (
           <p>{t('temporary_not_supported', 'Temporary submissions are not available for this form.')}</p>
         )}
-        {supportsTemporary && (
+        {temporaryFeatureEnabled && (
           <div>
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <button
@@ -4199,7 +4268,10 @@ const TableManager = forwardRef(function TableManager({
             ) : temporaryList.length === 0 ? (
               <p>{t('temporary_empty', 'No temporary submissions found.')}</p>
             ) : (
-              <div style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+              <div
+                style={{ maxHeight: '60vh', overflowY: 'auto' }}
+                ref={temporaryListContainerRef}
+              >
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
@@ -4223,12 +4295,31 @@ const TableManager = forwardRef(function TableManager({
                     </tr>
                   </thead>
                   <tbody>
-                    {temporaryList.map((entry) => (
-                      <tr key={entry.id}>
+                    {temporaryList.map((entry) => {
+                      const highlighted =
+                        temporaryFocusId != null &&
+                        Number(entry.id) === Number(temporaryFocusId);
+                      return (
+                        <tr
+                          key={entry.id}
+                          data-temporary-id={entry.id}
+                          style={
+                            highlighted
+                              ? { backgroundColor: '#eef2ff' }
+                              : undefined
+                          }
+                        >
                         <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.id}</td>
                         <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                           <div style={{ fontWeight: 600 }}>{entry.formName || '-'}</div>
-                          <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>{entry.tableName}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>
+                            {entry.tableName}
+                            {entry.moduleKey && (
+                              <span style={{ marginLeft: '0.25rem', color: '#6b7280' }}>
+                                · {entry.moduleKey}
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.createdBy}</td>
                         <td
