@@ -463,8 +463,6 @@ const TableManager = forwardRef(function TableManager({
   const isSenior = Boolean(user?.empid) && !isSubordinate;
   const canReviewTemporary = formSupportsTemporary && isSenior;
   const supportsTemporary = canCreateTemporary || canReviewTemporary;
-  const showTemporaryRequesterUI = canCreateTemporary;
-  const showTemporaryReviewerUI = !canCreateTemporary && canReviewTemporary;
   const canPostTransactions =
     accessEvaluation.canPost === undefined
       ? true
@@ -3408,7 +3406,6 @@ const TableManager = forwardRef(function TableManager({
       : 0;
   const hasTemporaryNotice =
     supportsTemporary && (reviewPendingCount > 0 || createdPendingCount > 0);
-  const showTemporaryNotice = showTemporaryRequesterUI && hasTemporaryNotice;
   const temporaryNoticeScope = reviewPendingCount > 0
     ? 'review'
     : availableTemporaryScopes.includes('created')
