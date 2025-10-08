@@ -38,9 +38,7 @@ export default function ReportSnapshotViewer({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [artifact, setArtifact] = useState(normalizedSnapshot.artifact || null);
-  const [resolvedTotalRow, setResolvedTotalRow] = useState(
-    normalizedSnapshot.totalRow || null,
-  );
+  const totalRow = normalizedSnapshot.totalRow;
 
   useEffect(() => {
     setPageRows(initialRows);
@@ -49,8 +47,7 @@ export default function ReportSnapshotViewer({
     setTotalRows(initialRowCount);
     setArtifact(normalizedSnapshot.artifact || null);
     setError('');
-    setResolvedTotalRow(normalizedSnapshot.totalRow || null);
-  }, [initialRows, initialRowCount, normalizedSnapshot.artifact, normalizedSnapshot.totalRow]);
+  }, [initialRows, initialRowCount, normalizedSnapshot.artifact]);
 
   useEffect(() => {
     let cancelled = false;
@@ -83,9 +80,6 @@ export default function ReportSnapshotViewer({
           if (typeof data.rowCount === 'number' && Number.isFinite(data.rowCount)) {
             setTotalRows(data.rowCount);
           }
-          if (data && typeof data.totalRow === 'object' && !Array.isArray(data.totalRow)) {
-            setResolvedTotalRow(data.totalRow);
-          }
         }
       } catch (err) {
         if (!cancelled && err.name !== 'AbortError') {
@@ -112,15 +106,15 @@ export default function ReportSnapshotViewer({
     if (pageRows.length > 0) {
       return Object.keys(pageRows[0]);
     }
-    if (resolvedTotalRow) {
-      return Object.keys(resolvedTotalRow);
+    if (totalRow) {
+      return Object.keys(totalRow);
     }
     return [];
-  }, [normalizedSnapshot.columns, pageRows, resolvedTotalRow]);
+  }, [normalizedSnapshot.columns, pageRows, totalRow]);
 
   const fieldTypeMap = normalizedSnapshot.fieldTypeMap || {};
 
-  if (!columns.length && totalRows === 0 && !resolvedTotalRow) {
+  if (!columns.length && totalRows === 0 && !totalRow) {
     return <p style={style}>{emptyMessage}</p>;
   }
 
@@ -209,7 +203,7 @@ export default function ReportSnapshotViewer({
                 Loading…
               </td>
             </tr>
-          ) : pageRows.length === 0 && !resolvedTotalRow ? (
+          ) : pageRows.length === 0 && !totalRow ? (
             <tr>
               <td colSpan={columns.length} style={{ padding: '0.75rem', textAlign: 'center' }}>
                 {emptyMessage}
@@ -236,7 +230,7 @@ export default function ReportSnapshotViewer({
                   ))}
                 </tr>
               ))}
-              {resolvedTotalRow && (
+              {totalRow && (
                 <tr style={{ background: '#f3f4f6', fontWeight: 'bold' }}>
                   {columns.map((col) => (
                     <td
@@ -250,7 +244,7 @@ export default function ReportSnapshotViewer({
                         maxWidth: '16rem',
                       }}
                     >
-                      {formatValue(resolvedTotalRow?.[col], col, fieldTypeMap)}
+                      {formatValue(totalRow?.[col], col, fieldTypeMap)}
                     </td>
                   ))}
                 </tr>

@@ -12,21 +12,16 @@ function ensureDir() {
   }
 }
 
-function sanitizeRowEntry(row) {
-  if (!row || typeof row !== 'object' || Array.isArray(row)) {
-    return null;
-  }
-  const entries = Object.entries(row).filter(([key]) =>
-    typeof key === 'string' && key.trim(),
-  );
-  if (!entries.length) return null;
-  return Object.fromEntries(entries);
-}
-
 function sanitizeRows(rows) {
   if (!Array.isArray(rows)) return [];
   return rows
-    .map((row) => sanitizeRowEntry(row))
+    .map((row) => {
+      if (!row || typeof row !== 'object') return null;
+      const entries = Object.entries(row).filter(([key]) =>
+        typeof key === 'string' && key.trim(),
+      );
+      return Object.fromEntries(entries);
+    })
     .filter((row) => row && Object.keys(row).length > 0);
 }
 
@@ -36,7 +31,6 @@ export function storeSnapshotArtifact({
   fieldTypeMap = {},
   procedure = null,
   params = {},
-  totalRow = null,
 } = {}) {
   ensureDir();
   const sanitizedRows = sanitizeRows(rows);
@@ -58,7 +52,6 @@ export function storeSnapshotArtifact({
           )
         : {},
     rows: sanitizedRows,
-    totalRow: sanitizeRowEntry(totalRow),
   };
   const fd = fs.openSync(filePath, 'w');
   try {
@@ -97,8 +90,6 @@ export function loadSnapshotArtifactPage(artifactId, page = 1, perPage = 200) {
   const parsed = loadSnapshotArtifact(artifactId);
   const rows = Array.isArray(parsed.rows) ? parsed.rows : [];
   const totalRows = rows.length;
-  const totalRow =
-    sanitizeRowEntry(parsed.totalRow || parsed.totals || parsed.summaryRow || null) || null;
   const safePerPage = Math.max(1, Math.min(Number(perPage) || 200, 1000));
   const safePage = Math.max(1, Number(page) || 1);
   const start = (safePage - 1) * safePerPage;
@@ -116,7 +107,6 @@ export function loadSnapshotArtifactPage(artifactId, page = 1, perPage = 200) {
     createdAt: parsed.createdAt || null,
     procedure: parsed.procedure || null,
     params: parsed.params || {},
-    totalRow,
   };
 }
 
