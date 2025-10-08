@@ -139,10 +139,12 @@ function AuthedApp() {
     };
 
     modules.forEach((m) => {
-      if (m.module_key === 'pos_transactions') return;
       if (txnModules.keys.has(m.module_key)) {
         map[m.module_key] = (
-          <FinanceTransactionsPage moduleKey={m.module_key} />
+          <FinanceTransactionsPage
+            moduleKey={m.module_key}
+            moduleLabel={m.label}
+          />
         );
       }
     });
