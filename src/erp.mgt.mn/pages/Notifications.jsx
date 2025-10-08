@@ -419,37 +419,12 @@ export default function NotificationsPage() {
     [navigate],
   );
 
-  const openTemporaryEntry = useCallback(
-    (entry, scope) => {
+  const openTemporary = useCallback(
+    (scope) => {
       handleTemporarySeen(scope);
-      if (!entry || typeof entry !== 'object') {
-        navigate('/forms');
-        return;
-      }
-      const moduleKey = entry.moduleKey || 'finance_transactions';
-      const slug = String(moduleKey).trim().replace(/_/g, '-');
-      const params = new URLSearchParams();
-      const configName = entry.configName || entry.formName || '';
-      if (configName) params.set(`name_${moduleKey}`, configName);
-      params.set('temporaryOpen', '1');
-      params.set('temporaryScope', scope === 'created' ? 'created' : 'review');
-      if (entry.id != null) params.set('temporaryId', String(entry.id));
-      if (entry.tableName) params.set('temporaryTable', entry.tableName);
-      if (configName && !params.has('temporaryConfig')) {
-        params.set('temporaryConfig', configName);
-      }
-      navigate(`/${slug}?${params.toString()}`);
+      navigate('/forms');
     },
     [handleTemporarySeen, navigate],
-  );
-
-  const openTemporaryScope = useCallback(
-    (scope) => {
-      const list = scope === 'review' ? temporaryState.review : temporaryState.created;
-      const firstEntry = Array.isArray(list) && list.length > 0 ? list[0] : null;
-      openTemporaryEntry(firstEntry, scope);
-    },
-    [openTemporaryEntry, temporaryState.created, temporaryState.review],
   );
 
   const renderRequestItem = (req, tab) => {
@@ -611,16 +586,6 @@ export default function NotificationsPage() {
       <div style={styles.listBody}>
         <div style={styles.listTitle}>{entry.formName || entry.tableName || entry.id}</div>
         <div style={styles.listMeta}>
-          {entry.moduleKey && (
-            <span>
-              {t('notifications_module', 'Module')}: {entry.moduleKey}
-            </span>
-          )}
-          {entry.configName && (
-            <span>
-              {t('notifications_form_key', 'Form key')}: {entry.configName}
-            </span>
-          )}
           {entry.createdBy && (
             <span>
               {t('notifications_created_by', 'Created by')}: {entry.createdBy}
@@ -638,8 +603,8 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
-      <button style={styles.listAction} onClick={() => openTemporaryEntry(entry, scope)}>
-        {t('notifications_review_now', 'Review now')}
+      <button style={styles.listAction} onClick={() => openTemporary(scope)}>
+        {t('notifications_open_form', 'Open forms')}
       </button>
     </li>
   );
@@ -827,7 +792,7 @@ export default function NotificationsPage() {
                   {temporaryState.review.map((entry) => renderTemporaryItem(entry, 'review'))}
                 </ul>
               )}
-              <button style={styles.listAction} onClick={() => openTemporaryScope('review')}>
+              <button style={styles.listAction} onClick={() => openTemporary('review')}>
                 {t('notifications_open_review', 'Open review workspace')}
               </button>
             </div>
@@ -840,7 +805,7 @@ export default function NotificationsPage() {
                   {temporaryState.created.map((entry) => renderTemporaryItem(entry, 'created'))}
                 </ul>
               )}
-              <button style={styles.listAction} onClick={() => openTemporaryScope('created')}>
+              <button style={styles.listAction} onClick={() => openTemporary('created')}>
                 {t('notifications_open_drafts', 'Open drafts workspace')}
               </button>
             </div>
