@@ -382,9 +382,18 @@ const TableManager = forwardRef(function TableManager({
     [requestIdSet],
   );
   const { user, company, branch, department, session } = useContext(AuthContext);
-  const isSubordinate = Boolean(
-    session?.senior_empid || session?.senior_plan_empid,
-  );
+  const hasSenior = (value) => {
+    if (value === null || value === undefined) return false;
+    const numeric = Number(value);
+    if (!Number.isNaN(numeric)) {
+      return numeric > 0;
+    }
+    if (typeof value === 'string') {
+      return value.trim() !== '' && value.trim() !== '0';
+    }
+    return Boolean(value);
+  };
+  const isSubordinate = hasSenior(session?.senior_empid) || hasSenior(session?.senior_plan_empid);
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const { addToast } = useToast();
