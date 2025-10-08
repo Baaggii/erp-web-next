@@ -9,6 +9,7 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import I18nContext from '../context/I18nContext.jsx';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
@@ -45,22 +46,21 @@ export default function FormsIndex() {
 
   useEffect(() => {
     const params = new URLSearchParams();
-    if (branch) params.set('branchId', branch);
-    if (department) params.set('departmentId', department);
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => {
         const grouped = {};
+        const branchId = branch != null ? String(branch) : null;
+        const departmentId = department != null ? String(department) : null;
         Object.entries(data).forEach(([name, info]) => {
-          const allowedB = info.allowedBranches || [];
-          const allowedD = info.allowedDepartments || [];
+          if (name === 'isDefault') return;
+          if (!info || typeof info !== 'object') return;
           const key = info.moduleKey || 'forms';
           if (!descendantKeys.includes(key)) return;
-          if (allowedB.length > 0 && branch && !allowedB.includes(branch))
-            return;
-          if (allowedD.length > 0 && department && !allowedD.includes(department))
-            return;
+          if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
           if (
             perms &&
             Object.prototype.hasOwnProperty.call(perms, key) &&
@@ -79,7 +79,7 @@ export default function FormsIndex() {
         setTransactions(grouped);
       })
       .catch((err) => console.error('Error fetching forms:', err));
-  }, [company, perms, licensed, txnModules, modules]);
+  }, [company, perms, licensed, txnModules, modules, branch, department]);
 
   const groups = Object.entries(transactions);
 
