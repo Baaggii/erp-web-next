@@ -1,4 +1,5 @@
 import { pool, insertTableRow, getEmploymentSession } from '../../db/index.js';
+import { getFormConfig } from './transactionFormConfig.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
@@ -206,6 +207,79 @@ function mapTemporaryRow(row) {
   };
 }
 
+function buildModuleSlug(key) {
+  if (!key) return '';
+  return String(key)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/--+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+async function enrichTemporaryMetadata(rows, companyId) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const cache = new Map();
+
+  const loadConfig = async (tableName, formName) => {
+    const cacheKey = `${companyId ?? 0}::${tableName ?? ''}::${formName ?? ''}`;
+    if (cache.has(cacheKey)) return cache.get(cacheKey);
+    let meta = {};
+    if (tableName && formName) {
+      try {
+        const { config } = await getFormConfig(tableName, formName, companyId);
+        if (config) {
+          meta = {
+            moduleKey: config.moduleKey || '',
+            moduleLabel: config.moduleLabel || '',
+            formLabel: config.moduleLabel || formName,
+          };
+        }
+      } catch {
+        meta = {};
+      }
+    }
+    cache.set(cacheKey, meta);
+    return meta;
+  };
+
+  return Promise.all(
+    rows.map(async (row) => {
+      if (!row) return row;
+      let next = { ...row };
+      const needsModuleKey = !next.moduleKey || !next.moduleKey.trim();
+      const needsFormLabel = !next.formLabel || !String(next.formLabel).trim();
+      const needsModuleLabel = !next.moduleLabel || !String(next.moduleLabel).trim();
+      let meta;
+      if (
+        (needsModuleKey || needsFormLabel || needsModuleLabel) &&
+        next.tableName &&
+        (next.formName || next.configName)
+      ) {
+        meta = await loadConfig(next.tableName, next.formName || next.configName);
+      }
+      if (meta?.moduleKey && needsModuleKey) {
+        next = { ...next, moduleKey: meta.moduleKey };
+      }
+      if (meta?.formLabel && needsFormLabel) {
+        next = { ...next, formLabel: meta.formLabel };
+      }
+      if (meta?.moduleLabel && needsModuleLabel) {
+        next = { ...next, moduleLabel: meta.moduleLabel };
+      }
+      if ((!next.formLabel || !String(next.formLabel).trim()) && next.formName) {
+        next = { ...next, formLabel: next.formName };
+      }
+      if (next.moduleKey && !next.moduleSlug) {
+        next = { ...next, moduleSlug: buildModuleSlug(next.moduleKey) };
+      } else if (!next.moduleSlug) {
+        next = { ...next, moduleSlug: '' };
+      }
+      return next;
+    }),
+  );
+}
+
 export async function listTemporarySubmissions({
   scope,
   tableName,
@@ -241,7 +315,8 @@ export async function listTemporarySubmissions({
     `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY created_at DESC LIMIT 200`,
     params,
   );
-  return rows.map(mapTemporaryRow);
+  const mapped = rows.map(mapTemporaryRow);
+  return enrichTemporaryMetadata(mapped, companyId);
 }
 
 export async function getTemporarySummary(empId, companyId) {

@@ -298,6 +298,19 @@ const TableManager = forwardRef(function TableManager({
   const [queuedTemporaryTrigger, setQueuedTemporaryTrigger] = useState(null);
   const lastExternalTriggerRef = useRef(null);
   const [temporaryLoading, setTemporaryLoading] = useState(false);
+  const setTemporaryRowRef = useCallback((id, node) => {
+    if (id == null) return;
+    const key = String(id);
+    const map = temporaryRowRefs.current;
+    if (!map) return;
+    if (node) {
+      map.set(key, node);
+    } else {
+      map.delete(key);
+    }
+  }, []);
+  const [temporaryFocusId, setTemporaryFocusId] = useState(null);
+  const temporaryRowRefs = useRef(new Map());
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -2693,12 +2706,19 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const fetchTemporaryList = useCallback(
-    async (scopeOverride) => {
+    async (scopeOverride, options = {}) => {
       if (!supportsTemporary) return;
       const scope = scopeOverride || temporaryScope;
       const params = new URLSearchParams();
       params.set('scope', scope);
       if (table) params.set('table', table);
+      const focusIdRaw = options?.focusId;
+      const focusId =
+        focusIdRaw !== undefined &&
+        focusIdRaw !== null &&
+        String(focusIdRaw).trim() !== ''
+          ? String(focusIdRaw)
+          : null;
       setTemporaryLoading(true);
       try {
         const res = await fetch(
@@ -2707,10 +2727,23 @@ const TableManager = forwardRef(function TableManager({
         );
         if (!res.ok) throw new Error('Failed to load temporaries');
         const data = await res.json().catch(() => ({}));
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        let nextRows = rows;
+        if (focusId) {
+          const idx = rows.findIndex((item) => String(item?.id) === focusId);
+          if (idx > 0) {
+            const target = rows[idx];
+            nextRows = [target, ...rows.slice(0, idx), ...rows.slice(idx + 1)];
+          }
+          setTemporaryFocusId(focusId);
+        } else {
+          setTemporaryFocusId(null);
+        }
         setTemporaryScope(scope);
-        setTemporaryList(Array.isArray(data.rows) ? data.rows : []);
+        setTemporaryList(nextRows);
       } catch (err) {
         console.error('Failed to load temporaries', err);
+        setTemporaryFocusId(null);
         setTemporaryList([]);
       } finally {
         setTemporaryLoading(false);
@@ -3079,6 +3112,12 @@ const TableManager = forwardRef(function TableManager({
     return temporarySummary.createdPending ?? 0;
   }, [temporarySummary]);
 
+  const reviewPendingCount = Number(temporarySummary?.reviewPending || 0);
+  const createdPendingCount = Number(temporarySummary?.createdPending || 0);
+  const hasTemporaryNotice =
+    supportsTemporary && (reviewPendingCount > 0 || createdPendingCount > 0);
+  const temporaryNoticeScope = reviewPendingCount > 0 ? 'review' : 'created';
+
   return (
     <div>
       <div
@@ -3155,6 +3194,69 @@ const TableManager = forwardRef(function TableManager({
           </TooltipWrapper>
         )}
       </div>
+      {hasTemporaryNotice && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '1rem',
+            marginBottom: '0.75rem',
+            padding: '0.75rem 1rem',
+            borderRadius: '8px',
+            backgroundColor: reviewPendingCount > 0 ? '#fef3c7' : '#dbeafe',
+            border: `1px solid ${reviewPendingCount > 0 ? '#f59e0b' : '#60a5fa'}`,
+            color: '#1f2937',
+          }}
+        >
+          <div>
+            <strong>
+              {reviewPendingCount > 0
+                ? t(
+                    'temporary_review_prompt_title',
+                    'Temporary reviews pending',
+                  )
+                : t(
+                    'temporary_draft_prompt_title',
+                    'Temporary drafts saved',
+                  )}
+            </strong>
+            <div style={{ fontSize: '0.85rem', marginTop: '0.25rem', color: '#374151' }}>
+              {reviewPendingCount > 0
+                ? t(
+                    'temporary_review_prompt_message',
+                    'You have {{count}} temporary submissions waiting for approval.',
+                    { count: reviewPendingCount },
+                  )
+                : t(
+                    'temporary_draft_prompt_message',
+                    'You have {{count}} temporary drafts waiting for submission.',
+                    { count: createdPendingCount },
+                  )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowTemporaryModal(true);
+              fetchTemporaryList(temporaryNoticeScope);
+            }}
+            style={{
+              padding: '0.5rem 1rem',
+              borderRadius: '6px',
+              border: 'none',
+              backgroundColor: '#1d4ed8',
+              color: '#fff',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {reviewPendingCount > 0
+              ? t('temporary_review_prompt_cta', 'Open review workspace')
+              : t('temporary_draft_prompt_cta', 'Open drafts')}
+          </button>
+        </div>
+      )}
       <div
         style={{
           display: 'grid',
@@ -4283,94 +4385,120 @@ const TableManager = forwardRef(function TableManager({
                     </tr>
                   </thead>
                   <tbody>
-                    {temporaryList.map((entry) => (
-                      <tr key={entry.id}>
-                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.id}</td>
-                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
-                          <div style={{ fontWeight: 600 }}>{entry.formName || '-'}</div>
-                          <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>{entry.tableName}</div>
-                        </td>
-                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.createdBy}</td>
-                        <td
+                    {temporaryList.map((entry, index) => {
+                      const idValue = entry?.id;
+                      const idKey = idValue != null ? String(idValue) : `row-${index}`;
+                      const isFocused = temporaryFocusId && idKey === temporaryFocusId;
+                      return (
+                        <tr
+                          key={idKey}
+                          ref={(node) => setTemporaryRowRef(idKey, node)}
                           style={{
-                            borderBottom: '1px solid #f3f4f6',
-                            padding: '0.25rem',
-                            textTransform: 'capitalize',
+                            backgroundColor: isFocused ? '#fef9c3' : 'transparent',
+                            transition: 'background-color 0.2s ease-in-out',
                           }}
                         >
-                          {entry.status}
-                        </td>
-                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
-                          {formatTimestamp(entry.createdAt)}
-                        </td>
-                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
-                          <pre
-                            style={{
-                              background: '#f9fafb',
-                              padding: '0.5rem',
-                              borderRadius: '4px',
-                              maxHeight: '12rem',
-                              overflow: 'auto',
-                              fontSize: '0.75rem',
-                            }}
-                          >
-                            {JSON.stringify(
-                              entry.cleanedValues || entry.payload?.values || {},
-                              null,
-                              2,
-                            )}
-                          </pre>
-                        </td>
-                        {temporaryScope === 'review' && (
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                              {isFocused && (
+                                <span
+                                  style={{ color: '#b45309', fontSize: '0.9rem' }}
+                                  title={t('temporary_highlight', 'Recently opened from notifications')}
+                                >
+                                  ★
+                                </span>
+                              )}
+                              <span>{idValue ?? index + 1}</span>
+                            </div>
+                          </td>
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            <div style={{ fontWeight: 600 }}>
+                              {entry.formLabel || entry.formName || '-'}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>{entry.tableName}</div>
+                          </td>
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.createdBy}</td>
                           <td
                             style={{
                               borderBottom: '1px solid #f3f4f6',
                               padding: '0.25rem',
-                              textAlign: 'right',
-                              whiteSpace: 'nowrap',
+                              textTransform: 'capitalize',
                             }}
                           >
-                            {entry.status === 'pending' ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => promoteTemporary(entry.id)}
-                                  style={{
-                                    marginRight: '0.25rem',
-                                    padding: '0.25rem 0.5rem',
-                                    backgroundColor: '#16a34a',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                  }}
-                                >
-                                  {t('promote', 'Promote')}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => rejectTemporary(entry.id)}
-                                  style={{
-                                    padding: '0.25rem 0.5rem',
-                                    backgroundColor: '#dc2626',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                  }}
-                                >
-                                  {t('reject', 'Reject')}
-                                </button>
-                              </>
-                            ) : (
-                              <span style={{ fontSize: '0.8rem', color: '#4b5563' }}>
-                                {entry.status === 'promoted'
-                                  ? t('temporary_promoted_short', 'Promoted')
-                                  : t('temporary_rejected_short', 'Rejected')}
-                              </span>
-                            )}
+                            {entry.status}
                           </td>
-                        )}
-                      </tr>
-                    ))}
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            {formatTimestamp(entry.createdAt)}
+                          </td>
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            <pre
+                              style={{
+                                background: '#f9fafb',
+                                padding: '0.5rem',
+                                borderRadius: '4px',
+                                maxHeight: '12rem',
+                                overflow: 'auto',
+                                fontSize: '0.75rem',
+                              }}
+                            >
+                              {JSON.stringify(
+                                entry.cleanedValues || entry.payload?.values || {},
+                                null,
+                                2,
+                              )}
+                            </pre>
+                          </td>
+                          {temporaryScope === 'review' && (
+                            <td
+                              style={{
+                                borderBottom: '1px solid #f3f4f6',
+                                padding: '0.25rem',
+                                textAlign: 'right',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {entry.status === 'pending' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => promoteTemporary(entry.id)}
+                                    style={{
+                                      marginRight: '0.25rem',
+                                      padding: '0.25rem 0.5rem',
+                                      backgroundColor: '#16a34a',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    {t('promote', 'Promote')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => rejectTemporary(entry.id)}
+                                    style={{
+                                      padding: '0.25rem 0.5rem',
+                                      backgroundColor: '#dc2626',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    {t('reject', 'Reject')}
+                                  </button>
+                                </>
+                              ) : (
+                                <span style={{ fontSize: '0.8rem', color: '#4b5563' }}>
+                                  {entry.status === 'promoted'
+                                    ? t('temporary_promoted_short', 'Promoted')
+                                    : t('temporary_rejected_short', 'Rejected')}
+                                </span>
+                              )}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

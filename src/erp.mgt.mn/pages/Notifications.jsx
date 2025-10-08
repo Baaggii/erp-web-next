@@ -609,7 +609,9 @@ export default function NotificationsPage() {
   const renderTemporaryItem = (entry, scope) => (
     <li key={`${scope}-${entry.id}`} style={styles.listItem}>
       <div style={styles.listBody}>
-        <div style={styles.listTitle}>{entry.formName || entry.tableName || entry.id}</div>
+        <div style={styles.listTitle}>
+          {entry.formLabel || entry.formName || entry.tableName || entry.id}
+        </div>
         <div style={styles.listMeta}>
           {entry.createdBy && (
             <span>
