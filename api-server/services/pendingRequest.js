@@ -49,46 +49,140 @@ function parseProposedData(value) {
   }
 }
 
+function normalizeSnapshotRow(row, columns = []) {
+  if (!row) return null;
+  let normalized = sanitizeRowObject(row);
+  if (!normalized && Array.isArray(row)) {
+    const mappingCols = columns.length ? columns : row.map((_, idx) => `column_${idx + 1}`);
+    normalized = Object.fromEntries(mappingCols.map((col, idx) => [col, row[idx]]));
+  }
+  if (!normalized && typeof row === 'object') {
+    const entries = Object.entries(row)
+      .filter(([key]) => typeof key === 'string' && key.trim())
+      .map(([key, value]) => [key.trim(), value]);
+    if (entries.length) {
+      normalized = Object.fromEntries(entries);
+    }
+  }
+  if (normalized && Object.keys(normalized).length) {
+    return normalized;
+  }
+  return null;
+}
+
 function sanitizeSnapshot(raw) {
   if (!raw || typeof raw !== 'object') return null;
   if (raw.version && Number(raw.version) >= 2) {
     const cloned = { ...raw };
-    cloned.rows = Array.isArray(raw.rows) ? raw.rows : [];
+    const initialColumns = sanitizeColumns(
+      raw.columns || raw.snapshotColumns || raw.headers || [],
+    );
+    let columns = [...initialColumns];
+    const normalizedRows = Array.isArray(raw.rows)
+      ? raw.rows
+          .map((row) => normalizeSnapshotRow(row, columns))
+          .filter(Boolean)
+      : [];
+    if (!columns.length && normalizedRows.length) {
+      columns = Object.keys(normalizedRows[0]);
+    }
+    cloned.rows = normalizedRows;
+    if (columns.length) {
+      cloned.columns = columns;
+    }
     cloned.fieldTypeMap =
       raw.fieldTypeMap && typeof raw.fieldTypeMap === 'object'
         ? raw.fieldTypeMap
         : {};
+    if (
+      cloned.totalRow &&
+      Array.isArray(cloned.totalRow) &&
+      cloned.columns &&
+      Array.isArray(cloned.columns)
+    ) {
+      cloned.totalRow = Object.fromEntries(
+        cloned.columns.map((col, idx) => [col, cloned.totalRow[idx]]),
+      );
+    }
     return cloned;
   }
+
   const output = { version: 2 };
-  const rawRows = Array.isArray(raw.rows) ? raw.rows : [];
-  const sanitizedRows = rawRows
-    .map((row) => {
-      if (!row || typeof row !== 'object') return null;
-      const entries = Object.entries(row).filter(([key]) =>
-        typeof key === 'string' && key.trim(),
+  const rawColumns = sanitizeColumns(
+    raw.columns || raw.snapshotColumns || raw.headers || [],
+  );
+  const rawRows = (() => {
+    if (Array.isArray(raw.rows)) return raw.rows;
+    if (Array.isArray(raw.dataRows)) return raw.dataRows;
+    if (Array.isArray(raw.data)) return raw.data;
+    if (Array.isArray(raw.values)) return raw.values;
+    return [];
+  })();
+
+  let columns = [...rawColumns];
+  const sanitizedRows = [];
+
+  rawRows.forEach((row) => {
+    const normalized = normalizeSnapshotRow(row, columns);
+    if (normalized) {
+      if (!columns.length) {
+        columns = Object.keys(normalized);
+      }
+      sanitizedRows.push(normalized);
+    }
+  });
+
+  if (!columns.length && sanitizedRows.length) {
+    columns = Object.keys(sanitizedRows[0]);
+  }
+
+  const totalRowCandidate =
+    raw.totalRow || raw.total_row || raw.total || raw.footer || raw.summaryRow || null;
+  let totalRow = null;
+  if (totalRowCandidate) {
+    if (Array.isArray(totalRowCandidate)) {
+      const mappingCols = columns.length
+        ? columns
+        : totalRowCandidate.map((_, idx) => `column_${idx + 1}`);
+      totalRow = Object.fromEntries(
+        mappingCols.map((col, idx) => [col, totalRowCandidate[idx]]),
       );
-      return Object.fromEntries(entries);
-    })
-    .filter((row) => row && Object.keys(row).length > 0);
+    } else if (typeof totalRowCandidate === 'object') {
+      totalRow = Object.fromEntries(
+        Object.entries(totalRowCandidate).filter(([key]) =>
+          typeof key === 'string' && key.trim(),
+        ),
+      );
+      if (!columns.length && totalRow && Object.keys(totalRow).length) {
+        columns = Object.keys(totalRow);
+      }
+    }
+  }
 
   const rowCount = (() => {
     if (typeof raw.rowCount === 'number' && Number.isFinite(raw.rowCount)) {
       return raw.rowCount;
     }
+    if (typeof raw.count === 'number' && Number.isFinite(raw.count)) {
+      return raw.count;
+    }
     return sanitizedRows.length;
   })();
 
-  const columns = Array.isArray(raw.columns)
-    ? raw.columns.filter((c) => typeof c === 'string' && c.trim())
-    : sanitizedRows.length > 0
-    ? Object.keys(sanitizedRows[0])
-    : [];
   output.columns = columns;
 
   if (raw.fieldTypeMap && typeof raw.fieldTypeMap === 'object') {
     output.fieldTypeMap = Object.fromEntries(
       Object.entries(raw.fieldTypeMap).filter(
+        ([key, value]) => typeof key === 'string' && typeof value === 'string',
+      ),
+    );
+  } else if (
+    raw.snapshotFieldTypeMap &&
+    typeof raw.snapshotFieldTypeMap === 'object'
+  ) {
+    output.fieldTypeMap = Object.fromEntries(
+      Object.entries(raw.snapshotFieldTypeMap).filter(
         ([key, value]) => typeof key === 'string' && typeof value === 'string',
       ),
     );
@@ -145,19 +239,17 @@ function sanitizeSnapshot(raw) {
     output.previewRowCount = inlineRows.length;
   }
 
+  if (totalRow) {
+    output.totalRow = totalRow;
+  }
+
   if (raw.label && typeof raw.label === 'string' && raw.label.trim()) {
     output.label = raw.label.trim();
   }
   if (raw.summary && typeof raw.summary === 'string' && raw.summary.trim()) {
     output.summary = raw.summary.trim();
   }
-  if (raw.totalRow && typeof raw.totalRow === 'object' && !Array.isArray(raw.totalRow)) {
-    output.totalRow = Object.fromEntries(
-      Object.entries(raw.totalRow).filter(([key]) =>
-        typeof key === 'string' && key.trim(),
-      ),
-    );
-  }
+
   if (
     (!output.rows || output.rows.length === 0) &&
     (!output.columns || output.columns.length === 0) &&

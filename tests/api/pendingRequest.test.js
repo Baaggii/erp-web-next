@@ -223,6 +223,23 @@ await test('sanitizeSnapshot streams large dataset to artifact', async () => {
   deleteSnapshotArtifact(snapshot.artifact.id);
 });
 
+await test('sanitizeSnapshot converts array rows and total row', async () => {
+  const snapshot = service.__test__.sanitizeSnapshot({
+    columns: ['id', 'amount'],
+    rows: [
+      [1, 10],
+      [2, 20],
+    ],
+    totalRow: [null, 30],
+  });
+  assert.deepEqual(snapshot.columns, ['id', 'amount']);
+  assert.deepEqual(snapshot.rows, [
+    { id: 1, amount: 10 },
+    { id: 2, amount: 20 },
+  ]);
+  assert.deepEqual(snapshot.totalRow, { id: null, amount: 30 });
+});
+
 await test('listRequests normalizes empids in filters', async () => {
   const origQuery = db.pool.query;
   const queries = [];
