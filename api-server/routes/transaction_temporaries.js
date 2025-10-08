@@ -6,6 +6,7 @@ import {
   getTemporarySummary,
   promoteTemporarySubmission,
   rejectTemporarySubmission,
+  promoteTemporarySubmissionsBulk,
 } from '../services/transactionTemporaries.js';
 
 const router = express.Router();
@@ -61,6 +62,24 @@ router.post('/', requireAuth, async (req, res, next) => {
       createdBy: req.user.empid,
     });
     res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/bulk/promote', requireAuth, async (req, res, next) => {
+  try {
+    const { ids, notes } = req.body || {};
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ message: 'ids is required' });
+    }
+    const io = req.app.get('io');
+    const result = await promoteTemporarySubmissionsBulk(ids, {
+      reviewerEmpId: req.user.empid,
+      notes,
+      io,
+    });
+    res.json(result);
   } catch (err) {
     next(err);
   }
