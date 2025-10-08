@@ -1852,19 +1852,133 @@ export default function Reports() {
       addToast('Unable to capture report snapshot', 'error');
       return;
     }
+    const serializeCandidateForRequest = (candidate, overrides = {}) => {
+      if (!candidate || typeof candidate !== 'object') return null;
+      const tableName = candidate.tableName || getCandidateTable(candidate);
+      if (!tableName) return null;
+      const rawId =
+        candidate.recordId ??
+        candidate.record_id ??
+        candidate.lock_record_id ??
+        candidate.id;
+      if (rawId === undefined || rawId === null || rawId === '') {
+        return null;
+      }
+      const payload = {
+        table: tableName,
+        recordId: String(rawId),
+      };
+
+      const labelCandidate =
+        candidate.label || candidate.description || candidate.note || '';
+      const normalizedLabel = String(labelCandidate || '').trim();
+      if (normalizedLabel) {
+        payload.label = normalizedLabel;
+      }
+
+      const reasonCandidate =
+        candidate.reason ||
+        candidate.justification ||
+        candidate.explanation ||
+        candidate.exclude_reason ||
+        candidate.lock_reason ||
+        candidate.lockReason ||
+        '';
+      const normalizedReason = String(reasonCandidate || '').trim();
+      if (normalizedReason) {
+        payload.reason = normalizedReason;
+      }
+
+      const lockStatusCandidate =
+        candidate.lockStatus || candidate.status || candidate.lock_status || '';
+      const normalizedStatus = String(lockStatusCandidate || '').trim();
+      if (normalizedStatus) {
+        payload.lockStatus = normalizedStatus;
+      }
+
+      const lockedByCandidate =
+        candidate.lockedBy || candidate.locked_by || candidate.locked_by_emp;
+      const normalizedLockedBy = String(lockedByCandidate || '').trim();
+      if (normalizedLockedBy) {
+        payload.lockedBy = normalizedLockedBy;
+      }
+
+      const lockedAtCandidate =
+        candidate.lockedAt || candidate.locked_at || candidate.locked_date;
+      const normalizedLockedAt = String(lockedAtCandidate || '').trim();
+      if (normalizedLockedAt) {
+        payload.lockedAt = normalizedLockedAt;
+      }
+
+      if (candidate.locked || candidate.is_locked || candidate.isLocked) {
+        payload.locked = true;
+      }
+
+      const rawSnapshot =
+        resolveSnapshotSource(candidate) ||
+        (candidate.snapshot &&
+        typeof candidate.snapshot === 'object' &&
+        !Array.isArray(candidate.snapshot)
+          ? candidate.snapshot
+          : null);
+      const {
+        row: normalizedSnapshot,
+        columns: derivedColumns,
+        fieldTypeMap,
+      } = normalizeSnapshotRecord(rawSnapshot || {});
+      if (normalizedSnapshot) {
+        payload.snapshot = normalizedSnapshot;
+        let snapshotColumns = [];
+        if (Array.isArray(candidate.snapshotColumns)) {
+          snapshotColumns = candidate.snapshotColumns;
+        } else if (Array.isArray(candidate.snapshot_columns)) {
+          snapshotColumns = candidate.snapshot_columns;
+        } else if (Array.isArray(candidate.columns)) {
+          snapshotColumns = candidate.columns;
+        }
+        snapshotColumns = snapshotColumns
+          .map((col) => (col === null || col === undefined ? '' : String(col)))
+          .filter(Boolean);
+        if (!snapshotColumns.length && Array.isArray(derivedColumns)) {
+          snapshotColumns = derivedColumns;
+        }
+        if (snapshotColumns.length) {
+          payload.snapshotColumns = snapshotColumns;
+        }
+        const snapshotFieldTypeMap =
+          candidate.snapshotFieldTypeMap ||
+          candidate.snapshot_field_type_map ||
+          candidate.fieldTypeMap ||
+          candidate.field_type_map ||
+          fieldTypeMap ||
+          {};
+        if (
+          snapshotFieldTypeMap &&
+          typeof snapshotFieldTypeMap === 'object' &&
+          Object.keys(snapshotFieldTypeMap).length
+        ) {
+          payload.snapshotFieldTypeMap = snapshotFieldTypeMap;
+        }
+      }
+
+      return {
+        ...payload,
+        ...Object.fromEntries(
+          Object.entries(overrides || {}).filter(
+            ([, value]) => value !== undefined && value !== null,
+          ),
+        ),
+      };
+    };
+
     const excludedTransactions = lockCandidates
       .filter((candidate) => !candidate?.locked)
       .filter((candidate) => !lockSelections[getCandidateKey(candidate)])
       .map((candidate) => {
         const key = getCandidateKey(candidate);
         const info = lockExclusions[key];
-        const tableName = candidate.tableName || getCandidateTable(candidate);
-        if (!tableName) return null;
-        return {
-          table: tableName,
-          recordId: String(candidate.recordId),
-          reason: info?.reason?.trim() || '',
-        };
+        const reason = (info?.reason || '').trim();
+        return serializeCandidateForRequest(candidate, { reason });
       })
       .filter(Boolean);
     if (excludedTransactions.some((tx) => !tx.reason)) {
@@ -1876,14 +1990,7 @@ export default function Reports() {
       parameters: snapshot?.params || result.params,
       transactions: lockCandidates
         .filter((candidate) => lockSelections[getCandidateKey(candidate)])
-        .map((candidate) => {
-          const tableName = candidate.tableName || getCandidateTable(candidate);
-          if (!tableName) return null;
-          return {
-            table: tableName,
-            recordId: String(candidate.recordId),
-          };
-        })
+        .map((candidate) => serializeCandidateForRequest(candidate))
         .filter(Boolean),
       excludedTransactions,
       snapshot: {
