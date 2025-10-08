@@ -3241,40 +3241,6 @@ const TableManager = forwardRef(function TableManager({
     [formColumnOrder, resolveCanonicalKey],
   );
 
-  const temporaryDisplayColumns = useMemo(() => {
-    if (!Array.isArray(temporaryList) || temporaryList.length === 0) return [];
-    const seen = new Set();
-    const order = [];
-    const pushFields = (fields) => {
-      const canonical = canonicalizeFormFields(fields || []);
-      canonical.forEach((field) => {
-        const resolved = resolveCanonicalKey(field);
-        if (!resolved || seen.has(resolved)) return;
-        if (!validCols.has(resolved)) return;
-        seen.add(resolved);
-        order.push(resolved);
-      });
-    };
-    temporaryList.forEach((entry) => {
-      if (!entry) return;
-      if (Array.isArray(entry.visibleFields) && entry.visibleFields.length > 0) {
-        pushFields(entry.visibleFields);
-      } else if (formConfig?.visibleFields?.length) {
-        pushFields(formConfig.visibleFields);
-      }
-    });
-    return order.map((key) => ({ key, label: labels[key] || key }));
-  }, [
-    canonicalizeFormFields,
-    formConfig?.visibleFields,
-    labels,
-    resolveCanonicalKey,
-    temporaryList,
-    validCols,
-  ]);
-
-  const hasTemporaryDisplayColumns = temporaryDisplayColumns.length > 0;
-
   const headerFields = useMemo(
     () => canonicalizeFormFields(formConfig?.headerFields || []),
     [canonicalizeFormFields, formConfig?.headerFields],
