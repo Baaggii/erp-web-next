@@ -207,6 +207,8 @@ const cyrillicScriptRegex = /[\u0400-\u052F\u2DE0-\u2DFF\uA640-\uA69F\u1C80-\u1C
 const mongolianScriptRegex = /[\u1800-\u18AF]/g;
 const tibetanScriptRegex = /[\u0F00-\u0FFF]/g;
 const latinScriptRegex = /[A-Za-z\u00C0-\u024F]/g;
+const mongolianCyrillicLetterRegex = /[А-Яа-яЁёӨөҮү]/g;
+const mongolianVowelRegex = /[АаЭэИиОоӨөУуҮүЫыЮюЯяЁё]/;
 
 export function normalizeText(text) {
   if (typeof text !== "string") return String(text ?? "").trim();
@@ -383,19 +385,52 @@ export function evaluateTranslationCandidate({
       return result;
     }
     const cyrillicRatio = cyrillicLetters / totalLetters;
-    if (cyrillicRatio < 0.6) {
+    const hasLatin = latinLetters > 0;
+    if (hasLatin) {
       result.status = "fail";
-      result.reasons.push("insufficient_cyrillic_ratio");
+      result.reasons.push("contains_latin_script");
+    }
+    if (cyrillicRatio < 0.6) {
+      if (!result.reasons.includes("insufficient_cyrillic_ratio")) {
+        result.reasons.push("insufficient_cyrillic_ratio");
+      }
       return result;
     }
-    if (latinLetters > 0 && latinLetters >= cyrillicLetters) {
-      result.status = "fail";
-      result.reasons.push("excessive_latin_script");
+    if (hasLatin) {
       return result;
     }
     if (cyrillicLetters < 3 && normalizedCandidate.length > 3) {
       result.status = result.status === "pass" ? "retry" : result.status;
       result.reasons.push("limited_cyrillic_content");
+    }
+
+    const cyrillicOnly = (normalizedCandidate.match(mongolianCyrillicLetterRegex) || [])
+      .join("")
+      .toLowerCase();
+    if (cyrillicOnly.length >= 4) {
+      const uniqueChars = new Set(cyrillicOnly.replace(/[^а-яёөү]/g, ""));
+      if (uniqueChars.size <= 2) {
+        result.status = "fail";
+        result.reasons.push("insufficient_character_variety");
+        return result;
+      }
+    }
+    if (cyrillicOnly && !mongolianVowelRegex.test(cyrillicOnly)) {
+      result.status = "fail";
+      result.reasons.push("missing_mongolian_vowel");
+      return result;
+    }
+
+    const wordsCyrillic = normalizedCandidate
+      .split(/\s+/)
+      .map((word) => word.replace(/[^А-Яа-яЁёӨөҮү-]/g, ""))
+      .filter(Boolean);
+    const hasSubstantiveWord = wordsCyrillic.some((word) => word.length >= 3);
+    const baseLength = normalizedBase ? normalizedBase.length : 0;
+    if (!hasSubstantiveWord && baseLength >= 6) {
+      result.status = "fail";
+      result.reasons.push("insufficient_word_length");
+      return result;
     }
   }
 

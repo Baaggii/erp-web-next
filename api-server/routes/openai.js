@@ -4,15 +4,30 @@ import {
   getResponse,
   getResponseWithFile,
   validateTranslation,
+  selectTranslationModel,
+  selectValidationModel,
 } from '../utils/openaiClient.js';
 
 const upload = multer({ storage: multer.memoryStorage() });
 
 const router = express.Router();
 
+function resolveModelHint({ requested, task, lang }) {
+  if (requested && typeof requested === 'string' && requested.trim()) {
+    return requested.trim();
+  }
+  if (task === 'translation') {
+    return selectTranslationModel(lang);
+  }
+  if (task === 'validation') {
+    return selectValidationModel();
+  }
+  return null;
+}
+
 router.post('/', upload.single('file'), async (req, res, next) => {
   try {
-    const { prompt } = req.body;
+    const { prompt, model: requestedModel, task, lang } = req.body || {};
     let response;
     if (req.file) {
       response = await getResponseWithFile(
@@ -21,7 +36,14 @@ router.post('/', upload.single('file'), async (req, res, next) => {
         req.file.mimetype
       );
     } else {
-      response = await getResponse(prompt);
+      const modelHint = resolveModelHint({
+        requested: requestedModel,
+        task,
+        lang,
+      });
+      response = await getResponse(prompt, {
+        model: modelHint || undefined,
+      });
     }
     res.json({ response });
   } catch (err) {
