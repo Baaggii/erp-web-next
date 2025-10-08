@@ -12,6 +12,7 @@ import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
@@ -19,6 +20,10 @@ import { syncCalcFields } from '../utils/syncCalcFields.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
 import {
   isPlainRecord,
   assignArrayMetadata,
@@ -453,11 +458,24 @@ async function putRow(addToast, table, id, row) {
 
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
-  const { user, company, branch, department } = useContext(AuthContext);
+  const {
+    user,
+    company,
+    branch,
+    department,
+    permissions: perms,
+  } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
+  const licensed = useCompanyModules(company);
   const [rawConfigs, setRawConfigs] = useState({});
   const configs = useMemo(() => {
     if (!rawConfigs || typeof rawConfigs !== 'object') return {};
+    if (!isModulePermissionGranted(perms, 'pos_transactions')) {
+      return {};
+    }
+    if (!isModuleLicensed(licensed, 'pos_transactions')) {
+      return {};
+    }
     const entries = Object.entries(rawConfigs).filter(([key]) => key !== 'isDefault');
     if (entries.length === 0) return {};
     const filtered = {};
@@ -468,7 +486,7 @@ export default function PosTransactionsPage() {
       }
     });
     return filtered;
-  }, [rawConfigs, branch, department]);
+  }, [rawConfigs, branch, department, perms, licensed]);
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
@@ -588,6 +606,23 @@ export default function PosTransactionsPage() {
       procTriggerLoadedRef.current.clear();
     };
   }, [name]);
+
+  useEffect(() => {
+    relationCacheRef.current.clear();
+    viewCacheRef.current.clear();
+    viewFetchesRef.current.clear();
+    viewLoadedRef.current.clear();
+    procTriggerFetchesRef.current.clear();
+    procTriggerLoadedRef.current.clear();
+    setFormConfigs({});
+    setColumnMeta({});
+    setRelationsMap({});
+    setRelationConfigs({});
+    setRelationData({});
+    setViewDisplaysMap({});
+    setViewColumnsMap({});
+    setProcTriggersMap({});
+  }, [branch, department]);
 
   useEffect(() => {
     const prev = contextReadyRef.current;
@@ -1049,7 +1084,7 @@ export default function PosTransactionsPage() {
   useEffect(() => {
     loadedTablesRef.current.clear();
     loadingTablesRef.current.clear();
-  }, [visibleTablesKey, configVersion]);
+  }, [visibleTablesKey, configVersion, branch, department]);
 
   // Reload form configs and column metadata when either the visible table set
   // or the form identifiers change. Because configVersion ignores layout-only
@@ -1110,8 +1145,22 @@ export default function PosTransactionsPage() {
           let cfg = null;
           if (form) {
             try {
-              const res = await fetch(
-                `/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`,
+              const params = new URLSearchParams({
+                table: tbl,
+                name: form,
+              });
+              if (branch !== undefined && branch !== null && `${branch}`.trim() !== '') {
+                params.set('branchId', branch);
+              }
+              if (
+                department !== undefined &&
+                department !== null &&
+                `${department}`.trim() !== ''
+              ) {
+                params.set('departmentId', department);
+              }
+              const res = await fetchWithAbort(
+                `/api/transaction_forms?${params.toString()}`,
                 { credentials: 'include' },
               );
               cfg = res.ok ? await res.json().catch(() => null) : null;
@@ -1183,7 +1232,7 @@ export default function PosTransactionsPage() {
     return () => {
       cancelled = true;
     };
-  }, [visibleTablesKey, configVersion]);
+  }, [visibleTablesKey, configVersion, branch, department]);
 
   const memoFieldTypeMap = useMemo(() => {
     const map = {};

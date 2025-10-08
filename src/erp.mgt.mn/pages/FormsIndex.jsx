@@ -10,6 +10,10 @@ import I18nContext from '../context/I18nContext.jsx';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
 
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
@@ -61,17 +65,9 @@ export default function FormsIndex() {
           const key = info.moduleKey || 'forms';
           if (!descendantKeys.includes(key)) return;
           if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
-          if (
-            perms &&
-            Object.prototype.hasOwnProperty.call(perms, key) &&
-            !perms[key]
-          )
+          if (!isModulePermissionGranted(perms, key))
             return;
-          if (
-            licensed &&
-            Object.prototype.hasOwnProperty.call(licensed, key) &&
-            !licensed[key]
-          )
+          if (!isModuleLicensed(licensed, key))
             return;
           if (!grouped[key]) grouped[key] = [];
           grouped[key].push(name);

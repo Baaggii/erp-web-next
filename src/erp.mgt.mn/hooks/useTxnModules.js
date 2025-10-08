@@ -1,76 +1,159 @@
 import { useEffect, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
+import { useCompanyModules } from './useCompanyModules.js';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
 
-// Cache both the set of transaction module keys and a label map so that other
-// hooks can synthesize missing module entries for non‑admin users.
+// Cache the raw transaction-form payload so we can re-derive module visibility
+// whenever permissions, licensing, or scope change without re-fetching.
 const cache = {
-  keys: null,
-  labels: null,
+  forms: null,
   branchId: undefined,
   departmentId: undefined,
+  companyId: undefined,
 };
 const emitter = new EventTarget();
 
+function deriveTxnModuleState(data, branch, department, perms, licensed) {
+  const branchId = branch != null ? String(branch) : null;
+  const departmentId = department != null ? String(department) : null;
+  const keys = new Set();
+  const labels = {};
+
+  if (data && typeof data === 'object') {
+    Object.entries(data).forEach(([name, info]) => {
+      if (name === 'isDefault') return;
+      if (!info || typeof info !== 'object') return;
+      const moduleKey = info.moduleKey;
+      if (!moduleKey) return;
+      if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
+      if (!isModulePermissionGranted(perms, moduleKey)) {
+        return;
+      }
+      if (!isModuleLicensed(licensed, moduleKey)) {
+        return;
+      }
+      keys.add(moduleKey);
+      if (info.moduleLabel) {
+        labels[moduleKey] = info.moduleLabel;
+      }
+    });
+  }
+
+  return { keys, labels };
+}
+
+function statesEqual(a, b) {
+  if (!a || !b) return false;
+  const aKeys = a.keys || new Set();
+  const bKeys = b.keys || new Set();
+  if (aKeys.size !== bKeys.size) return false;
+  for (const key of aKeys) {
+    if (!bKeys.has(key)) return false;
+  }
+  const aLabels = a.labels || {};
+  const bLabels = b.labels || {};
+  const aLabelKeys = Object.keys(aLabels);
+  const bLabelKeys = Object.keys(bLabels);
+  if (aLabelKeys.length !== bLabelKeys.length) return false;
+  for (const key of aLabelKeys) {
+    if (aLabels[key] !== bLabels[key]) return false;
+  }
+  return true;
+}
+
+function createEmptyState() {
+  return { keys: new Set(), labels: {} };
+}
+
 export function refreshTxnModules() {
-  delete cache.keys;
-  delete cache.labels;
+  cache.forms = null;
+  cache.branchId = undefined;
+  cache.departmentId = undefined;
+  cache.companyId = undefined;
   emitter.dispatchEvent(new Event('refresh'));
 }
 
 export function useTxnModules() {
-  const { branch, department } = useContext(AuthContext);
-  const [state, setState] = useState({
-    keys: cache.keys || new Set(),
-    labels: cache.labels || {},
-  });
+  const { branch, department, company, permissions: perms } = useContext(AuthContext);
+  const licensed = useCompanyModules(company);
+  const [state, setState] = useState(() => createEmptyState());
 
-  async function fetchKeys() {
+  function applyDerivedState(data) {
+    const derived = deriveTxnModuleState(data, branch, department, perms, licensed);
+    setState((prev) => (statesEqual(prev, derived) ? prev : derived));
+  }
+
+  async function fetchForms() {
+    const currentBranch = branch;
+    const currentDepartment = department;
+    const currentCompany = company;
+
     try {
       const params = new URLSearchParams();
-      if (branch) params.set('branchId', branch);
-      if (department) params.set('departmentId', department);
+      if (currentBranch !== undefined && currentBranch !== null && `${currentBranch}`.trim() !== '') {
+        params.set('branchId', currentBranch);
+      }
+      if (
+        currentDepartment !== undefined &&
+        currentDepartment !== null &&
+        `${currentDepartment}`.trim() !== ''
+      ) {
+        params.set('departmentId', currentDepartment);
+      }
       const res = await fetch(
         `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
         { credentials: 'include' },
       );
       const data = res.ok ? await res.json() : {};
-      const set = new Set();
-      const labels = {};
-      Object.values(data).forEach((info) => {
-        if (info && info.moduleKey) {
-          set.add(info.moduleKey);
-          if (info.moduleLabel) labels[info.moduleKey] = info.moduleLabel;
-        }
-      });
-      cache.keys = set;
-      cache.labels = labels;
-      cache.branchId = branch;
-      cache.departmentId = department;
-      setState({ keys: new Set(set), labels });
+      if (
+        branch !== currentBranch ||
+        department !== currentDepartment ||
+        company !== currentCompany
+      ) {
+        // Scope changed while request was in-flight; ignore this response.
+        return;
+      }
+      cache.forms = data;
+      cache.branchId = currentBranch;
+      cache.departmentId = currentDepartment;
+      cache.companyId = currentCompany;
+      applyDerivedState(data);
     } catch (err) {
       console.error('Failed to load transaction modules', err);
-      setState({ keys: new Set(), labels: {} });
+      cache.forms = {};
+      cache.branchId = currentBranch;
+      cache.departmentId = currentDepartment;
+      cache.companyId = currentCompany;
+      applyDerivedState({});
     }
   }
 
   useEffect(() => {
     debugLog('useTxnModules effect: initial fetch');
     if (
-      !cache.keys ||
+      !cache.forms ||
       cache.branchId !== branch ||
-      cache.departmentId !== department
+      cache.departmentId !== department ||
+      cache.companyId !== company
     ) {
-      fetchKeys();
+      setState((prev) => (prev.keys.size === 0 && Object.keys(prev.labels).length === 0 ? prev : createEmptyState()));
+      fetchForms();
+    } else {
+      applyDerivedState(cache.forms);
     }
-  }, [branch, department]);
+  }, [branch, department, company, perms, licensed]);
 
   useEffect(() => {
     debugLog('useTxnModules effect: refresh listener');
-    const handler = () => fetchKeys();
+    const handler = () => fetchForms();
     emitter.addEventListener('refresh', handler);
     return () => emitter.removeEventListener('refresh', handler);
-  }, [branch, department]);
+  }, [branch, department, company, perms, licensed]);
 
   return state;
 }
