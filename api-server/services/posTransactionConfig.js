@@ -56,11 +56,38 @@ function normalizeStoredAccessList(list) {
 
 export function hasPosTransactionAccess(config, branchId, departmentId) {
   if (!config || typeof config !== 'object') return true;
+
+  const branchValue = normalizeAccessValue(branchId);
+  const departmentValue = normalizeAccessValue(departmentId);
+
   const allowedBranches = normalizeAccessList(config.allowedBranches);
   const allowedDepartments = normalizeAccessList(config.allowedDepartments);
+
+  const generalAllowed =
+    matchesScope(allowedBranches, branchValue) &&
+    matchesScope(allowedDepartments, departmentValue);
+
+  if (generalAllowed) return true;
+
+  const temporaryEnabled = Boolean(
+    config.supportsTemporarySubmission ??
+      config.allowTemporarySubmission ??
+      config.supportsTemporary ??
+      false,
+  );
+
+  if (!temporaryEnabled) return false;
+
+  const temporaryBranches = normalizeAccessList(
+    config.temporaryAllowedBranches,
+  );
+  const temporaryDepartments = normalizeAccessList(
+    config.temporaryAllowedDepartments,
+  );
+
   return (
-    matchesScope(allowedBranches, branchId) &&
-    matchesScope(allowedDepartments, departmentId)
+    matchesScope(temporaryBranches, branchValue) &&
+    matchesScope(temporaryDepartments, departmentValue)
   );
 }
 
@@ -97,6 +124,24 @@ export async function setConfig(name, config = {}, companyId = 0) {
     ...config,
     allowedBranches: normalizeStoredAccessList(config.allowedBranches),
     allowedDepartments: normalizeStoredAccessList(config.allowedDepartments),
+    temporaryAllowedBranches: normalizeStoredAccessList(
+      config.temporaryAllowedBranches,
+    ),
+    temporaryAllowedDepartments: normalizeStoredAccessList(
+      config.temporaryAllowedDepartments,
+    ),
+    supportsTemporarySubmission: Boolean(
+      config.supportsTemporarySubmission ??
+        config.allowTemporarySubmission ??
+        config.supportsTemporary ??
+        false,
+    ),
+    allowTemporarySubmission: Boolean(
+      config.supportsTemporarySubmission ??
+        config.allowTemporarySubmission ??
+        config.supportsTemporary ??
+        false,
+    ),
     procedures: Array.isArray(config.procedures)
       ? config.procedures
           .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
