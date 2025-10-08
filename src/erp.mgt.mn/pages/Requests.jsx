@@ -11,6 +11,10 @@ import { useSearchParams } from 'react-router-dom';
 import DateRangePicker from '../components/DateRangePicker.jsx';
 import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import {
+  normalizeSnapshotRecord,
+  resolveSnapshotSource,
+} from '../utils/normalizeSnapshot.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -342,14 +346,38 @@ function normalizeApprovalTransaction(tx) {
     tx.lock_reason ||
     tx.lockReason ||
     '';
-  const snapshot =
-    tx.snapshot && typeof tx.snapshot === 'object' ? tx.snapshot : null;
-  const snapshotColumns = Array.isArray(tx.snapshotColumns)
-    ? tx.snapshotColumns.filter(Boolean)
+  const rawSnapshot =
+    resolveSnapshotSource(tx) ||
+    (tx.snapshot &&
+    typeof tx.snapshot === 'object' &&
+    !Array.isArray(tx.snapshot)
+      ? tx.snapshot
+      : null);
+  const {
+    row: snapshot,
+    columns: derivedColumns,
+    fieldTypeMap,
+  } = normalizeSnapshotRecord(rawSnapshot || {});
+  let snapshotColumns = Array.isArray(tx.snapshotColumns)
+    ? tx.snapshotColumns
+    : Array.isArray(tx.snapshot_columns)
+    ? tx.snapshot_columns
     : Array.isArray(tx.columns)
-    ? tx.columns.filter(Boolean)
+    ? tx.columns
     : [];
-  const snapshotFieldTypeMap = tx.snapshotFieldTypeMap || tx.fieldTypeMap || {};
+  snapshotColumns = snapshotColumns
+    .map((col) => (col === null || col === undefined ? '' : String(col)))
+    .filter(Boolean);
+  if (!snapshotColumns.length) {
+    snapshotColumns = derivedColumns;
+  }
+  const snapshotFieldTypeMap =
+    tx.snapshotFieldTypeMap ||
+    tx.snapshot_field_type_map ||
+    tx.fieldTypeMap ||
+    tx.field_type_map ||
+    fieldTypeMap ||
+    {};
   const lockStatus = tx.lockStatus || tx.status || '';
   const lockedBy = tx.lockedBy || tx.locked_by || '';
   const lockedAt = tx.lockedAt || tx.locked_at || '';
