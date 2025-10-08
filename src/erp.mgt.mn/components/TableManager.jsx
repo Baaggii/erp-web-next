@@ -2291,6 +2291,14 @@ const TableManager = forwardRef(function TableManager({
     if (!supportsTemporary) return false;
     if (!submission || typeof submission !== 'object') return false;
     const normalizedValues = submission.values || submission;
+    const rawOverride = submission.rawValues && typeof submission.rawValues === 'object'
+      ? submission.rawValues
+      : null;
+    const gridRows = Array.isArray(submission.normalizedRows)
+      ? submission.normalizedRows
+      : Array.isArray(normalizedValues?.rows)
+      ? normalizedValues.rows
+      : null;
     const merged = { ...(editing || {}) };
     Object.entries(normalizedValues).forEach(([k, v]) => {
       merged[k] = v;
@@ -2326,16 +2334,31 @@ const TableManager = forwardRef(function TableManager({
       }
     });
 
+    const payload = {
+      values: normalizedValues,
+      submittedAt: new Date().toISOString(),
+    };
+    if (gridRows) {
+      payload.gridRows = gridRows;
+      const currentValues =
+        payload.values && typeof payload.values === 'object' && !Array.isArray(payload.values)
+          ? payload.values
+          : {};
+      if (!Array.isArray(currentValues.rows)) {
+        payload.values = { ...currentValues, rows: gridRows };
+      }
+      payload.rowCount = gridRows.length;
+    }
+    if (submission.rawRows) {
+      payload.rawRows = submission.rawRows;
+    }
     const body = {
       table,
       formName: formName || formConfig?.moduleLabel || null,
       configName: formName || null,
       moduleKey: formConfig?.moduleKey || null,
-      payload: {
-        values: normalizedValues,
-        submittedAt: new Date().toISOString(),
-      },
-      rawValues: merged,
+      payload,
+      rawValues: rawOverride || merged,
       cleanedValues: cleaned,
       tenant: {
         company_id: company ?? null,
