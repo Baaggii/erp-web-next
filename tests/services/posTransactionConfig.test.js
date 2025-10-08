@@ -4,7 +4,6 @@ import {
   hasPosTransactionAccess,
   filterPosConfigsByAccess,
   hasPosConfigReadAccess,
-  hasPosTransactionOperateAccess,
   pickScopeValue,
 } from '../../api-server/services/posTransactionConfig.js';
 
@@ -89,37 +88,6 @@ test('hasPosConfigReadAccess denies when no permissions granted', () => {
   );
   assert.equal(
     hasPosConfigReadAccess({}, { permissions: { system_settings: false } }),
-    false,
-  );
-});
-
-test('hasPosTransactionOperateAccess grants when user has relevant permissions', () => {
-  assert.equal(
-    hasPosTransactionOperateAccess({ permissions: { system_settings: true } }, {}),
-    true,
-  );
-  assert.equal(
-    hasPosTransactionOperateAccess({}, { permissions: { pos_transactions: true } }),
-    true,
-  );
-  assert.equal(
-    hasPosTransactionOperateAccess({}, { pos_transaction_management: true }),
-    true,
-  );
-  assert.equal(
-    hasPosTransactionOperateAccess({}, { api: { '/api/pos_txn_post': true } }),
-    true,
-  );
-});
-
-test('hasPosTransactionOperateAccess denies when user lacks permissions', () => {
-  assert.equal(hasPosTransactionOperateAccess({}, {}), false);
-  assert.equal(
-    hasPosTransactionOperateAccess({ permissions: { pos_transactions: false } }, {}),
-    false,
-  );
-  assert.equal(
-    hasPosTransactionOperateAccess({}, { permissions: { pos_transactions: false } }),
     false,
   );
 });

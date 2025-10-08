@@ -117,7 +117,9 @@ export async function createTemporarySubmission({
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
     const session = await getEmploymentSession(normalizedCreator, companyId);
-    const planSenior = normalizeEmpId(session?.senior_plan_empid);
+    const reviewerEmpId =
+      normalizeEmpId(session?.senior_empid) ||
+      normalizeEmpId(session?.senior_plan_empid);
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -134,7 +136,7 @@ export async function createTemporarySubmission({
         safeJsonStringify(rawValues),
         safeJsonStringify(cleanedValues),
         normalizedCreator,
-        planSenior,
+        reviewerEmpId,
         branchId ?? null,
         departmentId ?? null,
       ],
@@ -155,10 +157,10 @@ export async function createTemporarySubmission({
       },
       conn,
     );
-    if (planSenior) {
+    if (reviewerEmpId) {
       await insertNotification(conn, {
         companyId,
-        recipientEmpId: planSenior,
+        recipientEmpId: reviewerEmpId,
         createdBy: normalizedCreator,
         relatedId: temporaryId,
         message: `Temporary submission pending review for ${tableName}`,
@@ -166,7 +168,7 @@ export async function createTemporarySubmission({
       });
     }
     await conn.query('COMMIT');
-    return { id: temporaryId, planSenior };
+    return { id: temporaryId, reviewerEmpId, planSenior: reviewerEmpId };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
@@ -191,6 +193,7 @@ function mapTemporaryRow(row) {
     cleanedValues: safeJsonParse(row.cleaned_values_json, {}),
     createdBy: row.created_by,
     planSeniorEmpId: row.plan_senior_empid,
+    reviewerEmpId: row.plan_senior_empid,
     branchId: row.branch_id,
     departmentId: row.department_id,
     status: row.status,

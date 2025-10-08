@@ -84,26 +84,6 @@ export function hasPosConfigReadAccess(session = {}, actions = {}) {
   return false;
 }
 
-export function hasPosTransactionOperateAccess(session = {}, actions = {}) {
-  const sessionPerms = session?.permissions || {};
-  if (sessionPerms.system_settings) return true;
-  if (sessionPerms.pos_transaction_management) return true;
-  if (sessionPerms.pos_transactions) return true;
-
-  const actionPermissions = actions?.permissions || {};
-  if (actionPermissions.system_settings) return true;
-  if (actionPermissions.pos_transaction_management) return true;
-  if (actionPermissions.pos_transactions) return true;
-
-  if (actions.pos_transaction_management) return true;
-  if (actions.pos_transactions) return true;
-
-  const apiPermissions = actions?.api || {};
-  if (apiPermissions['/api/pos_txn_post']) return true;
-
-  return false;
-}
-
 export function hasPosTransactionAccess(config, branchId, departmentId) {
   if (!config || typeof config !== 'object') return true;
 
