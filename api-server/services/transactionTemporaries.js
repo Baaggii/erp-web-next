@@ -233,6 +233,9 @@ async function enrichTemporaryMetadata(rows, companyId) {
             moduleKey: config.moduleKey || '',
             moduleLabel: config.moduleLabel || '',
             formLabel: config.moduleLabel || formName,
+            visibleFields: Array.isArray(config.visibleFields)
+              ? config.visibleFields.map((field) => String(field))
+              : [],
           };
         }
       } catch {
@@ -269,6 +272,9 @@ async function enrichTemporaryMetadata(rows, companyId) {
       }
       if ((!next.formLabel || !String(next.formLabel).trim()) && next.formName) {
         next = { ...next, formLabel: next.formName };
+      }
+      if (Array.isArray(meta?.visibleFields) && meta.visibleFields.length > 0) {
+        next = { ...next, visibleFields: meta.visibleFields };
       }
       if (next.moduleKey && !next.moduleSlug) {
         next = { ...next, moduleSlug: buildModuleSlug(next.moduleKey) };
@@ -450,6 +456,41 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
   } finally {
     conn.release();
   }
+}
+
+export async function promoteTemporarySubmissionsBulk(ids, { reviewerEmpId, notes, io }) {
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return { processed: [], errors: [] };
+  }
+  const uniqueIds = Array.from(
+    new Set(
+      ids
+        .map((id) => {
+          const num = Number(id);
+          return Number.isNaN(num) ? null : num;
+        })
+        .filter((id) => id !== null),
+    ),
+  );
+  const processed = [];
+  const errors = [];
+  for (const id of uniqueIds) {
+    try {
+      const result = await promoteTemporarySubmission(id, {
+        reviewerEmpId,
+        notes,
+        io,
+      });
+      processed.push(result);
+    } catch (err) {
+      errors.push({
+        id,
+        message: err?.message || 'Failed to promote temporary submission',
+        status: err?.status || 500,
+      });
+    }
+  }
+  return { processed, errors };
 }
 
 export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }) {
