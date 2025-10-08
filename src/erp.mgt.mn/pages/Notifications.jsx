@@ -172,6 +172,26 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.reportApproval?.outgoing?.declined?.count || 0;
+    const totalCount =
+      incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setReportState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setReportState((prev) => ({
       ...prev,
       loading: true,
@@ -216,6 +236,26 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.changeRequests?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.changeRequests?.outgoing?.declined?.count || 0;
+    const totalCount =
+      incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setChangeState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setChangeState((prev) => ({
       ...prev,
       loading: true,
