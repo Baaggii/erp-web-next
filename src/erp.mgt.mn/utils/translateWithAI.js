@@ -190,6 +190,51 @@ async function requestAI(text, lang, options = {}) {
   }
 }
 
+function shouldLogDiagnostics() {
+  if (typeof localStorage === 'undefined') return false;
+  try {
+    const flag = localStorage.getItem('ai-translation-debug');
+    if (flag === '1' || flag === 'true') return true;
+  } catch {}
+  return false;
+}
+
+function logDiagnostics(event, details) {
+  if (!shouldLogDiagnostics()) return;
+  const payload = {
+    ...details,
+  };
+  try {
+    // Avoid logging huge strings.
+    if (payload?.candidate) {
+      payload.candidate = sanitizeSnippet(payload.candidate, 160);
+    }
+  } catch {}
+  // eslint-disable-next-line no-console
+  console.warn(`[translateWithAI] ${event}`, payload);
+}
+
+async function validateRemotely({ candidate, base, lang, metadata }) {
+  if (typeof fetch !== 'function') return null;
+  try {
+    const res = await fetch('/api/openai/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ candidate, base, lang, metadata }),
+      skipErrorToast: true,
+      skipLoader: true,
+    });
+    if (!res.ok) {
+      return { ok: false, status: res.status };
+    }
+    const data = await res.json();
+    return { ok: true, ...data };
+  } catch (err) {
+    console.error('Remote validation request failed', err);
+    return { ok: false, error: err };
+  }
+}
+
 export default async function translateWithAI(lang, key, fallback) {
   const locales = await loadLocale(lang);
   if (locales[key]) return locales[key];

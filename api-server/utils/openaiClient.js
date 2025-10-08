@@ -1,25 +1,67 @@
-import dotenv from 'dotenv';
-import OpenAI from 'openai';
 import {
   evaluateTranslationCandidate,
   buildValidationPrompt,
   summarizeHeuristic,
 } from '../../utils/translationValidation.js';
 
-dotenv.config();
+if (!process.env.OPENAI_API_KEY) {
+  try {
+    const dotenvModule = await import('dotenv');
+    dotenvModule?.default?.config?.();
+  } catch (err) {
+    if (err?.code !== 'ERR_MODULE_NOT_FOUND') {
+      console.warn('Failed to load dotenv for OpenAI configuration', err);
+    }
+  }
+}
 
-const client = process.env.OPENAI_API_KEY
-  ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+let OpenAICtor = null;
+try {
+  const openaiModule = await import('openai');
+  OpenAICtor = openaiModule?.default || openaiModule;
+} catch (err) {
+  if (err?.code !== 'ERR_MODULE_NOT_FOUND') {
+    console.warn('Failed to load OpenAI SDK', err);
+  }
+}
+
+const client = process.env.OPENAI_API_KEY && OpenAICtor
+  ? new OpenAICtor({ apiKey: process.env.OPENAI_API_KEY })
   : null;
+
+const DEFAULT_CHAT_MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo';
+const DEFAULT_FILE_MODEL =
+  process.env.OPENAI_FILE_MODEL || process.env.OPENAI_MODEL_WITH_FILE || 'gpt-4o';
+const DEFAULT_TRANSLATION_MODEL =
+  process.env.OPENAI_TRANSLATION_MODEL || DEFAULT_CHAT_MODEL;
+const MONGOLIAN_TRANSLATION_MODEL =
+  process.env.OPENAI_TRANSLATION_MODEL_MN || DEFAULT_TRANSLATION_MODEL;
+const DEFAULT_VALIDATION_MODEL =
+  process.env.OPENAI_VALIDATION_MODEL || DEFAULT_TRANSLATION_MODEL;
 
 export default client;
 
-export async function getResponse(prompt) {
+export function selectTranslationModel(lang) {
+  if (!lang) return DEFAULT_TRANSLATION_MODEL;
+  const normalized = String(lang).toLowerCase();
+  if (normalized === 'mn') {
+    return MONGOLIAN_TRANSLATION_MODEL;
+  }
+  return DEFAULT_TRANSLATION_MODEL;
+}
+
+export function selectValidationModel() {
+  return DEFAULT_VALIDATION_MODEL;
+}
+
+export async function getResponse(prompt, options = {}) {
   if (!prompt) throw new Error('Prompt is required');
   if (!client) throw new Error('OpenAI client not configured');
+  const { model, temperature } = options;
   const completion = await client.chat.completions.create({
-    model: 'gpt-3.5-turbo',
+    model: model || DEFAULT_CHAT_MODEL,
     messages: [{ role: 'user', content: prompt }],
+    ...(typeof temperature === 'number' ? { temperature } : {}),
   });
   return completion.choices[0].message.content.trim();
 }
@@ -44,7 +86,7 @@ export async function getResponseWithFile(prompt, fileBuffer, mimeType) {
   }
 
   const completion = await client.chat.completions.create({
-    model: 'gpt-4-turbo',
+    model: DEFAULT_FILE_MODEL,
     messages,
   });
 
@@ -117,7 +159,9 @@ export async function validateTranslation({ candidate, base, lang, metadata }) {
 
   const prompt = buildValidationPrompt({ candidate, base, lang, metadata });
   try {
-    const raw = await getResponse(prompt);
+    const raw = await getResponse(prompt, {
+      model: selectValidationModel(),
+    });
     const parsed = parseValidationResponse(raw);
     if (!parsed) {
       return {
