@@ -3,38 +3,6 @@ import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
-let ensureNotificationPromise = null;
-
-async function ensureNotificationTypes(conn = pool) {
-  if (ensureNotificationPromise) return ensureNotificationPromise;
-  ensureNotificationPromise = (async () => {
-    const [rows] = await conn.query("SHOW COLUMNS FROM `notifications` LIKE 'type'");
-    const column = rows && rows[0];
-    if (!column || !column.Type) return;
-    const match = column.Type.match(/^enum\((.*)\)$/i);
-    if (!match) return;
-    const existing = match[1]
-      .split(',')
-      .map((entry) => entry.trim().replace(/^'|'$/g, '').replace(/''/g, "'"));
-    let changed = false;
-    ['temporary_request', 'temporary_response'].forEach((value) => {
-      if (!existing.includes(value)) {
-        existing.push(value);
-        changed = true;
-      }
-    });
-    if (!changed) return;
-    const enumSql = existing.map((value) => `'${value.replace(/'/g, "\\'")}'`).join(',');
-    await conn.query(
-      `ALTER TABLE \`notifications\` MODIFY COLUMN \`type\` ENUM(${enumSql}) NOT NULL DEFAULT 'request'`,
-    );
-  })()
-    .catch((err) => {
-      ensureNotificationPromise = null;
-      throw err;
-    });
-  return ensureNotificationPromise;
-}
 
 function normalizeEmpId(empid) {
   if (!empid) return null;
@@ -102,30 +70,14 @@ async function ensureTemporaryTable(conn = pool) {
 
 async function insertNotification(
   conn,
-  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'temporary_request' },
+  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'transaction_temporary' },
 ) {
   const recipient = normalizeEmpId(recipientEmpId);
   if (!recipient) return;
-  await ensureNotificationTypes();
-  const normalizedType = (() => {
-    const raw = typeof type === 'string' ? type.trim().toLowerCase() : '';
-    if (raw === 'response') return 'response';
-    if (raw === 'temporary_response') return 'temporary_response';
-    if (raw === 'temporary_request') return 'temporary_request';
-    if (raw === 'request') return 'request';
-    return 'temporary_request';
-  })();
   await conn.query(
     `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [
-      companyId ?? null,
-      recipient,
-      normalizedType,
-      relatedId ?? null,
-      message ?? '',
-      createdBy ?? null,
-    ],
+    [companyId ?? null, recipient, type, relatedId ?? null, message ?? '', createdBy ?? null],
   );
 }
 
@@ -156,7 +108,6 @@ export async function createTemporarySubmission({
   const conn = await pool.getConnection();
   try {
     await ensureTemporaryTable(conn);
-    await ensureNotificationTypes();
     await conn.query('BEGIN');
     const session = await getEmploymentSession(normalizedCreator, companyId);
     const planSenior = normalizeEmpId(session?.senior_plan_empid);
@@ -204,7 +155,6 @@ export async function createTemporarySubmission({
         createdBy: normalizedCreator,
         relatedId: temporaryId,
         message: `Temporary submission pending review for ${tableName}`,
-        type: 'temporary_request',
       });
     }
     await conn.query('COMMIT');
@@ -313,7 +263,6 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
   const conn = await pool.getConnection();
   try {
     await ensureTemporaryTable(conn);
-    await ensureNotificationTypes();
     await conn.query('BEGIN');
     const [rows] = await conn.query(
       `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? FOR UPDATE`,
@@ -367,11 +316,10 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
         emp_id: normalizedReviewer,
         table_name: row.table_name,
         record_id: id,
-        action: 'approve',
+        action: 'temporary_promote',
         details: {
           promotedRecordId: promotedId,
           formName: row.form_name ?? null,
-          temporaryAction: 'promote',
         },
         company_id: row.company_id ?? null,
       },
@@ -383,7 +331,6 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `Temporary submission for ${row.table_name} approved`,
-      type: 'temporary_response',
     });
     await insertNotification(conn, {
       companyId: row.company_id,
@@ -391,7 +338,6 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `You approved temporary submission #${id} for ${row.table_name}`,
-      type: 'temporary_response',
     });
     await conn.query('COMMIT');
     if (io) {
@@ -427,7 +373,6 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
   const conn = await pool.getConnection();
   try {
     await ensureTemporaryTable(conn);
-    await ensureNotificationTypes();
     await conn.query('BEGIN');
     const [rows] = await conn.query(
       `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? FOR UPDATE`,
@@ -463,8 +408,8 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
         emp_id: normalizedReviewer,
         table_name: row.table_name,
         record_id: id,
-        action: 'decline',
-        details: { formName: row.form_name ?? null, temporaryAction: 'reject' },
+        action: 'temporary_reject',
+        details: { formName: row.form_name ?? null },
         company_id: row.company_id ?? null,
       },
       conn,
@@ -475,7 +420,6 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `Temporary submission for ${row.table_name} rejected`,
-      type: 'temporary_response',
     });
     await insertNotification(conn, {
       companyId: row.company_id,
@@ -483,7 +427,6 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `You rejected temporary submission #${id} for ${row.table_name}`,
-      type: 'temporary_response',
     });
     await conn.query('COMMIT');
     if (io) {
