@@ -421,35 +421,15 @@ export default function NotificationsPage() {
     [navigate],
   );
 
-  const moduleSlugMap = useMemo(() => {
-    const map = {};
-    modules.forEach((mod) => {
-      if (!mod || !mod.module_key) return;
-      const key = String(mod.module_key).trim();
-      if (!key) return;
-      map[key] = key.replace(/_/g, '-');
-    });
-    if (!map.finance_transactions) {
-      map.finance_transactions = 'finance-transactions';
-    }
-    if (!map.forms) {
-      map.forms = 'forms';
-    }
-    return map;
-  }, [modules]);
-
   const openTemporaryEntry = useCallback(
     (entry, scope) => {
       handleTemporarySeen(scope);
       if (!entry || typeof entry !== 'object') {
-        navigate(`/${moduleSlugMap.forms || 'forms'}`);
+        navigate('/forms');
         return;
       }
-      const moduleKeyRaw =
-        entry.moduleKey || entry.module_key || entry.module || 'finance_transactions';
-      const moduleKey = String(moduleKeyRaw || '').trim() || 'finance_transactions';
-      const slugForModule = moduleSlugMap[moduleKey];
-      const slug = slugForModule || moduleSlugMap.forms || 'forms';
+      const moduleKey = entry.moduleKey || 'finance_transactions';
+      const slug = String(moduleKey).trim().replace(/_/g, '-');
       const params = new URLSearchParams();
       const configName = entry.configName || entry.formName || '';
       if (configName) params.set(`name_${moduleKey}`, configName);
@@ -460,10 +440,9 @@ export default function NotificationsPage() {
       if (configName && !params.has('temporaryConfig')) {
         params.set('temporaryConfig', configName);
       }
-      params.set('temporaryModule', moduleKey);
       navigate(`/${slug}?${params.toString()}`);
     },
-    [handleTemporarySeen, moduleSlugMap, navigate],
+    [openTemporaryEntry, temporaryState.created, temporaryState.review],
   );
 
   const openTemporaryScope = useCallback(

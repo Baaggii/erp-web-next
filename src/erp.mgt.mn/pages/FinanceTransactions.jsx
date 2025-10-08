@@ -250,10 +250,6 @@ useEffect(() => {
 
   useEffect(() => {
     const openParam = searchParams.get('temporaryOpen');
-    const targetModule = (searchParams.get('temporaryModule') || '').trim();
-    if (targetModule && targetModule !== moduleKey) {
-      return;
-    }
     const shouldOpen =
       openParam !== null &&
       openParam !== '0' &&
@@ -269,7 +265,6 @@ useEffect(() => {
       configName: configParam || '',
       tableName: tableParam || '',
       focusId: focusParam ? Number(focusParam) || null : null,
-      moduleKey,
     };
     setTemporaryLaunch((prev) => (isEqual(prev, nextLaunch) ? prev : nextLaunch));
     setSearchParams((prev) => {
@@ -279,10 +274,9 @@ useEffect(() => {
       sp.delete('temporaryId');
       sp.delete('temporaryTable');
       sp.delete('temporaryConfig');
-      sp.delete('temporaryModule');
       return sp;
     });
-  }, [moduleKey, paramKey, searchParams, setSearchParams]);
+  }, [paramKey, searchParams, setSearchParams]);
 
   useEffect(() => {
     console.log('FinanceTransactions load forms effect');
@@ -310,8 +304,7 @@ useEffect(() => {
           if (!info || typeof info !== 'object') return;
           const mKey = info.moduleKey;
           if (mKey !== moduleKey) return;
-          const hasAccess = hasTransactionFormAccess(info, branchId, departmentId);
-          if (!hasAccess && !info?.temporaryReviewer) return;
+          if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
           if (
             perms &&
             Object.prototype.hasOwnProperty.call(perms, mKey) &&

@@ -5,20 +5,35 @@ import {
   getConfig,
   setConfig,
   deleteConfig,
+  filterPosConfigsByAccess,
+  hasPosTransactionAccess,
 } from '../services/posTransactionConfig.js';
+import {
+  resolveScopedCompanyId,
+  pickFirstScopeValue,
+} from '../utils/requestScopes.js';
 
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const name = req.query.name;
+    const { name, branchId, departmentId } = req.query;
     if (name) {
       const { config, isDefault } = await getConfig(name, companyId);
-      res.json(config ? { ...config, isDefault } : { isDefault });
+      if (!config) {
+        res.status(404).json({ message: 'POS config not found', isDefault });
+        return;
+      }
+      if (!hasPosTransactionAccess(config, branchId, departmentId)) {
+        res.status(403).json({ message: 'Access denied', isDefault });
+        return;
+      }
+      res.json({ ...config, isDefault });
     } else {
       const { config, isDefault } = await getAllConfigs(companyId);
-      res.json({ ...config, isDefault });
+      const filtered = filterPosConfigsByAccess(config, branchId, departmentId);
+      res.json({ ...filtered, isDefault });
     }
   } catch (err) {
     next(err);
