@@ -4,7 +4,6 @@ import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
-import { useModules } from '../hooks/useModules.js';
 
 const SECTION_LIMIT = 5;
 
@@ -32,7 +31,6 @@ export default function NotificationsPage() {
   const { user, session } = useAuth();
   const { t } = useContext(LangContext);
   const navigate = useNavigate();
-  const modules = useModules();
   const [reportState, setReportState] = useState({
     incoming: [],
     outgoing: [],
@@ -442,7 +440,7 @@ export default function NotificationsPage() {
       }
       navigate(`/${slug}?${params.toString()}`);
     },
-    [openTemporaryEntry, temporaryState.created, temporaryState.review],
+    [handleTemporarySeen, navigate],
   );
 
   const openTemporaryScope = useCallback(
