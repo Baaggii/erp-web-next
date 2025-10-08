@@ -162,98 +162,6 @@ async function loadTenantTableKeyConfig(companyId = GLOBAL_COMPANY_ID) {
   }
   return tenantTableKeyConfigCache.get(companyId);
 }
-
-const REPORT_SNAPSHOT_RECORD_KEY_OVERRIDES = new Map([
-  [
-    "tbl_contracter",
-    [
-      ["company_id", "manuf_id"],
-      ["manuf_id"],
-    ],
-  ],
-  [
-    "code_chiglel",
-    [
-      ["company_id", "chig_id"],
-      ["chig_id"],
-    ],
-  ],
-  [
-    "code_torol",
-    [
-      ["company_id", "torol_id"],
-      ["torol_id"],
-    ],
-  ],
-  [
-    "transactions_contract",
-    [
-      ["company_id", "contract_id"],
-      ["company_id", "g_num"],
-      ["contract_id"],
-      ["g_num"],
-    ],
-  ],
-]);
-
-async function fetchSnapshotRowWithOverrides(
-  tableName,
-  recordId,
-  { companyId } = {},
-) {
-  if (
-    recordId === undefined ||
-    recordId === null ||
-    (typeof recordId === "string" && !recordId.trim())
-  ) {
-    return null;
-  }
-
-  const normalizedRecordId =
-    typeof recordId === "string" ? recordId.trim() : recordId;
-  const overrides = REPORT_SNAPSHOT_RECORD_KEY_OVERRIDES.get(tableName);
-  if (!overrides || overrides.length === 0) {
-    return null;
-  }
-
-  for (const columns of overrides) {
-    if (!Array.isArray(columns) || columns.length === 0) continue;
-    const values = [];
-    let skip = false;
-    for (const column of columns) {
-      const lower = String(column).toLowerCase();
-      if (lower === "company_id") {
-        if (companyId === undefined || companyId === null || companyId === "") {
-          skip = true;
-          break;
-        }
-        values.push(companyId);
-      } else {
-        values.push(normalizedRecordId);
-      }
-    }
-    if (skip) continue;
-    const whereClause = columns
-      .map((column) => `${escapeIdentifier(column)} = ?`)
-      .join(" AND ");
-    try {
-      const [rows] = await pool.query(
-        `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
-        [tableName, ...values],
-      );
-      if (rows && rows[0]) {
-        return rows[0];
-      }
-    } catch (err) {
-      if (err?.code === "ER_NO_SUCH_TABLE") {
-        return null;
-      }
-      throw err;
-    }
-  }
-
-  return null;
-}
 const SOFT_DELETE_CANDIDATES = [
   "is_deleted",
   "deleted",
@@ -6458,30 +6366,24 @@ export async function getProcedureLockCandidates(
         candidate.lockedAt = lockedAt;
         candidate.lockMetadata = lockRow;
 
-        let snapshotRow = null;
         try {
-          snapshotRow = await getTableRowById(bucket.tableName, recordId, {
+          const snapshotRow = await getTableRowById(bucket.tableName, recordId, {
             defaultCompanyId: companyId,
             includeDeleted: true,
           });
-        } catch (err) {
-          if (err?.status !== 400 && err?.code !== 'ER_NO_SUCH_TABLE') {
-            throw err;
+          if (snapshotRow && typeof snapshotRow === 'object') {
+            candidate.snapshot = snapshotRow;
+            candidate.snapshotColumns = Object.keys(snapshotRow);
+          } else {
+            candidate.snapshot = null;
+            candidate.snapshotColumns = [];
           }
-        }
-
-        if (!snapshotRow) {
-          snapshotRow = await fetchSnapshotRowWithOverrides(bucket.tableName, recordId, {
-            companyId,
-          });
-        }
-
-        if (snapshotRow && typeof snapshotRow === 'object') {
-          candidate.snapshot = snapshotRow;
-          candidate.snapshotColumns = Object.keys(snapshotRow);
-        } else {
+        } catch (err) {
           candidate.snapshot = null;
           candidate.snapshotColumns = [];
+          if (err?.code && err.code !== 'ER_NO_SUCH_TABLE') {
+            throw err;
+          }
         }
       }
     }
