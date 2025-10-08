@@ -70,7 +70,7 @@ async function ensureTemporaryTable(conn = pool) {
 
 async function insertNotification(
   conn,
-  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'transaction_temporary' },
+  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'request' },
 ) {
   const recipient = normalizeEmpId(recipientEmpId);
   if (!recipient) return;
@@ -138,10 +138,11 @@ export async function createTemporarySubmission({
         emp_id: normalizedCreator,
         table_name: tableName,
         record_id: temporaryId,
-        action: 'temporary_save',
+        action: 'create',
         details: {
           formName: formName ?? null,
           configName: configName ?? null,
+          temporarySubmission: true,
         },
         company_id: companyId ?? null,
       },

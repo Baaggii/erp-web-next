@@ -75,91 +75,18 @@ const SNAPSHOT_SOURCE_KEYS = [
   'data',
 ];
 
-function parseJsonRow(value) {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (isPlainObject(parsed) || Array.isArray(parsed)) {
-      return parsed;
-    }
-  } catch {}
-  return null;
-}
-
-function normalizeRowEntry(row, columnHints = []) {
-  if (!row) return null;
-  if (isPlainObject(row)) {
-    const entries = Object.entries(row).filter(
-      ([key]) => typeof key === 'string' && key.trim(),
-    );
-    if (entries.length) {
-      return Object.fromEntries(entries);
-    }
-    return null;
-  }
-  if (Array.isArray(row)) {
-    const columns = columnHints.length
-      ? columnHints
-      : row.map((_, idx) => `column_${idx + 1}`);
-    const normalized = Object.fromEntries(
-      columns
-        .map((col, idx) => [col, row[idx]])
-        .filter(([key]) => Boolean(key)),
-    );
-    return Object.keys(normalized).length ? normalized : null;
-  }
-  if (typeof row === 'string') {
-    const parsed = parseJsonRow(row);
-    if (parsed) {
-      return normalizeRowEntry(parsed, columnHints);
-    }
-  }
-  if (typeof row === 'object') {
-    const entries = Object.entries(row).filter(
-      ([key]) => typeof key === 'string' && key.trim(),
-    );
-    if (entries.length) {
-      return Object.fromEntries(entries);
-    }
-  }
-  return null;
-}
-
-function extractColumnHints(snapshotLike) {
-  const candidates = [
-    snapshotLike?.columns,
-    snapshotLike?.snapshotColumns,
-    snapshotLike?.snapshot_columns,
-    snapshotLike?.columnNames,
-    snapshotLike?.column_names,
-  ];
-  for (const candidate of candidates) {
-    const normalized = normalizeColumnList(candidate);
-    if (normalized.length) {
-      return normalized;
-    }
-  }
-  return [];
-}
-
-function collectRows(snapshotLike, columnHints = []) {
+function collectRows(snapshotLike) {
   for (const key of ROW_ARRAY_KEYS) {
     const candidate = snapshotLike?.[key];
     if (Array.isArray(candidate) && candidate.length) {
-      const normalized = candidate
-        .map((row) => normalizeRowEntry(row, columnHints))
-        .filter(Boolean);
-      if (normalized.length) {
-        return normalized;
+      const filtered = candidate.filter(isPlainObject);
+      if (filtered.length) {
+        return filtered;
       }
     }
   }
-  const directRow = normalizeRowEntry(snapshotLike?.row, columnHints);
-  if (directRow) return [directRow];
-  const directRecord = normalizeRowEntry(snapshotLike?.record, columnHints);
-  if (directRecord) return [directRecord];
+  if (isPlainObject(snapshotLike?.row)) return [snapshotLike.row];
+  if (isPlainObject(snapshotLike?.record)) return [snapshotLike.record];
   return [];
 }
 
@@ -178,6 +105,23 @@ function deriveRowCount(snapshotLike, rowsLength) {
     }
   }
   return rowsLength;
+}
+
+function deriveTotalRow(snapshotLike) {
+  const candidates = [
+    snapshotLike?.totalRow,
+    snapshotLike?.total_row,
+    snapshotLike?.totals,
+    snapshotLike?.summary,
+    snapshotLike?.summaryRow,
+    snapshotLike?.summary_row,
+  ];
+  for (const candidate of candidates) {
+    if (isPlainObject(candidate)) {
+      return candidate;
+    }
+  }
+  return null;
 }
 
 function deriveFieldTypeMap(snapshotLike) {
@@ -212,9 +156,19 @@ function deriveArtifact(snapshotLike) {
   return null;
 }
 
-function deriveColumns(snapshotLike, rows, columnHints = []) {
-  if (columnHints.length) {
-    return columnHints;
+function deriveColumns(snapshotLike, rows) {
+  const candidates = [
+    snapshotLike?.columns,
+    snapshotLike?.snapshotColumns,
+    snapshotLike?.snapshot_columns,
+    snapshotLike?.columnNames,
+    snapshotLike?.column_names,
+  ];
+  for (const candidate of candidates) {
+    const normalized = normalizeColumnList(candidate);
+    if (normalized.length) {
+      return normalized;
+    }
   }
   if (Array.isArray(rows) && rows.length) {
     const set = new Set();
@@ -229,8 +183,8 @@ function deriveColumns(snapshotLike, rows, columnHints = []) {
   return [];
 }
 
-function deriveRows(snapshotLike, columnHints = []) {
-  const collected = collectRows(snapshotLike, columnHints);
+function deriveRows(snapshotLike) {
+  const collected = collectRows(snapshotLike);
   if (collected.length) {
     return collected;
   }
@@ -243,54 +197,7 @@ function deriveRows(snapshotLike, columnHints = []) {
   if (entries.length) {
     return [Object.fromEntries(entries)];
   }
-  const parsed = normalizeRowEntry(snapshotLike, columnHints);
-  if (parsed && parsed !== snapshotLike && isPlainObject(parsed)) {
-    return [parsed];
-  }
   return [];
-}
-
-function deriveTotalRow(snapshotLike, rows, columns = [], columnHints = []) {
-  const candidates = [
-    snapshotLike?.totalRow,
-    snapshotLike?.total_row,
-    snapshotLike?.totals,
-    snapshotLike?.summary,
-    snapshotLike?.summaryRow,
-    snapshotLike?.summary_row,
-  ];
-  for (const candidate of candidates) {
-    if (isPlainObject(candidate)) {
-      return candidate;
-    }
-    if (Array.isArray(candidate) && candidate.length) {
-      const columnSource = columnHints.length
-        ? columnHints
-        : columns.length
-        ? columns
-        : Array.isArray(rows) && rows.length && isPlainObject(rows[0])
-        ? Object.keys(rows[0])
-        : candidate.map((_, idx) => `column_${idx + 1}`);
-      const normalized = Object.fromEntries(
-        columnSource
-          .map((col, idx) => [col, candidate[idx]])
-          .filter(([key]) => Boolean(key)),
-      );
-      if (Object.keys(normalized).length) {
-        return normalized;
-      }
-    }
-    if (typeof candidate === 'string') {
-      const parsed = parseJsonRow(candidate);
-      if (parsed) {
-        const normalized = normalizeRowEntry(parsed, columnHints);
-        if (normalized) {
-          return normalized;
-        }
-      }
-    }
-  }
-  return null;
 }
 
 export function normalizeSnapshotDataset(snapshotLike) {
@@ -305,13 +212,12 @@ export function normalizeSnapshotDataset(snapshotLike) {
     };
   }
 
-  const columnHints = extractColumnHints(snapshotLike);
-  const rows = deriveRows(snapshotLike, columnHints);
-  const columns = deriveColumns(snapshotLike, rows, columnHints);
+  const rows = deriveRows(snapshotLike);
+  const columns = deriveColumns(snapshotLike, rows);
   const rowCount = deriveRowCount(snapshotLike, rows.length);
   const fieldTypeMap = deriveFieldTypeMap(snapshotLike);
   const artifact = deriveArtifact(snapshotLike);
-  const totalRow = deriveTotalRow(snapshotLike, rows, columns, columnHints);
+  const totalRow = deriveTotalRow(snapshotLike);
 
   return {
     rows,
