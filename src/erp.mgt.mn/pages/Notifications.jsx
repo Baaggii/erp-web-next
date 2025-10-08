@@ -420,9 +420,38 @@ export default function NotificationsPage() {
   );
 
   const openTemporary = useCallback(
-    (scope) => {
+    (scope, entry) => {
       handleTemporarySeen(scope);
-      navigate('/forms');
+      if (!entry) {
+        navigate('/forms');
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set('temporaryOpen', '1');
+      if (scope) params.set('temporaryScope', scope);
+      params.set('temporaryKey', String(Date.now()));
+      const moduleKey = entry?.moduleKey || entry?.module_key || '';
+      const moduleSlug =
+        entry?.moduleSlug ||
+        entry?.module_slug ||
+        (moduleKey ? moduleKey.replace(/_/g, '-').toLowerCase() : '');
+      let path = '/forms';
+      if (moduleKey) params.set('temporaryModule', moduleKey);
+      if (moduleSlug) {
+        path = `/forms/${moduleSlug}`;
+      }
+      const configName = entry?.configName || entry?.config_name || '';
+      const formName = entry?.formName || entry?.form_name || configName;
+      if (formName) params.set('temporaryForm', formName);
+      if (configName && configName !== formName) {
+        params.set('temporaryConfig', configName);
+      }
+      const tableName = entry?.tableName || entry?.table_name || '';
+      if (tableName) params.set('temporaryTable', tableName);
+      const idValue =
+        entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? null;
+      if (idValue != null) params.set('temporaryId', String(idValue));
+      navigate(`${path}?${params.toString()}`);
     },
     [handleTemporarySeen, navigate],
   );
@@ -584,7 +613,9 @@ export default function NotificationsPage() {
   const renderTemporaryItem = (entry, scope) => (
     <li key={`${scope}-${entry.id}`} style={styles.listItem}>
       <div style={styles.listBody}>
-        <div style={styles.listTitle}>{entry.formName || entry.tableName || entry.id}</div>
+        <div style={styles.listTitle}>
+          {entry.formLabel || entry.formName || entry.tableName || entry.id}
+        </div>
         <div style={styles.listMeta}>
           {entry.createdBy && (
             <span>
@@ -603,7 +634,7 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
-      <button style={styles.listAction} onClick={() => openTemporary(scope)}>
+      <button style={styles.listAction} onClick={() => openTemporary(scope, entry)}>
         {t('notifications_open_form', 'Open forms')}
       </button>
     </li>
@@ -792,7 +823,10 @@ export default function NotificationsPage() {
                   {temporaryState.review.map((entry) => renderTemporaryItem(entry, 'review'))}
                 </ul>
               )}
-              <button style={styles.listAction} onClick={() => openTemporary('review')}>
+              <button
+                style={styles.listAction}
+                onClick={() => openTemporary('review', temporaryState.review[0])}
+              >
                 {t('notifications_open_review', 'Open review workspace')}
               </button>
             </div>
@@ -805,7 +839,10 @@ export default function NotificationsPage() {
                   {temporaryState.created.map((entry) => renderTemporaryItem(entry, 'created'))}
                 </ul>
               )}
-              <button style={styles.listAction} onClick={() => openTemporary('created')}>
+              <button
+                style={styles.listAction}
+                onClick={() => openTemporary('created', temporaryState.created[0])}
+              >
                 {t('notifications_open_drafts', 'Open drafts workspace')}
               </button>
             </div>
