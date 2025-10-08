@@ -241,43 +241,6 @@ export async function listTemporarySubmissions({
   return rows.map(mapTemporaryRow);
 }
 
-export async function listReviewerTemporaryForms(empId, companyId, { status = 'pending' } = {}) {
-  await ensureTemporaryTable();
-  const normalized = normalizeEmpId(empId);
-  if (!normalized) {
-    return { tables: [], configs: [] };
-  }
-  const conditions = ['plan_senior_empid = ?'];
-  const params = [normalized];
-  if (companyId != null) {
-    conditions.push('(company_id = ? OR company_id IS NULL)');
-    params.push(companyId);
-  }
-  if (status) {
-    conditions.push('status = ?');
-    params.push(status);
-  }
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  try {
-    const [rows] = await pool.query(
-      `SELECT DISTINCT table_name, config_name FROM \`${TEMP_TABLE}\` ${where}`,
-      params,
-    );
-    const tables = [];
-    const configs = [];
-    rows.forEach((row) => {
-      if (row?.table_name) tables.push(row.table_name);
-      if (row?.config_name) configs.push(row.config_name);
-    });
-    return { tables, configs };
-  } catch (err) {
-    if (err?.code === 'ER_NO_SUCH_TABLE') {
-      return { tables: [], configs: [] };
-    }
-    throw err;
-  }
-}
-
 export async function getTemporarySummary(empId, companyId) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
