@@ -3166,6 +3166,15 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [columnMeta, fieldTypeMap]);
 
+  const totalAmountSet = useMemo(
+    () => new Set(formConfig?.totalAmountFields || []),
+    [formConfig],
+  );
+  const totalCurrencySet = useMemo(
+    () => new Set(formConfig?.totalCurrencyFields || []),
+    [formConfig],
+  );
+
   const relationOpts = {};
   ordered.forEach((c) => {
     if (relations[c] && refData[c]) {
@@ -3341,14 +3350,6 @@ const TableManager = forwardRef(function TableManager({
   }
   disabledFields = canonicalizeFormFields(disabledFields) || [];
 
-  const totalAmountSet = useMemo(
-    () => new Set(formConfig?.totalAmountFields || []),
-    [formConfig],
-  );
-  const totalCurrencySet = useMemo(
-    () => new Set(formConfig?.totalCurrencyFields || []),
-    [formConfig],
-  );
   const totals = useMemo(() => {
     const sums = {};
     columns.forEach((c) => {
