@@ -176,6 +176,247 @@ export const __test__ = {
   sanitizeSnapshot,
 };
 
+function sanitizeColumns(columns) {
+  if (!Array.isArray(columns)) return [];
+  const seen = new Set();
+  const normalized = [];
+  columns.forEach((col) => {
+    if (typeof col !== 'string') return;
+    const trimmed = col.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  });
+  return normalized;
+}
+
+function sanitizeFieldTypeMap(map) {
+  if (!map || typeof map !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(map)
+      .filter(
+        ([key, value]) =>
+          typeof key === 'string' &&
+          key.trim() &&
+          (typeof value === 'string' || typeof value === 'number'),
+      )
+      .map(([key, value]) => [key.trim(), String(value)]),
+  );
+}
+
+function sanitizeRowObject(row) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return null;
+  const entries = Object.entries(row).filter(
+    ([key]) => typeof key === 'string' && key.trim(),
+  );
+  if (!entries.length) return null;
+  return Object.fromEntries(entries);
+}
+
+function extractSnapshotFromContainer(container) {
+  if (!container || typeof container !== 'object') {
+    return { snapshot: null, columns: [], fieldTypeMap: {} };
+  }
+
+  if (Array.isArray(container.rows)) {
+    const firstRow = container.rows.find(
+      (row) => row && typeof row === 'object' && !Array.isArray(row),
+    );
+    const sanitizedRow = sanitizeRowObject(firstRow);
+    if (sanitizedRow) {
+      const columns = sanitizeColumns(container.columns || []);
+      const fieldTypeMap = sanitizeFieldTypeMap(
+        container.fieldTypeMap || container.snapshotFieldTypeMap || {},
+      );
+      return {
+        snapshot: sanitizedRow,
+        columns: columns.length ? columns : Object.keys(sanitizedRow),
+        fieldTypeMap,
+      };
+    }
+  }
+
+  const nestedKeys = [
+    'row',
+    'record',
+    'snapshotRow',
+    'snapshot_row',
+    'current',
+    'previous',
+    'data',
+    'values',
+  ];
+  for (const key of nestedKeys) {
+    if (!container[key]) continue;
+    const sanitizedRow = sanitizeRowObject(container[key]);
+    if (sanitizedRow) {
+      return {
+        snapshot: sanitizedRow,
+        columns: Object.keys(sanitizedRow),
+        fieldTypeMap: sanitizeFieldTypeMap(
+          container.fieldTypeMap || container.snapshotFieldTypeMap || {},
+        ),
+      };
+    }
+  }
+
+  const direct = sanitizeRowObject(container);
+  if (direct) {
+    return {
+      snapshot: direct,
+      columns: Object.keys(direct),
+      fieldTypeMap: sanitizeFieldTypeMap(
+        container.fieldTypeMap || container.snapshotFieldTypeMap || {},
+      ),
+    };
+  }
+
+  return { snapshot: null, columns: [], fieldTypeMap: {} };
+}
+
+function sanitizeTransactionSnapshot(tx) {
+  if (!tx || typeof tx !== 'object') {
+    return { snapshot: null, columns: [], fieldTypeMap: {} };
+  }
+
+  const sources = [
+    tx.snapshot,
+    tx.lockSnapshot,
+    tx.lock_snapshot,
+    tx.snapshotData,
+    tx.snapshot_data,
+    tx.record,
+    tx.row,
+    tx.current,
+    tx.previous,
+    tx.data,
+    tx.values,
+  ];
+
+  for (const candidate of sources) {
+    if (!candidate) continue;
+    const { snapshot, columns, fieldTypeMap } =
+      extractSnapshotFromContainer(candidate);
+    if (snapshot) {
+      return { snapshot, columns, fieldTypeMap };
+    }
+  }
+
+  return { snapshot: null, columns: [], fieldTypeMap: {} };
+}
+
+function pickFirstString(values = []) {
+  for (const value of values) {
+    if (value === undefined || value === null) continue;
+    const str = String(value).trim();
+    if (str) return str;
+  }
+  return '';
+}
+
+function sanitizeReportApprovalTransaction(tx) {
+  if (!tx || typeof tx !== 'object') return null;
+  const tableCandidate =
+    tx.table ||
+    tx.tableName ||
+    tx.table_name ||
+    tx.lockTable ||
+    tx.lock_table ||
+    tx.lock_table_name;
+  const recordCandidate =
+    tx.recordId ??
+    tx.record_id ??
+    tx.id ??
+    tx.transactionId ??
+    tx.transaction_id ??
+    tx.lock_record_id ??
+    tx.lockRecordId;
+  if (!tableCandidate || !/^[a-zA-Z0-9_]+$/.test(String(tableCandidate))) {
+    return null;
+  }
+  if (recordCandidate === undefined || recordCandidate === null || recordCandidate === '') {
+    return null;
+  }
+  const tableName = String(tableCandidate).trim();
+  const recordId = String(recordCandidate);
+
+  let snapshotColumns = sanitizeColumns(tx.snapshotColumns || tx.columns || []);
+  let fieldTypeMap = sanitizeFieldTypeMap(
+    tx.snapshotFieldTypeMap || tx.fieldTypeMap || {},
+  );
+  const { snapshot, columns: derivedColumns, fieldTypeMap: derivedFieldTypes } =
+    sanitizeTransactionSnapshot(tx);
+  if (snapshot) {
+    if (!snapshotColumns.length && derivedColumns.length) {
+      snapshotColumns = derivedColumns;
+    }
+    if (!Object.keys(fieldTypeMap).length && Object.keys(derivedFieldTypes).length) {
+      fieldTypeMap = derivedFieldTypes;
+    }
+  }
+
+  const label = pickFirstString([
+    tx.label,
+    tx.description,
+    tx.note,
+    tx.title,
+    tx.message,
+  ]);
+  const reason = pickFirstString([
+    tx.reason,
+    tx.justification,
+    tx.explanation,
+    tx.exclude_reason,
+    tx.lock_reason,
+    tx.lockReason,
+  ]);
+  const lockStatus = pickFirstString([tx.lockStatus, tx.status]);
+  const lockedBy = pickFirstString([
+    tx.lockedBy,
+    tx.locked_by,
+    tx.assignedTo,
+    tx.assigned_to,
+  ]);
+  const lockedAt = pickFirstString([tx.lockedAt, tx.locked_at]);
+  const locked = Boolean(
+    tx.locked ?? tx.is_locked ?? tx.isLocked ?? tx.lock_flag ?? tx.lockFlag,
+  );
+
+  const sanitized = {
+    table: tableName,
+    tableName,
+    recordId,
+    record_id: recordId,
+  };
+
+  if (label) sanitized.label = label;
+  if (reason) sanitized.reason = reason;
+  if (lockStatus) {
+    sanitized.lockStatus = lockStatus;
+    sanitized.status = lockStatus;
+  }
+  if (lockedBy) {
+    sanitized.lockedBy = lockedBy;
+    sanitized.locked_by = lockedBy;
+  }
+  if (lockedAt) {
+    sanitized.lockedAt = lockedAt;
+    sanitized.locked_at = lockedAt;
+  }
+  if (locked) sanitized.locked = true;
+  if (snapshot) sanitized.snapshot = snapshot;
+  if (snapshotColumns.length) {
+    sanitized.snapshotColumns = snapshotColumns;
+    sanitized.columns = snapshotColumns;
+  }
+  if (Object.keys(fieldTypeMap).length) {
+    sanitized.snapshotFieldTypeMap = fieldTypeMap;
+    sanitized.fieldTypeMap = fieldTypeMap;
+  }
+
+  return sanitized;
+}
+
 function normalizeReportApprovalPayload(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const procedure = raw.procedure || raw.procedureName;
@@ -190,18 +431,12 @@ function normalizeReportApprovalPayload(raw) {
   const seen = new Set();
   const transactions = txCandidates
     .map((tx) => {
-      if (!tx || typeof tx !== 'object') return null;
-      const table = tx.table || tx.tableName;
-      const recordId =
-        tx.recordId ?? tx.record_id ?? tx.id ?? tx.transactionId;
-      if (!table || !/^[a-zA-Z0-9_]+$/.test(String(table))) return null;
-      if (recordId === undefined || recordId === null || recordId === '') return null;
-      const tableName = String(table);
-      const rid = String(recordId);
-      const key = `${tableName}::${rid}`;
+      const sanitized = sanitizeReportApprovalTransaction(tx);
+      if (!sanitized) return null;
+      const key = `${sanitized.table}::${sanitized.recordId}`;
       if (seen.has(key)) return null;
       seen.add(key);
-      return { table: tableName, recordId: rid };
+      return sanitized;
     })
     .filter(Boolean);
   if (!transactions.length) {
@@ -486,10 +721,40 @@ export async function listRequests(filters) {
   const limit = Number(per_page) > 0 ? Number(per_page) : 2;
   const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
 
-  const [rows] = await pool.query(
-    `SELECT *, DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt FROM pending_request ${where} ORDER BY ${dateColumn} DESC LIMIT ? OFFSET ?`,
+  const [orderedIds] = await pool.query(
+    `SELECT request_id,
+            ${dateColumn} AS sort_value
+       FROM pending_request
+       ${where}
+      ORDER BY ${dateColumn} DESC, request_id DESC
+      LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
+
+  if (!orderedIds.length) {
+    return { rows: [], total };
+  }
+
+  const idOrder = orderedIds
+    .map((row) => row.request_id)
+    .filter((id) => id !== null && id !== undefined);
+
+  if (!idOrder.length) {
+    return { rows: [], total };
+  }
+
+  const placeholders = idOrder.map(() => '?').join(', ');
+  const [rowsRaw] = await pool.query(
+    `SELECT pr.*, DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(pr.responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt
+       FROM pending_request pr
+      WHERE pr.request_id IN (${placeholders})`,
+    idOrder,
+  );
+
+  const rowsById = new Map(rowsRaw.map((row) => [row.request_id, row]));
+  const rows = idOrder
+    .map((id) => rowsById.get(id))
+    .filter((row) => row);
 
   const approvalRequestIds = rows
     .filter((row) => row.request_type === 'report_approval')
