@@ -3,10 +3,6 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import { useCompanyModules } from './useCompanyModules.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
-import {
-  isModuleLicensed,
-  isModulePermissionGranted,
-} from '../utils/moduleAccess.js';
 
 // Cache the raw transaction-form payload so we can re-derive module visibility
 // whenever permissions, licensing, or scope change without re-fetching.
@@ -31,10 +27,18 @@ function deriveTxnModuleState(data, branch, department, perms, licensed) {
       const moduleKey = info.moduleKey;
       if (!moduleKey) return;
       if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
-      if (!isModulePermissionGranted(perms, moduleKey)) {
+      if (
+        perms &&
+        Object.prototype.hasOwnProperty.call(perms, moduleKey) &&
+        !perms[moduleKey]
+      ) {
         return;
       }
-      if (!isModuleLicensed(licensed, moduleKey)) {
+      if (
+        licensed &&
+        Object.prototype.hasOwnProperty.call(licensed, moduleKey) &&
+        !licensed[moduleKey]
+      ) {
         return;
       }
       keys.add(moduleKey);

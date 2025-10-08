@@ -470,10 +470,18 @@ export default function PosTransactionsPage() {
   const [rawConfigs, setRawConfigs] = useState({});
   const configs = useMemo(() => {
     if (!rawConfigs || typeof rawConfigs !== 'object') return {};
-    if (!isModulePermissionGranted(perms, 'pos_transactions')) {
+    if (
+      perms &&
+      Object.prototype.hasOwnProperty.call(perms, 'pos_transactions') &&
+      !perms.pos_transactions
+    ) {
       return {};
     }
-    if (!isModuleLicensed(licensed, 'pos_transactions')) {
+    if (
+      licensed &&
+      Object.prototype.hasOwnProperty.call(licensed, 'pos_transactions') &&
+      !licensed.pos_transactions
+    ) {
       return {};
     }
     const entries = Object.entries(rawConfigs).filter(([key]) => key !== 'isDefault');
