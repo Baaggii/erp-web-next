@@ -431,14 +431,10 @@ export default function NotificationsPage() {
       if (scope) params.set('temporaryScope', scope);
       params.set('temporaryKey', String(Date.now()));
       const moduleKey = entry?.moduleKey || entry?.module_key || '';
-      const moduleSlug =
-        entry?.moduleSlug ||
-        entry?.module_slug ||
-        (moduleKey ? moduleKey.replace(/_/g, '-').toLowerCase() : '');
       let path = '/forms';
-      if (moduleKey) params.set('temporaryModule', moduleKey);
-      if (moduleSlug) {
-        path = `/forms/${moduleSlug}`;
+      if (moduleKey) {
+        params.set('temporaryModule', moduleKey);
+        path = `/forms/${moduleKey.replace(/_/g, '-')}`;
       }
       const configName = entry?.configName || entry?.config_name || '';
       const formName = entry?.formName || entry?.form_name || configName;

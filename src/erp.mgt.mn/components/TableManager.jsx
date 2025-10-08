@@ -308,8 +308,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryScope, setTemporaryScope] = useState('created');
   const [temporaryList, setTemporaryList] = useState([]);
   const [showTemporaryModal, setShowTemporaryModal] = useState(false);
-  const [temporarySelection, setTemporarySelection] = useState(() => new Set());
-  const [temporaryBulkLoading, setTemporaryBulkLoading] = useState(false);
   const [queuedTemporaryTrigger, setQueuedTemporaryTrigger] = useState(null);
   const lastExternalTriggerRef = useRef(null);
   const [temporaryLoading, setTemporaryLoading] = useState(false);
@@ -449,15 +447,6 @@ const TableManager = forwardRef(function TableManager({
     [formConfig, branchScopeId, departmentScopeId],
   );
 
-  const temporaryFeatureAvailable = useMemo(() => {
-    if (!formConfig || typeof formConfig !== 'object') return false;
-    return Boolean(
-      formConfig.supportsTemporarySubmission ||
-        formConfig.allowTemporarySubmission ||
-        formConfig.supportsTemporary,
-    );
-  }, [formConfig]);
-
   const supportsTemporary = Boolean(accessEvaluation.allowTemporary);
   const canPostTransactions =
     accessEvaluation.canPost === undefined
@@ -469,6 +458,11 @@ const TableManager = forwardRef(function TableManager({
       window.canPostTransactions = canPostTransactions;
     }
   }, [canPostTransactions]);
+
+  useEffect(() => {
+    if (!externalTemporaryTrigger) return;
+    setQueuedTemporaryTrigger(externalTemporaryTrigger);
+  }, [externalTemporaryTrigger]);
 
   useEffect(() => {
     if (!externalTemporaryTrigger) return;
@@ -2715,7 +2709,7 @@ const TableManager = forwardRef(function TableManager({
 
   const fetchTemporaryList = useCallback(
     async (scopeOverride, options = {}) => {
-      if (!temporaryFeatureAvailable) return;
+      if (!supportsTemporary) return;
       const scope = scopeOverride || temporaryScope;
       const params = new URLSearchParams();
       params.set('scope', scope);
@@ -2749,7 +2743,6 @@ const TableManager = forwardRef(function TableManager({
         }
         setTemporaryScope(scope);
         setTemporaryList(nextRows);
-        setTemporarySelection(() => new Set());
       } catch (err) {
         console.error('Failed to load temporaries', err);
         setTemporaryFocusId(null);
@@ -2763,7 +2756,7 @@ const TableManager = forwardRef(function TableManager({
   );
 
   useEffect(() => {
-    if (!temporaryFeatureAvailable) return;
+    if (!supportsTemporary) return;
     if (!queuedTemporaryTrigger || !queuedTemporaryTrigger.open) return;
     if (
       queuedTemporaryTrigger.table &&
@@ -2771,6 +2764,36 @@ const TableManager = forwardRef(function TableManager({
       String(queuedTemporaryTrigger.table).toLowerCase() !==
         String(table).toLowerCase()
     ) {
+      return;
+    }
+    const triggerKey =
+      queuedTemporaryTrigger.key ||
+      JSON.stringify([
+        queuedTemporaryTrigger.scope,
+        queuedTemporaryTrigger.table,
+        queuedTemporaryTrigger.id,
+      ]);
+    if (lastExternalTriggerRef.current === triggerKey) return;
+
+    const scopeToOpen =
+      queuedTemporaryTrigger.scope ||
+      (temporarySummary?.reviewPending > 0 ? 'review' : 'created');
+
+    lastExternalTriggerRef.current = triggerKey;
+    setTemporaryScope(scopeToOpen);
+    setShowTemporaryModal(true);
+    fetchTemporaryList(scopeToOpen);
+  }, [
+    fetchTemporaryList,
+    queuedTemporaryTrigger,
+    supportsTemporary,
+    table,
+    temporarySummary,
+  ]);
+
+  async function promoteTemporary(id) {
+    if (!supportsTemporary) return;
+    if (!window.confirm(t('promote_temporary_confirm', 'Promote temporary record?')))
       return;
     }
     const triggerKey =
@@ -3326,31 +3349,9 @@ const TableManager = forwardRef(function TableManager({
 
   const reviewPendingCount = Number(temporarySummary?.reviewPending || 0);
   const createdPendingCount = Number(temporarySummary?.createdPending || 0);
-  const hasQueuedTemporaryTrigger = Boolean(queuedTemporaryTrigger);
-  const canAccessTemporaryQueue =
-    temporaryFeatureAvailable &&
-    (supportsTemporary ||
-      reviewPendingCount > 0 ||
-      createdPendingCount > 0 ||
-      hasQueuedTemporaryTrigger);
   const hasTemporaryNotice =
-    canAccessTemporaryQueue && (reviewPendingCount > 0 || createdPendingCount > 0);
+    supportsTemporary && (reviewPendingCount > 0 || createdPendingCount > 0);
   const temporaryNoticeScope = reviewPendingCount > 0 ? 'review' : 'created';
-  const temporarySelectionCount = temporarySelection.size;
-  const hasReviewSelection =
-    temporaryScope === 'review' && temporarySelectionCount > 0;
-  const pendingReviewRows = useMemo(() => {
-    if (temporaryScope !== 'review') return [];
-    return temporaryRows.filter(
-      (entry) =>
-        entry?.status === 'pending' &&
-        entry?.id !== undefined &&
-        entry?.id !== null,
-    );
-  }, [temporaryRows, temporaryScope]);
-  const allReviewSelected =
-    pendingReviewRows.length > 0 &&
-    pendingReviewRows.every((entry) => temporarySelection.has(String(entry.id)));
 
   return (
     <div>
@@ -4737,42 +4738,19 @@ const TableManager = forwardRef(function TableManager({
                     </tr>
                   </thead>
                   <tbody>
-                    {temporaryRows.map((entry, index) => {
+                    {temporaryList.map((entry, index) => {
                       const idValue = entry?.id;
-                      const rowKey = idValue != null ? String(idValue) : `row-${index}`;
-                      const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
-                      const isPending = entry?.status === 'pending';
-                      const isSelected =
-                        temporaryScope === 'review' &&
-                        idValue !== undefined &&
-                        idValue !== null &&
-                        temporarySelection.has(String(idValue));
-                      const displayValues = entry?.canonicalValues || {};
+                      const idKey = idValue != null ? String(idValue) : `row-${index}`;
+                      const isFocused = temporaryFocusId && idKey === temporaryFocusId;
                       return (
                         <tr
-                          key={rowKey}
-                          ref={(node) => setTemporaryRowRef(rowKey, node)}
+                          key={idKey}
+                          ref={(node) => setTemporaryRowRef(idKey, node)}
                           style={{
                             backgroundColor: isFocused ? '#fef9c3' : 'transparent',
                             transition: 'background-color 0.2s ease-in-out',
                           }}
                         >
-                          {temporaryScope === 'review' && (
-                            <td
-                              style={{
-                                borderBottom: '1px solid #f3f4f6',
-                                padding: '0.25rem',
-                                textAlign: 'center',
-                              }}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => toggleTemporarySelection(idValue)}
-                                disabled={!isPending || temporaryBulkLoading || idValue == null}
-                              />
-                            </td>
-                          )}
                           <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
                               {isFocused && (
@@ -4792,24 +4770,7 @@ const TableManager = forwardRef(function TableManager({
                             </div>
                             <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>{entry.tableName}</div>
                           </td>
-                          {temporaryDisplayColumns.map((column) => (
-                            <td
-                              key={`${rowKey}-${column}`}
-                              style={{
-                                borderBottom: '1px solid #f3f4f6',
-                                padding: '0.25rem',
-                                textAlign: columnAlign[column] || 'left',
-                              }}
-                            >
-                              {getTemporaryCellValue(column, displayValues)}
-                            </td>
-                          ))}
-                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
-                            {entry.createdBy || ''}
-                          </td>
-                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
-                            {entry.createdAt ? formatTimestamp(entry.createdAt) : ''}
-                          </td>
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.createdBy}</td>
                           <td
                             style={{
                               borderBottom: '1px solid #f3f4f6',
@@ -4818,6 +4779,27 @@ const TableManager = forwardRef(function TableManager({
                             }}
                           >
                             {entry.status}
+                          </td>
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            {formatTimestamp(entry.createdAt)}
+                          </td>
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            <pre
+                              style={{
+                                background: '#f9fafb',
+                                padding: '0.5rem',
+                                borderRadius: '4px',
+                                maxHeight: '12rem',
+                                overflow: 'auto',
+                                fontSize: '0.75rem',
+                              }}
+                            >
+                              {JSON.stringify(
+                                entry.cleanedValues || entry.payload?.values || {},
+                                null,
+                                2,
+                              )}
+                            </pre>
                           </td>
                           {temporaryScope === 'review' && (
                             <td
@@ -4833,7 +4815,6 @@ const TableManager = forwardRef(function TableManager({
                                   <button
                                     type="button"
                                     onClick={() => promoteTemporary(entry.id)}
-                                    disabled={temporaryBulkLoading || entry.id == null}
                                     style={{
                                       marginRight: '0.25rem',
                                       padding: '0.25rem 0.5rem',
@@ -4841,12 +4822,6 @@ const TableManager = forwardRef(function TableManager({
                                       color: '#fff',
                                       border: 'none',
                                       borderRadius: '4px',
-                                      opacity:
-                                        temporaryBulkLoading || entry.id == null ? 0.6 : 1,
-                                      cursor:
-                                        temporaryBulkLoading || entry.id == null
-                                          ? 'not-allowed'
-                                          : 'pointer',
                                     }}
                                   >
                                     {t('promote', 'Promote')}
@@ -4854,19 +4829,12 @@ const TableManager = forwardRef(function TableManager({
                                   <button
                                     type="button"
                                     onClick={() => rejectTemporary(entry.id)}
-                                    disabled={temporaryBulkLoading || entry.id == null}
                                     style={{
                                       padding: '0.25rem 0.5rem',
                                       backgroundColor: '#dc2626',
                                       color: '#fff',
                                       border: 'none',
                                       borderRadius: '4px',
-                                      opacity:
-                                        temporaryBulkLoading || entry.id == null ? 0.6 : 1,
-                                      cursor:
-                                        temporaryBulkLoading || entry.id == null
-                                          ? 'not-allowed'
-                                          : 'pointer',
                                     }}
                                   >
                                     {t('reject', 'Reject')}
