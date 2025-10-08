@@ -50,3 +50,46 @@ export function hasTransactionFormAccess(info, branchId, departmentId) {
     matchesScope(temporaryDepartments, departmentValue)
   );
 }
+
+export function evaluateTransactionFormAccess(info, branchId, departmentId) {
+  if (!info || typeof info !== 'object') {
+    return {
+      canPost: true,
+      allowTemporary: false,
+      allowTemporaryOnly: false,
+    };
+  }
+
+  const branchValue = normalizeAccessValue(branchId);
+  const departmentValue = normalizeAccessValue(departmentId);
+
+  const allowedBranches = normalizeAccessList(info.allowedBranches);
+  const allowedDepartments = normalizeAccessList(info.allowedDepartments);
+
+  const canPost =
+    matchesScope(allowedBranches, branchValue) &&
+    matchesScope(allowedDepartments, departmentValue);
+
+  const temporaryEnabled = Boolean(
+    info.supportsTemporarySubmission ??
+      info.allowTemporarySubmission ??
+      info.supportsTemporary ??
+      false,
+  );
+
+  let allowTemporary = false;
+  if (temporaryEnabled) {
+    const temporaryBranches = normalizeAccessList(info.temporaryAllowedBranches);
+    const temporaryDepartments = normalizeAccessList(info.temporaryAllowedDepartments);
+
+    allowTemporary =
+      matchesScope(temporaryBranches, branchValue) &&
+      matchesScope(temporaryDepartments, departmentValue);
+  }
+
+  return {
+    canPost,
+    allowTemporary,
+    allowTemporaryOnly: !canPost && allowTemporary,
+  };
+}
