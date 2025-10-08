@@ -403,8 +403,43 @@ const TableManager = forwardRef(function TableManager({
       formConfig.supportsTemporarySubmission ??
       formConfig.allowTemporarySubmission ??
       false;
-    return Boolean(flag);
-  }, [formConfig]);
+    if (!flag) return false;
+
+    const branchRules = Array.isArray(formConfig.temporaryAllowedBranches)
+      ? formConfig.temporaryAllowedBranches
+      : [];
+    const deptRules = Array.isArray(formConfig.temporaryAllowedDepartments)
+      ? formConfig.temporaryAllowedDepartments
+      : [];
+
+    const resolveId = (value) => {
+      if (value == null) return null;
+      if (typeof value === 'object') {
+        if (value.id != null) return value.id;
+        if (value.branch_id != null) return value.branch_id;
+        if (value.department_id != null) return value.department_id;
+        if (value.value != null) return value.value;
+      }
+      return value;
+    };
+
+    const branchId = resolveId(branch);
+    const departmentId = resolveId(department);
+
+    if (branchRules.length > 0) {
+      if (branchId == null) return false;
+      const allowed = branchRules.map((v) => String(v));
+      if (!allowed.includes(String(branchId))) return false;
+    }
+
+    if (deptRules.length > 0) {
+      if (departmentId == null) return false;
+      const allowed = deptRules.map((v) => String(v));
+      if (!allowed.includes(String(departmentId))) return false;
+    }
+
+    return true;
+  }, [branch, department, formConfig]);
 
   const refreshTemporarySummary = useCallback(async () => {
     if (!supportsTemporary) {
@@ -2256,6 +2291,14 @@ const TableManager = forwardRef(function TableManager({
     if (!supportsTemporary) return false;
     if (!submission || typeof submission !== 'object') return false;
     const normalizedValues = submission.values || submission;
+    const rawOverride = submission.rawValues && typeof submission.rawValues === 'object'
+      ? submission.rawValues
+      : null;
+    const gridRows = Array.isArray(submission.normalizedRows)
+      ? submission.normalizedRows
+      : Array.isArray(normalizedValues?.rows)
+      ? normalizedValues.rows
+      : null;
     const merged = { ...(editing || {}) };
     Object.entries(normalizedValues).forEach(([k, v]) => {
       merged[k] = v;
@@ -2291,16 +2334,31 @@ const TableManager = forwardRef(function TableManager({
       }
     });
 
+    const payload = {
+      values: normalizedValues,
+      submittedAt: new Date().toISOString(),
+    };
+    if (gridRows) {
+      payload.gridRows = gridRows;
+      const currentValues =
+        payload.values && typeof payload.values === 'object' && !Array.isArray(payload.values)
+          ? payload.values
+          : {};
+      if (!Array.isArray(currentValues.rows)) {
+        payload.values = { ...currentValues, rows: gridRows };
+      }
+      payload.rowCount = gridRows.length;
+    }
+    if (submission.rawRows) {
+      payload.rawRows = submission.rawRows;
+    }
     const body = {
       table,
       formName: formName || formConfig?.moduleLabel || null,
       configName: formName || null,
       moduleKey: formConfig?.moduleKey || null,
-      payload: {
-        values: normalizedValues,
-        submittedAt: new Date().toISOString(),
-      },
-      rawValues: merged,
+      payload,
+      rawValues: rawOverride || merged,
       cleanedValues: cleaned,
       tenant: {
         company_id: company ?? null,
