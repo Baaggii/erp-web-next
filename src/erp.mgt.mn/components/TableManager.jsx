@@ -35,8 +35,18 @@ import {
   valuesEqual,
 } from '../utils/generatedColumns.js';
 
-if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
-  window.canPostTransactions = false;
+const globalScope = typeof globalThis !== 'undefined' ? globalThis : undefined;
+
+if (globalScope && typeof globalScope.canPostTransactions === 'undefined') {
+  globalScope.canPostTransactions = false;
+}
+
+if (globalScope && typeof globalScope.showTemporaryRequesterUI === 'undefined') {
+  globalScope.showTemporaryRequesterUI = false;
+}
+
+if (globalScope && typeof globalScope.showTemporaryReviewerUI === 'undefined') {
+  globalScope.showTemporaryReviewerUI = false;
 }
 
 function ch(n) {
@@ -482,8 +492,8 @@ const TableManager = forwardRef(function TableManager({
   }, [availableTemporaryScopes]);
 
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      window.canPostTransactions = canPostTransactions;
+    if (globalScope) {
+      globalScope.canPostTransactions = canPostTransactions;
     }
   }, [canPostTransactions]);
 
@@ -3472,7 +3482,7 @@ const TableManager = forwardRef(function TableManager({
             Refresh Table
           </button>
         </TooltipWrapper>
-        {supportsTemporary && (
+        {canCreateTemporary && (
           <TooltipWrapper
             title={t('temporary_queue', {
               ns: 'tooltip',
@@ -3506,13 +3516,45 @@ const TableManager = forwardRef(function TableManager({
             </button>
           </TooltipWrapper>
         )}
+        {showTemporaryReviewerUI && (
+          <TooltipWrapper
+            title={t('temporary_review_queue', {
+              ns: 'tooltip',
+              defaultValue: 'Review temporary submissions',
+            })}
+          >
+            <button
+              onClick={() => {
+                setShowTemporaryModal(true);
+                fetchTemporaryList('review');
+              }}
+              style={{ marginRight: '0.5rem', position: 'relative' }}
+            >
+              {t('temporary_review_prompt_cta', 'Open review workspace')}
+              {reviewPendingCount > 0 && (
+                <span
+                  style={{
+                    marginLeft: '0.5rem',
+                    background: '#2563eb',
+                    color: '#fff',
+                    borderRadius: '999px',
+                    padding: '0 0.5rem',
+                    fontSize: '0.75rem',
+                  }}
+                >
+                  {reviewPendingCount}
+                </span>
+              )}
+            </button>
+          </TooltipWrapper>
+        )}
         {selectedRows.size > 0 && buttonPerms['Delete transaction'] && (
           <TooltipWrapper title={t('delete_selected', { ns: 'tooltip', defaultValue: 'Remove selected rows' })}>
             <button onClick={handleDeleteSelected}>Delete Selected</button>
           </TooltipWrapper>
         )}
       </div>
-      {hasTemporaryNotice && (
+      {showTemporaryNotice && (
         <div
           style={{
             display: 'flex',
