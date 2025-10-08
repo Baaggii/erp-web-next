@@ -18,6 +18,7 @@ import { debugLog } from '../utils/debug.js';
 import { syncCalcFields } from '../utils/syncCalcFields.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
+import { hasPosTransactionAccess } from '../utils/posTransactionAccess.js';
 import {
   isPlainRecord,
   assignArrayMetadata,
@@ -452,9 +453,22 @@ async function putRow(addToast, table, id, row) {
 
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
-  const { user, company, branch } = useContext(AuthContext);
+  const { user, company, branch, department } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
-  const [configs, setConfigs] = useState({});
+  const [rawConfigs, setRawConfigs] = useState({});
+  const configs = useMemo(() => {
+    if (!rawConfigs || typeof rawConfigs !== 'object') return {};
+    const entries = Object.entries(rawConfigs).filter(([key]) => key !== 'isDefault');
+    if (entries.length === 0) return {};
+    const filtered = {};
+    entries.forEach(([cfgName, cfgValue]) => {
+      if (!cfgValue || typeof cfgValue !== 'object') return;
+      if (hasPosTransactionAccess(cfgValue, branch, department)) {
+        filtered[cfgName] = cfgValue;
+      }
+    });
+    return filtered;
+  }, [rawConfigs, branch, department]);
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
@@ -893,11 +907,23 @@ export default function PosTransactionsPage() {
   }
 
   useEffect(() => {
-    fetch('/api/pos_txn_config', { credentials: 'include' })
+    const params = new URLSearchParams();
+    if (branch !== undefined && branch !== null && String(branch).trim() !== '') {
+      params.set('branchId', branch);
+    }
+    if (
+      department !== undefined &&
+      department !== null &&
+      String(department).trim() !== ''
+    ) {
+      params.set('departmentId', department);
+    }
+    const qs = params.toString();
+    fetch(`/api/pos_txn_config${qs ? `?${qs}` : ''}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setConfigs(data))
-      .catch(() => setConfigs({}));
-  }, []);
+      .then((data) => setRawConfigs(data))
+      .catch(() => setRawConfigs({}));
+  }, [branch, department]);
 
   const initRef = useRef('');
 
@@ -909,9 +935,27 @@ export default function PosTransactionsPage() {
       setCurrentSessionId(null);
       return;
     }
+    if (!configs[name]) {
+      setConfig(null);
+      setLayout({});
+      setSessionFields(null);
+      setCurrentSessionId(null);
+      return;
+    }
     setSessionFields(null);
     setCurrentSessionId(null);
-    fetch(`/api/pos_txn_config?name=${encodeURIComponent(name)}`, { credentials: 'include' })
+    const params = new URLSearchParams({ name });
+    if (branch !== undefined && branch !== null && String(branch).trim() !== '') {
+      params.set('branchId', branch);
+    }
+    if (
+      department !== undefined &&
+      department !== null &&
+      String(department).trim() !== ''
+    ) {
+      params.set('departmentId', department);
+    }
+    fetch(`/api/pos_txn_config?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
         if (cfg && Array.isArray(cfg.tables) && cfg.tables.length > 0 && !cfg.masterTable) {
@@ -930,7 +974,7 @@ export default function PosTransactionsPage() {
       .then(res => res.ok ? res.json() : {})
       .then(data => setLayout(data || {}))
       .catch(() => setLayout({}));
-  }, [name]);
+  }, [name, configs, branch, department]);
 
   const { formList, visibleTables } = React.useMemo(() => {
     if (!config) return { formList: [], visibleTables: new Set() };
@@ -1586,6 +1630,7 @@ export default function PosTransactionsPage() {
       employeeId: user?.empid,
       companyId: company,
       branchId: branch,
+      departmentId: department,
       date: formatTimestamp(new Date()),
     };
     try {
@@ -1730,6 +1775,7 @@ export default function PosTransactionsPage() {
       employeeId: user?.empid,
       companyId: company,
       branchId: branch,
+      departmentId: department,
       date: formatTimestamp(new Date()),
     };
     try {
