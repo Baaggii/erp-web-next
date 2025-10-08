@@ -4329,79 +4329,100 @@ const TableManager = forwardRef(function TableManager({
                             textTransform: 'capitalize',
                           }}
                         >
-                          {entry.status}
-                        </td>
-                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
-                          {formatTimestamp(entry.createdAt)}
-                        </td>
-                        <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
-                          <pre
-                            style={{
-                              background: '#f9fafb',
-                              padding: '0.5rem',
-                              borderRadius: '4px',
-                              maxHeight: '12rem',
-                              overflow: 'auto',
-                              fontSize: '0.75rem',
-                            }}
-                          >
-                            {JSON.stringify(
-                              entry.cleanedValues || entry.payload?.values || {},
-                              null,
-                              2,
-                            )}
-                          </pre>
-                        </td>
-                        {temporaryScope === 'review' && (
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.id}</td>
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            <div style={{ fontWeight: 600 }}>{entry.formName || '-'}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>
+                              {entry.tableName}
+                              {entry.moduleKey && (
+                                <span style={{ marginLeft: '0.25rem', color: '#6b7280' }}>
+                                  · {entry.moduleKey}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>{entry.createdBy}</td>
                           <td
                             style={{
                               borderBottom: '1px solid #f3f4f6',
                               padding: '0.25rem',
-                              textAlign: 'right',
-                              whiteSpace: 'nowrap',
+                              textTransform: 'capitalize',
                             }}
                           >
-                            {entry.status === 'pending' ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => promoteTemporary(entry.id)}
-                                  style={{
-                                    marginRight: '0.25rem',
-                                    padding: '0.25rem 0.5rem',
-                                    backgroundColor: '#16a34a',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                  }}
-                                >
-                                  {t('promote', 'Promote')}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => rejectTemporary(entry.id)}
-                                  style={{
-                                    padding: '0.25rem 0.5rem',
-                                    backgroundColor: '#dc2626',
-                                    color: '#fff',
-                                    border: 'none',
-                                    borderRadius: '4px',
-                                  }}
-                                >
-                                  {t('reject', 'Reject')}
-                                </button>
-                              </>
-                            ) : (
-                              <span style={{ fontSize: '0.8rem', color: '#4b5563' }}>
-                                {entry.status === 'promoted'
-                                  ? t('temporary_promoted_short', 'Promoted')
-                                  : t('temporary_rejected_short', 'Rejected')}
-                              </span>
-                            )}
+                            {entry.status}
                           </td>
-                        )}
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            {formatTimestamp(entry.createdAt)}
+                          </td>
+                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            <pre
+                              style={{
+                                background: '#f9fafb',
+                                padding: '0.5rem',
+                                borderRadius: '4px',
+                                maxHeight: '12rem',
+                                overflow: 'auto',
+                                fontSize: '0.75rem',
+                              }}
+                            >
+                              {JSON.stringify(
+                                entry.cleanedValues || entry.payload?.values || {},
+                                null,
+                                2,
+                              )}
+                            </pre>
+                          </td>
+                          {temporaryScope === 'review' && (
+                            <td
+                              style={{
+                                borderBottom: '1px solid #f3f4f6',
+                                padding: '0.25rem',
+                                textAlign: 'right',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {entry.status === 'pending' ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => promoteTemporary(entry.id)}
+                                    style={{
+                                      marginRight: '0.25rem',
+                                      padding: '0.25rem 0.5rem',
+                                      backgroundColor: '#16a34a',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    {t('promote', 'Promote')}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => rejectTemporary(entry.id)}
+                                    style={{
+                                      padding: '0.25rem 0.5rem',
+                                      backgroundColor: '#dc2626',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                    }}
+                                  >
+                                    {t('reject', 'Reject')}
+                                  </button>
+                                </>
+                              ) : (
+                                <span style={{ fontSize: '0.8rem', color: '#4b5563' }}>
+                                  {entry.status === 'promoted'
+                                    ? t('temporary_promoted_short', 'Promoted')
+                                    : t('temporary_rejected_short', 'Rejected')}
+                                </span>
+                              )}
+                            </td>
+                          )}
                       </tr>
-                    ))}
+                    );
+                  })}
                   </tbody>
                 </table>
               </div>
