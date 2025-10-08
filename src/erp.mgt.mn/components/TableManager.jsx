@@ -398,12 +398,49 @@ const TableManager = forwardRef(function TableManager({
     return () => window.removeEventListener('click', hideMenu);
   }, []);
 
-  const accessInfo = useMemo(
-    () => evaluateTransactionFormAccess(formConfig, branch, department),
-    [branch, department, formConfig],
-  );
+  const supportsTemporary = useMemo(() => {
+    if (!formConfig) return false;
+    const flag =
+      formConfig.supportsTemporarySubmission ??
+      formConfig.allowTemporarySubmission ??
+      false;
+    if (!flag) return false;
 
-  const supportsTemporary = Boolean(accessInfo?.temporary);
+    const branchRules = Array.isArray(formConfig.temporaryAllowedBranches)
+      ? formConfig.temporaryAllowedBranches
+      : [];
+    const deptRules = Array.isArray(formConfig.temporaryAllowedDepartments)
+      ? formConfig.temporaryAllowedDepartments
+      : [];
+
+    const resolveId = (value) => {
+      if (value == null) return null;
+      if (typeof value === 'object') {
+        if (value.id != null) return value.id;
+        if (value.branch_id != null) return value.branch_id;
+        if (value.department_id != null) return value.department_id;
+        if (value.value != null) return value.value;
+      }
+      return value;
+    };
+
+    const branchId = resolveId(branch);
+    const departmentId = resolveId(department);
+
+    if (branchRules.length > 0) {
+      if (branchId == null) return false;
+      const allowed = branchRules.map((v) => String(v));
+      if (!allowed.includes(String(branchId))) return false;
+    }
+
+    if (deptRules.length > 0) {
+      if (departmentId == null) return false;
+      const allowed = deptRules.map((v) => String(v));
+      if (!allowed.includes(String(departmentId))) return false;
+    }
+
+    return true;
+  }, [branch, department, formConfig]);
 
   const refreshTemporarySummary = useCallback(async () => {
     if (!supportsTemporary) {
@@ -2043,7 +2080,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSubmit(values) {
-    if (!accessInfo?.general) {
+    if (!canPostTransactions) {
       addToast(
         t(
           'temporary_post_not_allowed',
@@ -4069,7 +4106,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         allowTemporarySave={supportsTemporary}
         isAdding={isAdding}
-        canPost={Boolean(accessInfo?.general)}
+        canPost={canPostTransactions}
       />
       <CascadeDeleteModal
         visible={showCascade}
