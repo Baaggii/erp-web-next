@@ -133,7 +133,20 @@ await test('listRequests returns report approval metadata', async () => {
           proposed_data: JSON.stringify({
             procedure: 'demo_proc',
             parameters: { from: '2024-01-01' },
-            transactions: [{ table: 'transactions_sales', recordId: 10 }],
+            transactions: [
+              {
+                table: 'transactions_sales',
+                recordId: 10,
+                snapshot: {
+                  columns: ['id', 'amount'],
+                  rows: [
+                    { id: 10, amount: 99.5 },
+                    { id: 11, amount: 42 },
+                  ],
+                  fieldTypeMap: { amount: 'number' },
+                },
+              },
+            ],
             snapshot: {
               columns: ['id', 'amount'],
               rows: [
@@ -158,7 +171,19 @@ await test('listRequests returns report approval metadata', async () => {
   const meta = result.rows[0].report_metadata;
   assert.equal(meta.procedure, 'demo_proc');
   assert.deepEqual(meta.parameters, { from: '2024-01-01' });
-  assert.deepEqual(meta.transactions, [{ table: 'transactions_sales', recordId: '10' }]);
+  assert.deepEqual(meta.transactions, [
+    {
+      table: 'transactions_sales',
+      tableName: 'transactions_sales',
+      recordId: '10',
+      record_id: '10',
+      snapshot: { id: 10, amount: 99.5 },
+      snapshotColumns: ['id', 'amount'],
+      columns: ['id', 'amount'],
+      snapshotFieldTypeMap: { amount: 'number' },
+      fieldTypeMap: { amount: 'number' },
+    },
+  ]);
   assert.ok(meta.snapshot);
   assert.equal(meta.snapshot.rowCount, 2);
   assert.equal(meta.snapshot.version, 2);
