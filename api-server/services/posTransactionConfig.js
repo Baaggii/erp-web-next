@@ -54,13 +54,90 @@ function normalizeStoredAccessList(list) {
   return normalized;
 }
 
+export function pickScopeValue(requestValue, sessionValue) {
+  if (requestValue !== undefined && requestValue !== null) {
+    if (typeof requestValue === 'string') {
+      if (requestValue.trim() !== '') return requestValue;
+    } else {
+      return requestValue;
+    }
+  }
+  if (sessionValue !== undefined && sessionValue !== null) {
+    return sessionValue;
+  }
+  return undefined;
+}
+
+export function hasPosConfigReadAccess(session = {}, actions = {}) {
+  const sessionPerms = session?.permissions || {};
+  if (sessionPerms.system_settings) return true;
+
+  const actionPermissions = actions?.permissions || {};
+  if (actionPermissions.system_settings) return true;
+
+  const apiPermissions = actions?.api || {};
+  if (apiPermissions['/api/pos_txn_config']) return true;
+
+  if (actions.pos_transaction_management) return true;
+  if (actions.pos_transactions) return true;
+
+  return false;
+}
+
+export function hasPosTransactionOperateAccess(session = {}, actions = {}) {
+  const sessionPerms = session?.permissions || {};
+  if (sessionPerms.system_settings) return true;
+  if (sessionPerms.pos_transaction_management) return true;
+  if (sessionPerms.pos_transactions) return true;
+
+  const actionPermissions = actions?.permissions || {};
+  if (actionPermissions.system_settings) return true;
+  if (actionPermissions.pos_transaction_management) return true;
+  if (actionPermissions.pos_transactions) return true;
+
+  if (actions.pos_transaction_management) return true;
+  if (actions.pos_transactions) return true;
+
+  const apiPermissions = actions?.api || {};
+  if (apiPermissions['/api/pos_txn_post']) return true;
+
+  return false;
+}
+
 export function hasPosTransactionAccess(config, branchId, departmentId) {
   if (!config || typeof config !== 'object') return true;
+
+  const branchValue = normalizeAccessValue(branchId);
+  const departmentValue = normalizeAccessValue(departmentId);
+
   const allowedBranches = normalizeAccessList(config.allowedBranches);
   const allowedDepartments = normalizeAccessList(config.allowedDepartments);
+
+  const generalAllowed =
+    matchesScope(allowedBranches, branchValue) &&
+    matchesScope(allowedDepartments, departmentValue);
+
+  if (generalAllowed) return true;
+
+  const temporaryEnabled = Boolean(
+    config.supportsTemporarySubmission ??
+      config.allowTemporarySubmission ??
+      config.supportsTemporary ??
+      false,
+  );
+
+  if (!temporaryEnabled) return false;
+
+  const temporaryBranches = normalizeAccessList(
+    config.temporaryAllowedBranches,
+  );
+  const temporaryDepartments = normalizeAccessList(
+    config.temporaryAllowedDepartments,
+  );
+
   return (
-    matchesScope(allowedBranches, branchId) &&
-    matchesScope(allowedDepartments, departmentId)
+    matchesScope(temporaryBranches, branchValue) &&
+    matchesScope(temporaryDepartments, departmentValue)
   );
 }
 
@@ -97,6 +174,24 @@ export async function setConfig(name, config = {}, companyId = 0) {
     ...config,
     allowedBranches: normalizeStoredAccessList(config.allowedBranches),
     allowedDepartments: normalizeStoredAccessList(config.allowedDepartments),
+    temporaryAllowedBranches: normalizeStoredAccessList(
+      config.temporaryAllowedBranches,
+    ),
+    temporaryAllowedDepartments: normalizeStoredAccessList(
+      config.temporaryAllowedDepartments,
+    ),
+    supportsTemporarySubmission: Boolean(
+      config.supportsTemporarySubmission ??
+        config.allowTemporarySubmission ??
+        config.supportsTemporary ??
+        false,
+    ),
+    allowTemporarySubmission: Boolean(
+      config.supportsTemporarySubmission ??
+        config.allowTemporarySubmission ??
+        config.supportsTemporary ??
+        false,
+    ),
     procedures: Array.isArray(config.procedures)
       ? config.procedures
           .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
