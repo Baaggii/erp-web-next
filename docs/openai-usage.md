@@ -31,6 +31,35 @@ The front-end utility [`translateWithAI`](../src/erp.mgt.mn/utils/translateWithA
 
 The API route uses the `OPENAI_API_KEY` environment variable shown above; ensure it is set before starting the server so translation requests succeed. If the feature is disabled or the server returns a 404, the helper silently falls back to the source text without showing error toasts.
 
+### Choosing Translation Models
+
+By default, general prompts use the model defined by `OPENAI_MODEL` (falling back to `gpt-3.5-turbo`). You can opt into more capable models without touching front-end code by setting the following environment variables before starting the API server:
+
+| Variable | Purpose |
+| --- | --- |
+| `OPENAI_TRANSLATION_MODEL` | Overrides the chat model for all AI-powered translations. |
+| `OPENAI_TRANSLATION_MODEL_MN` | Overrides the translation model specifically for Mongolian requests. |
+| `OPENAI_VALIDATION_MODEL` | Sets the model used to double-check translations for fluency and fidelity. |
+| `OPENAI_FILE_MODEL` | Chooses the model used when prompts include uploaded files. |
+
+For example, add the lines below to `.env` to force Mongolian translations to run on GPT-4 quality models:
+
+```
+OPENAI_MODEL=gpt-4o-mini
+OPENAI_TRANSLATION_MODEL_MN=gpt-4o
+OPENAI_VALIDATION_MODEL=gpt-4o
+```
+
+Front-end helpers automatically send translation metadata so the API route can pick the right model per language.
+
+The Manual Translations tab also exposes a "Translation model" selector next to the **Complete translations** button. Leave the
+dropdown on **Auto (recommended)** to honor the server defaults, or pick a preset / custom model ID before launching a bulk
+completion run. The UI remembers your last choice locally so you can iterate quickly when verifying Mongolian quality.
+
+### Mongolian Quality Checks
+
+Mongolian translations now undergo additional validation. The browser runs heuristics to flag Latin characters, missing vowels, or suspiciously short phrases. When those checks pass, the client asks the server to re-validate the sentence with OpenAI using the configured `OPENAI_VALIDATION_MODEL`. If the remote validator rejects the translation or reports low confidence, the client retries with targeted feedback until it exhausts the attempt budget. Set `localStorage['ai-translation-debug'] = '1'` in the browser console to view diagnostic logs for each attempt.
+
 ## Benchmark Image Lookup
 
 Server code also exposes `findBenchmarkCode` for resolving a transaction type code from an uploaded image name. See [Benchmark Image Verification](./benchmark-image-verification.md) for details.
