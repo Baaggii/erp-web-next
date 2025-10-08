@@ -28,6 +28,12 @@ function arrify(val) {
 }
 
 function parseEntry(raw = {}) {
+  const temporaryFlag = Boolean(
+    raw.supportsTemporarySubmission ??
+      raw.allowTemporarySubmission ??
+      raw.supportsTemporary ??
+      false,
+  );
   return {
     visibleFields: Array.isArray(raw.visibleFields)
       ? raw.visibleFields.map(String)
@@ -89,13 +95,8 @@ function parseEntry(raw = {}) {
       : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
     procedures: arrify(raw.procedures || raw.procedure),
-    supportsTemporarySubmission:
-      Boolean(
-        raw.supportsTemporarySubmission ??
-          raw.allowTemporarySubmission ??
-          raw.supportsTemporary ??
-          false,
-      ),
+    supportsTemporarySubmission: temporaryFlag,
+    allowTemporarySubmission: temporaryFlag,
   };
 }
 
