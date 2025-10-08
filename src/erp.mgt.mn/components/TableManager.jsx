@@ -250,6 +250,7 @@ const TableManager = forwardRef(function TableManager({
   showTable = true,
   buttonPerms = {},
   autoFillSession = true,
+  externalTemporaryTrigger = null,
 }, ref) {
   const { t } = useTranslation(['translation', 'tooltip']);
   const mounted = useRef(false);
@@ -294,6 +295,8 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryScope, setTemporaryScope] = useState('created');
   const [temporaryList, setTemporaryList] = useState([]);
   const [showTemporaryModal, setShowTemporaryModal] = useState(false);
+  const [queuedTemporaryTrigger, setQueuedTemporaryTrigger] = useState(null);
+  const lastExternalTriggerRef = useRef(null);
   const [temporaryLoading, setTemporaryLoading] = useState(false);
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
@@ -445,6 +448,11 @@ const TableManager = forwardRef(function TableManager({
 
     return true;
   }, [branch, department, formConfig]);
+
+  useEffect(() => {
+    if (!externalTemporaryTrigger) return;
+    setQueuedTemporaryTrigger(externalTemporaryTrigger);
+  }, [externalTemporaryTrigger]);
 
   const refreshTemporarySummary = useCallback(async () => {
     if (!supportsTemporary) {
@@ -2710,6 +2718,42 @@ const TableManager = forwardRef(function TableManager({
     },
     [supportsTemporary, table, temporaryScope],
   );
+
+  useEffect(() => {
+    if (!supportsTemporary) return;
+    if (!queuedTemporaryTrigger || !queuedTemporaryTrigger.open) return;
+    if (
+      queuedTemporaryTrigger.table &&
+      table &&
+      String(queuedTemporaryTrigger.table).toLowerCase() !==
+        String(table).toLowerCase()
+    ) {
+      return;
+    }
+    const triggerKey =
+      queuedTemporaryTrigger.key ||
+      JSON.stringify([
+        queuedTemporaryTrigger.scope,
+        queuedTemporaryTrigger.table,
+        queuedTemporaryTrigger.id,
+      ]);
+    if (lastExternalTriggerRef.current === triggerKey) return;
+
+    const scopeToOpen =
+      queuedTemporaryTrigger.scope ||
+      (temporarySummary?.reviewPending > 0 ? 'review' : 'created');
+
+    lastExternalTriggerRef.current = triggerKey;
+    setTemporaryScope(scopeToOpen);
+    setShowTemporaryModal(true);
+    fetchTemporaryList(scopeToOpen);
+  }, [
+    fetchTemporaryList,
+    queuedTemporaryTrigger,
+    supportsTemporary,
+    table,
+    temporarySummary,
+  ]);
 
   async function promoteTemporary(id) {
     if (!supportsTemporary) return;
