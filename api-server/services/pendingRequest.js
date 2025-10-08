@@ -220,7 +220,6 @@ function sanitizeSnapshot(raw) {
           !Array.isArray(raw.parameters)
             ? raw.parameters
             : {}),
-        totalRow,
       });
     } catch (err) {
       artifactMeta = null;
@@ -814,20 +813,40 @@ export async function listRequests(filters) {
   const limit = Number(per_page) > 0 ? Number(per_page) : 2;
   const offset = (Number(page) > 0 ? Number(page) - 1 : 0) * limit;
 
-  const [rowsRaw] = await pool.query(
-    `SELECT pr.*, DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(pr.responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt
-       FROM pending_request pr
+  const [orderedIds] = await pool.query(
+    `SELECT request_id,
+            ${dateColumn} AS sort_value
+       FROM pending_request
        ${where}
-      ORDER BY pr.${dateColumn} DESC, pr.request_id DESC
+      ORDER BY ${dateColumn} DESC, request_id DESC
       LIMIT ? OFFSET ?`,
     [...params, limit, offset],
   );
 
-  if (!rowsRaw.length) {
+  if (!orderedIds.length) {
     return { rows: [], total };
   }
 
-  const rows = rowsRaw;
+  const idOrder = orderedIds
+    .map((row) => row.request_id)
+    .filter((id) => id !== null && id !== undefined);
+
+  if (!idOrder.length) {
+    return { rows: [], total };
+  }
+
+  const placeholders = idOrder.map(() => '?').join(', ');
+  const [rowsRaw] = await pool.query(
+    `SELECT pr.*, DATE_FORMAT(pr.created_at, '%Y-%m-%d %H:%i:%s') AS created_at_fmt, DATE_FORMAT(pr.responded_at, '%Y-%m-%d %H:%i:%s') AS responded_at_fmt
+       FROM pending_request pr
+      WHERE pr.request_id IN (${placeholders})`,
+    idOrder,
+  );
+
+  const rowsById = new Map(rowsRaw.map((row) => [row.request_id, row]));
+  const rows = idOrder
+    .map((id) => rowsById.get(id))
+    .filter((row) => row);
 
   const approvalRequestIds = rows
     .filter((row) => row.request_type === 'report_approval')
