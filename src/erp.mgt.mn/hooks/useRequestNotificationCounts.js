@@ -152,6 +152,7 @@ export default function useRequestNotificationCounts(
                   const params = new URLSearchParams({
                     status,
                     senior_empid: id,
+                    count_only: '1',
                   });
                   Object.entries(memoFilters).forEach(([k, v]) => {
                     if (Array.isArray(v)) {
@@ -201,6 +202,7 @@ export default function useRequestNotificationCounts(
           // Outgoing requests (always for current user)
           try {
             const params = new URLSearchParams({ status });
+            params.append('count_only', '1');
             Object.entries(memoFilters).forEach(([k, v]) => {
               if (Array.isArray(v)) {
                 v

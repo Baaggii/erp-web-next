@@ -1,7 +1,4 @@
-import {
-  evaluateTranslationCandidate,
-  summarizeHeuristic,
-} from '../../../utils/translationValidation.js';
+import { evaluateTranslationCandidate } from '../../../utils/translationValidation.js';
 
 const localeCache = {};
 const aiCache = {};
@@ -44,10 +41,6 @@ const RETRY_HINTS = {
   identical_to_base: 'Do not repeat the source text; translate it.',
   too_short_for_context:
     'Give a translation that matches the level of detail in the source sentence.',
-  remote_validation_failed:
-    'Revise the translation so it clearly conveys the original meaning in fluent Mongolian.',
-  remote_low_confidence:
-    'Improve the translation so it reads naturally to a Mongolian speaker.',
 };
 
 function getLanguageLabel(lang) {
@@ -177,19 +170,10 @@ async function requestAI(text, lang, options = {}) {
   if (aiDisabled) return text;
   try {
     const prompt = buildPrompt(text, lang, options);
-    const payload = {
-      prompt,
-      task: 'translation',
-      lang,
-      key: options.key,
-      attempt: options.attempt,
-      model: options.model,
-      metadata: options.metadata,
-    };
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ prompt }),
       skipErrorToast: true,
       skipLoader: true,
     });
@@ -269,7 +253,6 @@ export default async function translateWithAI(lang, key, fallback) {
       attempt,
       feedback,
       previousCandidates,
-      key,
     });
     if (!candidate || !candidate.trim()) {
       heuristics = {
@@ -277,10 +260,6 @@ export default async function translateWithAI(lang, key, fallback) {
         reasons: ['empty_translation'],
         placeholders: { missing: [], extra: [] },
       };
-      logDiagnostics('empty-candidate', {
-        key,
-        attempt,
-      });
       continue;
     }
 
@@ -292,72 +271,8 @@ export default async function translateWithAI(lang, key, fallback) {
     });
 
     if (evaluation.status === 'pass') {
-      let remoteResult = null;
-      if (String(lang).toLowerCase() === 'mn') {
-        remoteResult = await validateRemotely({
-          candidate: candidateText,
-          base: normalizedText,
-          lang,
-          metadata: { key },
-        });
-      }
-
-      if (remoteResult?.ok && remoteResult.valid) {
-        heuristics = {
-          ...evaluation,
-          remoteValidation: remoteResult,
-        };
-        finalTranslation = candidateText;
-        break;
-      }
-
-      if (remoteResult?.ok && !remoteResult.valid) {
-        const remoteReason = remoteResult.reason || 'remote_validation_failed';
-        let reasonTag = remoteReason.startsWith('remote_')
-          ? remoteReason
-          : `remote_${remoteReason}`;
-        if (remoteReason === 'low_language_confidence') {
-          reasonTag = 'remote_low_confidence';
-        } else if (remoteReason === 'validation_failed') {
-          reasonTag = 'remote_validation_failed';
-        }
-        const combinedReasons = evaluation.reasons.includes(reasonTag)
-          ? evaluation.reasons
-          : [...evaluation.reasons, reasonTag];
-        heuristics = {
-          ...evaluation,
-          status: remoteResult.needsRetry ? 'retry' : 'fail',
-          reasons: combinedReasons,
-          remoteValidation: remoteResult,
-        };
-        logDiagnostics('remote-rejected', {
-          key,
-          attempt,
-          reason: remoteReason,
-          needsRetry: remoteResult.needsRetry,
-          languageConfidence: remoteResult.languageConfidence ?? null,
-          summary: summarizeHeuristic(heuristics),
-          candidate: candidateText,
-        });
-        if (!remoteResult.needsRetry) {
-          break;
-        }
-        continue;
-      }
-
-      if (remoteResult?.ok === false && remoteResult.status) {
-        logDiagnostics('remote-unavailable', {
-          key,
-          attempt,
-          status: remoteResult.status,
-        });
-      }
-
-      heuristics = {
-        ...evaluation,
-        remoteValidation: remoteResult || undefined,
-      };
       finalTranslation = candidateText;
+      heuristics = evaluation;
       break;
     }
 
@@ -365,15 +280,6 @@ export default async function translateWithAI(lang, key, fallback) {
     if (!previousCandidates.includes(candidateText)) {
       previousCandidates.push(candidateText);
     }
-
-    logDiagnostics('heuristic-reject', {
-      key,
-      attempt,
-      status: evaluation.status,
-      reasons: evaluation.reasons,
-      summary: summarizeHeuristic(evaluation),
-      candidate: candidateText,
-    });
 
     if (evaluation.status === 'fail' && !evaluation.reasons.length) {
       break;
@@ -384,15 +290,6 @@ export default async function translateWithAI(lang, key, fallback) {
     cache[key] = finalTranslation;
     saveCache(lang);
     return finalTranslation;
-  }
-
-  if (heuristics) {
-    logDiagnostics('translation-fallback', {
-      key,
-      attempts: maxAttempts,
-      summary: summarizeHeuristic(heuristics),
-      reasons: heuristics.reasons,
-    });
   }
 
   return normalizedText;

@@ -52,10 +52,6 @@ OPENAI_VALIDATION_MODEL=gpt-4o
 
 Front-end helpers automatically send translation metadata so the API route can pick the right model per language.
 
-The Manual Translations tab also exposes a "Translation model" selector next to the **Complete translations** button. Leave the
-dropdown on **Auto (recommended)** to honor the server defaults, or pick a preset / custom model ID before launching a bulk
-completion run. The UI remembers your last choice locally so you can iterate quickly when verifying Mongolian quality.
-
 ### Mongolian Quality Checks
 
 Mongolian translations now undergo additional validation. The browser runs heuristics to flag Latin characters, missing vowels, or suspiciously short phrases. When those checks pass, the client asks the server to re-validate the sentence with OpenAI using the configured `OPENAI_VALIDATION_MODEL`. If the remote validator rejects the translation or reports low confidence, the client retries with targeted feedback until it exhausts the attempt budget. Set `localStorage['ai-translation-debug'] = '1'` in the browser console to view diagnostic logs for each attempt.

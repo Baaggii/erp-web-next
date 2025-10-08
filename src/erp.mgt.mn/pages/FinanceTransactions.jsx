@@ -19,6 +19,7 @@ import CustomDatePicker from '../components/CustomDatePicker.jsx';
 import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 
 const DATE_PARAM_ALLOWLIST = new Set([
   'startdt',
@@ -250,8 +251,8 @@ useEffect(() => {
     console.log('FinanceTransactions load forms effect');
     const params = new URLSearchParams();
     if (moduleKey) params.set('moduleKey', moduleKey);
-    if (branch) params.set('branchId', branch);
-    if (department) params.set('departmentId', department);
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
@@ -265,15 +266,14 @@ useEffect(() => {
       })
       .then((data) => {
         const filtered = {};
+        const branchId = branch != null ? String(branch) : null;
+        const departmentId = department != null ? String(department) : null;
         Object.entries(data).forEach(([n, info]) => {
-          const allowedB = info.allowedBranches || [];
-          const allowedD = info.allowedDepartments || [];
+          if (n === 'isDefault') return;
+          if (!info || typeof info !== 'object') return;
           const mKey = info.moduleKey;
           if (mKey !== moduleKey) return;
-          if (allowedB.length > 0 && branch && !allowedB.includes(branch))
-            return;
-          if (allowedD.length > 0 && department && !allowedD.includes(department))
-            return;
+          if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
           if (
             perms &&
             Object.prototype.hasOwnProperty.call(perms, mKey) &&

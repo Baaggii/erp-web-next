@@ -1,8 +1,9 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const emptyConfig = {
   label: '',
@@ -15,11 +16,15 @@ const emptyConfig = {
   calcFields: [],
   posFields: [],
   statusField: { table: '', field: '', created: '', beforePost: '', posted: '' },
+  allowedBranches: [],
+  allowedDepartments: [],
+  procedures: [],
 };
 
 export default function PosTxnConfig() {
   const { addToast } = useToast();
   const { company } = useContext(AuthContext);
+  const generalConfig = useGeneralConfig();
   const [configs, setConfigs] = useState({});
   const [isDefault, setIsDefault] = useState(false);
   const [name, setName] = useState('');
@@ -32,6 +37,43 @@ export default function PosTxnConfig() {
   const [tableColumns, setTableColumns] = useState({});
   const [statusOptions, setStatusOptions] = useState([]);
   const [config, setConfig] = useState(emptyConfig);
+  const [branches, setBranches] = useState([]);
+  const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
+  const [departments, setDepartments] = useState([]);
+  const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
+  const [procedureOptions, setProcedureOptions] = useState([]);
+  const procPrefix = generalConfig?.general?.reportProcPrefix || '';
+  const branchOptions = useMemo(() => {
+    const idField = branchCfg?.idField || 'id';
+    return branches.map((b) => {
+      const val = b[idField] ?? b.id;
+      const label = branchCfg?.displayFields?.length
+        ? branchCfg.displayFields
+            .map((f) => b[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(b)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
+      return { value: String(val), label };
+    });
+  }, [branches, branchCfg]);
+
+  const deptOptions = useMemo(() => {
+    const idField = deptCfg?.idField || 'id';
+    return departments.map((d) => {
+      const val = d[idField] ?? d.id;
+      const label = deptCfg?.displayFields?.length
+        ? deptCfg.displayFields
+            .map((f) => d[f])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(d)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
+      return { value: String(val), label };
+    });
+  }, [departments, deptCfg]);
 
   useEffect(() => {
     fetch('/api/pos_txn_config', { credentials: 'include' })
@@ -78,6 +120,30 @@ export default function PosTxnConfig() {
       .then((data) => setTables(data))
       .catch(() => setTables([]));
 
+    fetch('/api/tables/code_branches?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setBranches(data.rows || []))
+      .catch(() => setBranches([]));
+
+    fetch('/api/display_fields?table=code_branches', { credentials: 'include' })
+      .then((res) =>
+        res.ok ? res.json() : { idField: null, displayFields: [] },
+      )
+      .then((cfg) => setBranchCfg(cfg || { idField: null, displayFields: [] }))
+      .catch(() => setBranchCfg({ idField: null, displayFields: [] }));
+
+    fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setDepartments(data.rows || []))
+      .catch(() => setDepartments([]));
+
+    fetch('/api/display_fields?table=code_department', { credentials: 'include' })
+      .then((res) =>
+        res.ok ? res.json() : { idField: null, displayFields: [] },
+      )
+      .then((cfg) => setDeptCfg(cfg || { idField: null, displayFields: [] }))
+      .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
+
   }, []);
 
 
@@ -101,6 +167,21 @@ export default function PosTxnConfig() {
       })
       .catch(() => setStatusOptions([]));
   }, [config.statusField.table]);
+
+  useEffect(() => {
+    const qs = procPrefix ? `?prefix=${encodeURIComponent(procPrefix)}` : '';
+    fetch(`/api/procedures${qs}`, { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { procedures: [] }))
+      .then((data) => {
+        const list = Array.isArray(data.procedures) ? data.procedures : [];
+        const normalized = list
+          .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
+          .filter((proc) => proc)
+          .sort((a, b) => a.localeCompare(b));
+        setProcedureOptions(normalized);
+      })
+      .catch(() => setProcedureOptions([]));
+  }, [procPrefix]);
 
   useEffect(() => {
     const tbls = [config.masterTable, ...config.tables.map((t) => t.table)];
@@ -180,6 +261,33 @@ export default function PosTxnConfig() {
       }
 
       if (!loaded.statusField) loaded.statusField = { table: '', field: '', created: '', beforePost: '', posted: '' };
+      loaded.allowedBranches = Array.isArray(loaded.allowedBranches)
+        ? Array.from(
+            new Set(
+              loaded.allowedBranches
+                .map((b) => (b === undefined || b === null ? '' : String(b)))
+                .filter((b) => b.trim() !== ''),
+            ),
+          )
+        : [];
+      loaded.allowedDepartments = Array.isArray(loaded.allowedDepartments)
+        ? Array.from(
+            new Set(
+              loaded.allowedDepartments
+                .map((d) => (d === undefined || d === null ? '' : String(d)))
+                .filter((d) => d.trim() !== ''),
+            ),
+          )
+        : [];
+      loaded.procedures = Array.isArray(loaded.procedures)
+        ? Array.from(
+            new Set(
+              loaded.procedures
+                .map((p) => (typeof p === 'string' ? p.trim() : ''))
+                .filter((p) => p),
+            ),
+          )
+        : [];
       setIsDefault(!!def);
       setName(n);
       setConfig(loaded);
@@ -274,8 +382,36 @@ export default function PosTxnConfig() {
       addToast('Name required', 'error');
       return;
     }
+    const normalizeAccessForSave = (list) =>
+      Array.isArray(list)
+        ? Array.from(
+            new Set(
+              list
+                .map((item) => {
+                  if (item === undefined || item === null) return null;
+                  const num = Number(item);
+                  if (Number.isFinite(num)) return num;
+                  const str = String(item).trim();
+                  return str ? str : null;
+                })
+                .filter((val) => val !== null),
+            ),
+          )
+        : [];
+    const normalizedProcedures = Array.isArray(config.procedures)
+      ? Array.from(
+          new Set(
+            config.procedures
+              .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
+              .filter((proc) => proc),
+          ),
+        )
+      : [];
     const saveCfg = {
       ...config,
+      allowedBranches: normalizeAccessForSave(config.allowedBranches),
+      allowedDepartments: normalizeAccessForSave(config.allowedDepartments),
+      procedures: normalizedProcedures,
       tables: [
         {
           table: config.masterTable,
@@ -555,6 +691,115 @@ export default function PosTxnConfig() {
             ))}
           </select>
         </label>
+      </div>
+      <div
+        style={{
+          marginBottom: '1rem',
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+          gap: '1rem',
+        }}
+      >
+        <label>
+          Allowed branches:{' '}
+          <select
+            multiple
+            size={8}
+            value={config.allowedBranches}
+            onChange={(e) =>
+              setConfig((c) => ({
+                ...c,
+                allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
+              }))
+            }
+          >
+            {branchOptions.map((b) => (
+              <option key={b.value} value={b.value}>
+                {b.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() =>
+              setConfig((c) => ({
+                ...c,
+                allowedBranches: branchOptions.map((b) => b.value),
+              }))
+            }
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
+          >
+            None
+          </button>
+        </label>
+        <label>
+          Allowed departments:{' '}
+          <select
+            multiple
+            size={8}
+            value={config.allowedDepartments}
+            onChange={(e) =>
+              setConfig((c) => ({
+                ...c,
+                allowedDepartments: Array.from(
+                  e.target.selectedOptions,
+                  (o) => o.value,
+                ),
+              }))
+            }
+          >
+            {deptOptions.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() =>
+              setConfig((c) => ({
+                ...c,
+                allowedDepartments: deptOptions.map((d) => d.value),
+              }))
+            }
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
+          >
+            None
+          </button>
+        </label>
+        {procedureOptions.length > 0 && (
+          <label>
+            Procedures:{' '}
+            <select
+              multiple
+              size={8}
+              value={config.procedures}
+              onChange={(e) =>
+                setConfig((c) => ({
+                  ...c,
+                  procedures: Array.from(e.target.selectedOptions, (o) => o.value),
+                }))
+              }
+            >
+              {procedureOptions.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
       </div>
       <div>
         <h3>Form Configuration</h3>
