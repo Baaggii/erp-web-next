@@ -1,4 +1,5 @@
 import { pool, insertTableRow, getEmploymentSession } from '../../db/index.js';
+import { getFormConfig } from './transactionFormConfig.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
@@ -117,7 +118,9 @@ export async function createTemporarySubmission({
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
     const session = await getEmploymentSession(normalizedCreator, companyId);
-    const planSenior = normalizeEmpId(session?.senior_plan_empid);
+    const reviewerEmpId =
+      normalizeEmpId(session?.senior_empid) ||
+      normalizeEmpId(session?.senior_plan_empid);
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -134,7 +137,7 @@ export async function createTemporarySubmission({
         safeJsonStringify(rawValues),
         safeJsonStringify(cleanedValues),
         normalizedCreator,
-        planSenior,
+        reviewerEmpId,
         branchId ?? null,
         departmentId ?? null,
       ],
@@ -155,10 +158,10 @@ export async function createTemporarySubmission({
       },
       conn,
     );
-    if (planSenior) {
+    if (reviewerEmpId) {
       await insertNotification(conn, {
         companyId,
-        recipientEmpId: planSenior,
+        recipientEmpId: reviewerEmpId,
         createdBy: normalizedCreator,
         relatedId: temporaryId,
         message: `Temporary submission pending review for ${tableName}`,
@@ -166,7 +169,7 @@ export async function createTemporarySubmission({
       });
     }
     await conn.query('COMMIT');
-    return { id: temporaryId, planSenior };
+    return { id: temporaryId, reviewerEmpId, planSenior: reviewerEmpId };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
@@ -191,6 +194,7 @@ function mapTemporaryRow(row) {
     cleanedValues: safeJsonParse(row.cleaned_values_json, {}),
     createdBy: row.created_by,
     planSeniorEmpId: row.plan_senior_empid,
+    reviewerEmpId: row.plan_senior_empid,
     branchId: row.branch_id,
     departmentId: row.department_id,
     status: row.status,
@@ -201,6 +205,79 @@ function mapTemporaryRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function buildModuleSlug(key) {
+  if (!key) return '';
+  return String(key)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/--+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+async function enrichTemporaryMetadata(rows, companyId) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const cache = new Map();
+
+  const loadConfig = async (tableName, formName) => {
+    const cacheKey = `${companyId ?? 0}::${tableName ?? ''}::${formName ?? ''}`;
+    if (cache.has(cacheKey)) return cache.get(cacheKey);
+    let meta = {};
+    if (tableName && formName) {
+      try {
+        const { config } = await getFormConfig(tableName, formName, companyId);
+        if (config) {
+          meta = {
+            moduleKey: config.moduleKey || '',
+            moduleLabel: config.moduleLabel || '',
+            formLabel: config.moduleLabel || formName,
+          };
+        }
+      } catch {
+        meta = {};
+      }
+    }
+    cache.set(cacheKey, meta);
+    return meta;
+  };
+
+  return Promise.all(
+    rows.map(async (row) => {
+      if (!row) return row;
+      let next = { ...row };
+      const needsModuleKey = !next.moduleKey || !next.moduleKey.trim();
+      const needsFormLabel = !next.formLabel || !String(next.formLabel).trim();
+      const needsModuleLabel = !next.moduleLabel || !String(next.moduleLabel).trim();
+      let meta;
+      if (
+        (needsModuleKey || needsFormLabel || needsModuleLabel) &&
+        next.tableName &&
+        (next.formName || next.configName)
+      ) {
+        meta = await loadConfig(next.tableName, next.formName || next.configName);
+      }
+      if (meta?.moduleKey && needsModuleKey) {
+        next = { ...next, moduleKey: meta.moduleKey };
+      }
+      if (meta?.formLabel && needsFormLabel) {
+        next = { ...next, formLabel: meta.formLabel };
+      }
+      if (meta?.moduleLabel && needsModuleLabel) {
+        next = { ...next, moduleLabel: meta.moduleLabel };
+      }
+      if ((!next.formLabel || !String(next.formLabel).trim()) && next.formName) {
+        next = { ...next, formLabel: next.formName };
+      }
+      if (next.moduleKey && !next.moduleSlug) {
+        next = { ...next, moduleSlug: buildModuleSlug(next.moduleKey) };
+      } else if (!next.moduleSlug) {
+        next = { ...next, moduleSlug: '' };
+      }
+      return next;
+    }),
+  );
 }
 
 export async function listTemporarySubmissions({
@@ -238,7 +315,8 @@ export async function listTemporarySubmissions({
     `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY created_at DESC LIMIT 200`,
     params,
   );
-  return rows.map(mapTemporaryRow);
+  const mapped = rows.map(mapTemporaryRow);
+  return enrichTemporaryMetadata(mapped, companyId);
 }
 
 export async function getTemporarySummary(empId, companyId) {
