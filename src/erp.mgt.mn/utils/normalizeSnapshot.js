@@ -107,6 +107,52 @@ function deriveRowCount(snapshotLike, rowsLength) {
   return rowsLength;
 }
 
+function mapTotalRowArray(candidate, snapshotLike) {
+  if (!Array.isArray(candidate) || candidate.length === 0) {
+    return null;
+  }
+
+  const columnCandidates = [
+    snapshotLike?.columns,
+    snapshotLike?.snapshotColumns,
+    snapshotLike?.snapshot_columns,
+    snapshotLike?.columnNames,
+    snapshotLike?.column_names,
+  ];
+
+  let columns = [];
+  for (const colCandidate of columnCandidates) {
+    const normalized = normalizeColumnList(colCandidate);
+    if (normalized.length) {
+      columns = normalized;
+      break;
+    }
+  }
+
+  if (!columns.length) {
+    const sampleRow = Array.isArray(snapshotLike?.rows) && snapshotLike.rows.length
+      ? snapshotLike.rows[0]
+      : Array.isArray(snapshotLike?.data) && snapshotLike.data.length
+      ? snapshotLike.data[0]
+      : null;
+    if (isPlainObject(sampleRow)) {
+      columns = Object.keys(sampleRow);
+    }
+  }
+
+  if (!columns.length) {
+    columns = candidate.map((_, idx) => `column_${idx + 1}`);
+  }
+
+  const entries = columns
+    .map((col, idx) => [col, candidate[idx]])
+    .filter(([key]) => typeof key === 'string' && key);
+
+  if (!entries.length) return null;
+
+  return Object.fromEntries(entries);
+}
+
 function deriveTotalRow(snapshotLike) {
   const candidates = [
     snapshotLike?.totalRow,
@@ -119,6 +165,10 @@ function deriveTotalRow(snapshotLike) {
   for (const candidate of candidates) {
     if (isPlainObject(candidate)) {
       return candidate;
+    }
+    const mapped = mapTotalRowArray(candidate, snapshotLike);
+    if (mapped) {
+      return mapped;
     }
   }
   return null;
