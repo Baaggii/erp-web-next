@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { pool } from '../../db/index.js';
 import { getConfigPath } from '../utils/configPaths.js';
+import { hasPosTransactionAccess } from './posTransactionConfig.js';
 
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
@@ -581,6 +582,19 @@ export async function postPosTransaction(
       `POS transaction config not found for layout "${layoutName}"`,
     );
     err.status = 400;
+    throw err;
+  }
+
+  const branchAccessId =
+    sessionInfo?.branchId ?? sessionInfo?.branch_id ?? sessionInfo?.branch ?? null;
+  const departmentAccessId =
+    sessionInfo?.departmentId ??
+    sessionInfo?.department_id ??
+    sessionInfo?.department ??
+    null;
+  if (!hasPosTransactionAccess(cfg, branchAccessId, departmentAccessId)) {
+    const err = new Error('POS transaction access denied for current scope');
+    err.status = 403;
     throw err;
   }
 
