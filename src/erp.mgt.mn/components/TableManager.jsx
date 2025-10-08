@@ -28,11 +28,16 @@ import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   applyGeneratedColumnEvaluators,
   createGeneratedColumnEvaluator,
   valuesEqual,
 } from '../utils/generatedColumns.js';
+
+if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
+  window.canPostTransactions = false;
+}
 
 function ch(n) {
   return Math.round(n * 8);
@@ -397,17 +402,31 @@ const TableManager = forwardRef(function TableManager({
     return () => window.removeEventListener('click', hideMenu);
   }, []);
 
-  const supportsTemporary = useMemo(() => {
-    if (!formConfig) return false;
-    const flag =
-      formConfig.supportsTemporarySubmission ??
-      formConfig.allowTemporarySubmission ??
-      false;
-    return Boolean(flag);
-  }, [formConfig]);
+  const accessInfo = useMemo(
+    () => evaluateTransactionFormAccess(formConfig, branch, department),
+    [branch, department, formConfig],
+  );
+
+  const temporaryFeatureEnabled = Boolean(accessInfo?.temporaryEnabled);
+  const canCreateTemporary = Boolean(accessInfo?.temporary);
+  const canPostTransactions = Boolean(accessInfo?.general);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    window.canPostTransactions = canPostTransactions;
+    return () => {
+      if (window.canPostTransactions === canPostTransactions) {
+        try {
+          delete window.canPostTransactions;
+        } catch {
+          window.canPostTransactions = undefined;
+        }
+      }
+    };
+  }, [canPostTransactions]);
 
   const refreshTemporarySummary = useCallback(async () => {
-    if (!supportsTemporary) {
+    if (!temporaryFeatureEnabled) {
       setTemporarySummary(null);
       setTemporaryScope('created');
       return;
@@ -427,7 +446,7 @@ const TableManager = forwardRef(function TableManager({
     } catch {
       setTemporarySummary((prev) => prev || { createdPending: 0, reviewPending: 0 });
     }
-  }, [supportsTemporary]);
+  }, [temporaryFeatureEnabled]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
@@ -2044,6 +2063,16 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSubmit(values) {
+    if (!canPostTransactions) {
+      addToast(
+        t(
+          'temporary_post_not_allowed',
+          'You do not have permission to post this transaction.',
+        ),
+        'error',
+      );
+      return false;
+    }
     const columns = new Set(allColumns);
     const merged = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -2253,9 +2282,17 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSaveTemporary(submission) {
-    if (!supportsTemporary) return false;
+    if (!canCreateTemporary) return false;
     if (!submission || typeof submission !== 'object') return false;
     const normalizedValues = submission.values || submission;
+    const rawOverride = submission.rawValues && typeof submission.rawValues === 'object'
+      ? submission.rawValues
+      : null;
+    const gridRows = Array.isArray(submission.normalizedRows)
+      ? submission.normalizedRows
+      : Array.isArray(normalizedValues?.rows)
+      ? normalizedValues.rows
+      : null;
     const merged = { ...(editing || {}) };
     Object.entries(normalizedValues).forEach(([k, v]) => {
       merged[k] = v;
@@ -2291,16 +2328,31 @@ const TableManager = forwardRef(function TableManager({
       }
     });
 
+    const payload = {
+      values: normalizedValues,
+      submittedAt: new Date().toISOString(),
+    };
+    if (gridRows) {
+      payload.gridRows = gridRows;
+      const currentValues =
+        payload.values && typeof payload.values === 'object' && !Array.isArray(payload.values)
+          ? payload.values
+          : {};
+      if (!Array.isArray(currentValues.rows)) {
+        payload.values = { ...currentValues, rows: gridRows };
+      }
+      payload.rowCount = gridRows.length;
+    }
+    if (submission.rawRows) {
+      payload.rawRows = submission.rawRows;
+    }
     const body = {
       table,
       formName: formName || formConfig?.moduleLabel || null,
       configName: formName || null,
       moduleKey: formConfig?.moduleKey || null,
-      payload: {
-        values: normalizedValues,
-        submittedAt: new Date().toISOString(),
-      },
-      rawValues: merged,
+      payload,
+      rawValues: rawOverride || merged,
       cleanedValues: cleaned,
       tenant: {
         company_id: company ?? null,
@@ -2316,7 +2368,24 @@ const TableManager = forwardRef(function TableManager({
         credentials: 'include',
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error('Failed');
+      if (!res.ok) {
+        let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
+        try {
+          const data = await res.json();
+          if (data?.message) {
+            errorMessage = `${errorMessage}: ${data.message}`;
+          }
+        } catch {
+          try {
+            const text = await res.text();
+            if (text) {
+              errorMessage = `${errorMessage}: ${text}`;
+            }
+          } catch {}
+        }
+        addToast(errorMessage, 'error');
+        return false;
+      }
       addToast(t('temporary_saved', 'Saved as temporary draft'), 'success');
       setShowForm(false);
       setEditing(null);
@@ -2596,7 +2665,7 @@ const TableManager = forwardRef(function TableManager({
 
   const fetchTemporaryList = useCallback(
     async (scopeOverride) => {
-      if (!supportsTemporary) return;
+      if (!temporaryFeatureEnabled) return;
       const scope = scopeOverride || temporaryScope;
       const params = new URLSearchParams();
       params.set('scope', scope);
@@ -2618,11 +2687,11 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryLoading(false);
       }
     },
-    [supportsTemporary, table, temporaryScope],
+    [temporaryFeatureEnabled, table, temporaryScope],
   );
 
   async function promoteTemporary(id) {
-    if (!supportsTemporary) return;
+    if (!temporaryFeatureEnabled) return;
     if (!window.confirm(t('promote_temporary_confirm', 'Promote temporary record?')))
       return;
     try {
@@ -2646,7 +2715,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function rejectTemporary(id) {
-    if (!supportsTemporary) return;
+    if (!temporaryFeatureEnabled) return;
     const notes = window.prompt(t('temporary_reject_reason', 'Enter rejection notes'));
     if (!notes || !notes.trim()) return;
     try {
@@ -2981,7 +3050,7 @@ const TableManager = forwardRef(function TableManager({
             Refresh Table
           </button>
         </TooltipWrapper>
-        {supportsTemporary && (
+        {temporaryFeatureEnabled && (
           <TooltipWrapper
             title={t('temporary_queue', {
               ns: 'tooltip',
@@ -3981,7 +4050,7 @@ const TableManager = forwardRef(function TableManager({
           setRequestType(null);
         }}
         onSubmit={handleSubmit}
-        onSaveTemporary={supportsTemporary ? handleSaveTemporary : null}
+        onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
@@ -4018,8 +4087,9 @@ const TableManager = forwardRef(function TableManager({
         onRowsChange={handleRowsChange}
         autoFillSession={autoFillSession}
         scope="forms"
-        allowTemporarySave={supportsTemporary}
+        allowTemporarySave={canCreateTemporary}
         isAdding={isAdding}
+        canPost={canPostTransactions}
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -4076,10 +4146,10 @@ const TableManager = forwardRef(function TableManager({
         title={t('temporary_modal_title', 'Temporary submissions')}
         width="70vw"
       >
-        {!supportsTemporary && (
+        {!temporaryFeatureEnabled && (
           <p>{t('temporary_not_supported', 'Temporary submissions are not available for this form.')}</p>
         )}
-        {supportsTemporary && (
+        {temporaryFeatureEnabled && (
           <div>
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <button

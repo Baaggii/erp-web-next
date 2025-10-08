@@ -70,14 +70,21 @@ async function ensureTemporaryTable(conn = pool) {
 
 async function insertNotification(
   conn,
-  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'transaction_temporary' },
+  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'request' },
 ) {
   const recipient = normalizeEmpId(recipientEmpId);
   if (!recipient) return;
   await conn.query(
     `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [companyId ?? null, recipient, type, relatedId ?? null, message ?? '', createdBy ?? null],
+    [
+      companyId ?? null,
+      recipient,
+      type ?? 'request',
+      relatedId ?? null,
+      message ?? '',
+      createdBy ?? null,
+    ],
   );
 }
 
@@ -138,10 +145,11 @@ export async function createTemporarySubmission({
         emp_id: normalizedCreator,
         table_name: tableName,
         record_id: temporaryId,
-        action: 'temporary_save',
+        action: 'create',
         details: {
           formName: formName ?? null,
           configName: configName ?? null,
+          temporarySubmission: true,
         },
         company_id: companyId ?? null,
       },
@@ -154,6 +162,7 @@ export async function createTemporarySubmission({
         createdBy: normalizedCreator,
         relatedId: temporaryId,
         message: `Temporary submission pending review for ${tableName}`,
+        type: 'request',
       });
     }
     await conn.query('COMMIT');
@@ -230,6 +239,43 @@ export async function listTemporarySubmissions({
     params,
   );
   return rows.map(mapTemporaryRow);
+}
+
+export async function listReviewerTemporaryForms(empId, companyId, { status = 'pending' } = {}) {
+  await ensureTemporaryTable();
+  const normalized = normalizeEmpId(empId);
+  if (!normalized) {
+    return { tables: [], configs: [] };
+  }
+  const conditions = ['plan_senior_empid = ?'];
+  const params = [normalized];
+  if (companyId != null) {
+    conditions.push('(company_id = ? OR company_id IS NULL)');
+    params.push(companyId);
+  }
+  if (status) {
+    conditions.push('status = ?');
+    params.push(status);
+  }
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  try {
+    const [rows] = await pool.query(
+      `SELECT DISTINCT table_name, config_name FROM \`${TEMP_TABLE}\` ${where}`,
+      params,
+    );
+    const tables = [];
+    const configs = [];
+    rows.forEach((row) => {
+      if (row?.table_name) tables.push(row.table_name);
+      if (row?.config_name) configs.push(row.config_name);
+    });
+    return { tables, configs };
+  } catch (err) {
+    if (err?.code === 'ER_NO_SUCH_TABLE') {
+      return { tables: [], configs: [] };
+    }
+    throw err;
+  }
 }
 
 export async function getTemporarySummary(empId, companyId) {
@@ -315,10 +361,11 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
         emp_id: normalizedReviewer,
         table_name: row.table_name,
         record_id: id,
-        action: 'temporary_promote',
+        action: 'approve',
         details: {
           promotedRecordId: promotedId,
           formName: row.form_name ?? null,
+          temporaryAction: 'promote',
         },
         company_id: row.company_id ?? null,
       },
@@ -330,6 +377,7 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `Temporary submission for ${row.table_name} approved`,
+      type: 'response',
     });
     await insertNotification(conn, {
       companyId: row.company_id,
@@ -337,6 +385,7 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `You approved temporary submission #${id} for ${row.table_name}`,
+      type: 'response',
     });
     await conn.query('COMMIT');
     if (io) {
@@ -407,8 +456,8 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
         emp_id: normalizedReviewer,
         table_name: row.table_name,
         record_id: id,
-        action: 'temporary_reject',
-        details: { formName: row.form_name ?? null },
+        action: 'decline',
+        details: { formName: row.form_name ?? null, temporaryAction: 'reject' },
         company_id: row.company_id ?? null,
       },
       conn,
@@ -419,6 +468,7 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `Temporary submission for ${row.table_name} rejected`,
+      type: 'response',
     });
     await insertNotification(conn, {
       companyId: row.company_id,
@@ -426,6 +476,7 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `You rejected temporary submission #${id} for ${row.table_name}`,
+      type: 'response',
     });
     await conn.query('COMMIT');
     if (io) {
