@@ -23,21 +23,6 @@ function normalizeFormConfig(info = {}) {
 
   const allowedBranches = toArray(info.allowedBranches).map((v) => String(v));
   const allowedDepartments = toArray(info.allowedDepartments).map((v) => String(v));
-  let temporaryAllowedBranches = toArray(info.temporaryAllowedBranches).map((v) =>
-    String(v),
-  );
-  let temporaryAllowedDepartments = toArray(info.temporaryAllowedDepartments).map((v) =>
-    String(v),
-  );
-
-  if (temporaryFlag) {
-    if (temporaryAllowedBranches.length === 0 && allowedBranches.length > 0) {
-      temporaryAllowedBranches = [...allowedBranches];
-    }
-    if (temporaryAllowedDepartments.length === 0 && allowedDepartments.length > 0) {
-      temporaryAllowedDepartments = [...allowedDepartments];
-    }
-  }
 
   return {
     visibleFields: toArray(info.visibleFields),
@@ -69,8 +54,6 @@ function normalizeFormConfig(info = {}) {
     detectFields: toArray(info.detectFields),
     allowedBranches,
     allowedDepartments,
-    temporaryAllowedBranches,
-    temporaryAllowedDepartments,
     procedures: toArray(info.procedures),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
@@ -370,12 +353,6 @@ export default function FormsManagement() {
       allowedDepartments: config.allowedDepartments
         .map((d) => Number(d))
         .filter((d) => !Number.isNaN(d)),
-      temporaryAllowedBranches: config.temporaryAllowedBranches
-        .map((b) => Number(b))
-        .filter((b) => !Number.isNaN(b)),
-      temporaryAllowedDepartments: config.temporaryAllowedDepartments
-        .map((d) => Number(d))
-        .filter((d) => !Number.isNaN(d)),
       transactionTypeValue: config.transactionTypeValue
         ? String(config.transactionTypeValue)
         : '',
@@ -387,10 +364,6 @@ export default function FormsManagement() {
     );
     cfg.allowTemporarySubmission = temporaryFlag;
     cfg.supportsTemporarySubmission = temporaryFlag;
-    if (!temporaryFlag) {
-      cfg.temporaryAllowedBranches = [];
-      cfg.temporaryAllowedDepartments = [];
-    }
     if (cfg.transactionTypeField && cfg.transactionTypeValue) {
       cfg.defaultValues = {
         ...cfg.defaultValues,
@@ -682,29 +655,11 @@ export default function FormsManagement() {
                 checked={Boolean(config.allowTemporarySubmission)}
                 onChange={(e) => {
                   const checked = e.target.checked;
-                  setConfig((c) => {
-                    const next = {
-                      ...c,
-                      allowTemporarySubmission: checked,
-                      supportsTemporarySubmission: checked,
-                    };
-                    if (checked) {
-                      if (
-                        (!c.temporaryAllowedBranches || c.temporaryAllowedBranches.length === 0) &&
-                        c.allowedBranches?.length
-                      ) {
-                        next.temporaryAllowedBranches = [...c.allowedBranches];
-                      }
-                      if (
-                        (!c.temporaryAllowedDepartments ||
-                          c.temporaryAllowedDepartments.length === 0) &&
-                        c.allowedDepartments?.length
-                      ) {
-                        next.temporaryAllowedDepartments = [...c.allowedDepartments];
-                      }
-                    }
-                    return next;
-                  });
+                  setConfig((c) => ({
+                    ...c,
+                    allowTemporarySubmission: checked,
+                    supportsTemporarySubmission: checked,
+                  }));
                 }}
               />
               <span>

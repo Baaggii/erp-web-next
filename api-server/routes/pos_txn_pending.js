@@ -1,12 +1,21 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { listPending, getPending, savePending, deletePending } from '../services/posTransactionPending.js';
+import {
+  listPending,
+  getPending,
+  savePending,
+  deletePending,
+} from '../services/posTransactionPending.js';
+import { resolveScopedCompanyId } from '../utils/requestScopes.js';
 
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const companyId = resolveScopedCompanyId(
+      req.query.companyId,
+      req.user.companyId,
+    );
     const { id, name } = req.query;
     if (id) {
       const rec = await getPending(id, companyId);
@@ -25,7 +34,10 @@ router.get('/', requireAuth, async (req, res, next) => {
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const companyId = resolveScopedCompanyId(
+      req.query.companyId,
+      req.user.companyId,
+    );
     const { id, name, data, masterId, session } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
     const info = { ...(session || {}), employeeId: req.user.empid };
@@ -43,7 +55,10 @@ router.post('/', requireAuth, async (req, res, next) => {
 
 router.delete('/', requireAuth, async (req, res, next) => {
   try {
-    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const companyId = resolveScopedCompanyId(
+      req.query.companyId,
+      req.user.companyId,
+    );
     const { id } = req.query;
     if (!id) return res.status(400).json({ message: 'id is required' });
     await deletePending(id, companyId);

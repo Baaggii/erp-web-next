@@ -60,8 +60,7 @@ export default function FormsIndex() {
           if (!info || typeof info !== 'object') return;
           const key = info.moduleKey || 'forms';
           if (!descendantKeys.includes(key)) return;
-          const hasAccess = hasTransactionFormAccess(info, branchId, departmentId);
-          if (!hasAccess && !info?.temporaryReviewer) return;
+          if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
           if (
             perms &&
             Object.prototype.hasOwnProperty.call(perms, key) &&

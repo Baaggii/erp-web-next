@@ -474,10 +474,19 @@ async function requestTranslation(text, lang, metadata, options = {}) {
   if (aiDisabled) return null;
   try {
     const prompt = buildPrompt(text, lang, metadata, options);
+    const payload = {
+      prompt,
+      task: 'translation',
+      lang,
+      metadata,
+      key: metadata?.key || options.key,
+      attempt: options.attempt,
+      model: options.model,
+    };
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(payload),
       skipErrorToast: true,
       skipLoader: true,
     });
@@ -575,7 +584,11 @@ async function requestValidationViaPrompt(payload) {
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({
+        prompt,
+        task: 'validation',
+        lang: payload?.lang,
+      }),
       skipErrorToast: true,
       skipLoader: true,
     });
@@ -724,7 +737,13 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
   };
 }
 
-export default async function translateWithCache(lang, key, fallback, metadata) {
+export default async function translateWithCache(
+  lang,
+  key,
+  fallback,
+  metadata,
+  options = {},
+) {
   const entryType = metadata?.type;
   const isTooltip = entryType === 'tooltip';
   const locales = isTooltip ? await loadTooltipLocale(lang) : await loadLocale(lang);
@@ -840,6 +859,8 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
         attempt,
         feedback: buildRetryFeedback(previousValidation),
         previousCandidates: seenCandidates.slice(),
+        model: options?.model,
+        key: normalizedMetadata?.key || key,
       });
     } catch (err) {
       if (err.rateLimited) throw err;
