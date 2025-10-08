@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   hasPosTransactionAccess,
   filterPosConfigsByAccess,
+  hasPosConfigReadAccess,
+  pickScopeValue,
 } from '../../api-server/services/posTransactionConfig.js';
 
 test('hasPosTransactionAccess allows when no restrictions are set', () => {
@@ -53,4 +55,39 @@ test('filterPosConfigsByAccess returns only permitted configurations', () => {
   const filtered = filterPosConfigsByAccess(configs, 1, 20);
   assert.deepEqual(Object.keys(filtered).sort(), ['Alpha', 'Beta', 'Temp']);
   assert.ok(!filtered.Gamma);
+});
+
+test('pickScopeValue prefers request value when provided', () => {
+  assert.equal(pickScopeValue('5', 3), '5');
+  assert.equal(pickScopeValue(7, 3), 7);
+  assert.equal(pickScopeValue('  ', 3), 3);
+  assert.equal(pickScopeValue(undefined, 4), 4);
+  assert.equal(pickScopeValue(null, 4), 4);
+  assert.equal(pickScopeValue(undefined, null), undefined);
+});
+
+test('hasPosConfigReadAccess grants access for permitted permissions', () => {
+  assert.equal(hasPosConfigReadAccess({ permissions: { system_settings: true } }, {}), true);
+  assert.equal(
+    hasPosConfigReadAccess({}, { permissions: { system_settings: true } }),
+    true,
+  );
+  assert.equal(
+    hasPosConfigReadAccess({}, { api: { '/api/pos_txn_config': true } }),
+    true,
+  );
+  assert.equal(hasPosConfigReadAccess({}, { pos_transaction_management: true }), true);
+  assert.equal(hasPosConfigReadAccess({}, { pos_transactions: true }), true);
+});
+
+test('hasPosConfigReadAccess denies when no permissions granted', () => {
+  assert.equal(hasPosConfigReadAccess({}, {}), false);
+  assert.equal(
+    hasPosConfigReadAccess({ permissions: { system_settings: false } }, {}),
+    false,
+  );
+  assert.equal(
+    hasPosConfigReadAccess({}, { permissions: { system_settings: false } }),
+    false,
+  );
 });

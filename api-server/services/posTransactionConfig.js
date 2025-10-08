@@ -54,6 +54,36 @@ function normalizeStoredAccessList(list) {
   return normalized;
 }
 
+export function pickScopeValue(requestValue, sessionValue) {
+  if (requestValue !== undefined && requestValue !== null) {
+    if (typeof requestValue === 'string') {
+      if (requestValue.trim() !== '') return requestValue;
+    } else {
+      return requestValue;
+    }
+  }
+  if (sessionValue !== undefined && sessionValue !== null) {
+    return sessionValue;
+  }
+  return undefined;
+}
+
+export function hasPosConfigReadAccess(session = {}, actions = {}) {
+  const sessionPerms = session?.permissions || {};
+  if (sessionPerms.system_settings) return true;
+
+  const actionPermissions = actions?.permissions || {};
+  if (actionPermissions.system_settings) return true;
+
+  const apiPermissions = actions?.api || {};
+  if (apiPermissions['/api/pos_txn_config']) return true;
+
+  if (actions.pos_transaction_management) return true;
+  if (actions.pos_transactions) return true;
+
+  return false;
+}
+
 export function hasPosTransactionAccess(config, branchId, departmentId) {
   if (!config || typeof config !== 'object') return true;
 
