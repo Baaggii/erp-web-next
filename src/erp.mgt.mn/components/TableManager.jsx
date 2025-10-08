@@ -447,7 +447,7 @@ const TableManager = forwardRef(function TableManager({
   }, [branch, department, formConfig]);
 
   const refreshTemporarySummary = useCallback(async () => {
-    if (!supportsTemporary) {
+    if (!temporaryFeatureEnabled) {
       setTemporarySummary(null);
       setTemporaryScope('created');
       return;
@@ -467,7 +467,7 @@ const TableManager = forwardRef(function TableManager({
     } catch {
       setTemporarySummary((prev) => prev || { createdPending: 0, reviewPending: 0 });
     }
-  }, [supportsTemporary]);
+  }, [temporaryFeatureEnabled]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
@@ -2303,7 +2303,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSaveTemporary(submission) {
-    if (!supportsTemporary) return false;
+    if (!canCreateTemporary) return false;
     if (!submission || typeof submission !== 'object') return false;
     const normalizedValues = submission.values || submission;
     const rawOverride = submission.rawValues && typeof submission.rawValues === 'object'
@@ -2686,7 +2686,7 @@ const TableManager = forwardRef(function TableManager({
 
   const fetchTemporaryList = useCallback(
     async (scopeOverride) => {
-      if (!supportsTemporary) return;
+      if (!temporaryFeatureEnabled) return;
       const scope = scopeOverride || temporaryScope;
       const params = new URLSearchParams();
       params.set('scope', scope);
@@ -2708,11 +2708,11 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryLoading(false);
       }
     },
-    [supportsTemporary, table, temporaryScope],
+    [temporaryFeatureEnabled, table, temporaryScope],
   );
 
   async function promoteTemporary(id) {
-    if (!supportsTemporary) return;
+    if (!temporaryFeatureEnabled) return;
     if (!window.confirm(t('promote_temporary_confirm', 'Promote temporary record?')))
       return;
     try {
@@ -2736,7 +2736,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function rejectTemporary(id) {
-    if (!supportsTemporary) return;
+    if (!temporaryFeatureEnabled) return;
     const notes = window.prompt(t('temporary_reject_reason', 'Enter rejection notes'));
     if (!notes || !notes.trim()) return;
     try {
@@ -3071,7 +3071,7 @@ const TableManager = forwardRef(function TableManager({
             Refresh Table
           </button>
         </TooltipWrapper>
-        {supportsTemporary && (
+        {temporaryFeatureEnabled && (
           <TooltipWrapper
             title={t('temporary_queue', {
               ns: 'tooltip',
@@ -4071,7 +4071,7 @@ const TableManager = forwardRef(function TableManager({
           setRequestType(null);
         }}
         onSubmit={handleSubmit}
-        onSaveTemporary={supportsTemporary ? handleSaveTemporary : null}
+        onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
@@ -4108,7 +4108,7 @@ const TableManager = forwardRef(function TableManager({
         onRowsChange={handleRowsChange}
         autoFillSession={autoFillSession}
         scope="forms"
-        allowTemporarySave={supportsTemporary}
+        allowTemporarySave={canCreateTemporary}
         isAdding={isAdding}
         canPost={canPostTransactions}
       />
@@ -4167,10 +4167,10 @@ const TableManager = forwardRef(function TableManager({
         title={t('temporary_modal_title', 'Temporary submissions')}
         width="70vw"
       >
-        {!supportsTemporary && (
+        {!temporaryFeatureEnabled && (
           <p>{t('temporary_not_supported', 'Temporary submissions are not available for this form.')}</p>
         )}
-        {supportsTemporary && (
+        {temporaryFeatureEnabled && (
           <div>
             <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <button
