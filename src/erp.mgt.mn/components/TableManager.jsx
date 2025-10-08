@@ -2374,7 +2374,24 @@ const TableManager = forwardRef(function TableManager({
         credentials: 'include',
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error('Failed');
+      if (!res.ok) {
+        let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
+        try {
+          const data = await res.json();
+          if (data?.message) {
+            errorMessage = `${errorMessage}: ${data.message}`;
+          }
+        } catch {
+          try {
+            const text = await res.text();
+            if (text) {
+              errorMessage = `${errorMessage}: ${text}`;
+            }
+          } catch {}
+        }
+        addToast(errorMessage, 'error');
+        return false;
+      }
       addToast(t('temporary_saved', 'Saved as temporary draft'), 'success');
       setShowForm(false);
       setEditing(null);
