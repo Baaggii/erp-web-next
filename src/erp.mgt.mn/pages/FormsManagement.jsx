@@ -973,6 +973,94 @@ export default function FormsManagement() {
                 None
               </button>
             </label>
+            {config.allowTemporarySubmission && (
+              <>
+                <label style={{ marginLeft: '1rem' }}>
+                  Temporary allowed branches:{' '}
+                  <select
+                    multiple
+                    size={8}
+                    value={config.temporaryAllowedBranches}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        temporaryAllowedBranches: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {branchOptions.map((b) => (
+                      <option key={b.value} value={b.value}>
+                        {b.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({
+                        ...c,
+                        temporaryAllowedBranches: branchOptions.map((b) => b.value),
+                      }))
+                    }
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({ ...c, temporaryAllowedBranches: [] }))
+                    }
+                  >
+                    None
+                  </button>
+                </label>
+                <label style={{ marginLeft: '1rem' }}>
+                  Temporary allowed departments:{' '}
+                  <select
+                    multiple
+                    size={8}
+                    value={config.temporaryAllowedDepartments}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        temporaryAllowedDepartments: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {deptOptions.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({
+                        ...c,
+                        temporaryAllowedDepartments: deptOptions.map((d) => d.value),
+                      }))
+                    }
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({ ...c, temporaryAllowedDepartments: [] }))
+                    }
+                  >
+                    None
+                  </button>
+                </label>
+              </>
+            )}
             {procedureOptions.length > 0 && (
               <label style={{ marginLeft: '1rem' }}>
                 Procedures:{' '}

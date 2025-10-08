@@ -93,6 +93,16 @@ function parseEntry(raw = {}) {
     allowedDepartments: Array.isArray(raw.allowedDepartments)
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    temporaryAllowedBranches: Array.isArray(raw.temporaryAllowedBranches)
+      ? raw.temporaryAllowedBranches
+          .map((v) => Number(v))
+          .filter((v) => !Number.isNaN(v))
+      : [],
+    temporaryAllowedDepartments: Array.isArray(raw.temporaryAllowedDepartments)
+      ? raw.temporaryAllowedDepartments
+          .map((v) => Number(v))
+          .filter((v) => !Number.isNaN(v))
+      : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
     procedures: arrify(raw.procedures || raw.procedure),
     supportsTemporarySubmission: temporaryFlag,
@@ -187,6 +197,8 @@ export async function setFormConfig(
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
+    temporaryAllowedBranches = [],
+    temporaryAllowedDepartments = [],
     moduleKey: parentModuleKey = '',
     moduleLabel,
     userIdField,
@@ -227,6 +239,12 @@ export async function setFormConfig(
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
+  const tab = Array.isArray(temporaryAllowedBranches)
+    ? temporaryAllowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+    : [];
+  const tad = Array.isArray(temporaryAllowedDepartments)
+    ? temporaryAllowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+    : [];
   const { cfg } = await readConfig(companyId);
   if (!cfg[table]) cfg[table] = {};
   cfg[table][name] = {
@@ -261,8 +279,13 @@ export async function setFormConfig(
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
+    temporaryAllowedBranches: tab,
+    temporaryAllowedDepartments: tad,
     procedures: arrify(procedures),
     allowTemporarySubmission: Boolean(
+      supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
+    ),
+    supportsTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),
   };
