@@ -98,6 +98,19 @@ function resolveWithMap(alias, map = {}) {
   return strAlias;
 }
 
+function resolveScopeId(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'object') {
+    if (value.id !== undefined && value.id !== null) return value.id;
+    if (value.branch_id !== undefined && value.branch_id !== null)
+      return value.branch_id;
+    if (value.department_id !== undefined && value.department_id !== null)
+      return value.department_id;
+    if (value.value !== undefined && value.value !== null) return value.value;
+  }
+  return value;
+}
+
 const MAX_WIDTH = ch(40);
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -418,49 +431,38 @@ const TableManager = forwardRef(function TableManager({
     return () => window.removeEventListener('click', hideMenu);
   }, []);
 
-  const supportsTemporary = useMemo(() => {
-    if (!formConfig) return false;
-    const flag =
-      formConfig.supportsTemporarySubmission ??
-      formConfig.allowTemporarySubmission ??
-      false;
-    if (!flag) return false;
+  const branchScopeId = useMemo(() => resolveScopeId(branch), [branch]);
+  const departmentScopeId = useMemo(
+    () => resolveScopeId(department),
+    [department],
+  );
 
-    const branchRules = Array.isArray(formConfig.temporaryAllowedBranches)
-      ? formConfig.temporaryAllowedBranches
-      : [];
-    const deptRules = Array.isArray(formConfig.temporaryAllowedDepartments)
-      ? formConfig.temporaryAllowedDepartments
-      : [];
+  const accessEvaluation = useMemo(
+    () =>
+      evaluateTransactionFormAccess(
+        formConfig,
+        branchScopeId,
+        departmentScopeId,
+      ),
+    [formConfig, branchScopeId, departmentScopeId],
+  );
 
-    const resolveId = (value) => {
-      if (value == null) return null;
-      if (typeof value === 'object') {
-        if (value.id != null) return value.id;
-        if (value.branch_id != null) return value.branch_id;
-        if (value.department_id != null) return value.department_id;
-        if (value.value != null) return value.value;
-      }
-      return value;
-    };
+  const supportsTemporary = Boolean(accessEvaluation.allowTemporary);
+  const canPostTransactions =
+    accessEvaluation.canPost === undefined
+      ? true
+      : Boolean(accessEvaluation.canPost);
 
-    const branchId = resolveId(branch);
-    const departmentId = resolveId(department);
-
-    if (branchRules.length > 0) {
-      if (branchId == null) return false;
-      const allowed = branchRules.map((v) => String(v));
-      if (!allowed.includes(String(branchId))) return false;
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.canPostTransactions = canPostTransactions;
     }
+  }, [canPostTransactions]);
 
-    if (deptRules.length > 0) {
-      if (departmentId == null) return false;
-      const allowed = deptRules.map((v) => String(v));
-      if (!allowed.includes(String(departmentId))) return false;
-    }
-
-    return true;
-  }, [branch, department, formConfig]);
+  useEffect(() => {
+    if (!externalTemporaryTrigger) return;
+    setQueuedTemporaryTrigger(externalTemporaryTrigger);
+  }, [externalTemporaryTrigger]);
 
   useEffect(() => {
     if (!externalTemporaryTrigger) return;
