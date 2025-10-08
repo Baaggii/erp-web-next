@@ -26,10 +26,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       const { config, isDefault } = await getConfigsByTable(table, companyId);
       res.json({ ...config, isDefault });
     } else {
-      const { names, isDefault } = await listTransactionNames(
-        { moduleKey, branchId, departmentId, empId: req.user.empid },
-        companyId,
-      );
+      const { names, isDefault } = await listTransactionNames({ moduleKey, branchId, departmentId }, companyId);
       res.json({ ...names, isDefault });
     }
   } catch (err) {
