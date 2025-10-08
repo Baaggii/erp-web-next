@@ -4,6 +4,7 @@ import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import { useModules } from '../hooks/useModules.js';
 
 const SECTION_LIMIT = 5;
 
@@ -31,6 +32,7 @@ export default function NotificationsPage() {
   const { user, session } = useAuth();
   const { t } = useContext(LangContext);
   const navigate = useNavigate();
+  const modules = useModules();
   const [reportState, setReportState] = useState({
     incoming: [],
     outgoing: [],
@@ -419,12 +421,58 @@ export default function NotificationsPage() {
     [navigate],
   );
 
-  const openTemporary = useCallback(
-    (scope) => {
+  const moduleSlugMap = useMemo(() => {
+    const map = {};
+    modules.forEach((mod) => {
+      if (!mod || !mod.module_key) return;
+      const key = String(mod.module_key).trim();
+      if (!key) return;
+      map[key] = key.replace(/_/g, '-');
+    });
+    if (!map.finance_transactions) {
+      map.finance_transactions = 'finance-transactions';
+    }
+    if (!map.forms) {
+      map.forms = 'forms';
+    }
+    return map;
+  }, [modules]);
+
+  const openTemporaryEntry = useCallback(
+    (entry, scope) => {
       handleTemporarySeen(scope);
-      navigate('/forms');
+      if (!entry || typeof entry !== 'object') {
+        navigate(`/${moduleSlugMap.forms || 'forms'}`);
+        return;
+      }
+      const moduleKeyRaw =
+        entry.moduleKey || entry.module_key || entry.module || 'finance_transactions';
+      const moduleKey = String(moduleKeyRaw || '').trim() || 'finance_transactions';
+      const slugForModule = moduleSlugMap[moduleKey];
+      const slug = slugForModule || moduleSlugMap.forms || 'forms';
+      const params = new URLSearchParams();
+      const configName = entry.configName || entry.formName || '';
+      if (configName) params.set(`name_${moduleKey}`, configName);
+      params.set('temporaryOpen', '1');
+      params.set('temporaryScope', scope === 'created' ? 'created' : 'review');
+      if (entry.id != null) params.set('temporaryId', String(entry.id));
+      if (entry.tableName) params.set('temporaryTable', entry.tableName);
+      if (configName && !params.has('temporaryConfig')) {
+        params.set('temporaryConfig', configName);
+      }
+      params.set('temporaryModule', moduleKey);
+      navigate(`/${slug}?${params.toString()}`);
     },
-    [handleTemporarySeen, navigate],
+    [handleTemporarySeen, moduleSlugMap, navigate],
+  );
+
+  const openTemporaryScope = useCallback(
+    (scope) => {
+      const list = scope === 'review' ? temporaryState.review : temporaryState.created;
+      const firstEntry = Array.isArray(list) && list.length > 0 ? list[0] : null;
+      openTemporaryEntry(firstEntry, scope);
+    },
+    [openTemporaryEntry, temporaryState.created, temporaryState.review],
   );
 
   const renderRequestItem = (req, tab) => {
@@ -586,6 +634,16 @@ export default function NotificationsPage() {
       <div style={styles.listBody}>
         <div style={styles.listTitle}>{entry.formName || entry.tableName || entry.id}</div>
         <div style={styles.listMeta}>
+          {entry.moduleKey && (
+            <span>
+              {t('notifications_module', 'Module')}: {entry.moduleKey}
+            </span>
+          )}
+          {entry.configName && (
+            <span>
+              {t('notifications_form_key', 'Form key')}: {entry.configName}
+            </span>
+          )}
           {entry.createdBy && (
             <span>
               {t('notifications_created_by', 'Created by')}: {entry.createdBy}
@@ -603,8 +661,8 @@ export default function NotificationsPage() {
           )}
         </div>
       </div>
-      <button style={styles.listAction} onClick={() => openTemporary(scope)}>
-        {t('notifications_open_form', 'Open forms')}
+      <button style={styles.listAction} onClick={() => openTemporaryEntry(entry, scope)}>
+        {t('notifications_review_now', 'Review now')}
       </button>
     </li>
   );
@@ -792,7 +850,7 @@ export default function NotificationsPage() {
                   {temporaryState.review.map((entry) => renderTemporaryItem(entry, 'review'))}
                 </ul>
               )}
-              <button style={styles.listAction} onClick={() => openTemporary('review')}>
+              <button style={styles.listAction} onClick={() => openTemporaryScope('review')}>
                 {t('notifications_open_review', 'Open review workspace')}
               </button>
             </div>
@@ -805,7 +863,7 @@ export default function NotificationsPage() {
                   {temporaryState.created.map((entry) => renderTemporaryItem(entry, 'created'))}
                 </ul>
               )}
-              <button style={styles.listAction} onClick={() => openTemporary('created')}>
+              <button style={styles.listAction} onClick={() => openTemporaryScope('created')}>
                 {t('notifications_open_drafts', 'Open drafts workspace')}
               </button>
             </div>
