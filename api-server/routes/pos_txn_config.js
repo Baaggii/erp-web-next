@@ -7,14 +7,46 @@ import {
   deleteConfig,
   filterPosConfigsByAccess,
   hasPosTransactionAccess,
+  hasPosConfigReadAccess,
+  pickScopeValue,
 } from '../services/posTransactionConfig.js';
+import { getEmploymentSession, getUserLevelActions } from '../../db/index.js';
 
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { name, branchId, departmentId } = req.query;
+    const { name } = req.query;
+
+    const session =
+      req.session && Number(req.session?.company_id) === companyId
+        ? req.session
+        : await getEmploymentSession(req.user.empid, companyId);
+    const actions = await getUserLevelActions(req.user.userLevel, companyId);
+
+    if (!hasPosConfigReadAccess(session, actions)) {
+      res.status(403).json({ message: 'Access denied' });
+      return;
+    }
+
+    const sessionBranch =
+      session?.branch_id ??
+      session?.branchId ??
+      req.session?.branch_id ??
+      req.session?.branchId;
+    const sessionDepartment =
+      session?.department_id ??
+      session?.departmentId ??
+      req.session?.department_id ??
+      req.session?.departmentId;
+
+    const branchId = pickScopeValue(req.query.branchId, sessionBranch);
+    const departmentId = pickScopeValue(
+      req.query.departmentId,
+      sessionDepartment,
+    );
+
     if (name) {
       const { config, isDefault } = await getConfig(name, companyId);
       if (!config) {
