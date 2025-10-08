@@ -28,6 +28,7 @@ import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   applyGeneratedColumnEvaluators,
   createGeneratedColumnEvaluator,
@@ -397,14 +398,12 @@ const TableManager = forwardRef(function TableManager({
     return () => window.removeEventListener('click', hideMenu);
   }, []);
 
-  const supportsTemporary = useMemo(() => {
-    if (!formConfig) return false;
-    const flag =
-      formConfig.supportsTemporarySubmission ??
-      formConfig.allowTemporarySubmission ??
-      false;
-    return Boolean(flag);
-  }, [formConfig]);
+  const accessInfo = useMemo(
+    () => evaluateTransactionFormAccess(formConfig, branch, department),
+    [branch, department, formConfig],
+  );
+
+  const supportsTemporary = Boolean(accessInfo?.temporary);
 
   const refreshTemporarySummary = useCallback(async () => {
     if (!supportsTemporary) {
@@ -2044,6 +2043,16 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSubmit(values) {
+    if (!accessInfo?.general) {
+      addToast(
+        t(
+          'temporary_post_not_allowed',
+          'You do not have permission to post this transaction.',
+        ),
+        'error',
+      );
+      return false;
+    }
     const columns = new Set(allColumns);
     const merged = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
@@ -2256,6 +2265,14 @@ const TableManager = forwardRef(function TableManager({
     if (!supportsTemporary) return false;
     if (!submission || typeof submission !== 'object') return false;
     const normalizedValues = submission.values || submission;
+    const rawOverride = submission.rawValues && typeof submission.rawValues === 'object'
+      ? submission.rawValues
+      : null;
+    const gridRows = Array.isArray(submission.normalizedRows)
+      ? submission.normalizedRows
+      : Array.isArray(normalizedValues?.rows)
+      ? normalizedValues.rows
+      : null;
     const merged = { ...(editing || {}) };
     Object.entries(normalizedValues).forEach(([k, v]) => {
       merged[k] = v;
@@ -2291,16 +2308,31 @@ const TableManager = forwardRef(function TableManager({
       }
     });
 
+    const payload = {
+      values: normalizedValues,
+      submittedAt: new Date().toISOString(),
+    };
+    if (gridRows) {
+      payload.gridRows = gridRows;
+      const currentValues =
+        payload.values && typeof payload.values === 'object' && !Array.isArray(payload.values)
+          ? payload.values
+          : {};
+      if (!Array.isArray(currentValues.rows)) {
+        payload.values = { ...currentValues, rows: gridRows };
+      }
+      payload.rowCount = gridRows.length;
+    }
+    if (submission.rawRows) {
+      payload.rawRows = submission.rawRows;
+    }
     const body = {
       table,
       formName: formName || formConfig?.moduleLabel || null,
       configName: formName || null,
       moduleKey: formConfig?.moduleKey || null,
-      payload: {
-        values: normalizedValues,
-        submittedAt: new Date().toISOString(),
-      },
-      rawValues: merged,
+      payload,
+      rawValues: rawOverride || merged,
       cleanedValues: cleaned,
       tenant: {
         company_id: company ?? null,
@@ -2316,7 +2348,24 @@ const TableManager = forwardRef(function TableManager({
         credentials: 'include',
         body: JSON.stringify(body),
       });
-      if (!res.ok) throw new Error('Failed');
+      if (!res.ok) {
+        let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
+        try {
+          const data = await res.json();
+          if (data?.message) {
+            errorMessage = `${errorMessage}: ${data.message}`;
+          }
+        } catch {
+          try {
+            const text = await res.text();
+            if (text) {
+              errorMessage = `${errorMessage}: ${text}`;
+            }
+          } catch {}
+        }
+        addToast(errorMessage, 'error');
+        return false;
+      }
       addToast(t('temporary_saved', 'Saved as temporary draft'), 'success');
       setShowForm(false);
       setEditing(null);
@@ -4020,6 +4069,7 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         allowTemporarySave={supportsTemporary}
         isAdding={isAdding}
+        canPost={Boolean(accessInfo?.general)}
       />
       <CascadeDeleteModal
         visible={showCascade}
