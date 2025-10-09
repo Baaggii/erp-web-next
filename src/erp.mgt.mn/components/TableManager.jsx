@@ -329,6 +329,7 @@ const TableManager = forwardRef(function TableManager({
   }, []);
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
+  const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
   const temporaryRowRefs = useRef(new Map());
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
@@ -3250,24 +3251,193 @@ const TableManager = forwardRef(function TableManager({
     });
   });
 
+  const isPlainValueObject = useCallback(
+    (value) =>
+      Boolean(
+        value &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          !(value instanceof Date),
+      ),
+    [],
+  );
+
+  const parseMaybeJson = useCallback((value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    const startsWith = trimmed[0];
+    const endsWith = trimmed[trimmed.length - 1];
+    if (
+      (startsWith === '{' && endsWith === '}') ||
+      (startsWith === '[' && endsWith === ']') ||
+      (startsWith === '"' && endsWith === '"')
+    ) {
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  }, []);
+
+  const stringifyPreviewCell = useCallback((value) => {
+    if (value === undefined || value === null || value === '') return '—';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (value instanceof Date) return value.toISOString();
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }, []);
+
+  const temporaryValueButtonStyle = useMemo(
+    () => ({
+      padding: '0.15rem 0.4rem',
+      fontSize: '0.7rem',
+      borderRadius: '4px',
+      border: '1px solid #3b82f6',
+      backgroundColor: '#eff6ff',
+      color: '#1d4ed8',
+      cursor: 'pointer',
+    }),
+    [],
+  );
+
+  const openTemporaryPreview = useCallback(
+    (column, value) => {
+      let structured = value;
+      if (typeof structured === 'string') {
+        structured = parseMaybeJson(structured);
+      }
+      let rows = [];
+      if (Array.isArray(structured)) {
+        rows = structured.map((item, idx) => {
+          if (isPlainValueObject(item)) return item;
+          if (Array.isArray(item)) {
+            const nested = {};
+            item.forEach((entry, entryIdx) => {
+              nested[`Value ${entryIdx + 1}`] = entry;
+            });
+            return nested;
+          }
+          return { Value: item };
+        });
+      } else if (isPlainValueObject(structured)) {
+        rows = [structured];
+      } else {
+        rows = [{ Value: structured }];
+      }
+
+      const columnKeys = new Set();
+      rows.forEach((row) => {
+        if (!row || typeof row !== 'object') return;
+        Object.keys(row).forEach((key) => columnKeys.add(key));
+      });
+      if (columnKeys.size === 0) {
+        columnKeys.add('Value');
+      }
+      const columnList = Array.from(columnKeys);
+      const normalizedRows = rows.length > 0 ? rows : [{ Value: structured }];
+
+      setTemporaryValuePreview({
+        title: labels[column] || column,
+        columns: columnList,
+        rows: normalizedRows.map((row) => {
+          const normalized = {};
+          columnList.forEach((key) => {
+            const cellValue = row && typeof row === 'object' ? row[key] : undefined;
+            normalized[key] = stringifyPreviewCell(cellValue);
+          });
+          return normalized;
+        }),
+      });
+    },
+    [labels, parseMaybeJson, stringifyPreviewCell, isPlainValueObject],
+  );
+
   const formatTemporaryFieldValue = useCallback(
     (column, rawValue) => {
       if (rawValue === undefined || rawValue === null || rawValue === '') return '—';
-      if (relationOpts[column]) {
-        const mapped = labelMap[column]?.[rawValue];
-        if (mapped !== undefined) return mapped;
-      }
-      if (column === 'TotalCur' || totalCurrencySet.has(column)) {
-        return currencyFmt.format(Number(rawValue || 0));
-      }
-      if (typeof rawValue === 'object') {
-        try {
-          return JSON.stringify(rawValue);
-        } catch {
-          return String(rawValue);
+
+      const relation = relationOpts[column];
+      const mapRelationValue = (value) => {
+        if (!relation) return value;
+        if (Array.isArray(value)) {
+          return value.map((item) => {
+            const mapped = labelMap[column]?.[item];
+            return mapped !== undefined ? mapped : item;
+          });
         }
+        const mapped = labelMap[column]?.[value];
+        return mapped !== undefined ? mapped : value;
+      };
+
+      let value = parseMaybeJson(rawValue);
+      value = mapRelationValue(value);
+
+      if (Array.isArray(value)) {
+        const primitives = value.filter(
+          (item) => item !== null && item !== undefined && typeof item !== 'object',
+        );
+        if (primitives.length === value.length) {
+          const display = primitives
+            .map((item) => (typeof item === 'string' ? item : String(item)))
+            .join(', ');
+          return display || '—';
+        }
+        const objectItems = value.filter((item) => isPlainValueObject(item));
+        if (objectItems.length === value.length && value.length > 0) {
+          return (
+            <button
+              type="button"
+              style={temporaryValueButtonStyle}
+              onClick={() => openTemporaryPreview(column, value)}
+            >
+              {t('temporary_view_table', 'View table')} ({value.length})
+            </button>
+          );
+        }
+        return (
+          <button
+            type="button"
+            style={temporaryValueButtonStyle}
+            onClick={() => openTemporaryPreview(column, value)}
+          >
+            {t('temporary_view_details', 'View details')}
+          </button>
+        );
       }
-      let str = typeof rawValue === 'string' ? rawValue : String(rawValue);
+
+      if (isPlainValueObject(value)) {
+        const entries = Object.entries(value);
+        const primitiveEntries = entries.filter(
+          ([, item]) => item !== null && item !== undefined && typeof item !== 'object',
+        );
+        if (primitiveEntries.length === entries.length && entries.length > 0) {
+          return primitiveEntries
+            .map(([, item]) => (typeof item === 'string' ? item : String(item)))
+            .join(', ');
+        }
+        return (
+          <button
+            type="button"
+            style={temporaryValueButtonStyle}
+            onClick={() => openTemporaryPreview(column, value)}
+          >
+            {t('temporary_view_details', 'View details')}
+          </button>
+        );
+      }
+
+      if (column === 'TotalCur' || totalCurrencySet.has(column)) {
+        return currencyFmt.format(Number(value || 0));
+      }
+
+      let str = typeof value === 'string' ? value : String(value);
       if (
         fieldTypeMap[column] === 'date' ||
         fieldTypeMap[column] === 'datetime' ||
@@ -3282,7 +3452,18 @@ const TableManager = forwardRef(function TableManager({
       }
       return str;
     },
-    [fieldTypeMap, labelMap, placeholders, relationOpts, totalCurrencySet],
+    [
+      fieldTypeMap,
+      labelMap,
+      openTemporaryPreview,
+      parseMaybeJson,
+      placeholders,
+      relationOpts,
+      t,
+      temporaryValueButtonStyle,
+      totalCurrencySet,
+      isPlainValueObject,
+    ],
   );
 
 
@@ -4842,7 +5023,11 @@ const TableManager = forwardRef(function TableManager({
                       const rowKey = entryId ?? `row-${index}`;
                       const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
                       const normalizedValues = normalizeToCanonical(
-                        entry?.cleanedValues || entry?.payload?.values || entry?.rawValues || {},
+                        entry?.values ||
+                          entry?.cleanedValues ||
+                          entry?.payload?.values ||
+                          entry?.rawValues ||
+                          {},
                       );
                       const detailColumnsSource =
                         columns.length > 0 ? columns : Object.keys(normalizedValues || {});
@@ -5017,6 +5202,68 @@ const TableManager = forwardRef(function TableManager({
               </div>
             )}
           </div>
+        )}
+      </Modal>
+      <Modal
+        visible={Boolean(temporaryValuePreview)}
+        title={
+          temporaryValuePreview?.title
+            ? t('temporary_value_modal_title', '{{field}} details', {
+                field: temporaryValuePreview.title,
+              })
+            : t('temporary_value_modal_generic', 'Temporary value details')
+        }
+        onClose={() => setTemporaryValuePreview(null)}
+        width="80vw"
+      >
+        {temporaryValuePreview?.rows?.length ? (
+          <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {temporaryValuePreview.columns.map((col) => (
+                    <th
+                      key={col}
+                      style={{
+                        position: 'sticky',
+                        top: 0,
+                        background: '#f9fafb',
+                        borderBottom: '1px solid #d1d5db',
+                        padding: '0.4rem',
+                        textAlign: 'left',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {temporaryValuePreview.rows.map((row, rowIdx) => (
+                  <tr key={`preview-row-${rowIdx}`}>
+                    {temporaryValuePreview.columns.map((col) => (
+                      <td
+                        key={`${rowIdx}-${col}`}
+                        style={{
+                          borderBottom: '1px solid #e5e7eb',
+                          padding: '0.4rem',
+                          fontSize: '0.8rem',
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        {row[col] ?? '—'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={{ fontSize: '0.85rem', color: '#4b5563' }}>
+            {t('temporary_value_modal_empty', 'No data available for this field.')}
+          </p>
         )}
       </Modal>
       <ImageSearchModal
