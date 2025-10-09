@@ -421,7 +421,12 @@ useEffect(() => {
           if (!info || typeof info !== 'object') return;
           const mKey = info.moduleKey;
           if (mKey !== moduleKey) return;
-          if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
+          if (
+            !hasTransactionFormAccess(info, branchId, departmentId, {
+              allowTemporaryAnyScope: true,
+            })
+          )
+            return;
           if (!isModulePermissionGranted(perms, mKey))
             return;
           if (!isModuleLicensed(licensed, mKey))

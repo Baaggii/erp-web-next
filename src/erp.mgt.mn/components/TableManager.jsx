@@ -458,6 +458,7 @@ const TableManager = forwardRef(function TableManager({
         formConfig,
         branchScopeId,
         departmentScopeId,
+        { allowTemporaryAnyScope: true },
       ),
     [formConfig, branchScopeId, departmentScopeId],
   );
