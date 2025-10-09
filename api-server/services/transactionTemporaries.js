@@ -11,6 +11,17 @@ function normalizeEmpId(empid) {
   return trimmed ? trimmed.toUpperCase() : null;
 }
 
+function normalizeScopePreference(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed;
+  }
+  return value;
+}
+
 function safeJsonStringify(value) {
   try {
     return JSON.stringify(value ?? null);
@@ -101,6 +112,7 @@ export async function createTemporarySubmission({
   branchId,
   departmentId,
   createdBy,
+  tenant = {},
 }) {
   if (!tableName) {
     const err = new Error('tableName required');
@@ -113,14 +125,58 @@ export async function createTemporarySubmission({
     err.status = 400;
     throw err;
   }
+  const branchPrefSpecified = Object.prototype.hasOwnProperty.call(
+    tenant,
+    'branch_id',
+  );
+  const departmentPrefSpecified = Object.prototype.hasOwnProperty.call(
+    tenant,
+    'department_id',
+  );
+  const rawBranchPref = branchPrefSpecified ? tenant.branch_id : branchId;
+  const rawDepartmentPref = departmentPrefSpecified
+    ? tenant.department_id
+    : departmentId;
+  const normalizedBranchPref = branchPrefSpecified
+    ? normalizeScopePreference(rawBranchPref)
+    : undefined;
+  const normalizedDepartmentPref = departmentPrefSpecified
+    ? normalizeScopePreference(rawDepartmentPref)
+    : undefined;
+  const fallbackBranch = normalizeScopePreference(branchId);
+  const fallbackDepartment = normalizeScopePreference(departmentId);
+  const sessionBranchPreference = branchPrefSpecified
+    ? normalizedBranchPref ?? null
+    : fallbackBranch ?? undefined;
+  const sessionDepartmentPreference = departmentPrefSpecified
+    ? normalizedDepartmentPref ?? null
+    : fallbackDepartment ?? undefined;
+  const sessionOptions = { preferAssignedSenior: true };
+  if (sessionBranchPreference !== undefined) {
+    sessionOptions.branchId = sessionBranchPreference;
+  }
+  if (sessionDepartmentPreference !== undefined) {
+    sessionOptions.departmentId = sessionDepartmentPreference;
+  }
+
   const conn = await pool.getConnection();
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
-    const session = await getEmploymentSession(normalizedCreator, companyId);
+    const session = await getEmploymentSession(
+      normalizedCreator,
+      companyId,
+      sessionOptions,
+    );
     const reviewerEmpId =
       normalizeEmpId(session?.senior_empid) ||
       normalizeEmpId(session?.senior_plan_empid);
+    const insertBranchId = branchPrefSpecified
+      ? normalizedBranchPref ?? null
+      : fallbackBranch ?? null;
+    const insertDepartmentId = departmentPrefSpecified
+      ? normalizedDepartmentPref ?? null
+      : fallbackDepartment ?? null;
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -138,8 +194,8 @@ export async function createTemporarySubmission({
         safeJsonStringify(cleanedValues),
         normalizedCreator,
         reviewerEmpId,
-        branchId ?? null,
-        departmentId ?? null,
+        insertBranchId,
+        insertDepartmentId,
       ],
     );
     const temporaryId = result.insertId;
@@ -323,19 +379,29 @@ export async function getTemporarySummary(empId, companyId) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
   const [[created]] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
-     WHERE created_by = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
+    `SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
+        COUNT(*) AS total_cnt
+       FROM \`${TEMP_TABLE}\`
+      WHERE created_by = ?
+        AND (company_id = ? OR company_id IS NULL)`,
     [normalizedEmp, companyId ?? null],
   );
   const [[review]] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
-     WHERE plan_senior_empid = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
+    `SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
+        COUNT(*) AS total_cnt
+       FROM \`${TEMP_TABLE}\`
+      WHERE plan_senior_empid = ?
+        AND (company_id = ? OR company_id IS NULL)`,
     [normalizedEmp, companyId ?? null],
   );
+  const createdPending = Number(created?.pending_cnt) || 0;
+  const reviewPending = Number(review?.pending_cnt) || 0;
   return {
-    createdPending: created?.cnt ?? 0,
-    reviewPending: review?.cnt ?? 0,
-    isReviewer: (review?.cnt ?? 0) > 0,
+    createdPending,
+    reviewPending,
+    isReviewer: (Number(review?.total_cnt) || 0) > 0,
   };
 }
 
