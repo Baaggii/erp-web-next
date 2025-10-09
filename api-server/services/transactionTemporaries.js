@@ -10,7 +10,123 @@ import { logUserAction } from './userActivityLog.js';
 const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
 
-const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
+const RESERVED_TEMPORARY_COLUMNS = new Set(['rows', 'gridrows', 'rawrows']);
+
+function buildColumnLookup(columns) {
+  const lookup = new Map();
+  if (!Array.isArray(columns)) return lookup;
+  columns.forEach((col) => {
+    if (!col) return;
+    const canonical = typeof col === 'string' ? col : col.name;
+    if (!canonical) return;
+    const lower = canonical.toLowerCase();
+    lookup.set(lower, canonical);
+    const stripped = lower.replace(/[_\s-]+/g, '');
+    if (!lookup.has(stripped)) {
+      lookup.set(stripped, canonical);
+    }
+  });
+  return lookup;
+}
+
+function parseJsonLike(value) {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  if (
+    (first === '{' && last === '}') ||
+    (first === '[' && last === ']') ||
+    (first === '"' && last === '"')
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+const SELECT_VALUE_KEYS = ['value', 'id', 'code', 'key'];
+const PROMOTABLE_CONTAINER_KEYS = ['values', 'cleanedValues', 'data', 'record'];
+const PROMOTABLE_CONTAINER_KEY_SET = new Set(
+  PROMOTABLE_CONTAINER_KEYS.map((key) => key.toLowerCase()),
+);
+const MAX_UNWRAP_DEPTH = 6;
+
+function unwrapSubmissionValue(value, depth = 0) {
+  if (depth > MAX_UNWRAP_DEPTH) return value;
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Date || value instanceof Buffer) return value;
+  if (Array.isArray(value)) {
+    const normalized = value.map((item) => unwrapSubmissionValue(parseJsonLike(item), depth + 1));
+    return normalized;
+  }
+  if (isPlainObject(value)) {
+    for (const key of SELECT_VALUE_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        const selected = unwrapSubmissionValue(value[key], depth + 1);
+        if (selected !== undefined) return selected;
+      }
+    }
+    const entries = Object.entries(value);
+    if (entries.length === 1) {
+      const [, single] = entries[0];
+      return unwrapSubmissionValue(single, depth + 1);
+    }
+    return value;
+  }
+  return value;
+}
+
+function normalizePromotableValue(rawValue) {
+  let normalizedValue = parseJsonLike(rawValue);
+  normalizedValue = unwrapSubmissionValue(normalizedValue);
+  if (normalizedValue === undefined) return undefined;
+  if (normalizedValue === null) return null;
+  if (
+    typeof normalizedValue === 'string' ||
+    typeof normalizedValue === 'number' ||
+    typeof normalizedValue === 'boolean'
+  ) {
+    return normalizedValue;
+  }
+  if (typeof normalizedValue === 'bigint') return normalizedValue.toString();
+  if (normalizedValue instanceof Date || normalizedValue instanceof Buffer) {
+    return normalizedValue;
+  }
+  if (Array.isArray(normalizedValue)) {
+    const primitives = normalizedValue.filter(
+      (item) => item === null || ['string', 'number', 'boolean'].includes(typeof item),
+    );
+    if (primitives.length === normalizedValue.length) {
+      return primitives
+        .map((item) => (item === null ? '' : typeof item === 'string' ? item : String(item)))
+        .join(', ')
+        .trim();
+    }
+    try {
+      return JSON.stringify(normalizedValue);
+    } catch {
+      return String(normalizedValue);
+    }
+  }
+  if (isPlainObject(normalizedValue)) {
+    try {
+      return JSON.stringify(normalizedValue);
+    } catch {
+      return String(normalizedValue);
+    }
+  }
+  return String(normalizedValue);
+}
 
 function normalizeEmpId(empid) {
   if (!empid) return null;
@@ -55,6 +171,45 @@ function isPlainObject(value) {
   );
 }
 
+function hasDataKeys(obj) {
+  if (!isPlainObject(obj)) return false;
+  return Object.keys(obj).some((key) => {
+    if (!key) return false;
+    const lower = key.toLowerCase();
+    if (RESERVED_TEMPORARY_COLUMNS.has(lower)) return false;
+    if (PROMOTABLE_CONTAINER_KEY_SET.has(lower)) return false;
+    return true;
+  });
+}
+
+function extractPromotableValues(source) {
+  if (!isPlainObject(source)) return null;
+  const seen = new Set();
+  let current = source;
+  while (isPlainObject(current) && !seen.has(current)) {
+    seen.add(current);
+    if (hasDataKeys(current)) {
+      return current;
+    }
+    const nextKey = PROMOTABLE_CONTAINER_KEYS.find((key) =>
+      isPlainObject(current[key]),
+    );
+    if (!nextKey) break;
+    current = current[nextKey];
+  }
+  return hasDataKeys(current) ? current : null;
+}
+
+function getFirstPromotableObject(...candidates) {
+  for (const candidate of candidates) {
+    const extracted = extractPromotableValues(candidate);
+    if (isPlainObject(extracted) && Object.keys(extracted).length > 0) {
+      return extracted;
+    }
+  }
+  return null;
+}
+
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
   if (!tableName || !values) return {};
   if (!isPlainObject(values)) return {};
@@ -69,12 +224,7 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     return {};
   }
 
-  const lookup = new Map();
-  resolvedColumns.forEach((col) => {
-    if (typeof col === 'string' && col) {
-      lookup.set(col.toLowerCase(), col);
-    }
-  });
+  const lookup = buildColumnLookup(resolvedColumns);
 
   const sanitized = {};
   for (const [rawKey, rawValue] of entries) {
@@ -82,10 +232,15 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     const key = typeof rawKey === 'string' ? rawKey.trim() : String(rawKey || '');
     if (!key) continue;
     const lower = key.toLowerCase();
-    if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
-    const columnName = lookup.get(lower);
+    const stripped = lower.replace(/[_\s-]+/g, '');
+    if (RESERVED_TEMPORARY_COLUMNS.has(lower) || RESERVED_TEMPORARY_COLUMNS.has(stripped)) {
+      continue;
+    }
+    const columnName = lookup.get(lower) ?? lookup.get(stripped);
     if (!columnName) continue;
-    sanitized[columnName] = rawValue;
+    const normalizedValue = normalizePromotableValue(rawValue);
+    if (normalizedValue === undefined) continue;
+    sanitized[columnName] = normalizedValue;
   }
   return sanitized;
 }
@@ -277,6 +432,19 @@ export async function createTemporarySubmission({
 
 function mapTemporaryRow(row) {
   if (!row) return null;
+  const payload = safeJsonParse(row.payload_json, {});
+  const cleanedContainer = safeJsonParse(row.cleaned_values_json, {});
+  const rawContainer = safeJsonParse(row.raw_values_json, {});
+  const cleanedValues =
+    extractPromotableValues(cleanedContainer) ??
+    (isPlainObject(cleanedContainer) ? cleanedContainer : {});
+  const promotableValues =
+    getFirstPromotableObject(
+      cleanedContainer,
+      payload?.cleanedValues,
+      payload?.values,
+      rawContainer,
+    ) ?? {};
   return {
     id: row.id,
     companyId: row.company_id,
@@ -284,9 +452,10 @@ function mapTemporaryRow(row) {
     formName: row.form_name,
     configName: row.config_name,
     moduleKey: row.module_key,
-    payload: safeJsonParse(row.payload_json, {}),
-    rawValues: safeJsonParse(row.raw_values_json, {}),
-    cleanedValues: safeJsonParse(row.cleaned_values_json, {}),
+    payload,
+    rawValues: rawContainer,
+    cleanedValues,
+    values: promotableValues,
     createdBy: row.created_by,
     planSeniorEmpId: row.plan_senior_empid,
     reviewerEmpId: row.plan_senior_empid,
@@ -411,7 +580,34 @@ export async function listTemporarySubmissions({
     params,
   );
   const mapped = rows.map(mapTemporaryRow);
-  return enrichTemporaryMetadata(mapped, companyId);
+  const columnCache = new Map();
+  const withNormalized = await Promise.all(
+    mapped.map(async (entry) => {
+      if (!entry || !entry.tableName) return entry;
+      const promotableSource = entry.values;
+      if (!isPlainObject(promotableSource)) return entry;
+      try {
+        let cached = columnCache.get(entry.tableName);
+        if (!cached) {
+          cached = await listTableColumns(entry.tableName);
+          columnCache.set(entry.tableName, cached);
+        }
+        const normalized = await sanitizeCleanedValuesForInsert(
+          entry.tableName,
+          promotableSource,
+          cached,
+        );
+        if (Object.keys(normalized).length === 0) return entry;
+        return {
+          ...entry,
+          normalizedValues: normalized,
+        };
+      } catch {
+        return entry;
+      }
+    }),
+  );
+  return enrichTemporaryMetadata(withNormalized, companyId);
 }
 
 export async function getTemporarySummary(empId, companyId) {
@@ -479,20 +675,23 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       throw err;
     }
     const columns = await listTableColumns(row.table_name);
+    const payloadJson = safeJsonParse(row.payload_json, {});
     const candidateSources = [
       safeJsonParse(row.cleaned_values_json),
-      safeJsonParse(row.payload_json)?.cleanedValues,
-      safeJsonParse(row.payload_json)?.values,
+      payloadJson?.cleanedValues,
+      payloadJson?.values,
       safeJsonParse(row.raw_values_json),
-    ].filter((value) => value && typeof value === 'object');
+    ];
 
     let sanitizedCleaned = {};
     for (const source of candidateSources) {
+      const promotable = getFirstPromotableObject(source);
+      if (!promotable) continue;
       // sanitizeCleanedValuesForInsert performs its own plain-object guard.
       // eslint-disable-next-line no-await-in-loop
       const next = await sanitizeCleanedValuesForInsert(
         row.table_name,
-        source,
+        promotable,
         columns,
       );
       if (Object.keys(next).length > 0) {

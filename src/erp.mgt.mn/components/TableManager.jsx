@@ -175,6 +175,7 @@ const requestStatusLabels = {
 };
 
 const ACTIVE_LOCK_STATUSES = new Set(['pending', 'locked']);
+const RESERVED_TEMPORARY_DETAIL_COLUMNS = new Set(['rows', 'gridrows', 'rawrows']);
 
 function coalesce(obj, ...keys) {
   if (!obj) return undefined;
@@ -329,6 +330,7 @@ const TableManager = forwardRef(function TableManager({
   }, []);
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
+  const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
   const temporaryRowRefs = useRef(new Map());
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
@@ -591,16 +593,40 @@ const TableManager = forwardRef(function TableManager({
 
   const normalizeToCanonical = useCallback(
     (source, caseMap) => {
-      if (!source || typeof source !== 'object') return {};
+      if (
+        !source ||
+        typeof source !== 'object' ||
+        Array.isArray(source) ||
+        source instanceof Date
+      ) {
+        return {};
+      }
       const normalized = {};
       const map = caseMap || columnCaseMap;
       for (const [rawKey, value] of Object.entries(source)) {
+        if (rawKey == null) continue;
         const canonicalKey = resolveCanonicalKey(rawKey, map);
+        if (!canonicalKey) continue;
         normalized[canonicalKey] = value;
       }
       return normalized;
     },
     [columnCaseMap, resolveCanonicalKey],
+  );
+
+  const canonicalizeTemporaryValues = useCallback(
+    (source) => {
+      if (
+        !source ||
+        typeof source !== 'object' ||
+        Array.isArray(source) ||
+        source instanceof Date
+      ) {
+        return {};
+      }
+      return normalizeToCanonical(source);
+    },
+    [normalizeToCanonical],
   );
 
   const normalizeTenantKey = useCallback(
@@ -3250,39 +3276,233 @@ const TableManager = forwardRef(function TableManager({
     });
   });
 
+  const isPlainValueObject = useCallback(
+    (value) =>
+      Boolean(
+        value &&
+          typeof value === 'object' &&
+          !Array.isArray(value) &&
+          !(value instanceof Date),
+      ),
+    [],
+  );
+
+  const parseMaybeJson = useCallback((value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    if (!trimmed) return value;
+    const startsWith = trimmed[0];
+    const endsWith = trimmed[trimmed.length - 1];
+    if (
+      (startsWith === '{' && endsWith === '}') ||
+      (startsWith === '[' && endsWith === ']') ||
+      (startsWith === '"' && endsWith === '"')
+    ) {
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  }, []);
+
+  const stringifyPreviewCell = useCallback((value) => {
+    if (value === undefined || value === null || value === '') return '—';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    if (value instanceof Date) return value.toISOString();
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }, []);
+
+  const temporaryValueButtonStyle = useMemo(
+    () => ({
+      padding: '0.15rem 0.4rem',
+      fontSize: '0.7rem',
+      borderRadius: '4px',
+      border: '1px solid #3b82f6',
+      backgroundColor: '#eff6ff',
+      color: '#1d4ed8',
+      cursor: 'pointer',
+    }),
+    [],
+  );
+
+  const openTemporaryPreview = useCallback(
+    (column, value) => {
+      if (value === undefined || value === null) return;
+      let structured = value;
+      if (typeof structured === 'string') {
+        structured = parseMaybeJson(structured);
+      }
+      let rows = [];
+      if (Array.isArray(structured)) {
+        rows = structured.map((item, idx) => {
+          if (isPlainValueObject(item)) return item;
+          if (Array.isArray(item)) {
+            const nested = {};
+            item.forEach((entry, entryIdx) => {
+              nested[`Value ${entryIdx + 1}`] = entry;
+            });
+            return nested;
+          }
+          return { Value: item };
+        });
+      } else if (isPlainValueObject(structured)) {
+        rows = [structured];
+      } else {
+        rows = [{ Value: structured }];
+      }
+
+      const columnKeys = new Set();
+      rows.forEach((row) => {
+        if (!row || typeof row !== 'object') return;
+        Object.keys(row).forEach((key) => columnKeys.add(key));
+      });
+      if (columnKeys.size === 0) {
+        columnKeys.add('Value');
+      }
+      const columnList = Array.from(columnKeys);
+      const normalizedRows = rows.length > 0 ? rows : [{ Value: structured }];
+
+      setTemporaryValuePreview({
+        title: labels[column] || column,
+        columns: columnList,
+        rows: normalizedRows.map((row) => {
+          const normalized = {};
+          columnList.forEach((key) => {
+            const cellValue = row && typeof row === 'object' ? row[key] : undefined;
+            normalized[key] = stringifyPreviewCell(cellValue);
+          });
+          return normalized;
+        }),
+      });
+    },
+    [labels, parseMaybeJson, stringifyPreviewCell, isPlainValueObject],
+  );
+
   const formatTemporaryFieldValue = useCallback(
-    (column, rawValue) => {
-      if (rawValue === undefined || rawValue === null || rawValue === '') return '—';
-      if (relationOpts[column]) {
-        const mapped = labelMap[column]?.[rawValue];
-        if (mapped !== undefined) return mapped;
+    (column, displayValue, previewValue) => {
+      const fallbackPreview =
+        previewValue !== undefined && previewValue !== null ? previewValue : displayValue;
+      if (
+        (displayValue === undefined || displayValue === null || displayValue === '') &&
+        (fallbackPreview === undefined || fallbackPreview === null || fallbackPreview === '')
+      ) {
+        return '—';
       }
-      if (column === 'TotalCur' || totalCurrencySet.has(column)) {
-        return currencyFmt.format(Number(rawValue || 0));
-      }
-      if (typeof rawValue === 'object') {
-        try {
-          return JSON.stringify(rawValue);
-        } catch {
-          return String(rawValue);
+
+      const relation = relationOpts[column];
+      const mapRelationValue = (value) => {
+        if (!relation) return value;
+        if (Array.isArray(value)) {
+          return value.map((item) => {
+            const mapped = labelMap[column]?.[item];
+            return mapped !== undefined ? mapped : item;
+          });
         }
+        const mapped = labelMap[column]?.[value];
+        return mapped !== undefined ? mapped : value;
+      };
+
+      const parsedDisplay = parseMaybeJson(displayValue);
+      const parsedPreview = parseMaybeJson(fallbackPreview);
+      const mappedDisplay = mapRelationValue(parsedDisplay);
+      const mappedPreview = mapRelationValue(parsedPreview);
+
+      const joinPrimitiveArray = (arr) =>
+        arr
+          .map((item) => (typeof item === 'string' ? item : item === null ? '' : String(item)))
+          .join(', ')
+          .trim();
+
+      if (Array.isArray(mappedPreview)) {
+        const primitivePreview = mappedPreview.filter(
+          (item) => item === null || item === undefined || typeof item !== 'object',
+        );
+        if (primitivePreview.length === mappedPreview.length) {
+          const displayArray = Array.isArray(mappedDisplay) ? mappedDisplay : primitivePreview;
+          const text = joinPrimitiveArray(displayArray);
+          return text || '—';
+        }
+        const previewLength = Array.isArray(parsedPreview)
+          ? parsedPreview.length
+          : mappedPreview.length;
+        return (
+          <button
+            type="button"
+            style={temporaryValueButtonStyle}
+            onClick={() => openTemporaryPreview(column, parsedPreview)}
+          >
+            {t('temporary_view_table', 'View table')} ({previewLength})
+          </button>
+        );
       }
-      let str = typeof rawValue === 'string' ? rawValue : String(rawValue);
+
+      if (isPlainValueObject(mappedPreview)) {
+        const entries = Object.entries(mappedPreview);
+        const primitiveEntries = entries.filter(
+          ([, item]) => item === null || item === undefined || typeof item !== 'object',
+        );
+        if (primitiveEntries.length === entries.length && entries.length > 0) {
+          return joinPrimitiveArray(primitiveEntries.map(([, item]) => item));
+        }
+        return (
+          <button
+            type="button"
+            style={temporaryValueButtonStyle}
+            onClick={() => openTemporaryPreview(column, parsedPreview)}
+          >
+            {t('temporary_view_details', 'View details')}
+          </button>
+        );
+      }
+
+      const primitiveDisplay =
+        mappedDisplay === undefined || mappedDisplay === null || mappedDisplay === ''
+          ? mappedPreview
+          : mappedDisplay;
+
+      if (column === 'TotalCur' || totalCurrencySet.has(column)) {
+        return currencyFmt.format(Number(primitiveDisplay || 0));
+      }
+
+      let str =
+        typeof primitiveDisplay === 'string'
+          ? primitiveDisplay
+          : primitiveDisplay === undefined || primitiveDisplay === null
+          ? ''
+          : String(primitiveDisplay);
       if (
         fieldTypeMap[column] === 'date' ||
         fieldTypeMap[column] === 'datetime' ||
         fieldTypeMap[column] === 'time'
       ) {
         const normalized = normalizeDateInput(str, placeholders[column]);
-        return normalized || str;
+        return normalized || str || '—';
       }
       if (placeholders[column] === undefined && /^\d{4}-\d{2}-\d{2}T/.test(str)) {
         const normalized = normalizeDateInput(str, 'YYYY-MM-DD');
-        return normalized || str;
+        return normalized || str || '—';
       }
-      return str;
+      return str || '—';
     },
-    [fieldTypeMap, labelMap, placeholders, relationOpts, totalCurrencySet],
+    [
+      fieldTypeMap,
+      labelMap,
+      openTemporaryPreview,
+      parseMaybeJson,
+      placeholders,
+      relationOpts,
+      t,
+      temporaryValueButtonStyle,
+      totalCurrencySet,
+      isPlainValueObject,
+    ],
   );
 
 
@@ -4841,13 +5061,35 @@ const TableManager = forwardRef(function TableManager({
                       const entryId = getTemporaryId(entry);
                       const rowKey = entryId ?? `row-${index}`;
                       const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
-                      const normalizedValues = normalizeToCanonical(
-                        entry?.cleanedValues || entry?.payload?.values || entry?.rawValues || {},
-                      );
+                      const displaySource =
+                        entry?.normalizedValues ||
+                        entry?.values ||
+                        entry?.cleanedValues ||
+                        entry?.payload?.values ||
+                        entry?.rawValues ||
+                        {};
+                      const rawSource =
+                        entry?.values ||
+                        entry?.cleanedValues ||
+                        entry?.payload?.values ||
+                        entry?.rawValues ||
+                        {};
+                      const normalizedValues = canonicalizeTemporaryValues(displaySource);
+                      const normalizedRawValues = canonicalizeTemporaryValues(rawSource);
                       const detailColumnsSource =
-                        columns.length > 0 ? columns : Object.keys(normalizedValues || {});
+                        columns.length > 0
+                          ? columns
+                          : Object.keys(normalizedRawValues);
                       const detailColumns = Array.from(
-                        new Set((detailColumnsSource || []).filter(Boolean)),
+                        new Set(
+                          (detailColumnsSource || [])
+                            .map((col) => resolveCanonicalKey(col))
+                            .filter(
+                              (col) =>
+                                col &&
+                                !RESERVED_TEMPORARY_DETAIL_COLUMNS.has(col.toLowerCase()),
+                            ),
+                        ),
                       );
                       return (
                         <tr
@@ -4952,7 +5194,11 @@ const TableManager = forwardRef(function TableManager({
                                             fontSize: '0.75rem',
                                           }}
                                         >
-                                          {formatTemporaryFieldValue(col, normalizedValues[col])}
+                                          {formatTemporaryFieldValue(
+                                            col,
+                                            normalizedValues[col],
+                                            normalizedRawValues[col],
+                                          )}
                                         </td>
                                       ))}
                                     </tr>
@@ -5017,6 +5263,68 @@ const TableManager = forwardRef(function TableManager({
               </div>
             )}
           </div>
+        )}
+      </Modal>
+      <Modal
+        visible={Boolean(temporaryValuePreview)}
+        title={
+          temporaryValuePreview?.title
+            ? t('temporary_value_modal_title', '{{field}} details', {
+                field: temporaryValuePreview.title,
+              })
+            : t('temporary_value_modal_generic', 'Temporary value details')
+        }
+        onClose={() => setTemporaryValuePreview(null)}
+        width="80vw"
+      >
+        {temporaryValuePreview?.rows?.length ? (
+          <div style={{ maxHeight: '60vh', overflow: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  {temporaryValuePreview.columns.map((col) => (
+                    <th
+                      key={col}
+                      style={{
+                        position: 'sticky',
+                        top: 0,
+                        background: '#f9fafb',
+                        borderBottom: '1px solid #d1d5db',
+                        padding: '0.4rem',
+                        textAlign: 'left',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      {col}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {temporaryValuePreview.rows.map((row, rowIdx) => (
+                  <tr key={`preview-row-${rowIdx}`}>
+                    {temporaryValuePreview.columns.map((col) => (
+                      <td
+                        key={`${rowIdx}-${col}`}
+                        style={{
+                          borderBottom: '1px solid #e5e7eb',
+                          padding: '0.4rem',
+                          fontSize: '0.8rem',
+                          whiteSpace: 'pre-wrap',
+                        }}
+                      >
+                        {row[col] ?? '—'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p style={{ fontSize: '0.85rem', color: '#4b5563' }}>
+            {t('temporary_value_modal_empty', 'No data available for this field.')}
+          </p>
         )}
       </Modal>
       <ImageSearchModal
