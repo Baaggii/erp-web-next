@@ -393,7 +393,13 @@ const TableManager = forwardRef(function TableManager({
     }
     return Boolean(value);
   };
-  const isSubordinate = hasSenior(session?.senior_empid) || hasSenior(session?.senior_plan_empid);
+  const hasDirectSenior = hasSenior(session?.senior_empid);
+  const hasPlanSenior = hasSenior(session?.senior_plan_empid);
+  const hasAnySenior = hasDirectSenior || hasPlanSenior;
+  const temporaryReviewer =
+    Boolean(temporarySummary?.isReviewer) ||
+    Number(temporarySummary?.reviewPending) > 0;
+  const isSubordinate = hasAnySenior;
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const { addToast } = useToast();
@@ -470,9 +476,13 @@ const TableManager = forwardRef(function TableManager({
       false,
   );
   const canCreateTemporary = Boolean(accessEvaluation.allowTemporary);
-  const isSenior = Boolean(user?.empid) && !isSubordinate;
-  const canReviewTemporary = formSupportsTemporary && isSenior;
-  const supportsTemporary = canCreateTemporary || canReviewTemporary;
+  const isSenior =
+    Boolean(user?.empid) && (!hasAnySenior || temporaryReviewer);
+  const canReviewTemporary =
+    formSupportsTemporary && Boolean(user?.empid) && (!hasAnySenior || temporaryReviewer);
+  const supportsTemporary =
+    formSupportsTemporary &&
+    (canCreateTemporary || canReviewTemporary || temporaryReviewer);
   const canPostTransactions =
     accessEvaluation.canPost === undefined
       ? true
@@ -525,7 +535,7 @@ const TableManager = forwardRef(function TableManager({
   }, [externalTemporaryTrigger]);
 
   const refreshTemporarySummary = useCallback(async () => {
-    if (!supportsTemporary) {
+    if (!formSupportsTemporary) {
       setTemporarySummary(null);
       return;
     }
@@ -561,7 +571,7 @@ const TableManager = forwardRef(function TableManager({
       );
     }
   }, [
-    supportsTemporary,
+    formSupportsTemporary,
     availableTemporaryScopes,
     defaultTemporaryScope,
   ]);
@@ -2237,16 +2247,18 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const cleaned = {};
-    const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
+    const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
-      if (skipFields.has(k) || k.startsWith('_')) return;
+      if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
         cleaned[k] =
           typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
       }
     });
+    delete cleaned.rows;
+    delete cleaned.Rows;
 
     if (requestType === 'edit') {
       const reason = await promptRequestReason();
@@ -2435,10 +2447,10 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const cleaned = {};
-    const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
+    const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
-      if (skipFields.has(k) || k.startsWith('_')) return;
+      if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
         cleaned[k] =
@@ -2792,6 +2804,12 @@ const TableManager = forwardRef(function TableManager({
       const params = new URLSearchParams();
       params.set('scope', targetScope);
 
+      const requestedStatus =
+        options?.status !== undefined ? options.status : 'pending';
+      if (requestedStatus) {
+        params.set('status', requestedStatus);
+      }
+
       const shouldFilterByTable = (() => {
         if (options?.table !== undefined) {
           return Boolean(options.table);
@@ -2809,15 +2827,37 @@ const TableManager = forwardRef(function TableManager({
         String(focusIdRaw).trim() !== ''
           ? String(focusIdRaw)
           : null;
-      setTemporaryLoading(true);
-      try {
+      const runFetch = async (searchParams) => {
         const res = await fetch(
-          `${API_BASE}/transaction_temporaries?${params.toString()}`,
+          `${API_BASE}/transaction_temporaries?${searchParams.toString()}`,
           { credentials: 'include' },
         );
         if (!res.ok) throw new Error('Failed to load temporaries');
         const data = await res.json().catch(() => ({}));
         const rows = Array.isArray(data.rows) ? data.rows : [];
+        return rows;
+      };
+
+      setTemporaryLoading(true);
+      try {
+        let rows = await runFetch(params);
+
+        const shouldRetryWithoutStatus =
+          targetScope === 'review' &&
+          !options?.status &&
+          (Number(temporarySummary?.reviewPending) || 0) > 0 &&
+          rows.length === 0;
+
+        if (shouldRetryWithoutStatus) {
+          const retryParams = new URLSearchParams(params);
+          retryParams.delete('status');
+          try {
+            rows = await runFetch(retryParams);
+          } catch (retryErr) {
+            console.error('Retrying temporaries without status failed', retryErr);
+          }
+        }
+
         let nextRows = rows;
         if (focusId) {
           const idx = rows.findIndex((item) => String(item?.id) === focusId);
@@ -2845,6 +2885,7 @@ const TableManager = forwardRef(function TableManager({
       temporaryScope,
       availableTemporaryScopes,
       defaultTemporaryScope,
+      temporarySummary,
     ],
   );
 
