@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Oct 03, 2025 at 05:56 PM
+-- Generation Time: Oct 09, 2025 at 10:05 AM
 -- Server version: 8.0.43-cll-lve
 -- PHP Version: 8.4.11
 
@@ -47,21 +47,19 @@ CREATE TABLE `audit_log` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `code_abhuvaari`
+-- Table structure for table `code_band`
 --
 
-CREATE TABLE `code_abhuvaari` (
-  `id` int NOT NULL,
-  `HBChig_id2` int NOT NULL,
-  `HBTorol_id2` int NOT NULL,
-  `Hbaitsaagch_id2` int NOT NULL,
-  `less_100_2` int DEFAULT NULL,
-  `more_100_2` int DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '2',
-  `created_by` varchar(50) DEFAULT NULL,
+CREATE TABLE `code_band` (
+  `band_id` bigint NOT NULL,
+  `band_code` varchar(64) NOT NULL,
+  `band_name` varchar(128) NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_by` varchar(50) DEFAULT NULL,
   `updated_by` varchar(50) DEFAULT NULL,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -414,8 +412,8 @@ CREATE TABLE `code_frequency` (
 
 CREATE TABLE `code_huvaari` (
   `id` int NOT NULL,
+  `huvaari_id` int NOT NULL,
   `position_id` int NOT NULL,
-  `baitsaagch_id` varchar(50) DEFAULT NULL,
   `name` varchar(100) NOT NULL,
   `company_id` int NOT NULL DEFAULT '2',
   `created_by` varchar(50) DEFAULT NULL,
@@ -642,6 +640,7 @@ CREATE TABLE `code_torol` (
   `id` int NOT NULL,
   `torol_id` int NOT NULL,
   `name` varchar(100) NOT NULL,
+  `uses_sqm` decimal(5,0) NOT NULL COMMENT 'Ашиглах м2',
   `company_id` int NOT NULL DEFAULT '2',
   `created_by` varchar(50) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -744,6 +743,67 @@ CREATE TABLE `code_userlevel_settings` (
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `code_utility`
+--
+
+CREATE TABLE `code_utility` (
+  `utility_id` bigint NOT NULL,
+  `utility_code` varchar(64) NOT NULL,
+  `utility_name` varchar(128) NOT NULL,
+  `utility_mu` int NOT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT '1',
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `code_utility_band`
+--
+
+CREATE TABLE `code_utility_band` (
+  `utility_id` bigint NOT NULL,
+  `band_id` bigint NOT NULL,
+  `is_allowed` tinyint(1) NOT NULL DEFAULT '1',
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_by` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `code_utility_rates`
+--
+
+CREATE TABLE `code_utility_rates` (
+  `rate_id` bigint NOT NULL,
+  `uchig_id` int DEFAULT NULL,
+  `utorol_id` int DEFAULT NULL,
+  `utility_id` bigint NOT NULL,
+  `band_id` bigint NOT NULL,
+  `effective_from` date NOT NULL,
+  `effective_to` date DEFAULT NULL,
+  `unit_price` decimal(18,6) NOT NULL DEFAULT '0.000000',
+  `eqip_lloss` decimal(5,2) DEFAULT NULL,
+  `maintenance_per` decimal(5,2) DEFAULT NULL,
+  `fixed_fee` decimal(18,2) NOT NULL DEFAULT '0.00',
+  `per_unit` int DEFAULT NULL,
+  `require_bill_lines` tinyint(1) NOT NULL DEFAULT '1',
+  `currency` char(3) NOT NULL DEFAULT 'MNT',
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_by` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -1180,7 +1240,7 @@ CREATE TABLE `pending_request` (
   `record_id` varchar(191) NOT NULL,
   `emp_id` varchar(10) NOT NULL,
   `senior_empid` varchar(10) NOT NULL,
-  `request_type` enum('edit','delete','report_approval') NOT NULL,
+  `request_type` enum('edit','delete','report_approval') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `request_reason` text NOT NULL,
   `proposed_data` json DEFAULT NULL,
   `original_data` json DEFAULT NULL,
@@ -1200,39 +1260,11 @@ CREATE TABLE `pending_request` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `report_transaction_locks`
---
-
-CREATE TABLE `report_transaction_locks` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `company_id` int DEFAULT NULL,
-  `request_id` bigint NOT NULL,
-  `table_name` varchar(128) NOT NULL,
-  `record_id` varchar(191) NOT NULL,
-  `status` enum('pending','locked') NOT NULL DEFAULT 'pending',
-  `created_by` varchar(64) DEFAULT NULL,
-  `status_changed_by` varchar(64) DEFAULT NULL,
-  `status_changed_at` datetime DEFAULT NULL,
-  `finalized_by` varchar(64) DEFAULT NULL,
-  `finalized_at` datetime DEFAULT NULL,
-  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_report_locks_request_record` (`request_id`,`table_name`,`record_id`),
-  KEY `idx_report_locks_request` (`request_id`),
-  KEY `idx_report_locks_table` (`table_name`),
-  KEY `idx_report_locks_company` (`company_id`),
-  KEY `idx_report_locks_status` (`status`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `report_approvals`
 --
 
 CREATE TABLE `report_approvals` (
-  `id` bigint unsigned NOT NULL AUTO_INCREMENT,
+  `id` bigint UNSIGNED NOT NULL,
   `company_id` int DEFAULT NULL,
   `request_id` bigint NOT NULL,
   `procedure_name` varchar(191) NOT NULL,
@@ -1245,9 +1277,7 @@ CREATE TABLE `report_approvals` (
   `snapshot_file_size` bigint DEFAULT NULL,
   `snapshot_archived_at` datetime DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uniq_report_approvals_request` (`request_id`)
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -1270,6 +1300,28 @@ CREATE TABLE `report_definitions` (
   `company_id` int NOT NULL DEFAULT '2',
   `updated_by` varchar(50) DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `report_transaction_locks`
+--
+
+CREATE TABLE `report_transaction_locks` (
+  `id` bigint UNSIGNED NOT NULL,
+  `company_id` int DEFAULT NULL,
+  `request_id` bigint NOT NULL,
+  `table_name` varchar(128) NOT NULL,
+  `record_id` varchar(191) NOT NULL,
+  `status` enum('pending','locked') NOT NULL DEFAULT 'pending',
+  `created_by` varchar(64) DEFAULT NULL,
+  `status_changed_by` varchar(64) DEFAULT NULL,
+  `status_changed_at` datetime DEFAULT NULL,
+  `finalized_by` varchar(64) DEFAULT NULL,
+  `finalized_at` datetime DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -1352,25 +1404,6 @@ CREATE TABLE `tbl_beltgenniiluulegch` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `tbl_bhuvaari`
---
-
-CREATE TABLE `tbl_bhuvaari` (
-  `id` int NOT NULL,
-  `BH_id` int NOT NULL,
-  `bh_YM` int NOT NULL,
-  `bh_empid` varchar(10) DEFAULT NULL,
-  `company_id` int NOT NULL DEFAULT '2',
-  `created_by` varchar(50) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_by` varchar(50) DEFAULT NULL,
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `deleted_at` timestamp NULL DEFAULT NULL
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `tbl_bills`
 --
 
@@ -1397,16 +1430,17 @@ CREATE TABLE `tbl_bill_lines` (
   `line_id` bigint NOT NULL,
   `bill_id` bigint DEFAULT NULL,
   `bill_no` varchar(64) DEFAULT NULL,
-  `contract_number` varchar(64) DEFAULT NULL,
+  `contract_number` int DEFAULT NULL,
+  `bill_date` date NOT NULL,
   `period_start` date DEFAULT NULL,
   `period_end` date DEFAULT NULL,
   `currency` char(3) DEFAULT NULL,
-  `utility` enum('electricity','water','heating','drainage','other') NOT NULL,
-  `band` enum('morning_low','day','evening_peak','night','flat') NOT NULL DEFAULT 'flat',
+  `utility_id` bigint NOT NULL,
+  `band_id` bigint NOT NULL,
   `reading_prev` decimal(18,6) DEFAULT NULL,
   `reading_curr` decimal(18,6) DEFAULT NULL,
   `qty` decimal(18,6) DEFAULT NULL,
-  `unit` varchar(16) DEFAULT NULL,
+  `unit` int DEFAULT NULL,
   `unit_price` decimal(18,6) NOT NULL DEFAULT '0.000000',
   `fixed_fee` decimal(18,2) NOT NULL DEFAULT '0.00',
   `amount` decimal(18,2) NOT NULL DEFAULT '0.00',
@@ -1690,7 +1724,7 @@ CREATE TABLE `tbl_employment` (
   `employment_date` date NOT NULL,
   `employment_user_level` int DEFAULT NULL,
   `employment_senior_empid` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
-  `employment_senior_plan_empid` varchar(10) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
+  `employment_senior_plan_empid` varchar(20) DEFAULT NULL,
   `company_id` int NOT NULL DEFAULT '2',
   `created_by` varchar(50) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -1721,6 +1755,22 @@ CREATE TABLE `tbl_employment_other` (
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `tbl_employment_schedule`
+--
+
+CREATE TABLE `tbl_employment_schedule` (
+  `id` int NOT NULL,
+  `BH_id` int NOT NULL,
+  `bh_empid` varchar(10) NOT NULL,
+  `bh_date` date NOT NULL,
+  `company_id` int NOT NULL,
+  `department_id` int NOT NULL,
+  `branch_id` int NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -2016,6 +2066,27 @@ CREATE TABLE `tbl_tariff` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `tbl_utility_contracts`
+--
+
+CREATE TABLE `tbl_utility_contracts` (
+  `contract_id` bigint NOT NULL,
+  `contract_number` varchar(64) NOT NULL,
+  `party_id` bigint DEFAULT NULL,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
+  `status` enum('active','inactive') DEFAULT 'active',
+  `company_id` int NOT NULL DEFAULT '0',
+  `created_by` varchar(50) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_by` varchar(50) DEFAULT NULL,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `tbl_wasteprice`
 --
 
@@ -2030,6 +2101,24 @@ CREATE TABLE `tbl_wasteprice` (
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `tbl_workplace`
+--
+
+CREATE TABLE `tbl_workplace` (
+  `id` int NOT NULL,
+  `wchig_id` int NOT NULL,
+  `wtorol_id` int NOT NULL,
+  `workplace_id` int NOT NULL,
+  `wor_type_id` int NOT NULL,
+  `date` date NOT NULL,
+  `company_id` int NOT NULL,
+  `department_id` int NOT NULL,
+  `branch_id` int NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -2103,7 +2192,7 @@ CREATE TABLE `transactions_contract` (
   `g_burtgel_id` varchar(10) NOT NULL,
   `g_chig` int NOT NULL,
   `g_torol` int NOT NULL,
-  `g_sq` decimal(15,0) NOT NULL,
+  `g_sq` decimal(15,2) NOT NULL,
   `g_start` date NOT NULL,
   `g_end` date NOT NULL,
   `company_id` int NOT NULL,
@@ -2147,8 +2236,8 @@ CREATE TABLE `transactions_contract` (
   `checkyn` varchar(1000) DEFAULT NULL,
   `check_emp` varchar(10) DEFAULT NULL,
   `check_cause` varchar(1000) DEFAULT NULL,
-  `g_ab_tur` int DEFAULT NULL,
-  `g_ab_huviin` int DEFAULT NULL,
+  `g_ab_tur` decimal(5,3) DEFAULT '0.000',
+  `g_ab_huviin` decimal(5,3) DEFAULT '0.000',
   `pos_session_id` varchar(64) DEFAULT NULL,
   `created_by` varchar(50) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -2215,6 +2304,17 @@ CREATE TRIGGER `transactions_contract_g_num_bi` BEFORE INSERT ON `transactions_c
       CHAR(FLOOR(65 + RAND() * 26))
     ))
   );
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_transactions_contract_g_id` BEFORE INSERT ON `transactions_contract` FOR EACH ROW BEGIN
+  IF NEW.g_id IS NULL OR NEW.g_id = 0 THEN
+    SET NEW.g_id = (
+      SELECT IFNULL(MAX(g_id), 0) + 1
+      FROM transactions_contract
+    );
+  END IF;
 END
 $$
 DELIMITER ;
@@ -4065,6 +4165,69 @@ CREATE TABLE `transactions_pos` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `transactions_test`
+--
+
+CREATE TABLE `transactions_test` (
+  `id` bigint UNSIGNED NOT NULL,
+  `company_id` int NOT NULL,
+  `request_id` bigint NOT NULL,
+  `customer_name` varchar(191) NOT NULL,
+  `status` enum('draft','pending','approved') NOT NULL DEFAULT 'pending',
+  `total_amount` decimal(18,2) NOT NULL DEFAULT '0.00',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `transactions_test_detail`
+--
+
+CREATE TABLE `transactions_test_detail` (
+  `id` bigint UNSIGNED NOT NULL,
+  `transaction_id` bigint UNSIGNED NOT NULL,
+  `line_no` int NOT NULL,
+  `sku` varchar(64) DEFAULT NULL,
+  `quantity` decimal(18,2) NOT NULL DEFAULT '0.00',
+  `line_total` decimal(18,2) NOT NULL DEFAULT '0.00',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `transaction_temporaries`
+--
+
+CREATE TABLE `transaction_temporaries` (
+  `id` bigint UNSIGNED NOT NULL,
+  `company_id` bigint NOT NULL,
+  `table_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `form_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `config_name` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `module_key` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `payload_json` longtext COLLATE utf8mb4_unicode_ci NOT NULL,
+  `raw_values_json` longtext COLLATE utf8mb4_unicode_ci,
+  `cleaned_values_json` longtext COLLATE utf8mb4_unicode_ci,
+  `created_by` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `plan_senior_empid` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `branch_id` bigint DEFAULT NULL,
+  `department_id` bigint DEFAULT NULL,
+  `status` enum('pending','promoted','rejected') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `review_notes` text COLLATE utf8mb4_unicode_ci,
+  `reviewed_by` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
+  `promoted_record_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Stand-in structure for view `UnifiedInventoryCode`
 -- (See below for the actual view)
 --
@@ -4127,7 +4290,7 @@ CREATE TABLE `user_activity_log` (
   `emp_id` varchar(10) NOT NULL,
   `table_name` varchar(100) NOT NULL,
   `record_id` varchar(191) NOT NULL,
-  `action` enum('create','update','delete','request_edit','request_delete','approve','decline','request_report_approval','approve_report','decline_report') NOT NULL,
+  `action` enum('create','update','delete','request_edit','request_delete','approve','decline','request_report_approval','approve_report','decline_report') CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
   `details` json DEFAULT NULL,
   `request_id` bigint DEFAULT NULL,
   `timestamp` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -4262,6 +4425,40 @@ CREATE TABLE `view_transactions_income` (
 ,`ortr_check_cause` varchar(500)
 );
 
+-- --------------------------------------------------------
+
+--
+-- Stand-in structure for view `v_bill_lines_labeled`
+-- (See below for the actual view)
+--
+CREATE TABLE `v_bill_lines_labeled` (
+`line_id` bigint
+,`bill_id` bigint
+,`utility_code` varchar(64)
+,`utility_name` varchar(128)
+,`band_code` varchar(64)
+,`band_name` varchar(128)
+,`reading_prev` decimal(18,6)
+,`reading_curr` decimal(18,6)
+,`qty` decimal(18,6)
+,`unit` int
+,`unit_price` decimal(18,6)
+,`fixed_fee` decimal(18,2)
+,`amount` decimal(18,2)
+,`note` varchar(255)
+,`party_name` varchar(255)
+,`source_sheet` varchar(128)
+);
+
+-- --------------------------------------------------------
+
+--
+-- Stand-in structure for view `v_utility_rates_labeled`
+-- (See below for the actual view)
+--
+CREATE TABLE `v_utility_rates_labeled` (
+);
+
 --
 -- Indexes for dumped tables
 --
@@ -4273,13 +4470,11 @@ ALTER TABLE `audit_log`
   ADD PRIMARY KEY (`id`);
 
 --
--- Indexes for table `code_abhuvaari`
+-- Indexes for table `code_band`
 --
-ALTER TABLE `code_abhuvaari`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_HBChig_id2_HBTorol_id2_Hbaitsaagch_id2` (`HBChig_id2`,`HBTorol_id2`,`Hbaitsaagch_id2`),
-  ADD KEY `HBTorol_id2` (`HBTorol_id2`),
-  ADD KEY `Hbaitsaagch_id2` (`Hbaitsaagch_id2`);
+ALTER TABLE `code_band`
+  ADD PRIMARY KEY (`band_id`),
+  ADD UNIQUE KEY `band_code` (`band_code`);
 
 --
 -- Indexes for table `code_bayarodor`
@@ -4323,7 +4518,7 @@ ALTER TABLE `code_cashier`
 --
 ALTER TABLE `code_chiglel`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_company_chig_id` (`company_id`,`chig_id`);
+  ADD KEY `chig_id` (`chig_id`,`company_id`);
 
 --
 -- Indexes for table `code_department`
@@ -4392,7 +4587,6 @@ ALTER TABLE `code_frequency`
 --
 ALTER TABLE `code_huvaari`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_company_baitsaagch_id` (`company_id`,`baitsaagch_id`),
   ADD KEY `position_id` (`position_id`);
 
 --
@@ -4491,6 +4685,30 @@ ALTER TABLE `code_unit`
 ALTER TABLE `code_userlevel_settings`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `uls_function` (`uls_id`,`function_name`);
+
+--
+-- Indexes for table `code_utility`
+--
+ALTER TABLE `code_utility`
+  ADD PRIMARY KEY (`utility_id`),
+  ADD UNIQUE KEY `utility_code` (`utility_code`);
+
+--
+-- Indexes for table `code_utility_band`
+--
+ALTER TABLE `code_utility_band`
+  ADD PRIMARY KEY (`utility_id`,`band_id`),
+  ADD KEY `fk_cub_band` (`band_id`);
+
+--
+-- Indexes for table `code_utility_rates`
+--
+ALTER TABLE `code_utility_rates`
+  ADD PRIMARY KEY (`rate_id`),
+  ADD KEY `idx_rates_lookup` (`uchig_id`,`utility_id`,`band_id`,`effective_from`,`effective_to`),
+  ADD KEY `fk_rate_util_mig` (`utility_id`),
+  ADD KEY `fk_rate_band_mig` (`band_id`),
+  ADD KEY `utorol_id` (`utorol_id`);
 
 --
 -- Indexes for table `code_valut`
@@ -4609,11 +4827,29 @@ ALTER TABLE `pending_request`
   ADD UNIQUE KEY `idx_pending_unique` (`table_name`,`record_id`,`emp_id`,`request_type`,`is_pending`);
 
 --
+-- Indexes for table `report_approvals`
+--
+ALTER TABLE `report_approvals`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_report_approvals_request` (`request_id`);
+
+--
 -- Indexes for table `report_definitions`
 --
 ALTER TABLE `report_definitions`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `report_key` (`report_key`);
+
+--
+-- Indexes for table `report_transaction_locks`
+--
+ALTER TABLE `report_transaction_locks`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_report_locks_request_record` (`request_id`,`table_name`,`record_id`),
+  ADD KEY `idx_report_locks_request` (`request_id`),
+  ADD KEY `idx_report_locks_table` (`table_name`),
+  ADD KEY `idx_report_locks_company` (`company_id`),
+  ADD KEY `idx_report_locks_status` (`status`);
 
 --
 -- Indexes for table `request_seen_counts`
@@ -4644,25 +4880,23 @@ ALTER TABLE `tbl_beltgenniiluulegch`
   ADD UNIQUE KEY `uniq_manuf_id` (`manuf_id`);
 
 --
--- Indexes for table `tbl_bhuvaari`
---
-ALTER TABLE `tbl_bhuvaari`
-  ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `uniq_BH_id_bh_YM` (`BH_id`,`bh_YM`);
-
---
 -- Indexes for table `tbl_bills`
 --
 ALTER TABLE `tbl_bills`
   ADD PRIMARY KEY (`bill_id`),
-  ADD KEY `contract_number` (`contract_number`);
+  ADD KEY `contract_number` (`contract_number`),
+  ADD KEY `fk_bills_contract` (`contract_id`);
 
 --
 -- Indexes for table `tbl_bill_lines`
 --
 ALTER TABLE `tbl_bill_lines`
   ADD PRIMARY KEY (`line_id`),
-  ADD KEY `contract_number` (`contract_number`,`bill_no`,`period_start`,`period_end`,`currency`);
+  ADD KEY `contract_number` (`contract_number`,`bill_no`,`period_start`,`period_end`,`currency`),
+  ADD KEY `bill_id` (`bill_id`),
+  ADD KEY `utility_id` (`utility_id`),
+  ADD KEY `band_id` (`band_id`),
+  ADD KEY `unit` (`unit`);
 
 --
 -- Indexes for table `tbl_contracter`
@@ -4721,6 +4955,13 @@ ALTER TABLE `tbl_employment_other`
   ADD PRIMARY KEY (`id`);
 
 --
+-- Indexes for table `tbl_employment_schedule`
+--
+ALTER TABLE `tbl_employment_schedule`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_46d70a03` (`BH_id`,`bh_empid`,`bh_date`,`company_id`,`department_id`,`branch_id`);
+
+--
 -- Indexes for table `tbl_expenseorg`
 --
 ALTER TABLE `tbl_expenseorg`
@@ -4764,11 +5005,25 @@ ALTER TABLE `tbl_tariff`
   ADD KEY `mu` (`mu`);
 
 --
+-- Indexes for table `tbl_utility_contracts`
+--
+ALTER TABLE `tbl_utility_contracts`
+  ADD PRIMARY KEY (`contract_id`),
+  ADD UNIQUE KEY `contract_number` (`contract_number`);
+
+--
 -- Indexes for table `tbl_wasteprice`
 --
 ALTER TABLE `tbl_wasteprice`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `waste_year` (`waste_year`);
+
+--
+-- Indexes for table `tbl_workplace`
+--
+ALTER TABLE `tbl_workplace`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_c4260af4` (`wchig_id`,`wtorol_id`,`workplace_id`,`wor_type_id`,`date`,`company_id`,`department_id`,`branch_id`);
 
 --
 -- Indexes for table `tbl_workplace_schedule`
@@ -4797,12 +5052,6 @@ ALTER TABLE `transactions_contract`
   ADD PRIMARY KEY (`id`,`company_id`) USING BTREE,
   ADD UNIQUE KEY `g_id` (`g_id`,`g_chig`,`g_torol`,`g_sq`,`g_start`,`g_end`,`company_id`),
   ADD KEY `company_id` (`company_id`),
-  ADD KEY `baitsaagch_id` (`baitsaagch_id`),
-  ADD KEY `branch_id` (`branch_id`),
-  ADD KEY `department_id` (`department_id`),
-  ADD KEY `g_chig` (`g_chig`),
-  ADD KEY `g_torol` (`g_torol`),
-  ADD KEY `transactions_contract_ibfk_5` (`g_burtgel_id`),
   ADD KEY `branchid` (`branchid`),
   ADD KEY `confirm_emp` (`confirm_emp`);
 
@@ -4902,6 +5151,32 @@ ALTER TABLE `transactions_pos`
   ADD KEY `cashback_payment_type` (`cashback_payment_type`);
 
 --
+-- Indexes for table `transactions_test`
+--
+ALTER TABLE `transactions_test`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_transactions_test_company` (`company_id`),
+  ADD KEY `idx_transactions_test_request` (`request_id`);
+
+--
+-- Indexes for table `transactions_test_detail`
+--
+ALTER TABLE `transactions_test_detail`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_transactions_detail_transaction` (`transaction_id`);
+
+--
+-- Indexes for table `transaction_temporaries`
+--
+ALTER TABLE `transaction_temporaries`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_temp_company` (`company_id`),
+  ADD KEY `idx_temp_status` (`status`),
+  ADD KEY `idx_temp_table` (`table_name`),
+  ADD KEY `idx_temp_plan_senior` (`plan_senior_empid`),
+  ADD KEY `idx_temp_creator` (`created_by`);
+
+--
 -- Indexes for table `users`
 --
 ALTER TABLE `users`
@@ -4914,8 +5189,7 @@ ALTER TABLE `users`
 -- Indexes for table `user_activity_log`
 --
 ALTER TABLE `user_activity_log`
-  ADD PRIMARY KEY (`log_id`),
-  ADD CONSTRAINT `fk_activity_request` FOREIGN KEY (`request_id`) REFERENCES `pending_request` (`request_id`);
+  ADD PRIMARY KEY (`log_id`);
 
 --
 -- Indexes for table `user_levels`
@@ -4944,10 +5218,10 @@ ALTER TABLE `audit_log`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `code_abhuvaari`
+-- AUTO_INCREMENT for table `code_band`
 --
-ALTER TABLE `code_abhuvaari`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+ALTER TABLE `code_band`
+  MODIFY `band_id` bigint NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `code_bayarodor`
@@ -5130,6 +5404,18 @@ ALTER TABLE `code_userlevel_settings`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `code_utility`
+--
+ALTER TABLE `code_utility`
+  MODIFY `utility_id` bigint NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `code_utility_rates`
+--
+ALTER TABLE `code_utility_rates`
+  MODIFY `rate_id` bigint NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `code_valut`
 --
 ALTER TABLE `code_valut`
@@ -5226,10 +5512,22 @@ ALTER TABLE `pending_request`
   MODIFY `request_id` bigint NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `report_approvals`
+--
+ALTER TABLE `report_approvals`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `report_definitions`
 --
 ALTER TABLE `report_definitions`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `report_transaction_locks`
+--
+ALTER TABLE `report_transaction_locks`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `role_default_modules`
@@ -5241,12 +5539,6 @@ ALTER TABLE `role_default_modules`
 -- AUTO_INCREMENT for table `tbl_beltgenniiluulegch`
 --
 ALTER TABLE `tbl_beltgenniiluulegch`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT;
-
---
--- AUTO_INCREMENT for table `tbl_bhuvaari`
---
-ALTER TABLE `tbl_bhuvaari`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
@@ -5304,6 +5596,12 @@ ALTER TABLE `tbl_employment_other`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `tbl_employment_schedule`
+--
+ALTER TABLE `tbl_employment_schedule`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `tbl_expenseorg`
 --
 ALTER TABLE `tbl_expenseorg`
@@ -5340,9 +5638,21 @@ ALTER TABLE `tbl_tariff`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `tbl_utility_contracts`
+--
+ALTER TABLE `tbl_utility_contracts`
+  MODIFY `contract_id` bigint NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `tbl_wasteprice`
 --
 ALTER TABLE `tbl_wasteprice`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `tbl_workplace`
+--
+ALTER TABLE `tbl_workplace`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
@@ -5436,6 +5746,24 @@ ALTER TABLE `transactions_pos`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `transactions_test`
+--
+ALTER TABLE `transactions_test`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `transactions_test_detail`
+--
+ALTER TABLE `transactions_test_detail`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `transaction_temporaries`
+--
+ALTER TABLE `transaction_temporaries`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `users`
 --
 ALTER TABLE `users`
@@ -5522,15 +5850,27 @@ DROP TABLE IF EXISTS `view_transactions_income`;
 
 CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `view_transactions_income`  AS SELECT `transactions_income`.`id` AS `id`, `transactions_income`.`or_num` AS `or_num`, `transactions_income`.`ortr_transbranch` AS `ortr_transbranch`, `transactions_income`.`or_o_barimt` AS `or_o_barimt`, `transactions_income`.`company_id` AS `company_id`, `transactions_income`.`branch_id` AS `branch_id`, `transactions_income`.`or_g_id` AS `or_g_id`, `transactions_income`.`or_burtgel` AS `or_burtgel`, `transactions_income`.`or_chig` AS `or_chig`, `transactions_income`.`or_torol` AS `or_torol`, `transactions_income`.`or_type_id` AS `or_type_id`, `transactions_income`.`or_av_now` AS `or_av_now`, `transactions_income`.`or_av_time` AS `or_av_time`, `transactions_income`.`or_date` AS `or_date`, `transactions_income`.`orcash_or_id` AS `orcash_or_id`, `transactions_income`.`or_or` AS `or_or`, `transactions_income`.`or_vallut_id` AS `or_vallut_id`, `transactions_income`.`or_valut_choice` AS `or_valut_choice`, `transactions_income`.`or_bar_suu` AS `or_bar_suu`, `transactions_income`.`or_bcode` AS `or_bcode`, `transactions_income`.`or_orderid` AS `or_orderid`, `transactions_income`.`or_tailbar1` AS `or_tailbar1`, `transactions_income`.`orBurtgel_rd` AS `orBurtgel_rd`, `transactions_income`.`or_eb` AS `or_eb`, `transactions_income`.`or_bank` AS `or_bank`, `transactions_income`.`or_uglug_id` AS `or_uglug_id`, `transactions_income`.`or_emp_receiver` AS `or_emp_receiver`, `transactions_income`.`or_tur_receiver` AS `or_tur_receiver`, `transactions_income`.`or_other_receiver` AS `or_other_receiver`, `transactions_income`.`or_org_id` AS `or_org_id`, `transactions_income`.`TRTYPENAME` AS `TRTYPENAME`, `transactions_income`.`trtype` AS `trtype`, `transactions_income`.`TransType` AS `TransType`, `transactions_income`.`ORGANIZATION` AS `ORGANIZATION`, `transactions_income`.`ROOMID` AS `ROOMID`, `transactions_income`.`USERID` AS `USERID`, `transactions_income`.`LOCATION` AS `LOCATION`, `transactions_income`.`deviceid` AS `deviceid`, `transactions_income`.`devicename` AS `devicename`, `transactions_income`.`rawdata` AS `rawdata`, `transactions_income`.`actime` AS `actime`, `transactions_income`.`rectime` AS `rectime`, `transactions_income`.`ortr_state` AS `ortr_state`, `transactions_income`.`ortr_id` AS `ortr_id`, `transactions_income`.`ortr_confirm` AS `ortr_confirm`, `transactions_income`.`ortr_confirm_date` AS `ortr_confirm_date`, `transactions_income`.`ortr_confirm_emp` AS `ortr_confirm_emp`, `transactions_income`.`ortr_edit_date` AS `ortr_edit_date`, `transactions_income`.`ortr_edit_emp` AS `ortr_edit_emp`, `transactions_income`.`ortr_edit_cause` AS `ortr_edit_cause`, `transactions_income`.`ortr_del_date` AS `ortr_del_date`, `transactions_income`.`ortr_del_emp` AS `ortr_del_emp`, `transactions_income`.`ortr_del_cause` AS `ortr_del_cause`, `transactions_income`.`ortr_check_date` AS `ortr_check_date`, `transactions_income`.`ortr_checkyn` AS `ortr_checkyn`, `transactions_income`.`ortr_check_emp` AS `ortr_check_emp`, `transactions_income`.`ortr_check_cause` AS `ortr_check_cause` FROM `transactions_income` ;
 
+-- --------------------------------------------------------
+
+--
+-- Structure for view `v_bill_lines_labeled`
+--
+DROP TABLE IF EXISTS `v_bill_lines_labeled`;
+
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_bill_lines_labeled`  AS SELECT `bl`.`line_id` AS `line_id`, `bl`.`bill_id` AS `bill_id`, `u`.`utility_code` AS `utility_code`, `u`.`utility_name` AS `utility_name`, `bd`.`band_code` AS `band_code`, `bd`.`band_name` AS `band_name`, `bl`.`reading_prev` AS `reading_prev`, `bl`.`reading_curr` AS `reading_curr`, `bl`.`qty` AS `qty`, `bl`.`unit` AS `unit`, `bl`.`unit_price` AS `unit_price`, `bl`.`fixed_fee` AS `fixed_fee`, `bl`.`amount` AS `amount`, `bl`.`note` AS `note`, `bl`.`party_name` AS `party_name`, `bl`.`source_sheet` AS `source_sheet` FROM ((`tbl_bill_lines` `bl` join `code_utility` `u` on((`u`.`utility_id` = `bl`.`utility_id`))) join `code_band` `bd` on((`bd`.`band_id` = `bl`.`band_id`))) ;
+
+-- --------------------------------------------------------
+
+--
+-- Structure for view `v_utility_rates_labeled`
+--
+DROP TABLE IF EXISTS `v_utility_rates_labeled`;
+
+CREATE ALGORITHM=UNDEFINED DEFINER=`root`@`localhost` SQL SECURITY DEFINER VIEW `v_utility_rates_labeled`  AS SELECT `r`.`rate_id` AS `rate_id`, `r`.`contract_id` AS `contract_id`, `u`.`utility_code` AS `utility_code`, `u`.`utility_name` AS `utility_name`, `bd`.`band_code` AS `band_code`, `bd`.`band_name` AS `band_name`, `r`.`effective_from` AS `effective_from`, `r`.`effective_to` AS `effective_to`, `r`.`unit_price` AS `unit_price`, `r`.`fixed_fee` AS `fixed_fee`, `r`.`currency` AS `currency` FROM ((`code_utility_rates` `r` join `code_utility` `u` on((`u`.`utility_id` = `r`.`utility_id`))) join `code_band` `bd` on((`bd`.`band_id` = `r`.`band_id`))) ;
+
 --
 -- Constraints for dumped tables
 --
-
---
--- Constraints for table `code_abhuvaari`
---
-ALTER TABLE `code_abhuvaari`
-  ADD CONSTRAINT `code_abhuvaari_ibfk_3` FOREIGN KEY (`Hbaitsaagch_id2`) REFERENCES `code_huvaari` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `code_bkodprim`
@@ -5553,6 +5893,23 @@ ALTER TABLE `code_expensebaltype`
 --
 ALTER TABLE `code_materialprim`
   ADD CONSTRAINT `code_materialprim_ibfk_1` FOREIGN KEY (`xmkodtk_muid`) REFERENCES `code_unit` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+--
+-- Constraints for table `code_utility_band`
+--
+ALTER TABLE `code_utility_band`
+  ADD CONSTRAINT `fk_cub_band` FOREIGN KEY (`band_id`) REFERENCES `code_band` (`band_id`),
+  ADD CONSTRAINT `fk_cub_util` FOREIGN KEY (`utility_id`) REFERENCES `code_utility` (`utility_id`);
+
+--
+-- Constraints for table `code_utility_rates`
+--
+ALTER TABLE `code_utility_rates`
+  ADD CONSTRAINT `code_utility_rates_ibfk_2` FOREIGN KEY (`utorol_id`) REFERENCES `code_torol` (`torol_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `code_utility_rates_ibfk_3` FOREIGN KEY (`uchig_id`) REFERENCES `code_chiglel` (`chig_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `fk_rate_band` FOREIGN KEY (`band_id`) REFERENCES `code_band` (`band_id`),
+  ADD CONSTRAINT `fk_rate_band_mig` FOREIGN KEY (`band_id`) REFERENCES `code_band` (`band_id`),
+  ADD CONSTRAINT `fk_rate_util` FOREIGN KEY (`utility_id`) REFERENCES `code_utility` (`utility_id`);
 
 --
 -- Constraints for table `code_workplace`
@@ -5597,6 +5954,21 @@ ALTER TABLE `role_module_permissions`
 --
 ALTER TABLE `tbl_beltgenniiluulegch`
   ADD CONSTRAINT `tbl_beltgenniiluulegch_ibfk_1` FOREIGN KEY (`manuf_id`) REFERENCES `tbl_contracter` (`manuf_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+--
+-- Constraints for table `tbl_bills`
+--
+ALTER TABLE `tbl_bills`
+  ADD CONSTRAINT `fk_bills_contract` FOREIGN KEY (`contract_id`) REFERENCES `tbl_utility_contracts` (`contract_id`);
+
+--
+-- Constraints for table `tbl_bill_lines`
+--
+ALTER TABLE `tbl_bill_lines`
+  ADD CONSTRAINT `fk_bl_band` FOREIGN KEY (`band_id`) REFERENCES `code_band` (`band_id`),
+  ADD CONSTRAINT `fk_bl_bill` FOREIGN KEY (`bill_id`) REFERENCES `tbl_bills` (`bill_id`),
+  ADD CONSTRAINT `fk_bl_util` FOREIGN KEY (`utility_id`) REFERENCES `code_utility` (`utility_id`),
+  ADD CONSTRAINT `tbl_bill_lines_ibfk_1` FOREIGN KEY (`unit`) REFERENCES `code_unit` (`unit_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
 -- Constraints for table `tbl_currate`
@@ -5694,6 +6066,12 @@ ALTER TABLE `transactions_pos`
   ADD CONSTRAINT `transactions_pos_ibfk_5` FOREIGN KEY (`status`) REFERENCES `code_status` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_6` FOREIGN KEY (`payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_8` FOREIGN KEY (`cashback_payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+--
+-- Constraints for table `transactions_test_detail`
+--
+ALTER TABLE `transactions_test_detail`
+  ADD CONSTRAINT `fk_transactions_test_detail_transaction` FOREIGN KEY (`transaction_id`) REFERENCES `transactions_test` (`id`) ON DELETE CASCADE ON UPDATE CASCADE;
 
 --
 -- Constraints for table `users`

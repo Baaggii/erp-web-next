@@ -381,9 +381,7 @@ const TableManager = forwardRef(function TableManager({
     () => Array.from(requestIdSet).sort().join(','),
     [requestIdSet],
   );
-  const authContext = useContext(AuthContext) || {};
-  const { user, company, branch, department, session } = authContext;
-  const authPermissions = authContext?.permissions;
+  const { user, company, branch, department, session } = useContext(AuthContext);
   const hasSenior = (value) => {
     if (value === null || value === undefined) return false;
     const numeric = Number(value);
@@ -395,8 +393,7 @@ const TableManager = forwardRef(function TableManager({
     }
     return Boolean(value);
   };
-  const isSubordinate =
-    hasSenior(session?.senior_empid) || hasSenior(session?.senior_plan_empid);
+  const isSubordinate = hasSenior(session?.senior_empid) || hasSenior(session?.senior_plan_empid);
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const { addToast } = useToast();
