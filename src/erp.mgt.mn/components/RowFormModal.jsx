@@ -2392,7 +2392,7 @@ const RowFormModal = function RowFormModal({
           <div className="mt-2 text-sm text-gray-600">
             {t(
               'temporary_post_hint',
-              'This form only allows temporary submissions for your branch/department.',
+              'This form currently only allows temporary submissions.',
             )}
           </div>
         )}
