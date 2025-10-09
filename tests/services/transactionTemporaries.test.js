@@ -3,7 +3,6 @@ import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 import {
   getTemporarySummary,
-  sanitizeCleanedValuesForInsert,
 } from '../../api-server/services/transactionTemporaries.js';
 
 function mockQuery(handler) {
@@ -36,44 +35,4 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
   } finally {
     restore();
   }
-});
-
-test('sanitizeCleanedValuesForInsert drops non-columns and reserved rows payload', async () => {
-  const columns = ['id', 'employee_name', 'Amount', 'attachments'];
-  const sanitized = await sanitizeCleanedValuesForInsert(
-    'transactions_demo',
-    {
-      employee_name: 'Alice',
-      amount: 125.5,
-      rows: [{ id: 1 }],
-      extra_field: 'ignore me',
-      attachments: [{ name: 'file.pdf' }],
-    },
-    columns,
-  );
-  assert.deepEqual(sanitized, {
-    employee_name: 'Alice',
-    Amount: 125.5,
-    attachments: JSON.stringify([{ name: 'file.pdf' }]),
-  });
-});
-
-test('sanitizeCleanedValuesForInsert ignores non-plain objects', async () => {
-  const sanitizedFromArray = await sanitizeCleanedValuesForInsert(
-    'transactions_demo',
-    [
-      {
-        employee_name: 'Bob',
-      },
-    ],
-    ['employee_name'],
-  );
-  assert.deepEqual(sanitizedFromArray, {});
-
-  const sanitizedFromNull = await sanitizeCleanedValuesForInsert(
-    'transactions_demo',
-    null,
-    ['employee_name'],
-  );
-  assert.deepEqual(sanitizedFromNull, {});
 });

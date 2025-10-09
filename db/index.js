@@ -918,7 +918,6 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
   const departmentPreference = hasDepartmentPref
     ? options.departmentId ?? null
     : undefined;
-  const preferAssignedSenior = Boolean(options?.preferAssignedSenior);
 
   if (companyId !== undefined && companyId !== null) {
     const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
@@ -940,13 +939,6 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
 
     const orderPriority = [];
     const params = [empid, companyId];
-    const seniorCheck =
-      "COALESCE(NULLIF(NULLIF(TRIM(e.employment_senior_empid), ''), '0'), " +
-      "NULLIF(NULLIF(TRIM(e.employment_senior_plan_empid), ''), '0'))";
-    const seniorPriority = preferAssignedSenior
-      ? `CASE WHEN ${seniorCheck} IS NOT NULL THEN 0 ELSE 1 END`
-      : `CASE WHEN ${seniorCheck} IS NULL THEN 0 ELSE 1 END`;
-    orderPriority.push(seniorPriority);
     if (hasBranchPref) {
       orderPriority.push('CASE WHEN e.employment_branch_id <=> ? THEN 0 ELSE 1 END');
       params.push(branchPreference);

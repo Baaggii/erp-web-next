@@ -12,30 +12,6 @@ let ensurePromise = null;
 
 const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
 
-function normalizeInsertValue(value) {
-  if (value === undefined) return undefined;
-  if (value === null) return null;
-  if (Array.isArray(value)) {
-    return safeJsonStringify(value);
-  }
-  if (value instanceof Date) return value;
-  if (Buffer.isBuffer?.(value)) return value;
-  if (typeof value === 'bigint') {
-    return value.toString();
-  }
-  if (typeof value === 'object') {
-    if (isPlainObject(value)) {
-      return safeJsonStringify(value);
-    }
-    try {
-      return safeJsonStringify(value);
-    } catch {
-      return String(value);
-    }
-  }
-  return value;
-}
-
 function normalizeEmpId(empid) {
   if (!empid) return null;
   const trimmed = String(empid).trim();
@@ -109,7 +85,7 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
     const columnName = lookup.get(lower);
     if (!columnName) continue;
-    sanitized[columnName] = normalizeInsertValue(rawValue);
+    sanitized[columnName] = rawValue;
   }
   return sanitized;
 }
@@ -218,34 +194,22 @@ export async function createTemporarySubmission({
   const normalizedDepartmentPref = departmentPrefSpecified
     ? normalizeScopePreference(rawDepartmentPref)
     : undefined;
-  const fallbackBranch = normalizeScopePreference(branchId);
-  const fallbackDepartment = normalizeScopePreference(departmentId);
-  const sessionBranchPreference = branchPrefSpecified
-    ? normalizedBranchPref ?? null
-    : fallbackBranch ?? undefined;
-  const sessionDepartmentPreference = departmentPrefSpecified
-    ? normalizedDepartmentPref ?? null
-    : fallbackDepartment ?? undefined;
-  const sessionOptions = { preferAssignedSenior: true };
-  if (sessionBranchPreference !== undefined) {
-    sessionOptions.branchId = sessionBranchPreference;
-  }
-  if (sessionDepartmentPreference !== undefined) {
-    sessionOptions.departmentId = sessionDepartmentPreference;
-  }
 
   const conn = await pool.getConnection();
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
-    const session = await getEmploymentSession(
-      normalizedCreator,
-      companyId,
-      sessionOptions,
-    );
+    const session = await getEmploymentSession(normalizedCreator, companyId, {
+      ...(branchPrefSpecified ? { branchId: normalizedBranchPref } : {}),
+      ...(departmentPrefSpecified
+        ? { departmentId: normalizedDepartmentPref }
+        : {}),
+    });
     const reviewerEmpId =
       normalizeEmpId(session?.senior_empid) ||
       normalizeEmpId(session?.senior_plan_empid);
+    const fallbackBranch = normalizeScopePreference(branchId);
+    const fallbackDepartment = normalizeScopePreference(departmentId);
     const insertBranchId = branchPrefSpecified
       ? normalizedBranchPref ?? null
       : fallbackBranch ?? null;
