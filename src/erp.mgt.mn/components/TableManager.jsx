@@ -3282,17 +3282,42 @@ const TableManager = forwardRef(function TableManager({
     return value;
   }, []);
 
-  const stringifyPreviewCell = useCallback((value) => {
-    if (value === undefined || value === null || value === '') return '—';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    if (value instanceof Date) return value.toISOString();
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  }, []);
+  const stringifyPreviewCell = useCallback(
+    (value) => {
+      const seen = new Set();
+      const collect = (input) => {
+        if (input === undefined || input === null || input === '') return [];
+        if (typeof input === 'string') return [input];
+        if (typeof input === 'number' || typeof input === 'boolean') return [String(input)];
+        if (input instanceof Date) return [input.toISOString()];
+        if (seen.has(input)) return [];
+        if (Array.isArray(input)) {
+          seen.add(input);
+          const nested = input.flatMap((item) => collect(item));
+          seen.delete(input);
+          return nested;
+        }
+        if (isPlainValueObject(input)) {
+          seen.add(input);
+          const nested = Object.values(input).flatMap((item) => collect(item));
+          seen.delete(input);
+          return nested;
+        }
+        const fallback = String(input);
+        if (!fallback || fallback === '[object Object]') return [];
+        return [fallback];
+      };
+
+      const flattened = collect(value)
+        .map((item) => (typeof item === 'string' ? item : String(item)))
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+
+      if (flattened.length === 0) return '—';
+      return flattened.join(', ');
+    },
+    [isPlainValueObject],
+  );
 
   const temporaryValueButtonStyle = useMemo(
     () => ({
@@ -3342,18 +3367,40 @@ const TableManager = forwardRef(function TableManager({
       }
       const columnList = Array.from(columnKeys);
       const normalizedRows = rows.length > 0 ? rows : [{ Value: structured }];
+      const displayRows = normalizedRows.map((row) => {
+        const normalized = {};
+        columnList.forEach((key) => {
+          const cellValue = row && typeof row === 'object' ? row[key] : undefined;
+          normalized[key] = stringifyPreviewCell(cellValue);
+        });
+        return normalized;
+      });
+
+      let activeColumns = columnList.filter((key) =>
+        displayRows.some((row) => {
+          const cell = row[key];
+          return cell !== undefined && cell !== null && cell !== '' && cell !== '—';
+        }),
+      );
+
+      let normalizedDisplayRows;
+      if (activeColumns.length === 0) {
+        activeColumns = ['Value'];
+        normalizedDisplayRows = [{ Value: stringifyPreviewCell(structured) }];
+      } else {
+        normalizedDisplayRows = displayRows.map((row) => {
+          const normalized = {};
+          activeColumns.forEach((key) => {
+            normalized[key] = row[key] ?? '—';
+          });
+          return normalized;
+        });
+      }
 
       setTemporaryValuePreview({
         title: labels[column] || column,
-        columns: columnList,
-        rows: normalizedRows.map((row) => {
-          const normalized = {};
-          columnList.forEach((key) => {
-            const cellValue = row && typeof row === 'object' ? row[key] : undefined;
-            normalized[key] = stringifyPreviewCell(cellValue);
-          });
-          return normalized;
-        }),
+        columns: activeColumns,
+        rows: normalizedDisplayRows,
       });
     },
     [labels, parseMaybeJson, stringifyPreviewCell, isPlainValueObject],
@@ -5022,13 +5069,19 @@ const TableManager = forwardRef(function TableManager({
                       const entryId = getTemporaryId(entry);
                       const rowKey = entryId ?? `row-${index}`;
                       const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
-                      const normalizedValues = normalizeToCanonical(
-                        entry?.values ||
-                          entry?.cleanedValues ||
-                          entry?.payload?.values ||
-                          entry?.rawValues ||
-                          {},
+                      const valueSources = [
+                        entry?.values,
+                        entry?.cleanedValues,
+                        entry?.payload?.values,
+                        entry?.rawValues,
+                      ];
+                      const firstStructured = valueSources.find(
+                        (candidate) =>
+                          candidate &&
+                          typeof candidate === 'object' &&
+                          !Array.isArray(candidate),
                       );
+                      const normalizedValues = normalizeToCanonical(firstStructured || {});
                       const detailColumnsSource =
                         columns.length > 0 ? columns : Object.keys(normalizedValues || {});
                       const detailColumns = Array.from(
