@@ -210,8 +210,19 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     }
     const columnName = lookup.get(lower) ?? lookup.get(stripped);
     if (!columnName) continue;
-    const normalizedValue = normalizePromotableValue(rawValue);
-    if (normalizedValue === undefined) continue;
+    let normalizedValue = rawValue;
+    if (Array.isArray(normalizedValue)) {
+      normalizedValue = JSON.stringify(normalizedValue);
+    } else if (
+      normalizedValue &&
+      typeof normalizedValue === 'object' &&
+      !(normalizedValue instanceof Date) &&
+      !(normalizedValue instanceof Buffer)
+    ) {
+      normalizedValue = JSON.stringify(normalizedValue);
+    } else if (typeof normalizedValue === 'bigint') {
+      normalizedValue = normalizedValue.toString();
+    }
     sanitized[columnName] = normalizedValue;
   }
   return sanitized;

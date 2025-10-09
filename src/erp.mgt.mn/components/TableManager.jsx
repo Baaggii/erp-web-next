@@ -3310,7 +3310,6 @@ const TableManager = forwardRef(function TableManager({
 
   const openTemporaryPreview = useCallback(
     (column, value) => {
-      if (value === undefined || value === null) return;
       let structured = value;
       if (typeof structured === 'string') {
         structured = parseMaybeJson(structured);
@@ -3362,15 +3361,8 @@ const TableManager = forwardRef(function TableManager({
   );
 
   const formatTemporaryFieldValue = useCallback(
-    (column, displayValue, previewValue) => {
-      const fallbackPreview =
-        previewValue !== undefined && previewValue !== null ? previewValue : displayValue;
-      if (
-        (displayValue === undefined || displayValue === null || displayValue === '') &&
-        (fallbackPreview === undefined || fallbackPreview === null || fallbackPreview === '')
-      ) {
-        return '—';
-      }
+    (column, rawValue) => {
+      if (rawValue === undefined || rawValue === null || rawValue === '') return '—';
 
       const relation = relationOpts[column];
       const mapRelationValue = (value) => {
@@ -3385,74 +3377,68 @@ const TableManager = forwardRef(function TableManager({
         return mapped !== undefined ? mapped : value;
       };
 
-      const parsedDisplay = parseMaybeJson(displayValue);
-      const parsedPreview = parseMaybeJson(fallbackPreview);
-      const mappedDisplay = mapRelationValue(parsedDisplay);
-      const mappedPreview = mapRelationValue(parsedPreview);
+      let value = parseMaybeJson(rawValue);
+      value = mapRelationValue(value);
 
-      const joinPrimitiveArray = (arr) =>
-        arr
-          .map((item) => (typeof item === 'string' ? item : item === null ? '' : String(item)))
-          .join(', ')
-          .trim();
-
-      if (Array.isArray(mappedPreview)) {
-        const primitivePreview = mappedPreview.filter(
-          (item) => item === null || item === undefined || typeof item !== 'object',
+      if (Array.isArray(value)) {
+        const primitives = value.filter(
+          (item) => item !== null && item !== undefined && typeof item !== 'object',
         );
-        if (primitivePreview.length === mappedPreview.length) {
-          const displayArray = Array.isArray(mappedDisplay) ? mappedDisplay : primitivePreview;
-          const text = joinPrimitiveArray(displayArray);
-          return text || '—';
+        if (primitives.length === value.length) {
+          const display = primitives
+            .map((item) => (typeof item === 'string' ? item : String(item)))
+            .join(', ');
+          return display || '—';
         }
-        const previewLength = Array.isArray(parsedPreview)
-          ? parsedPreview.length
-          : mappedPreview.length;
-        return (
-          <button
-            type="button"
-            style={temporaryValueButtonStyle}
-            onClick={() => openTemporaryPreview(column, parsedPreview)}
-          >
-            {t('temporary_view_table', 'View table')} ({previewLength})
-          </button>
-        );
-      }
-
-      if (isPlainValueObject(mappedPreview)) {
-        const entries = Object.entries(mappedPreview);
-        const primitiveEntries = entries.filter(
-          ([, item]) => item === null || item === undefined || typeof item !== 'object',
-        );
-        if (primitiveEntries.length === entries.length && entries.length > 0) {
-          return joinPrimitiveArray(primitiveEntries.map(([, item]) => item));
+        const objectItems = value.filter((item) => isPlainValueObject(item));
+        if (objectItems.length === value.length && value.length > 0) {
+          return (
+            <button
+              type="button"
+              style={temporaryValueButtonStyle}
+              onClick={() => openTemporaryPreview(column, value)}
+            >
+              {t('temporary_view_table', 'View table')} ({value.length})
+            </button>
+          );
         }
         return (
           <button
             type="button"
             style={temporaryValueButtonStyle}
-            onClick={() => openTemporaryPreview(column, parsedPreview)}
+            onClick={() => openTemporaryPreview(column, value)}
           >
             {t('temporary_view_details', 'View details')}
           </button>
         );
       }
 
-      const primitiveDisplay =
-        mappedDisplay === undefined || mappedDisplay === null || mappedDisplay === ''
-          ? mappedPreview
-          : mappedDisplay;
-
-      if (column === 'TotalCur' || totalCurrencySet.has(column)) {
-        return currencyFmt.format(Number(primitiveDisplay || 0));
+      if (isPlainValueObject(value)) {
+        const entries = Object.entries(value);
+        const primitiveEntries = entries.filter(
+          ([, item]) => item !== null && item !== undefined && typeof item !== 'object',
+        );
+        if (primitiveEntries.length === entries.length && entries.length > 0) {
+          return primitiveEntries
+            .map(([, item]) => (typeof item === 'string' ? item : String(item)))
+            .join(', ');
+        }
+        return (
+          <button
+            type="button"
+            style={temporaryValueButtonStyle}
+            onClick={() => openTemporaryPreview(column, value)}
+          >
+            {t('temporary_view_details', 'View details')}
+          </button>
+        );
       }
 
-      let str =
-        typeof primitiveDisplay === 'string'
-          ? primitiveDisplay
-          : primitiveDisplay === undefined || primitiveDisplay === null
-          ? ''
-          : String(primitiveDisplay);
+      if (column === 'TotalCur' || totalCurrencySet.has(column)) {
+        return currencyFmt.format(Number(value || 0));
+      }
+
+      let str = typeof value === 'string' ? value : String(value);
       if (
         fieldTypeMap[column] === 'date' ||
         fieldTypeMap[column] === 'datetime' ||
@@ -5037,21 +5023,13 @@ const TableManager = forwardRef(function TableManager({
                       const entryId = getTemporaryId(entry);
                       const rowKey = entryId ?? `row-${index}`;
                       const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
-                      const displaySource =
-                        entry?.normalizedValues ||
+                      const normalizedValues = normalizeToCanonical(
                         entry?.values ||
-                        entry?.cleanedValues ||
-                        entry?.payload?.values ||
-                        entry?.rawValues ||
-                        {};
-                      const rawSource =
-                        entry?.values ||
-                        entry?.cleanedValues ||
-                        entry?.payload?.values ||
-                        entry?.rawValues ||
-                        {};
-                      const normalizedValues = normalizeToCanonical(displaySource);
-                      const normalizedRawValues = normalizeToCanonical(rawSource);
+                          entry?.cleanedValues ||
+                          entry?.payload?.values ||
+                          entry?.rawValues ||
+                          {},
+                      );
                       const detailColumnsSource =
                         columns.length > 0
                           ? columns
