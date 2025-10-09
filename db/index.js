@@ -909,7 +909,16 @@ export async function getEmploymentSessions(empid) {
  * Fetch employment session info and permission flags for an employee.
  * Optionally filter by company ID.
  */
-export async function getEmploymentSession(empid, companyId) {
+export async function getEmploymentSession(empid, companyId, options = {}) {
+  const hasBranchPref =
+    options && Object.prototype.hasOwnProperty.call(options, 'branchId');
+  const hasDepartmentPref =
+    options && Object.prototype.hasOwnProperty.call(options, 'departmentId');
+  const branchPreference = hasBranchPref ? options.branchId ?? null : undefined;
+  const departmentPreference = hasDepartmentPref
+    ? options.departmentId ?? null
+    : undefined;
+
   if (companyId !== undefined && companyId !== null) {
     const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
       getDisplayCfg("companies"),
@@ -927,6 +936,26 @@ export async function getEmploymentSession(empid, companyId) {
       empCfg,
       "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
     );
+
+    const orderPriority = [];
+    const params = [empid, companyId];
+    if (hasBranchPref) {
+      orderPriority.push('CASE WHEN e.employment_branch_id <=> ? THEN 0 ELSE 1 END');
+      params.push(branchPreference);
+    }
+    if (hasDepartmentPref) {
+      orderPriority.push(
+        'CASE WHEN e.employment_department_id <=> ? THEN 0 ELSE 1 END',
+      );
+      params.push(departmentPreference);
+    }
+    const orderParts = [
+      ...orderPriority,
+      'company_name',
+      'department_name',
+      'branch_name',
+      'user_level_name',
+    ];
 
     const [rows] = await pool.query(
       `SELECT
@@ -958,9 +987,9 @@ export async function getEmploymentSession(empid, companyId) {
                 e.employment_senior_empid,
                 e.employment_senior_plan_empid,
                 employee_name, e.employment_user_level, ul.name
-       ORDER BY company_name, department_name, branch_name, user_level_name
+       ORDER BY ${orderParts.join(', ')}
        LIMIT 1`,
-      [empid, companyId],
+      params,
     );
     if (rows.length === 0) return null;
     return mapEmploymentRow(rows[0]);
