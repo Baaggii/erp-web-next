@@ -194,34 +194,22 @@ export async function createTemporarySubmission({
   const normalizedDepartmentPref = departmentPrefSpecified
     ? normalizeScopePreference(rawDepartmentPref)
     : undefined;
-  const fallbackBranch = normalizeScopePreference(branchId);
-  const fallbackDepartment = normalizeScopePreference(departmentId);
-  const sessionBranchPreference = branchPrefSpecified
-    ? normalizedBranchPref ?? null
-    : fallbackBranch ?? undefined;
-  const sessionDepartmentPreference = departmentPrefSpecified
-    ? normalizedDepartmentPref ?? null
-    : fallbackDepartment ?? undefined;
-  const sessionOptions = { preferAssignedSenior: true };
-  if (sessionBranchPreference !== undefined) {
-    sessionOptions.branchId = sessionBranchPreference;
-  }
-  if (sessionDepartmentPreference !== undefined) {
-    sessionOptions.departmentId = sessionDepartmentPreference;
-  }
 
   const conn = await pool.getConnection();
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
-    const session = await getEmploymentSession(
-      normalizedCreator,
-      companyId,
-      sessionOptions,
-    );
+    const session = await getEmploymentSession(normalizedCreator, companyId, {
+      ...(branchPrefSpecified ? { branchId: normalizedBranchPref } : {}),
+      ...(departmentPrefSpecified
+        ? { departmentId: normalizedDepartmentPref }
+        : {}),
+    });
     const reviewerEmpId =
       normalizeEmpId(session?.senior_empid) ||
       normalizeEmpId(session?.senior_plan_empid);
+    const fallbackBranch = normalizeScopePreference(branchId);
+    const fallbackDepartment = normalizeScopePreference(departmentId);
     const insertBranchId = branchPrefSpecified
       ? normalizedBranchPref ?? null
       : fallbackBranch ?? null;
