@@ -25,6 +25,15 @@ import {
   isModulePermissionGranted,
 } from '../utils/moduleAccess.js';
 
+if (typeof window !== 'undefined') {
+  window.showTemporaryRequesterUI =
+    window.showTemporaryRequesterUI || (() => {});
+  window.showTemporaryReviewerUI =
+    window.showTemporaryReviewerUI || (() => {});
+  window.showTemporaryTransactionsUI =
+    window.showTemporaryTransactionsUI || (() => {});
+}
+
 const DATE_PARAM_ALLOWLIST = new Set([
   'startdt',
   'enddt',
@@ -253,6 +262,105 @@ useEffect(() => {
     });
   }, [name, paramKey]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const setParamPair = (params, camelKey, value) => {
+      const snakeKey = camelKey
+        .replace(/([A-Z])/g, (match) => `_${match.toLowerCase()}`)
+        .toLowerCase();
+      if (value) {
+        params.set(camelKey, value);
+        params.set(snakeKey, value);
+      } else {
+        params.delete(camelKey);
+        params.delete(snakeKey);
+      }
+    };
+
+    const buildTemporaryPayload = (scope, rawOptions = {}) => {
+      const opts = rawOptions && typeof rawOptions === 'object' ? rawOptions : {};
+      const normalizedScope = scope || opts.scope || 'created';
+      const normalizedModule = opts.module || opts.moduleKey || moduleKey || '';
+      const normalizedForm = opts.form || opts.formName || opts.config || '';
+      const normalizedConfig = opts.config || opts.configName || opts.form || '';
+      const normalizedTable =
+        opts.table ||
+        opts.tableName ||
+        opts.table_name ||
+        table ||
+        '';
+      const normalizedId =
+        opts.id ??
+        opts.recordId ??
+        opts.record_id ??
+        opts.submissionId ??
+        opts.submission_id ??
+        opts.temporaryId ??
+        opts.temporary_id ??
+        '';
+
+      const payload = {
+        open: true,
+        scope: normalizedScope,
+        module: normalizedModule,
+        form: normalizedForm,
+        config: normalizedConfig,
+        table: normalizedTable,
+        id: normalizedId ? String(normalizedId) : '',
+      };
+
+      const keySource =
+        opts.key ||
+        opts.signature ||
+        `${normalizedModule}:${normalizedForm}:${normalizedConfig}:${normalizedTable}:${payload.id}:${normalizedScope}`;
+      payload.key = `${keySource}:${Date.now()}`;
+
+      return payload;
+    };
+
+    const applyTemporaryTrigger = (scope, rawOptions = {}) => {
+      const payload = buildTemporaryPayload(scope, rawOptions);
+      setExternalTemporaryTrigger(payload);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          setParamPair(next, 'temporaryOpen', '1');
+          setParamPair(next, 'temporaryScope', payload.scope || '');
+          setParamPair(next, 'temporaryModule', payload.module || '');
+          setParamPair(next, 'temporaryForm', payload.form || '');
+          setParamPair(next, 'temporaryConfig', payload.config || '');
+          setParamPair(next, 'temporaryTable', payload.table || '');
+          setParamPair(next, 'temporaryId', payload.id || '');
+          setParamPair(next, 'temporaryKey', payload.key || '');
+          return next;
+        },
+        { replace: true },
+      );
+    };
+
+    const showRequester = (options = {}) => applyTemporaryTrigger('created', options);
+    const showReviewer = (options = {}) => applyTemporaryTrigger('review', options);
+    const showTemporary = (options = {}) =>
+      applyTemporaryTrigger(options.scope || options.targetScope || 'created', options);
+
+    window.showTemporaryRequesterUI = showRequester;
+    window.showTemporaryReviewerUI = showReviewer;
+    window.showTemporaryTransactionsUI = showTemporary;
+
+    return () => {
+      if (window.showTemporaryRequesterUI === showRequester) {
+        window.showTemporaryRequesterUI = () => {};
+      }
+      if (window.showTemporaryReviewerUI === showReviewer) {
+        window.showTemporaryReviewerUI = () => {};
+      }
+      if (window.showTemporaryTransactionsUI === showTemporary) {
+        window.showTemporaryTransactionsUI = () => {};
+      }
+    };
+  }, [moduleKey, setExternalTemporaryTrigger, setSearchParams, table]);
+
   const pendingTemporary = useMemo(() => {
     const openValue =
       searchParams.get('temporaryOpen') ?? searchParams.get('temporary_open');
@@ -313,7 +421,12 @@ useEffect(() => {
           if (!info || typeof info !== 'object') return;
           const mKey = info.moduleKey;
           if (mKey !== moduleKey) return;
-          if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
+          if (
+            !hasTransactionFormAccess(info, branchId, departmentId, {
+              allowTemporaryAnyScope: true,
+            })
+          )
+            return;
           if (!isModulePermissionGranted(perms, mKey))
             return;
           if (!isModuleLicensed(licensed, mKey))

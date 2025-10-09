@@ -489,7 +489,11 @@ export default function PosTransactionsPage() {
     const filtered = {};
     entries.forEach(([cfgName, cfgValue]) => {
       if (!cfgValue || typeof cfgValue !== 'object') return;
-      if (hasTransactionFormAccess(cfgValue, branch, department)) {
+      if (
+        hasTransactionFormAccess(cfgValue, branch, department, {
+          allowTemporaryAnyScope: true,
+        })
+      ) {
         filtered[cfgName] = cfgValue;
       }
     });
