@@ -11,6 +11,17 @@ function normalizeEmpId(empid) {
   return trimmed ? trimmed.toUpperCase() : null;
 }
 
+function normalizeScopePreference(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed;
+  }
+  return value;
+}
+
 function safeJsonStringify(value) {
   try {
     return JSON.stringify(value ?? null);
@@ -101,6 +112,7 @@ export async function createTemporarySubmission({
   branchId,
   departmentId,
   createdBy,
+  tenant = {},
 }) {
   if (!tableName) {
     const err = new Error('tableName required');
@@ -113,14 +125,46 @@ export async function createTemporarySubmission({
     err.status = 400;
     throw err;
   }
+  const branchPrefSpecified = Object.prototype.hasOwnProperty.call(
+    tenant,
+    'branch_id',
+  );
+  const departmentPrefSpecified = Object.prototype.hasOwnProperty.call(
+    tenant,
+    'department_id',
+  );
+  const rawBranchPref = branchPrefSpecified ? tenant.branch_id : branchId;
+  const rawDepartmentPref = departmentPrefSpecified
+    ? tenant.department_id
+    : departmentId;
+  const normalizedBranchPref = branchPrefSpecified
+    ? normalizeScopePreference(rawBranchPref)
+    : undefined;
+  const normalizedDepartmentPref = departmentPrefSpecified
+    ? normalizeScopePreference(rawDepartmentPref)
+    : undefined;
+
   const conn = await pool.getConnection();
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
-    const session = await getEmploymentSession(normalizedCreator, companyId);
+    const session = await getEmploymentSession(normalizedCreator, companyId, {
+      ...(branchPrefSpecified ? { branchId: normalizedBranchPref } : {}),
+      ...(departmentPrefSpecified
+        ? { departmentId: normalizedDepartmentPref }
+        : {}),
+    });
     const reviewerEmpId =
       normalizeEmpId(session?.senior_empid) ||
       normalizeEmpId(session?.senior_plan_empid);
+    const fallbackBranch = normalizeScopePreference(branchId);
+    const fallbackDepartment = normalizeScopePreference(departmentId);
+    const insertBranchId = branchPrefSpecified
+      ? normalizedBranchPref ?? null
+      : fallbackBranch ?? null;
+    const insertDepartmentId = departmentPrefSpecified
+      ? normalizedDepartmentPref ?? null
+      : fallbackDepartment ?? null;
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -138,8 +182,8 @@ export async function createTemporarySubmission({
         safeJsonStringify(cleanedValues),
         normalizedCreator,
         reviewerEmpId,
-        branchId ?? null,
-        departmentId ?? null,
+        insertBranchId,
+        insertDepartmentId,
       ],
     );
     const temporaryId = result.insertId;
