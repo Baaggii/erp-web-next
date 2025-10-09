@@ -100,3 +100,109 @@ test('getEmploymentSession joins branch and department with company scope', asyn
   );
 });
 
+test('getEmploymentSession prioritizes matching branch and department when provided', async () => {
+  let capturedSql = '';
+  let capturedParams = [];
+  const restore = mockQueries(async (sql, params) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    }
+    if (sql.includes('table_column_labels')) return [[]];
+    capturedSql = sql;
+    capturedParams = params || [];
+    return [[{
+      company_id: 1,
+      company_name: 'Comp',
+      branch_id: 2,
+      branch_name: 'Branch',
+      department_id: 3,
+      department_name: 'Dept',
+      position_id: 1,
+      senior_empid: null,
+      senior_plan_empid: null,
+      employee_name: 'Emp',
+      user_level: 1,
+      user_level_name: 'Admin',
+      permission_list: 'system_settings',
+    }]];
+  });
+  await db.getEmploymentSession(1, 1, { branchId: 2, departmentId: 3 });
+  restore();
+  assert.match(
+    capturedSql,
+    /CASE WHEN e\.employment_branch_id <=> \? THEN 0 ELSE 1 END/,
+  );
+  assert.match(
+    capturedSql,
+    /CASE WHEN e\.employment_department_id <=> \? THEN 0 ELSE 1 END/,
+  );
+  assert.equal(capturedParams[0], 1);
+  assert.equal(capturedParams[1], 1);
+  assert.equal(capturedParams[2], 2);
+  assert.equal(capturedParams[3], 3);
+});
+
+test('getEmploymentSession prefers rows without assigned seniors by default', async () => {
+  let capturedSql = '';
+  const restore = mockQueries(async (sql) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    }
+    if (sql.includes('table_column_labels')) return [[]];
+    capturedSql = sql;
+    return [[{
+      company_id: 1,
+      company_name: 'Comp',
+      branch_id: 2,
+      branch_name: 'Branch',
+      department_id: 3,
+      department_name: 'Dept',
+      position_id: 1,
+      senior_empid: null,
+      senior_plan_empid: null,
+      employee_name: 'Emp',
+      user_level: 1,
+      user_level_name: 'Admin',
+      permission_list: 'system_settings',
+    }]];
+  });
+  await db.getEmploymentSession(1, 1);
+  restore();
+  assert.match(
+    capturedSql,
+    /CASE WHEN COALESCE\(NULLIF\(NULLIF\(TRIM\(e\.employment_senior_empid\), ''\), '0'\), NULLIF\(NULLIF\(TRIM\(e\.employment_senior_plan_empid\), ''\), '0'\)\) IS NULL THEN 0 ELSE 1 END/,
+  );
+});
+
+test('getEmploymentSession can prioritize rows with assigned seniors when requested', async () => {
+  let capturedSql = '';
+  const restore = mockQueries(async (sql) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'id', COLUMN_KEY: 'PRI', EXTRA: '' }]];
+    }
+    if (sql.includes('table_column_labels')) return [[]];
+    capturedSql = sql;
+    return [[{
+      company_id: 1,
+      company_name: 'Comp',
+      branch_id: 2,
+      branch_name: 'Branch',
+      department_id: 3,
+      department_name: 'Dept',
+      position_id: 1,
+      senior_empid: null,
+      senior_plan_empid: null,
+      employee_name: 'Emp',
+      user_level: 1,
+      user_level_name: 'Admin',
+      permission_list: 'system_settings',
+    }]];
+  });
+  await db.getEmploymentSession(1, 1, { preferAssignedSenior: true });
+  restore();
+  assert.match(
+    capturedSql,
+    /CASE WHEN COALESCE\(NULLIF\(NULLIF\(TRIM\(e\.employment_senior_empid\), ''\), '0'\), NULLIF\(NULLIF\(TRIM\(e\.employment_senior_plan_empid\), ''\), '0'\)\) IS NOT NULL THEN 0 ELSE 1 END/,
+  );
+});
+

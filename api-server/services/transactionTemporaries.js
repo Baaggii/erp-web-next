@@ -1,14 +1,32 @@
-import { pool, insertTableRow, getEmploymentSession } from '../../db/index.js';
+import {
+  pool,
+  insertTableRow,
+  getEmploymentSession,
+  listTableColumns,
+} from '../../db/index.js';
 import { getFormConfig } from './transactionFormConfig.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
 
+const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
+
 function normalizeEmpId(empid) {
   if (!empid) return null;
   const trimmed = String(empid).trim();
   return trimmed ? trimmed.toUpperCase() : null;
+}
+
+function normalizeScopePreference(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed;
+  }
+  return value;
 }
 
 function safeJsonStringify(value) {
@@ -26,6 +44,50 @@ function safeJsonParse(value, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+function isPlainObject(value) {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Object.getPrototypeOf(value) === Object.prototype,
+  );
+}
+
+export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
+  if (!tableName || !values) return {};
+  if (!isPlainObject(values)) return {};
+  const entries = Object.entries(values);
+  if (entries.length === 0) return {};
+
+  let resolvedColumns = columns;
+  if (!Array.isArray(resolvedColumns)) {
+    resolvedColumns = await listTableColumns(tableName);
+  }
+  if (!Array.isArray(resolvedColumns) || resolvedColumns.length === 0) {
+    return {};
+  }
+
+  const lookup = new Map();
+  resolvedColumns.forEach((col) => {
+    if (typeof col === 'string' && col) {
+      lookup.set(col.toLowerCase(), col);
+    }
+  });
+
+  const sanitized = {};
+  for (const [rawKey, rawValue] of entries) {
+    if (rawValue === undefined) continue;
+    const key = typeof rawKey === 'string' ? rawKey.trim() : String(rawKey || '');
+    if (!key) continue;
+    const lower = key.toLowerCase();
+    if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
+    const columnName = lookup.get(lower);
+    if (!columnName) continue;
+    sanitized[columnName] = rawValue;
+  }
+  return sanitized;
 }
 
 async function ensureTemporaryTable(conn = pool) {
@@ -101,6 +163,7 @@ export async function createTemporarySubmission({
   branchId,
   departmentId,
   createdBy,
+  tenant = {},
 }) {
   if (!tableName) {
     const err = new Error('tableName required');
@@ -113,14 +176,58 @@ export async function createTemporarySubmission({
     err.status = 400;
     throw err;
   }
+  const branchPrefSpecified = Object.prototype.hasOwnProperty.call(
+    tenant,
+    'branch_id',
+  );
+  const departmentPrefSpecified = Object.prototype.hasOwnProperty.call(
+    tenant,
+    'department_id',
+  );
+  const rawBranchPref = branchPrefSpecified ? tenant.branch_id : branchId;
+  const rawDepartmentPref = departmentPrefSpecified
+    ? tenant.department_id
+    : departmentId;
+  const normalizedBranchPref = branchPrefSpecified
+    ? normalizeScopePreference(rawBranchPref)
+    : undefined;
+  const normalizedDepartmentPref = departmentPrefSpecified
+    ? normalizeScopePreference(rawDepartmentPref)
+    : undefined;
+  const fallbackBranch = normalizeScopePreference(branchId);
+  const fallbackDepartment = normalizeScopePreference(departmentId);
+  const sessionBranchPreference = branchPrefSpecified
+    ? normalizedBranchPref ?? null
+    : fallbackBranch ?? undefined;
+  const sessionDepartmentPreference = departmentPrefSpecified
+    ? normalizedDepartmentPref ?? null
+    : fallbackDepartment ?? undefined;
+  const sessionOptions = { preferAssignedSenior: true };
+  if (sessionBranchPreference !== undefined) {
+    sessionOptions.branchId = sessionBranchPreference;
+  }
+  if (sessionDepartmentPreference !== undefined) {
+    sessionOptions.departmentId = sessionDepartmentPreference;
+  }
+
   const conn = await pool.getConnection();
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
-    const session = await getEmploymentSession(normalizedCreator, companyId);
+    const session = await getEmploymentSession(
+      normalizedCreator,
+      companyId,
+      sessionOptions,
+    );
     const reviewerEmpId =
       normalizeEmpId(session?.senior_empid) ||
       normalizeEmpId(session?.senior_plan_empid);
+    const insertBranchId = branchPrefSpecified
+      ? normalizedBranchPref ?? null
+      : fallbackBranch ?? null;
+    const insertDepartmentId = departmentPrefSpecified
+      ? normalizedDepartmentPref ?? null
+      : fallbackDepartment ?? null;
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -138,8 +245,8 @@ export async function createTemporarySubmission({
         safeJsonStringify(cleanedValues),
         normalizedCreator,
         reviewerEmpId,
-        branchId ?? null,
-        departmentId ?? null,
+        insertBranchId,
+        insertDepartmentId,
       ],
     );
     const temporaryId = result.insertId;
@@ -323,19 +430,29 @@ export async function getTemporarySummary(empId, companyId) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
   const [[created]] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
-     WHERE created_by = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
+    `SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
+        COUNT(*) AS total_cnt
+       FROM \`${TEMP_TABLE}\`
+      WHERE created_by = ?
+        AND (company_id = ? OR company_id IS NULL)`,
     [normalizedEmp, companyId ?? null],
   );
   const [[review]] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
-     WHERE plan_senior_empid = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
+    `SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
+        COUNT(*) AS total_cnt
+       FROM \`${TEMP_TABLE}\`
+      WHERE plan_senior_empid = ?
+        AND (company_id = ? OR company_id IS NULL)`,
     [normalizedEmp, companyId ?? null],
   );
+  const createdPending = Number(created?.pending_cnt) || 0;
+  const reviewPending = Number(review?.pending_cnt) || 0;
   return {
-    createdPending: created?.cnt ?? 0,
-    reviewPending: review?.cnt ?? 0,
-    isReviewer: (review?.cnt ?? 0) > 0,
+    createdPending,
+    reviewPending,
+    isReviewer: (Number(review?.total_cnt) || 0) > 0,
   };
 }
 
@@ -373,17 +490,42 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       err.status = 409;
       throw err;
     }
-    const cleaned =
-      safeJsonParse(row.cleaned_values_json) ??
-      safeJsonParse(row.payload_json)?.cleanedValues ??
-      safeJsonParse(row.payload_json) ?? {};
+    const columns = await listTableColumns(row.table_name);
+    const candidateSources = [
+      safeJsonParse(row.cleaned_values_json),
+      safeJsonParse(row.payload_json)?.cleanedValues,
+      safeJsonParse(row.payload_json)?.values,
+      safeJsonParse(row.raw_values_json),
+    ].filter((value) => value && typeof value === 'object');
+
+    let sanitizedCleaned = {};
+    for (const source of candidateSources) {
+      // sanitizeCleanedValuesForInsert performs its own plain-object guard.
+      // eslint-disable-next-line no-await-in-loop
+      const next = await sanitizeCleanedValuesForInsert(
+        row.table_name,
+        source,
+        columns,
+      );
+      if (Object.keys(next).length > 0) {
+        sanitizedCleaned = next;
+        break;
+      }
+    }
+
+    if (Object.keys(sanitizedCleaned).length === 0) {
+      const err = new Error('Temporary submission is missing promotable values');
+      err.status = 422;
+      throw err;
+    }
+
     const mutationContext = {
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
     };
     const inserted = await insertTableRow(
       row.table_name,
-      cleaned,
+      sanitizedCleaned,
       undefined,
       undefined,
       false,

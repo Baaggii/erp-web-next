@@ -59,6 +59,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       branchId: tenant.branch_id ?? null,
       departmentId: tenant.department_id ?? null,
       createdBy: req.user.empid,
+      tenant,
     });
     res.status(201).json(result);
   } catch (err) {
