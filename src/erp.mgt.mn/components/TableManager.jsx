@@ -3319,51 +3319,6 @@ const TableManager = forwardRef(function TableManager({
     [isPlainValueObject],
   );
 
-  const extractPromotableObject = useCallback(
-    (source) => {
-      if (source === undefined || source === null) return null;
-      let candidate = source;
-      if (typeof candidate === 'string') {
-        candidate = parseMaybeJson(candidate);
-      }
-      if (!isPlainValueObject(candidate)) return null;
-      const seen = new Set();
-      let current = candidate;
-      while (isPlainValueObject(current) && !seen.has(current)) {
-        seen.add(current);
-        const nestedKey = ['values', 'cleanedValues', 'data', 'record'].find((key) =>
-          isPlainValueObject(current[key]),
-        );
-        if (!nestedKey) break;
-        current = current[nestedKey];
-      }
-      return isPlainValueObject(current) ? current : null;
-    },
-    [isPlainValueObject, parseMaybeJson],
-  );
-
-  const getTemporaryPromotableValues = useCallback(
-    (entry) => {
-      if (!entry) return {};
-      const sources = [
-        entry.cleanedValues,
-        entry.payload?.cleanedValues,
-        entry.payload?.values,
-        entry.payload,
-        entry.values,
-        entry.rawValues,
-      ];
-      for (const source of sources) {
-        const promotable = extractPromotableObject(source);
-        if (promotable) {
-          return normalizeToCanonical(promotable);
-        }
-      }
-      return {};
-    },
-    [extractPromotableObject, normalizeToCanonical],
-  );
-
   const temporaryValueButtonStyle = useMemo(
     () => ({
       padding: '0.15rem 0.4rem',
@@ -5114,7 +5069,19 @@ const TableManager = forwardRef(function TableManager({
                       const entryId = getTemporaryId(entry);
                       const rowKey = entryId ?? `row-${index}`;
                       const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
-                      const normalizedValues = getTemporaryPromotableValues(entry);
+                      const valueSources = [
+                        entry?.values,
+                        entry?.cleanedValues,
+                        entry?.payload?.values,
+                        entry?.rawValues,
+                      ];
+                      const firstStructured = valueSources.find(
+                        (candidate) =>
+                          candidate &&
+                          typeof candidate === 'object' &&
+                          !Array.isArray(candidate),
+                      );
+                      const normalizedValues = normalizeToCanonical(firstStructured || {});
                       const detailColumnsSource =
                         columns.length > 0 ? columns : Object.keys(normalizedValues || {});
                       const detailColumns = Array.from(
