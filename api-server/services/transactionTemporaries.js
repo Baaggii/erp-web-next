@@ -55,6 +55,21 @@ function isPlainObject(value) {
   );
 }
 
+function extractPromotableValues(source) {
+  if (!isPlainObject(source)) return null;
+  const seen = new Set();
+  let current = source;
+  while (isPlainObject(current) && !seen.has(current)) {
+    seen.add(current);
+    const nextKey = ['values', 'cleanedValues', 'data', 'record'].find((key) =>
+      isPlainObject(current[key]),
+    );
+    if (!nextKey) break;
+    current = current[nextKey];
+  }
+  return isPlainObject(current) ? current : null;
+}
+
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
   if (!tableName || !values) return {};
   if (!isPlainObject(values)) return {};
@@ -85,7 +100,38 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
     const columnName = lookup.get(lower);
     if (!columnName) continue;
-    sanitized[columnName] = rawValue;
+    let normalizedValue = rawValue;
+    if (typeof normalizedValue === 'string') {
+      const trimmed = normalizedValue.trim();
+      if (trimmed) {
+        const first = trimmed[0];
+        const last = trimmed[trimmed.length - 1];
+        if (
+          (first === '{' && last === '}') ||
+          (first === '[' && last === ']') ||
+          (first === '"' && last === '"')
+        ) {
+          try {
+            normalizedValue = JSON.parse(trimmed);
+          } catch {
+            normalizedValue = rawValue;
+          }
+        }
+      }
+    }
+    if (Array.isArray(normalizedValue)) {
+      normalizedValue = JSON.stringify(normalizedValue);
+    } else if (
+      normalizedValue &&
+      typeof normalizedValue === 'object' &&
+      !(normalizedValue instanceof Date) &&
+      !(normalizedValue instanceof Buffer)
+    ) {
+      normalizedValue = JSON.stringify(normalizedValue);
+    } else if (typeof normalizedValue === 'bigint') {
+      normalizedValue = normalizedValue.toString();
+    }
+    sanitized[columnName] = normalizedValue;
   }
   return sanitized;
 }
@@ -277,6 +323,18 @@ export async function createTemporarySubmission({
 
 function mapTemporaryRow(row) {
   if (!row) return null;
+  const payload = safeJsonParse(row.payload_json, {});
+  const cleanedContainer = safeJsonParse(row.cleaned_values_json, {});
+  const rawContainer = safeJsonParse(row.raw_values_json, {});
+  const cleanedValues =
+    extractPromotableValues(cleanedContainer) ??
+    (isPlainObject(cleanedContainer) ? cleanedContainer : {});
+  const promotableValues =
+    extractPromotableValues(cleanedContainer) ??
+    extractPromotableValues(payload?.cleanedValues) ??
+    extractPromotableValues(payload?.values) ??
+    extractPromotableValues(rawContainer) ??
+    {};
   return {
     id: row.id,
     companyId: row.company_id,
@@ -284,9 +342,10 @@ function mapTemporaryRow(row) {
     formName: row.form_name,
     configName: row.config_name,
     moduleKey: row.module_key,
-    payload: safeJsonParse(row.payload_json, {}),
-    rawValues: safeJsonParse(row.raw_values_json, {}),
-    cleanedValues: safeJsonParse(row.cleaned_values_json, {}),
+    payload,
+    rawValues: rawContainer,
+    cleanedValues,
+    values: promotableValues,
     createdBy: row.created_by,
     planSeniorEmpId: row.plan_senior_empid,
     reviewerEmpId: row.plan_senior_empid,
@@ -479,12 +538,14 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       throw err;
     }
     const columns = await listTableColumns(row.table_name);
+    const payloadJson = safeJsonParse(row.payload_json, {});
     const candidateSources = [
-      safeJsonParse(row.cleaned_values_json),
-      safeJsonParse(row.payload_json)?.cleanedValues,
-      safeJsonParse(row.payload_json)?.values,
-      safeJsonParse(row.raw_values_json),
-    ].filter((value) => value && typeof value === 'object');
+      extractPromotableValues(safeJsonParse(row.cleaned_values_json)),
+      extractPromotableValues(payloadJson?.cleanedValues),
+      extractPromotableValues(payloadJson?.values),
+      extractPromotableValues(payloadJson),
+      extractPromotableValues(safeJsonParse(row.raw_values_json)),
+    ].filter(isPlainObject);
 
     let sanitizedCleaned = {};
     for (const source of candidateSources) {
