@@ -470,17 +470,9 @@ const TableManager = forwardRef(function TableManager({
       false,
   );
   const canCreateTemporary = Boolean(accessEvaluation.allowTemporary);
-  const supervisorPermission = Boolean(
-    session?.permissions?.supervisor || authPermissions?.supervisor,
-  );
-  const summaryMarksReviewer = Boolean(temporarySummary?.isReviewer);
-  const isImplicitReviewer = Boolean(user?.empid) && !isSubordinate;
-  const reviewEligible =
-    supervisorPermission || summaryMarksReviewer || isImplicitReviewer;
-  const canReviewTemporary = formSupportsTemporary && reviewEligible;
-  const supportsTemporary = Boolean(
-    canCreateTemporary || (formSupportsTemporary && reviewEligible),
-  );
+  const isSenior = Boolean(user?.empid) && !isSubordinate;
+  const canReviewTemporary = formSupportsTemporary && isSenior;
+  const supportsTemporary = canCreateTemporary || canReviewTemporary;
   const canPostTransactions =
     accessEvaluation.canPost === undefined
       ? true
@@ -489,9 +481,9 @@ const TableManager = forwardRef(function TableManager({
   const availableTemporaryScopes = useMemo(() => {
     const scopes = [];
     if (canCreateTemporary) scopes.push('created');
-    if (formSupportsTemporary && reviewEligible) scopes.push('review');
+    if (canReviewTemporary) scopes.push('review');
     return scopes;
-  }, [canCreateTemporary, formSupportsTemporary, reviewEligible]);
+  }, [canCreateTemporary, canReviewTemporary]);
 
   const defaultTemporaryScope = useMemo(() => {
     if (availableTemporaryScopes.includes('created')) return 'created';

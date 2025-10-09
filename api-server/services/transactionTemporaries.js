@@ -284,13 +284,11 @@ export async function listTemporarySubmissions({
   scope,
   tableName,
   empId,
-  reviewerPlanId,
   companyId,
   status = 'pending',
 }) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
-  const normalizedPlan = normalizeEmpId(reviewerPlanId);
   const conditions = [];
   const params = [];
   if (status) {
@@ -306,22 +304,11 @@ export async function listTemporarySubmissions({
     params.push(tableName);
   }
   if (scope === 'review') {
-    if (normalizedEmp && normalizedPlan && normalizedPlan !== normalizedEmp) {
-      conditions.push('(plan_senior_empid = ? OR plan_senior_empid = ?)');
-      params.push(normalizedEmp, normalizedPlan);
-    } else if (normalizedEmp || normalizedPlan) {
-      conditions.push('plan_senior_empid = ?');
-      params.push(normalizedEmp || normalizedPlan);
-    } else {
-      conditions.push('1 = 0');
-    }
+    conditions.push('plan_senior_empid = ?');
+    params.push(normalizedEmp);
   } else {
-    if (normalizedEmp) {
-      conditions.push('created_by = ?');
-      params.push(normalizedEmp);
-    } else {
-      conditions.push('1 = 0');
-    }
+    conditions.push('created_by = ?');
+    params.push(normalizedEmp);
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [rows] = await pool.query(
@@ -332,35 +319,18 @@ export async function listTemporarySubmissions({
   return enrichTemporaryMetadata(mapped, companyId);
 }
 
-export async function getTemporarySummary(empId, companyId, reviewerPlanId) {
+export async function getTemporarySummary(empId, companyId) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
-  const normalizedPlan = normalizeEmpId(reviewerPlanId);
   const [[created]] = await pool.query(
     `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
      WHERE created_by = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
     [normalizedEmp, companyId ?? null],
   );
-  const reviewConditions = [
-    "status = 'pending'",
-    '(company_id = ? OR company_id IS NULL)',
-  ];
-  const reviewParams = [companyId ?? null];
-  if (normalizedEmp && normalizedPlan && normalizedPlan !== normalizedEmp) {
-    reviewConditions.push('(plan_senior_empid = ? OR plan_senior_empid = ?)');
-    reviewParams.push(normalizedEmp, normalizedPlan);
-  } else if (normalizedEmp || normalizedPlan) {
-    reviewConditions.push('plan_senior_empid = ?');
-    reviewParams.push(normalizedEmp || normalizedPlan);
-  } else {
-    reviewConditions.push('1 = 0');
-  }
-  const reviewWhere = reviewConditions.length
-    ? `WHERE ${reviewConditions.join(' AND ')}`
-    : '';
   const [[review]] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\` ${reviewWhere}`,
-    reviewParams,
+    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
+     WHERE plan_senior_empid = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
+    [normalizedEmp, companyId ?? null],
   );
   return {
     createdPending: created?.cnt ?? 0,
