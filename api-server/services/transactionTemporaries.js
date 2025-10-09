@@ -10,7 +10,119 @@ import { logUserAction } from './userActivityLog.js';
 const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
 
-const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
+const RESERVED_TEMPORARY_COLUMNS = new Set(['rows', 'gridrows', 'rawrows']);
+
+function buildColumnLookup(columns) {
+  const lookup = new Map();
+  if (!Array.isArray(columns)) return lookup;
+  columns.forEach((col) => {
+    if (!col) return;
+    const canonical = typeof col === 'string' ? col : col.name;
+    if (!canonical) return;
+    const lower = canonical.toLowerCase();
+    lookup.set(lower, canonical);
+    const stripped = lower.replace(/[_\s-]+/g, '');
+    if (!lookup.has(stripped)) {
+      lookup.set(stripped, canonical);
+    }
+  });
+  return lookup;
+}
+
+function parseJsonLike(value) {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  const first = trimmed[0];
+  const last = trimmed[trimmed.length - 1];
+  if (
+    (first === '{' && last === '}') ||
+    (first === '[' && last === ']') ||
+    (first === '"' && last === '"')
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
+  }
+  return value;
+}
+
+const SELECT_VALUE_KEYS = ['value', 'id', 'code', 'key'];
+const MAX_UNWRAP_DEPTH = 6;
+
+function unwrapSubmissionValue(value, depth = 0) {
+  if (depth > MAX_UNWRAP_DEPTH) return value;
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'bigint') return value.toString();
+  if (value instanceof Date || value instanceof Buffer) return value;
+  if (Array.isArray(value)) {
+    const normalized = value.map((item) => unwrapSubmissionValue(parseJsonLike(item), depth + 1));
+    return normalized;
+  }
+  if (isPlainObject(value)) {
+    for (const key of SELECT_VALUE_KEYS) {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        const selected = unwrapSubmissionValue(value[key], depth + 1);
+        if (selected !== undefined) return selected;
+      }
+    }
+    const entries = Object.entries(value);
+    if (entries.length === 1) {
+      const [, single] = entries[0];
+      return unwrapSubmissionValue(single, depth + 1);
+    }
+    return value;
+  }
+  return value;
+}
+
+function normalizePromotableValue(rawValue) {
+  let normalizedValue = parseJsonLike(rawValue);
+  normalizedValue = unwrapSubmissionValue(normalizedValue);
+  if (normalizedValue === undefined) return undefined;
+  if (normalizedValue === null) return null;
+  if (
+    typeof normalizedValue === 'string' ||
+    typeof normalizedValue === 'number' ||
+    typeof normalizedValue === 'boolean'
+  ) {
+    return normalizedValue;
+  }
+  if (typeof normalizedValue === 'bigint') return normalizedValue.toString();
+  if (normalizedValue instanceof Date || normalizedValue instanceof Buffer) {
+    return normalizedValue;
+  }
+  if (Array.isArray(normalizedValue)) {
+    const primitives = normalizedValue.filter(
+      (item) => item === null || ['string', 'number', 'boolean'].includes(typeof item),
+    );
+    if (primitives.length === normalizedValue.length) {
+      return primitives
+        .map((item) => (item === null ? '' : typeof item === 'string' ? item : String(item)))
+        .join(', ')
+        .trim();
+    }
+    try {
+      return JSON.stringify(normalizedValue);
+    } catch {
+      return String(normalizedValue);
+    }
+  }
+  if (isPlainObject(normalizedValue)) {
+    try {
+      return JSON.stringify(normalizedValue);
+    } catch {
+      return String(normalizedValue);
+    }
+  }
+  return String(normalizedValue);
+}
 
 function normalizeEmpId(empid) {
   if (!empid) return null;
@@ -84,12 +196,7 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     return {};
   }
 
-  const lookup = new Map();
-  resolvedColumns.forEach((col) => {
-    if (typeof col === 'string' && col) {
-      lookup.set(col.toLowerCase(), col);
-    }
-  });
+  const lookup = buildColumnLookup(resolvedColumns);
 
   const sanitized = {};
   for (const [rawKey, rawValue] of entries) {
@@ -97,8 +204,11 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     const key = typeof rawKey === 'string' ? rawKey.trim() : String(rawKey || '');
     if (!key) continue;
     const lower = key.toLowerCase();
-    if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
-    const columnName = lookup.get(lower);
+    const stripped = lower.replace(/[_\s-]+/g, '');
+    if (RESERVED_TEMPORARY_COLUMNS.has(lower) || RESERVED_TEMPORARY_COLUMNS.has(stripped)) {
+      continue;
+    }
+    const columnName = lookup.get(lower) ?? lookup.get(stripped);
     if (!columnName) continue;
     let normalizedValue = rawValue;
     if (Array.isArray(normalizedValue)) {
@@ -452,7 +562,34 @@ export async function listTemporarySubmissions({
     params,
   );
   const mapped = rows.map(mapTemporaryRow);
-  return enrichTemporaryMetadata(mapped, companyId);
+  const columnCache = new Map();
+  const withNormalized = await Promise.all(
+    mapped.map(async (entry) => {
+      if (!entry || !entry.tableName) return entry;
+      const promotableSource = entry.values;
+      if (!isPlainObject(promotableSource)) return entry;
+      try {
+        let cached = columnCache.get(entry.tableName);
+        if (!cached) {
+          cached = await listTableColumns(entry.tableName);
+          columnCache.set(entry.tableName, cached);
+        }
+        const normalized = await sanitizeCleanedValuesForInsert(
+          entry.tableName,
+          promotableSource,
+          cached,
+        );
+        if (Object.keys(normalized).length === 0) return entry;
+        return {
+          ...entry,
+          normalizedValues: normalized,
+        };
+      } catch {
+        return entry;
+      }
+    }),
+  );
+  return enrichTemporaryMetadata(withNormalized, companyId);
 }
 
 export async function getTemporarySummary(empId, companyId) {
