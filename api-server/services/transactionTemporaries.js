@@ -148,7 +148,12 @@ export async function createTemporarySubmission({
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
-    const session = await getEmploymentSession(normalizedCreator, companyId);
+    const session = await getEmploymentSession(normalizedCreator, companyId, {
+      ...(branchPrefSpecified ? { branchId: normalizedBranchPref } : {}),
+      ...(departmentPrefSpecified
+        ? { departmentId: normalizedDepartmentPref }
+        : {}),
+    });
     const reviewerEmpId =
       normalizeEmpId(session?.senior_empid) ||
       normalizeEmpId(session?.senior_plan_empid);

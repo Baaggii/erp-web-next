@@ -949,11 +949,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
       );
       params.push(departmentPreference);
     }
-    const seniorPriority =
-      "CASE WHEN COALESCE(NULLIF(NULLIF(TRIM(e.employment_senior_empid), ''), '0'), " +
-      "NULLIF(NULLIF(TRIM(e.employment_senior_plan_empid), ''), '0')) IS NOT NULL THEN 0 ELSE 1 END";
     const orderParts = [
-      seniorPriority,
       ...orderPriority,
       'company_name',
       'department_name',
