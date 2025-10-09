@@ -1,9 +1,16 @@
-import { pool, insertTableRow, getEmploymentSession } from '../../db/index.js';
+import {
+  pool,
+  insertTableRow,
+  getEmploymentSession,
+  listTableColumns,
+} from '../../db/index.js';
 import { getFormConfig } from './transactionFormConfig.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
+
+const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
 
 function normalizeEmpId(empid) {
   if (!empid) return null;
@@ -37,6 +44,50 @@ function safeJsonParse(value, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+function isPlainObject(value) {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Object.getPrototypeOf(value) === Object.prototype,
+  );
+}
+
+export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
+  if (!tableName || !values) return {};
+  if (!isPlainObject(values)) return {};
+  const entries = Object.entries(values);
+  if (entries.length === 0) return {};
+
+  let resolvedColumns = columns;
+  if (!Array.isArray(resolvedColumns)) {
+    resolvedColumns = await listTableColumns(tableName);
+  }
+  if (!Array.isArray(resolvedColumns) || resolvedColumns.length === 0) {
+    return {};
+  }
+
+  const lookup = new Map();
+  resolvedColumns.forEach((col) => {
+    if (typeof col === 'string' && col) {
+      lookup.set(col.toLowerCase(), col);
+    }
+  });
+
+  const sanitized = {};
+  for (const [rawKey, rawValue] of entries) {
+    if (rawValue === undefined) continue;
+    const key = typeof rawKey === 'string' ? rawKey.trim() : String(rawKey || '');
+    if (!key) continue;
+    const lower = key.toLowerCase();
+    if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
+    const columnName = lookup.get(lower);
+    if (!columnName) continue;
+    sanitized[columnName] = rawValue;
+  }
+  return sanitized;
 }
 
 async function ensureTemporaryTable(conn = pool) {
@@ -427,17 +478,42 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       err.status = 409;
       throw err;
     }
-    const cleaned =
-      safeJsonParse(row.cleaned_values_json) ??
-      safeJsonParse(row.payload_json)?.cleanedValues ??
-      safeJsonParse(row.payload_json) ?? {};
+    const columns = await listTableColumns(row.table_name);
+    const candidateSources = [
+      safeJsonParse(row.cleaned_values_json),
+      safeJsonParse(row.payload_json)?.cleanedValues,
+      safeJsonParse(row.payload_json)?.values,
+      safeJsonParse(row.raw_values_json),
+    ].filter((value) => value && typeof value === 'object');
+
+    let sanitizedCleaned = {};
+    for (const source of candidateSources) {
+      // sanitizeCleanedValuesForInsert performs its own plain-object guard.
+      // eslint-disable-next-line no-await-in-loop
+      const next = await sanitizeCleanedValuesForInsert(
+        row.table_name,
+        source,
+        columns,
+      );
+      if (Object.keys(next).length > 0) {
+        sanitizedCleaned = next;
+        break;
+      }
+    }
+
+    if (Object.keys(sanitizedCleaned).length === 0) {
+      const err = new Error('Temporary submission is missing promotable values');
+      err.status = 422;
+      throw err;
+    }
+
     const mutationContext = {
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
     };
     const inserted = await insertTableRow(
       row.table_name,
-      cleaned,
+      sanitizedCleaned,
       undefined,
       undefined,
       false,
