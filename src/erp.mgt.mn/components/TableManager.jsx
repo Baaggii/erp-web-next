@@ -2792,6 +2792,12 @@ const TableManager = forwardRef(function TableManager({
       const params = new URLSearchParams();
       params.set('scope', targetScope);
 
+      const requestedStatus =
+        options?.status !== undefined ? options.status : 'pending';
+      if (requestedStatus) {
+        params.set('status', requestedStatus);
+      }
+
       const shouldFilterByTable = (() => {
         if (options?.table !== undefined) {
           return Boolean(options.table);
@@ -2809,15 +2815,37 @@ const TableManager = forwardRef(function TableManager({
         String(focusIdRaw).trim() !== ''
           ? String(focusIdRaw)
           : null;
-      setTemporaryLoading(true);
-      try {
+      const runFetch = async (searchParams) => {
         const res = await fetch(
-          `${API_BASE}/transaction_temporaries?${params.toString()}`,
+          `${API_BASE}/transaction_temporaries?${searchParams.toString()}`,
           { credentials: 'include' },
         );
         if (!res.ok) throw new Error('Failed to load temporaries');
         const data = await res.json().catch(() => ({}));
         const rows = Array.isArray(data.rows) ? data.rows : [];
+        return rows;
+      };
+
+      setTemporaryLoading(true);
+      try {
+        let rows = await runFetch(params);
+
+        const shouldRetryWithoutStatus =
+          targetScope === 'review' &&
+          !options?.status &&
+          (Number(temporarySummary?.reviewPending) || 0) > 0 &&
+          rows.length === 0;
+
+        if (shouldRetryWithoutStatus) {
+          const retryParams = new URLSearchParams(params);
+          retryParams.delete('status');
+          try {
+            rows = await runFetch(retryParams);
+          } catch (retryErr) {
+            console.error('Retrying temporaries without status failed', retryErr);
+          }
+        }
+
         let nextRows = rows;
         if (focusId) {
           const idx = rows.findIndex((item) => String(item?.id) === focusId);
@@ -2845,6 +2873,7 @@ const TableManager = forwardRef(function TableManager({
       temporaryScope,
       availableTemporaryScopes,
       defaultTemporaryScope,
+      temporarySummary,
     ],
   );
 
