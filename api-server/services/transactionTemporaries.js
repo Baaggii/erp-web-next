@@ -367,19 +367,29 @@ export async function getTemporarySummary(empId, companyId) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
   const [[created]] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
-     WHERE created_by = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
+    `SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
+        COUNT(*) AS total_cnt
+       FROM \`${TEMP_TABLE}\`
+      WHERE created_by = ?
+        AND (company_id = ? OR company_id IS NULL)`,
     [normalizedEmp, companyId ?? null],
   );
   const [[review]] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
-     WHERE plan_senior_empid = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
+    `SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
+        COUNT(*) AS total_cnt
+       FROM \`${TEMP_TABLE}\`
+      WHERE plan_senior_empid = ?
+        AND (company_id = ? OR company_id IS NULL)`,
     [normalizedEmp, companyId ?? null],
   );
+  const createdPending = Number(created?.pending_cnt) || 0;
+  const reviewPending = Number(review?.pending_cnt) || 0;
   return {
-    createdPending: created?.cnt ?? 0,
-    reviewPending: review?.cnt ?? 0,
-    isReviewer: (review?.cnt ?? 0) > 0,
+    createdPending,
+    reviewPending,
+    isReviewer: (Number(review?.total_cnt) || 0) > 0,
   };
 }
 

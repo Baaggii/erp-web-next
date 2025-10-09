@@ -393,7 +393,13 @@ const TableManager = forwardRef(function TableManager({
     }
     return Boolean(value);
   };
-  const isSubordinate = hasSenior(session?.senior_empid) || hasSenior(session?.senior_plan_empid);
+  const hasDirectSenior = hasSenior(session?.senior_empid);
+  const hasPlanSenior = hasSenior(session?.senior_plan_empid);
+  const hasAnySenior = hasDirectSenior || hasPlanSenior;
+  const temporaryReviewer =
+    Boolean(temporarySummary?.isReviewer) ||
+    Number(temporarySummary?.reviewPending) > 0;
+  const isSubordinate = hasAnySenior;
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const { addToast } = useToast();
@@ -470,9 +476,13 @@ const TableManager = forwardRef(function TableManager({
       false,
   );
   const canCreateTemporary = Boolean(accessEvaluation.allowTemporary);
-  const isSenior = Boolean(user?.empid) && !isSubordinate;
-  const canReviewTemporary = formSupportsTemporary && isSenior;
-  const supportsTemporary = canCreateTemporary || canReviewTemporary;
+  const isSenior =
+    Boolean(user?.empid) && (!hasAnySenior || temporaryReviewer);
+  const canReviewTemporary =
+    formSupportsTemporary && Boolean(user?.empid) && (!hasAnySenior || temporaryReviewer);
+  const supportsTemporary =
+    formSupportsTemporary &&
+    (canCreateTemporary || canReviewTemporary || temporaryReviewer);
   const canPostTransactions =
     accessEvaluation.canPost === undefined
       ? true
@@ -525,7 +535,7 @@ const TableManager = forwardRef(function TableManager({
   }, [externalTemporaryTrigger]);
 
   const refreshTemporarySummary = useCallback(async () => {
-    if (!supportsTemporary) {
+    if (!formSupportsTemporary) {
       setTemporarySummary(null);
       return;
     }
@@ -561,7 +571,7 @@ const TableManager = forwardRef(function TableManager({
       );
     }
   }, [
-    supportsTemporary,
+    formSupportsTemporary,
     availableTemporaryScopes,
     defaultTemporaryScope,
   ]);
