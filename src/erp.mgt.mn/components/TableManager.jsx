@@ -2790,7 +2790,17 @@ const TableManager = forwardRef(function TableManager({
       if (!availableTemporaryScopes.includes(targetScope)) return;
       const params = new URLSearchParams();
       params.set('scope', targetScope);
-      if (table) params.set('table', table);
+
+      const shouldFilterByTable = (() => {
+        if (options?.table !== undefined) {
+          return Boolean(options.table);
+        }
+        return targetScope !== 'review';
+      })();
+
+      if (shouldFilterByTable && table) {
+        params.set('table', table);
+      }
       const focusIdRaw = options?.focusId;
       const focusId =
         focusIdRaw !== undefined &&
