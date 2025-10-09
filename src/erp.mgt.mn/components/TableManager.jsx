@@ -316,6 +316,7 @@ const TableManager = forwardRef(function TableManager({
   const [queuedTemporaryTrigger, setQueuedTemporaryTrigger] = useState(null);
   const lastExternalTriggerRef = useRef(null);
   const [temporaryLoading, setTemporaryLoading] = useState(false);
+  const temporaryRowRefs = useRef(new Map());
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -329,7 +330,6 @@ const TableManager = forwardRef(function TableManager({
   }, []);
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
-  const temporaryRowRefs = useRef(new Map());
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -381,10 +381,28 @@ const TableManager = forwardRef(function TableManager({
     () => Array.from(requestIdSet).sort().join(','),
     [requestIdSet],
   );
-  const { user, company, branch, department, session } = useContext(AuthContext);
-  const isSubordinate = Boolean(
-    session?.senior_empid || session?.senior_plan_empid,
-  );
+  const authContext = useContext(AuthContext) || {};
+  const {
+    user,
+    company,
+    branch,
+    department,
+    session,
+    permissions: authPermissions = {},
+  } = authContext;
+  const hasSenior = (value) => {
+    if (value === null || value === undefined) return false;
+    const numeric = Number(value);
+    if (!Number.isNaN(numeric)) {
+      return numeric > 0;
+    }
+    if (typeof value === 'string') {
+      return value.trim() !== '' && value.trim() !== '0';
+    }
+    return Boolean(value);
+  };
+  const isSubordinate =
+    hasSenior(session?.senior_empid) || hasSenior(session?.senior_plan_empid);
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const { addToast } = useToast();
@@ -449,6 +467,7 @@ const TableManager = forwardRef(function TableManager({
         formConfig,
         branchScopeId,
         departmentScopeId,
+        { allowTemporaryAnyScope: true },
       ),
     [formConfig, branchScopeId, departmentScopeId],
   );
@@ -460,9 +479,17 @@ const TableManager = forwardRef(function TableManager({
       false,
   );
   const canCreateTemporary = Boolean(accessEvaluation.allowTemporary);
-  const isSenior = Boolean(user?.empid) && !isSubordinate;
-  const canReviewTemporary = formSupportsTemporary && isSenior;
-  const supportsTemporary = canCreateTemporary || canReviewTemporary;
+  const supervisorPermission = Boolean(
+    session?.permissions?.supervisor || authPermissions?.supervisor,
+  );
+  const summaryMarksReviewer = Boolean(temporarySummary?.isReviewer);
+  const isImplicitReviewer = Boolean(user?.empid) && !isSubordinate;
+  const reviewEligible =
+    supervisorPermission || summaryMarksReviewer || isImplicitReviewer;
+  const canReviewTemporary = formSupportsTemporary && reviewEligible;
+  const supportsTemporary = Boolean(
+    canCreateTemporary || (formSupportsTemporary && reviewEligible),
+  );
   const canPostTransactions =
     accessEvaluation.canPost === undefined
       ? true
@@ -471,9 +498,9 @@ const TableManager = forwardRef(function TableManager({
   const availableTemporaryScopes = useMemo(() => {
     const scopes = [];
     if (canCreateTemporary) scopes.push('created');
-    if (canReviewTemporary) scopes.push('review');
+    if (formSupportsTemporary && reviewEligible) scopes.push('review');
     return scopes;
-  }, [canCreateTemporary, canReviewTemporary]);
+  }, [canCreateTemporary, formSupportsTemporary, reviewEligible]);
 
   const defaultTemporaryScope = useMemo(() => {
     if (availableTemporaryScopes.includes('created')) return 'created';
@@ -2781,7 +2808,17 @@ const TableManager = forwardRef(function TableManager({
       if (!availableTemporaryScopes.includes(targetScope)) return;
       const params = new URLSearchParams();
       params.set('scope', targetScope);
-      if (table) params.set('table', table);
+
+      const shouldFilterByTable = (() => {
+        if (options?.table !== undefined) {
+          return Boolean(options.table);
+        }
+        return targetScope !== 'review';
+      })();
+
+      if (shouldFilterByTable && table) {
+        params.set('table', table);
+      }
       const focusIdRaw = options?.focusId;
       const focusId =
         focusIdRaw !== undefined &&

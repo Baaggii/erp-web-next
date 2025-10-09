@@ -26,7 +26,12 @@ function deriveTxnModuleState(data, branch, department, perms, licensed) {
       if (!info || typeof info !== 'object') return;
       const moduleKey = info.moduleKey;
       if (!moduleKey) return;
-      if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
+      if (
+        !hasTransactionFormAccess(info, branchId, departmentId, {
+          allowTemporaryAnyScope: true,
+        })
+      )
+        return;
       if (
         perms &&
         Object.prototype.hasOwnProperty.call(perms, moduleKey) &&

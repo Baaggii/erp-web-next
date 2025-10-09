@@ -64,7 +64,12 @@ export default function FormsIndex() {
           if (!info || typeof info !== 'object') return;
           const key = info.moduleKey || 'forms';
           if (!descendantKeys.includes(key)) return;
-          if (!hasTransactionFormAccess(info, branchId, departmentId)) return;
+          if (
+            !hasTransactionFormAccess(info, branchId, departmentId, {
+              allowTemporaryAnyScope: true,
+            })
+          )
+            return;
           if (!isModulePermissionGranted(perms, key))
             return;
           if (!isModuleLicensed(licensed, key))
