@@ -12,7 +12,11 @@ const router = express.Router();
 
 router.get('/summary', requireAuth, async (req, res, next) => {
   try {
-    const summary = await getTemporarySummary(req.user.empid, req.user.companyId);
+    const summary = await getTemporarySummary(
+      req.user.empid,
+      req.user.companyId,
+      req.user.seniorPlanEmpid,
+    );
     res.json(summary);
   } catch (err) {
     next(err);
@@ -26,6 +30,7 @@ router.get('/', requireAuth, async (req, res, next) => {
       scope: scope === 'review' ? 'review' : 'created',
       tableName: table || null,
       empId: req.user.empid,
+      reviewerPlanId: req.user.seniorPlanEmpid,
       companyId: req.user.companyId,
       status: status || 'pending',
     });

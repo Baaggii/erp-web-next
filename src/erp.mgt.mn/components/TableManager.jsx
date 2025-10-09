@@ -381,10 +381,22 @@ const TableManager = forwardRef(function TableManager({
     () => Array.from(requestIdSet).sort().join(','),
     [requestIdSet],
   );
-  const { user, company, branch, department, session } = useContext(AuthContext);
-  const isSubordinate = Boolean(
-    session?.senior_empid || session?.senior_plan_empid,
-  );
+  const authContext = useContext(AuthContext) || {};
+  const { user, company, branch, department, session } = authContext;
+  const authPermissions = authContext?.permissions;
+  const hasSenior = (value) => {
+    if (value === null || value === undefined) return false;
+    const numeric = Number(value);
+    if (!Number.isNaN(numeric)) {
+      return numeric > 0;
+    }
+    if (typeof value === 'string') {
+      return value.trim() !== '' && value.trim() !== '0';
+    }
+    return Boolean(value);
+  };
+  const isSubordinate =
+    hasSenior(session?.senior_empid) || hasSenior(session?.senior_plan_empid);
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
   const { addToast } = useToast();
@@ -449,6 +461,7 @@ const TableManager = forwardRef(function TableManager({
         formConfig,
         branchScopeId,
         departmentScopeId,
+        { allowTemporaryAnyScope: true },
       ),
     [formConfig, branchScopeId, departmentScopeId],
   );
@@ -460,9 +473,17 @@ const TableManager = forwardRef(function TableManager({
       false,
   );
   const canCreateTemporary = Boolean(accessEvaluation.allowTemporary);
-  const isSenior = Boolean(user?.empid) && !isSubordinate;
-  const canReviewTemporary = formSupportsTemporary && isSenior;
-  const supportsTemporary = canCreateTemporary || canReviewTemporary;
+  const supervisorPermission = Boolean(
+    session?.permissions?.supervisor || authPermissions?.supervisor,
+  );
+  const summaryMarksReviewer = Boolean(temporarySummary?.isReviewer);
+  const isImplicitReviewer = Boolean(user?.empid) && !isSubordinate;
+  const reviewEligible =
+    supervisorPermission || summaryMarksReviewer || isImplicitReviewer;
+  const canReviewTemporary = formSupportsTemporary && reviewEligible;
+  const supportsTemporary = Boolean(
+    canCreateTemporary || (formSupportsTemporary && reviewEligible),
+  );
   const canPostTransactions =
     accessEvaluation.canPost === undefined
       ? true
@@ -471,9 +492,9 @@ const TableManager = forwardRef(function TableManager({
   const availableTemporaryScopes = useMemo(() => {
     const scopes = [];
     if (canCreateTemporary) scopes.push('created');
-    if (canReviewTemporary) scopes.push('review');
+    if (formSupportsTemporary && reviewEligible) scopes.push('review');
     return scopes;
-  }, [canCreateTemporary, canReviewTemporary]);
+  }, [canCreateTemporary, formSupportsTemporary, reviewEligible]);
 
   const defaultTemporaryScope = useMemo(() => {
     if (availableTemporaryScopes.includes('created')) return 'created';
@@ -2781,7 +2802,17 @@ const TableManager = forwardRef(function TableManager({
       if (!availableTemporaryScopes.includes(targetScope)) return;
       const params = new URLSearchParams();
       params.set('scope', targetScope);
-      if (table) params.set('table', table);
+
+      const shouldFilterByTable = (() => {
+        if (options?.table !== undefined) {
+          return Boolean(options.table);
+        }
+        return targetScope !== 'review';
+      })();
+
+      if (shouldFilterByTable && table) {
+        params.set('table', table);
+      }
       const focusIdRaw = options?.focusId;
       const focusId =
         focusIdRaw !== undefined &&

@@ -20,7 +20,12 @@ function matchesScope(list, value) {
   return list.includes(value);
 }
 
-export function hasTransactionFormAccess(info, branchId, departmentId) {
+export function hasTransactionFormAccess(
+  info,
+  branchId,
+  departmentId,
+  options = {},
+) {
   if (!info || typeof info !== 'object') return true;
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
@@ -42,6 +47,10 @@ export function hasTransactionFormAccess(info, branchId, departmentId) {
   );
   if (!temporaryEnabled) return false;
 
+  if (options && options.allowTemporaryAnyScope) {
+    return true;
+  }
+
   const temporaryBranches = normalizeAccessList(info.temporaryAllowedBranches);
   const temporaryDepartments = normalizeAccessList(info.temporaryAllowedDepartments);
 
@@ -51,7 +60,12 @@ export function hasTransactionFormAccess(info, branchId, departmentId) {
   );
 }
 
-export function evaluateTransactionFormAccess(info, branchId, departmentId) {
+export function evaluateTransactionFormAccess(
+  info,
+  branchId,
+  departmentId,
+  options = {},
+) {
   if (!info || typeof info !== 'object') {
     return {
       canPost: true,
@@ -79,12 +93,16 @@ export function evaluateTransactionFormAccess(info, branchId, departmentId) {
 
   let allowTemporary = false;
   if (temporaryEnabled) {
-    const temporaryBranches = normalizeAccessList(info.temporaryAllowedBranches);
-    const temporaryDepartments = normalizeAccessList(info.temporaryAllowedDepartments);
+    if (options && options.allowTemporaryAnyScope) {
+      allowTemporary = true;
+    } else {
+      const temporaryBranches = normalizeAccessList(info.temporaryAllowedBranches);
+      const temporaryDepartments = normalizeAccessList(info.temporaryAllowedDepartments);
 
-    allowTemporary =
-      matchesScope(temporaryBranches, branchValue) &&
-      matchesScope(temporaryDepartments, departmentValue);
+      allowTemporary =
+        matchesScope(temporaryBranches, branchValue) &&
+        matchesScope(temporaryDepartments, departmentValue);
+    }
   }
 
   return {
