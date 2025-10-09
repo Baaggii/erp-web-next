@@ -2247,16 +2247,18 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const cleaned = {};
-    const skipFields = new Set([...autoCols, ...generatedCols, 'id']);
+    const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
       const lower = k.toLowerCase();
-      if (skipFields.has(k) || k.startsWith('_')) return;
+      if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
       if (v !== '') {
         cleaned[k] =
           typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
       }
     });
+    delete cleaned.rows;
+    delete cleaned.Rows;
 
     if (requestType === 'edit') {
       const reason = await promptRequestReason();
