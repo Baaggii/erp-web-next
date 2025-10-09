@@ -101,24 +101,6 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     const columnName = lookup.get(lower);
     if (!columnName) continue;
     let normalizedValue = rawValue;
-    if (typeof normalizedValue === 'string') {
-      const trimmed = normalizedValue.trim();
-      if (trimmed) {
-        const first = trimmed[0];
-        const last = trimmed[trimmed.length - 1];
-        if (
-          (first === '{' && last === '}') ||
-          (first === '[' && last === ']') ||
-          (first === '"' && last === '"')
-        ) {
-          try {
-            normalizedValue = JSON.parse(trimmed);
-          } catch {
-            normalizedValue = rawValue;
-          }
-        }
-      }
-    }
     if (Array.isArray(normalizedValue)) {
       normalizedValue = JSON.stringify(normalizedValue);
     } else if (
