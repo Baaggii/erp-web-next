@@ -175,7 +175,6 @@ const requestStatusLabels = {
 };
 
 const ACTIVE_LOCK_STATUSES = new Set(['pending', 'locked']);
-const RESERVED_TEMPORARY_DETAIL_COLUMNS = new Set(['rows', 'gridrows', 'rawrows']);
 
 function coalesce(obj, ...keys) {
   if (!obj) return undefined;
@@ -593,40 +592,16 @@ const TableManager = forwardRef(function TableManager({
 
   const normalizeToCanonical = useCallback(
     (source, caseMap) => {
-      if (
-        !source ||
-        typeof source !== 'object' ||
-        Array.isArray(source) ||
-        source instanceof Date
-      ) {
-        return {};
-      }
+      if (!source || typeof source !== 'object') return {};
       const normalized = {};
       const map = caseMap || columnCaseMap;
       for (const [rawKey, value] of Object.entries(source)) {
-        if (rawKey == null) continue;
         const canonicalKey = resolveCanonicalKey(rawKey, map);
-        if (!canonicalKey) continue;
         normalized[canonicalKey] = value;
       }
       return normalized;
     },
     [columnCaseMap, resolveCanonicalKey],
-  );
-
-  const canonicalizeTemporaryValues = useCallback(
-    (source) => {
-      if (
-        !source ||
-        typeof source !== 'object' ||
-        Array.isArray(source) ||
-        source instanceof Date
-      ) {
-        return {};
-      }
-      return normalizeToCanonical(source);
-    },
-    [normalizeToCanonical],
   );
 
   const normalizeTenantKey = useCallback(
@@ -3469,13 +3444,13 @@ const TableManager = forwardRef(function TableManager({
         fieldTypeMap[column] === 'time'
       ) {
         const normalized = normalizeDateInput(str, placeholders[column]);
-        return normalized || str || '—';
+        return normalized || str;
       }
       if (placeholders[column] === undefined && /^\d{4}-\d{2}-\d{2}T/.test(str)) {
         const normalized = normalizeDateInput(str, 'YYYY-MM-DD');
-        return normalized || str || '—';
+        return normalized || str;
       }
-      return str || '—';
+      return str;
     },
     [
       fieldTypeMap,
@@ -5055,19 +5030,9 @@ const TableManager = forwardRef(function TableManager({
                           {},
                       );
                       const detailColumnsSource =
-                        columns.length > 0
-                          ? columns
-                          : Object.keys(normalizedRawValues);
+                        columns.length > 0 ? columns : Object.keys(normalizedValues || {});
                       const detailColumns = Array.from(
-                        new Set(
-                          (detailColumnsSource || [])
-                            .map((col) => resolveCanonicalKey(col))
-                            .filter(
-                              (col) =>
-                                col &&
-                                !RESERVED_TEMPORARY_DETAIL_COLUMNS.has(col.toLowerCase()),
-                            ),
-                        ),
+                        new Set((detailColumnsSource || []).filter(Boolean)),
                       );
                       return (
                         <tr
@@ -5172,11 +5137,7 @@ const TableManager = forwardRef(function TableManager({
                                             fontSize: '0.75rem',
                                           }}
                                         >
-                                          {formatTemporaryFieldValue(
-                                            col,
-                                            normalizedValues[col],
-                                            normalizedRawValues[col],
-                                          )}
+                                          {formatTemporaryFieldValue(col, normalizedValues[col])}
                                         </td>
                                       ))}
                                     </tr>
