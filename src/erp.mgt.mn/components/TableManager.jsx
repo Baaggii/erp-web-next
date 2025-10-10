@@ -116,6 +116,117 @@ function getTemporaryId(entry) {
   return String(entry.id);
 }
 
+const PROMOTABLE_VALUE_KEYS = new Set([
+  'value',
+  'id',
+  'code',
+  'codevalue',
+  'reference',
+  'ref',
+  'key',
+  'uid',
+  'guid',
+  'empid',
+  'emp_id',
+  'employeeid',
+  'employee_id',
+  'branchid',
+  'branch_id',
+  'departmentid',
+  'department_id',
+  'companyid',
+  'company_id',
+  'number',
+  'no',
+]);
+
+function toPromotableValue(input, seen = new Set()) {
+  if (input === undefined) return undefined;
+  if (input === null) return null;
+  if (
+    typeof input === 'string' ||
+    typeof input === 'number' ||
+    typeof input === 'boolean'
+  ) {
+    return input;
+  }
+  if (typeof input === 'bigint') return input.toString();
+  if (input instanceof Date) return input.toISOString();
+  if (seen.has(input)) return undefined;
+
+  if (Array.isArray(input)) {
+    seen.add(input);
+    const flattened = [];
+    input.forEach((item) => {
+      const next = toPromotableValue(item, seen);
+      if (next === undefined || next === '' || next === null) return;
+      if (Array.isArray(next)) {
+        next.forEach((nested) => {
+          if (
+            nested !== undefined &&
+            nested !== '' &&
+            nested !== null &&
+            !(typeof nested === 'object')
+          ) {
+            flattened.push(nested);
+          }
+        });
+      } else if (typeof next !== 'object') {
+        flattened.push(next);
+      }
+    });
+    seen.delete(input);
+    return flattened.length > 0 ? flattened : undefined;
+  }
+
+  if (typeof input === 'object') {
+    seen.add(input);
+    const entries = Object.entries(input);
+    let sawNullCandidate = false;
+    for (const [rawKey, value] of entries) {
+      if (!rawKey) continue;
+      if (!PROMOTABLE_VALUE_KEYS.has(rawKey.toLowerCase())) continue;
+      const candidate = toPromotableValue(value, seen);
+      if (candidate === null) {
+        sawNullCandidate = true;
+        continue;
+      }
+      if (
+        candidate !== undefined &&
+        candidate !== '' &&
+        !(Array.isArray(candidate) && candidate.length === 0) &&
+        !(typeof candidate === 'object' && candidate !== null)
+      ) {
+        seen.delete(input);
+        return candidate;
+      }
+    }
+    for (const [, value] of entries) {
+      if (value === undefined || value === '' || value === null) continue;
+      if (typeof value === 'object') {
+        const nested = toPromotableValue(value, seen);
+        if (
+          nested !== undefined &&
+          nested !== '' &&
+          !(Array.isArray(nested) && nested.length === 0) &&
+          !(typeof nested === 'object' && nested !== null)
+        ) {
+          seen.delete(input);
+          return nested;
+        }
+        continue;
+      }
+      seen.delete(input);
+      return value;
+    }
+    seen.delete(input);
+    if (sawNullCandidate) return null;
+    return undefined;
+  }
+
+  return String(input);
+}
+
 const MAX_WIDTH = ch(40);
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
@@ -2253,9 +2364,19 @@ const TableManager = forwardRef(function TableManager({
       const lower = k.toLowerCase();
       if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
-      if (v !== '') {
-        cleaned[k] =
-          typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
+      const promotable = toPromotableValue(v);
+      if (
+        promotable === undefined ||
+        promotable === '' ||
+        (Array.isArray(promotable) && promotable.length === 0)
+      ) {
+        return;
+      }
+      if (typeof promotable === 'string') {
+        const normalized = normalizeDateInput(promotable, placeholders[k]);
+        cleaned[k] = normalized || promotable;
+      } else {
+        cleaned[k] = promotable;
       }
     });
     delete cleaned.rows;
@@ -2453,15 +2574,26 @@ const TableManager = forwardRef(function TableManager({
       const lower = k.toLowerCase();
       if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
       if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
-      if (v !== '') {
-        cleaned[k] =
-          typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
+      const promotable = toPromotableValue(v);
+      if (
+        promotable === undefined ||
+        promotable === '' ||
+        (Array.isArray(promotable) && promotable.length === 0)
+      ) {
+        return;
+      }
+      if (typeof promotable === 'string') {
+        const normalized = normalizeDateInput(promotable, placeholders[k]);
+        cleaned[k] = normalized || promotable;
+      } else {
+        cleaned[k] = promotable;
       }
     });
 
     const payload = {
       values: normalizedValues,
       submittedAt: new Date().toISOString(),
+      promotableValues: cleaned,
     };
     if (gridRows) {
       payload.gridRows = gridRows;
@@ -3282,17 +3414,102 @@ const TableManager = forwardRef(function TableManager({
     return value;
   }, []);
 
-  const stringifyPreviewCell = useCallback((value) => {
-    if (value === undefined || value === null || value === '') return '—';
-    if (typeof value === 'string') return value;
-    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-    if (value instanceof Date) return value.toISOString();
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  }, []);
+  const stringifyPreviewCell = useCallback(
+    (value) => {
+      const seen = new Set();
+      const collect = (input) => {
+        if (input === undefined || input === null || input === '') return [];
+        if (typeof input === 'string') return [input];
+        if (typeof input === 'number' || typeof input === 'boolean') return [String(input)];
+        if (input instanceof Date) return [input.toISOString()];
+        if (seen.has(input)) return [];
+        if (Array.isArray(input)) {
+          seen.add(input);
+          const nested = input.flatMap((item) => collect(item));
+          seen.delete(input);
+          return nested;
+        }
+        if (isPlainValueObject(input)) {
+          seen.add(input);
+          const nested = Object.values(input).flatMap((item) => collect(item));
+          seen.delete(input);
+          return nested;
+        }
+        const fallback = String(input);
+        if (!fallback || fallback === '[object Object]') return [];
+        return [fallback];
+      };
+
+      const flattened = collect(value)
+        .map((item) => (typeof item === 'string' ? item : String(item)))
+        .map((item) => item.trim())
+        .filter((item) => item.length > 0);
+
+      if (flattened.length === 0) return '—';
+      return flattened.join(', ');
+    },
+    [isPlainValueObject],
+  );
+
+  const extractPromotableObject = useCallback(
+    (source) => {
+      if (source === undefined || source === null) return null;
+      let candidate = source;
+      if (typeof candidate === 'string') {
+        candidate = parseMaybeJson(candidate);
+      }
+      if (!isPlainValueObject(candidate)) return null;
+      const seen = new Set();
+      let current = candidate;
+      while (isPlainValueObject(current) && !seen.has(current)) {
+        seen.add(current);
+        const nestedKey = ['values', 'cleanedValues', 'data', 'record'].find((key) =>
+          isPlainValueObject(current[key]),
+        );
+        if (!nestedKey) break;
+        current = current[nestedKey];
+      }
+      return isPlainValueObject(current) ? current : null;
+    },
+    [isPlainValueObject, parseMaybeJson],
+  );
+
+  const getTemporaryPromotableValues = useCallback(
+    (entry) => {
+      if (!entry) return {};
+      const sources = [
+        entry.cleanedValues,
+        entry.payload?.cleanedValues,
+        entry.payload?.values,
+        entry.payload,
+        entry.values,
+        entry.rawValues,
+      ];
+      for (const source of sources) {
+        const promotable = extractPromotableObject(source);
+        if (promotable) {
+          const canonical = normalizeToCanonical(promotable);
+          const sanitized = {};
+          Object.entries(canonical).forEach(([key, value]) => {
+            const extracted = toPromotableValue(value);
+            if (
+              extracted === undefined ||
+              extracted === '' ||
+              (Array.isArray(extracted) && extracted.length === 0)
+            ) {
+              return;
+            }
+            sanitized[key] = extracted;
+          });
+          if (Object.keys(sanitized).length > 0) {
+            return sanitized;
+          }
+        }
+      }
+      return {};
+    },
+    [extractPromotableObject, normalizeToCanonical],
+  );
 
   const temporaryValueButtonStyle = useMemo(
     () => ({
@@ -3342,18 +3559,40 @@ const TableManager = forwardRef(function TableManager({
       }
       const columnList = Array.from(columnKeys);
       const normalizedRows = rows.length > 0 ? rows : [{ Value: structured }];
+      const displayRows = normalizedRows.map((row) => {
+        const normalized = {};
+        columnList.forEach((key) => {
+          const cellValue = row && typeof row === 'object' ? row[key] : undefined;
+          normalized[key] = stringifyPreviewCell(cellValue);
+        });
+        return normalized;
+      });
+
+      let activeColumns = columnList.filter((key) =>
+        displayRows.some((row) => {
+          const cell = row[key];
+          return cell !== undefined && cell !== null && cell !== '' && cell !== '—';
+        }),
+      );
+
+      let normalizedDisplayRows;
+      if (activeColumns.length === 0) {
+        activeColumns = ['Value'];
+        normalizedDisplayRows = [{ Value: stringifyPreviewCell(structured) }];
+      } else {
+        normalizedDisplayRows = displayRows.map((row) => {
+          const normalized = {};
+          activeColumns.forEach((key) => {
+            normalized[key] = row[key] ?? '—';
+          });
+          return normalized;
+        });
+      }
 
       setTemporaryValuePreview({
         title: labels[column] || column,
-        columns: columnList,
-        rows: normalizedRows.map((row) => {
-          const normalized = {};
-          columnList.forEach((key) => {
-            const cellValue = row && typeof row === 'object' ? row[key] : undefined;
-            normalized[key] = stringifyPreviewCell(cellValue);
-          });
-          return normalized;
-        }),
+        columns: activeColumns,
+        rows: normalizedDisplayRows,
       });
     },
     [labels, parseMaybeJson, stringifyPreviewCell, isPlainValueObject],
@@ -5022,13 +5261,7 @@ const TableManager = forwardRef(function TableManager({
                       const entryId = getTemporaryId(entry);
                       const rowKey = entryId ?? `row-${index}`;
                       const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
-                      const normalizedValues = normalizeToCanonical(
-                        entry?.values ||
-                          entry?.cleanedValues ||
-                          entry?.payload?.values ||
-                          entry?.rawValues ||
-                          {},
-                      );
+                      const normalizedValues = getTemporaryPromotableValues(entry);
                       const detailColumnsSource =
                         columns.length > 0 ? columns : Object.keys(normalizedValues || {});
                       const detailColumns = Array.from(
