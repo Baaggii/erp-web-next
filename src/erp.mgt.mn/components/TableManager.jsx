@@ -1085,6 +1085,220 @@ const TableManager = forwardRef(function TableManager({
         const dataMap = {};
         const cfgMap = {};
         const rowMap = {};
+        const relationCache = {};
+        const nestedLabelCache = {};
+
+        const buildRelationLabel = ({
+          row,
+          keyMap,
+          relationColumn,
+          cfg,
+          nestedLookups,
+        }) => {
+          if (!row || !keyMap || !relationColumn) {
+            return '';
+          }
+          const lowerColumn = relationColumn.toLowerCase();
+          const valueKey = keyMap[lowerColumn];
+          const value = valueKey ? row[valueKey] : undefined;
+
+          const idFieldName = cfg?.idField ?? relationColumn;
+          const idKey =
+            typeof idFieldName === 'string'
+              ? keyMap[idFieldName.toLowerCase()]
+              : undefined;
+          const identifier = idKey ? row[idKey] : undefined;
+
+          const parts = [];
+          if (identifier !== undefined && identifier !== null && identifier !== '') {
+            parts.push(identifier);
+          } else if (value !== undefined && value !== null && value !== '') {
+            parts.push(value);
+          }
+
+          let displayFields = [];
+          if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
+            displayFields = cfg.displayFields;
+          } else {
+            displayFields = Object.keys(row)
+              .filter((f) => f !== relationColumn)
+              .slice(0, 1);
+          }
+
+          displayFields.forEach((field) => {
+            if (typeof field !== 'string') return;
+            const rk = keyMap[field.toLowerCase()];
+            if (!rk) return;
+            let displayValue = row[rk];
+            if (displayValue === undefined || displayValue === null || displayValue === '')
+              return;
+            const lookup = nestedLookups?.[field.toLowerCase()];
+            if (lookup) {
+              const mapped =
+                lookup[displayValue] !== undefined
+                  ? lookup[displayValue]
+                  : lookup[String(displayValue)];
+              if (mapped !== undefined) {
+                displayValue = mapped;
+              }
+            }
+            parts.push(displayValue);
+          });
+
+          const normalizedParts = parts
+            .filter((part) => part !== undefined && part !== null && part !== '')
+            .map((part) => (typeof part === 'string' ? part : String(part)));
+          if (normalizedParts.length > 0) {
+            return normalizedParts.join(' - ');
+          }
+          const fallback = Object.values(row)
+            .filter((v) => v !== undefined && v !== null && v !== '')
+            .slice(0, 2)
+            .map((v) => (typeof v === 'string' ? v : String(v)));
+          return fallback.join(' - ');
+        };
+
+        const fetchRelationMapForTable = async (tableName) => {
+          if (!tableName) return {};
+          const cacheKey = tableName.toLowerCase();
+          if (relationCache[cacheKey]) return relationCache[cacheKey];
+          try {
+            const relRes = await fetch(
+              `/api/tables/${encodeURIComponent(tableName)}/relations`,
+              { credentials: 'include' },
+            );
+            if (!relRes.ok) {
+              relationCache[cacheKey] = {};
+              return relationCache[cacheKey];
+            }
+            const relList = await relRes.json().catch(() => []);
+            if (canceled) return {};
+            const relMap = {};
+            relList.forEach((entry) => {
+              if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
+              const lower = entry.COLUMN_NAME.toLowerCase();
+              relMap[lower] = {
+                table: entry.REFERENCED_TABLE_NAME,
+                column: entry.REFERENCED_COLUMN_NAME,
+              };
+            });
+            relationCache[cacheKey] = relMap;
+            return relMap;
+          } catch {
+            relationCache[cacheKey] = {};
+            return {};
+          }
+        };
+
+        const fetchNestedLabelMap = async (nestedRel) => {
+          if (!nestedRel?.table || !nestedRel?.column) return {};
+          const cacheKey = `${nestedRel.table.toLowerCase()}|${nestedRel.column.toLowerCase()}`;
+          if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
+
+          let nestedCfg = null;
+          try {
+            const cfgRes = await fetch(
+              `/api/display_fields?table=${encodeURIComponent(nestedRel.table)}`,
+              { credentials: 'include' },
+            );
+            if (cfgRes.ok) {
+              nestedCfg = await cfgRes.json().catch(() => null);
+            }
+          } catch {
+            nestedCfg = null;
+          }
+
+          let nestedTenant = null;
+          try {
+            const ttRes = await fetch(
+              `/api/tenant_tables/${encodeURIComponent(nestedRel.table)}`,
+              { credentials: 'include' },
+            );
+            if (ttRes.ok) {
+              nestedTenant = await ttRes.json().catch(() => null);
+            }
+          } catch {
+            /* ignore tenant table fetch errors */
+          }
+          const nestedIsShared =
+            nestedTenant?.isShared ?? nestedTenant?.is_shared ?? false;
+          const nestedKeys = getTenantKeyList(nestedTenant);
+
+          const perPage = 500;
+          let page = 1;
+          let rows = [];
+          while (true) {
+            if (canceled) {
+              nestedLabelCache[cacheKey] = {};
+              return {};
+            }
+            const params = new URLSearchParams({ page, perPage });
+            if (!nestedIsShared) {
+              if (nestedKeys.includes('company_id') && company != null)
+                params.set('company_id', company);
+              if (nestedKeys.includes('branch_id') && branch != null)
+                params.set('branch_id', branch);
+              if (nestedKeys.includes('department_id') && department != null)
+                params.set('department_id', department);
+            }
+            const refRes = await fetch(
+              `/api/tables/${encodeURIComponent(nestedRel.table)}?${params.toString()}`,
+              { credentials: 'include' },
+            );
+            if (!refRes.ok) break;
+            const json = await refRes.json().catch(() => ({}));
+            if (!Array.isArray(json.rows)) break;
+            rows = rows.concat(json.rows);
+            if (rows.length >= (json.count || rows.length) || json.rows.length < perPage) {
+              break;
+            }
+            page += 1;
+          }
+
+          const labelMap = {};
+          rows.forEach((row) => {
+            const keyMap = {};
+            Object.keys(row || {}).forEach((k) => {
+              keyMap[k.toLowerCase()] = k;
+            });
+            const colKey = keyMap[nestedRel.column.toLowerCase()];
+            if (!colKey) return;
+            const val = row[colKey];
+            if (val === undefined || val === null || val === '') return;
+            const label = buildRelationLabel({
+              row,
+              keyMap,
+              relationColumn: nestedRel.column,
+              cfg: nestedCfg,
+              nestedLookups: {},
+            });
+            const valueKey = typeof val === 'string' || typeof val === 'number' ? String(val) : val;
+            labelMap[valueKey] = label;
+          });
+
+          nestedLabelCache[cacheKey] = labelMap;
+          return labelMap;
+        };
+
+        const loadNestedDisplayLookups = async (tableName, displayFields) => {
+          if (!Array.isArray(displayFields) || displayFields.length === 0) return {};
+          const relationMap = await fetchRelationMapForTable(tableName);
+          if (!relationMap || Object.keys(relationMap).length === 0) return {};
+          const lookupMap = {};
+          for (const field of displayFields) {
+            if (typeof field !== 'string') continue;
+            const lower = field.toLowerCase();
+            const nestedRel = relationMap[lower];
+            if (!nestedRel) continue;
+            const labels = await fetchNestedLabelMap(nestedRel);
+            if (canceled) return {};
+            if (labels && Object.keys(labels).length > 0) {
+              lookupMap[lower] = labels;
+            }
+          }
+          return lookupMap;
+        };
+
         for (const [col, rel] of Object.entries(map)) {
           try {
             let page = 1;
@@ -1178,54 +1392,25 @@ const TableManager = forwardRef(function TableManager({
             };
             if (rows.length > 0) {
               rowMap[col] = {};
+              const nestedDisplayLookups = await loadNestedDisplayLookups(
+                rel.table,
+                cfg?.displayFields || [],
+              );
+              if (canceled) return;
               dataMap[col] = rows.map((row) => {
                 const keyMap = {};
                 Object.keys(row).forEach((k) => {
                   keyMap[k.toLowerCase()] = k;
                 });
-                const parts = [];
                 const valKey = keyMap[rel.column.toLowerCase()];
                 const val = valKey ? row[valKey] : undefined;
-
-                const idFieldName = cfg?.idField ?? rel.column;
-                const idKey =
-                  typeof idFieldName === 'string'
-                    ? keyMap[idFieldName.toLowerCase()]
-                    : undefined;
-                const identifier = idKey ? row[idKey] : undefined;
-
-                if (identifier !== undefined) {
-                  parts.push(identifier);
-                } else if (val !== undefined) {
-                  parts.push(val);
-                }
-
-                let displayFields = [];
-                if (
-                  cfg &&
-                  Array.isArray(cfg.displayFields) &&
-                  cfg.displayFields.length > 0
-                ) {
-                  displayFields = cfg.displayFields;
-                } else {
-                  displayFields = Object.keys(row)
-                    .filter((f) => f !== rel.column)
-                    .slice(0, 1);
-                }
-
-                parts.push(
-                  ...displayFields
-                    .map((f) => {
-                      const rk = keyMap[f.toLowerCase()];
-                      return rk ? row[rk] : undefined;
-                    })
-                    .filter((v) => v !== undefined),
-                );
-
-                const label =
-                  parts.length > 0
-                    ? parts.join(' - ')
-                    : Object.values(row).slice(0, 2).join(' - ');
+                const label = buildRelationLabel({
+                  row,
+                  keyMap,
+                  relationColumn: rel.column,
+                  cfg,
+                  nestedLookups: nestedDisplayLookups,
+                });
 
                 if (val !== undefined) {
                   rowMap[col][val] = row;
