@@ -134,14 +134,18 @@ export default function AsyncSearchSelect({
     };
   }, [show, updateMenuPosition]);
 
-  async function fetchPage(p = 1, q = '', append = false, signal) {
-    const cols = effectiveSearchColumns;
-    if (!table || cols.length === 0) return;
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: p, perPage: 50 });
-      const isShared =
-        tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
+  const PER_PAGE = 50;
+  const MIN_AUTOFETCH_RESULTS = 20;
+  const MAX_AUTOFETCH_PAGES = 6;
+
+  const fetchSinglePage = useCallback(
+    async (pageNumber, query, signal, normalizedQuery) => {
+      const cols = effectiveSearchColumns;
+      if (!table || cols.length === 0) {
+        return { pageOptions: [], pageHasMore: false, pageMatch: false };
+      }
+      const params = new URLSearchParams({ page: pageNumber, perPage: PER_PAGE });
+      const isShared = tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
       const keys = getTenantKeyList(tenantMeta);
       if (!isShared) {
         if (keys.includes('company_id') && effectiveCompanyId != null)
@@ -151,8 +155,8 @@ export default function AsyncSearchSelect({
         if (keys.includes('department_id') && department != null)
           params.set('department_id', department);
       }
-      if (q) {
-        params.set('search', q);
+      if (query) {
+        params.set('search', query);
         params.set('searchColumns', cols.join(','));
       }
       const res = await fetch(
@@ -175,7 +179,7 @@ export default function AsyncSearchSelect({
         });
       } catch {
         opts = rows.map((r) => {
-          if (!r || typeof r !== 'object') return { value: undefined, label: '' };
+          if (!r || typeof r !== 'object') return { value: undefined, label: '', searchText: '' };
           const val = r[idField || searchColumn];
           const parts = [];
           if (val !== undefined) parts.push(val);
@@ -189,7 +193,12 @@ export default function AsyncSearchSelect({
               if (r[f] !== undefined) parts.push(r[f]);
             });
           }
-          return { value: val, label: parts.join(' - ') };
+          const label = parts.join(' - ');
+          return {
+            value: val,
+            label,
+            searchText: [String(val ?? ''), label].join(' ').trim().toLowerCase(),
+          };
         });
       }
       const normalizedQuery = String(q || '').trim().toLowerCase();

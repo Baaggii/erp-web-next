@@ -1054,32 +1054,104 @@ const TableManager = forwardRef(function TableManager({
     let canceled = false;
     async function load() {
       try {
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/relations`,
-          { credentials: 'include' },
-        );
-        if (!res.ok) {
+        const encoded = encodeURIComponent(table);
+        let rels = [];
+        let relsErrored = false;
+        try {
+          const res = await fetch(`/api/tables/${encoded}/relations`, {
+            credentials: 'include',
+          });
+          if (res.ok) {
+            rels = await res
+              .json()
+              .catch(() => {
+                relsErrored = true;
+                return [];
+              });
+          } else {
+            relsErrored = true;
+          }
+        } catch {
+          relsErrored = true;
+        }
+        if (relsErrored) {
           addToast(
             t('failed_load_table_relations', 'Failed to load table relations'),
             'error',
           );
-          return;
         }
-        const rels = await res.json().catch(() => {
-          addToast(
-            t('failed_parse_table_relations', 'Failed to parse table relations'),
-            'error',
-          );
-          return [];
-        });
         if (canceled) return;
+
+        let customConfig = {};
+        try {
+          const customRes = await fetch(`/api/tables/${encoded}/relations/custom`, {
+            credentials: 'include',
+          });
+          if (customRes.ok) {
+            customConfig =
+              (await customRes.json().catch(() => ({}))) || {};
+          }
+        } catch {
+          /* ignore custom relation fetch errors */
+        }
+
+        const combined = Array.isArray(rels) ? [...rels] : [];
+        const customEntries =
+          customConfig && typeof customConfig === 'object'
+            ? customConfig.relations ?? customConfig.config ?? customConfig
+            : {};
+        if (customEntries && typeof customEntries === 'object') {
+          Object.entries(customEntries).forEach(([column, relations]) => {
+            if (!Array.isArray(relations)) return;
+            relations.forEach((relation, index) => {
+              if (!relation || typeof relation !== 'object') return;
+              if (!relation.table || !relation.column) return;
+              combined.push({
+                COLUMN_NAME: column,
+                REFERENCED_TABLE_NAME: relation.table,
+                REFERENCED_COLUMN_NAME: relation.column,
+                source: 'custom',
+                configIndex: index,
+                ...(relation.idField ? { idField: relation.idField } : {}),
+                ...(Array.isArray(relation.displayFields)
+                  ? { displayFields: relation.displayFields }
+                  : {}),
+              });
+            });
+          });
+        }
+
+        const deduped = [];
+        const seen = new Set();
+        combined.forEach((entry) => {
+          if (!entry || typeof entry !== 'object') return;
+          const col = entry.COLUMN_NAME;
+          const refTbl = entry.REFERENCED_TABLE_NAME;
+          const refCol = entry.REFERENCED_COLUMN_NAME;
+          if (!col || !refTbl || !refCol) return;
+          const key = `${String(col).toLowerCase()}|${String(refTbl).toLowerCase()}|${String(
+            refCol,
+          ).toLowerCase()}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          deduped.push(entry);
+        });
+
         const map = {};
-        rels.forEach((r) => {
+        deduped.forEach((r) => {
           const key = resolveCanonicalKey(r.COLUMN_NAME);
-          map[key] = {
+          if (!key) return;
+          const entry = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
           };
+          if (r.idField) entry.idField = r.idField;
+          if (Array.isArray(r.displayFields)) entry.displayFields = r.displayFields;
+          if (r.source === 'custom') {
+            map[key] = entry;
+          } else if (!map[key]) {
+            map[key] = entry;
+          }
         });
         setRelations(map);
         const dataMap = {};
@@ -1384,11 +1456,16 @@ const TableManager = forwardRef(function TableManager({
               }
               page += 1;
             }
+            const resolvedDisplayFields = Array.isArray(cfg?.displayFields)
+              ? cfg.displayFields
+              : Array.isArray(rel.displayFields)
+              ? rel.displayFields
+              : [];
             cfgMap[col] = {
               table: rel.table,
               column: rel.column,
-              idField: cfg?.idField ?? rel.column,
-              displayFields: cfg?.displayFields || [],
+              idField: cfg?.idField ?? rel.idField ?? rel.column,
+              displayFields: resolvedDisplayFields,
             };
             if (rows.length > 0) {
               rowMap[col] = {};
