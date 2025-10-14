@@ -9,6 +9,7 @@ import React, {
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { getTenantKeyList } from '../utils/tenantKeys.js';
+import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -143,22 +144,37 @@ export default function AsyncSearchSelect({
       );
       const json = await res.json();
       const rows = Array.isArray(json.rows) ? json.rows : [];
-      const opts = rows.map((r) => {
-        const val = r[idField || searchColumn];
-        const parts = [];
-        if (val !== undefined) parts.push(val);
-        if (labelFields.length === 0) {
-          Object.entries(r).forEach(([k, v]) => {
-            if (k === idField || k === searchColumn) return;
-            if (v !== undefined && parts.length < 3) parts.push(v);
-          });
-        } else {
-          labelFields.forEach((f) => {
-            if (r[f] !== undefined) parts.push(r[f]);
-          });
-        }
-        return { value: val, label: parts.join(' - ') };
-      });
+      let opts;
+      try {
+        opts = await buildOptionsForRows({
+          table,
+          rows,
+          idField,
+          searchColumn,
+          labelFields,
+          companyId: effectiveCompanyId,
+          branchId: branch,
+          departmentId: department,
+        });
+      } catch {
+        opts = rows.map((r) => {
+          if (!r || typeof r !== 'object') return { value: undefined, label: '' };
+          const val = r[idField || searchColumn];
+          const parts = [];
+          if (val !== undefined) parts.push(val);
+          if (labelFields.length === 0) {
+            Object.entries(r).forEach(([k, v]) => {
+              if (k === idField || k === searchColumn) return;
+              if (v !== undefined && parts.length < 3) parts.push(v);
+            });
+          } else {
+            labelFields.forEach((f) => {
+              if (r[f] !== undefined) parts.push(r[f]);
+            });
+          }
+          return { value: val, label: parts.join(' - ') };
+        });
+      }
       setHasMore(rows.length >= 50 && p * 50 < (json.count || Infinity));
       setOptions((o) => (append ? [...o, ...opts] : opts));
     } catch (err) {
