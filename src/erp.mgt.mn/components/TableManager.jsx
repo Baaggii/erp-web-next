@@ -1073,75 +1073,14 @@ const TableManager = forwardRef(function TableManager({
           return [];
         });
         if (canceled) return;
-        let customRelations = {};
-        try {
-          const customRes = await fetch(
-            `/api/tables/${encodeURIComponent(table)}/relations/custom`,
-            { credentials: 'include' },
-          );
-          if (customRes.ok) {
-            const customJson = await customRes.json().catch(() => null);
-            if (
-              customJson &&
-              typeof customJson === 'object' &&
-              customJson.relations &&
-              typeof customJson.relations === 'object'
-            ) {
-              customRelations = customJson.relations;
-            }
-          }
-        } catch {
-          customRelations = customRelations || {};
-        }
         const map = {};
-        const applyRelation = (columnName, relation = {}, meta = {}) => {
-          if (!columnName || !relation.table || !relation.column) return;
-          const key = resolveCanonicalKey(columnName);
-          if (!key) return;
-          const displayFields = Array.isArray(meta.displayFields)
-            ? meta.displayFields.filter((f) => typeof f === 'string')
-            : [];
-          map[key] = {
-            table: relation.table,
-            column: relation.column,
-            idField:
-              typeof meta.idField === 'string' && meta.idField.trim()
-                ? meta.idField
-                : relation.column,
-            displayFields,
-          };
-        };
         rels.forEach((r) => {
-          if (!r || !r.COLUMN_NAME) return;
-          applyRelation(r.COLUMN_NAME, {
+          const key = resolveCanonicalKey(r.COLUMN_NAME);
+          map[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
-          });
+          };
         });
-        if (customRelations && typeof customRelations === 'object') {
-          Object.entries(customRelations).forEach(([rawColumn, value]) => {
-            if (typeof rawColumn !== 'string') return;
-            const list = Array.isArray(value) ? value : value ? [value] : [];
-            const chosen = list.find(
-              (item) => item && item.table && item.column,
-            );
-            if (!chosen) return;
-            const meta = {
-              idField:
-                typeof chosen.idField === 'string'
-                  ? chosen.idField
-                  : typeof chosen.id_field === 'string'
-                  ? chosen.id_field
-                  : undefined,
-              displayFields: Array.isArray(chosen.displayFields)
-                ? chosen.displayFields
-                : Array.isArray(chosen.display_fields)
-                ? chosen.display_fields
-                : [],
-            };
-            applyRelation(rawColumn, chosen, meta);
-          });
-        }
         setRelations(map);
         const dataMap = {};
         const cfgMap = {};
@@ -1445,28 +1384,17 @@ const TableManager = forwardRef(function TableManager({
               }
               page += 1;
             }
-            const overrideIdField =
-              rel.idField && typeof rel.idField === 'string'
-                ? rel.idField
-                : undefined;
-            const overrideDisplay = Array.isArray(rel.displayFields)
-              ? rel.displayFields.filter((f) => typeof f === 'string')
-              : [];
-            const resolvedIdField =
-              overrideIdField || (cfg?.idField ?? rel.column);
-            const resolvedDisplay =
-              overrideDisplay.length > 0 ? overrideDisplay : cfg?.displayFields || [];
             cfgMap[col] = {
               table: rel.table,
               column: rel.column,
-              idField: resolvedIdField,
-              displayFields: resolvedDisplay,
+              idField: cfg?.idField ?? rel.column,
+              displayFields: cfg?.displayFields || [],
             };
             if (rows.length > 0) {
               rowMap[col] = {};
               const nestedDisplayLookups = await loadNestedDisplayLookups(
                 rel.table,
-                resolvedDisplay,
+                cfg?.displayFields || [],
               );
               if (canceled) return;
               dataMap[col] = rows.map((row) => {
@@ -1480,10 +1408,7 @@ const TableManager = forwardRef(function TableManager({
                   row,
                   keyMap,
                   relationColumn: rel.column,
-                  cfg: {
-                    idField: resolvedIdField,
-                    displayFields: resolvedDisplay,
-                  },
+                  cfg,
                   nestedLookups: nestedDisplayLookups,
                 });
 
