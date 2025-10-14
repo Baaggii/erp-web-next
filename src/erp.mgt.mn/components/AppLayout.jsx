@@ -1,37 +1,17 @@
-import React, { useContext, useEffect, useMemo } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
 
 export default function AppLayout({ children, title }) {
-  const { user, session, department } = useContext(AuthContext);
+  const { user, session } = useContext(AuthContext);
   const { t } = useContext(I18nContext);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (window.erpDebug) console.warn('Mounted: AppLayout');
   }, []);
-
-  const departmentDisplay = useMemo(() => {
-    const candidates = [
-      session?.department_name,
-      session?.departmentLabel,
-      session?.department_label,
-      session?.department,
-      session?.department_id,
-    ];
-    for (const candidate of candidates) {
-      if (candidate === undefined || candidate === null) continue;
-      const text = typeof candidate === 'string' ? candidate.trim() : String(candidate).trim();
-      if (text.length > 0) return text;
-    }
-    if (department !== undefined && department !== null) {
-      const text = String(department).trim();
-      if (text.length > 0) return text;
-    }
-    return null;
-  }, [session, department]);
 
   async function handleLogout() {
     await logout(user?.empid);
@@ -75,7 +55,7 @@ export default function AppLayout({ children, title }) {
             {session && (
               <span>
                 {session.company_name}
-                {departmentDisplay && ` | ${departmentDisplay}`}
+                {session.department_name && ` | ${session.department_name}`}
                 {session.branch_name && ` | ${session.branch_name}`}
                 {session.user_level_name && ` | ${session.user_level_name}`}
               </span>
