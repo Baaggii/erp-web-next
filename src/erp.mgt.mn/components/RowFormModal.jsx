@@ -1932,33 +1932,53 @@ const RowFormModal = function RowFormModal({
           companyId={company}
         />
       )
-    ) : Array.isArray(relations[c]) ? (
-      <select
-        title={tip}
-        ref={(el) => (inputRefs.current[c] = el)}
-        value={formVals[c]}
-        onFocus={() => handleFocusField(c)}
-        onChange={(e) => {
-          const value = e.target.value;
-          setFormValuesWithGenerated((prev) => {
-            if (prev[c] === value) return prev;
-            return { ...prev, [c]: value };
-          });
-          setErrors((er) => ({ ...er, [c]: undefined }));
-        }}
-        onKeyDown={(e) => handleKeyDown(e, c)}
-        disabled={disabled}
-        className={inputClass}
-        style={inputStyle}
-      >
-        <option value="">-- select --</option>
-        {relations[c].map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
-    ) : (
+    ) : Array.isArray(relations[c]) ? (() => {
+      const rawVal = formVals[c];
+      const currentValue =
+        rawVal && typeof rawVal === 'object' && rawVal !== null ? rawVal.value : rawVal;
+      const normalizedValue =
+        currentValue !== undefined && currentValue !== null && currentValue !== ''
+          ? String(currentValue)
+          : null;
+      let options = relations[c];
+      if (normalizedValue && relations[c].length > 1) {
+        const idx = relations[c].findIndex(
+          (opt) => opt && String(opt.value) === normalizedValue,
+        );
+        if (idx > 0) {
+          const clone = relations[c].slice();
+          const [selected] = clone.splice(idx, 1);
+          options = [selected, ...clone];
+        }
+      }
+      return (
+        <select
+          title={tip}
+          ref={(el) => (inputRefs.current[c] = el)}
+          value={formVals[c]}
+          onFocus={() => handleFocusField(c)}
+          onChange={(e) => {
+            const value = e.target.value;
+            setFormValuesWithGenerated((prev) => {
+              if (prev[c] === value) return prev;
+              return { ...prev, [c]: value };
+            });
+            setErrors((er) => ({ ...er, [c]: undefined }));
+          }}
+          onKeyDown={(e) => handleKeyDown(e, c)}
+          disabled={disabled}
+          className={inputClass}
+          style={inputStyle}
+        >
+          <option value="">-- select --</option>
+          {options.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      );
+    })() : (
       <input
         title={tip}
         ref={(el) => (inputRefs.current[c] = el)}
