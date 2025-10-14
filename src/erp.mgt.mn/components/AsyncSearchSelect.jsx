@@ -134,14 +134,18 @@ export default function AsyncSearchSelect({
     };
   }, [show, updateMenuPosition]);
 
-  async function fetchPage(p = 1, q = '', append = false, signal) {
-    const cols = effectiveSearchColumns;
-    if (!table || cols.length === 0) return;
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({ page: p, perPage: 50 });
-      const isShared =
-        tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
+  const PER_PAGE = 50;
+  const MIN_AUTOFETCH_RESULTS = 20;
+  const MAX_AUTOFETCH_PAGES = 6;
+
+  const fetchSinglePage = useCallback(
+    async (pageNumber, query, signal, normalizedSearch) => {
+      const cols = effectiveSearchColumns;
+      if (!table || cols.length === 0) {
+        return { pageOptions: [], pageHasMore: false, pageMatch: false };
+      }
+      const params = new URLSearchParams({ page: pageNumber, perPage: PER_PAGE });
+      const isShared = tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
       const keys = getTenantKeyList(tenantMeta);
       if (!isShared) {
         if (keys.includes('company_id') && effectiveCompanyId != null)
@@ -151,8 +155,8 @@ export default function AsyncSearchSelect({
         if (keys.includes('department_id') && department != null)
           params.set('department_id', department);
       }
-      if (q) {
-        params.set('search', q);
+      if (query) {
+        params.set('search', query);
         params.set('searchColumns', cols.join(','));
       }
       const res = await fetch(
@@ -173,9 +177,9 @@ export default function AsyncSearchSelect({
           branchId: branch,
           departmentId: department,
         });
-      } catch {
+      } catch (err) {
         opts = rows.map((r) => {
-          if (!r || typeof r !== 'object') return { value: undefined, label: '' };
+          if (!r || typeof r !== 'object') return { value: undefined, label: '', searchText: '' };
           const val = r[idField || searchColumn];
           const parts = [];
           if (val !== undefined) parts.push(val);
@@ -189,17 +193,118 @@ export default function AsyncSearchSelect({
               if (r[f] !== undefined) parts.push(r[f]);
             });
           }
-          return { value: val, label: parts.join(' - ') };
+          const label = parts.join(' - ');
+          return {
+            value: val,
+            label,
+            searchText: [String(val ?? ''), label].join(' ').trim().toLowerCase(),
+          };
         });
       }
-      setHasMore(rows.length >= 50 && p * 50 < (json.count || Infinity));
-      setOptions((o) => (append ? [...o, ...opts] : opts));
-    } catch (err) {
-      if (err.name !== 'AbortError') setOptions(append ? [] : []);
-    } finally {
-      setLoading(false);
-    }
-  }
+      const pageHasMore =
+        rows.length >= PER_PAGE && pageNumber * PER_PAGE < (json.count || Infinity);
+      let pageMatch = false;
+      if (normalizedSearch) {
+        opts = opts.filter((opt) => {
+          if (!opt) return false;
+          const baseText =
+            typeof opt.searchText === 'string' && opt.searchText
+              ? opt.searchText
+              : `${opt.value ?? ''} ${opt.label ?? ''}`.toLowerCase();
+          const matches = baseText.includes(normalizedSearch);
+          if (matches) pageMatch = true;
+          return matches;
+        });
+      } else if (opts.length > 0) {
+        pageMatch = true;
+      }
+      return { pageOptions: opts, pageHasMore, pageMatch };
+    },
+    [
+      branch,
+      department,
+      effectiveCompanyId,
+      effectiveSearchColumns,
+      idField,
+      labelFields,
+      searchColumn,
+      table,
+      tenantMeta,
+    ],
+  );
+
+  const fetchPage = useCallback(
+    async (p = 1, q = '', append = false, signal) => {
+      const normalizedSearch = String(q || '').trim().toLowerCase();
+      if (append) {
+        setLoading(true);
+        try {
+          const { pageOptions, pageHasMore } = await fetchSinglePage(
+            p,
+            q,
+            signal,
+            normalizedSearch,
+          );
+          if (signal?.aborted) return;
+          setOptions((prev) => [...prev, ...pageOptions]);
+          setHasMore(pageHasMore);
+        } catch (err) {
+          if (err.name !== 'AbortError') {
+            setHasMore(false);
+          }
+        } finally {
+          setLoading(false);
+        }
+        return;
+      }
+
+      setLoading(true);
+      try {
+        let combined = [];
+        let pageNumber = p;
+        let lastHasMore = false;
+        let hasMatch = false;
+        let iterations = 0;
+        while (true) {
+          const { pageOptions, pageHasMore, pageMatch } = await fetchSinglePage(
+            pageNumber,
+            q,
+            signal,
+            normalizedSearch,
+          );
+          if (signal?.aborted) return;
+          combined = iterations === 0 ? pageOptions : [...combined, ...pageOptions];
+          lastHasMore = pageHasMore;
+          if (pageMatch) hasMatch = true;
+          iterations += 1;
+          const shouldContinue =
+            normalizedSearch &&
+            pageHasMore &&
+            !signal?.aborted &&
+            iterations < MAX_AUTOFETCH_PAGES &&
+            (!hasMatch || combined.length < MIN_AUTOFETCH_RESULTS);
+          if (!shouldContinue) break;
+          pageNumber += 1;
+        }
+        if (signal?.aborted) return;
+        setOptions(combined);
+        setHasMore(lastHasMore);
+        setPage(pageNumber);
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          setOptions([]);
+          setHasMore(false);
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [
+      fetchSinglePage,
+      MAX_AUTOFETCH_PAGES,
+      MIN_AUTOFETCH_RESULTS,
+    ],
+  );
 
   useEffect(() => {
     if (typeof value === 'object' && value !== null) {

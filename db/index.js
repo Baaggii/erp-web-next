@@ -43,6 +43,7 @@ import fs from "fs/promises";
 import path from "path";
 import { tenantConfigPath, getConfigPath } from "../api-server/utils/configPaths.js";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
+import { listCustomRelations } from "../api-server/services/tableRelationsConfig.js";
 import { GLOBAL_COMPANY_ID } from "../config/0/constants.js";
 import { formatDateForDb } from "../api-server/utils/formatDate.js";
 
@@ -143,6 +144,111 @@ for (const { key, aliases } of DEFAULT_TENANT_KEY_ALIASES) {
 
 function escapeIdentifier(name) {
   return `\`${String(name).replace(/`/g, "``")}\``;
+}
+
+function aliasedColumn(alias, column) {
+  return `${alias}.${escapeIdentifier(column)}`;
+}
+
+function unwrapDisplayConfig(result) {
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    if (result.config && typeof result.config === "object") {
+      return result.config;
+    }
+  }
+  return result || {};
+}
+
+function getRelationEntry(config, column) {
+  if (!config || typeof config !== "object") return null;
+  const direct = config[column];
+  if (Array.isArray(direct) && direct.length > 0) {
+    return direct[0];
+  }
+  const lower = String(column || "").toLowerCase();
+  return (
+    Object.entries(config).find(
+      ([key, value]) =>
+        typeof key === "string" &&
+        key.toLowerCase() === lower &&
+        Array.isArray(value) &&
+        value.length > 0,
+    )?.[1]?.[0] ?? null
+  );
+}
+
+async function resolveEmploymentRelation({
+  baseColumn,
+  alias,
+  defaultTable,
+  defaultIdField,
+  defaultFallbackColumn,
+  defaultDisplayConfig = {},
+  defaultJoinExtras = [],
+  relationConfig,
+  companyId = GLOBAL_COMPANY_ID,
+}) {
+  const fallbackColumn = defaultFallbackColumn || defaultIdField;
+  const defaultNameExpr = buildDisplayExpr(
+    alias,
+    defaultDisplayConfig,
+    `${alias}.${escapeIdentifier(fallbackColumn)}`,
+  );
+  const defaultJoinConditions = [
+    `${aliasedColumn("e", baseColumn)} = ${alias}.${escapeIdentifier(
+      defaultIdField,
+    )}`,
+    ...defaultJoinExtras,
+  ];
+  const defaultJoin = `LEFT JOIN ${escapeIdentifier(defaultTable)} ${alias} ON ${defaultJoinConditions.join(
+    " AND ",
+  )}`;
+
+  const relation = getRelationEntry(relationConfig, baseColumn);
+  if (!relation || !relation.table || !relation.column) {
+    return { join: defaultJoin, nameExpr: defaultNameExpr };
+  }
+
+  const targetTable = relation.table;
+  const targetIdField = relation.idField || relation.column;
+  const displayCfg = unwrapDisplayConfig(await getDisplayCfg(targetTable, companyId));
+  const mergedDisplayCfg = {
+    idField: relation.idField || displayCfg.idField || targetIdField,
+    displayFields:
+      Array.isArray(relation.displayFields) && relation.displayFields.length > 0
+        ? relation.displayFields
+        : displayCfg.displayFields || [],
+  };
+  const nameExpr = buildDisplayExpr(
+    alias,
+    mergedDisplayCfg,
+    `${alias}.${escapeIdentifier(mergedDisplayCfg.idField || targetIdField)}`,
+  );
+
+  const joinConditions = [
+    `${aliasedColumn("e", baseColumn)} = ${alias}.${escapeIdentifier(
+      mergedDisplayCfg.idField || targetIdField,
+    )}`,
+  ];
+  const tenantInfo = await getTenantTable(targetTable, companyId);
+  const companyKey = Array.isArray(tenantInfo?.tenantKeys)
+    ? tenantInfo.tenantKeys.find(
+        (key) => String(key || "").toLowerCase() === "company_id",
+      )
+    : null;
+  if (companyKey) {
+    joinConditions.push(
+      `${alias}.${escapeIdentifier(companyKey)} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
+        "e",
+        "employment_company_id",
+      )})`,
+    );
+  }
+
+  const join = `LEFT JOIN ${escapeIdentifier(targetTable)} ${alias} ON ${joinConditions.join(
+    " AND ",
+  )}`;
+  return { join, nameExpr };
 }
 
 async function loadSoftDeleteConfig(companyId = GLOBAL_COMPANY_ID) {
@@ -852,17 +958,72 @@ function mapEmploymentRow(row) {
  * List all employment sessions for an employee
  */
 export async function getEmploymentSessions(empid) {
-  const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
-    getDisplayCfg("companies"),
-    getDisplayCfg("code_branches"),
-    getDisplayCfg("code_department"),
-    getDisplayCfg("tbl_employee"),
+  const configCompanyId = GLOBAL_COMPANY_ID;
+  const [
+    companyCfgRaw,
+    branchCfgRaw,
+    deptCfgRaw,
+    empCfgRaw,
+    relationCfg,
+  ] = await Promise.all([
+    getDisplayCfg("companies", configCompanyId),
+    getDisplayCfg("code_branches", configCompanyId),
+    getDisplayCfg("code_department", configCompanyId),
+    getDisplayCfg("tbl_employee", configCompanyId),
+    listCustomRelations("tbl_employment", configCompanyId),
   ]);
 
-  const companyName = buildDisplayExpr("c", companyCfg, "c.name");
-  const branchName = buildDisplayExpr("b", branchCfg, "b.name");
-  const deptName = buildDisplayExpr("d", deptCfg, "d.name");
-  const deptIdCol = deptCfg?.idField || "id";
+  const companyCfg = unwrapDisplayConfig(companyCfgRaw);
+  const branchCfg = unwrapDisplayConfig(branchCfgRaw);
+  const deptCfg = unwrapDisplayConfig(deptCfgRaw);
+  const empCfg = unwrapDisplayConfig(empCfgRaw);
+  const relationConfig = relationCfg?.config || {};
+
+  const [companyRel, branchRel, deptRel] = await Promise.all([
+    resolveEmploymentRelation({
+      baseColumn: "employment_company_id",
+      alias: "c",
+      defaultTable: "companies",
+      defaultIdField: companyCfg?.idField || "id",
+      defaultFallbackColumn: "name",
+      defaultDisplayConfig: companyCfg,
+      relationConfig,
+      companyId: configCompanyId,
+    }),
+    resolveEmploymentRelation({
+      baseColumn: "employment_branch_id",
+      alias: "b",
+      defaultTable: "code_branches",
+      defaultIdField: branchCfg?.idField || "branch_id",
+      defaultFallbackColumn: "name",
+      defaultDisplayConfig: branchCfg,
+      defaultJoinExtras: [
+        `${aliasedColumn("b", "company_id")} = ${aliasedColumn(
+          "e",
+          "employment_company_id",
+        )}`,
+      ],
+      relationConfig,
+      companyId: configCompanyId,
+    }),
+    resolveEmploymentRelation({
+      baseColumn: "employment_department_id",
+      alias: "d",
+      defaultTable: "code_department",
+      defaultIdField: deptCfg?.idField || "id",
+      defaultFallbackColumn: "name",
+      defaultDisplayConfig: deptCfg,
+      defaultJoinExtras: [
+        `${aliasedColumn("d", "company_id")} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
+          "e",
+          "employment_company_id",
+        )})`,
+      ],
+      relationConfig,
+      companyId: configCompanyId,
+    }),
+  ]);
+
   const empName = buildDisplayExpr(
     "emp",
     empCfg,
@@ -872,11 +1033,11 @@ export async function getEmploymentSessions(empid) {
   const [rows] = await pool.query(
     `SELECT
         e.employment_company_id AS company_id,
-        ${companyName} AS company_name,
+        ${companyRel.nameExpr} AS company_name,
         e.employment_branch_id AS branch_id,
-        ${branchName} AS branch_name,
+        ${branchRel.nameExpr} AS branch_name,
         e.employment_department_id AS department_id,
-        ${deptName} AS department_name,
+        ${deptRel.nameExpr} AS department_name,
         e.employment_position_id AS position_id,
         e.employment_senior_empid AS senior_empid,
         e.employment_senior_plan_empid AS senior_plan_empid,
@@ -885,9 +1046,9 @@ export async function getEmploymentSessions(empid) {
         ul.name AS user_level_name,
         GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
      FROM tbl_employment e
-     LEFT JOIN companies c ON e.employment_company_id = c.id
-     LEFT JOIN code_branches b ON e.employment_branch_id = b.branch_id AND b.company_id = e.employment_company_id
-    LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
+     ${companyRel.join}
+     ${branchRel.join}
+     ${deptRel.join}
      LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
      LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
     LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
@@ -920,17 +1081,74 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     : undefined;
 
   if (companyId !== undefined && companyId !== null) {
-    const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
-      getDisplayCfg("companies"),
-      getDisplayCfg("code_branches"),
-      getDisplayCfg("code_department"),
-      getDisplayCfg("tbl_employee"),
+    const configCompanyId = Number.isFinite(Number(companyId))
+      ? Number(companyId)
+      : GLOBAL_COMPANY_ID;
+    const [
+      companyCfgRaw,
+      branchCfgRaw,
+      deptCfgRaw,
+      empCfgRaw,
+      relationCfg,
+    ] = await Promise.all([
+      getDisplayCfg("companies", configCompanyId),
+      getDisplayCfg("code_branches", configCompanyId),
+      getDisplayCfg("code_department", configCompanyId),
+      getDisplayCfg("tbl_employee", configCompanyId),
+      listCustomRelations("tbl_employment", configCompanyId),
     ]);
 
-    const companyName = buildDisplayExpr("c", companyCfg, "c.name");
-    const branchName = buildDisplayExpr("b", branchCfg, "b.name");
-    const deptName = buildDisplayExpr("d", deptCfg, "d.name");
-    const deptIdCol = deptCfg?.idField || "id";
+    const companyCfg = unwrapDisplayConfig(companyCfgRaw);
+    const branchCfg = unwrapDisplayConfig(branchCfgRaw);
+    const deptCfg = unwrapDisplayConfig(deptCfgRaw);
+    const empCfg = unwrapDisplayConfig(empCfgRaw);
+    const relationConfig = relationCfg?.config || {};
+
+    const [companyRel, branchRel, deptRel] = await Promise.all([
+      resolveEmploymentRelation({
+        baseColumn: "employment_company_id",
+        alias: "c",
+        defaultTable: "companies",
+        defaultIdField: companyCfg?.idField || "id",
+        defaultFallbackColumn: "name",
+        defaultDisplayConfig: companyCfg,
+        relationConfig,
+        companyId: configCompanyId,
+      }),
+      resolveEmploymentRelation({
+        baseColumn: "employment_branch_id",
+        alias: "b",
+        defaultTable: "code_branches",
+        defaultIdField: branchCfg?.idField || "branch_id",
+        defaultFallbackColumn: "name",
+        defaultDisplayConfig: branchCfg,
+        defaultJoinExtras: [
+          `${aliasedColumn("b", "company_id")} = ${aliasedColumn(
+            "e",
+            "employment_company_id",
+          )}`,
+        ],
+        relationConfig,
+        companyId: configCompanyId,
+      }),
+      resolveEmploymentRelation({
+        baseColumn: "employment_department_id",
+        alias: "d",
+        defaultTable: "code_department",
+        defaultIdField: deptCfg?.idField || "id",
+        defaultFallbackColumn: "name",
+        defaultDisplayConfig: deptCfg,
+        defaultJoinExtras: [
+          `${aliasedColumn("d", "company_id")} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
+            "e",
+            "employment_company_id",
+          )})`,
+        ],
+        relationConfig,
+        companyId: configCompanyId,
+      }),
+    ]);
+
     const empName = buildDisplayExpr(
       "emp",
       empCfg,
@@ -960,11 +1178,11 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     const [rows] = await pool.query(
       `SELECT
           e.employment_company_id AS company_id,
-          ${companyName} AS company_name,
+          ${companyRel.nameExpr} AS company_name,
           e.employment_branch_id AS branch_id,
-          ${branchName} AS branch_name,
+          ${branchRel.nameExpr} AS branch_name,
           e.employment_department_id AS department_id,
-          ${deptName} AS department_name,
+          ${deptRel.nameExpr} AS department_name,
           e.employment_position_id AS position_id,
           e.employment_senior_empid AS senior_empid,
           e.employment_senior_plan_empid AS senior_plan_empid,
@@ -973,9 +1191,9 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
           ul.name AS user_level_name,
           GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
        FROM tbl_employment e
-       LEFT JOIN companies c ON e.employment_company_id = c.id
-       LEFT JOIN code_branches b ON e.employment_branch_id = b.branch_id AND b.company_id = e.employment_company_id
-       LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
+       ${companyRel.join}
+       ${branchRel.join}
+       ${deptRel.join}
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
        LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
