@@ -177,7 +177,7 @@ export default function AsyncSearchSelect({
           branchId: branch,
           departmentId: department,
         });
-      } catch (err) {
+      } catch {
         opts = rows.map((r) => {
           if (!r || typeof r !== 'object') return { value: undefined, label: '', searchText: '' };
           const val = r[idField || searchColumn];
