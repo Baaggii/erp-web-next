@@ -59,11 +59,7 @@ test('buildOptionsForRows resolves chained coding table labels', async (t) => {
       companyId: 99,
     });
     assert.deepEqual(options, [
-      {
-        value: 1,
-        label: '1 - A1 - Category Alpha',
-        searchText: '1 1 - a1 - category alpha a1 - category alpha',
-      },
+      { value: 1, label: '1 - A1 - Category Alpha' },
     ]);
     assert.ok(
       calls.some((url) => url.startsWith('/api/tables/coding_table?')),
