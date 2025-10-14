@@ -5,6 +5,7 @@ import React, {
   useContext,
   useCallback,
   useLayoutEffect,
+  useMemo,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
@@ -56,6 +57,27 @@ export default function AsyncSearchSelect({
   const [tenantMeta, setTenantMeta] = useState(null);
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
+  const effectiveSearchColumns = useMemo(() => {
+    const columnSet = new Set();
+    const addColumn = (col) => {
+      if (typeof col !== 'string') return;
+      const trimmed = col.trim();
+      if (trimmed.length === 0) return;
+      columnSet.add(trimmed);
+    };
+    if (Array.isArray(searchColumns) && searchColumns.length > 0) {
+      searchColumns.forEach(addColumn);
+    } else if (typeof searchColumn === 'string') {
+      addColumn(searchColumn);
+    }
+    if (typeof idField === 'string') {
+      addColumn(idField);
+    }
+    if (Array.isArray(labelFields)) {
+      labelFields.forEach(addColumn);
+    }
+    return Array.from(columnSet);
+  }, [searchColumns, searchColumn, idField, labelFields]);
 
   const findBestOption = useCallback(
     (query) => {
@@ -113,12 +135,7 @@ export default function AsyncSearchSelect({
   }, [show, updateMenuPosition]);
 
   async function fetchPage(p = 1, q = '', append = false, signal) {
-    const cols =
-      searchColumns && searchColumns.length > 0
-        ? searchColumns
-        : searchColumn
-        ? [searchColumn]
-        : [];
+    const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
     setLoading(true);
     try {
@@ -225,6 +242,7 @@ export default function AsyncSearchSelect({
     return () => controller.abort();
   }, [
     table,
+    effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
     branch,
@@ -245,10 +263,7 @@ export default function AsyncSearchSelect({
     input,
     disabled,
     table,
-    searchColumn,
-    searchColumns,
-    labelFields,
-    idField,
+    effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
     branch,
