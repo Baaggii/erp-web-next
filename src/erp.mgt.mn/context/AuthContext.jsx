@@ -1,7 +1,8 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
-import React, { createContext, useState, useEffect, useContext, useMemo } from 'react';
+import React, { createContext, useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { debugLog, trackSetState } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
+import { getTenantKeyList } from '../utils/tenantKeys.js';
 
 // Create the AuthContext
 export const AuthContext = createContext({
@@ -41,6 +42,7 @@ export default function AuthContextProvider({ children }) {
       return {};
     }
   });
+  const departmentNameCache = useRef(new Map());
 
   // Persist employment IDs across reloads
   useEffect(() => {
@@ -229,6 +231,215 @@ export default function AuthContextProvider({ children }) {
     window.addEventListener('auth:logout', handleLogout);
     return () => window.removeEventListener('auth:logout', handleLogout);
   }, []);
+
+  useEffect(() => {
+    if (
+      department === undefined ||
+      department === null ||
+      department === '' ||
+      session?.department_name
+    ) {
+      return;
+    }
+    const normalized = String(department);
+    if (normalized.trim() === '') return;
+    const cache = departmentNameCache.current;
+    if (cache.has(normalized)) {
+      const cached = cache.get(normalized);
+      if (cached) {
+        trackSetState('AuthContext.setSession');
+        setSession((prev) => (prev ? { ...prev, department_name: cached } : prev));
+      }
+      return;
+    }
+    let canceled = false;
+    const resolveKey = (row, target) => {
+      if (!row || !target) return undefined;
+      const lower = String(target).toLowerCase();
+      const match = Object.keys(row).find((k) => k.toLowerCase() === lower);
+      return match ? row[match] : undefined;
+    };
+    async function fetchEmploymentDepartmentRelation() {
+      let relation = null;
+      try {
+        const res = await fetch('/api/tables/tbl_employment/relations', {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const list = await res.json().catch(() => []);
+          if (Array.isArray(list)) {
+            const entry = list.find(
+              (item) =>
+                item?.COLUMN_NAME &&
+                item.COLUMN_NAME.toLowerCase() === 'employment_department_id',
+            );
+            if (
+              entry?.REFERENCED_TABLE_NAME &&
+              entry?.REFERENCED_COLUMN_NAME
+            ) {
+              relation = {
+                table: entry.REFERENCED_TABLE_NAME,
+                column: entry.REFERENCED_COLUMN_NAME,
+              };
+            }
+          }
+        }
+      } catch {
+        relation = relation || null;
+      }
+      try {
+        const res = await fetch('/api/tables/tbl_employment/relations/custom', {
+          credentials: 'include',
+        });
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data?.relations && typeof data.relations === 'object') {
+            const key = Object.keys(data.relations).find(
+              (k) => typeof k === 'string' && k.toLowerCase() === 'employment_department_id',
+            );
+            if (key) {
+              const value = data.relations[key];
+              const list = Array.isArray(value) ? value : value ? [value] : [];
+              const chosen = list.find(
+                (item) => item && item.table && item.column,
+              );
+              if (chosen) {
+                relation = {
+                  table: chosen.table,
+                  column: chosen.column,
+                  idField:
+                    typeof chosen.idField === 'string'
+                      ? chosen.idField
+                      : typeof chosen.id_field === 'string'
+                      ? chosen.id_field
+                      : relation?.idField,
+                  displayFields: Array.isArray(chosen.displayFields)
+                    ? chosen.displayFields
+                    : Array.isArray(chosen.display_fields)
+                    ? chosen.display_fields
+                    : relation?.displayFields || [],
+                };
+              }
+            }
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+      return relation;
+    }
+    async function fetchDepartmentLabel(relation) {
+      if (!relation?.table || !relation.column) return null;
+      let cfg = null;
+      try {
+        const res = await fetch(
+          `/api/display_fields?table=${encodeURIComponent(relation.table)}`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          cfg = await res.json().catch(() => null);
+        }
+      } catch {
+        cfg = cfg || null;
+      }
+      const overrideDisplay = Array.isArray(relation.displayFields)
+        ? relation.displayFields.filter((f) => typeof f === 'string')
+        : [];
+      const displayFields =
+        overrideDisplay.length > 0
+          ? overrideDisplay
+          : Array.isArray(cfg?.displayFields)
+          ? cfg.displayFields
+          : [];
+      const idField =
+        (typeof relation.idField === 'string' && relation.idField) ||
+        (cfg?.idField || relation.column);
+      let tenantInfo = null;
+      try {
+        const res = await fetch(
+          `/api/tenant_tables/${encodeURIComponent(relation.table)}`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          tenantInfo = await res.json().catch(() => null);
+        }
+      } catch {
+        tenantInfo = tenantInfo || null;
+      }
+      const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
+      const tenantKeys = getTenantKeyList(tenantInfo);
+      const params = new URLSearchParams({ page: 1, perPage: 1 });
+      if (idField) params.set(idField, normalized);
+      if (!isShared) {
+        if (tenantKeys.includes('company_id') && company != null) {
+          params.set('company_id', company);
+        }
+        if (tenantKeys.includes('branch_id') && branch != null) {
+          params.set('branch_id', branch);
+        }
+        if (tenantKeys.includes('department_id') && department != null) {
+          params.set('department_id', department);
+        }
+      }
+      let row = null;
+      try {
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(relation.table)}?${params.toString()}`,
+          { credentials: 'include' },
+        );
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          const rows = Array.isArray(data.rows) ? data.rows : [];
+          row = rows.find((r) => {
+            const value = resolveKey(r, idField);
+            return value !== undefined && String(value) === normalized;
+          });
+          if (!row && rows.length > 0) {
+            row = rows[0];
+          }
+        }
+      } catch {
+        row = row || null;
+      }
+      if (!row || typeof row !== 'object') return null;
+      const parts = [];
+      const idValue = resolveKey(row, idField);
+      if (idValue !== undefined && idValue !== null && idValue !== '') {
+        parts.push(idValue);
+      }
+      displayFields.forEach((field) => {
+        const val = resolveKey(row, field);
+        if (val !== undefined && val !== null && val !== '') {
+          parts.push(val);
+        }
+      });
+      if (parts.length === 0) {
+        const fallback = Object.values(row).find(
+          (v) => v !== undefined && v !== null && v !== '',
+        );
+        if (fallback !== undefined) parts.push(fallback);
+      }
+      return parts
+        .map((part) => (typeof part === 'string' ? part : String(part)))
+        .join(' - ');
+    }
+    async function loadDepartmentLabel() {
+      const relation = await fetchEmploymentDepartmentRelation();
+      if (canceled || !relation) {
+        cache.set(normalized, null);
+        return;
+      }
+      const label = await fetchDepartmentLabel(relation);
+      cache.set(normalized, label || null);
+      if (canceled || !label) return;
+      trackSetState('AuthContext.setSession');
+      setSession((prev) => (prev ? { ...prev, department_name: label } : prev));
+    }
+    loadDepartmentLabel();
+    return () => {
+      canceled = true;
+    };
+  }, [department, session?.department_name, company, branch]);
 
   const saveUserSettings = async (next) => {
     try {
