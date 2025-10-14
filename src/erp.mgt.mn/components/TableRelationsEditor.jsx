@@ -155,14 +155,19 @@ export default function TableRelationsEditor({ table }) {
         relRes.json().catch(() => []),
         customRes.json().catch(() => ({})),
       ]);
-      setColumns(normalizeColumns(colsJson));
+      const normalizedColumns = normalizeColumns(colsJson);
       setTables(Array.isArray(tablesJson) ? tablesJson.filter(Boolean) : []);
       setRelations(Array.isArray(relationsJson) ? relationsJson : []);
       const customMap =
         customJson && typeof customJson === 'object'
           ? customJson.relations ?? customJson
           : {};
-      setCustomRelations(normalizeCustomRelationsMap(customMap));
+      const normalizedCustom = normalizeCustomRelationsMap(customMap);
+      const mergedColumns = Array.from(
+        new Set([...normalizedColumns, ...Object.keys(normalizedCustom)]),
+      ).sort((a, b) => a.localeCompare(b));
+      setColumns(mergedColumns);
+      setCustomRelations(normalizedCustom);
       setIsDefaultConfig(Boolean(customJson?.isDefault ?? true));
       setTargetColumnsCache({});
       setSelectedColumn('');

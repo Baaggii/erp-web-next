@@ -192,8 +192,25 @@ export default function AsyncSearchSelect({
           return { value: val, label: parts.join(' - ') };
         });
       }
-      setHasMore(rows.length >= 50 && p * 50 < (json.count || Infinity));
-      setOptions((o) => (append ? [...o, ...opts] : opts));
+      const normalizedQuery = String(q || '').trim().toLowerCase();
+      if (normalizedQuery) {
+        opts = opts.filter((opt) => {
+          if (!opt) return false;
+          const valueText = opt.value != null ? String(opt.value).toLowerCase() : '';
+          const labelText = opt.label != null ? String(opt.label).toLowerCase() : '';
+          return (
+            valueText.includes(normalizedQuery) || labelText.includes(normalizedQuery)
+          );
+        });
+      }
+      const more = rows.length >= 50 && p * 50 < (json.count || Infinity);
+      setHasMore(more);
+      if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
+        const nextPage = p + 1;
+        setPage(nextPage);
+        return fetchPage(nextPage, q, true, signal);
+      }
+      setOptions((prev) => (append ? [...prev, ...opts] : opts));
     } catch (err) {
       if (err.name !== 'AbortError') setOptions(append ? [] : []);
     } finally {
