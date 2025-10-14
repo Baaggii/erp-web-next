@@ -134,6 +134,18 @@ export default function AsyncSearchSelect({
     };
   }, [show, updateMenuPosition]);
 
+  const filterOptionsByQuery = useCallback((list, query) => {
+    const normalized = String(query || '').trim().toLowerCase();
+    if (!normalized) return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    return list.filter((opt) => {
+      if (!opt) return false;
+      const valueText = opt.value != null ? String(opt.value).toLowerCase() : '';
+      const labelText = opt.label != null ? String(opt.label).toLowerCase() : '';
+      return valueText.includes(normalized) || labelText.includes(normalized);
+    });
+  }, []);
+
   async function fetchPage(p = 1, q = '', append = false, signal) {
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
@@ -194,14 +206,7 @@ export default function AsyncSearchSelect({
       }
       const normalizedQuery = String(q || '').trim().toLowerCase();
       if (normalizedQuery) {
-        opts = opts.filter((opt) => {
-          if (!opt) return false;
-          const valueText = opt.value != null ? String(opt.value).toLowerCase() : '';
-          const labelText = opt.label != null ? String(opt.label).toLowerCase() : '';
-          return (
-            valueText.includes(normalizedQuery) || labelText.includes(normalizedQuery)
-          );
-        });
+        opts = filterOptionsByQuery(opts, normalizedQuery);
       }
       const more = rows.length >= 50 && p * 50 < (json.count || Infinity);
       setHasMore(more);
@@ -210,7 +215,19 @@ export default function AsyncSearchSelect({
         setPage(nextPage);
         return fetchPage(nextPage, q, true, signal);
       }
-      setOptions((prev) => (append ? [...prev, ...opts] : opts));
+      setOptions((prev) => {
+        if (append) {
+          const base = Array.isArray(prev) ? prev : [];
+          return [...base, ...opts];
+        }
+        if (normalizedQuery && opts.length === 0 && Array.isArray(prev) && prev.length > 0) {
+          const fallback = filterOptionsByQuery(prev, normalizedQuery);
+          if (fallback.length > 0) {
+            return fallback;
+          }
+        }
+        return opts;
+      });
     } catch (err) {
       if (err.name !== 'AbortError') setOptions(append ? [] : []);
     } finally {
