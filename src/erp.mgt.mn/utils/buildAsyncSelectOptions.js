@@ -1,4 +1,4 @@
-import { getTenantKeyList } from './tenantKeys.js';
+import { getTenantKeyList, isTenantTableShared } from './tenantKeys.js';
 
 const relationMapCache = new Map();
 const nestedLabelCache = new Map();
@@ -172,7 +172,7 @@ async function fetchNestedLabelMap(nestedRel, { company, branch, department }) {
   try {
     const cfg = await fetchDisplayConfig(nestedRel.table);
     const tenantInfo = await fetchTenantInfo(nestedRel.table);
-    const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
+    const isShared = isTenantTableShared(tenantInfo);
     const tenantKeys = getTenantKeyList(tenantInfo);
 
     const perPage = 500;
