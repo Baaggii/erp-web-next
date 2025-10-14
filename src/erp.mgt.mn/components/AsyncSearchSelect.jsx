@@ -9,7 +9,7 @@ import React, {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { getTenantKeyList } from '../utils/tenantKeys.js';
+import { getTenantKeyList, isTenantTableShared } from '../utils/tenantKeys.js';
 import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
 
 const useIsomorphicLayoutEffect =
@@ -140,8 +140,7 @@ export default function AsyncSearchSelect({
     setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, perPage: 50 });
-      const isShared =
-        tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
+      const isShared = isTenantTableShared(tenantMeta);
       const keys = getTenantKeyList(tenantMeta);
       if (!isShared) {
         if (keys.includes('company_id') && effectiveCompanyId != null)

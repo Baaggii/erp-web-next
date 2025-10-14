@@ -22,7 +22,7 @@ import CustomDatePicker from './CustomDatePicker.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
-import { getTenantKeyList } from '../utils/tenantKeys.js';
+import { getTenantKeyList, isTenantTableShared } from '../utils/tenantKeys.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
@@ -1220,8 +1220,7 @@ const TableManager = forwardRef(function TableManager({
           } catch {
             /* ignore tenant table fetch errors */
           }
-          const nestedIsShared =
-            nestedTenant?.isShared ?? nestedTenant?.is_shared ?? false;
+          const nestedIsShared = isTenantTableShared(nestedTenant);
           const nestedKeys = getTenantKeyList(nestedTenant);
 
           const perPage = 500;
@@ -1339,8 +1338,7 @@ const TableManager = forwardRef(function TableManager({
             } catch {
               /* ignore tenant table fetch errors */
             }
-            const isShared =
-              tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
+            const isShared = isTenantTableShared(tenantInfo);
             const tenantKeys = getTenantKeyList(tenantInfo);
 
             while (true) {
@@ -1863,7 +1861,7 @@ const TableManager = forwardRef(function TableManager({
     }
 
     const params = new URLSearchParams();
-    if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
+    if (tenantInfo && !isTenantTableShared(tenantInfo)) {
       if (hasTenantKey(tenantInfo, 'company_id', localCaseMap)) {
         const companyKey = resolveCanonicalKey('company_id', localCaseMap);
         const rowCompanyId =
@@ -2116,7 +2114,7 @@ const TableManager = forwardRef(function TableManager({
       }
       try {
         const params = new URLSearchParams();
-        if (tenantInfo && !(tenantInfo.isShared ?? tenantInfo.is_shared)) {
+        if (tenantInfo && !isTenantTableShared(tenantInfo)) {
           if (hasTenantKey(tenantInfo, 'company_id', localCaseMap)) {
             const companyKey = resolveCanonicalKey('company_id', localCaseMap);
             const rowCompanyId =
