@@ -308,9 +308,40 @@ export async function buildOptionsForRows({
       cfg: config,
       nestedLookups,
     });
+    const resolvedLabel =
+      label || (value !== undefined && value !== null ? String(value) : '');
+    const searchTokens = new Set();
+    const pushToken = (token) => {
+      if (token === undefined || token === null) return;
+      const str = typeof token === 'string' ? token : String(token);
+      const normalized = str.trim().toLowerCase();
+      if (!normalized) return;
+      searchTokens.add(normalized);
+    };
+    pushToken(value);
+    pushToken(resolvedLabel);
+    lookupFields.forEach((field) => {
+      if (typeof field !== 'string') return;
+      const lookupKey = field.toLowerCase();
+      const actualKey = keyMap[lookupKey] || field;
+      if (!(actualKey in row)) return;
+      let displayValue = row[actualKey];
+      const lookup = nestedLookups?.[lookupKey];
+      if (lookup) {
+        const mapKey =
+          typeof displayValue === 'string' || typeof displayValue === 'number'
+            ? String(displayValue)
+            : displayValue;
+        if (mapKey in lookup) {
+          displayValue = lookup[mapKey];
+        }
+      }
+      pushToken(displayValue);
+    });
     return {
       value,
-      label: label || (value !== undefined && value !== null ? String(value) : ''),
+      label: resolvedLabel,
+      searchText: Array.from(searchTokens).join(' '),
     };
   });
 }
