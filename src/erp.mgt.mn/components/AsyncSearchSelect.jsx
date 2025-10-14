@@ -201,110 +201,31 @@ export default function AsyncSearchSelect({
           };
         });
       }
-      const pageHasMore =
-        rows.length >= PER_PAGE && pageNumber * PER_PAGE < (json.count || Infinity);
-      let pageMatch = false;
+      const normalizedQuery = String(q || '').trim().toLowerCase();
       if (normalizedQuery) {
         opts = opts.filter((opt) => {
           if (!opt) return false;
-          const baseText =
-            typeof opt.searchText === 'string' && opt.searchText
-              ? opt.searchText
-              : `${opt.value ?? ''} ${opt.label ?? ''}`.toLowerCase();
-          const matches = baseText.includes(normalizedQuery);
-          if (matches) pageMatch = true;
-          return matches;
+          const valueText = opt.value != null ? String(opt.value).toLowerCase() : '';
+          const labelText = opt.label != null ? String(opt.label).toLowerCase() : '';
+          return (
+            valueText.includes(normalizedQuery) || labelText.includes(normalizedQuery)
+          );
         });
-      } else if (opts.length > 0) {
-        pageMatch = true;
       }
-      return { pageOptions: opts, pageHasMore, pageMatch };
-    },
-    [
-      branch,
-      department,
-      effectiveCompanyId,
-      effectiveSearchColumns,
-      idField,
-      labelFields,
-      searchColumn,
-      table,
-      tenantMeta,
-    ],
-  );
-
-  const fetchPage = useCallback(
-    async (p = 1, q = '', append = false, signal) => {
-      const normalizedQuery = String(q || '').trim().toLowerCase();
-      if (append) {
-        setLoading(true);
-        try {
-          const { pageOptions, pageHasMore } = await fetchSinglePage(
-            p,
-            q,
-            signal,
-            normalizedQuery,
-          );
-          if (signal?.aborted) return;
-          setOptions((prev) => [...prev, ...pageOptions]);
-          setHasMore(pageHasMore);
-        } catch (err) {
-          if (err.name !== 'AbortError') {
-            setHasMore(false);
-          }
-        } finally {
-          setLoading(false);
-        }
-        return;
+      const more = rows.length >= 50 && p * 50 < (json.count || Infinity);
+      setHasMore(more);
+      if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
+        const nextPage = p + 1;
+        setPage(nextPage);
+        return fetchPage(nextPage, q, true, signal);
       }
-
-      setLoading(true);
-      try {
-        let combined = [];
-        let pageNumber = p;
-        let lastHasMore = false;
-        let hasMatch = false;
-        let iterations = 0;
-        while (true) {
-          const { pageOptions, pageHasMore, pageMatch } = await fetchSinglePage(
-            pageNumber,
-            q,
-            signal,
-            normalizedQuery,
-          );
-          if (signal?.aborted) return;
-          combined = iterations === 0 ? pageOptions : [...combined, ...pageOptions];
-          lastHasMore = pageHasMore;
-          if (pageMatch) hasMatch = true;
-          iterations += 1;
-          const shouldContinue =
-            normalizedQuery &&
-            pageHasMore &&
-            !signal?.aborted &&
-            iterations < MAX_AUTOFETCH_PAGES &&
-            (!hasMatch || combined.length < MIN_AUTOFETCH_RESULTS);
-          if (!shouldContinue) break;
-          pageNumber += 1;
-        }
-        if (signal?.aborted) return;
-        setOptions(combined);
-        setHasMore(lastHasMore);
-        setPage(pageNumber);
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          setOptions([]);
-          setHasMore(false);
-        }
-      } finally {
-        setLoading(false);
-      }
-    },
-    [
-      fetchSinglePage,
-      MAX_AUTOFETCH_PAGES,
-      MIN_AUTOFETCH_RESULTS,
-    ],
-  );
+      setOptions((prev) => (append ? [...prev, ...opts] : opts));
+    } catch (err) {
+      if (err.name !== 'AbortError') setOptions(append ? [] : []);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   useEffect(() => {
     if (typeof value === 'object' && value !== null) {
