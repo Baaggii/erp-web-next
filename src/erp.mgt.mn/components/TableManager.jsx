@@ -1052,26 +1052,75 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
+    function buildCustomRelationsList(customPayload) {
+      if (!customPayload || typeof customPayload !== 'object') return [];
+      const entries = customPayload.relations || customPayload;
+      if (!entries || typeof entries !== 'object') return [];
+      const list = [];
+      Object.entries(entries).forEach(([column, mappings]) => {
+        if (!column || !Array.isArray(mappings)) return;
+        mappings.forEach((mapping, idx) => {
+          if (!mapping || typeof mapping !== 'object') return;
+          if (!mapping.table || !mapping.column) return;
+          list.push({
+            COLUMN_NAME: column,
+            REFERENCED_TABLE_NAME: mapping.table,
+            REFERENCED_COLUMN_NAME: mapping.column,
+            source: 'custom',
+            configIndex: idx,
+            ...(mapping.idField ? { idField: mapping.idField } : {}),
+            ...(Array.isArray(mapping.displayFields)
+              ? { displayFields: mapping.displayFields }
+              : {}),
+          });
+        });
+      });
+      return list;
+    }
+
     async function load() {
       try {
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/relations`,
-          { credentials: 'include' },
-        );
-        if (!res.ok) {
-          addToast(
-            t('failed_load_table_relations', 'Failed to load table relations'),
-            'error',
+        let rels = [];
+        let relRes;
+        try {
+          relRes = await fetch(
+            `/api/tables/${encodeURIComponent(table)}/relations`,
+            { credentials: 'include' },
           );
-          return;
+        } catch (err) {
+          relRes = { ok: false, status: 0, error: err };
         }
-        const rels = await res.json().catch(() => {
-          addToast(
-            t('failed_parse_table_relations', 'Failed to parse table relations'),
-            'error',
-          );
-          return [];
-        });
+        if (relRes?.ok) {
+          rels = await relRes.json().catch(() => {
+            addToast(
+              t('failed_parse_table_relations', 'Failed to parse table relations'),
+              'error',
+            );
+            return [];
+          });
+        } else {
+          let customList = [];
+          try {
+            const customRes = await fetch(
+              `/api/tables/${encodeURIComponent(table)}/relations/custom`,
+              { credentials: 'include' },
+            );
+            if (customRes.ok) {
+              const customJson = await customRes.json().catch(() => ({}));
+              customList = buildCustomRelationsList(customJson);
+            }
+          } catch {
+            /* ignore */
+          }
+          if (customList.length === 0) {
+            addToast(
+              t('failed_load_table_relations', 'Failed to load table relations'),
+              'error',
+            );
+            return;
+          }
+          rels = customList;
+        }
         if (canceled) return;
         const map = {};
         rels.forEach((r) => {
