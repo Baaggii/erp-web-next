@@ -1809,7 +1809,7 @@ export async function listTableColumns(tableName) {
 
 export async function listTableColumnsDetailed(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE
+    `SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = ?
@@ -1819,6 +1819,14 @@ export async function listTableColumnsDetailed(tableName) {
   return rows.map((r) => ({
     name: r.COLUMN_NAME,
     type: r.DATA_TYPE,
+    columnType: r.COLUMN_TYPE,
+    maxLength:
+      r.CHARACTER_MAXIMUM_LENGTH != null
+        ? Number(r.CHARACTER_MAXIMUM_LENGTH)
+        : null,
+    numericPrecision:
+      r.NUMERIC_PRECISION != null ? Number(r.NUMERIC_PRECISION) : null,
+    numericScale: r.NUMERIC_SCALE != null ? Number(r.NUMERIC_SCALE) : null,
     enumValues: /^enum\(/i.test(r.COLUMN_TYPE)
       ? r.COLUMN_TYPE
           .slice(5, -1)

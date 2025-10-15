@@ -3189,9 +3189,50 @@ const TableManager = forwardRef(function TableManager({
           credentials: 'include',
         },
       );
-      if (!res.ok) throw new Error('Failed to promote');
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (err) {
+        data = null;
+      }
+      if (!res.ok) {
+        const message =
+          data?.message ||
+          data?.error ||
+          t('temporary_promote_failed', 'Failed to promote temporary');
+        if (!silent) {
+          addToast(message, 'error');
+        }
+        return false;
+      }
       if (!silent) {
         addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
+        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+          const warningDetails = data.warnings
+            .map((warn) => {
+              if (!warn || !warn.column) return null;
+              if (
+                warn.type === 'maxLength' &&
+                warn.actualLength != null &&
+                warn.maxLength != null
+              ) {
+                return `${warn.column} (${warn.actualLength}→${warn.maxLength})`;
+              }
+              return warn.column;
+            })
+            .filter(Boolean)
+            .join(', ');
+          if (warningDetails) {
+            addToast(
+              t(
+                'temporary_promoted_with_warnings',
+                'Some fields were adjusted to fit length limits: {{details}}',
+                { details: warningDetails },
+              ),
+              'warning',
+            );
+          }
+        }
         await refreshTemporarySummary();
         await fetchTemporaryList('review');
         setLocalRefresh((r) => r + 1);
