@@ -357,6 +357,11 @@ const TableManager = forwardRef(function TableManager({
     () => buildColumnCaseMap(columnMeta),
     [columnMeta],
   );
+  const allColumns = useMemo(() => {
+    if (columnMeta.length > 0) return columnMeta.map((c) => c.name);
+    if (rows[0]) return Object.keys(rows[0]);
+    return [];
+  }, [columnMeta, rows]);
 
   const resolveCanonicalKey = useCallback(
     (alias, caseMap) => {
@@ -906,79 +911,6 @@ const TableManager = forwardRef(function TableManager({
     availableTemporaryScopes,
     defaultTemporaryScope,
   ]);
-
-  const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
-  const columnCaseMap = useMemo(
-    () => buildColumnCaseMap(columnMeta),
-    [columnMeta],
-  );
-  const allColumns = useMemo(() => {
-    if (columnMeta.length > 0) return columnMeta.map((c) => c.name);
-    if (rows[0]) return Object.keys(rows[0]);
-    return [];
-  }, [columnMeta, rows]);
-
-  const resolveCanonicalKey = useCallback(
-    (alias, caseMap) => {
-      return resolveWithMap(alias, caseMap || columnCaseMap);
-    },
-    [columnCaseMap],
-  );
-
-  const normalizeToCanonical = useCallback(
-    (source, caseMap) => {
-      if (!source || typeof source !== 'object') return {};
-      const normalized = {};
-      const map = caseMap || columnCaseMap;
-      for (const [rawKey, value] of Object.entries(source)) {
-        const canonicalKey = resolveCanonicalKey(rawKey, map);
-        normalized[canonicalKey] = value;
-      }
-      return normalized;
-    },
-    [columnCaseMap, resolveCanonicalKey],
-  );
-
-  const normalizeTenantKey = useCallback(
-    (alias, caseMap) => {
-      if (alias == null) return null;
-      const canonical = resolveCanonicalKey(alias, caseMap);
-      if (!canonical) return null;
-      return sanitizeName(canonical).replace(/_/g, '');
-    },
-    [resolveCanonicalKey],
-  );
-
-  const hasTenantKey = useCallback(
-    (tenantInfo, key, caseMap) => {
-      if (!tenantInfo) return false;
-      const target = normalizeTenantKey(key, caseMap);
-      if (!target) return false;
-      const keys = getTenantKeyList(tenantInfo);
-      for (const rawKey of keys) {
-        const normalized = normalizeTenantKey(rawKey, caseMap);
-        if (normalized && normalized === target) return true;
-      }
-      return false;
-    },
-    [normalizeTenantKey],
-  );
-
-  const appendTenantParam = useCallback(
-    (params, tenantKey, caseMap, value, canonicalOverride) => {
-      if (!params || value == null || value === '') return;
-      const canonicalKey =
-        canonicalOverride ?? resolveCanonicalKey(tenantKey, caseMap);
-      const snakeKey = sanitizeName(tenantKey);
-      if (canonicalKey) {
-        params.set(canonicalKey, value);
-      }
-      if (snakeKey && snakeKey !== canonicalKey) {
-        params.set(snakeKey, value);
-      }
-    },
-    [resolveCanonicalKey],
-  );
 
   const fieldTypeMap = useMemo(() => {
     const map = {};
