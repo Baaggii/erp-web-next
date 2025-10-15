@@ -1123,8 +1123,12 @@ const TableManager = forwardRef(function TableManager({
         }
         if (canceled) return;
         const map = {};
-        relationEntries.forEach(([key, value]) => {
-          map[key] = value;
+        rels.forEach((r) => {
+          const key = resolveCanonicalKey(r.COLUMN_NAME);
+          map[key] = {
+            table: r.REFERENCED_TABLE_NAME,
+            column: r.REFERENCED_COLUMN_NAME,
+          };
         });
         setRelations(map);
         const dataMap = {};
@@ -1372,17 +1376,6 @@ const TableManager = forwardRef(function TableManager({
               );
             }
 
-            const effectiveCfg = {
-              ...(cfg || {}),
-              idField: cfg?.idField ?? rel.idField ?? rel.column,
-              displayFields:
-                Array.isArray(cfg?.displayFields) && cfg.displayFields.length > 0
-                  ? cfg.displayFields
-                  : Array.isArray(rel.displayFields)
-                  ? rel.displayFields
-                  : [],
-            };
-
             let tenantInfo = null;
             try {
               const ttRes = await fetch(
@@ -1443,14 +1436,14 @@ const TableManager = forwardRef(function TableManager({
             cfgMap[col] = {
               table: rel.table,
               column: rel.column,
-              idField: effectiveCfg.idField,
-              displayFields: effectiveCfg.displayFields,
+              idField: cfg?.idField ?? rel.column,
+              displayFields: cfg?.displayFields || [],
             };
             if (rows.length > 0) {
               rowMap[col] = {};
               const nestedDisplayLookups = await loadNestedDisplayLookups(
                 rel.table,
-                effectiveCfg.displayFields,
+                cfg?.displayFields || [],
               );
               if (canceled) return;
               dataMap[col] = rows.map((row) => {
@@ -1464,7 +1457,7 @@ const TableManager = forwardRef(function TableManager({
                   row,
                   keyMap,
                   relationColumn: rel.column,
-                  cfg: effectiveCfg,
+                  cfg,
                   nestedLookups: nestedDisplayLookups,
                 });
 
