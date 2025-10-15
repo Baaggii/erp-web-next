@@ -362,15 +362,6 @@ const TableManager = forwardRef(function TableManager({
   const [queuedTemporaryTrigger, setQueuedTemporaryTrigger] = useState(null);
   const lastExternalTriggerRef = useRef(null);
   const [temporaryLoading, setTemporaryLoading] = useState(false);
-  const temporaryRowRefs = useRef(new Map());
-  const temporaryPromotionQueueRef = useRef([]);
-  const updateTemporaryPromotionQueue = useCallback((nextQueue) => {
-    const normalized = Array.isArray(nextQueue)
-      ? nextQueue.filter((entry) => entry && getTemporaryId(entry))
-      : [];
-    temporaryPromotionQueueRef.current = normalized;
-    setTemporaryPromotionQueue(normalized);
-  }, []);
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -385,6 +376,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
+  const temporaryRowRefs = useRef(new Map());
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -3591,16 +3583,6 @@ const TableManager = forwardRef(function TableManager({
 
   const promoteTemporarySelection = useCallback(async () => {
     if (!canSelectTemporaries) return;
-    if (pendingTemporaryPromotion || temporaryPromotionQueue.length > 0) {
-      addToast(
-        t(
-          'temporary_promote_in_progress',
-          'Finish reviewing the current temporary promotion before starting another.',
-        ),
-        'warning',
-      );
-      return;
-    }
     const ids = Array.from(temporarySelection);
     if (ids.length === 0) return;
     if (
@@ -3613,29 +3595,50 @@ const TableManager = forwardRef(function TableManager({
     ) {
       return;
     }
-    const queueEntries = ids
-      .map((id) => temporaryList.find((entry) => getTemporaryId(entry) === id))
-      .filter(Boolean);
-    if (queueEntries.length === 0) {
+    let successCount = 0;
+    const failedIds = [];
+    for (const id of ids) {
+      const ok = await promoteTemporary(id, {
+        skipConfirm: true,
+        silent: true,
+      });
+      if (ok) successCount += 1;
+      else failedIds.push(id);
+    }
+    if (successCount > 0) {
       addToast(
-        t('temporary_promote_missing', 'Unable to promote temporary submission'),
+        t('temporary_promoted_bulk', 'Promoted {{count}} temporary transactions', {
+          count: successCount,
+        }),
+        'success',
+      );
+      await refreshTemporarySummary();
+      await fetchTemporaryList('review');
+      setLocalRefresh((r) => r + 1);
+    }
+    if (failedIds.length > 0) {
+      addToast(
+        t(
+          'temporary_promote_partial_failure',
+          'Failed to promote {{count}} transactions',
+          { count: failedIds.length },
+        ),
         'error',
       );
-      return;
     }
-    const [firstEntry, ...rest] = queueEntries;
-    await openTemporaryPromotion(firstEntry, { queue: rest });
-    const remainingIds = rest.map((entry) => getTemporaryId(entry)).filter(Boolean);
-    setTemporarySelection(new Set(remainingIds));
+    if (failedIds.length > 0) {
+      setTemporarySelection(new Set(failedIds));
+    } else if (successCount > 0) {
+      setTemporarySelection(new Set());
+    }
   }, [
     canSelectTemporaries,
     temporarySelection,
+    promoteTemporary,
     addToast,
     t,
-    temporaryList,
-    pendingTemporaryPromotion,
-    temporaryPromotionQueue,
-    openTemporaryPromotion,
+    refreshTemporarySummary,
+    fetchTemporaryList,
   ]);
 
   if (!table) return null;
