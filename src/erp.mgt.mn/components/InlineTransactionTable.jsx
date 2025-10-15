@@ -55,6 +55,7 @@ function InlineTransactionTable(
     viewDisplays = {},
     viewColumns = {},
     loadView = () => {},
+    loadRelationRow = null,
     procTriggers = {},
     user = {},
     company,
@@ -1374,7 +1375,7 @@ function InlineTransactionTable(
   }
 
 
-  function handleChange(rowIdx, field, value) {
+  function handleChange(rowIdx, field, value, meta = undefined) {
     commitRowsUpdate(
       (r) =>
         r.map((row, i) => {
@@ -1398,6 +1399,38 @@ function InlineTransactionTable(
         }),
       { indices: [rowIdx] },
     );
+    const metaType =
+      meta && typeof meta === 'object' && meta.type ? meta.type : undefined;
+    const shouldLookup = metaType !== 'input';
+    if (shouldLookup && typeof loadRelationRow === 'function') {
+      let rawVal = value;
+      if (rawVal && typeof rawVal === 'object' && 'value' in rawVal) {
+        rawVal = rawVal.value;
+      }
+      if (rawVal !== undefined && rawVal !== null && rawVal !== '') {
+        loadRelationRow(field, rawVal).then((rowData) => {
+          if (!rowData || typeof rowData !== 'object') return;
+          commitRowsUpdate(
+            (rowsList) =>
+              rowsList.map((row, idx) => {
+                if (idx !== rowIdx) return row;
+                const next = { ...row };
+                const conf = relationConfigMap[field];
+                if (conf && Array.isArray(conf.displayFields)) {
+                  conf.displayFields.forEach((df) => {
+                    const key = columnCaseMap[df.toLowerCase()];
+                    if (key && rowData[df] !== undefined) {
+                      next[key] = rowData[df];
+                    }
+                  });
+                }
+                return next;
+              }),
+            { indices: [rowIdx] },
+          );
+        });
+      }
+    }
     if (invalidCell && invalidCell.row === rowIdx && invalidCell.field === field) {
       setInvalidCell(null);
       setErrorMsg('');
@@ -1801,8 +1834,13 @@ function InlineTransactionTable(
           searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
           labelFields={conf.displayFields || []}
           value={inputVal}
-          onChange={(v, label) =>
-            handleChange(idx, f, label ? { value: v, label } : v)
+          onChange={(v, label, meta) =>
+            handleChange(
+              idx,
+              f,
+              label !== undefined ? { value: v, label } : v,
+              meta,
+            )
           }
           onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
           inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
@@ -1850,8 +1888,13 @@ function InlineTransactionTable(
           labelFields={labelFields}
           idField={idField}
           value={inputVal}
-          onChange={(v, label) =>
-            handleChange(idx, f, label ? { value: v, label } : v)
+          onChange={(v, label, meta) =>
+            handleChange(
+              idx,
+              f,
+              label !== undefined ? { value: v, label } : v,
+              meta,
+            )
           }
           onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
           inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}
@@ -1874,8 +1917,13 @@ function InlineTransactionTable(
           labelFields={cfg.displayFields || []}
           idField={cfg.idField}
           value={inputVal}
-          onChange={(v, label) =>
-            handleChange(idx, f, label ? { value: v, label } : v)
+          onChange={(v, label, meta) =>
+            handleChange(
+              idx,
+              f,
+              label !== undefined ? { value: v, label } : v,
+              meta,
+            )
           }
           onSelect={(opt) => handleOptionSelect(idx, colIdx, opt)}
           inputRef={(el) => (inputRefs.current[`${idx}-${colIdx}`] = el)}

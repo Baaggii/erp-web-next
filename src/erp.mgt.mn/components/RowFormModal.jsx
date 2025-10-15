@@ -26,6 +26,7 @@ const RowFormModal = function RowFormModal({
   relations = {},
   relationConfigs = {},
   relationData = {},
+  loadRelationRow = null,
   fieldTypeMap = {},
   disabledFields = [],
   labels = {},
@@ -476,6 +477,28 @@ const RowFormModal = function RowFormModal({
     },
     [computeNextFormVals, onChange],
   );
+  const handleRelationChange = useCallback(
+    (col, nextVal, meta = {}) => {
+      setFormValuesWithGenerated((prev) => {
+        if (valuesEqual(prev[col], nextVal)) return prev;
+        return { ...prev, [col]: nextVal };
+      });
+      setErrors((er) => ({ ...er, [col]: undefined }));
+      const metaType =
+        meta && typeof meta === 'object' && meta.type ? meta.type : undefined;
+      const shouldLookup = metaType !== 'input';
+      if (shouldLookup && typeof loadRelationRow === 'function') {
+        let raw = nextVal;
+        if (raw && typeof raw === 'object' && 'value' in raw) {
+          raw = raw.value;
+        }
+        if (raw !== undefined && raw !== null && raw !== '') {
+          loadRelationRow(col, raw);
+        }
+      }
+    },
+    [loadRelationRow, setErrors, setFormValuesWithGenerated],
+  );
   const inputRefs = useRef({});
   const readonlyRefs = useRef({});
   const [errors, setErrors] = useState({});
@@ -496,6 +519,31 @@ const RowFormModal = function RowFormModal({
       alreadyRequestedRef.current.clear();
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (!visible || typeof loadRelationRow !== 'function') return;
+    const pending = [];
+    Object.keys(relationConfigMap || {}).forEach((col) => {
+      let val = formVals[col];
+      if (val && typeof val === 'object') val = val.value;
+      if (val === undefined || val === null || val === '') return;
+      if (relationData[col]?.[String(val)]) return;
+      pending.push(loadRelationRow(col, val));
+    });
+    return () => {
+      pending.forEach((p) => {
+        if (p && typeof p.then === 'function') {
+          p.catch(() => {});
+        }
+      });
+    };
+  }, [
+    visible,
+    relationConfigMap,
+    relationData,
+    formVals,
+    loadRelationRow,
+  ]);
 
   useEffect(() => {
     if (!useGrid) return;
@@ -1822,13 +1870,13 @@ const RowFormModal = function RowFormModal({
           ]}
           labelFields={relationConfigMap[c].displayFields || []}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-          onChange={(val) => {
-            setFormValuesWithGenerated((prev) => {
-              if (valuesEqual(prev[c], val)) return prev;
-              return { ...prev, [c]: val };
-            });
-            setErrors((er) => ({ ...er, [c]: undefined }));
-          }}
+          onChange={(val, label, meta) =>
+            handleRelationChange(
+              c,
+              label !== undefined ? { value: val, label } : val,
+              meta,
+            )
+          }
           onSelect={(opt) => {
             const el = inputRefs.current[c];
             if (el) {
@@ -1863,13 +1911,13 @@ const RowFormModal = function RowFormModal({
           labelFields={viewDisplays[viewSourceMap[c]]?.displayFields || []}
           idField={viewDisplays[viewSourceMap[c]]?.idField || c}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-          onChange={(val) => {
-            setFormValuesWithGenerated((prev) => {
-              if (valuesEqual(prev[c], val)) return prev;
-              return { ...prev, [c]: val };
-            });
-            setErrors((er) => ({ ...er, [c]: undefined }));
-          }}
+          onChange={(val, label, meta) =>
+            handleRelationChange(
+              c,
+              label !== undefined ? { value: val, label } : val,
+              meta,
+            )
+          }
           onSelect={(opt) => {
             const el = inputRefs.current[c];
             if (el) {
@@ -1904,13 +1952,13 @@ const RowFormModal = function RowFormModal({
           labelFields={autoSelectConfigs[c].displayFields || []}
           idField={autoSelectConfigs[c].idField}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-          onChange={(val) => {
-            setFormValuesWithGenerated((prev) => {
-              if (valuesEqual(prev[c], val)) return prev;
-              return { ...prev, [c]: val };
-            });
-            setErrors((er) => ({ ...er, [c]: undefined }));
-          }}
+          onChange={(val, label, meta) =>
+            handleRelationChange(
+              c,
+              label !== undefined ? { value: val, label } : val,
+              meta,
+            )
+          }
           onSelect={(opt) => {
             const el = inputRefs.current[c];
             if (el) {
@@ -2066,6 +2114,7 @@ const RowFormModal = function RowFormModal({
             viewDisplays={viewDisplays}
             viewColumns={viewColumns}
             loadView={loadView}
+            loadRelationRow={loadRelationRow}
             procTriggers={procTriggers}
             user={user}
             company={company}
