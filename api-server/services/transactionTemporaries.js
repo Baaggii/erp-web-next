@@ -22,6 +22,49 @@ const STRING_COLUMN_TYPES = new Set([
   'set',
 ]);
 
+const LABEL_WRAPPER_KEYS = new Set([
+  'value',
+  'label',
+  'name',
+  'title',
+  'text',
+  'display',
+  'displayName',
+  'code',
+]);
+
+function stripLabelWrappers(value) {
+  if (value === undefined || value === null) return value;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const mapped = value.map((item) => {
+      const next = stripLabelWrappers(item);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return changed ? mapped : value;
+  }
+  if (value instanceof Date || (typeof Buffer !== 'undefined' && Buffer.isBuffer(value))) {
+    return value;
+  }
+  if (typeof value !== 'object') return value;
+  if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+    const keys = Object.keys(value);
+    const onlyKnownKeys = keys.every((key) => LABEL_WRAPPER_KEYS.has(key));
+    if (onlyKnownKeys) {
+      return stripLabelWrappers(value.value);
+    }
+  }
+  let changed = false;
+  const result = {};
+  for (const [key, val] of Object.entries(value)) {
+    const next = stripLabelWrappers(val);
+    if (next !== val) changed = true;
+    result[key] = next;
+  }
+  return changed ? result : value;
+}
+
 function normalizeEmpId(empid) {
   if (!empid) return null;
   const trimmed = String(empid).trim();
@@ -538,7 +581,10 @@ export async function getTemporarySummary(empId, companyId) {
   };
 }
 
-export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io }) {
+export async function promoteTemporarySubmission(
+  id,
+  { reviewerEmpId, notes, io, cleanedValues: cleanedOverride },
+) {
   const normalizedReviewer = normalizeEmpId(reviewerEmpId);
   if (!normalizedReviewer) {
     const err = new Error('reviewerEmpId required');
@@ -574,13 +620,24 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
     }
     const columns = await listTableColumnsDetailed(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
-    const candidateSources = [
-      extractPromotableValues(safeJsonParse(row.cleaned_values_json)),
-      extractPromotableValues(payloadJson?.cleanedValues),
-      extractPromotableValues(payloadJson?.values),
-      extractPromotableValues(payloadJson),
-      extractPromotableValues(safeJsonParse(row.raw_values_json)),
-    ].filter(isPlainObject);
+    const candidateSources = [];
+    const pushCandidate = (source) => {
+      if (!source) return;
+      const maybePlain = isPlainObject(source)
+        ? source
+        : extractPromotableValues(source);
+      if (!isPlainObject(maybePlain)) return;
+      const stripped = stripLabelWrappers(maybePlain);
+      if (isPlainObject(stripped)) {
+        candidateSources.push(stripped);
+      }
+    };
+    pushCandidate(cleanedOverride);
+    pushCandidate(safeJsonParse(row.cleaned_values_json));
+    pushCandidate(payloadJson?.cleanedValues);
+    pushCandidate(payloadJson?.values);
+    pushCandidate(payloadJson);
+    pushCandidate(safeJsonParse(row.raw_values_json));
 
     let sanitizedCleaned = { values: {}, warnings: [] };
     for (const source of candidateSources) {
