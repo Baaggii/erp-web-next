@@ -349,7 +349,6 @@ const TableManager = forwardRef(function TableManager({
   const [editing, setEditing] = useState(null);
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
-  const [temporaryPromotionQueue, setTemporaryPromotionQueue] = useState([]);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
@@ -2686,28 +2685,12 @@ const TableManager = forwardRef(function TableManager({
         overrideValues: cleaned,
       });
       if (ok) {
-        const queue = Array.isArray(temporaryPromotionQueueRef.current)
-          ? temporaryPromotionQueueRef.current
-          : [];
-        if (queue.length > 0) {
-          const [nextEntry, ...rest] = queue;
-          updateTemporaryPromotionQueue(rest);
-          setPendingTemporaryPromotion(null);
-          await openTemporaryPromotion(nextEntry, { queue: rest });
-          const remainingIds = rest
-            .map((entry) => getTemporaryId(entry))
-            .filter(Boolean);
-          setTemporarySelection(new Set(remainingIds));
-        } else {
-          updateTemporaryPromotionQueue([]);
-          setShowForm(false);
-          setEditing(null);
-          setIsAdding(false);
-          setGridRows([]);
-          setRequestType(null);
-          setPendingTemporaryPromotion(null);
-          setTemporarySelection(new Set());
-        }
+        setShowForm(false);
+        setEditing(null);
+        setIsAdding(false);
+        setGridRows([]);
+        setRequestType(null);
+        setPendingTemporaryPromotion(null);
       }
       return ok;
     }
@@ -3443,12 +3426,10 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const openTemporaryPromotion = useCallback(
-    async (entry, options = {}) => {
+    async (entry) => {
       if (!entry) return;
       const temporaryId = getTemporaryId(entry);
       if (!temporaryId) return;
-      const queue = Array.isArray(options.queue) ? options.queue : [];
-      updateTemporaryPromotionQueue(queue);
       await ensureColumnMeta();
 
       const valueSources = [
@@ -3500,7 +3481,6 @@ const TableManager = forwardRef(function TableManager({
       setRequestType,
       setShowTemporaryModal,
       setShowForm,
-      updateTemporaryPromotionQueue,
     ],
   );
 
@@ -5346,7 +5326,6 @@ const TableManager = forwardRef(function TableManager({
           setGridRows([]);
           setRequestType(null);
           setPendingTemporaryPromotion(null);
-          updateTemporaryPromotionQueue([]);
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
