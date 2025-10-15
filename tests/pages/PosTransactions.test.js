@@ -577,6 +577,34 @@ test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
   assert.equal(cleared.transactions_income.or_or, 0);
 });
 
+test('syncCalcFields uses visible table values for cross-table mappings', () => {
+  const calcFields = [
+    {
+      cells: [
+        { table: 'transactions_pos', field: 'total_quantity' },
+        { table: 'transactions_order', field: 'ordrsub', agg: 'SUM' },
+        { table: 'transactions_inventory', field: 'bmtr_sub', agg: 'SUM' },
+      ],
+    },
+  ];
+
+  const initial = {
+    transactions_pos: { total_quantity: 0 },
+    transactions_order: [
+      { line: 1, ordrsub: '1.50' },
+      { line: 2, ordrsub: '2.25' },
+    ],
+    transactions_inventory: [{ bmtr_sub: '0.25' }],
+  };
+
+  const synced = syncCalcFields(initial, calcFields);
+
+  assert.equal(synced.transactions_pos.total_quantity, 4);
+  assert.equal(synced.transactions_order[0].ordrsub, '1.50');
+  assert.equal(synced.transactions_order[1].ordrsub, '2.25');
+  assert.equal(synced.transactions_inventory[0].bmtr_sub, '0.25');
+});
+
 test('syncCalcFields updates multi table metadata for header fields', () => {
   const calcFields = [
     {
