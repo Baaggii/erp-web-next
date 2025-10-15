@@ -42,6 +42,53 @@ function parseLocalizedNumber(value) {
   return Number.isFinite(num) ? num : null;
 }
 
+function normalizeCalcFieldCell(cell) {
+  if (!cell || typeof cell !== 'object') return null;
+
+  const table = typeof cell.table === 'string' ? cell.table.trim() : '';
+  const field = typeof cell.field === 'string' ? cell.field.trim() : '';
+
+  if (!table || !field) return null;
+
+  const agg =
+    typeof cell.agg === 'string' ? cell.agg.trim() : cell.agg ?? undefined;
+  const normalized = { ...cell, table, field };
+
+  if (typeof agg === 'string') {
+    normalized.agg = agg;
+    normalized.__aggKey = agg.trim().toUpperCase();
+  } else {
+    normalized.__aggKey = '';
+  }
+
+  return normalized;
+}
+
+function getNormalizedCells(map) {
+  if (!map || typeof map !== 'object') return [];
+  if (Array.isArray(map.__normalizedCalcCells)) {
+    return map.__normalizedCalcCells;
+  }
+  const rawCells = Array.isArray(map.cells) ? map.cells : [];
+  return rawCells.map(normalizeCalcFieldCell).filter(Boolean);
+}
+
+export function normalizeCalcFieldConfig(mapConfig) {
+  if (!Array.isArray(mapConfig)) return [];
+
+  return mapConfig
+    .map((map) => {
+      if (!map || typeof map !== 'object') return null;
+      const normalizedCells = getNormalizedCells(map);
+      return {
+        ...map,
+        cells: normalizedCells,
+        __normalizedCalcCells: normalizedCells,
+      };
+    })
+    .filter(Boolean);
+}
+
 function collectSectionFields(map, table) {
   const fields = new Set();
   if (!map || !table) return fields;
@@ -142,15 +189,7 @@ export function syncCalcFields(vals, mapConfig) {
   let next = { ...base };
 
   for (const map of mapConfig) {
-    const rawCells = Array.isArray(map?.cells) ? map.cells : [];
-    const cells = rawCells.filter(
-      (cell) =>
-        cell &&
-        typeof cell.table === 'string' &&
-        cell.table &&
-        typeof cell.field === 'string' &&
-        cell.field,
-    );
+    const cells = getNormalizedCells(map);
     if (!cells.length) continue;
 
     const aggregatorState = new Map();
@@ -158,7 +197,11 @@ export function syncCalcFields(vals, mapConfig) {
 
     for (const cell of cells) {
       const aggKey =
-        typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
+        typeof cell.__aggKey === 'string'
+          ? cell.__aggKey
+          : typeof cell.agg === 'string'
+            ? cell.agg.trim().toUpperCase()
+            : '';
       const aggregator = aggKey ? CALC_FIELD_AGGREGATORS[aggKey] : null;
       if (!aggregator) continue;
       const source = next[cell.table];
