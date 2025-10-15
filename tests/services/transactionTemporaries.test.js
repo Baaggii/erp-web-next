@@ -4,6 +4,7 @@ import * as db from '../../db/index.js';
 import {
   getTemporarySummary,
   sanitizeCleanedValuesForInsert,
+  populateReviewerAutoFields,
 } from '../../api-server/services/transactionTemporaries.js';
 
 function mockQuery(handler) {
@@ -60,4 +61,46 @@ test('sanitizeCleanedValuesForInsert trims oversized string values and records w
   assert.equal(result.warnings[0].type, 'maxLength');
   assert.equal(result.warnings[0].maxLength, 10);
   assert.equal(result.warnings[0].actualLength, 15);
+});
+
+test('populateReviewerAutoFields keeps creator and injects reviewer context', () => {
+  const columns = [
+    { name: 'Amount' },
+    { name: 'Emp_Id' },
+    { name: 'Branch_Id' },
+    { name: 'Department_Id' },
+    { name: 'Company_Id' },
+    { name: 'Created_By' },
+  ];
+  const formConfig = {
+    userIdFields: ['EmpID', 'created_by'],
+    branchIdFields: ['BranchID'],
+    departmentIdFields: ['DepartmentID'],
+    companyIdFields: ['CompanyID'],
+  };
+  const initialValues = {
+    Amount: 1500,
+    Created_By: 'EMP001',
+    Emp_Id: 'EMP001',
+  };
+
+  const result = populateReviewerAutoFields({
+    initialValues,
+    columns,
+    formConfig,
+    reviewerEmpId: 'SENIOR1',
+    reviewerBranchId: 201,
+    reviewerDepartmentId: 301,
+    reviewerCompanyId: 401,
+    fallbackCreator: 'EMP001',
+    fallbackBranchId: 10,
+    fallbackDepartmentId: 20,
+  });
+
+  assert.equal(result.created_by, 'EMP001');
+  assert.equal(result.Emp_Id, 'SENIOR1');
+  assert.equal(result.Branch_Id, 201);
+  assert.equal(result.Department_Id, 301);
+  assert.equal(result.Company_Id, 401);
+  assert.equal(result.Amount, 1500);
 });

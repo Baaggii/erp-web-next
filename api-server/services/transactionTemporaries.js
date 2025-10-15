@@ -123,6 +123,133 @@ function extractPromotableValues(source) {
   return isPlainObject(current) ? current : null;
 }
 
+export function populateReviewerAutoFields({
+  initialValues = {},
+  columns = [],
+  formConfig = null,
+  reviewerEmpId = null,
+  reviewerBranchId = null,
+  reviewerDepartmentId = null,
+  reviewerCompanyId = null,
+  fallbackCreator = null,
+  fallbackBranchId = null,
+  fallbackDepartmentId = null,
+} = {}) {
+  const sanitizedValues = isPlainObject(initialValues)
+    ? { ...initialValues }
+    : {};
+
+  const columnNameLookup = new Map();
+  if (Array.isArray(columns)) {
+    columns.forEach((col) => {
+      if (!col) return;
+      const rawName = typeof col === 'string' ? col : col.name;
+      if (!rawName) return;
+      const trimmed = String(rawName).trim();
+      if (!trimmed) return;
+      const lower = trimmed.toLowerCase();
+      if (!columnNameLookup.has(lower)) {
+        columnNameLookup.set(lower, trimmed);
+      }
+      const stripped = lower.replace(/_/g, '');
+      if (stripped && !columnNameLookup.has(stripped)) {
+        columnNameLookup.set(stripped, trimmed);
+      }
+    });
+  }
+
+  const resolveColumnName = (fieldName) => {
+    if (!fieldName) return null;
+    const trimmed = String(fieldName).trim();
+    if (!trimmed) return null;
+    const lower = trimmed.toLowerCase();
+    if (columnNameLookup.has(lower)) return columnNameLookup.get(lower);
+    const stripped = lower.replace(/_/g, '');
+    if (stripped && columnNameLookup.has(stripped)) {
+      return columnNameLookup.get(stripped);
+    }
+    return null;
+  };
+
+  const defaultFieldList = (list, fallback) => {
+    if (Array.isArray(list) && list.length > 0) return list;
+    return fallback;
+  };
+
+  const ensureDistinctColumns = (fields, { skipCreatedBy = false } = {}) => {
+    const result = [];
+    if (!Array.isArray(fields)) return result;
+    const seen = new Set();
+    fields.forEach((field) => {
+      const resolved = resolveColumnName(field);
+      if (!resolved) return;
+      const lower = resolved.toLowerCase();
+      if (skipCreatedBy && lower === 'created_by') return;
+      if (seen.has(lower)) return;
+      seen.add(lower);
+      result.push(resolved);
+    });
+    return result;
+  };
+
+  const applyFieldValue = (fields, value) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string' && value.trim() === '') return;
+    fields.forEach((field) => {
+      sanitizedValues[field] = value;
+    });
+  };
+
+  const resolvedUserFields = ensureDistinctColumns(
+    defaultFieldList(formConfig?.userIdFields, [
+      'created_by',
+      'employee_id',
+      'emp_id',
+      'empid',
+      'user_id',
+    ]),
+    { skipCreatedBy: true },
+  );
+  if (reviewerEmpId) {
+    applyFieldValue(resolvedUserFields, reviewerEmpId);
+  }
+
+  const resolvedBranchFields = ensureDistinctColumns(
+    defaultFieldList(formConfig?.branchIdFields, ['branch_id']),
+  );
+  applyFieldValue(
+    resolvedBranchFields,
+    reviewerBranchId ?? fallbackBranchId ?? null,
+  );
+
+  const resolvedDepartmentFields = ensureDistinctColumns(
+    defaultFieldList(formConfig?.departmentIdFields, ['department_id']),
+  );
+  applyFieldValue(
+    resolvedDepartmentFields,
+    reviewerDepartmentId ?? fallbackDepartmentId ?? null,
+  );
+
+  const resolvedCompanyFields = ensureDistinctColumns(
+    defaultFieldList(formConfig?.companyIdFields, ['company_id']),
+  );
+  applyFieldValue(resolvedCompanyFields, reviewerCompanyId);
+
+  const hasCreatedByColumn = Array.isArray(columns)
+    ? columns.some((col) => {
+        if (!col) return false;
+        const raw = typeof col === 'string' ? col : col.name;
+        if (!raw) return false;
+        return String(raw).trim().toLowerCase() === 'created_by';
+      })
+    : false;
+  if (fallbackCreator && hasCreatedByColumn) {
+    sanitizedValues.created_by = fallbackCreator;
+  }
+
+  return sanitizedValues;
+}
+
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
   if (!tableName || !values) return { values: {}, warnings: [] };
   if (!isPlainObject(values)) return { values: {}, warnings: [] };
@@ -655,43 +782,56 @@ export async function promoteTemporarySubmission(
       }
     }
 
-    const sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
     const sanitationWarnings = Array.isArray(sanitizedCleaned?.warnings)
       ? sanitizedCleaned.warnings
       : [];
+
+    let formConfig = null;
+    try {
+      const preferredName = row.form_name || row.config_name || '';
+      const { config } = await getFormConfig(
+        row.table_name,
+        preferredName,
+        row.company_id ?? 0,
+      );
+      formConfig = config || null;
+    } catch {
+      formConfig = null;
+    }
+
+    let reviewerSession = null;
+    try {
+      reviewerSession = await getEmploymentSession(normalizedReviewer, row.company_id);
+    } catch {
+      reviewerSession = null;
+    }
+
+    const reviewerEmpId = normalizedReviewer;
+    const reviewerBranchId =
+      reviewerSession?.branch_id ?? reviewerSession?.employment_branch_id ?? null;
+    const reviewerDepartmentId =
+      reviewerSession?.department_id ?? reviewerSession?.employment_department_id ?? null;
+    const reviewerCompanyId =
+      reviewerSession?.company_id ?? reviewerSession?.employment_company_id ?? row.company_id ?? null;
+
+    const fallbackCreator = normalizeEmpId(row.created_by);
+    const sanitizedValues = populateReviewerAutoFields({
+      initialValues: sanitizedCleaned?.values || {},
+      columns,
+      formConfig,
+      reviewerEmpId,
+      reviewerBranchId,
+      reviewerDepartmentId,
+      reviewerCompanyId,
+      fallbackCreator,
+      fallbackBranchId: row.branch_id ?? null,
+      fallbackDepartmentId: row.department_id ?? null,
+    });
 
     if (Object.keys(sanitizedValues).length === 0) {
       const err = new Error('Temporary submission is missing promotable values');
       err.status = 422;
       throw err;
-    }
-
-    const fallbackCreator = normalizeEmpId(row.created_by);
-    if (fallbackCreator) {
-      const hasCreatedByColumn = Array.isArray(columns)
-        ? columns.some(
-            (col) =>
-              col &&
-              typeof col.name === 'string' &&
-              col.name.trim().toLowerCase() === 'created_by',
-          )
-        : false;
-      if (hasCreatedByColumn) {
-        const hasSanitizedCreator = Object.prototype.hasOwnProperty.call(
-          sanitizedValues,
-          'created_by',
-        );
-        const sanitizedCreator = hasSanitizedCreator
-          ? sanitizedValues.created_by
-          : undefined;
-        if (
-          sanitizedCreator === undefined ||
-          sanitizedCreator === null ||
-          (typeof sanitizedCreator === 'string' && !sanitizedCreator.trim())
-        ) {
-          sanitizedValues.created_by = fallbackCreator;
-        }
-      }
     }
 
     const mutationContext = {
