@@ -544,6 +544,274 @@ const TableManager = forwardRef(function TableManager({
     ],
   );
   const [columnMeta, setColumnMeta] = useState([]);
+  const relationDisplayCacheRef = useRef(new Map());
+  const relationTenantInfoCacheRef = useRef(new Map());
+  const relationRowRequestRef = useRef(new Map());
+  const relationHelperRef = useRef({
+    fetchTenantInfo: async () => ({}),
+    fetchDisplayConfig: async () => null,
+  });
+
+  const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
+  const columnCaseMap = useMemo(
+    () => buildColumnCaseMap(columnMeta),
+    [columnMeta],
+  );
+
+  const resolveCanonicalKey = useCallback(
+    (alias, caseMap) => {
+      return resolveWithMap(alias, caseMap || columnCaseMap);
+    },
+    [columnCaseMap],
+  );
+
+  const normalizeToCanonical = useCallback(
+    (source, caseMap) => {
+      if (!source || typeof source !== 'object') return {};
+      const normalized = {};
+      const map = caseMap || columnCaseMap;
+      for (const [rawKey, value] of Object.entries(source)) {
+        const canonicalKey = resolveCanonicalKey(rawKey, map);
+        normalized[canonicalKey] = value;
+      }
+      return normalized;
+    },
+    [columnCaseMap, resolveCanonicalKey],
+  );
+
+  const normalizeTenantKey = useCallback(
+    (alias, caseMap) => {
+      if (alias == null) return null;
+      const canonical = resolveCanonicalKey(alias, caseMap);
+      if (!canonical) return null;
+      return sanitizeName(canonical).replace(/_/g, '');
+    },
+    [resolveCanonicalKey],
+  );
+
+  const hasTenantKey = useCallback(
+    (tenantInfo, key, caseMap) => {
+      if (!tenantInfo) return false;
+      const target = normalizeTenantKey(key, caseMap);
+      if (!target) return false;
+      const keys = getTenantKeyList(tenantInfo);
+      for (const rawKey of keys) {
+        const normalized = normalizeTenantKey(rawKey, caseMap);
+        if (normalized && normalized === target) return true;
+      }
+      return false;
+    },
+    [normalizeTenantKey],
+  );
+
+  const appendTenantParam = useCallback(
+    (params, tenantKey, caseMap, value, canonicalOverride) => {
+      if (!params || value == null || value === '') return;
+      const canonicalKey =
+        canonicalOverride ?? resolveCanonicalKey(tenantKey, caseMap);
+      const snakeKey = sanitizeName(tenantKey);
+      if (canonicalKey) {
+        params.set(canonicalKey, value);
+      }
+      if (snakeKey && snakeKey !== canonicalKey) {
+        params.set(snakeKey, value);
+      }
+    },
+    [resolveCanonicalKey],
+  );
+
+  const buildKeyMap = useCallback((row) => {
+    if (!row || typeof row !== 'object') return {};
+    const keyMap = {};
+    Object.keys(row).forEach((key) => {
+      keyMap[key.toLowerCase()] = key;
+    });
+    return keyMap;
+  }, []);
+
+  const buildRelationLabel = useCallback(({ row, keyMap, relationColumn, cfg }) => {
+    if (!row || !keyMap || !relationColumn) return '';
+    const lowerColumn = relationColumn.toLowerCase();
+    const valueKey = keyMap[lowerColumn];
+    const value = valueKey ? row[valueKey] : undefined;
+
+    const idFieldName = cfg?.idField ?? relationColumn;
+    const idKey =
+      typeof idFieldName === 'string' ? keyMap[idFieldName.toLowerCase()] : undefined;
+    const identifier = idKey ? row[idKey] : undefined;
+
+    const parts = [];
+    if (identifier !== undefined && identifier !== null && identifier !== '') {
+      parts.push(identifier);
+    } else if (value !== undefined && value !== null && value !== '') {
+      parts.push(value);
+    }
+
+    let displayFields = [];
+    if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
+      displayFields = cfg.displayFields;
+    } else {
+      displayFields = Object.keys(row)
+        .filter((f) => f !== relationColumn)
+        .slice(0, 1);
+    }
+
+    displayFields.forEach((field) => {
+      if (typeof field !== 'string') return;
+      const rk = keyMap[field.toLowerCase()];
+      if (!rk) return;
+      const displayValue = row[rk];
+      if (displayValue === undefined || displayValue === null || displayValue === '') return;
+      parts.push(displayValue);
+    });
+
+    const normalizedParts = parts
+      .filter((part) => part !== undefined && part !== null && part !== '')
+      .map((part) => (typeof part === 'string' ? part : String(part)));
+
+    if (normalizedParts.length > 0) {
+      return normalizedParts.join(' - ');
+    }
+
+    const fallback = Object.values(row)
+      .filter((v) => v !== undefined && v !== null && v !== '')
+      .slice(0, 2)
+      .map((v) => (typeof v === 'string' ? v : String(v)));
+    return fallback.join(' - ');
+  }, []);
+
+  const ensureRelationRow = useCallback(
+    async (column, rawValue) => {
+      if (rawValue === null || rawValue === undefined || rawValue === '') return null;
+      const canonical = resolveCanonicalKey(column);
+      if (!canonical) return null;
+      let value = rawValue;
+      if (value && typeof value === 'object' && 'value' in value) {
+        value = value.value;
+      }
+      const stringKey = typeof value === 'number' ? String(value) : String(value ?? '');
+      const existingRow = refRows?.[canonical]?.[stringKey];
+      if (existingRow) return existingRow;
+
+      const requestKey = `${canonical}|${stringKey}`;
+      if (relationRowRequestRef.current.has(requestKey)) {
+        return relationRowRequestRef.current.get(requestKey);
+      }
+
+      const relation = relations[canonical];
+      const config = relationConfigs[canonical] || {};
+      const tableName = config.table || relation?.table;
+      const columnName = config.column || relation?.column;
+      if (!tableName || !columnName) return null;
+
+      const fetchPromise = (async () => {
+        try {
+          const { fetchTenantInfo, fetchDisplayConfig } = relationHelperRef.current;
+          const [tenantInfo, cfg] = await Promise.all([
+            fetchTenantInfo(tableName),
+            fetchDisplayConfig(tableName),
+          ]);
+          const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
+          const tenantKeys = getTenantKeyList(tenantInfo);
+          const searchField = config.idField || cfg?.idField || columnName;
+          const params = new URLSearchParams({ perPage: '1' });
+          if (!isShared) {
+            if (tenantKeys.includes('company_id') && company != null)
+              params.set('company_id', company);
+            if (tenantKeys.includes('branch_id') && branch != null)
+              params.set('branch_id', branch);
+            if (tenantKeys.includes('department_id') && department != null)
+              params.set('department_id', department);
+          }
+          if (searchField) {
+            params.set('search', stringKey);
+            params.set('searchColumns', searchField);
+          } else {
+            params.set(columnName, stringKey);
+          }
+
+          const res = await fetch(
+            `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
+            { credentials: 'include' },
+          );
+          if (!res.ok) return null;
+          const json = await res.json().catch(() => ({}));
+          const rows = Array.isArray(json.rows) ? json.rows : [];
+          const match = rows.find((row) => {
+            if (!row || typeof row !== 'object') return false;
+            const keyMap = buildKeyMap(row);
+            const key = keyMap[(searchField || columnName).toLowerCase()] || searchField || columnName;
+            const val = key ? row[key] : undefined;
+            return val !== undefined && val !== null && String(val) === stringKey;
+          }) || rows[0];
+          if (!match || typeof match !== 'object') return null;
+
+          const keyMap = buildKeyMap(match);
+          const optionKey = keyMap[(searchField || columnName).toLowerCase()] || searchField || columnName;
+          const optionValue = optionKey ? match[optionKey] : value;
+          const label = buildRelationLabel({
+            row: match,
+            keyMap,
+            relationColumn: columnName,
+            cfg: {
+              idField: searchField || columnName,
+              displayFields:
+                Array.isArray(config.displayFields) && config.displayFields.length > 0
+                  ? config.displayFields
+                  : Array.isArray(cfg?.displayFields)
+                  ? cfg.displayFields
+                  : [],
+            },
+          });
+
+          setRefRows((prev) => {
+            const existing = prev[canonical]?.[stringKey];
+            if (existing) return prev;
+            const next = { ...prev };
+            const columnRows = { ...(next[canonical] || {}) };
+            columnRows[stringKey] = match;
+            next[canonical] = columnRows;
+            return next;
+          });
+
+          setRefData((prev) => {
+            const existing = Array.isArray(prev[canonical]) ? prev[canonical] : [];
+            if (
+              existing.some((opt) => String(opt?.value ?? '') === String(optionValue ?? stringKey))
+            )
+              return prev;
+            const optionLabel = label || (optionValue != null ? String(optionValue) : stringKey);
+            const option = {
+              value: optionValue ?? value,
+              label: optionLabel,
+            };
+            return { ...prev, [canonical]: [...existing, option] };
+          });
+
+          return match;
+        } catch (err) {
+          console.warn('Failed to load relation row', err);
+          return null;
+        } finally {
+          relationRowRequestRef.current.delete(requestKey);
+        }
+      })();
+
+      relationRowRequestRef.current.set(requestKey, fetchPromise);
+      return fetchPromise;
+    },
+    [
+      relations,
+      relationConfigs,
+      refRows,
+      resolveCanonicalKey,
+      buildRelationLabel,
+      buildKeyMap,
+      company,
+      branch,
+      department,
+    ],
+  );
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -822,74 +1090,6 @@ const TableManager = forwardRef(function TableManager({
     availableTemporaryScopes,
     defaultTemporaryScope,
   ]);
-
-  const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
-  const columnCaseMap = useMemo(
-    () => buildColumnCaseMap(columnMeta),
-    [columnMeta],
-  );
-
-  const resolveCanonicalKey = useCallback(
-    (alias, caseMap) => {
-      return resolveWithMap(alias, caseMap || columnCaseMap);
-    },
-    [columnCaseMap],
-  );
-
-  const normalizeToCanonical = useCallback(
-    (source, caseMap) => {
-      if (!source || typeof source !== 'object') return {};
-      const normalized = {};
-      const map = caseMap || columnCaseMap;
-      for (const [rawKey, value] of Object.entries(source)) {
-        const canonicalKey = resolveCanonicalKey(rawKey, map);
-        normalized[canonicalKey] = value;
-      }
-      return normalized;
-    },
-    [columnCaseMap, resolveCanonicalKey],
-  );
-
-  const normalizeTenantKey = useCallback(
-    (alias, caseMap) => {
-      if (alias == null) return null;
-      const canonical = resolveCanonicalKey(alias, caseMap);
-      if (!canonical) return null;
-      return sanitizeName(canonical).replace(/_/g, '');
-    },
-    [resolveCanonicalKey],
-  );
-
-  const hasTenantKey = useCallback(
-    (tenantInfo, key, caseMap) => {
-      if (!tenantInfo) return false;
-      const target = normalizeTenantKey(key, caseMap);
-      if (!target) return false;
-      const keys = getTenantKeyList(tenantInfo);
-      for (const rawKey of keys) {
-        const normalized = normalizeTenantKey(rawKey, caseMap);
-        if (normalized && normalized === target) return true;
-      }
-      return false;
-    },
-    [normalizeTenantKey],
-  );
-
-  const appendTenantParam = useCallback(
-    (params, tenantKey, caseMap, value, canonicalOverride) => {
-      if (!params || value == null || value === '') return;
-      const canonicalKey =
-        canonicalOverride ?? resolveCanonicalKey(tenantKey, caseMap);
-      const snakeKey = sanitizeName(tenantKey);
-      if (canonicalKey) {
-        params.set(canonicalKey, value);
-      }
-      if (snakeKey && snakeKey !== canonicalKey) {
-        params.set(snakeKey, value);
-      }
-    },
-    [resolveCanonicalKey],
-  );
 
   const fieldTypeMap = useMemo(() => {
     const map = {};
