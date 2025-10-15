@@ -662,6 +662,13 @@ const TableManager = forwardRef(function TableManager({
       temporaryPromotionQueueRef.current = [];
     }
   }, [temporaryPromotionQueue]);
+
+  useEffect(() => {
+    if (!canSelectTemporaries) {
+      setTemporaryPromotionQueue([]);
+      temporaryPromotionQueueRef.current = [];
+    }
+  }, [canSelectTemporaries]);
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -814,10 +821,6 @@ const TableManager = forwardRef(function TableManager({
   const supportsTemporary =
     formSupportsTemporary &&
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
-  const canSelectTemporaries = useMemo(
-    () => canReviewTemporary && temporaryScope === 'review',
-    [canReviewTemporary, temporaryScope],
-  );
   const canPostTransactions =
     accessEvaluation.canPost === undefined
       ? true
@@ -858,13 +861,6 @@ const TableManager = forwardRef(function TableManager({
     temporaryScope,
     defaultTemporaryScope,
   ]);
-
-  useEffect(() => {
-    if (!canSelectTemporaries) {
-      setTemporaryPromotionQueue([]);
-      temporaryPromotionQueueRef.current = [];
-    }
-  }, [canSelectTemporaries]);
 
   useEffect(() => {
     if (!externalTemporaryTrigger) return;
