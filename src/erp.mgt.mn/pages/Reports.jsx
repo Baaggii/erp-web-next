@@ -229,7 +229,96 @@ export default function Reports() {
     return '';
   }, []);
 
-  
+  const normalizeLockCandidates = useCallback(
+    (list) => {
+      return list
+        .map((candidate) => {
+          if (!candidate || typeof candidate !== 'object') return null;
+          const tableName = getCandidateTable(candidate);
+          const rawId =
+            candidate.recordId ??
+            candidate.record_id ??
+            candidate.id ??
+            candidate.recordID;
+          if (!tableName || rawId === null || rawId === undefined) {
+            return null;
+          }
+          const recordId = String(rawId);
+          const key = candidate.key ?? `${tableName}#${recordId}`;
+          const rawSnapshot =
+            resolveSnapshotSource(candidate) ||
+            (candidate.snapshot &&
+            typeof candidate.snapshot === 'object' &&
+            !Array.isArray(candidate.snapshot)
+              ? candidate.snapshot
+              : null);
+          const {
+            row: normalizedSnapshot,
+            columns: derivedColumns,
+            fieldTypeMap,
+          } = normalizeSnapshotRecord(rawSnapshot || {});
+          let snapshotColumns = Array.isArray(candidate.snapshotColumns)
+            ? candidate.snapshotColumns
+            : Array.isArray(candidate.snapshot_columns)
+            ? candidate.snapshot_columns
+            : Array.isArray(candidate.columns)
+            ? candidate.columns
+            : [];
+          snapshotColumns = snapshotColumns
+            .map((col) => (col === null || col === undefined ? '' : String(col)))
+            .filter(Boolean);
+          if (!snapshotColumns.length) {
+            snapshotColumns = derivedColumns;
+          }
+          const snapshotFieldTypeMap =
+            candidate.snapshotFieldTypeMap ||
+            candidate.snapshot_field_type_map ||
+            candidate.fieldTypeMap ||
+            candidate.field_type_map ||
+            fieldTypeMap ||
+            {};
+          const next = {
+            ...candidate,
+            tableName,
+            recordId,
+            key,
+            snapshot: normalizedSnapshot,
+            snapshotColumns,
+            snapshotFieldTypeMap,
+          };
+          if (candidate.table === undefined) next.table = tableName;
+          return next;
+        })
+        .filter(Boolean);
+    },
+    [getCandidateTable],
+  );
+
+  const fetchLockCandidatesFor = useCallback(
+    async (name, params) => {
+      if (!name) throw new Error('Procedure name is required');
+      const payloadParams = Array.isArray(params) ? params : [];
+      const query = new URLSearchParams();
+      if (branch) query.set('branchId', branch);
+      if (department) query.set('departmentId', department);
+      const res = await fetch(
+        `/api/procedures/locks${query.toString() ? `?${query.toString()}` : ''}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name, params: payloadParams }),
+        },
+      );
+      if (!res.ok) {
+        throw new Error('Failed to load lock candidates');
+      }
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.lockCandidates) ? data.lockCandidates : [];
+      return normalizeLockCandidates(list);
+    },
+    [branch, department, normalizeLockCandidates],
+  );
 
   const getCandidateKey = useCallback(
     (candidate) => {
