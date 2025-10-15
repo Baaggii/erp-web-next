@@ -3576,7 +3576,7 @@ const TableManager = forwardRef(function TableManager({
 
   useEffect(() => {
     setTemporarySelection((prev) => {
-      if (!canSelectTemporaries) {
+      if (!allowTemporarySelection) {
         if (prev.size === 0) return prev;
         return new Set();
       }
@@ -3599,10 +3599,10 @@ const TableManager = forwardRef(function TableManager({
       }
       return next;
     });
-  }, [canSelectTemporaries, temporaryList]);
+  }, [allowTemporarySelection, temporaryList]);
 
   const pendingReviewIds = useMemo(() => {
-    if (!canSelectTemporaries) return [];
+    if (!allowTemporarySelection) return [];
     const ids = [];
     temporaryList.forEach((entry) => {
       if (!entry || entry.status !== 'pending') return;
@@ -3610,16 +3610,17 @@ const TableManager = forwardRef(function TableManager({
       if (id) ids.push(id);
     });
     return ids;
-  }, [canSelectTemporaries, temporaryList]);
+  }, [allowTemporarySelection, temporaryList]);
 
   const allReviewSelected =
     pendingReviewIds.length > 0 &&
     pendingReviewIds.every((id) => temporarySelection.has(id));
-  const hasReviewSelection = canSelectTemporaries && temporarySelection.size > 0;
+  const hasReviewSelection =
+    allowTemporarySelection && temporarySelection.size > 0;
 
   const toggleTemporarySelection = useCallback(
     (id) => {
-      if (!canSelectTemporaries || !id) return;
+      if (!allowTemporarySelection || !id) return;
       setTemporarySelection((prev) => {
         const next = new Set(prev);
         if (next.has(id)) {
@@ -3630,12 +3631,12 @@ const TableManager = forwardRef(function TableManager({
         return next;
       });
     },
-    [canSelectTemporaries],
+    [allowTemporarySelection],
   );
 
   const toggleTemporarySelectAll = useCallback(
     (checked) => {
-      if (!canSelectTemporaries) return;
+      if (!allowTemporarySelection) return;
       if (!checked) {
         setTemporarySelection(new Set());
         return;
@@ -3646,7 +3647,7 @@ const TableManager = forwardRef(function TableManager({
         return next;
       });
     },
-    [canSelectTemporaries, pendingReviewIds],
+    [allowTemporarySelection, pendingReviewIds],
   );
 
   const clearTemporarySelection = useCallback(() => {
@@ -3654,7 +3655,7 @@ const TableManager = forwardRef(function TableManager({
   }, []);
 
   const promoteTemporarySelection = useCallback(async () => {
-    if (!canSelectTemporaries) return;
+    if (!allowTemporarySelection) return;
     const ids = Array.from(temporarySelection);
     if (ids.length === 0) return;
     if (
@@ -3774,7 +3775,7 @@ const TableManager = forwardRef(function TableManager({
     await fetchTemporaryList(temporaryScope);
     setLocalRefresh((r) => r + 1);
   }, [
-    canSelectTemporaries,
+    allowTemporarySelection,
     temporarySelection,
     temporaryList,
     addToast,
@@ -5620,7 +5621,7 @@ const TableManager = forwardRef(function TableManager({
                 })}
               </div>
             )}
-            {canSelectTemporaries && temporaryList.length > 0 && (
+            {allowTemporarySelection && temporaryList.length > 0 && (
               <div
                 style={{
                   display: 'flex',
@@ -5680,7 +5681,7 @@ const TableManager = forwardRef(function TableManager({
                   <thead>
                     <tr>
                       <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>#</th>
-                      {canSelectTemporaries && (
+                      {allowTemporarySelection && (
                         <th
                           style={{
                             borderBottom: '1px solid #d1d5db',
@@ -5770,7 +5771,7 @@ const TableManager = forwardRef(function TableManager({
                               <span>{entry?.id ?? index + 1}</span>
                             </div>
                           </td>
-                          {canSelectTemporaries && (
+                          {allowTemporarySelection && (
                             <td
                               style={{
                                 borderBottom: '1px solid #f3f4f6',
