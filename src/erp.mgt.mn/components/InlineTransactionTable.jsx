@@ -55,6 +55,7 @@ function InlineTransactionTable(
     viewDisplays = {},
     viewColumns = {},
     loadView = () => {},
+    loadRelationRow = null,
     procTriggers = {},
     user = {},
     company,
@@ -1398,6 +1399,35 @@ function InlineTransactionTable(
         }),
       { indices: [rowIdx] },
     );
+    if (typeof loadRelationRow === 'function') {
+      let rawVal = value;
+      if (rawVal && typeof rawVal === 'object' && 'value' in rawVal) {
+        rawVal = rawVal.value;
+      }
+      if (rawVal !== undefined && rawVal !== null && rawVal !== '') {
+        loadRelationRow(field, rawVal).then((rowData) => {
+          if (!rowData || typeof rowData !== 'object') return;
+          commitRowsUpdate(
+            (rowsList) =>
+              rowsList.map((row, idx) => {
+                if (idx !== rowIdx) return row;
+                const next = { ...row };
+                const conf = relationConfigMap[field];
+                if (conf && Array.isArray(conf.displayFields)) {
+                  conf.displayFields.forEach((df) => {
+                    const key = columnCaseMap[df.toLowerCase()];
+                    if (key && rowData[df] !== undefined) {
+                      next[key] = rowData[df];
+                    }
+                  });
+                }
+                return next;
+              }),
+            { indices: [rowIdx] },
+          );
+        });
+      }
+    }
     if (invalidCell && invalidCell.row === rowIdx && invalidCell.field === field) {
       setInvalidCell(null);
       setErrorMsg('');
