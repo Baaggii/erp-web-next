@@ -2,7 +2,7 @@ import {
   pool,
   insertTableRow,
   getEmploymentSession,
-  listTableColumns,
+  listTableColumnsDetailed,
 } from '../../db/index.js';
 import { getFormConfig } from './transactionFormConfig.js';
 import { logUserAction } from './userActivityLog.js';
@@ -11,6 +11,80 @@ const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
 
 const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
+const STRING_COLUMN_TYPES = new Set([
+  'char',
+  'varchar',
+  'tinytext',
+  'text',
+  'mediumtext',
+  'longtext',
+  'enum',
+  'set',
+]);
+
+const LABEL_WRAPPER_KEYS = new Set([
+  'value',
+  'label',
+  'name',
+  'title',
+  'text',
+  'display',
+  'displayname',
+  'code',
+]);
+
+function tryParseJsonLike(value) {
+  if (typeof value !== 'string') return { parsed: false };
+  const trimmed = value.trim();
+  if (!trimmed) return { parsed: false };
+  const first = trimmed[0];
+  if (first !== '{' && first !== '[') return { parsed: false };
+  try {
+    return { parsed: true, value: JSON.parse(trimmed) };
+  } catch {
+    return { parsed: false };
+  }
+}
+
+function unwrapLabelValue(value) {
+  if (value === undefined || value === null) return value;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const mapped = value.map((item) => {
+      const next = unwrapLabelValue(item);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return changed ? mapped : value;
+  }
+  if (value instanceof Date || value instanceof Buffer) return value;
+  if (typeof value === 'string') {
+    const parsed = tryParseJsonLike(value);
+    if (parsed.parsed) {
+      const next = unwrapLabelValue(parsed.value);
+      if (next !== parsed.value) {
+        return next;
+      }
+    }
+    return value;
+  }
+  if (typeof value !== 'object') return value;
+  if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+    const keys = Object.keys(value);
+    const onlyKnown = keys.every((key) => LABEL_WRAPPER_KEYS.has(key.toLowerCase()));
+    if (onlyKnown) {
+      return unwrapLabelValue(value.value);
+    }
+  }
+  let changed = false;
+  const result = {};
+  for (const [key, val] of Object.entries(value)) {
+    const next = unwrapLabelValue(val);
+    if (next !== val) changed = true;
+    result[key] = next;
+  }
+  return changed ? result : value;
+}
 
 function normalizeEmpId(empid) {
   if (!empid) return null;
@@ -71,36 +145,59 @@ function extractPromotableValues(source) {
 }
 
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
-  if (!tableName || !values) return {};
-  if (!isPlainObject(values)) return {};
+  if (!tableName || !values) return { values: {}, warnings: [] };
+  if (!isPlainObject(values)) return { values: {}, warnings: [] };
   const entries = Object.entries(values);
-  if (entries.length === 0) return {};
+  if (entries.length === 0) return { values: {}, warnings: [] };
 
   let resolvedColumns = columns;
   if (!Array.isArray(resolvedColumns)) {
-    resolvedColumns = await listTableColumns(tableName);
+    resolvedColumns = await listTableColumnsDetailed(tableName);
   }
   if (!Array.isArray(resolvedColumns) || resolvedColumns.length === 0) {
-    return {};
+    return { values: {}, warnings: [] };
   }
 
   const lookup = new Map();
   resolvedColumns.forEach((col) => {
-    if (typeof col === 'string' && col) {
-      lookup.set(col.toLowerCase(), col);
+    if (!col) return;
+    if (typeof col === 'string') {
+      const key = col.trim().toLowerCase();
+      if (key) {
+        lookup.set(key, {
+          name: col,
+          type: null,
+          maxLength: null,
+        });
+      }
+      return;
+    }
+    if (typeof col === 'object' && typeof col.name === 'string') {
+      const key = col.name.trim().toLowerCase();
+      if (!key) return;
+      lookup.set(key, {
+        name: col.name,
+        type: col.type ? String(col.type).toLowerCase() : null,
+        maxLength: col.maxLength != null ? Number(col.maxLength) : null,
+      });
     }
   });
 
+  if (lookup.size === 0) {
+    return { values: {}, warnings: [] };
+  }
+
   const sanitized = {};
+  const warnings = [];
   for (const [rawKey, rawValue] of entries) {
     if (rawValue === undefined) continue;
     const key = typeof rawKey === 'string' ? rawKey.trim() : String(rawKey || '');
     if (!key) continue;
     const lower = key.toLowerCase();
     if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
-    const columnName = lookup.get(lower);
-    if (!columnName) continue;
-    let normalizedValue = rawValue;
+    const columnInfo = lookup.get(lower);
+    if (!columnInfo) continue;
+    let normalizedValue = unwrapLabelValue(rawValue);
     if (Array.isArray(normalizedValue)) {
       normalizedValue = JSON.stringify(normalizedValue);
     } else if (
@@ -113,9 +210,29 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     } else if (typeof normalizedValue === 'bigint') {
       normalizedValue = normalizedValue.toString();
     }
-    sanitized[columnName] = normalizedValue;
+    if (typeof normalizedValue === 'string') {
+      normalizedValue = normalizedValue.trim();
+      const { type, maxLength } = columnInfo;
+      if (
+        typeof maxLength === 'number' &&
+        maxLength > 0 &&
+        STRING_COLUMN_TYPES.has(type)
+      ) {
+        const stringLength = normalizedValue.length;
+        if (stringLength > maxLength) {
+          warnings.push({
+            column: columnInfo.name,
+            maxLength,
+            actualLength: stringLength,
+            type: 'maxLength',
+          });
+          normalizedValue = normalizedValue.slice(0, maxLength);
+        }
+      }
+    }
+    sanitized[columnInfo.name] = normalizedValue;
   }
-  return sanitized;
+  return { values: sanitized, warnings };
 }
 
 async function ensureTemporaryTable(conn = pool) {
@@ -519,7 +636,7 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       err.status = 409;
       throw err;
     }
-    const columns = await listTableColumns(row.table_name);
+    const columns = await listTableColumnsDetailed(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
     const candidateSources = [
       extractPromotableValues(safeJsonParse(row.cleaned_values_json)),
@@ -529,7 +646,7 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       extractPromotableValues(safeJsonParse(row.raw_values_json)),
     ].filter(isPlainObject);
 
-    let sanitizedCleaned = {};
+    let sanitizedCleaned = { values: {}, warnings: [] };
     for (const source of candidateSources) {
       // sanitizeCleanedValuesForInsert performs its own plain-object guard.
       // eslint-disable-next-line no-await-in-loop
@@ -538,13 +655,19 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
         source,
         columns,
       );
-      if (Object.keys(next).length > 0) {
+      const nextValues = next?.values || {};
+      if (Object.keys(nextValues).length > 0) {
         sanitizedCleaned = next;
         break;
       }
     }
 
-    if (Object.keys(sanitizedCleaned).length === 0) {
+    const sanitizedValues = sanitizedCleaned?.values || {};
+    const sanitationWarnings = Array.isArray(sanitizedCleaned?.warnings)
+      ? sanitizedCleaned.warnings
+      : [];
+
+    if (Object.keys(sanitizedValues).length === 0) {
       const err = new Error('Temporary submission is missing promotable values');
       err.status = 422;
       throw err;
@@ -556,7 +679,7 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
     };
     const inserted = await insertTableRow(
       row.table_name,
-      sanitizedCleaned,
+      sanitizedValues,
       undefined,
       undefined,
       false,
@@ -564,11 +687,36 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       { conn, mutationContext },
     );
     const promotedId = inserted?.id ? String(inserted.id) : null;
+    const trimmedNotes =
+      typeof notes === 'string' && notes.trim() ? notes.trim() : '';
+    let reviewNotesValue = trimmedNotes ? trimmedNotes : null;
+    if (sanitationWarnings.length > 0) {
+      const warningSummary = sanitationWarnings
+        .map((warn) => {
+          if (!warn || !warn.column) return null;
+          if (
+            warn.type === 'maxLength' &&
+            warn.maxLength != null &&
+            warn.actualLength != null
+          ) {
+            return `${warn.column} (trimmed from ${warn.actualLength} to ${warn.maxLength})`;
+          }
+          return warn.column;
+        })
+        .filter(Boolean)
+        .join(', ');
+      if (warningSummary) {
+        const autoNote = `Auto-adjusted fields: ${warningSummary}`;
+        reviewNotesValue = reviewNotesValue
+          ? `${reviewNotesValue}\n\n${autoNote}`
+          : autoNote;
+      }
+    }
     await conn.query(
       `UPDATE \`${TEMP_TABLE}\`
        SET status = 'promoted', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, promoted_record_id = ?
        WHERE id = ?`,
-      [normalizedReviewer, notes ?? null, promotedId, id],
+      [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
     await logUserAction(
       {
@@ -607,14 +755,16 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
         id,
         status: 'promoted',
         promotedRecordId: promotedId,
+        warnings: sanitationWarnings,
       });
       io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', {
         id,
         status: 'promoted',
         promotedRecordId: promotedId,
+        warnings: sanitationWarnings,
       });
     }
-    return { id, promotedRecordId: promotedId };
+    return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
