@@ -294,6 +294,7 @@ if (typeof mock.import !== 'function') {
     );
   });
 
+
   test('generated column configs support lowercase generation_expression metadata', async () => {
     const actualTransactionValues = await import(
       '../../src/erp.mgt.mn/utils/transactionValues.js'

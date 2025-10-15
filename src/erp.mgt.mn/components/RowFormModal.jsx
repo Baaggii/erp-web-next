@@ -913,8 +913,7 @@ const RowFormModal = function RowFormModal({
     maxWidth: `${boxMaxWidth}px`,
     overflowWrap: 'anywhere',
     wordBreak: 'break-word',
-    display: 'inline-block',
-    boxSizing: 'border-box',
+    display: 'block',
   };
   const inputStyle = {
     ...baseBoxStyle,
@@ -922,13 +921,11 @@ const RowFormModal = function RowFormModal({
     height: isNarrow ? '44px' : `${boxHeight}px`,
     maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
     whiteSpace: 'normal',
-    overflow: 'hidden',
   };
   const readonlyBoxStyle = {
     ...baseBoxStyle,
-    width: 'auto',
-    minWidth: `${boxWidth}px`,
-    maxWidth: `${boxMaxWidth}px`,
+    width: '100%',
+    height: 'auto',
     minHeight: isNarrow ? 'auto' : `${boxHeight}px`,
     maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
     whiteSpace: 'pre-wrap',
