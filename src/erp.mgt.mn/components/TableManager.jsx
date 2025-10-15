@@ -654,6 +654,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
+  const canSelectTemporaries = canReviewTemporary && temporaryScope === 'review';
   useEffect(() => {
     if (Array.isArray(temporaryPromotionQueue)) {
       temporaryPromotionQueueRef.current = temporaryPromotionQueue;
@@ -813,7 +814,7 @@ const TableManager = forwardRef(function TableManager({
   const supportsTemporary =
     formSupportsTemporary &&
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
-  const allowTemporarySelection = useMemo(
+  const canSelectTemporaries = useMemo(
     () => canReviewTemporary && temporaryScope === 'review',
     [canReviewTemporary, temporaryScope],
   );
@@ -859,11 +860,11 @@ const TableManager = forwardRef(function TableManager({
   ]);
 
   useEffect(() => {
-    if (!allowTemporarySelection) {
+    if (!canSelectTemporaries) {
       setTemporaryPromotionQueue([]);
       temporaryPromotionQueueRef.current = [];
     }
-  }, [allowTemporarySelection]);
+  }, [canSelectTemporaries]);
 
   useEffect(() => {
     if (!externalTemporaryTrigger) return;
