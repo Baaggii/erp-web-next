@@ -1097,6 +1097,7 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
+
     function buildCustomRelationsList(customPayload) {
       if (!customPayload || typeof customPayload !== 'object') return [];
       const entries = customPayload.relations || customPayload;
@@ -1123,6 +1124,387 @@ const TableManager = forwardRef(function TableManager({
       return list;
     }
 
+    const displayConfigCache = new Map();
+    const tenantInfoCache = new Map();
+    const tableRowsCache = new Map();
+    const relationCache = {};
+    const nestedLabelCache = {};
+    const referenceLoadErrorTables = new Set();
+    const referenceParseErrorTables = new Set();
+
+    const buildRelationLabel = ({
+      row,
+      keyMap,
+      relationColumn,
+      cfg,
+      nestedLookups,
+    }) => {
+      if (!row || !keyMap || !relationColumn) {
+        return '';
+      }
+      const lowerColumn = relationColumn.toLowerCase();
+      const valueKey = keyMap[lowerColumn];
+      const value = valueKey ? row[valueKey] : undefined;
+
+      const idFieldName = cfg?.idField ?? relationColumn;
+      const idKey =
+        typeof idFieldName === 'string' ? keyMap[idFieldName.toLowerCase()] : undefined;
+      const identifier = idKey ? row[idKey] : undefined;
+
+      const parts = [];
+      if (identifier !== undefined && identifier !== null && identifier !== '') {
+        parts.push(identifier);
+      } else if (value !== undefined && value !== null && value !== '') {
+        parts.push(value);
+      }
+
+      let displayFields = [];
+      if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
+        displayFields = cfg.displayFields;
+      } else {
+        displayFields = Object.keys(row)
+          .filter((f) => f !== relationColumn)
+          .slice(0, 1);
+      }
+
+      displayFields.forEach((field) => {
+        if (typeof field !== 'string') return;
+        const rk = keyMap[field.toLowerCase()];
+        if (!rk) return;
+        let displayValue = row[rk];
+        if (displayValue === undefined || displayValue === null || displayValue === '')
+          return;
+        const lookup = nestedLookups?.[field.toLowerCase()];
+        if (lookup) {
+          const mapped =
+            lookup[displayValue] !== undefined
+              ? lookup[displayValue]
+              : lookup[String(displayValue)];
+          if (mapped !== undefined) {
+            displayValue = mapped;
+          }
+        }
+        parts.push(displayValue);
+      });
+
+      const normalizedParts = parts
+        .filter((part) => part !== undefined && part !== null && part !== '')
+        .map((part) => (typeof part === 'string' ? part : String(part)));
+      if (normalizedParts.length > 0) {
+        return normalizedParts.join(' - ');
+      }
+      const fallback = Object.values(row)
+        .filter((v) => v !== undefined && v !== null && v !== '')
+        .slice(0, 2)
+        .map((v) => (typeof v === 'string' ? v : String(v)));
+      return fallback.join(' - ');
+    };
+
+    const fetchDisplayConfig = (tableName) => {
+      if (!tableName) return Promise.resolve(null);
+      const cacheKey = tableName.toLowerCase();
+      if (displayConfigCache.has(cacheKey)) return displayConfigCache.get(cacheKey);
+      const promise = (async () => {
+        try {
+          const res = await fetch(
+            `/api/display_fields?table=${encodeURIComponent(tableName)}`,
+            { credentials: 'include' },
+          );
+          if (!res.ok) {
+            if (!canceled) {
+              addToast(
+                t('failed_load_display_fields', 'Failed to load display fields'),
+                'error',
+              );
+            }
+            return null;
+          }
+          const json = await res.json().catch(() => {
+            if (!canceled) {
+              addToast(
+                t('failed_parse_display_fields', 'Failed to parse display fields'),
+                'error',
+              );
+            }
+            return null;
+          });
+          if (!json) return null;
+          return {
+            idField: typeof json.idField === 'string' ? json.idField : undefined,
+            displayFields: Array.isArray(json.displayFields)
+              ? json.displayFields
+              : [],
+          };
+        } catch (err) {
+          if (!canceled) {
+            addToast(
+              t('failed_load_display_fields', 'Failed to load display fields'),
+              'error',
+            );
+          }
+          return null;
+        }
+      })();
+      displayConfigCache.set(cacheKey, promise);
+      return promise;
+    };
+
+    const fetchTenantInfo = (tableName) => {
+      if (!tableName) return Promise.resolve({});
+      const cacheKey = tableName.toLowerCase();
+      if (tenantInfoCache.has(cacheKey)) return tenantInfoCache.get(cacheKey);
+      const promise = (async () => {
+        try {
+          const res = await fetch(
+            `/api/tenant_tables/${encodeURIComponent(tableName)}`,
+            { credentials: 'include' },
+          );
+          if (!res.ok) return {};
+          const json = await res.json().catch(() => ({}));
+          return json || {};
+        } catch {
+          return {};
+        }
+      })();
+      tenantInfoCache.set(cacheKey, promise);
+      return promise;
+    };
+
+    const fetchRelationMapForTable = async (tableName) => {
+      if (!tableName) return {};
+      const cacheKey = tableName.toLowerCase();
+      if (relationCache[cacheKey]) return relationCache[cacheKey];
+      try {
+        const relRes = await fetch(
+          `/api/tables/${encodeURIComponent(tableName)}/relations`,
+          { credentials: 'include' },
+        );
+        if (!relRes.ok) {
+          relationCache[cacheKey] = {};
+          return relationCache[cacheKey];
+        }
+        const relList = await relRes.json().catch(() => []);
+        if (canceled) return {};
+        const relMap = {};
+        relList.forEach((entry) => {
+          if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
+          const lower = entry.COLUMN_NAME.toLowerCase();
+          relMap[lower] = {
+            table: entry.REFERENCED_TABLE_NAME,
+            column: entry.REFERENCED_COLUMN_NAME,
+          };
+        });
+        relationCache[cacheKey] = relMap;
+        return relMap;
+      } catch {
+        relationCache[cacheKey] = {};
+        return {};
+      }
+    };
+
+    const fetchTableRows = (tableName, tenantInfo) => {
+      if (!tableName) return Promise.resolve([]);
+      const cacheKey = [
+        tableName.toLowerCase(),
+        company ?? '',
+        branch ?? '',
+        department ?? '',
+      ].join('|');
+      if (tableRowsCache.has(cacheKey)) return tableRowsCache.get(cacheKey);
+      const promise = (async () => {
+        const info = tenantInfo || (await fetchTenantInfo(tableName));
+        const isShared = info?.isShared ?? info?.is_shared ?? false;
+        const tenantKeys = getTenantKeyList(info);
+        const perPage = 500;
+        let page = 1;
+        const rows = [];
+        while (!canceled) {
+          const params = new URLSearchParams({ page, perPage });
+          if (!isShared) {
+            if (tenantKeys.includes('company_id') && company != null)
+              params.set('company_id', company);
+            if (tenantKeys.includes('branch_id') && branch != null)
+              params.set('branch_id', branch);
+            if (tenantKeys.includes('department_id') && department != null)
+              params.set('department_id', department);
+          }
+          let res;
+          try {
+            res = await fetch(
+              `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
+              { credentials: 'include' },
+            );
+          } catch (err) {
+            if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
+              referenceLoadErrorTables.add(cacheKey);
+              addToast(
+                t('failed_load_reference_data', 'Failed to load reference data'),
+                'error',
+              );
+            }
+            break;
+          }
+          if (!res.ok) {
+            if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
+              referenceLoadErrorTables.add(cacheKey);
+              addToast(
+                t('failed_load_reference_data', 'Failed to load reference data'),
+                'error',
+              );
+            }
+            break;
+          }
+          const json = await res.json().catch(() => {
+            if (!canceled && !referenceParseErrorTables.has(cacheKey)) {
+              referenceParseErrorTables.add(cacheKey);
+              addToast(
+                t('failed_parse_reference_data', 'Failed to parse reference data'),
+                'error',
+              );
+            }
+            return {};
+          });
+          const pageRows = Array.isArray(json.rows) ? json.rows : [];
+          rows.push(...pageRows);
+          if (
+            pageRows.length < perPage ||
+            rows.length >= (json.count || rows.length)
+          ) {
+            break;
+          }
+          page += 1;
+        }
+        return rows;
+      })();
+      tableRowsCache.set(cacheKey, promise);
+      return promise;
+    };
+
+    const fetchNestedLabelMap = async (nestedRel) => {
+      if (!nestedRel?.table || !nestedRel?.column) return {};
+      const cacheKey = [
+        nestedRel.table.toLowerCase(),
+        nestedRel.column.toLowerCase(),
+        company ?? '',
+        branch ?? '',
+        department ?? '',
+      ].join('|');
+      if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
+
+      const [nestedCfg, nestedTenant] = await Promise.all([
+        fetchDisplayConfig(nestedRel.table),
+        fetchTenantInfo(nestedRel.table),
+      ]);
+      if (canceled) return {};
+
+      const rows = await fetchTableRows(nestedRel.table, nestedTenant);
+      if (canceled) return {};
+
+      const labelMap = {};
+      rows.forEach((row) => {
+        if (!row || typeof row !== 'object') return;
+        const keyMap = {};
+        Object.keys(row || {}).forEach((k) => {
+          keyMap[k.toLowerCase()] = k;
+        });
+        const colKey = keyMap[nestedRel.column.toLowerCase()];
+        if (!colKey) return;
+        const val = row[colKey];
+        if (val === undefined || val === null || val === '') return;
+        const label = buildRelationLabel({
+          row,
+          keyMap,
+          relationColumn: nestedRel.column,
+          cfg: nestedCfg,
+          nestedLookups: {},
+        });
+        const valueKey =
+          typeof val === 'string' || typeof val === 'number' ? String(val) : val;
+        labelMap[valueKey] = label;
+      });
+
+      nestedLabelCache[cacheKey] = labelMap;
+      return labelMap;
+    };
+
+    const loadNestedDisplayLookups = async (tableName, displayFields) => {
+      if (!Array.isArray(displayFields) || displayFields.length === 0) return {};
+      const relationMap = await fetchRelationMapForTable(tableName);
+      if (!relationMap || Object.keys(relationMap).length === 0) return {};
+      const lookupMap = {};
+      for (const field of displayFields) {
+        if (typeof field !== 'string') continue;
+        const lower = field.toLowerCase();
+        const nestedRel = relationMap[lower];
+        if (!nestedRel) continue;
+        const labels = await fetchNestedLabelMap(nestedRel);
+        if (canceled) return {};
+        if (labels && Object.keys(labels).length > 0) {
+          lookupMap[lower] = labels;
+        }
+      }
+      return lookupMap;
+    };
+
+    const loadRelationColumn = async ([col, rel]) => {
+      if (!rel?.table || !rel?.column) return null;
+      const [cfg, tenantInfo] = await Promise.all([
+        fetchDisplayConfig(rel.table),
+        fetchTenantInfo(rel.table),
+      ]);
+      if (canceled) return null;
+
+      const normalizedCfg = {
+        idField: cfg?.idField ?? rel.column,
+        displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
+      };
+
+      const rows = await fetchTableRows(rel.table, tenantInfo);
+      if (canceled) return null;
+
+      const nestedDisplayLookups = await loadNestedDisplayLookups(
+        rel.table,
+        normalizedCfg.displayFields,
+      );
+      if (canceled) return null;
+
+      const optionRows = {};
+      const options = rows.map((row) => {
+        const keyMap = {};
+        Object.keys(row || {}).forEach((k) => {
+          keyMap[k.toLowerCase()] = k;
+        });
+        const valKey = keyMap[rel.column.toLowerCase()];
+        const val = valKey ? row[valKey] : undefined;
+        const label = buildRelationLabel({
+          row,
+          keyMap,
+          relationColumn: rel.column,
+          cfg: normalizedCfg,
+          nestedLookups: nestedDisplayLookups,
+        });
+        if (val !== undefined) {
+          optionRows[val] = row;
+        }
+        return {
+          value: val,
+          label,
+        };
+      });
+
+      return {
+        column: col,
+        config: {
+          table: rel.table,
+          column: rel.column,
+          idField: normalizedCfg.idField,
+          displayFields: normalizedCfg.displayFields,
+        },
+        options,
+        rows: optionRows,
+      };
+    };
+
     async function load() {
       try {
         let rels = [];
@@ -1137,10 +1519,12 @@ const TableManager = forwardRef(function TableManager({
         }
         if (relRes?.ok) {
           rels = await relRes.json().catch(() => {
-            addToast(
-              t('failed_parse_table_relations', 'Failed to parse table relations'),
-              'error',
-            );
+            if (!canceled) {
+              addToast(
+                t('failed_parse_table_relations', 'Failed to parse table relations'),
+                'error',
+              );
+            }
             return [];
           });
         } else {
@@ -1158,385 +1542,75 @@ const TableManager = forwardRef(function TableManager({
             /* ignore */
           }
           if (customList.length === 0) {
-            addToast(
-              t('failed_load_table_relations', 'Failed to load table relations'),
-              'error',
-            );
+            if (!canceled) {
+              addToast(
+                t('failed_load_table_relations', 'Failed to load table relations'),
+                'error',
+              );
+            }
             return;
           }
           rels = customList;
         }
         if (canceled) return;
-        const map = {};
+
+        const relationMap = {};
         rels.forEach((r) => {
           const key = resolveCanonicalKey(r.COLUMN_NAME);
-          map[key] = {
+          relationMap[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
           };
         });
-        setRelations(map);
+        setRelations(relationMap);
+
+        const entries = Object.entries(relationMap);
+        if (entries.length === 0) {
+          setRefData({});
+          setRefRows({});
+          setRelationConfigs({});
+          return;
+        }
+
+        const results = await Promise.allSettled(entries.map(loadRelationColumn));
+        if (canceled) return;
+
         const dataMap = {};
         const cfgMap = {};
         const rowMap = {};
-        const relationCache = {};
-        const nestedLabelCache = {};
-
-        const buildRelationLabel = ({
-          row,
-          keyMap,
-          relationColumn,
-          cfg,
-          nestedLookups,
-        }) => {
-          if (!row || !keyMap || !relationColumn) {
-            return '';
+        results.forEach((result) => {
+          if (result.status !== 'fulfilled' || !result.value) return;
+          const { column, config, options, rows: columnRows } = result.value;
+          if (Array.isArray(options)) {
+            dataMap[column] = options;
           }
-          const lowerColumn = relationColumn.toLowerCase();
-          const valueKey = keyMap[lowerColumn];
-          const value = valueKey ? row[valueKey] : undefined;
-
-          const idFieldName = cfg?.idField ?? relationColumn;
-          const idKey =
-            typeof idFieldName === 'string'
-              ? keyMap[idFieldName.toLowerCase()]
-              : undefined;
-          const identifier = idKey ? row[idKey] : undefined;
-
-          const parts = [];
-          if (identifier !== undefined && identifier !== null && identifier !== '') {
-            parts.push(identifier);
-          } else if (value !== undefined && value !== null && value !== '') {
-            parts.push(value);
+          if (columnRows && Object.keys(columnRows).length > 0) {
+            rowMap[column] = columnRows;
           }
-
-          let displayFields = [];
-          if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
-            displayFields = cfg.displayFields;
-          } else {
-            displayFields = Object.keys(row)
-              .filter((f) => f !== relationColumn)
-              .slice(0, 1);
+          if (config) {
+            cfgMap[column] = config;
           }
+        });
 
-          displayFields.forEach((field) => {
-            if (typeof field !== 'string') return;
-            const rk = keyMap[field.toLowerCase()];
-            if (!rk) return;
-            let displayValue = row[rk];
-            if (displayValue === undefined || displayValue === null || displayValue === '')
-              return;
-            const lookup = nestedLookups?.[field.toLowerCase()];
-            if (lookup) {
-              const mapped =
-                lookup[displayValue] !== undefined
-                  ? lookup[displayValue]
-                  : lookup[String(displayValue)];
-              if (mapped !== undefined) {
-                displayValue = mapped;
-              }
-            }
-            parts.push(displayValue);
-          });
-
-          const normalizedParts = parts
-            .filter((part) => part !== undefined && part !== null && part !== '')
-            .map((part) => (typeof part === 'string' ? part : String(part)));
-          if (normalizedParts.length > 0) {
-            return normalizedParts.join(' - ');
-          }
-          const fallback = Object.values(row)
-            .filter((v) => v !== undefined && v !== null && v !== '')
-            .slice(0, 2)
-            .map((v) => (typeof v === 'string' ? v : String(v)));
-          return fallback.join(' - ');
-        };
-
-        const fetchRelationMapForTable = async (tableName) => {
-          if (!tableName) return {};
-          const cacheKey = tableName.toLowerCase();
-          if (relationCache[cacheKey]) return relationCache[cacheKey];
-          try {
-            const relRes = await fetch(
-              `/api/tables/${encodeURIComponent(tableName)}/relations`,
-              { credentials: 'include' },
-            );
-            if (!relRes.ok) {
-              relationCache[cacheKey] = {};
-              return relationCache[cacheKey];
-            }
-            const relList = await relRes.json().catch(() => []);
-            if (canceled) return {};
-            const relMap = {};
-            relList.forEach((entry) => {
-              if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
-              const lower = entry.COLUMN_NAME.toLowerCase();
-              relMap[lower] = {
-                table: entry.REFERENCED_TABLE_NAME,
-                column: entry.REFERENCED_COLUMN_NAME,
-              };
-            });
-            relationCache[cacheKey] = relMap;
-            return relMap;
-          } catch {
-            relationCache[cacheKey] = {};
-            return {};
-          }
-        };
-
-        const fetchNestedLabelMap = async (nestedRel) => {
-          if (!nestedRel?.table || !nestedRel?.column) return {};
-          const cacheKey = `${nestedRel.table.toLowerCase()}|${nestedRel.column.toLowerCase()}`;
-          if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
-
-          let nestedCfg = null;
-          try {
-            const cfgRes = await fetch(
-              `/api/display_fields?table=${encodeURIComponent(nestedRel.table)}`,
-              { credentials: 'include' },
-            );
-            if (cfgRes.ok) {
-              nestedCfg = await cfgRes.json().catch(() => null);
-            }
-          } catch {
-            nestedCfg = null;
-          }
-
-          let nestedTenant = null;
-          try {
-            const ttRes = await fetch(
-              `/api/tenant_tables/${encodeURIComponent(nestedRel.table)}`,
-              { credentials: 'include' },
-            );
-            if (ttRes.ok) {
-              nestedTenant = await ttRes.json().catch(() => null);
-            }
-          } catch {
-            /* ignore tenant table fetch errors */
-          }
-          const nestedIsShared =
-            nestedTenant?.isShared ?? nestedTenant?.is_shared ?? false;
-          const nestedKeys = getTenantKeyList(nestedTenant);
-
-          const perPage = 500;
-          let page = 1;
-          let rows = [];
-          while (true) {
-            if (canceled) {
-              nestedLabelCache[cacheKey] = {};
-              return {};
-            }
-            const params = new URLSearchParams({ page, perPage });
-            if (!nestedIsShared) {
-              if (nestedKeys.includes('company_id') && company != null)
-                params.set('company_id', company);
-              if (nestedKeys.includes('branch_id') && branch != null)
-                params.set('branch_id', branch);
-              if (nestedKeys.includes('department_id') && department != null)
-                params.set('department_id', department);
-            }
-            const refRes = await fetch(
-              `/api/tables/${encodeURIComponent(nestedRel.table)}?${params.toString()}`,
-              { credentials: 'include' },
-            );
-            if (!refRes.ok) break;
-            const json = await refRes.json().catch(() => ({}));
-            if (!Array.isArray(json.rows)) break;
-            rows = rows.concat(json.rows);
-            if (rows.length >= (json.count || rows.length) || json.rows.length < perPage) {
-              break;
-            }
-            page += 1;
-          }
-
-          const labelMap = {};
-          rows.forEach((row) => {
-            const keyMap = {};
-            Object.keys(row || {}).forEach((k) => {
-              keyMap[k.toLowerCase()] = k;
-            });
-            const colKey = keyMap[nestedRel.column.toLowerCase()];
-            if (!colKey) return;
-            const val = row[colKey];
-            if (val === undefined || val === null || val === '') return;
-            const label = buildRelationLabel({
-              row,
-              keyMap,
-              relationColumn: nestedRel.column,
-              cfg: nestedCfg,
-              nestedLookups: {},
-            });
-            const valueKey = typeof val === 'string' || typeof val === 'number' ? String(val) : val;
-            labelMap[valueKey] = label;
-          });
-
-          nestedLabelCache[cacheKey] = labelMap;
-          return labelMap;
-        };
-
-        const loadNestedDisplayLookups = async (tableName, displayFields) => {
-          if (!Array.isArray(displayFields) || displayFields.length === 0) return {};
-          const relationMap = await fetchRelationMapForTable(tableName);
-          if (!relationMap || Object.keys(relationMap).length === 0) return {};
-          const lookupMap = {};
-          for (const field of displayFields) {
-            if (typeof field !== 'string') continue;
-            const lower = field.toLowerCase();
-            const nestedRel = relationMap[lower];
-            if (!nestedRel) continue;
-            const labels = await fetchNestedLabelMap(nestedRel);
-            if (canceled) return {};
-            if (labels && Object.keys(labels).length > 0) {
-              lookupMap[lower] = labels;
-            }
-          }
-          return lookupMap;
-        };
-
-        for (const [col, rel] of Object.entries(map)) {
-          try {
-            let page = 1;
-            const perPage = 500;
-            let rows = [];
-
-            const cfgRes = await fetch(
-              `/api/display_fields?table=${encodeURIComponent(rel.table)}`,
-              { credentials: 'include' },
-            );
-            let cfg = null;
-            if (cfgRes.ok) {
-              try {
-                cfg = await cfgRes.json();
-              } catch {
-                addToast(
-                  t('failed_parse_display_fields', 'Failed to parse display fields'),
-                  'error',
-                );
-                cfg = null;
-              }
-            } else {
-              addToast(
-                t('failed_load_display_fields', 'Failed to load display fields'),
-                'error',
-              );
-            }
-
-            let tenantInfo = null;
-            try {
-              const ttRes = await fetch(
-                `/api/tenant_tables/${encodeURIComponent(rel.table)}`,
-                { credentials: 'include' },
-              );
-              if (ttRes.ok) {
-                tenantInfo = await ttRes.json().catch(() => null);
-              }
-            } catch {
-              /* ignore tenant table fetch errors */
-            }
-            const isShared =
-              tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
-            const tenantKeys = getTenantKeyList(tenantInfo);
-
-            while (true) {
-              const params = new URLSearchParams({ page, perPage });
-              if (!isShared) {
-                if (tenantKeys.includes('company_id') && company != null)
-                  params.set('company_id', company);
-                if (tenantKeys.includes('branch_id') && branch != null)
-                  params.set('branch_id', branch);
-                if (tenantKeys.includes('department_id') && department != null)
-                  params.set('department_id', department);
-              }
-              const refRes = await fetch(
-                `/api/tables/${encodeURIComponent(rel.table)}?${params.toString()}`,
-                { credentials: 'include' },
-              );
-              if (!refRes.ok) {
-                addToast(
-                  t('failed_load_reference_data', 'Failed to load reference data'),
-                  'error',
-                );
-                break;
-              }
-              const json = await refRes.json().catch(() => {
-                addToast(
-                  t('failed_parse_reference_data', 'Failed to parse reference data'),
-                  'error',
-                );
-                return {};
-              });
-              if (Array.isArray(json.rows)) {
-                rows = rows.concat(json.rows);
-                if (
-                  rows.length >= (json.count || rows.length) ||
-                  json.rows.length < perPage
-                ) {
-                  break;
-                }
-              } else {
-                break;
-              }
-              page += 1;
-            }
-            cfgMap[col] = {
-              table: rel.table,
-              column: rel.column,
-              idField: cfg?.idField ?? rel.column,
-              displayFields: cfg?.displayFields || [],
-            };
-            if (rows.length > 0) {
-              rowMap[col] = {};
-              const nestedDisplayLookups = await loadNestedDisplayLookups(
-                rel.table,
-                cfg?.displayFields || [],
-              );
-              if (canceled) return;
-              dataMap[col] = rows.map((row) => {
-                const keyMap = {};
-                Object.keys(row).forEach((k) => {
-                  keyMap[k.toLowerCase()] = k;
-                });
-                const valKey = keyMap[rel.column.toLowerCase()];
-                const val = valKey ? row[valKey] : undefined;
-                const label = buildRelationLabel({
-                  row,
-                  keyMap,
-                  relationColumn: rel.column,
-                  cfg,
-                  nestedLookups: nestedDisplayLookups,
-                });
-
-                if (val !== undefined) {
-                  rowMap[col][val] = row;
-                }
-                return {
-                  value: val,
-                  label,
-                };
-              });
-            }
-          } catch {
-            /* ignore */
-          }
-        }
-        if (!canceled) {
-          setRefData(dataMap);
-          setRefRows(rowMap);
-          const remap = {};
-          Object.entries(cfgMap).forEach(([k, v]) => {
-            const key = resolveCanonicalKey(k);
-            remap[key] = v;
-          });
-          setRelationConfigs(remap);
-        }
+        setRefData(dataMap);
+        setRefRows(rowMap);
+        const remap = {};
+        Object.entries(cfgMap).forEach(([k, v]) => {
+          const key = resolveCanonicalKey(k);
+          remap[key] = v;
+        });
+        setRelationConfigs(remap);
       } catch (err) {
         console.error('Failed to load table relations', err);
-        addToast(
-          t('failed_load_table_relations', 'Failed to load table relations'),
-          'error',
-        );
+        if (!canceled) {
+          addToast(
+            t('failed_load_table_relations', 'Failed to load table relations'),
+            'error',
+          );
+        }
       }
     }
+
     load();
     return () => {
       canceled = true;
