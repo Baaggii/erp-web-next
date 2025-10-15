@@ -906,17 +906,31 @@ const RowFormModal = function RowFormModal({
     fontSize: `${inputFontSize}px`,
   };
   const labelStyle = { fontSize: `${labelFontSize}px` };
-  const inputStyle = {
+  const baseBoxStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
+    display: 'block',
+  };
+  const inputStyle = {
+    ...baseBoxStyle,
+    width: `${boxWidth}px`,
     height: isNarrow ? '44px' : `${boxHeight}px`,
     maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
-    overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    textOverflow: 'ellipsis',
+    whiteSpace: 'normal',
+  };
+  const readonlyBoxStyle = {
+    ...baseBoxStyle,
+    width: '100%',
+    height: 'auto',
+    minHeight: isNarrow ? 'auto' : `${boxHeight}px`,
+    maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
+    whiteSpace: 'pre-wrap',
+    overflowY: 'auto',
+    overflowX: 'hidden',
   };
 
   async function handleKeyDown(e, col) {
@@ -1869,34 +1883,26 @@ const RowFormModal = function RowFormModal({
         display = formatNumericValue(c, display);
       }
       if (display === null || display === undefined) display = '';
-      const readonlyStyle = {
-        ...inputStyle,
-        width: 'fit-content',
-        minWidth: `${boxWidth}px`,
-        maxWidth: `${boxMaxWidth}px`,
-      };
       const content = (
-        <div className="flex items-center space-x-1">
-          <div
-            className="border rounded bg-gray-100 px-2 py-1"
-            style={readonlyStyle}
-            ref={(el) => (readonlyRefs.current[c] = el)}
-          >
-            {display}
-          </div>
+        <div
+          className="border rounded bg-gray-100 px-2 py-1"
+          style={readonlyBoxStyle}
+          ref={(el) => (readonlyRefs.current[c] = el)}
+        >
+          {display}
         </div>
       );
-      const wrapped = <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
-      if (!withLabel) return wrapped;
+      if (!withLabel) return <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
       return (
         <TooltipWrapper key={c} title={tip}>
           <div className={fitted ? 'mb-1' : 'mb-3'}>
-            <div className="flex items-center space-x-1">
-              <label className="font-medium" style={labelStyle}>
-                {labels[c] || c}
-              </label>
-              {content}
-            </div>
+            <label className="block mb-1 font-medium" style={labelStyle}>
+              {labels[c] || c}
+              {requiredFields.includes(c) && (
+                <span className="text-red-500">*</span>
+              )}
+            </label>
+            {content}
           </div>
         </TooltipWrapper>
       );
