@@ -101,7 +101,6 @@ export default function Reports() {
   const endDateRef = useRef(null);
   const manualInputRefs = useRef({});
   const runButtonRef = useRef(null);
-  const [lockPreviewState, setLockPreviewState] = useState({ status: 'idle' });
   const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
   const procMap = useHeaderMappings(procNames);
   useEffect(() => {
@@ -118,97 +117,6 @@ export default function Reports() {
       return '';
     }
   }, [result]);
-
-  const normalizeLockCandidates = useCallback(
-    (list) => {
-      return list
-        .map((candidate) => {
-          if (!candidate || typeof candidate !== 'object') return null;
-          const tableName = getCandidateTable(candidate);
-          const rawId =
-            candidate.recordId ??
-            candidate.record_id ??
-            candidate.id ??
-            candidate.recordID;
-          if (!tableName || rawId === null || rawId === undefined) {
-            return null;
-          }
-          const recordId = String(rawId);
-          const key = candidate.key ?? `${tableName}#${recordId}`;
-          const rawSnapshot =
-            resolveSnapshotSource(candidate) ||
-            (candidate.snapshot &&
-            typeof candidate.snapshot === 'object' &&
-            !Array.isArray(candidate.snapshot)
-              ? candidate.snapshot
-              : null);
-          const {
-            row: normalizedSnapshot,
-            columns: derivedColumns,
-            fieldTypeMap,
-          } = normalizeSnapshotRecord(rawSnapshot || {});
-          let snapshotColumns = Array.isArray(candidate.snapshotColumns)
-            ? candidate.snapshotColumns
-            : Array.isArray(candidate.snapshot_columns)
-            ? candidate.snapshot_columns
-            : Array.isArray(candidate.columns)
-            ? candidate.columns
-            : [];
-          snapshotColumns = snapshotColumns
-            .map((col) => (col === null || col === undefined ? '' : String(col)))
-            .filter(Boolean);
-          if (!snapshotColumns.length) {
-            snapshotColumns = derivedColumns;
-          }
-          const snapshotFieldTypeMap =
-            candidate.snapshotFieldTypeMap ||
-            candidate.snapshot_field_type_map ||
-            candidate.fieldTypeMap ||
-            candidate.field_type_map ||
-            fieldTypeMap ||
-            {};
-          const next = {
-            ...candidate,
-            tableName,
-            recordId,
-            key,
-            snapshot: normalizedSnapshot,
-            snapshotColumns,
-            snapshotFieldTypeMap,
-          };
-          if (candidate.table === undefined) next.table = tableName;
-          return next;
-        })
-        .filter(Boolean);
-    },
-    [getCandidateTable],
-  );
-
-  const fetchLockCandidatesFor = useCallback(
-    async (name, params) => {
-      if (!name) throw new Error('Procedure name is required');
-      const payloadParams = Array.isArray(params) ? params : [];
-      const query = new URLSearchParams();
-      if (branch) query.set('branchId', branch);
-      if (department) query.set('departmentId', department);
-      const res = await fetch(
-        `/api/procedures/locks${query.toString() ? `?${query.toString()}` : ''}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ name, params: payloadParams }),
-        },
-      );
-      if (!res.ok) {
-        throw new Error('Failed to load lock candidates');
-      }
-      const data = await res.json().catch(() => ({}));
-      const list = Array.isArray(data.lockCandidates) ? data.lockCandidates : [];
-      return normalizeLockCandidates(list);
-    },
-    [branch, department, normalizeLockCandidates],
-  );
 
   const getCandidateTable = useCallback((candidate) => {
     if (!candidate || typeof candidate !== 'object') return '';
@@ -342,11 +250,92 @@ export default function Reports() {
     async function fetchLockCandidates() {
       setLockFetchPending(true);
       setLockFetchError('');
+      const params = new URLSearchParams();
+      if (branch) params.set('branchId', branch);
+      if (department) params.set('departmentId', department);
       try {
-        const normalized = await fetchLockCandidatesFor(
-          result.name,
-          Array.isArray(result.orderedParams) ? result.orderedParams : [],
+        const res = await fetch(
+          `/api/procedures/locks${
+            params.toString() ? `?${params.toString()}` : ''
+          }`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              name: result.name,
+              params: Array.isArray(result.orderedParams)
+                ? result.orderedParams
+                : [],
+            }),
+          },
         );
+        if (!res.ok) {
+          throw new Error('Failed to load lock candidates');
+        }
+        const data = await res.json().catch(() => ({}));
+        const list = Array.isArray(data.lockCandidates)
+          ? data.lockCandidates
+          : [];
+        const normalized = list
+          .map((candidate) => {
+            if (!candidate || typeof candidate !== 'object') return null;
+            const tableName = getCandidateTable(candidate);
+            const rawId =
+              candidate.recordId ??
+              candidate.record_id ??
+              candidate.id ??
+              candidate.recordID;
+            if (!tableName || rawId === null || rawId === undefined) {
+              return null;
+            }
+            const recordId = String(rawId);
+            const key = candidate.key ?? `${tableName}#${recordId}`;
+            const rawSnapshot =
+              resolveSnapshotSource(candidate) ||
+              (candidate.snapshot &&
+              typeof candidate.snapshot === 'object' &&
+              !Array.isArray(candidate.snapshot)
+                ? candidate.snapshot
+                : null);
+            const {
+              row: normalizedSnapshot,
+              columns: derivedColumns,
+              fieldTypeMap,
+            } = normalizeSnapshotRecord(rawSnapshot || {});
+            let snapshotColumns = Array.isArray(candidate.snapshotColumns)
+              ? candidate.snapshotColumns
+              : Array.isArray(candidate.snapshot_columns)
+              ? candidate.snapshot_columns
+              : Array.isArray(candidate.columns)
+              ? candidate.columns
+              : [];
+            snapshotColumns = snapshotColumns
+              .map((col) => (col === null || col === undefined ? '' : String(col)))
+              .filter(Boolean);
+            if (!snapshotColumns.length) {
+              snapshotColumns = derivedColumns;
+            }
+            const snapshotFieldTypeMap =
+              candidate.snapshotFieldTypeMap ||
+              candidate.snapshot_field_type_map ||
+              candidate.fieldTypeMap ||
+              candidate.field_type_map ||
+              fieldTypeMap ||
+              {};
+            const next = {
+              ...candidate,
+              tableName,
+              recordId,
+              key,
+              snapshot: normalizedSnapshot,
+              snapshotColumns,
+              snapshotFieldTypeMap,
+            };
+            if (candidate.table === undefined) next.table = tableName;
+            return next;
+          })
+          .filter(Boolean);
         if (cancelled) return;
         setLockCandidates(normalized);
         const initialSelections = {};
@@ -381,7 +370,8 @@ export default function Reports() {
   }, [
     result,
     lockParamSignature,
-    fetchLockCandidatesFor,
+    branch,
+    department,
     getCandidateKey,
     getCandidateTable,
   ]);
@@ -487,10 +477,6 @@ export default function Reports() {
     () => finalParams.every((v) => v !== null && v !== ''),
     [finalParams],
   );
-
-  useEffect(() => {
-    setLockPreviewState({ status: 'idle' });
-  }, [selectedProc, finalParams]);
 
   function handleParameterKeyDown(event, currentRef) {
     if (event.key !== 'Enter') return;
@@ -598,7 +584,6 @@ export default function Reports() {
         setLockFetchError('');
         setLockFetchPending(false);
         setLockAcknowledged(false);
-        setLockPreviewState({ status: 'idle' });
         setResult({
           name: selectedProc,
           params: paramMap,
@@ -652,62 +637,6 @@ export default function Reports() {
       0,
     );
   }, [lockCandidates]);
-
-  const lockPreviewSummary = useMemo(() => {
-    if (lockPreviewState.status !== 'ready') return '';
-    const total = Number(lockPreviewState.total) || 0;
-    const eligible = Number(lockPreviewState.eligible) || 0;
-    const locked = Number(lockPreviewState.locked) || 0;
-    if (!total) {
-      return 'No lock candidates would be generated for these parameters.';
-    }
-    if (eligible > 0 && locked > 0) {
-      return `Report would produce ${eligible} lock candidate${
-        eligible === 1 ? '' : 's'
-      } with ${locked} already locked and unavailable.`;
-    }
-    if (eligible > 0) {
-      return `Report would produce ${eligible} lock candidate${
-        eligible === 1 ? '' : 's'
-      } available for locking.`;
-    }
-    return 'Only locked transactions would be returned; none are eligible for locking.';
-  }, [lockPreviewState]);
-
-  const previewLockCandidates = useCallback(async () => {
-    if (!selectedProc) return;
-    if (!allParamsProvided) {
-      addToast('Missing parameters', 'error');
-      return;
-    }
-    setLockPreviewState({ status: 'loading' });
-    try {
-      const normalized = await fetchLockCandidatesFor(selectedProc, finalParams);
-      const total = normalized.length;
-      const locked = normalized.reduce(
-        (count, candidate) => (candidate?.locked ? count + 1 : count),
-        0,
-      );
-      const eligible = total - locked;
-      setLockPreviewState({
-        status: 'ready',
-        total,
-        locked,
-        eligible,
-      });
-    } catch (err) {
-      setLockPreviewState({
-        status: 'error',
-        message: err?.message || 'Failed to load lock candidates',
-      });
-    }
-  }, [
-    selectedProc,
-    allParamsProvided,
-    fetchLockCandidatesFor,
-    finalParams,
-    addToast,
-  ]);
 
   const allLocksSelected = useMemo(() => {
     if (!Array.isArray(lockCandidates) || lockCandidates.length === 0) {
@@ -2226,8 +2155,7 @@ export default function Reports() {
           <span style={{ marginLeft: '0.5rem' }}>Тайлан тохируулаагүй байна.</span>
         )}
         {selectedProc && (
-          <>
-            <div style={{ marginTop: '0.5rem' }}>
+          <div style={{ marginTop: '0.5rem' }}>
             {hasDateParams && (
               <select
                 value={datePreset}
@@ -2298,33 +2226,7 @@ export default function Reports() {
             >
               Run
             </button>
-              {canRequestApproval && (
-                <button
-                  type="button"
-                  onClick={previewLockCandidates}
-                  style={{ marginLeft: '0.5rem' }}
-                  disabled={
-                    !allParamsProvided || lockPreviewState.status === 'loading'
-                  }
-                >
-                  Check lock candidates
-                </button>
-              )}
-            </div>
-            {canRequestApproval && lockPreviewState.status !== 'idle' && (
-              <div style={{ marginTop: '0.5rem' }}>
-                {lockPreviewState.status === 'loading' ? (
-                  <span>Checking lock candidates…</span>
-                ) : lockPreviewState.status === 'error' ? (
-                  <span style={{ color: 'red' }}>
-                    {lockPreviewState.message || 'Failed to load lock candidates'}
-                  </span>
-                ) : (
-                  <span>{lockPreviewSummary}</span>
-                )}
-              </div>
-            )}
-          </>
+          </div>
         )}
       </div>
       {showApprovalControls && (
