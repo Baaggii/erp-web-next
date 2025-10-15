@@ -60,6 +60,7 @@ const RowFormModal = function RowFormModal({
   boxMaxHeight,
   onNextForm = null,
   columnCaseMap = {},
+  numericScaleMap = {},
   viewSource = {},
   viewDisplays = {},
   viewColumns = {},
@@ -151,6 +152,10 @@ const RowFormModal = function RowFormModal({
     () => JSON.stringify(columnCaseMap || {}),
     [columnCaseMap],
   );
+  const numericScaleMapKey = React.useMemo(
+    () => JSON.stringify(numericScaleMap || {}),
+    [numericScaleMap],
+  );
   const viewSourceKey = React.useMemo(() => JSON.stringify(viewSource || {}), [viewSource]);
   const relationConfigsKey = React.useMemo(
     () => JSON.stringify(relationConfigs || {}),
@@ -159,6 +164,45 @@ const RowFormModal = function RowFormModal({
   const tableDisplayFieldsKey = React.useMemo(
     () => JSON.stringify(tableDisplayFields || {}),
     [tableDisplayFields],
+  );
+
+  const numericScaleLookup = React.useMemo(() => {
+    const map = {};
+    Object.entries(numericScaleMap || {}).forEach(([key, value]) => {
+      if (key == null) return;
+      const lower = String(key).toLowerCase();
+      const scale = Number(value);
+      if (!Number.isNaN(scale)) {
+        map[lower] = scale;
+      }
+    });
+    return map;
+  }, [numericScaleMapKey]);
+
+  const getNumericScale = React.useCallback(
+    (col) => {
+      if (!col) return null;
+      const lower = String(col).toLowerCase();
+      return numericScaleLookup[lower] ?? null;
+    },
+    [numericScaleLookup],
+  );
+
+  const formatNumericValue = React.useCallback(
+    (col, value) => {
+      if (value === null || value === undefined || value === '') return value === 0 ? '0' : '';
+      if (typeof value === 'object') {
+        if ('value' in value) return formatNumericValue(col, value.value);
+        return value;
+      }
+      const scale = getNumericScale(col);
+      if (scale === null) return String(value);
+      const num =
+        typeof value === 'number' ? value : Number(normalizeNumberInput(String(value)));
+      if (!Number.isFinite(num)) return String(value);
+      return num.toFixed(scale);
+    },
+    [getNumericScale],
   );
 
   const viewSourceMap = React.useMemo(() => {
@@ -364,11 +408,19 @@ const RowFormModal = function RowFormModal({
       const rowValue = row ? getRowValueCaseInsensitive(row, c) : undefined;
       const sourceValue =
         rowValue !== undefined ? rowValue : defaultValues[c];
-      const raw = String(sourceValue ?? '');
-      let val = normalizeDateInput(raw, placeholder);
       const missing =
         !row || rowValue === undefined || rowValue === '';
-      if (missing && !val && dateField.includes(c)) {
+      let val;
+      if (placeholder) {
+        val = normalizeDateInput(String(sourceValue ?? ''), placeholder);
+      } else if (typ === 'number') {
+        val = formatNumericValue(c, sourceValue);
+      } else if (sourceValue === null || sourceValue === undefined) {
+        val = '';
+      } else {
+        val = String(sourceValue);
+      }
+      if (missing && (!val || val === '') && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
         else val = formatTimestamp(now);
@@ -381,6 +433,15 @@ const RowFormModal = function RowFormModal({
           val = department;
         else if (companyIdSet.has(c) && company !== undefined)
           val = company;
+      }
+      if (typ === 'number') {
+        val = formatNumericValue(c, val);
+      } else if (placeholder) {
+        val = normalizeDateInput(String(val ?? ''), placeholder);
+      } else if (val === null || val === undefined) {
+        val = '';
+      } else {
+        val = String(val);
       }
       init[c] = val;
     });
@@ -768,11 +829,19 @@ const RowFormModal = function RowFormModal({
       const rowValue = row ? getRowValueCaseInsensitive(row, c) : undefined;
       const sourceValue =
         rowValue !== undefined ? rowValue : defaultValues[c];
-      const raw = String(sourceValue ?? '');
-      let v = normalizeDateInput(raw, placeholders[c]);
       const missing =
         !row || rowValue === undefined || rowValue === '';
-      if (missing && !v && dateField.includes(c)) {
+      let v;
+      if (placeholders[c]) {
+        v = normalizeDateInput(String(sourceValue ?? ''), placeholders[c]);
+      } else if (fieldTypeMap[c] === 'number') {
+        v = formatNumericValue(c, sourceValue);
+      } else if (sourceValue === null || sourceValue === undefined) {
+        v = '';
+      } else {
+        v = String(sourceValue);
+      }
+      if (missing && (!v || v === '') && dateField.includes(c)) {
         const now = new Date();
         if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
         else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
@@ -786,6 +855,15 @@ const RowFormModal = function RowFormModal({
           v = department;
         else if (companyIdSet.has(c) && company !== undefined)
           v = company;
+      }
+      if (fieldTypeMap[c] === 'number') {
+        v = formatNumericValue(c, v);
+      } else if (placeholders[c]) {
+        v = normalizeDateInput(String(v ?? ''), placeholders[c]);
+      } else if (v === null || v === undefined) {
+        v = '';
+      } else {
+        v = String(v);
       }
       vals[c] = v;
     });
@@ -808,6 +886,8 @@ const RowFormModal = function RowFormModal({
     departmentIdSet,
     companyIdSet,
     setFormValuesWithGenerated,
+    fieldTypeMap,
+    formatNumericValue,
   ]);
 
   function resizeInputs() {
@@ -874,17 +954,31 @@ const RowFormModal = function RowFormModal({
     fontSize: `${inputFontSize}px`,
   };
   const labelStyle = { fontSize: `${labelFontSize}px` };
-  const inputStyle = {
+  const baseBoxStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
+    display: 'block',
+  };
+  const inputStyle = {
+    ...baseBoxStyle,
+    width: `${boxWidth}px`,
     height: isNarrow ? '44px' : `${boxHeight}px`,
     maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
-    overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    textOverflow: 'ellipsis',
+    whiteSpace: 'normal',
+  };
+  const readonlyBoxStyle = {
+    ...baseBoxStyle,
+    width: '100%',
+    height: 'auto',
+    minHeight: isNarrow ? 'auto' : `${boxHeight}px`,
+    maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
+    whiteSpace: 'pre-wrap',
+    overflowY: 'auto',
+    overflowX: 'hidden',
   };
 
   async function handleKeyDown(e, col) {
@@ -1762,6 +1856,14 @@ const RowFormModal = function RowFormModal({
     const tip = t(c.toLowerCase(), { ns: 'tooltip', defaultValue: labels[c] || c });
     const formVisible =
       (inline && visible) || (typeof document !== 'undefined' && !document.hidden);
+    const numericScale = getNumericScale(c);
+    const numericStep =
+      numericScale === null
+        ? undefined
+        : numericScale <= 0
+        ? '1'
+        : (1 / 10 ** numericScale).toFixed(numericScale);
+    const isNumericField = fieldTypeMap[c] === 'number';
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
@@ -1825,34 +1927,30 @@ const RowFormModal = function RowFormModal({
         });
         display = parts.join(' - ');
       }
-      const readonlyStyle = {
-        ...inputStyle,
-        width: 'fit-content',
-        minWidth: `${boxWidth}px`,
-        maxWidth: `${boxMaxWidth}px`,
-      };
+      if (isNumericField && display !== undefined && display !== null && display !== '') {
+        display = formatNumericValue(c, display);
+      }
+      if (display === null || display === undefined) display = '';
       const content = (
-        <div className="flex items-center space-x-1">
-          <div
-            className="border rounded bg-gray-100 px-2 py-1"
-            style={readonlyStyle}
-            ref={(el) => (readonlyRefs.current[c] = el)}
-          >
-            {display}
-          </div>
+        <div
+          className="border rounded bg-gray-100 px-2 py-1"
+          style={readonlyBoxStyle}
+          ref={(el) => (readonlyRefs.current[c] = el)}
+        >
+          {display}
         </div>
       );
-      const wrapped = <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
-      if (!withLabel) return wrapped;
+      if (!withLabel) return <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
       return (
         <TooltipWrapper key={c} title={tip}>
           <div className={fitted ? 'mb-1' : 'mb-3'}>
-            <div className="flex items-center space-x-1">
-              <label className="font-medium" style={labelStyle}>
-                {labels[c] || c}
-              </label>
-              {content}
-            </div>
+            <label className="block mb-1 font-medium" style={labelStyle}>
+              {labels[c] || c}
+              {requiredFields.includes(c) && (
+                <span className="text-red-500">*</span>
+              )}
+            </label>
+            {content}
           </div>
         </TooltipWrapper>
       );
@@ -2027,6 +2125,7 @@ const RowFormModal = function RowFormModal({
             ? 'decimal'
             : undefined;
         })()}
+        step={isNumericField && numericStep ? numericStep : undefined}
         placeholder={placeholders[c] || ''}
         value={
           fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
@@ -2045,6 +2144,16 @@ const RowFormModal = function RowFormModal({
         onFocus={(e) => {
           e.target.select();
           handleFocusField(c);
+        }}
+        onBlur={(e) => {
+          if (!isNumericField) return;
+          const formatted = formatNumericValue(c, e.target.value);
+          if (typeof formatted !== 'string' || formatted === e.target.value) return;
+          setFormValuesWithGenerated((prev) => {
+            if (prev[c] === formatted) return prev;
+            return { ...prev, [c]: formatted };
+          });
+          e.target.value = formatted;
         }}
         disabled={disabled}
         className={inputClass}
@@ -2095,6 +2204,7 @@ const RowFormModal = function RowFormModal({
         viewDisplaysKey,
         viewColumnsKey,
         columnCaseMapKey,
+        numericScaleMapKey,
       ].join('|');
       return (
         <div className="mb-4">
@@ -2121,6 +2231,7 @@ const RowFormModal = function RowFormModal({
             branch={branch}
             department={department}
             columnCaseMap={columnCaseMap}
+            numericScaleMap={numericScaleMap}
             tableName={table}
             imagenameFields={imagenameField}
             imageIdField={imageIdField}

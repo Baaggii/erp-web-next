@@ -16,7 +16,7 @@ import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
-import { syncCalcFields } from '../utils/syncCalcFields.js';
+import { syncCalcFields, normalizeCalcFieldConfig } from '../utils/syncCalcFields.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
@@ -116,6 +116,22 @@ function compareCellValues(actualContainer, expectedContainer, field) {
   return null;
 }
 
+function getCalcFieldCells(map) {
+  if (!map || typeof map !== 'object') return [];
+  if (Array.isArray(map.__normalizedCalcCells)) {
+    return map.__normalizedCalcCells;
+  }
+  const rawCells = Array.isArray(map?.cells) ? map.cells : [];
+  return rawCells.filter(
+    (cell) =>
+      cell &&
+      typeof cell.table === 'string' &&
+      cell.table &&
+      typeof cell.field === 'string' &&
+      cell.field,
+  );
+}
+
 export function findCalcFieldMismatch(data, calcFields) {
   if (!Array.isArray(calcFields) || calcFields.length === 0) return null;
 
@@ -123,16 +139,7 @@ export function findCalcFieldMismatch(data, calcFields) {
   const expected = syncCalcFields(base, calcFields);
 
   for (const map of calcFields) {
-    const cells = Array.isArray(map?.cells)
-      ? map.cells.filter(
-          (cell) =>
-            cell &&
-            typeof cell.table === 'string' &&
-            cell.table &&
-            typeof cell.field === 'string' &&
-            cell.field,
-        )
-      : [];
+    const cells = getCalcFieldCells(map);
 
     if (cells.length < 2) continue;
 
@@ -1060,6 +1067,11 @@ export default function PosTransactionsPage() {
     };
   }, [config]);
 
+  const normalizedCalcFields = useMemo(
+    () => normalizeCalcFieldConfig(config?.calcFields),
+    [config],
+  );
+
   const multiTableSet = React.useMemo(() => {
     const set = new Set();
     formList.forEach((t) => {
@@ -1289,6 +1301,40 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
 
+  const memoNumericScaleMap = useMemo(() => {
+    const map = {};
+    const parseScale = (col) => {
+      if (!col || typeof col !== 'object') return null;
+      const direct =
+        col.numericScale ?? col.NUMERIC_SCALE ?? col.scale ?? col.SCALE ?? null;
+      if (direct !== null && direct !== undefined) {
+        const num = Number(direct);
+        return Number.isNaN(num) ? null : num;
+      }
+      const typeSource = col.columnType || col.COLUMN_TYPE || col.type || '';
+      if (typeof typeSource === 'string') {
+        const match = typeSource.match(/\((\d+)\s*,\s*(\d+)\)/);
+        if (match) {
+          const scale = Number(match[2]);
+          return Number.isNaN(scale) ? null : scale;
+        }
+      }
+      return null;
+    };
+    Object.entries(columnMeta).forEach(([tbl, cols]) => {
+      if (!visibleTables.has(tbl)) return;
+      const inner = {};
+      cols.forEach((c) => {
+        const scale = parseScale(c);
+        if (scale !== null && scale !== undefined) {
+          inner[c.name] = scale;
+        }
+      });
+      map[tbl] = inner;
+    });
+    return map;
+  }, [visibleTablesKey, configVersion, columnMeta]);
+
   const generatedColumnPipelines = useMemo(() => {
     if (!config) return {};
     const tables = [];
@@ -1363,11 +1409,11 @@ export default function PosTransactionsPage() {
   const recalcTotals = useCallback(
     (vals) =>
       recalcPosTotals(vals, {
-        calcFields: config?.calcFields,
+        calcFields: normalizedCalcFields,
         pipelines: generatedColumnPipelines,
         posFields: config?.posFields,
       }),
-    [config, generatedColumnPipelines],
+    [normalizedCalcFields, generatedColumnPipelines, config?.posFields],
   );
 
   const memoRelationConfigs = useMemo(() => {
@@ -1788,16 +1834,101 @@ export default function PosTransactionsPage() {
 
   async function handlePostAll() {
     if (!name) return;
-    // basic required field check
-    for (const t of [{ table: config.masterTable }, ...config.tables]) {
-      const fc = memoFormConfigs[t.table];
+    if (!config) return;
+
+    const isValueMissing = (val) => {
+      if (val === undefined || val === null) return true;
+      if (typeof val === 'string') return val.trim() === '';
+      return false;
+    };
+
+    const resolveFieldLabel = (table, field) => {
+      const cols = columnMeta[table];
+      if (Array.isArray(cols)) {
+        const lower = String(field).toLowerCase();
+        for (const col of cols) {
+          if (!col || typeof col !== 'object') continue;
+          const name =
+            col.name ||
+            col.columnName ||
+            col.column_name ||
+            col.COLUMN_NAME ||
+            col.COLUMNNAME ||
+            '';
+          if (typeof name === 'string' && name.toLowerCase() === lower) {
+            return (
+              col.label ||
+              col.LABEL ||
+              col.columnLabel ||
+              col.COLUMN_COMMENT ||
+              col.comment ||
+              name
+            );
+          }
+        }
+      }
+      return field;
+    };
+
+    const reportMissingField = (table, field, rowIndex) => {
+      const fieldLabel = resolveFieldLabel(table, field);
+      const tableLabel = memoFormConfigs[table]?.title || table;
+      const rowSuffix =
+        typeof rowIndex === 'number' ? ` (row ${rowIndex + 1})` : '';
+      addToast(
+        `Missing required field ${fieldLabel} in ${tableLabel}${rowSuffix}`,
+        'error',
+      );
+    };
+
+    for (const form of formList) {
+      const table = form?.table;
+      if (!table) continue;
+      const fc = memoFormConfigs[table];
       if (!fc) continue;
-      const req = fc.requiredFields || [];
-      const row = values[t.table] || {};
-      for (const f of req) {
-        if (row[f] === undefined || row[f] === '') {
-          addToast('Missing required fields', 'error');
-          return;
+      const required = Array.isArray(fc.requiredFields)
+        ? fc.requiredFields.filter(Boolean)
+        : [];
+      if (required.length === 0) continue;
+
+      const tableValues = values[table];
+      if (form?.type === 'multi') {
+        const rows = Array.isArray(tableValues) ? tableValues : [];
+
+        for (const field of required) {
+          if (
+            Array.isArray(rows) &&
+            Object.prototype.hasOwnProperty.call(rows, field) &&
+            isValueMissing(rows[field])
+          ) {
+            reportMissingField(table, field);
+            return;
+          }
+        }
+
+        for (let idx = 0; idx < rows.length; idx += 1) {
+          const row = rows[idx];
+          if (!isPlainRecord(row)) continue;
+          for (const field of required) {
+            if (
+              !Object.prototype.hasOwnProperty.call(row, field) ||
+              isValueMissing(row[field])
+            ) {
+              reportMissingField(table, field, idx);
+              return;
+            }
+          }
+        }
+      } else {
+        const row = isPlainRecord(tableValues) ? tableValues : {};
+        for (const field of required) {
+          if (
+            !Object.prototype.hasOwnProperty.call(row, field) ||
+            isValueMissing(row[field])
+          ) {
+            reportMissingField(table, field);
+            return;
+          }
         }
       }
     }
@@ -1812,7 +1943,7 @@ export default function PosTransactionsPage() {
         if (payload[tbl][k] === undefined) payload[tbl][k] = v;
       });
     });
-    const mismatch = findCalcFieldMismatch(payload, config.calcFields);
+    const mismatch = findCalcFieldMismatch(payload, normalizedCalcFields);
     if (mismatch) {
       addToast('Mapping mismatch', 'error');
       return;
@@ -2026,33 +2157,31 @@ export default function PosTransactionsPage() {
                 meta.forEach((c) => {
                   labels[c.name || c] = c.label || c.name || c;
                 });
-                const visible = Array.isArray(fc.visibleFields)
-                  ? fc.visibleFields
-                  : [];
-                const headerFields =
-                  fc.headerFields && fc.headerFields.length > 0
-                    ? fc.headerFields
-                    : [];
-                const mainFields =
-                  fc.mainFields && fc.mainFields.length > 0
-                    ? fc.mainFields
-                    : [];
-                const footerFields =
-                  fc.footerFields && fc.footerFields.length > 0
-                    ? fc.footerFields
-                    : [];
-                const totalAmountFields = Array.isArray(fc.totalAmountFields)
-                  ? fc.totalAmountFields
-                  : [];
-                const totalCurrencyFields = Array.isArray(fc.totalCurrencyFields)
-                  ? fc.totalCurrencyFields
-                  : [];
-                const provided = Array.isArray(fc.editableFields)
-                  ? fc.editableFields
-                  : [];
-                const defaults = Array.isArray(fc.editableDefaultFields)
-                  ? fc.editableDefaultFields
-                  : [];
+                const caseMap = memoColumnCaseMap[t.table] || {};
+                const canonicalizeFields = (list) => {
+                  if (!Array.isArray(list)) return [];
+                  const seen = new Set();
+                  const result = [];
+                  list.forEach((field) => {
+                    if (field == null) return;
+                    const raw = String(field).trim();
+                    if (!raw) return;
+                    const mapped = caseMap[raw.toLowerCase()] || raw;
+                    if (!seen.has(mapped)) {
+                      seen.add(mapped);
+                      result.push(mapped);
+                    }
+                  });
+                  return result;
+                };
+                const visible = canonicalizeFields(fc.visibleFields);
+                const headerFields = canonicalizeFields(fc.headerFields);
+                const mainFields = canonicalizeFields(fc.mainFields);
+                const footerFields = canonicalizeFields(fc.footerFields);
+                const totalAmountFields = canonicalizeFields(fc.totalAmountFields);
+                const totalCurrencyFields = canonicalizeFields(fc.totalCurrencyFields);
+                const provided = canonicalizeFields(fc.editableFields);
+                const defaults = canonicalizeFields(fc.editableDefaultFields);
                 const editVals = Array.from(new Set([...defaults, ...provided]));
                 const editSet =
                   editVals.length > 0
@@ -2115,6 +2244,7 @@ export default function PosTransactionsPage() {
                       defaultValues={fc.defaultValues || {}}
                       totalAmountFields={totalAmountFields}
                       totalCurrencyFields={totalCurrencyFields}
+                      numericScaleMap={memoNumericScaleMap[t.table] || {}}
                       table={t.table}
                       imagenameField={
                         memoFormConfigs[t.table]?.imagenameField || []

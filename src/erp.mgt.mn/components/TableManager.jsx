@@ -616,6 +616,7 @@ const TableManager = forwardRef(function TableManager({
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
   const [rowDefaults, setRowDefaults] = useState({});
+  const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
@@ -629,6 +630,9 @@ const TableManager = forwardRef(function TableManager({
   const [queuedTemporaryTrigger, setQueuedTemporaryTrigger] = useState(null);
   const lastExternalTriggerRef = useRef(null);
   const [temporaryLoading, setTemporaryLoading] = useState(false);
+  const [temporaryPromotionQueue, setTemporaryPromotionQueue] = useState([]);
+  const temporaryPromotionQueueRef = useRef([]);
+  const temporaryRowRefs = useRef(new Map());
   const setTemporaryRowRef = useCallback((id, node) => {
     if (id == null) return;
     const key = String(id);
@@ -643,7 +647,20 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
-  const temporaryRowRefs = useRef(new Map());
+  useEffect(() => {
+    if (Array.isArray(temporaryPromotionQueue)) {
+      temporaryPromotionQueueRef.current = temporaryPromotionQueue;
+    } else {
+      temporaryPromotionQueueRef.current = [];
+    }
+  }, [temporaryPromotionQueue]);
+
+  useEffect(() => {
+    if (!canSelectTemporaries) {
+      setTemporaryPromotionQueue([]);
+      temporaryPromotionQueueRef.current = [];
+    }
+  }, [canSelectTemporaries]);
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -889,6 +906,79 @@ const TableManager = forwardRef(function TableManager({
     availableTemporaryScopes,
     defaultTemporaryScope,
   ]);
+
+  const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
+  const columnCaseMap = useMemo(
+    () => buildColumnCaseMap(columnMeta),
+    [columnMeta],
+  );
+  const allColumns = useMemo(() => {
+    if (columnMeta.length > 0) return columnMeta.map((c) => c.name);
+    if (rows[0]) return Object.keys(rows[0]);
+    return [];
+  }, [columnMeta, rows]);
+
+  const resolveCanonicalKey = useCallback(
+    (alias, caseMap) => {
+      return resolveWithMap(alias, caseMap || columnCaseMap);
+    },
+    [columnCaseMap],
+  );
+
+  const normalizeToCanonical = useCallback(
+    (source, caseMap) => {
+      if (!source || typeof source !== 'object') return {};
+      const normalized = {};
+      const map = caseMap || columnCaseMap;
+      for (const [rawKey, value] of Object.entries(source)) {
+        const canonicalKey = resolveCanonicalKey(rawKey, map);
+        normalized[canonicalKey] = value;
+      }
+      return normalized;
+    },
+    [columnCaseMap, resolveCanonicalKey],
+  );
+
+  const normalizeTenantKey = useCallback(
+    (alias, caseMap) => {
+      if (alias == null) return null;
+      const canonical = resolveCanonicalKey(alias, caseMap);
+      if (!canonical) return null;
+      return sanitizeName(canonical).replace(/_/g, '');
+    },
+    [resolveCanonicalKey],
+  );
+
+  const hasTenantKey = useCallback(
+    (tenantInfo, key, caseMap) => {
+      if (!tenantInfo) return false;
+      const target = normalizeTenantKey(key, caseMap);
+      if (!target) return false;
+      const keys = getTenantKeyList(tenantInfo);
+      for (const rawKey of keys) {
+        const normalized = normalizeTenantKey(rawKey, caseMap);
+        if (normalized && normalized === target) return true;
+      }
+      return false;
+    },
+    [normalizeTenantKey],
+  );
+
+  const appendTenantParam = useCallback(
+    (params, tenantKey, caseMap, value, canonicalOverride) => {
+      if (!params || value == null || value === '') return;
+      const canonicalKey =
+        canonicalOverride ?? resolveCanonicalKey(tenantKey, caseMap);
+      const snakeKey = sanitizeName(tenantKey);
+      if (canonicalKey) {
+        params.set(canonicalKey, value);
+      }
+      if (snakeKey && snakeKey !== canonicalKey) {
+        params.set(snakeKey, value);
+      }
+    },
+    [resolveCanonicalKey],
+  );
 
   const fieldTypeMap = useMemo(() => {
     const map = {};
@@ -2476,8 +2566,76 @@ const TableManager = forwardRef(function TableManager({
     setSelectedRows(new Set());
   }
 
+  const applySessionAutofill = useCallback(
+    (
+      values,
+      { columns = validCols, preserveCreatedBy = false } = {},
+    ) => {
+      if (!values || typeof values !== 'object') return values;
+      if (!autoFillSession) return values;
+      let columnSet = validCols;
+      if (columns instanceof Set) {
+        columnSet = columns;
+      } else if (Array.isArray(columns)) {
+        columnSet = new Set(columns);
+      } else if (columns && typeof columns[Symbol.iterator] === 'function') {
+        columnSet = new Set(columns);
+      }
+
+      const filled = { ...values };
+      if (user?.empid != null && userIdFields.length > 0) {
+        userIdFields.forEach((rawField) => {
+          const canonicalField = resolveCanonicalKey(rawField);
+          if (!canonicalField) return;
+          if (!columnSet.has(canonicalField)) return;
+          const normalized = canonicalField.replace(/_/g, '').toLowerCase();
+          if (preserveCreatedBy && normalized === 'createdby') return;
+          filled[canonicalField] = user.empid;
+        });
+      }
+      if (branch != null && branchIdFields.length > 0) {
+        branchIdFields.forEach((rawField) => {
+          const canonicalField = resolveCanonicalKey(rawField);
+          if (!canonicalField) return;
+          if (!columnSet.has(canonicalField)) return;
+          filled[canonicalField] = branch;
+        });
+      }
+      if (department != null && departmentIdFields.length > 0) {
+        departmentIdFields.forEach((rawField) => {
+          const canonicalField = resolveCanonicalKey(rawField);
+          if (!canonicalField) return;
+          if (!columnSet.has(canonicalField)) return;
+          filled[canonicalField] = department;
+        });
+      }
+      if (company != null && companyIdFields.length > 0) {
+        companyIdFields.forEach((rawField) => {
+          const canonicalField = resolveCanonicalKey(rawField);
+          if (!canonicalField) return;
+          if (!columnSet.has(canonicalField)) return;
+          filled[canonicalField] = company;
+        });
+      }
+      return filled;
+    },
+    [
+      autoFillSession,
+      branch,
+      branchIdFields,
+      company,
+      companyIdFields,
+      department,
+      departmentIdFields,
+      resolveCanonicalKey,
+      user?.empid,
+      userIdFields,
+      validCols,
+    ],
+  );
+
   async function handleSubmit(values) {
-    if (!canPostTransactions) {
+    if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
           'temporary_post_not_allowed',
@@ -2488,27 +2646,20 @@ const TableManager = forwardRef(function TableManager({
       return false;
     }
     const columns = new Set(allColumns);
-    const merged = { ...(editing || {}) };
+    const mergedSource = { ...(editing || {}) };
     Object.entries(values).forEach(([k, v]) => {
-      merged[k] = v;
+      mergedSource[k] = v;
     });
+    let merged = stripTemporaryLabelValue(mergedSource);
 
     Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
       if (merged[k] === undefined || merged[k] === '') merged[k] = v;
     });
 
     if (isAdding && autoFillSession) {
-      userIdFields.forEach((f) => {
-        if (columns.has(f)) merged[f] = user?.empid;
-      });
-      branchIdFields.forEach((f) => {
-        if (columns.has(f) && branch !== undefined) merged[f] = branch;
-      });
-      departmentIdFields.forEach((f) => {
-        if (columns.has(f) && department !== undefined) merged[f] = department;
-      });
-      companyIdFields.forEach((f) => {
-        if (columns.has(f) && company !== undefined) merged[f] = company;
+      merged = applySessionAutofill(merged, {
+        columns,
+        preserveCreatedBy: requestType === 'temporary-promote',
       });
     }
 
@@ -2592,13 +2743,40 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
 
+    if (requestType === 'temporary-promote') {
+      const temporaryId = pendingTemporaryPromotion?.id;
+      if (!temporaryId) {
+        addToast(
+          t('temporary_promote_missing', 'Unable to promote temporary submission'),
+          'error',
+        );
+        return false;
+      }
+      const ok = await promoteTemporary(temporaryId, {
+        skipConfirm: true,
+        silent: false,
+        overrideValues: cleaned,
+      });
+      if (ok) {
+        setShowForm(false);
+        setEditing(null);
+        setIsAdding(false);
+        setGridRows([]);
+        setRequestType(null);
+        await advanceTemporaryPromotionQueue();
+      }
+      return ok;
+    }
+
     const method = isAdding ? 'POST' : 'PUT';
     const url = isAdding
       ? `/api/tables/${encodeURIComponent(table)}`
       : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`;
 
     if (isAdding) {
-      if (columns.has('created_by')) cleaned.created_by = user?.empid;
+      if (columns.has('created_by') && requestType !== 'temporary-promote') {
+        cleaned.created_by = user?.empid;
+      }
       if (columns.has('created_at')) {
         cleaned.created_at = formatTimestamp(new Date());
       }
@@ -2704,23 +2882,31 @@ const TableManager = forwardRef(function TableManager({
       submission.values && typeof submission.values === 'object'
         ? submission.values
         : submission;
-    const normalizedValues =
+    const sanitizedValues =
       valueSource && typeof valueSource === 'object' && !Array.isArray(valueSource)
         ? stripTemporaryLabelValue(valueSource)
         : {};
+    const normalizedValues = normalizeToCanonical(sanitizedValues);
     const rawOverride =
       submission.rawValues && typeof submission.rawValues === 'object'
         ? stripTemporaryLabelValue(submission.rawValues)
         : null;
     const gridRowsSource = Array.isArray(submission.normalizedRows)
       ? submission.normalizedRows
-      : Array.isArray(valueSource?.rows)
-      ? valueSource.rows
+      : Array.isArray(sanitizedValues?.rows)
+      ? sanitizedValues.rows
       : null;
     const gridRows = Array.isArray(gridRowsSource)
-      ? stripTemporaryLabelValue(gridRowsSource)
+      ? gridRowsSource.map((row) => {
+          if (!row || typeof row !== 'object') return row ?? {};
+          const stripped = stripTemporaryLabelValue(row);
+          if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
+            return normalizeToCanonical(stripped);
+          }
+          return stripped ?? {};
+        })
       : null;
-    const rawRows =
+    const rawRowsCandidate =
       submission.rawRows && typeof submission.rawRows === 'object'
         ? stripTemporaryLabelValue(submission.rawRows)
         : null;
@@ -2733,23 +2919,13 @@ const TableManager = forwardRef(function TableManager({
         mergedSource[k] = stripTemporaryLabelValue(v);
       }
     });
+    let merged = stripTemporaryLabelValue(mergedSource);
     if (isAdding && autoFillSession) {
-      const columns = new Set(allColumns);
-      userIdFields.forEach((f) => {
-        if (columns.has(f)) mergedSource[f] = user?.empid;
-      });
-      branchIdFields.forEach((f) => {
-        if (columns.has(f) && branch !== undefined) mergedSource[f] = branch;
-      });
-      departmentIdFields.forEach((f) => {
-        if (columns.has(f) && department !== undefined) mergedSource[f] = department;
-      });
-      companyIdFields.forEach((f) => {
-        if (columns.has(f) && company !== undefined) mergedSource[f] = company;
+      merged = applySessionAutofill(merged, {
+        columns: allColumns,
+        preserveCreatedBy: true,
       });
     }
-
-    const merged = stripTemporaryLabelValue(mergedSource);
     const cleaned = {};
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
@@ -2763,19 +2939,19 @@ const TableManager = forwardRef(function TableManager({
     });
 
     const payloadValues = { ...normalizedValues };
-    if (gridRows) {
+    if (Array.isArray(gridRows)) {
       payloadValues.rows = gridRows;
     }
     const payload = {
       values: payloadValues,
       submittedAt: new Date().toISOString(),
     };
-    if (gridRows) {
+    if (Array.isArray(gridRows)) {
       payload.gridRows = gridRows;
       payload.rowCount = gridRows.length;
     }
-    if (rawRows) {
-      payload.rawRows = rawRows;
+    if (rawRowsCandidate != null) {
+      payload.rawRows = rawRowsCandidate;
     }
     const body = {
       table,
@@ -2822,7 +2998,11 @@ const TableManager = forwardRef(function TableManager({
       setEditing(null);
       setIsAdding(false);
       setGridRows([]);
+      setRequestType(null);
+      setPendingTemporaryPromotion(null);
       await refreshTemporarySummary();
+      await fetchTemporaryList(temporaryScope);
+      await advanceTemporaryPromotionQueue();
       return true;
     } catch (err) {
       console.error('Temporary save failed', err);
@@ -3239,7 +3419,10 @@ const TableManager = forwardRef(function TableManager({
     defaultTemporaryScope,
   ]);
 
-  async function promoteTemporary(id, { skipConfirm = false, silent = false } = {}) {
+  async function promoteTemporary(
+    id,
+    { skipConfirm = false, silent = false, overrideValues = null } = {},
+  ) {
     if (!canReviewTemporary) return false;
     if (
       !skipConfirm &&
@@ -3247,12 +3430,18 @@ const TableManager = forwardRef(function TableManager({
     )
       return false;
     try {
+      const payload =
+        overrideValues && typeof overrideValues === 'object'
+          ? stripTemporaryLabelValue(overrideValues)
+          : null;
+      const hasBody = payload && Object.keys(payload).length > 0;
       const res = await fetch(
         `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/promote`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
           credentials: 'include',
+          body: hasBody ? JSON.stringify({ cleanedValues: payload }) : undefined,
         },
       );
       let data = null;
@@ -3312,6 +3501,116 @@ const TableManager = forwardRef(function TableManager({
       return false;
     }
   }
+
+  const parseTemporaryEntry = useCallback(
+    (entry) => {
+      if (!entry) return { values: {}, rows: [] };
+      const valueSources = [
+        entry?.cleanedValues,
+        entry?.payload?.cleanedValues,
+        entry?.payload?.values,
+        entry?.values,
+        entry?.rawValues,
+      ];
+      const baseValues = valueSources.find(
+        (candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate),
+      );
+      const normalizedValues = normalizeToCanonical(
+        stripTemporaryLabelValue(baseValues || {}),
+      );
+
+      const rowSources = [
+        entry?.payload?.gridRows,
+        entry?.payload?.values?.rows,
+        entry?.cleanedValues?.rows,
+        entry?.values?.rows,
+        entry?.rawValues?.rows,
+      ];
+      const baseRows = rowSources.find((rows) => Array.isArray(rows));
+      const sanitizedRows = Array.isArray(baseRows)
+        ? baseRows.map((row) => {
+            const stripped = stripTemporaryLabelValue(row);
+            if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
+              return normalizeToCanonical(stripped);
+            }
+            return stripped ?? {};
+          })
+        : [];
+
+      return { values: normalizedValues, rows: sanitizedRows };
+    },
+    [normalizeToCanonical],
+  );
+
+  const openTemporaryPromotion = useCallback(
+    async (entry) => {
+      if (!entry) return;
+      const temporaryId = getTemporaryId(entry);
+      if (!temporaryId) return;
+      await ensureColumnMeta();
+
+      const { values: normalizedValues, rows: sanitizedRows } = parseTemporaryEntry(entry);
+
+      setPendingTemporaryPromotion({ id: temporaryId, entry });
+      setEditing(normalizedValues);
+      setGridRows(sanitizedRows);
+      setIsAdding(true);
+      setRequestType('temporary-promote');
+      setShowTemporaryModal(false);
+      setShowForm(true);
+    },
+    [
+      ensureColumnMeta,
+      parseTemporaryEntry,
+      setEditing,
+      setGridRows,
+      setIsAdding,
+      setRequestType,
+      setShowTemporaryModal,
+      setShowForm,
+    ],
+  );
+
+  const advanceTemporaryPromotionQueue = useCallback(async () => {
+    const queue = Array.isArray(temporaryPromotionQueueRef.current)
+      ? temporaryPromotionQueueRef.current
+      : [];
+    const [nextEntry, ...remainingQueue] = queue;
+    temporaryPromotionQueueRef.current = remainingQueue;
+    setTemporaryPromotionQueue(remainingQueue);
+    setTemporarySelection(
+      new Set(
+        remainingQueue
+          .map((entry) => getTemporaryId(entry))
+          .filter((id) => id != null),
+      ),
+    );
+    setPendingTemporaryPromotion(null);
+    if (!nextEntry) return;
+    try {
+      await openTemporaryPromotion(nextEntry);
+    } catch (err) {
+      console.error(err);
+      addToast(t('temporary_promote_failed', 'Failed to promote temporary'), 'error');
+      const fallbackQueue = [nextEntry, ...remainingQueue];
+      setTemporaryPromotionQueue(fallbackQueue);
+      temporaryPromotionQueueRef.current = fallbackQueue;
+      setTemporarySelection(
+        new Set(
+          fallbackQueue
+            .map((entry) => getTemporaryId(entry))
+            .filter((id) => id != null),
+        ),
+      );
+    }
+  }, [
+    addToast,
+    openTemporaryPromotion,
+    setPendingTemporaryPromotion,
+    setTemporaryPromotionQueue,
+    setTemporarySelection,
+    t,
+  ]);
 
   async function rejectTemporary(id) {
     if (!canReviewTemporary) return;
@@ -3432,60 +3731,138 @@ const TableManager = forwardRef(function TableManager({
     ) {
       return;
     }
-    let successCount = 0;
-    const failedIds = [];
-    for (const id of ids) {
-      const ok = await promoteTemporary(id, {
-        skipConfirm: true,
-        silent: true,
-      });
-      if (ok) successCount += 1;
-      else failedIds.push(id);
-    }
-    if (successCount > 0) {
-      addToast(
-        t('temporary_promoted_bulk', 'Promoted {{count}} temporary transactions', {
-          count: successCount,
-        }),
-        'success',
-      );
-      await refreshTemporarySummary();
-      await fetchTemporaryList('review');
-      setLocalRefresh((r) => r + 1);
-    }
-    if (failedIds.length > 0) {
+    const entryMap = new Map();
+    temporaryList.forEach((entry) => {
+      const entryId = getTemporaryId(entry);
+      if (entryId != null) {
+        entryMap.set(entryId, entry);
+      }
+    });
+    const entries = ids
+      .map((id) => entryMap.get(id))
+      .filter((entry) => entry && entry.status === 'pending');
+    if (entries.length === 0) {
       addToast(
         t(
-          'temporary_promote_partial_failure',
-          'Failed to promote {{count}} transactions',
-          { count: failedIds.length },
+          'temporary_promote_selection_missing',
+          'Selected temporary submissions are no longer available.',
         ),
         'error',
       );
+      setTemporarySelection(new Set());
+      setTemporaryPromotionQueue([]);
+      temporaryPromotionQueueRef.current = [];
+      return;
     }
-    if (failedIds.length > 0) {
-      setTemporarySelection(new Set(failedIds));
-    } else if (successCount > 0) {
+    if (entries.length === 1) {
+      const [onlyEntry] = entries;
+      setTemporaryPromotionQueue([]);
+      temporaryPromotionQueueRef.current = [];
+      setTemporarySelection(new Set());
+      setShowTemporaryModal(false);
+      try {
+        await openTemporaryPromotion(onlyEntry);
+      } catch (err) {
+        console.error(err);
+        addToast(t('temporary_promote_failed', 'Failed to promote temporary'), 'error');
+        const fallbackIds = [getTemporaryId(onlyEntry)].filter((id) => id != null);
+        if (fallbackIds.length > 0) {
+          setTemporarySelection(new Set(fallbackIds));
+        }
+      }
+      return;
+    }
+
+    setTemporaryPromotionQueue([]);
+    temporaryPromotionQueueRef.current = [];
+    setPendingTemporaryPromotion(null);
+    setShowForm(false);
+    setEditing(null);
+    setIsAdding(false);
+    setGridRows([]);
+    setRequestType(null);
+
+    const failedEntries = [];
+    let successCount = 0;
+    for (const entry of entries) {
+      const temporaryId = getTemporaryId(entry);
+      if (!temporaryId) continue;
+      const { values } = parseTemporaryEntry(entry);
+      const overrideValues = applySessionAutofill(values, {
+        preserveCreatedBy: true,
+      });
+      const promoted = await promoteTemporary(temporaryId, {
+        skipConfirm: true,
+        silent: true,
+        overrideValues,
+      });
+      if (promoted) {
+        successCount += 1;
+      } else {
+        failedEntries.push(entry);
+      }
+    }
+
+    if (successCount > 0) {
+      addToast(
+        t(
+          'temporary_promoted_bulk',
+          'Promoted {{count}} temporary records',
+          { count: successCount },
+        ),
+        'success',
+      );
+    }
+
+    if (failedEntries.length > 0) {
+      addToast(
+        t(
+          'temporary_promote_bulk_failed',
+          'Failed to promote {{count}} temporary records',
+          { count: failedEntries.length },
+        ),
+        'error',
+      );
+      setTemporarySelection(
+        new Set(
+          failedEntries
+            .map((entry) => getTemporaryId(entry))
+            .filter((id) => id != null),
+        ),
+      );
+    } else {
       setTemporarySelection(new Set());
     }
+
+    await refreshTemporarySummary();
+    await fetchTemporaryList(temporaryScope);
+    setLocalRefresh((r) => r + 1);
   }, [
     canSelectTemporaries,
     temporarySelection,
-    promoteTemporary,
+    temporaryList,
     addToast,
-    t,
-    refreshTemporarySummary,
+    applySessionAutofill,
     fetchTemporaryList,
+    openTemporaryPromotion,
+    parseTemporaryEntry,
+    promoteTemporary,
+    refreshTemporarySummary,
+    t,
+    setTemporaryPromotionQueue,
+    setTemporarySelection,
+    setShowForm,
+    setEditing,
+    setIsAdding,
+    setGridRows,
+    setRequestType,
+    setPendingTemporaryPromotion,
+    temporaryScope,
+    setShowTemporaryModal,
+    setLocalRefresh,
   ]);
 
   if (!table) return null;
-
-  const allColumns =
-    columnMeta.length > 0
-      ? columnMeta.map((c) => c.name)
-      : rows[0]
-      ? Object.keys(rows[0])
-      : [];
 
   const ordered = formConfig?.visibleFields?.length
     ? allColumns.filter((c) => formConfig.visibleFields.includes(c))
@@ -3969,7 +4346,9 @@ const TableManager = forwardRef(function TableManager({
   let disabledFields = editSet
     ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
     : [];
-  if (isAdding) {
+  if (requestType === 'temporary-promote') {
+    disabledFields = Array.from(new Set([...formColumns]));
+  } else if (isAdding) {
     disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
   } else if (editing) {
     disabledFields = Array.from(
@@ -5163,6 +5542,10 @@ const TableManager = forwardRef(function TableManager({
           setIsAdding(false);
           setGridRows([]);
           setRequestType(null);
+          setPendingTemporaryPromotion(null);
+          setTemporaryPromotionQueue([]);
+          temporaryPromotionQueueRef.current = [];
+          setTemporarySelection(new Set());
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
@@ -5554,7 +5937,12 @@ const TableManager = forwardRef(function TableManager({
                                 <>
                                   <button
                                     type="button"
-                                    onClick={() => promoteTemporary(entry.id)}
+                                    onClick={() => {
+                                      setTemporaryPromotionQueue([]);
+                                      temporaryPromotionQueueRef.current = [];
+                                      setTemporarySelection(new Set());
+                                      openTemporaryPromotion(entry);
+                                    }}
                                     style={{
                                       marginRight: '0.25rem',
                                       padding: '0.25rem 0.5rem',
