@@ -4,6 +4,7 @@ import React, {
   useImperativeHandle,
   useRef,
   useEffect,
+  useCallback,
 } from 'react';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
@@ -708,7 +709,15 @@ function InlineTransactionTable(
     maxWidth: `${boxMaxWidth}px`,
     wordBreak: 'break-word',
   };
-  const enabledFields = fields.filter((f) => !disabledSet.has(f.toLowerCase()));
+  const isFieldDisabled = useCallback(
+    (field) => {
+      if (!field) return false;
+      return disabledSet.has(String(field).toLowerCase());
+    },
+    [disabledSet],
+  );
+
+  const enabledFields = fields.filter((f) => !isFieldDisabled(f));
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -1446,6 +1455,9 @@ function InlineTransactionTable(
 
 
   function handleChange(rowIdx, field, value) {
+    if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
+      return;
+    }
     commitRowsUpdate(
       (r) =>
         r.map((row, i) => {
@@ -1693,6 +1705,9 @@ function InlineTransactionTable(
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
+    if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
+      return;
+    }
     const isLookupField =
       !!relationConfigMap[field] ||
       !!viewSourceMap[field] ||
@@ -1792,8 +1807,9 @@ function InlineTransactionTable(
 
   function renderCell(idx, f, colIdx) {
     const val = rows[idx]?.[f] ?? '';
+    const fieldDisabled = isFieldDisabled(f);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
-    if (disabledSet.has(f.toLowerCase())) {
+    if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
       if (

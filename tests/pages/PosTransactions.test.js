@@ -7,6 +7,7 @@ if (typeof mock.import !== 'function') {
   test('shouldLoadRelations helper', { skip: true }, () => {});
   test('applySessionIdToTables helper', { skip: true }, () => {});
   test('calc field preflight respects SUM aggregators and multi rows', { skip: true }, () => {});
+  test('buildComputedFieldMap gathers calc and pos targets', { skip: true }, () => {});
   test('generated column configs support lowercase generation_expression metadata', { skip: true }, () => {});
 } else {
   test('shouldLoadRelations helper', async () => {
@@ -245,6 +246,56 @@ if (typeof mock.import !== 'function') {
       calcFields,
     );
     assert.ok(mismatchSession, 'should detect mismatched multi-row values');
+  });
+
+  test('buildComputedFieldMap gathers calc and pos targets', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const calcFields = [
+      {
+        cells: [
+          { table: 'transactions', field: 'total_amount' },
+          { table: 'transactions_inventory', field: 'amount' },
+        ],
+      },
+    ];
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'grand_total' },
+          { table: 'transactions', field: 'total_amount', agg: 'SUM' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: { total_amount: 'TotalAmount', grand_total: 'GrandTotal' },
+      transactions_inventory: { amount: 'Amount' },
+    };
+
+    const tables = ['transactions', 'transactions_inventory'];
+
+    const map = buildComputedFieldMap(
+      calcFields,
+      posFields,
+      columnCaseMap,
+      tables,
+    );
+
+    assert.ok(map.transactions instanceof Set);
+    assert.ok(map.transactions_inventory instanceof Set);
+    assert.deepEqual(
+      Array.from(map.transactions).sort(),
+      ['grandtotal', 'totalamount'],
+    );
+    assert.deepEqual(
+      Array.from(map.transactions_inventory).sort(),
+      ['amount'],
+    );
   });
 
 
@@ -575,6 +626,34 @@ test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
   assert.equal(cleared.transactions_income.total_quantity, 0);
   assert.equal(cleared.transactions_pos.total_amount, 0);
   assert.equal(cleared.transactions_income.or_or, 0);
+});
+
+test('syncCalcFields uses visible table values for cross-table mappings', () => {
+  const calcFields = [
+    {
+      cells: [
+        { table: 'transactions_pos', field: 'total_quantity' },
+        { table: 'transactions_order', field: 'ordrsub', agg: 'SUM' },
+        { table: 'transactions_inventory', field: 'bmtr_sub', agg: 'SUM' },
+      ],
+    },
+  ];
+
+  const initial = {
+    transactions_pos: { total_quantity: 0 },
+    transactions_order: [
+      { line: 1, ordrsub: '1.50' },
+      { line: 2, ordrsub: '2.25' },
+    ],
+    transactions_inventory: [{ bmtr_sub: '0.25' }],
+  };
+
+  const synced = syncCalcFields(initial, calcFields);
+
+  assert.equal(synced.transactions_pos.total_quantity, 4);
+  assert.equal(synced.transactions_order[0].ordrsub, '1.50');
+  assert.equal(synced.transactions_order[1].ordrsub, '2.25');
+  assert.equal(synced.transactions_inventory[0].bmtr_sub, '0.25');
 });
 
 test('syncCalcFields updates multi table metadata for header fields', () => {

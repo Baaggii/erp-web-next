@@ -866,4 +866,94 @@ if (typeof mock?.import !== 'function') {
       global.window.dispatchEvent = originalDispatch;
     }
   });
+
+  test('InlineTransactionTable respects disabledFields for visible columns', async () => {
+    const reactMock = createReactMock();
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+    const initRows = [{ code: 'A-01', qty: '2' }];
+
+    const onRowsChangeCalls = [];
+    const onRowsChange = (rows) => {
+      onRowsChangeCalls.push(rows);
+    };
+
+    const tableRef = { current: null };
+
+    const { default: InlineTransactionTable } = await mock.import(
+      '../../src/erp.mgt.mn/components/InlineTransactionTable.jsx',
+      {
+        react: reactMock.module,
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        '../utils/buildImageName.js': { default: () => ({ name: '' }) },
+        '../utils/slugify.js': { default: (value) => String(value) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/callProcedure.js': { default: async () => ({}) },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    try {
+      reactMock.render(InlineTransactionTable, {
+        ref: tableRef,
+        fields: ['code', 'qty'],
+        labels: { code: 'Code', qty: 'Qty' },
+        rows: initRows,
+        disabledFields: ['code'],
+        defaultValues: {},
+        onRowsChange,
+        minRows: 1,
+        relations: {},
+        relationConfigs: {},
+        relationData: {},
+        fieldTypeMap: {},
+        totalAmountFields: [],
+        totalCurrencyFields: [],
+        columnCaseMap: {},
+        viewSource: {},
+        viewDisplays: {},
+        viewColumns: {},
+        loadView: noop,
+        procTriggers: {},
+        user: {},
+        collectRows: false,
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      const tree = reactMock.getTree();
+      const inputs = findAllByType(tree, 'input');
+      assert.equal(inputs.length, 1, 'only editable field should render an input');
+      const readonlyCells = findAllByType(tree, 'div').filter((node) =>
+        node?.props?.className?.includes('bg-gray-100'),
+      );
+      assert.ok(
+        readonlyCells.some((node) =>
+          Array.isArray(node.children)
+            ? node.children.includes('A-01')
+            : node.children === 'A-01',
+        ),
+        'disabled field should render readonly content',
+      );
+
+      inputs[0].props.onChange({ target: { value: '5' } });
+
+      await flushPromises();
+
+      const rows = tableRef.current.getRows();
+      assert.equal(rows[0].code, 'A-01');
+      assert.equal(rows[0].qty, '5');
+      assert.ok(onRowsChangeCalls.length > 0);
+      const lastCall = onRowsChangeCalls[onRowsChangeCalls.length - 1];
+      assert.equal(lastCall[0].code, 'A-01');
+      assert.equal(lastCall[0].qty, '5');
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
 }
