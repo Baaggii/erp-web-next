@@ -352,8 +352,6 @@ const TableManager = forwardRef(function TableManager({
     fetchDisplayConfig: async () => null,
   });
 
-  const { user, company, branch, department, session } = useContext(AuthContext);
-
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
     () => buildColumnCaseMap(columnMeta),
@@ -654,7 +652,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
-  const canSelectTemporaries = canReviewTemporary && temporaryScope === 'review';
   useEffect(() => {
     if (Array.isArray(temporaryPromotionQueue)) {
       temporaryPromotionQueueRef.current = temporaryPromotionQueue;
@@ -720,6 +717,7 @@ const TableManager = forwardRef(function TableManager({
     () => Array.from(requestIdSet).sort().join(','),
     [requestIdSet],
   );
+  const { user, company, branch, department, session } = useContext(AuthContext);
   const hasSenior = (value) => {
     if (value === null || value === undefined) return false;
     const numeric = Number(value);
@@ -3569,6 +3567,8 @@ const TableManager = forwardRef(function TableManager({
       addToast(t('temporary_reject_failed', 'Failed to reject temporary'), 'error');
     }
   }
+
+  const canSelectTemporaries = canReviewTemporary && temporaryScope === 'review';
 
   useEffect(() => {
     setTemporarySelection((prev) => {
