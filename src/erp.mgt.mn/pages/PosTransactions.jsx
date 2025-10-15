@@ -17,6 +17,7 @@ import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
 import { syncCalcFields, normalizeCalcFieldConfig } from '../utils/syncCalcFields.js';
+import { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
@@ -37,6 +38,7 @@ import {
 } from '../utils/transactionValues.js';
 
 export { syncCalcFields };
+export { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
 
 function normalizeValueForComparison(value) {
   if (value === undefined) return undefined;
@@ -229,6 +231,77 @@ export function extractSessionFieldsFromConfig(config) {
     return tableA.localeCompare(tableB);
   });
   return fields;
+}
+
+export function buildComputedFieldMap(
+  calcFields = [],
+  posFields = [],
+  columnCaseMap = {},
+  tables = [],
+) {
+  const AGGREGATE_FUNCTIONS = new Set(['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']);
+  const tableCaseMap = {};
+  tables.forEach((entry) => {
+    if (!entry) return;
+    const name = typeof entry === 'string' ? entry : entry.table;
+    if (!name) return;
+    const key = String(name).toLowerCase();
+    if (!tableCaseMap[key]) tableCaseMap[key] = String(name);
+  });
+
+  const result = {};
+
+  const ensureTableSet = (table) => {
+    const normalized = String(table);
+    if (!normalized) return null;
+    if (!tableCaseMap[normalized.toLowerCase()]) {
+      tableCaseMap[normalized.toLowerCase()] = normalized;
+    }
+    const canonical = tableCaseMap[normalized.toLowerCase()] || normalized;
+    if (!result[canonical]) result[canonical] = new Set();
+    return { set: result[canonical], table: canonical };
+  };
+
+  const addField = (table, field) => {
+    if (!table || !field) return;
+    const rawTable = String(table);
+    const rawField = String(field);
+    if (!rawTable || !rawField) return;
+    const lowerTable = rawTable.toLowerCase();
+    const canonicalTable = tableCaseMap[lowerTable] || rawTable;
+    const tableEntry = ensureTableSet(canonicalTable);
+    if (!tableEntry) return;
+    const caseMap = columnCaseMap[canonicalTable] || {};
+    const lowerField = rawField.toLowerCase();
+    const canonicalField = caseMap[lowerField] || rawField;
+    const normalizedField = String(canonicalField).toLowerCase();
+    tableEntry.set.add(normalizedField);
+  };
+
+  calcFields.forEach((map = {}) => {
+    const cells = getCalcFieldCells(map);
+    if (cells.length < 2) return;
+    const aggregateCells = cells.filter((cell = {}) => {
+      const agg = typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
+      if (!agg) return false;
+      return AGGREGATE_FUNCTIONS.has(agg);
+    });
+    if (aggregateCells.length === 0) return;
+    cells.forEach((cell = {}) => {
+      const agg = typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
+      if (agg && AGGREGATE_FUNCTIONS.has(agg)) return;
+      addField(cell.table, cell.field);
+    });
+  });
+
+  (posFields || []).forEach((entry = {}) => {
+    const parts = Array.isArray(entry.parts) ? entry.parts : [];
+    if (parts.length === 0) return;
+    const target = parts[0];
+    if (target) addField(target.table, target.field);
+  });
+
+  return result;
 }
 
 function parseErrorField(msg) {
@@ -1067,6 +1140,11 @@ export default function PosTransactionsPage() {
     };
   }, [config]);
 
+  const tableList = useMemo(
+    () => formList.map((t) => t.table).filter(Boolean),
+    [formList],
+  );
+
   const normalizedCalcFields = useMemo(
     () => normalizeCalcFieldConfig(config?.calcFields),
     [config],
@@ -1300,6 +1378,17 @@ export default function PosTransactionsPage() {
     });
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
+
+  const computedFieldMap = useMemo(
+    () =>
+      buildComputedFieldMap(
+        normalizedCalcFields,
+        config?.posFields || [],
+        memoColumnCaseMap,
+        tableList,
+      ),
+    [normalizedCalcFields, config?.posFields, memoColumnCaseMap, tableList],
+  );
 
   const memoNumericScaleMap = useMemo(() => {
     const map = {};
@@ -1552,8 +1641,19 @@ export default function PosTransactionsPage() {
 
   function handleChange(tbl, changes) {
     setValues((v) => {
-      const next = { ...v, [tbl]: { ...v[tbl], ...changes } };
-      return recalcTotals(next);
+      const prev = v?.[tbl];
+      const desiredRow = isPlainRecord(prev)
+        ? { ...prev, ...changes }
+        : { ...changes };
+      const merged = { ...v, [tbl]: desiredRow };
+      const recalculated = recalcTotals(merged);
+      return preserveManualChangesAfterRecalc({
+        table: tbl,
+        changes,
+        computedFieldMap,
+        desiredRow,
+        recalculatedValues: recalculated,
+      });
     });
   }
 
@@ -2190,9 +2290,30 @@ export default function PosTransactionsPage() {
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const disabled = editSet
-                  ? allFields.filter((c) => !editSet.has(c.toLowerCase()))
-                  : [];
+                const computedFields = computedFieldMap[t.table] || new Set();
+                const allFieldLowerSet = new Set(allFields.map((f) => f.toLowerCase()));
+                const disabledLower = new Set();
+                let disabled = [];
+                if (editSet) {
+                  disabled = allFields.filter((c) => {
+                    const lower = c.toLowerCase();
+                    if (editSet.has(lower)) return false;
+                    disabledLower.add(lower);
+                    return true;
+                  });
+                }
+                computedFields.forEach((field) => {
+                  if (!field) return;
+                  const normalizedLower = String(field).toLowerCase();
+                  if (!allFieldLowerSet.has(normalizedLower)) return;
+                  if (disabledLower.has(normalizedLower)) return;
+                  const canonicalField =
+                    caseMap[normalizedLower] ||
+                    allFields.find((f) => f.toLowerCase() === normalizedLower) ||
+                    normalizedLower;
+                  disabled.push(canonicalField);
+                  disabledLower.add(normalizedLower);
+                });
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
