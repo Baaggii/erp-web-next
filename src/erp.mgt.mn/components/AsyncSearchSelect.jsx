@@ -218,7 +218,7 @@ export default function AsyncSearchSelect({
         });
       }
       if (normalizedQuery) {
-        opts = filterOptionsByQuery(opts, q);
+        opts = filterOptionsByQuery(opts, normalizedQuery);
       }
       const more = rows.length >= 50 && p * 50 < (json.count || Infinity);
       if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
@@ -226,19 +226,13 @@ export default function AsyncSearchSelect({
         setPage(nextPage);
         return fetchPage(nextPage, q, true, signal);
       }
-      const isRelevant =
-        requestVersionRef.current === requestVersion &&
-        latestQueryRef.current === normalizedQuery &&
-        !signal?.aborted;
-      if (!isRelevant) return;
-      setHasMore(more);
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
           return [...base, ...opts];
         }
         if (normalizedQuery && opts.length === 0 && Array.isArray(prev) && prev.length > 0) {
-          const fallback = filterOptionsByQuery(prev, q);
+          const fallback = filterOptionsByQuery(prev, normalizedQuery);
           if (fallback.length > 0) {
             return fallback;
           }

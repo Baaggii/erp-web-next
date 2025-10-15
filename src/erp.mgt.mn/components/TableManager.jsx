@@ -1081,111 +1081,45 @@ const TableManager = forwardRef(function TableManager({
     async function load() {
       try {
         let rels = [];
-        let baseFetchFailed = false;
+        let relRes;
         try {
-          const relRes = await fetch(
+          relRes = await fetch(
             `/api/tables/${encodeURIComponent(table)}/relations`,
             { credentials: 'include' },
           );
-          if (relRes.ok) {
-            const parsed = await relRes.json().catch(() => {
-              addToast(
-                t('failed_parse_table_relations', 'Failed to parse table relations'),
-                'error',
-              );
-              return [];
-            });
-            if (Array.isArray(parsed)) {
-              rels = parsed;
-            }
-          } else {
-            baseFetchFailed = true;
-          }
         } catch (err) {
-          baseFetchFailed = true;
+          relRes = { ok: false, status: 0, error: err };
         }
-
-        let customList = [];
-        let customFetchFailed = false;
-        try {
-          const customRes = await fetch(
-            `/api/tables/${encodeURIComponent(table)}/relations/custom`,
-            { credentials: 'include' },
-          );
-          if (customRes.ok) {
-            const customJson = await customRes.json().catch(() => ({}));
-            customList = buildCustomRelationsList(customJson);
-          } else if (customRes.status && customRes.status !== 404) {
-            customFetchFailed = true;
+        if (relRes?.ok) {
+          rels = await relRes.json().catch(() => {
+            addToast(
+              t('failed_parse_table_relations', 'Failed to parse table relations'),
+              'error',
+            );
+            return [];
+          });
+        } else {
+          let customList = [];
+          try {
+            const customRes = await fetch(
+              `/api/tables/${encodeURIComponent(table)}/relations/custom`,
+              { credentials: 'include' },
+            );
+            if (customRes.ok) {
+              const customJson = await customRes.json().catch(() => ({}));
+              customList = buildCustomRelationsList(customJson);
+            }
+          } catch {
+            /* ignore */
           }
-        } catch {
-          customFetchFailed = true;
-        }
-
-        const combined = {};
-        const applyRelation = (entry, source = 'database') => {
-          if (!entry || typeof entry !== 'object') return;
-          const columnName =
-            entry.COLUMN_NAME || entry.column_name || entry.column || entry.columnName;
-          const refTable =
-            entry.REFERENCED_TABLE_NAME ||
-            entry.referenced_table_name ||
-            entry.referencedTableName ||
-            entry.referencedTable ||
-            entry.table ||
-            entry.tableName;
-          const refColumn =
-            entry.REFERENCED_COLUMN_NAME ||
-            entry.referenced_column_name ||
-            entry.referencedColumnName ||
-            entry.referencedColumn ||
-            entry.columnReference ||
-            entry.column;
-          if (!columnName || !refTable || !refColumn) return;
-          const key = resolveCanonicalKey(columnName);
-          const existing = combined[key] || {};
-          let displayFields = entry.displayFields ?? entry.display_fields;
-          if (typeof displayFields === 'string') {
-            displayFields = displayFields
-              .split(',')
-              .map((f) => f.trim())
-              .filter((f) => f);
-          }
-          if (!Array.isArray(displayFields)) {
-            displayFields = Array.isArray(existing.displayFields)
-              ? existing.displayFields
-              : [];
-          }
-          combined[key] = {
-            table: refTable,
-            column: refColumn,
-            idField:
-              entry.idField ||
-              entry.id_field ||
-              entry.ID_FIELD ||
-              existing.idField ||
-              refColumn,
-            displayFields,
-            source,
-          };
-        };
-
-        rels.forEach((rel) => applyRelation(rel, 'database'));
-        customList.forEach((rel) => applyRelation(rel, 'custom'));
-
-        const relationEntries = Object.entries(combined);
-        if (relationEntries.length === 0) {
-          if (baseFetchFailed && (customFetchFailed || customList.length === 0)) {
+          if (customList.length === 0) {
             addToast(
               t('failed_load_table_relations', 'Failed to load table relations'),
               'error',
             );
+            return;
           }
-          setRelations({});
-          setRefData({});
-          setRefRows({});
-          setRelationConfigs({});
-          return;
+          rels = customList;
         }
         if (canceled) return;
         const map = {};
