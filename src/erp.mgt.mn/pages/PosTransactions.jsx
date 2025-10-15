@@ -1301,6 +1301,40 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
 
+  const memoNumericScaleMap = useMemo(() => {
+    const map = {};
+    const parseScale = (col) => {
+      if (!col || typeof col !== 'object') return null;
+      const direct =
+        col.numericScale ?? col.NUMERIC_SCALE ?? col.scale ?? col.SCALE ?? null;
+      if (direct !== null && direct !== undefined) {
+        const num = Number(direct);
+        return Number.isNaN(num) ? null : num;
+      }
+      const typeSource = col.columnType || col.COLUMN_TYPE || col.type || '';
+      if (typeof typeSource === 'string') {
+        const match = typeSource.match(/\((\d+)\s*,\s*(\d+)\)/);
+        if (match) {
+          const scale = Number(match[2]);
+          return Number.isNaN(scale) ? null : scale;
+        }
+      }
+      return null;
+    };
+    Object.entries(columnMeta).forEach(([tbl, cols]) => {
+      if (!visibleTables.has(tbl)) return;
+      const inner = {};
+      cols.forEach((c) => {
+        const scale = parseScale(c);
+        if (scale !== null && scale !== undefined) {
+          inner[c.name] = scale;
+        }
+      });
+      map[tbl] = inner;
+    });
+    return map;
+  }, [visibleTablesKey, configVersion, columnMeta]);
+
   const generatedColumnPipelines = useMemo(() => {
     if (!config) return {};
     const tables = [];
@@ -2123,33 +2157,31 @@ export default function PosTransactionsPage() {
                 meta.forEach((c) => {
                   labels[c.name || c] = c.label || c.name || c;
                 });
-                const visible = Array.isArray(fc.visibleFields)
-                  ? fc.visibleFields
-                  : [];
-                const headerFields =
-                  fc.headerFields && fc.headerFields.length > 0
-                    ? fc.headerFields
-                    : [];
-                const mainFields =
-                  fc.mainFields && fc.mainFields.length > 0
-                    ? fc.mainFields
-                    : [];
-                const footerFields =
-                  fc.footerFields && fc.footerFields.length > 0
-                    ? fc.footerFields
-                    : [];
-                const totalAmountFields = Array.isArray(fc.totalAmountFields)
-                  ? fc.totalAmountFields
-                  : [];
-                const totalCurrencyFields = Array.isArray(fc.totalCurrencyFields)
-                  ? fc.totalCurrencyFields
-                  : [];
-                const provided = Array.isArray(fc.editableFields)
-                  ? fc.editableFields
-                  : [];
-                const defaults = Array.isArray(fc.editableDefaultFields)
-                  ? fc.editableDefaultFields
-                  : [];
+                const caseMap = memoColumnCaseMap[t.table] || {};
+                const canonicalizeFields = (list) => {
+                  if (!Array.isArray(list)) return [];
+                  const seen = new Set();
+                  const result = [];
+                  list.forEach((field) => {
+                    if (field == null) return;
+                    const raw = String(field).trim();
+                    if (!raw) return;
+                    const mapped = caseMap[raw.toLowerCase()] || raw;
+                    if (!seen.has(mapped)) {
+                      seen.add(mapped);
+                      result.push(mapped);
+                    }
+                  });
+                  return result;
+                };
+                const visible = canonicalizeFields(fc.visibleFields);
+                const headerFields = canonicalizeFields(fc.headerFields);
+                const mainFields = canonicalizeFields(fc.mainFields);
+                const footerFields = canonicalizeFields(fc.footerFields);
+                const totalAmountFields = canonicalizeFields(fc.totalAmountFields);
+                const totalCurrencyFields = canonicalizeFields(fc.totalCurrencyFields);
+                const provided = canonicalizeFields(fc.editableFields);
+                const defaults = canonicalizeFields(fc.editableDefaultFields);
                 const editVals = Array.from(new Set([...defaults, ...provided]));
                 const editSet =
                   editVals.length > 0
@@ -2212,6 +2244,7 @@ export default function PosTransactionsPage() {
                       defaultValues={fc.defaultValues || {}}
                       totalAmountFields={totalAmountFields}
                       totalCurrencyFields={totalCurrencyFields}
+                      numericScaleMap={memoNumericScaleMap[t.table] || {}}
                       table={t.table}
                       imagenameField={
                         memoFormConfigs[t.table]?.imagenameField || []
