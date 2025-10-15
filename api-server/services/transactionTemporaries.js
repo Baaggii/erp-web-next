@@ -22,6 +22,49 @@ const STRING_COLUMN_TYPES = new Set([
   'set',
 ]);
 
+const LABEL_WRAPPER_KEYS = new Set([
+  'value',
+  'label',
+  'name',
+  'title',
+  'text',
+  'display',
+  'displayName',
+  'code',
+]);
+
+function stripLabelWrappers(value) {
+  if (value === undefined || value === null) return value;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const mapped = value.map((item) => {
+      const next = stripLabelWrappers(item);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return changed ? mapped : value;
+  }
+  if (value instanceof Date || (typeof Buffer !== 'undefined' && Buffer.isBuffer(value))) {
+    return value;
+  }
+  if (typeof value !== 'object') return value;
+  if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+    const keys = Object.keys(value);
+    const onlyKnownKeys = keys.every((key) => LABEL_WRAPPER_KEYS.has(key));
+    if (onlyKnownKeys) {
+      return stripLabelWrappers(value.value);
+    }
+  }
+  let changed = false;
+  const result = {};
+  for (const [key, val] of Object.entries(value)) {
+    const next = stripLabelWrappers(val);
+    if (next !== val) changed = true;
+    result[key] = next;
+  }
+  return changed ? result : value;
+}
+
 function normalizeEmpId(empid) {
   if (!empid) return null;
   const trimmed = String(empid).trim();
@@ -538,7 +581,10 @@ export async function getTemporarySummary(empId, companyId) {
   };
 }
 
-export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io }) {
+export async function promoteTemporarySubmission(
+  id,
+  { reviewerEmpId, notes, io, cleanedValues: cleanedOverride },
+) {
   const normalizedReviewer = normalizeEmpId(reviewerEmpId);
   if (!normalizedReviewer) {
     const err = new Error('reviewerEmpId required');
@@ -574,13 +620,24 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
     }
     const columns = await listTableColumnsDetailed(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
-    const candidateSources = [
-      extractPromotableValues(safeJsonParse(row.cleaned_values_json)),
-      extractPromotableValues(payloadJson?.cleanedValues),
-      extractPromotableValues(payloadJson?.values),
-      extractPromotableValues(payloadJson),
-      extractPromotableValues(safeJsonParse(row.raw_values_json)),
-    ].filter(isPlainObject);
+    const candidateSources = [];
+    const pushCandidate = (source) => {
+      if (!source) return;
+      const maybePlain = isPlainObject(source)
+        ? source
+        : extractPromotableValues(source);
+      if (!isPlainObject(maybePlain)) return;
+      const stripped = stripLabelWrappers(maybePlain);
+      if (isPlainObject(stripped)) {
+        candidateSources.push(stripped);
+      }
+    };
+    pushCandidate(cleanedOverride);
+    pushCandidate(safeJsonParse(row.cleaned_values_json));
+    pushCandidate(payloadJson?.cleanedValues);
+    pushCandidate(payloadJson?.values);
+    pushCandidate(payloadJson);
+    pushCandidate(safeJsonParse(row.raw_values_json));
 
     let sanitizedCleaned = { values: {}, warnings: [] };
     for (const source of candidateSources) {
@@ -598,16 +655,160 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       }
     }
 
-    const sanitizedValues = sanitizedCleaned?.values || {};
+    const sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
     const sanitationWarnings = Array.isArray(sanitizedCleaned?.warnings)
       ? sanitizedCleaned.warnings
       : [];
+
+    const columnNameMap = new Map();
+    if (Array.isArray(columns)) {
+      columns.forEach((col) => {
+        if (!col) return;
+        const name = typeof col === 'string' ? col : col?.name;
+        if (!name) return;
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        const lower = trimmed.toLowerCase();
+        columnNameMap.set(lower, trimmed);
+        columnNameMap.set(lower.replace(/_/g, ''), trimmed);
+      });
+    }
+
+    const resolveColumnName = (field) => {
+      if (!field) return null;
+      const key = String(field).trim().toLowerCase();
+      if (!key) return null;
+      if (columnNameMap.has(key)) return columnNameMap.get(key);
+      const stripped = key.replace(/_/g, '');
+      if (columnNameMap.has(stripped)) return columnNameMap.get(stripped);
+      return null;
+    };
 
     if (Object.keys(sanitizedValues).length === 0) {
       const err = new Error('Temporary submission is missing promotable values');
       err.status = 422;
       throw err;
     }
+
+    const fallbackCreator = normalizeEmpId(row.created_by);
+    if (fallbackCreator) {
+      const hasCreatedByColumn = Array.isArray(columns)
+        ? columns.some(
+            (col) =>
+              col &&
+              typeof col.name === 'string' &&
+              col.name.trim().toLowerCase() === 'created_by',
+          )
+        : false;
+      if (hasCreatedByColumn) {
+        const hasSanitizedCreator = Object.prototype.hasOwnProperty.call(
+          sanitizedValues,
+          'created_by',
+        );
+        const sanitizedCreator = hasSanitizedCreator
+          ? sanitizedValues.created_by
+          : undefined;
+        if (
+          sanitizedCreator === undefined ||
+          sanitizedCreator === null ||
+          (typeof sanitizedCreator === 'string' && !sanitizedCreator.trim())
+        ) {
+          sanitizedValues.created_by = fallbackCreator;
+        }
+      }
+    }
+
+    let formConfig = null;
+    try {
+      if (row.config_name) {
+        ({ config: formConfig } = await getFormConfig(
+          row.table_name,
+          row.config_name,
+          row.company_id,
+        ));
+      } else if (row.form_name) {
+        ({ config: formConfig } = await getFormConfig(
+          row.table_name,
+          row.form_name,
+          row.company_id,
+        ));
+      }
+    } catch {
+      formConfig = null;
+    }
+
+    const resolvedConfig = formConfig || {};
+    const defaultUserFields = ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'];
+    const defaultBranchFields = ['branch_id'];
+    const defaultDepartmentFields = ['department_id'];
+    const defaultCompanyFields = ['company_id'];
+
+    const resolveFieldList = (source, fallback) => {
+      const list = Array.isArray(source) && source.length > 0 ? source : fallback;
+      const resolved = [];
+      list.forEach((field) => {
+        const name = resolveColumnName(field);
+        if (name && !resolved.includes(name)) {
+          resolved.push(name);
+        }
+      });
+      return resolved;
+    };
+
+    const userIdFields = resolveFieldList(
+      resolvedConfig.userIdFields,
+      defaultUserFields,
+    );
+    const branchIdFields = resolveFieldList(
+      resolvedConfig.branchIdFields,
+      defaultBranchFields,
+    );
+    const departmentIdFields = resolveFieldList(
+      resolvedConfig.departmentIdFields,
+      defaultDepartmentFields,
+    );
+    const companyIdFields = resolveFieldList(
+      resolvedConfig.companyIdFields,
+      defaultCompanyFields,
+    );
+
+    let reviewerSession = null;
+    try {
+      reviewerSession = await getEmploymentSession(normalizedReviewer, row.company_id, {
+        branchId: row.branch_id ?? undefined,
+        departmentId: row.department_id ?? undefined,
+      });
+    } catch {
+      reviewerSession = null;
+    }
+
+    const reviewerBranch =
+      reviewerSession?.branch_id ?? row.branch_id ?? sanitizedValues.branch_id ?? null;
+    const reviewerDepartment =
+      reviewerSession?.department_id ??
+      row.department_id ??
+      sanitizedValues.department_id ??
+      null;
+    const reviewerCompany =
+      reviewerSession?.company_id ?? row.company_id ?? sanitizedValues.company_id ?? null;
+
+    userIdFields.forEach((fieldName) => {
+      if (!fieldName) return;
+      if (fieldName.trim().toLowerCase() === 'created_by') return;
+      sanitizedValues[fieldName] = normalizedReviewer;
+    });
+    branchIdFields.forEach((fieldName) => {
+      if (!fieldName) return;
+      sanitizedValues[fieldName] = reviewerBranch;
+    });
+    departmentIdFields.forEach((fieldName) => {
+      if (!fieldName) return;
+      sanitizedValues[fieldName] = reviewerDepartment;
+    });
+    companyIdFields.forEach((fieldName) => {
+      if (!fieldName) return;
+      sanitizedValues[fieldName] = reviewerCompany;
+    });
 
     const mutationContext = {
       companyId: row.company_id ?? null,
