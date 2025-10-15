@@ -57,6 +57,9 @@ export default function AsyncSearchSelect({
   const [tenantMeta, setTenantMeta] = useState(null);
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
+  const latestQueryRef = useRef('');
+  const requestVersionRef = useRef(0);
+  const activeRequestCountRef = useRef(0);
   const effectiveSearchColumns = useMemo(() => {
     const columnSet = new Set();
     const addColumn = (col) => {
@@ -149,7 +152,17 @@ export default function AsyncSearchSelect({
   async function fetchPage(p = 1, q = '', append = false, signal) {
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
-    setLoading(true);
+    const normalizedQuery = String(q || '').trim().toLowerCase();
+    let requestVersion = requestVersionRef.current;
+    if (!append) {
+      requestVersion += 1;
+      requestVersionRef.current = requestVersion;
+      latestQueryRef.current = normalizedQuery;
+    }
+    activeRequestCountRef.current += 1;
+    if (activeRequestCountRef.current === 1) {
+      setLoading(true);
+    }
     try {
       const params = new URLSearchParams({ page: p, perPage: 50 });
       const isShared =
@@ -204,12 +217,10 @@ export default function AsyncSearchSelect({
           return { value: val, label: parts.join(' - ') };
         });
       }
-      const normalizedQuery = String(q || '').trim().toLowerCase();
       if (normalizedQuery) {
         opts = filterOptionsByQuery(opts, normalizedQuery);
       }
       const more = rows.length >= 50 && p * 50 < (json.count || Infinity);
-      setHasMore(more);
       if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
         const nextPage = p + 1;
         setPage(nextPage);
@@ -229,9 +240,19 @@ export default function AsyncSearchSelect({
         return opts;
       });
     } catch (err) {
-      if (err.name !== 'AbortError') setOptions(append ? [] : []);
+      if (err.name !== 'AbortError') {
+        const isRelevant =
+          requestVersionRef.current === requestVersion &&
+          latestQueryRef.current === normalizedQuery;
+        if (isRelevant && !append) {
+          setHasMore(false);
+        }
+      }
     } finally {
-      setLoading(false);
+      activeRequestCountRef.current = Math.max(0, activeRequestCountRef.current - 1);
+      if (activeRequestCountRef.current === 0) {
+        setLoading(false);
+      }
     }
   }
 
