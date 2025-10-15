@@ -111,6 +111,51 @@ function resolveScopeId(value) {
   return value;
 }
 
+const LABEL_WRAPPER_KEYS = new Set([
+  'value',
+  'label',
+  'name',
+  'title',
+  'text',
+  'display',
+  'displayName',
+  'code',
+]);
+
+function stripTemporaryLabelValue(value) {
+  if (value === undefined || value === null) return value;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const mapped = value.map((item) => {
+      const next = stripTemporaryLabelValue(item);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return changed ? mapped : value;
+  }
+  if (value instanceof Date) return value;
+  if (typeof File !== 'undefined' && value instanceof File) return value;
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return value;
+  if (typeof value !== 'object') return value;
+
+  if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+    const keys = Object.keys(value);
+    const onlyKnownKeys = keys.every((key) => LABEL_WRAPPER_KEYS.has(key));
+    if (onlyKnownKeys) {
+      return stripTemporaryLabelValue(value.value);
+    }
+  }
+
+  let changed = false;
+  const result = {};
+  for (const [key, val] of Object.entries(value)) {
+    const next = stripTemporaryLabelValue(val);
+    if (next !== val) changed = true;
+    result[key] = next;
+  }
+  return changed ? result : value;
+}
+
 function getTemporaryId(entry) {
   if (!entry || entry.id === undefined || entry.id === null) return null;
   return String(entry.id);
@@ -1097,6 +1142,14 @@ const TableManager = forwardRef(function TableManager({
       return list;
     }
 
+    const displayConfigCache = new Map();
+    const tenantInfoCache = new Map();
+    const tableRowsCache = new Map();
+    const relationCache = {};
+    const nestedLabelCache = {};
+    const referenceLoadErrorTables = new Set();
+    const referenceParseErrorTables = new Set();
+
     const buildRelationLabel = ({
       row,
       keyMap,
@@ -1238,37 +1291,33 @@ const TableManager = forwardRef(function TableManager({
     const fetchRelationMapForTable = async (tableName) => {
       if (!tableName) return {};
       const cacheKey = tableName.toLowerCase();
-      if (relationMapCache.has(cacheKey)) return relationMapCache.get(cacheKey);
-      const promise = (async () => {
-        try {
-          const relRes = await fetch(
-            `/api/tables/${encodeURIComponent(tableName)}/relations`,
-            { credentials: 'include' },
-          );
-          if (!relRes.ok) {
-            relationMapCache.set(cacheKey, {});
-            return {};
-          }
-          const relList = await relRes.json().catch(() => []);
-          if (canceled) return {};
-          const relMap = {};
-          relList.forEach((entry) => {
-            if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
-            const lower = entry.COLUMN_NAME.toLowerCase();
-            relMap[lower] = {
-              table: entry.REFERENCED_TABLE_NAME,
-              column: entry.REFERENCED_COLUMN_NAME,
-            };
-          });
-          relationMapCache.set(cacheKey, relMap);
-          return relMap;
-        } catch {
-          relationMapCache.set(cacheKey, {});
-          return {};
+      if (relationCache[cacheKey]) return relationCache[cacheKey];
+      try {
+        const relRes = await fetch(
+          `/api/tables/${encodeURIComponent(tableName)}/relations`,
+          { credentials: 'include' },
+        );
+        if (!relRes.ok) {
+          relationCache[cacheKey] = {};
+          return relationCache[cacheKey];
         }
-      })();
-      relationMapCache.set(cacheKey, promise);
-      return promise;
+        const relList = await relRes.json().catch(() => []);
+        if (canceled) return {};
+        const relMap = {};
+        relList.forEach((entry) => {
+          if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
+          const lower = entry.COLUMN_NAME.toLowerCase();
+          relMap[lower] = {
+            table: entry.REFERENCED_TABLE_NAME,
+            column: entry.REFERENCED_COLUMN_NAME,
+          };
+        });
+        relationCache[cacheKey] = relMap;
+        return relMap;
+      } catch {
+        relationCache[cacheKey] = {};
+        return {};
+      }
     };
 
     const fetchTableRows = (tableName, tenantInfo) => {
@@ -1358,76 +1407,60 @@ const TableManager = forwardRef(function TableManager({
         branch ?? '',
         department ?? '',
       ].join('|');
-      if (nestedLabelCache.has(cacheKey)) return nestedLabelCache.get(cacheKey);
+      if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
 
-      const promise = (async () => {
-        const [nestedCfg, nestedTenant] = await Promise.all([
-          fetchDisplayConfig(nestedRel.table),
-          fetchTenantInfo(nestedRel.table),
-        ]);
-        if (canceled) return {};
+      const [nestedCfg, nestedTenant] = await Promise.all([
+        fetchDisplayConfig(nestedRel.table),
+        fetchTenantInfo(nestedRel.table),
+      ]);
+      if (canceled) return {};
 
-        const rows = await fetchTableRows(nestedRel.table, nestedTenant);
-        if (canceled) return {};
+      const rows = await fetchTableRows(nestedRel.table, nestedTenant);
+      if (canceled) return {};
 
-        const labelMap = {};
-        rows.forEach((row) => {
-          if (!row || typeof row !== 'object') return;
-          const keyMap = {};
-          Object.keys(row || {}).forEach((k) => {
-            keyMap[k.toLowerCase()] = k;
-          });
-          const colKey = keyMap[nestedRel.column.toLowerCase()];
-          if (!colKey) return;
-          const val = row[colKey];
-          if (val === undefined || val === null || val === '') return;
-          const label = buildRelationLabel({
-            row,
-            keyMap,
-            relationColumn: nestedRel.column,
-            cfg: nestedCfg,
-            nestedLookups: {},
-          });
-          const valueKey =
-            typeof val === 'string' || typeof val === 'number'
-              ? String(val)
-              : val;
-          labelMap[valueKey] = label;
+      const labelMap = {};
+      rows.forEach((row) => {
+        if (!row || typeof row !== 'object') return;
+        const keyMap = {};
+        Object.keys(row || {}).forEach((k) => {
+          keyMap[k.toLowerCase()] = k;
         });
+        const colKey = keyMap[nestedRel.column.toLowerCase()];
+        if (!colKey) return;
+        const val = row[colKey];
+        if (val === undefined || val === null || val === '') return;
+        const label = buildRelationLabel({
+          row,
+          keyMap,
+          relationColumn: nestedRel.column,
+          cfg: nestedCfg,
+          nestedLookups: {},
+        });
+        const valueKey =
+          typeof val === 'string' || typeof val === 'number' ? String(val) : val;
+        labelMap[valueKey] = label;
+      });
 
-        nestedLabelCache.set(cacheKey, labelMap);
-        return labelMap;
-      })();
-
-      nestedLabelCache.set(cacheKey, promise);
-      return promise;
+      nestedLabelCache[cacheKey] = labelMap;
+      return labelMap;
     };
 
     const loadNestedDisplayLookups = async (tableName, displayFields) => {
       if (!Array.isArray(displayFields) || displayFields.length === 0) return {};
       const relationMap = await fetchRelationMapForTable(tableName);
       if (!relationMap || Object.keys(relationMap).length === 0) return {};
-      const seen = new Set();
-      const entries = await Promise.all(
-        displayFields.map(async (field) => {
-          if (typeof field !== 'string') return null;
-          const lower = field.toLowerCase();
-          const nestedRel = relationMap[lower];
-          if (!nestedRel) return null;
-          if (seen.has(lower)) return null;
-          seen.add(lower);
-          const labels = await fetchNestedLabelMap(nestedRel);
-          if (canceled || !labels || Object.keys(labels).length === 0) return null;
-          return [lower, labels];
-        }),
-      );
-      if (canceled) return {};
       const lookupMap = {};
-      entries.forEach((entry) => {
-        if (!entry) return;
-        const [lower, labels] = entry;
-        lookupMap[lower] = labels;
-      });
+      for (const field of displayFields) {
+        if (typeof field !== 'string') continue;
+        const lower = field.toLowerCase();
+        const nestedRel = relationMap[lower];
+        if (!nestedRel) continue;
+        const labels = await fetchNestedLabelMap(nestedRel);
+        if (canceled) return {};
+        if (labels && Object.keys(labels).length > 0) {
+          lookupMap[lower] = labels;
+        }
+      }
       return lookupMap;
     };
 
@@ -2753,38 +2786,56 @@ const TableManager = forwardRef(function TableManager({
   async function handleSaveTemporary(submission) {
     if (!canCreateTemporary) return false;
     if (!submission || typeof submission !== 'object') return false;
-    const normalizedValues = submission.values || submission;
-    const rawOverride = submission.rawValues && typeof submission.rawValues === 'object'
-      ? submission.rawValues
-      : null;
-    const gridRows = Array.isArray(submission.normalizedRows)
+    const valueSource =
+      submission.values && typeof submission.values === 'object'
+        ? submission.values
+        : submission;
+    const normalizedValues =
+      valueSource && typeof valueSource === 'object' && !Array.isArray(valueSource)
+        ? stripTemporaryLabelValue(valueSource)
+        : {};
+    const rawOverride =
+      submission.rawValues && typeof submission.rawValues === 'object'
+        ? stripTemporaryLabelValue(submission.rawValues)
+        : null;
+    const gridRowsSource = Array.isArray(submission.normalizedRows)
       ? submission.normalizedRows
-      : Array.isArray(normalizedValues?.rows)
-      ? normalizedValues.rows
+      : Array.isArray(valueSource?.rows)
+      ? valueSource.rows
       : null;
-    const merged = { ...(editing || {}) };
+    const gridRows = Array.isArray(gridRowsSource)
+      ? stripTemporaryLabelValue(gridRowsSource)
+      : null;
+    const rawRows =
+      submission.rawRows && typeof submission.rawRows === 'object'
+        ? stripTemporaryLabelValue(submission.rawRows)
+        : null;
+    const mergedSource = { ...(editing || {}) };
     Object.entries(normalizedValues).forEach(([k, v]) => {
-      merged[k] = v;
+      mergedSource[k] = v;
     });
     Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
-      if (merged[k] === undefined || merged[k] === '') merged[k] = v;
+      if (mergedSource[k] === undefined || mergedSource[k] === '') {
+        mergedSource[k] = stripTemporaryLabelValue(v);
+      }
     });
     if (isAdding && autoFillSession) {
       const columns = new Set(allColumns);
       userIdFields.forEach((f) => {
-        if (columns.has(f)) merged[f] = user?.empid;
+        if (columns.has(f)) mergedSource[f] = user?.empid;
       });
       branchIdFields.forEach((f) => {
-        if (columns.has(f) && branch !== undefined) merged[f] = branch;
+        if (columns.has(f) && branch !== undefined) mergedSource[f] = branch;
       });
       departmentIdFields.forEach((f) => {
-        if (columns.has(f) && department !== undefined) merged[f] = department;
+        if (columns.has(f) && department !== undefined) mergedSource[f] = department;
       });
       companyIdFields.forEach((f) => {
-        if (columns.has(f) && company !== undefined) merged[f] = company;
+        if (columns.has(f) && company !== undefined) mergedSource[f] = company;
       });
     }
 
+    const merged = stripTemporaryLabelValue(mergedSource);
     const cleaned = {};
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
@@ -2797,23 +2848,20 @@ const TableManager = forwardRef(function TableManager({
       }
     });
 
+    const payloadValues = { ...normalizedValues };
+    if (gridRows) {
+      payloadValues.rows = gridRows;
+    }
     const payload = {
-      values: normalizedValues,
+      values: payloadValues,
       submittedAt: new Date().toISOString(),
     };
     if (gridRows) {
       payload.gridRows = gridRows;
-      const currentValues =
-        payload.values && typeof payload.values === 'object' && !Array.isArray(payload.values)
-          ? payload.values
-          : {};
-      if (!Array.isArray(currentValues.rows)) {
-        payload.values = { ...currentValues, rows: gridRows };
-      }
       payload.rowCount = gridRows.length;
     }
-    if (submission.rawRows) {
-      payload.rawRows = submission.rawRows;
+    if (rawRows) {
+      payload.rawRows = rawRows;
     }
     const body = {
       table,

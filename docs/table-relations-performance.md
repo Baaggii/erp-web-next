@@ -13,8 +13,7 @@
 
 ## Changes Implemented
 - Added **per-table caches** for display configuration, tenant metadata, and reference rows. Repeated relations now reuse the in-flight promise instead of re-fetching.
-- Persisted caches across renders within TableManager so relation dropdowns and modals stop replaying the entire hydration pipeline when the component re-renders or filters change.
-- Parallelized relation hydration with `Promise.allSettled`, so multiple relations load concurrently while isolating failures per column, and made nested display lookups load in parallel instead of sequential blocking calls.
+- Parallelized relation hydration with `Promise.allSettled`, so multiple relations load concurrently while isolating failures per column.
 - Reused the same cache helpers for nested label generation, eliminating duplicate reference downloads for derived lookups.
 - Added contextual cache keys (table + tenant scope) and guarded toast notifications to avoid spamming duplicate error messages when requests fail.
 
