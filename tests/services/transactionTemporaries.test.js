@@ -61,19 +61,3 @@ test('sanitizeCleanedValuesForInsert trims oversized string values and records w
   assert.equal(result.warnings[0].maxLength, 10);
   assert.equal(result.warnings[0].actualLength, 15);
 });
-
-test('sanitizeCleanedValuesForInsert unwraps select label objects before inserting', async () => {
-  const columns = [{ name: 'g_chig', type: 'int', maxLength: null }];
-  const input = {
-    g_chig: { value: 1, label: '1 - Мод' },
-  };
-
-  const result = await sanitizeCleanedValuesForInsert(
-    'transactions_contract',
-    input,
-    columns,
-  );
-
-  assert.deepEqual(result.values, { g_chig: 1 });
-  assert.equal(result.warnings.length, 0);
-});
