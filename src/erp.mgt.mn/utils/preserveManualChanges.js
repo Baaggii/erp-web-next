@@ -1,0 +1,70 @@
+import { valuesEqual } from './generatedColumns.js';
+import { isPlainRecord } from './transactionValues.js';
+
+export function preserveManualChangesAfterRecalc({
+  table,
+  changes,
+  computedFieldMap = {},
+  desiredRow,
+  recalculatedValues,
+  equals = valuesEqual,
+}) {
+  if (!recalculatedValues || typeof recalculatedValues !== 'object') {
+    return recalculatedValues;
+  }
+  if (!changes || typeof changes !== 'object') {
+    return recalculatedValues;
+  }
+  if (!isPlainRecord(desiredRow)) {
+    return recalculatedValues;
+  }
+
+  const changedFields = Object.keys(changes);
+  if (changedFields.length === 0) {
+    return recalculatedValues;
+  }
+
+  const currentContainer = recalculatedValues[table];
+  if (!isPlainRecord(currentContainer)) {
+    return recalculatedValues;
+  }
+
+  const rawComputed = computedFieldMap?.[table];
+  let computedSet;
+  if (rawComputed instanceof Set) {
+    computedSet = rawComputed;
+  } else if (Array.isArray(rawComputed)) {
+    computedSet = new Set(
+      rawComputed
+        .filter((field) => typeof field === 'string')
+        .map((field) => field.toLowerCase()),
+    );
+  } else {
+    computedSet = new Set();
+  }
+
+  let nextContainer = currentContainer;
+  let mutated = false;
+
+  changedFields.forEach((field) => {
+    if (typeof field !== 'string' || field.length === 0) return;
+    const lower = field.toLowerCase();
+    if (computedSet.has(lower)) return;
+    if (!Object.prototype.hasOwnProperty.call(desiredRow, field)) return;
+    const desiredValue = desiredRow[field];
+    if (equals(nextContainer[field], desiredValue)) return;
+    if (!mutated) {
+      nextContainer = { ...currentContainer };
+      mutated = true;
+    }
+    nextContainer[field] = desiredValue;
+  });
+
+  if (!mutated || nextContainer === currentContainer) {
+    return recalculatedValues;
+  }
+
+  return { ...recalculatedValues, [table]: nextContainer };
+}
+
+export default preserveManualChangesAfterRecalc;
