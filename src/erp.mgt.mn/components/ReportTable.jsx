@@ -72,10 +72,37 @@ export default function ReportTable({
   const [editLabels, setEditLabels] = useState(false);
   const [labelEdits, setLabelEdits] = useState({});
   const [txnInfo, setTxnInfo] = useState(null);
+  const [columnFilters, setColumnFilters] = useState({});
+
+  const columns = useMemo(
+    () => (rows && rows.length ? Object.keys(rows[0]) : []),
+    [rows],
+  );
 
   useEffect(() => {
     setPage(1);
   }, [rows]);
+
+  useEffect(() => {
+    setColumnFilters((prev) => {
+      const next = {};
+      let changed = false;
+      columns.forEach((c) => {
+        if (prev[c]) next[c] = prev[c];
+      });
+      if (Object.keys(prev).length !== Object.keys(next).length) changed = true;
+      return changed ? next : prev;
+    });
+  }, [columns]);
+
+  function handleColumnFilterChange(col, value) {
+    setColumnFilters((prev) => {
+      const next = { ...prev, [col]: value };
+      if (!value) delete next[col];
+      return next;
+    });
+    setPage(1);
+  }
 
 
   const procLabels = generalConfig.general?.procLabels || {};
@@ -92,7 +119,6 @@ export default function ReportTable({
     }
   }
 
-  const columns = rows && rows.length ? Object.keys(rows[0]) : [];
   const columnHeaderMap = useHeaderMappings(columns);
 
   useEffect(() => {
@@ -124,12 +150,23 @@ export default function ReportTable({
   }, [columns, fieldTypeMap]);
 
   const filtered = useMemo(() => {
-    if (!search) return rows;
+    const activeFilters = Object.entries(columnFilters).filter(([, val]) => val);
+    const filteredRows = activeFilters.length
+      ? rows.filter((r) =>
+          activeFilters.every(([col, val]) =>
+            String(r[col] ?? '')
+              .toLowerCase()
+              .includes(String(val).toLowerCase()),
+          ),
+        )
+      : rows;
+
+    if (!search) return filteredRows;
     const s = search.toLowerCase();
-    return rows.filter((r) =>
+    return filteredRows.filter((r) =>
       columns.some((c) => String(r[c] ?? '').toLowerCase().includes(s)),
     );
-  }, [rows, search, columns]);
+  }, [rows, search, columns, columnFilters]);
 
   const sorted = useMemo(() => {
     if (!sort) return filtered;
@@ -563,6 +600,34 @@ export default function ReportTable({
                 >
                   {fieldLabels[col] || columnHeaderMap[col] || col}
                   {sort && sort.col === col && (sort.dir === 'asc' ? ' ▲' : ' ▼')}
+                </th>
+              ))}
+            </tr>
+            <tr>
+              {columns.map((col) => (
+                <th
+                  key={`${col}-filter`}
+                  style={{
+                    padding: '0.25rem',
+                    border: '1px solid #d1d5db',
+                    whiteSpace: 'normal',
+                    wordBreak: 'break-word',
+                    fontSize: '0.75rem',
+                    textAlign: columnAlign[col],
+                    width: columnWidths[col],
+                    minWidth: columnWidths[col],
+                    maxWidth: MAX_WIDTH,
+                    resize: 'horizontal',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                  }}
+                >
+                  <input
+                    value={columnFilters[col] || ''}
+                    onChange={(e) => handleColumnFilterChange(col, e.target.value)}
+                    style={{ width: '100%' }}
+                    placeholder="Filter"
+                  />
                 </th>
               ))}
             </tr>

@@ -22,70 +22,6 @@ const STRING_COLUMN_TYPES = new Set([
   'set',
 ]);
 
-const LABEL_WRAPPER_KEYS = new Set([
-  'value',
-  'label',
-  'name',
-  'title',
-  'text',
-  'display',
-  'displayname',
-  'code',
-]);
-
-function tryParseJsonLike(value) {
-  if (typeof value !== 'string') return { parsed: false };
-  const trimmed = value.trim();
-  if (!trimmed) return { parsed: false };
-  const first = trimmed[0];
-  if (first !== '{' && first !== '[') return { parsed: false };
-  try {
-    return { parsed: true, value: JSON.parse(trimmed) };
-  } catch {
-    return { parsed: false };
-  }
-}
-
-function unwrapLabelValue(value) {
-  if (value === undefined || value === null) return value;
-  if (Array.isArray(value)) {
-    let changed = false;
-    const mapped = value.map((item) => {
-      const next = unwrapLabelValue(item);
-      if (next !== item) changed = true;
-      return next;
-    });
-    return changed ? mapped : value;
-  }
-  if (value instanceof Date || value instanceof Buffer) return value;
-  if (typeof value === 'string') {
-    const parsed = tryParseJsonLike(value);
-    if (parsed.parsed) {
-      const next = unwrapLabelValue(parsed.value);
-      if (next !== parsed.value) {
-        return next;
-      }
-    }
-    return value;
-  }
-  if (typeof value !== 'object') return value;
-  if (Object.prototype.hasOwnProperty.call(value, 'value')) {
-    const keys = Object.keys(value);
-    const onlyKnown = keys.every((key) => LABEL_WRAPPER_KEYS.has(key.toLowerCase()));
-    if (onlyKnown) {
-      return unwrapLabelValue(value.value);
-    }
-  }
-  let changed = false;
-  const result = {};
-  for (const [key, val] of Object.entries(value)) {
-    const next = unwrapLabelValue(val);
-    if (next !== val) changed = true;
-    result[key] = next;
-  }
-  return changed ? result : value;
-}
-
 function normalizeEmpId(empid) {
   if (!empid) return null;
   const trimmed = String(empid).trim();
@@ -197,7 +133,7 @@ export async function sanitizeCleanedValuesForInsert(tableName, values, columns)
     if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
     const columnInfo = lookup.get(lower);
     if (!columnInfo) continue;
-    let normalizedValue = unwrapLabelValue(rawValue);
+    let normalizedValue = rawValue;
     if (Array.isArray(normalizedValue)) {
       normalizedValue = JSON.stringify(normalizedValue);
     } else if (
