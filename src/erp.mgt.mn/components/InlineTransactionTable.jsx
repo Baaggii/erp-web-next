@@ -77,6 +77,7 @@ function InlineTransactionTable(
     imageIdField = '',
     configHash: _configHash,
     tableColumns = [],
+    numericScaleMap = {},
   },
   ref,
 ) {
@@ -125,6 +126,10 @@ function InlineTransactionTable(
     () => JSON.stringify(columnCaseMap || {}),
     [columnCaseMap],
   );
+  const numericScaleMapKey = React.useMemo(
+    () => JSON.stringify(numericScaleMap || {}),
+    [numericScaleMap],
+  );
   const viewSourceKey = React.useMemo(() => JSON.stringify(viewSource || {}), [viewSource]);
   const relationConfigsKey = React.useMemo(
     () => JSON.stringify(relationConfigs || {}),
@@ -133,6 +138,63 @@ function InlineTransactionTable(
   const tableDisplayFieldsKey = React.useMemo(
     () => JSON.stringify(tableDisplayFields || {}),
     [tableDisplayFields],
+  );
+
+  const numericScaleLookup = React.useMemo(() => {
+    const map = {};
+    Object.entries(numericScaleMap || {}).forEach(([key, value]) => {
+      if (!key) return;
+      const lower = String(key).toLowerCase();
+      const scale = Number(value);
+      if (!Number.isNaN(scale)) map[lower] = scale;
+    });
+    return map;
+  }, [numericScaleMapKey]);
+
+  const getNumericScale = React.useCallback(
+    (field) => {
+      if (!field) return null;
+      const lower = String(field).toLowerCase();
+      return numericScaleLookup[lower] ?? null;
+    },
+    [numericScaleLookup],
+  );
+
+  const formatNumericValue = React.useCallback(
+    (field, value) => {
+      if (value === null || value === undefined || value === '') return value === 0 ? '0' : '';
+      if (typeof value === 'object') {
+        if ('value' in value) return formatNumericValue(field, value.value);
+        return value;
+      }
+      const scale = getNumericScale(field);
+      if (scale === null) return String(value);
+      const num =
+        typeof value === 'number' ? value : Number(normalizeNumberInput(String(value)));
+      if (!Number.isFinite(num)) return String(value);
+      return num.toFixed(scale);
+    },
+    [getNumericScale],
+  );
+
+  const applyNumericFormattingToRow = React.useCallback(
+    (row) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+      const map = fieldTypeMap || {};
+      let changed = false;
+      const next = { ...row };
+      Object.entries(next).forEach(([key, value]) => {
+        if (map[key] !== 'number') return;
+        const formatted = formatNumericValue(key, value);
+        if (typeof formatted !== 'string') return;
+        if (formatted !== value) {
+          next[key] = formatted;
+          changed = true;
+        }
+      });
+      return changed ? next : row;
+    },
+    [fieldTypeMap, formatNumericValue],
   );
 
   const viewSourceMap = React.useMemo(() => {
@@ -553,6 +615,11 @@ function InlineTransactionTable(
       Object.entries(updated).forEach(([k, v]) => {
         if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
+        } else if (fieldTypeMap[k] === 'number') {
+          const formatted = formatNumericValue(k, v);
+          if (typeof formatted === 'string') {
+            updated[k] = formatted;
+          }
         }
       });
       return updated;
@@ -564,7 +631,7 @@ function InlineTransactionTable(
     if (metadataChanged || JSON.stringify(withMetadata) !== JSON.stringify(rows)) {
       commitRowsUpdate(() => withMetadata, { notify: false, metadataSource: initRows });
     }
-  }, [initRows, minRows, defaultValues, placeholders]);
+  }, [initRows, minRows, defaultValues, placeholders, fieldTypeMap, formatNumericValue]);
 
   useEffect(() => {
     const prev = contextDefaultsRef.current;
@@ -604,11 +671,15 @@ function InlineTransactionTable(
           }
         });
 
+        if (Array.isArray(nextRows)) {
+          nextRows = nextRows.map((row) => applyNumericFormattingToRow(row));
+        }
+
         return changed ? nextRows : currentRows;
       },
       { notify: false },
     );
-  }, [branch, company, fillSessionDefaults]);
+  }, [branch, company, fillSessionDefaults, applyNumericFormattingToRow]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
@@ -1893,6 +1964,13 @@ function InlineTransactionTable(
       fieldType === 'date'
         ? normalizeDateInput(String(rawVal ?? ''), 'YYYY-MM-DD')
         : rawVal;
+    const numericScale = getNumericScale(f);
+    const numericStep =
+      numericScale === null
+        ? undefined
+        : numericScale <= 0
+        ? '1'
+        : (1 / 10 ** numericScale).toFixed(numericScale);
     const commonProps = {
       className: `w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`,
       style: { ...inputStyle },
@@ -1916,7 +1994,20 @@ function InlineTransactionTable(
       return <input type="tel" inputMode="tel" {...commonProps} />;
     }
     if (fieldType === 'number') {
-      return <input type="number" inputMode="decimal" {...commonProps} />;
+      return (
+        <input
+          type="number"
+          inputMode="decimal"
+          step={numericStep}
+          {...commonProps}
+          onBlur={(e) => {
+            if (!e.target) return;
+            const formatted = formatNumericValue(f, e.target.value);
+            if (typeof formatted !== 'string' || formatted === e.target.value) return;
+            handleChange(idx, f, formatted);
+          }}
+        />
+      );
     }
     return (
       <textarea

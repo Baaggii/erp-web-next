@@ -830,6 +830,13 @@ const TableManager = forwardRef(function TableManager({
     [user?.empid, branch, department, company, userIdFields, branchIdFields, departmentIdFields, companyIdFields],
   );
 
+  const userIdFields = useMemo(() => {
+    if (formConfig?.userIdFields?.length)
+      return formConfig.userIdFields.filter(f => validCols.has(f));
+    const defaultFields = ['created_by', 'employee_id', 'emp_id', 'empid', 'user_id'];
+    return defaultFields.filter(f => validCols.has(f));
+  }, [formConfig, validCols]);
+
   function computeAutoInc(meta) {
     const auto = meta
       .filter(
