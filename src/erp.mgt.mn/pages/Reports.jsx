@@ -83,6 +83,7 @@ export default function Reports() {
   const [pendingExclusion, setPendingExclusion] = useState(null);
   const [lockFetchPending, setLockFetchPending] = useState(false);
   const [lockFetchError, setLockFetchError] = useState('');
+  const [populateLockCandidates, setPopulateLockCandidates] = useState(false);
   const [lockAcknowledged, setLockAcknowledged] = useState(false);
   const [approvalReason, setApprovalReason] = useState('');
   const [requestingApproval, setRequestingApproval] = useState(false);
@@ -236,7 +237,7 @@ export default function Reports() {
   useEffect(() => {
     let cancelled = false;
     setLockAcknowledged(false);
-    if (!result || !result.name) {
+    if (!result || !result.name || !populateLockCandidates) {
       setLockCandidates([]);
       setLockSelections({});
       setLockExclusions({});
@@ -250,6 +251,10 @@ export default function Reports() {
     async function fetchLockCandidates() {
       setLockFetchPending(true);
       setLockFetchError('');
+      setLockCandidates([]);
+      setLockSelections({});
+      setLockExclusions({});
+      setPendingExclusion(null);
       const params = new URLSearchParams();
       if (branch) params.set('branchId', branch);
       if (department) params.set('departmentId', department);
@@ -374,6 +379,7 @@ export default function Reports() {
     department,
     getCandidateKey,
     getCandidateTable,
+    populateLockCandidates,
   ]);
 
   const dateParamInfo = useMemo(() => {
@@ -2217,6 +2223,23 @@ export default function Reports() {
                 />
               );
             })}
+            <label
+              style={{
+                marginLeft: '0.5rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={populateLockCandidates}
+                onChange={(event) =>
+                  setPopulateLockCandidates(event.target.checked)
+                }
+              />
+              <span>Populate lock candidates after running</span>
+            </label>
             <button
               onClick={runReport}
               style={{ marginLeft: '0.5rem' }}
