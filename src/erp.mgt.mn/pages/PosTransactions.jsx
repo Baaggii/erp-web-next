@@ -17,6 +17,7 @@ import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
 import { syncCalcFields, normalizeCalcFieldConfig } from '../utils/syncCalcFields.js';
+import { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
@@ -37,6 +38,7 @@ import {
 } from '../utils/transactionValues.js';
 
 export { syncCalcFields };
+export { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
 
 function normalizeValueForComparison(value) {
   if (value === undefined) return undefined;
@@ -1639,8 +1641,19 @@ export default function PosTransactionsPage() {
 
   function handleChange(tbl, changes) {
     setValues((v) => {
-      const next = { ...v, [tbl]: { ...v[tbl], ...changes } };
-      return recalcTotals(next);
+      const prev = v?.[tbl];
+      const desiredRow = isPlainRecord(prev)
+        ? { ...prev, ...changes }
+        : { ...changes };
+      const merged = { ...v, [tbl]: desiredRow };
+      const recalculated = recalcTotals(merged);
+      return preserveManualChangesAfterRecalc({
+        table: tbl,
+        changes,
+        computedFieldMap,
+        desiredRow,
+        recalculatedValues: recalculated,
+      });
     });
   }
 

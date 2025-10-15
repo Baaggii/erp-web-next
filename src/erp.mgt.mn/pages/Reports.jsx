@@ -119,26 +119,7 @@ export default function Reports() {
     }
   }, [result]);
 
-  const getCandidateTable = useCallback((candidate) => {
-    if (!candidate || typeof candidate !== 'object') return '';
-    const tableSources = [
-      candidate.tableName,
-      candidate.table,
-      candidate.table_name,
-      candidate.lockTable,
-      candidate.lock_table,
-      candidate.lockTableName,
-      candidate.lock_table_name,
-    ];
-    for (const source of tableSources) {
-      if (source === undefined || source === null) continue;
-      const str = String(source).trim();
-      if (str) return str;
-    }
-    return '';
-  }, []);
-
-  const normalizeLockCandidateList = useCallback(
+  const normalizeLockCandidates = useCallback(
     (list) => {
       return list
         .map((candidate) => {
@@ -203,7 +184,7 @@ export default function Reports() {
     [getCandidateTable],
   );
 
-  const loadLockCandidatesFor = useCallback(
+  const fetchLockCandidatesFor = useCallback(
     async (name, params) => {
       if (!name) throw new Error('Procedure name is required');
       const payloadParams = Array.isArray(params) ? params : [];
@@ -224,9 +205,119 @@ export default function Reports() {
       }
       const data = await res.json().catch(() => ({}));
       const list = Array.isArray(data.lockCandidates) ? data.lockCandidates : [];
-      return normalizeLockCandidateList(list);
+      return normalizeLockCandidates(list);
     },
-    [branch, department, normalizeLockCandidateList],
+    [branch, department, normalizeLockCandidates],
+  );
+
+  const getCandidateTable = useCallback((candidate) => {
+    if (!candidate || typeof candidate !== 'object') return '';
+    const tableSources = [
+      candidate.tableName,
+      candidate.table,
+      candidate.table_name,
+      candidate.lockTable,
+      candidate.lock_table,
+      candidate.lockTableName,
+      candidate.lock_table_name,
+    ];
+    for (const source of tableSources) {
+      if (source === undefined || source === null) continue;
+      const str = String(source).trim();
+      if (str) return str;
+    }
+    return '';
+  }, []);
+
+  const normalizeLockCandidates = useCallback(
+    (list) => {
+      return list
+        .map((candidate) => {
+          if (!candidate || typeof candidate !== 'object') return null;
+          const tableName = getCandidateTable(candidate);
+          const rawId =
+            candidate.recordId ??
+            candidate.record_id ??
+            candidate.id ??
+            candidate.recordID;
+          if (!tableName || rawId === null || rawId === undefined) {
+            return null;
+          }
+          const recordId = String(rawId);
+          const key = candidate.key ?? `${tableName}#${recordId}`;
+          const rawSnapshot =
+            resolveSnapshotSource(candidate) ||
+            (candidate.snapshot &&
+            typeof candidate.snapshot === 'object' &&
+            !Array.isArray(candidate.snapshot)
+              ? candidate.snapshot
+              : null);
+          const {
+            row: normalizedSnapshot,
+            columns: derivedColumns,
+            fieldTypeMap,
+          } = normalizeSnapshotRecord(rawSnapshot || {});
+          let snapshotColumns = Array.isArray(candidate.snapshotColumns)
+            ? candidate.snapshotColumns
+            : Array.isArray(candidate.snapshot_columns)
+            ? candidate.snapshot_columns
+            : Array.isArray(candidate.columns)
+            ? candidate.columns
+            : [];
+          snapshotColumns = snapshotColumns
+            .map((col) => (col === null || col === undefined ? '' : String(col)))
+            .filter(Boolean);
+          if (!snapshotColumns.length) {
+            snapshotColumns = derivedColumns;
+          }
+          const snapshotFieldTypeMap =
+            candidate.snapshotFieldTypeMap ||
+            candidate.snapshot_field_type_map ||
+            candidate.fieldTypeMap ||
+            candidate.field_type_map ||
+            fieldTypeMap ||
+            {};
+          const next = {
+            ...candidate,
+            tableName,
+            recordId,
+            key,
+            snapshot: normalizedSnapshot,
+            snapshotColumns,
+            snapshotFieldTypeMap,
+          };
+          if (candidate.table === undefined) next.table = tableName;
+          return next;
+        })
+        .filter(Boolean);
+    },
+    [getCandidateTable],
+  );
+
+  const fetchLockCandidatesFor = useCallback(
+    async (name, params) => {
+      if (!name) throw new Error('Procedure name is required');
+      const payloadParams = Array.isArray(params) ? params : [];
+      const query = new URLSearchParams();
+      if (branch) query.set('branchId', branch);
+      if (department) query.set('departmentId', department);
+      const res = await fetch(
+        `/api/procedures/locks${query.toString() ? `?${query.toString()}` : ''}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ name, params: payloadParams }),
+        },
+      );
+      if (!res.ok) {
+        throw new Error('Failed to load lock candidates');
+      }
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.lockCandidates) ? data.lockCandidates : [];
+      return normalizeLockCandidates(list);
+    },
+    [branch, department, normalizeLockCandidates],
   );
 
   const getCandidateKey = useCallback(
@@ -343,7 +434,7 @@ export default function Reports() {
       setLockFetchPending(true);
       setLockFetchError('');
       try {
-        const normalized = await loadLockCandidatesFor(
+        const normalized = await fetchLockCandidatesFor(
           result.name,
           Array.isArray(result.orderedParams) ? result.orderedParams : [],
         );
@@ -381,7 +472,7 @@ export default function Reports() {
   }, [
     result,
     lockParamSignature,
-    loadLockCandidatesFor,
+    fetchLockCandidatesFor,
     getCandidateKey,
     getCandidateTable,
   ]);
@@ -682,7 +773,7 @@ export default function Reports() {
     }
     setLockPreviewState({ status: 'loading' });
     try {
-      const normalized = await loadLockCandidatesFor(selectedProc, finalParams);
+      const normalized = await fetchLockCandidatesFor(selectedProc, finalParams);
       const total = normalized.length;
       const locked = normalized.reduce(
         (count, candidate) => (candidate?.locked ? count + 1 : count),
@@ -704,7 +795,7 @@ export default function Reports() {
   }, [
     selectedProc,
     allParamsProvided,
-    loadLockCandidatesFor,
+    fetchLockCandidatesFor,
     finalParams,
     addToast,
   ]);
