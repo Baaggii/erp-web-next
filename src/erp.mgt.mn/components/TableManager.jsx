@@ -349,13 +349,6 @@ const TableManager = forwardRef(function TableManager({
   const [editing, setEditing] = useState(null);
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
-  const temporaryPromotionQueueRef = useRef([]);
-  const promotionQueueActiveRef = useRef(false);
-
-  const clearTemporaryPromotionQueue = useCallback(() => {
-    temporaryPromotionQueueRef.current = [];
-    promotionQueueActiveRef.current = false;
-  }, []);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
@@ -778,50 +771,6 @@ const TableManager = forwardRef(function TableManager({
       return formConfig.companyIdFields.filter(f => validCols.has(f));
     return ['company_id'].filter(f => validCols.has(f));
   }, [formConfig, validCols]);
-
-  const applyReviewerAutoFill = useCallback(
-    (baseValues = {}) => {
-      const next = { ...(baseValues || {}) };
-      const reviewerEmpId = user?.empid ?? null;
-      const hasValue = (value) => {
-        if (value === undefined || value === null) return false;
-        if (typeof value === 'string') return value.trim() !== '';
-        return true;
-      };
-
-      if (reviewerEmpId) {
-        userIdFields.forEach((field) => {
-          if (!field) return;
-          if (field.toLowerCase() === 'created_by') return;
-          next[field] = reviewerEmpId;
-        });
-      }
-
-      if (hasValue(branch)) {
-        branchIdFields.forEach((field) => {
-          if (!field) return;
-          next[field] = branch;
-        });
-      }
-
-      if (hasValue(department)) {
-        departmentIdFields.forEach((field) => {
-          if (!field) return;
-          next[field] = department;
-        });
-      }
-
-      if (hasValue(company)) {
-        companyIdFields.forEach((field) => {
-          if (!field) return;
-          next[field] = company;
-        });
-      }
-
-      return next;
-    },
-    [user?.empid, branch, department, company, userIdFields, branchIdFields, departmentIdFields, companyIdFields],
-  );
 
   const userIdFields = useMemo(() => {
     if (formConfig?.userIdFields?.length)
@@ -2728,28 +2677,12 @@ const TableManager = forwardRef(function TableManager({
         overrideValues: cleaned,
       });
       if (ok) {
-        let nextQueuedEntry = null;
-        const queue = Array.isArray(temporaryPromotionQueueRef.current)
-          ? temporaryPromotionQueueRef.current
-          : [];
-        if (queue.length > 0) {
-          nextQueuedEntry = queue.shift();
-        }
-        temporaryPromotionQueueRef.current = queue;
-        promotionQueueActiveRef.current = Boolean(nextQueuedEntry || queue.length > 0);
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
         setRequestType(null);
         setPendingTemporaryPromotion(null);
-        if (nextQueuedEntry) {
-          setTimeout(() => {
-            openTemporaryPromotion(nextQueuedEntry, { fromQueue: true });
-          }, 0);
-        } else {
-          clearTemporaryPromotionQueue();
-        }
       }
       return ok;
     }
@@ -3485,21 +3418,10 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const openTemporaryPromotion = useCallback(
-    async (entry, { fromQueue = false } = {}) => {
+    async (entry) => {
       if (!entry) return;
       const temporaryId = getTemporaryId(entry);
       if (!temporaryId) return;
-      if (!fromQueue) {
-        clearTemporaryPromotionQueue();
-      } else {
-        promotionQueueActiveRef.current = true;
-        setTemporarySelection((prev) => {
-          if (!prev || !prev.has(temporaryId)) return prev;
-          const next = new Set(prev);
-          next.delete(temporaryId);
-          return next;
-        });
-      }
       await ensureColumnMeta();
 
       const valueSources = [
@@ -3512,8 +3434,8 @@ const TableManager = forwardRef(function TableManager({
       const baseValues = valueSources.find(
         (candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate),
       );
-      const normalizedValues = applyReviewerAutoFill(
-        normalizeToCanonical(stripTemporaryLabelValue(baseValues || {})),
+      const normalizedValues = normalizeToCanonical(
+        stripTemporaryLabelValue(baseValues || {}),
       );
 
       const rowSources = [
@@ -3543,8 +3465,6 @@ const TableManager = forwardRef(function TableManager({
       setShowForm(true);
     },
     [
-      applyReviewerAutoFill,
-      clearTemporaryPromotionQueue,
       ensureColumnMeta,
       normalizeToCanonical,
       setEditing,
@@ -3553,7 +3473,6 @@ const TableManager = forwardRef(function TableManager({
       setRequestType,
       setShowTemporaryModal,
       setShowForm,
-      setTemporarySelection,
     ],
   );
 
@@ -3664,61 +3583,62 @@ const TableManager = forwardRef(function TableManager({
 
   const promoteTemporarySelection = useCallback(async () => {
     if (!canSelectTemporaries) return;
-    if (promotionQueueActiveRef.current) {
-      addToast(
-        t(
-          'temporary_promote_queue_active',
-          'Finish the current queued promotions before starting a new batch.',
-        ),
-        'warning',
-      );
-      return;
-    }
     const ids = Array.from(temporarySelection);
     if (ids.length === 0) return;
     if (
       !window.confirm(
         t(
           'temporary_promote_selected_confirm',
-          'Promote all selected temporary records? They will open one by one for review.',
+          'Promote all selected temporary records?',
         ),
       )
     ) {
       return;
     }
-
-    const pendingEntries = ids
-      .map((id) => temporaryList.find((entry) => getTemporaryId(entry) === id))
-      .filter((entry) => entry && entry.status === 'pending');
-    if (pendingEntries.length === 0) {
-      addToast(
-        t('temporary_promote_missing', 'Unable to promote temporary submission'),
-        'error',
-      );
-      return;
+    let successCount = 0;
+    const failedIds = [];
+    for (const id of ids) {
+      const ok = await promoteTemporary(id, {
+        skipConfirm: true,
+        silent: true,
+      });
+      if (ok) successCount += 1;
+      else failedIds.push(id);
     }
-
-    clearTemporaryPromotionQueue();
-    promotionQueueActiveRef.current = true;
-    temporaryPromotionQueueRef.current = pendingEntries.slice(1);
-    try {
-      await openTemporaryPromotion(pendingEntries[0], { fromQueue: true });
-    } catch (err) {
-      console.error(err);
-      clearTemporaryPromotionQueue();
+    if (successCount > 0) {
       addToast(
-        t('temporary_promote_failed', 'Failed to promote temporary'),
+        t('temporary_promoted_bulk', 'Promoted {{count}} temporary transactions', {
+          count: successCount,
+        }),
+        'success',
+      );
+      await refreshTemporarySummary();
+      await fetchTemporaryList('review');
+      setLocalRefresh((r) => r + 1);
+    }
+    if (failedIds.length > 0) {
+      addToast(
+        t(
+          'temporary_promote_partial_failure',
+          'Failed to promote {{count}} transactions',
+          { count: failedIds.length },
+        ),
         'error',
       );
+    }
+    if (failedIds.length > 0) {
+      setTemporarySelection(new Set(failedIds));
+    } else if (successCount > 0) {
+      setTemporarySelection(new Set());
     }
   }, [
     canSelectTemporaries,
     temporarySelection,
-    temporaryList,
+    promoteTemporary,
     addToast,
     t,
-    clearTemporaryPromotionQueue,
-    openTemporaryPromotion,
+    refreshTemporarySummary,
+    fetchTemporaryList,
   ]);
 
   if (!table) return null;
@@ -5409,7 +5329,6 @@ const TableManager = forwardRef(function TableManager({
           setGridRows([]);
           setRequestType(null);
           setPendingTemporaryPromotion(null);
-          clearTemporaryPromotionQueue();
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
