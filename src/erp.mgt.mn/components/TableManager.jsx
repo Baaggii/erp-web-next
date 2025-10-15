@@ -344,6 +344,274 @@ const TableManager = forwardRef(function TableManager({
   const [refRows, setRefRows] = useState({});
   const [relationConfigs, setRelationConfigs] = useState({});
   const [columnMeta, setColumnMeta] = useState([]);
+  const relationDisplayCacheRef = useRef(new Map());
+  const relationTenantInfoCacheRef = useRef(new Map());
+  const relationRowRequestRef = useRef(new Map());
+  const relationHelperRef = useRef({
+    fetchTenantInfo: async () => ({}),
+    fetchDisplayConfig: async () => null,
+  });
+
+  const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
+  const columnCaseMap = useMemo(
+    () => buildColumnCaseMap(columnMeta),
+    [columnMeta],
+  );
+
+  const resolveCanonicalKey = useCallback(
+    (alias, caseMap) => {
+      return resolveWithMap(alias, caseMap || columnCaseMap);
+    },
+    [columnCaseMap],
+  );
+
+  const normalizeToCanonical = useCallback(
+    (source, caseMap) => {
+      if (!source || typeof source !== 'object') return {};
+      const normalized = {};
+      const map = caseMap || columnCaseMap;
+      for (const [rawKey, value] of Object.entries(source)) {
+        const canonicalKey = resolveCanonicalKey(rawKey, map);
+        normalized[canonicalKey] = value;
+      }
+      return normalized;
+    },
+    [columnCaseMap, resolveCanonicalKey],
+  );
+
+  const normalizeTenantKey = useCallback(
+    (alias, caseMap) => {
+      if (alias == null) return null;
+      const canonical = resolveCanonicalKey(alias, caseMap);
+      if (!canonical) return null;
+      return sanitizeName(canonical).replace(/_/g, '');
+    },
+    [resolveCanonicalKey],
+  );
+
+  const hasTenantKey = useCallback(
+    (tenantInfo, key, caseMap) => {
+      if (!tenantInfo) return false;
+      const target = normalizeTenantKey(key, caseMap);
+      if (!target) return false;
+      const keys = getTenantKeyList(tenantInfo);
+      for (const rawKey of keys) {
+        const normalized = normalizeTenantKey(rawKey, caseMap);
+        if (normalized && normalized === target) return true;
+      }
+      return false;
+    },
+    [normalizeTenantKey],
+  );
+
+  const appendTenantParam = useCallback(
+    (params, tenantKey, caseMap, value, canonicalOverride) => {
+      if (!params || value == null || value === '') return;
+      const canonicalKey =
+        canonicalOverride ?? resolveCanonicalKey(tenantKey, caseMap);
+      const snakeKey = sanitizeName(tenantKey);
+      if (canonicalKey) {
+        params.set(canonicalKey, value);
+      }
+      if (snakeKey && snakeKey !== canonicalKey) {
+        params.set(snakeKey, value);
+      }
+    },
+    [resolveCanonicalKey],
+  );
+
+  const buildKeyMap = useCallback((row) => {
+    if (!row || typeof row !== 'object') return {};
+    const keyMap = {};
+    Object.keys(row).forEach((key) => {
+      keyMap[key.toLowerCase()] = key;
+    });
+    return keyMap;
+  }, []);
+
+  const buildRelationLabel = useCallback(({ row, keyMap, relationColumn, cfg }) => {
+    if (!row || !keyMap || !relationColumn) return '';
+    const lowerColumn = relationColumn.toLowerCase();
+    const valueKey = keyMap[lowerColumn];
+    const value = valueKey ? row[valueKey] : undefined;
+
+    const idFieldName = cfg?.idField ?? relationColumn;
+    const idKey =
+      typeof idFieldName === 'string' ? keyMap[idFieldName.toLowerCase()] : undefined;
+    const identifier = idKey ? row[idKey] : undefined;
+
+    const parts = [];
+    if (identifier !== undefined && identifier !== null && identifier !== '') {
+      parts.push(identifier);
+    } else if (value !== undefined && value !== null && value !== '') {
+      parts.push(value);
+    }
+
+    let displayFields = [];
+    if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
+      displayFields = cfg.displayFields;
+    } else {
+      displayFields = Object.keys(row)
+        .filter((f) => f !== relationColumn)
+        .slice(0, 1);
+    }
+
+    displayFields.forEach((field) => {
+      if (typeof field !== 'string') return;
+      const rk = keyMap[field.toLowerCase()];
+      if (!rk) return;
+      const displayValue = row[rk];
+      if (displayValue === undefined || displayValue === null || displayValue === '') return;
+      parts.push(displayValue);
+    });
+
+    const normalizedParts = parts
+      .filter((part) => part !== undefined && part !== null && part !== '')
+      .map((part) => (typeof part === 'string' ? part : String(part)));
+
+    if (normalizedParts.length > 0) {
+      return normalizedParts.join(' - ');
+    }
+
+    const fallback = Object.values(row)
+      .filter((v) => v !== undefined && v !== null && v !== '')
+      .slice(0, 2)
+      .map((v) => (typeof v === 'string' ? v : String(v)));
+    return fallback.join(' - ');
+  }, []);
+
+  const ensureRelationRow = useCallback(
+    async (column, rawValue) => {
+      if (rawValue === null || rawValue === undefined || rawValue === '') return null;
+      const canonical = resolveCanonicalKey(column);
+      if (!canonical) return null;
+      let value = rawValue;
+      if (value && typeof value === 'object' && 'value' in value) {
+        value = value.value;
+      }
+      const stringKey = typeof value === 'number' ? String(value) : String(value ?? '');
+      const existingRow = refRows?.[canonical]?.[stringKey];
+      if (existingRow) return existingRow;
+
+      const requestKey = `${canonical}|${stringKey}`;
+      if (relationRowRequestRef.current.has(requestKey)) {
+        return relationRowRequestRef.current.get(requestKey);
+      }
+
+      const relation = relations[canonical];
+      const config = relationConfigs[canonical] || {};
+      const tableName = config.table || relation?.table;
+      const columnName = config.column || relation?.column;
+      if (!tableName || !columnName) return null;
+
+      const fetchPromise = (async () => {
+        try {
+          const { fetchTenantInfo, fetchDisplayConfig } = relationHelperRef.current;
+          const [tenantInfo, cfg] = await Promise.all([
+            fetchTenantInfo(tableName),
+            fetchDisplayConfig(tableName),
+          ]);
+          const isShared = tenantInfo?.isShared ?? tenantInfo?.is_shared ?? false;
+          const tenantKeys = getTenantKeyList(tenantInfo);
+          const searchField = config.idField || cfg?.idField || columnName;
+          const params = new URLSearchParams({ perPage: '1' });
+          if (!isShared) {
+            if (tenantKeys.includes('company_id') && company != null)
+              params.set('company_id', company);
+            if (tenantKeys.includes('branch_id') && branch != null)
+              params.set('branch_id', branch);
+            if (tenantKeys.includes('department_id') && department != null)
+              params.set('department_id', department);
+          }
+          if (searchField) {
+            params.set('search', stringKey);
+            params.set('searchColumns', searchField);
+          } else {
+            params.set(columnName, stringKey);
+          }
+
+          const res = await fetch(
+            `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
+            { credentials: 'include' },
+          );
+          if (!res.ok) return null;
+          const json = await res.json().catch(() => ({}));
+          const rows = Array.isArray(json.rows) ? json.rows : [];
+          const match = rows.find((row) => {
+            if (!row || typeof row !== 'object') return false;
+            const keyMap = buildKeyMap(row);
+            const key = keyMap[(searchField || columnName).toLowerCase()] || searchField || columnName;
+            const val = key ? row[key] : undefined;
+            return val !== undefined && val !== null && String(val) === stringKey;
+          }) || rows[0];
+          if (!match || typeof match !== 'object') return null;
+
+          const keyMap = buildKeyMap(match);
+          const optionKey = keyMap[(searchField || columnName).toLowerCase()] || searchField || columnName;
+          const optionValue = optionKey ? match[optionKey] : value;
+          const label = buildRelationLabel({
+            row: match,
+            keyMap,
+            relationColumn: columnName,
+            cfg: {
+              idField: searchField || columnName,
+              displayFields:
+                Array.isArray(config.displayFields) && config.displayFields.length > 0
+                  ? config.displayFields
+                  : Array.isArray(cfg?.displayFields)
+                  ? cfg.displayFields
+                  : [],
+            },
+          });
+
+          setRefRows((prev) => {
+            const existing = prev[canonical]?.[stringKey];
+            if (existing) return prev;
+            const next = { ...prev };
+            const columnRows = { ...(next[canonical] || {}) };
+            columnRows[stringKey] = match;
+            next[canonical] = columnRows;
+            return next;
+          });
+
+          setRefData((prev) => {
+            const existing = Array.isArray(prev[canonical]) ? prev[canonical] : [];
+            if (
+              existing.some((opt) => String(opt?.value ?? '') === String(optionValue ?? stringKey))
+            )
+              return prev;
+            const optionLabel = label || (optionValue != null ? String(optionValue) : stringKey);
+            const option = {
+              value: optionValue ?? value,
+              label: optionLabel,
+            };
+            return { ...prev, [canonical]: [...existing, option] };
+          });
+
+          return match;
+        } catch (err) {
+          console.warn('Failed to load relation row', err);
+          return null;
+        } finally {
+          relationRowRequestRef.current.delete(requestKey);
+        }
+      })();
+
+      relationRowRequestRef.current.set(requestKey, fetchPromise);
+      return fetchPromise;
+    },
+    [
+      relations,
+      relationConfigs,
+      refRows,
+      resolveCanonicalKey,
+      buildRelationLabel,
+      buildKeyMap,
+      company,
+      branch,
+      department,
+    ],
+  );
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState(null);
@@ -1146,81 +1414,8 @@ const TableManager = forwardRef(function TableManager({
       return list;
     }
 
-    const displayConfigCache = new Map();
-    const tenantInfoCache = new Map();
-    const tableRowsCache = new Map();
-    const relationCache = {};
-    const nestedLabelCache = {};
-    const referenceLoadErrorTables = new Set();
-    const referenceParseErrorTables = new Set();
-
-    const buildRelationLabel = ({
-      row,
-      keyMap,
-      relationColumn,
-      cfg,
-      nestedLookups,
-    }) => {
-      if (!row || !keyMap || !relationColumn) {
-        return '';
-      }
-      const lowerColumn = relationColumn.toLowerCase();
-      const valueKey = keyMap[lowerColumn];
-      const value = valueKey ? row[valueKey] : undefined;
-
-      const idFieldName = cfg?.idField ?? relationColumn;
-      const idKey =
-        typeof idFieldName === 'string' ? keyMap[idFieldName.toLowerCase()] : undefined;
-      const identifier = idKey ? row[idKey] : undefined;
-
-      const parts = [];
-      if (identifier !== undefined && identifier !== null && identifier !== '') {
-        parts.push(identifier);
-      } else if (value !== undefined && value !== null && value !== '') {
-        parts.push(value);
-      }
-
-      let displayFields = [];
-      if (cfg && Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0) {
-        displayFields = cfg.displayFields;
-      } else {
-        displayFields = Object.keys(row)
-          .filter((f) => f !== relationColumn)
-          .slice(0, 1);
-      }
-
-      displayFields.forEach((field) => {
-        if (typeof field !== 'string') return;
-        const rk = keyMap[field.toLowerCase()];
-        if (!rk) return;
-        let displayValue = row[rk];
-        if (displayValue === undefined || displayValue === null || displayValue === '')
-          return;
-        const lookup = nestedLookups?.[field.toLowerCase()];
-        if (lookup) {
-          const mapped =
-            lookup[displayValue] !== undefined
-              ? lookup[displayValue]
-              : lookup[String(displayValue)];
-          if (mapped !== undefined) {
-            displayValue = mapped;
-          }
-        }
-        parts.push(displayValue);
-      });
-
-      const normalizedParts = parts
-        .filter((part) => part !== undefined && part !== null && part !== '')
-        .map((part) => (typeof part === 'string' ? part : String(part)));
-      if (normalizedParts.length > 0) {
-        return normalizedParts.join(' - ');
-      }
-      const fallback = Object.values(row)
-        .filter((v) => v !== undefined && v !== null && v !== '')
-        .slice(0, 2)
-        .map((v) => (typeof v === 'string' ? v : String(v)));
-      return fallback.join(' - ');
-    };
+    const displayConfigCache = relationDisplayCacheRef.current;
+    const tenantInfoCache = relationTenantInfoCacheRef.current;
 
     const fetchDisplayConfig = (tableName) => {
       if (!tableName) return Promise.resolve(null);
@@ -1292,239 +1487,9 @@ const TableManager = forwardRef(function TableManager({
       return promise;
     };
 
-    const fetchRelationMapForTable = async (tableName) => {
-      if (!tableName) return {};
-      const cacheKey = tableName.toLowerCase();
-      if (relationCache[cacheKey]) return relationCache[cacheKey];
-      try {
-        const relRes = await fetch(
-          `/api/tables/${encodeURIComponent(tableName)}/relations`,
-          { credentials: 'include' },
-        );
-        if (!relRes.ok) {
-          relationCache[cacheKey] = {};
-          return relationCache[cacheKey];
-        }
-        const relList = await relRes.json().catch(() => []);
-        if (canceled) return {};
-        const relMap = {};
-        relList.forEach((entry) => {
-          if (!entry?.COLUMN_NAME || !entry?.REFERENCED_TABLE_NAME) return;
-          const lower = entry.COLUMN_NAME.toLowerCase();
-          relMap[lower] = {
-            table: entry.REFERENCED_TABLE_NAME,
-            column: entry.REFERENCED_COLUMN_NAME,
-          };
-        });
-        relationCache[cacheKey] = relMap;
-        return relMap;
-      } catch {
-        relationCache[cacheKey] = {};
-        return {};
-      }
-    };
-
-    const fetchTableRows = (tableName, tenantInfo) => {
-      if (!tableName) return Promise.resolve([]);
-      const cacheKey = [
-        tableName.toLowerCase(),
-        company ?? '',
-        branch ?? '',
-        department ?? '',
-      ].join('|');
-      if (tableRowsCache.has(cacheKey)) return tableRowsCache.get(cacheKey);
-      const promise = (async () => {
-        const info = tenantInfo || (await fetchTenantInfo(tableName));
-        const isShared = info?.isShared ?? info?.is_shared ?? false;
-        const tenantKeys = getTenantKeyList(info);
-        const perPage = 500;
-        let page = 1;
-        const rows = [];
-        while (!canceled) {
-          const params = new URLSearchParams({ page, perPage });
-          if (!isShared) {
-            if (tenantKeys.includes('company_id') && company != null)
-              params.set('company_id', company);
-            if (tenantKeys.includes('branch_id') && branch != null)
-              params.set('branch_id', branch);
-            if (tenantKeys.includes('department_id') && department != null)
-              params.set('department_id', department);
-          }
-          let res;
-          try {
-            res = await fetch(
-              `/api/tables/${encodeURIComponent(tableName)}?${params.toString()}`,
-              { credentials: 'include' },
-            );
-          } catch (err) {
-            if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
-              referenceLoadErrorTables.add(cacheKey);
-              addToast(
-                t('failed_load_reference_data', 'Failed to load reference data'),
-                'error',
-              );
-            }
-            break;
-          }
-          if (!res.ok) {
-            if (!canceled && !referenceLoadErrorTables.has(cacheKey)) {
-              referenceLoadErrorTables.add(cacheKey);
-              addToast(
-                t('failed_load_reference_data', 'Failed to load reference data'),
-                'error',
-              );
-            }
-            break;
-          }
-          const json = await res.json().catch(() => {
-            if (!canceled && !referenceParseErrorTables.has(cacheKey)) {
-              referenceParseErrorTables.add(cacheKey);
-              addToast(
-                t('failed_parse_reference_data', 'Failed to parse reference data'),
-                'error',
-              );
-            }
-            return {};
-          });
-          const pageRows = Array.isArray(json.rows) ? json.rows : [];
-          rows.push(...pageRows);
-          if (
-            pageRows.length < perPage ||
-            rows.length >= (json.count || rows.length)
-          ) {
-            break;
-          }
-          page += 1;
-        }
-        return rows;
-      })();
-      tableRowsCache.set(cacheKey, promise);
-      return promise;
-    };
-
-    const fetchNestedLabelMap = async (nestedRel) => {
-      if (!nestedRel?.table || !nestedRel?.column) return {};
-      const cacheKey = [
-        nestedRel.table.toLowerCase(),
-        nestedRel.column.toLowerCase(),
-        company ?? '',
-        branch ?? '',
-        department ?? '',
-      ].join('|');
-      if (nestedLabelCache[cacheKey]) return nestedLabelCache[cacheKey];
-
-      const [nestedCfg, nestedTenant] = await Promise.all([
-        fetchDisplayConfig(nestedRel.table),
-        fetchTenantInfo(nestedRel.table),
-      ]);
-      if (canceled) return {};
-
-      const rows = await fetchTableRows(nestedRel.table, nestedTenant);
-      if (canceled) return {};
-
-      const labelMap = {};
-      rows.forEach((row) => {
-        if (!row || typeof row !== 'object') return;
-        const keyMap = {};
-        Object.keys(row || {}).forEach((k) => {
-          keyMap[k.toLowerCase()] = k;
-        });
-        const colKey = keyMap[nestedRel.column.toLowerCase()];
-        if (!colKey) return;
-        const val = row[colKey];
-        if (val === undefined || val === null || val === '') return;
-        const label = buildRelationLabel({
-          row,
-          keyMap,
-          relationColumn: nestedRel.column,
-          cfg: nestedCfg,
-          nestedLookups: {},
-        });
-        const valueKey =
-          typeof val === 'string' || typeof val === 'number' ? String(val) : val;
-        labelMap[valueKey] = label;
-      });
-
-      nestedLabelCache[cacheKey] = labelMap;
-      return labelMap;
-    };
-
-    const loadNestedDisplayLookups = async (tableName, displayFields) => {
-      if (!Array.isArray(displayFields) || displayFields.length === 0) return {};
-      const relationMap = await fetchRelationMapForTable(tableName);
-      if (!relationMap || Object.keys(relationMap).length === 0) return {};
-      const lookupMap = {};
-      for (const field of displayFields) {
-        if (typeof field !== 'string') continue;
-        const lower = field.toLowerCase();
-        const nestedRel = relationMap[lower];
-        if (!nestedRel) continue;
-        const labels = await fetchNestedLabelMap(nestedRel);
-        if (canceled) return {};
-        if (labels && Object.keys(labels).length > 0) {
-          lookupMap[lower] = labels;
-        }
-      }
-      return lookupMap;
-    };
-
-    const loadRelationColumn = async ([col, rel]) => {
-      if (!rel?.table || !rel?.column) return null;
-      const [cfg, tenantInfo] = await Promise.all([
-        fetchDisplayConfig(rel.table),
-        fetchTenantInfo(rel.table),
-      ]);
-      if (canceled) return null;
-
-      const normalizedCfg = {
-        idField: cfg?.idField ?? rel.column,
-        displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
-      };
-
-      const rows = await fetchTableRows(rel.table, tenantInfo);
-      if (canceled) return null;
-
-      const nestedDisplayLookups = await loadNestedDisplayLookups(
-        rel.table,
-        normalizedCfg.displayFields,
-      );
-      if (canceled) return null;
-
-      const optionRows = {};
-      const options = rows.map((row) => {
-        const keyMap = {};
-        Object.keys(row || {}).forEach((k) => {
-          keyMap[k.toLowerCase()] = k;
-        });
-        const valKey = keyMap[rel.column.toLowerCase()];
-        const val = valKey ? row[valKey] : undefined;
-        const label = buildRelationLabel({
-          row,
-          keyMap,
-          relationColumn: rel.column,
-          cfg: normalizedCfg,
-          nestedLookups: nestedDisplayLookups,
-        });
-        if (val !== undefined) {
-          optionRows[val] = row;
-        }
-        return {
-          value: val,
-          label,
-        };
-      });
-
-      return {
-        column: col,
-        config: {
-          table: rel.table,
-          column: rel.column,
-          idField: normalizedCfg.idField,
-          displayFields: normalizedCfg.displayFields,
-        },
-        options,
-        rows: optionRows,
-      };
+    relationHelperRef.current = {
+      fetchTenantInfo,
+      fetchDisplayConfig,
     };
 
     async function load() {
@@ -1577,8 +1542,10 @@ const TableManager = forwardRef(function TableManager({
         if (canceled) return;
 
         const relationMap = {};
+        const rawRelationMeta = {};
         rels.forEach((r) => {
           const key = resolveCanonicalKey(r.COLUMN_NAME);
+          rawRelationMeta[key] = r;
           relationMap[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
@@ -1594,34 +1561,67 @@ const TableManager = forwardRef(function TableManager({
           return;
         }
 
-        const results = await Promise.allSettled(entries.map(loadRelationColumn));
+        const baseConfigs = {};
+        entries.forEach(([key, rel]) => {
+          const raw = rawRelationMeta[key] || {};
+          baseConfigs[key] = {
+            table: rel.table,
+            column: rel.column,
+            ...(raw.idField ? { idField: raw.idField } : {}),
+            ...(Array.isArray(raw.displayFields)
+              ? { displayFields: raw.displayFields }
+              : {}),
+          };
+        });
+        setRelationConfigs(baseConfigs);
+        setRefData({});
+        setRefRows({});
+
+        const results = await Promise.allSettled(
+          entries.map(async ([key, rel]) => {
+            const cfg = await fetchDisplayConfig(rel.table);
+            if (canceled) return null;
+            if (!cfg) return { column: key, config: null };
+            const base = baseConfigs[key] || {};
+            const displayFields =
+              Array.isArray(cfg.displayFields) && cfg.displayFields.length > 0
+                ? cfg.displayFields
+                : base.displayFields || [];
+            const idField = cfg.idField || base.idField || rel.column;
+            return {
+              column: key,
+              config: {
+                table: rel.table,
+                column: rel.column,
+                idField,
+                displayFields,
+              },
+            };
+          }),
+        );
         if (canceled) return;
 
-        const dataMap = {};
-        const cfgMap = {};
-        const rowMap = {};
+        const resolvedConfigs = {};
         results.forEach((result) => {
-          if (result.status !== 'fulfilled' || !result.value) return;
-          const { column, config, options, rows: columnRows } = result.value;
-          if (Array.isArray(options)) {
-            dataMap[column] = options;
-          }
-          if (columnRows && Object.keys(columnRows).length > 0) {
-            rowMap[column] = columnRows;
-          }
-          if (config) {
-            cfgMap[column] = config;
-          }
+          if (result?.status !== 'fulfilled' || !result.value?.config) return;
+          const { column, config } = result.value;
+          if (!config) return;
+          resolvedConfigs[column] = config;
         });
 
-        setRefData(dataMap);
-        setRefRows(rowMap);
-        const remap = {};
-        Object.entries(cfgMap).forEach(([k, v]) => {
-          const key = resolveCanonicalKey(k);
-          remap[key] = v;
-        });
-        setRelationConfigs(remap);
+        if (Object.keys(resolvedConfigs).length > 0) {
+          setRelationConfigs((prev) => {
+            const next = { ...prev };
+            Object.entries(resolvedConfigs).forEach(([key, cfg]) => {
+              const canonical = resolveCanonicalKey(key);
+              next[canonical] = {
+                ...(next[canonical] || {}),
+                ...cfg,
+              };
+            });
+            return next;
+          });
+        }
       } catch (err) {
         console.error('Failed to load table relations', err);
         if (!canceled) {
@@ -5556,6 +5556,7 @@ const TableManager = forwardRef(function TableManager({
         relations={relationOpts}
         relationConfigs={relationConfigs}
         relationData={refRows}
+        loadRelationRow={ensureRelationRow}
         fieldTypeMap={fieldTypeMap}
         disabledFields={disabledFields}
         labels={labels}
