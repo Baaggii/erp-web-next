@@ -319,7 +319,7 @@ export default function AsyncSearchSelect({
     }
     const opt = findBestOption(pending.query);
     if (opt) {
-      onChange(opt.value, opt.label, { type: 'resolve', option: opt });
+      onChange(opt.value, opt.label);
       setInput(String(opt.value));
       setLabel(opt.label || '');
       if (internalRef.current) internalRef.current.value = String(opt.value);
@@ -371,7 +371,7 @@ export default function AsyncSearchSelect({
     const optIndex = options.indexOf(opt);
     if (optIndex >= 0) setHighlight(optIndex);
     e.preventDefault();
-    onChange(opt.value, opt.label, { type: 'select', option: opt, trigger: 'keyboard' });
+    onChange(opt.value, opt.label);
     if (onSelect) onSelect(opt);
     setInput(String(opt.value));
     setLabel(opt.label || '');
@@ -431,11 +431,7 @@ export default function AsyncSearchSelect({
                   <li
                     key={opt.value}
                     onMouseDown={() => {
-                      onChange(opt.value, opt.label, {
-                        type: 'select',
-                        option: opt,
-                        trigger: 'click',
-                      });
+                      onChange(opt.value, opt.label);
                       if (onSelect) onSelect(opt);
                       setInput(String(opt.value));
                       setLabel(opt.label || '');
@@ -491,7 +487,7 @@ export default function AsyncSearchSelect({
           pendingLookupRef.current = null;
           setInput(e.target.value);
           setLabel('');
-          onChange(e.target.value, undefined, { type: 'input' });
+          onChange(e.target.value);
           setShow(true);
           setHighlight(-1);
         }}
