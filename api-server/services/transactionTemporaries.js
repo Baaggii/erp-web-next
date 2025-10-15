@@ -660,30 +660,6 @@ export async function promoteTemporarySubmission(
       ? sanitizedCleaned.warnings
       : [];
 
-    const columnNameMap = new Map();
-    if (Array.isArray(columns)) {
-      columns.forEach((col) => {
-        if (!col) return;
-        const name = typeof col === 'string' ? col : col?.name;
-        if (!name) return;
-        const trimmed = name.trim();
-        if (!trimmed) return;
-        const lower = trimmed.toLowerCase();
-        columnNameMap.set(lower, trimmed);
-        columnNameMap.set(lower.replace(/_/g, ''), trimmed);
-      });
-    }
-
-    const resolveColumnName = (field) => {
-      if (!field) return null;
-      const key = String(field).trim().toLowerCase();
-      if (!key) return null;
-      if (columnNameMap.has(key)) return columnNameMap.get(key);
-      const stripped = key.replace(/_/g, '');
-      if (columnNameMap.has(stripped)) return columnNameMap.get(stripped);
-      return null;
-    };
-
     if (Object.keys(sanitizedValues).length === 0) {
       const err = new Error('Temporary submission is missing promotable values');
       err.status = 422;
