@@ -655,7 +655,7 @@ export async function promoteTemporarySubmission(
       }
     }
 
-    const sanitizedValues = sanitizedCleaned?.values || {};
+    const sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
     const sanitationWarnings = Array.isArray(sanitizedCleaned?.warnings)
       ? sanitizedCleaned.warnings
       : [];
@@ -664,6 +664,34 @@ export async function promoteTemporarySubmission(
       const err = new Error('Temporary submission is missing promotable values');
       err.status = 422;
       throw err;
+    }
+
+    const fallbackCreator = normalizeEmpId(row.created_by);
+    if (fallbackCreator) {
+      const hasCreatedByColumn = Array.isArray(columns)
+        ? columns.some(
+            (col) =>
+              col &&
+              typeof col.name === 'string' &&
+              col.name.trim().toLowerCase() === 'created_by',
+          )
+        : false;
+      if (hasCreatedByColumn) {
+        const hasSanitizedCreator = Object.prototype.hasOwnProperty.call(
+          sanitizedValues,
+          'created_by',
+        );
+        const sanitizedCreator = hasSanitizedCreator
+          ? sanitizedValues.created_by
+          : undefined;
+        if (
+          sanitizedCreator === undefined ||
+          sanitizedCreator === null ||
+          (typeof sanitizedCreator === 'string' && !sanitizedCreator.trim())
+        ) {
+          sanitizedValues.created_by = fallbackCreator;
+        }
+      }
     }
 
     const mutationContext = {
