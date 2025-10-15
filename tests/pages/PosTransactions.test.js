@@ -7,6 +7,7 @@ if (typeof mock.import !== 'function') {
   test('shouldLoadRelations helper', { skip: true }, () => {});
   test('applySessionIdToTables helper', { skip: true }, () => {});
   test('calc field preflight respects SUM aggregators and multi rows', { skip: true }, () => {});
+  test('buildComputedFieldMap gathers calc and pos targets', { skip: true }, () => {});
   test('generated column configs support lowercase generation_expression metadata', { skip: true }, () => {});
 } else {
   test('shouldLoadRelations helper', async () => {
@@ -245,6 +246,56 @@ if (typeof mock.import !== 'function') {
       calcFields,
     );
     assert.ok(mismatchSession, 'should detect mismatched multi-row values');
+  });
+
+  test('buildComputedFieldMap gathers calc and pos targets', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const calcFields = [
+      {
+        cells: [
+          { table: 'transactions', field: 'total_amount' },
+          { table: 'transactions_inventory', field: 'amount' },
+        ],
+      },
+    ];
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'grand_total' },
+          { table: 'transactions', field: 'total_amount', agg: 'SUM' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: { total_amount: 'TotalAmount', grand_total: 'GrandTotal' },
+      transactions_inventory: { amount: 'Amount' },
+    };
+
+    const tables = ['transactions', 'transactions_inventory'];
+
+    const map = buildComputedFieldMap(
+      calcFields,
+      posFields,
+      columnCaseMap,
+      tables,
+    );
+
+    assert.ok(map.transactions instanceof Set);
+    assert.ok(map.transactions_inventory instanceof Set);
+    assert.deepEqual(
+      Array.from(map.transactions).sort(),
+      ['grandtotal', 'totalamount'],
+    );
+    assert.deepEqual(
+      Array.from(map.transactions_inventory).sort(),
+      ['amount'],
+    );
   });
 
 
