@@ -57,6 +57,9 @@ export default function AsyncSearchSelect({
   const [tenantMeta, setTenantMeta] = useState(null);
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
+  const latestQueryRef = useRef('');
+  const requestVersionRef = useRef(0);
+  const activeRequestCountRef = useRef(0);
   const effectiveSearchColumns = useMemo(() => {
     const columnSet = new Set();
     const addColumn = (col) => {
@@ -134,10 +137,32 @@ export default function AsyncSearchSelect({
     };
   }, [show, updateMenuPosition]);
 
+  const filterOptionsByQuery = useCallback((list, query) => {
+    const normalized = String(query || '').trim().toLowerCase();
+    if (!normalized) return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    return list.filter((opt) => {
+      if (!opt) return false;
+      const valueText = opt.value != null ? String(opt.value).toLowerCase() : '';
+      const labelText = opt.label != null ? String(opt.label).toLowerCase() : '';
+      return valueText.includes(normalized) || labelText.includes(normalized);
+    });
+  }, []);
+
   async function fetchPage(p = 1, q = '', append = false, signal) {
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
-    setLoading(true);
+    const normalizedQuery = String(q || '').trim().toLowerCase();
+    let requestVersion = requestVersionRef.current;
+    if (!append) {
+      requestVersion += 1;
+      requestVersionRef.current = requestVersion;
+      latestQueryRef.current = normalizedQuery;
+    }
+    activeRequestCountRef.current += 1;
+    if (activeRequestCountRef.current === 1) {
+      setLoading(true);
+    }
     try {
       const params = new URLSearchParams({ page: p, perPage: 50 });
       const isShared =
@@ -192,29 +217,48 @@ export default function AsyncSearchSelect({
           return { value: val, label: parts.join(' - ') };
         });
       }
-      const normalizedQuery = String(q || '').trim().toLowerCase();
       if (normalizedQuery) {
-        opts = opts.filter((opt) => {
-          if (!opt) return false;
-          const valueText = opt.value != null ? String(opt.value).toLowerCase() : '';
-          const labelText = opt.label != null ? String(opt.label).toLowerCase() : '';
-          return (
-            valueText.includes(normalizedQuery) || labelText.includes(normalizedQuery)
-          );
-        });
+        opts = filterOptionsByQuery(opts, q);
       }
       const more = rows.length >= 50 && p * 50 < (json.count || Infinity);
-      setHasMore(more);
       if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
         const nextPage = p + 1;
         setPage(nextPage);
         return fetchPage(nextPage, q, true, signal);
       }
-      setOptions((prev) => (append ? [...prev, ...opts] : opts));
+      const isRelevant =
+        requestVersionRef.current === requestVersion &&
+        latestQueryRef.current === normalizedQuery &&
+        !signal?.aborted;
+      if (!isRelevant) return;
+      setHasMore(more);
+      setOptions((prev) => {
+        if (append) {
+          const base = Array.isArray(prev) ? prev : [];
+          return [...base, ...opts];
+        }
+        if (normalizedQuery && opts.length === 0 && Array.isArray(prev) && prev.length > 0) {
+          const fallback = filterOptionsByQuery(prev, q);
+          if (fallback.length > 0) {
+            return fallback;
+          }
+        }
+        return opts;
+      });
     } catch (err) {
-      if (err.name !== 'AbortError') setOptions(append ? [] : []);
+      if (err.name !== 'AbortError') {
+        const isRelevant =
+          requestVersionRef.current === requestVersion &&
+          latestQueryRef.current === normalizedQuery;
+        if (isRelevant && !append) {
+          setHasMore(false);
+        }
+      }
     } finally {
-      setLoading(false);
+      activeRequestCountRef.current = Math.max(0, activeRequestCountRef.current - 1);
+      if (activeRequestCountRef.current === 0) {
+        setLoading(false);
+      }
     }
   }
 

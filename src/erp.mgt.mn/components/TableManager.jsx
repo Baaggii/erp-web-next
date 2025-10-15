@@ -1052,34 +1052,145 @@ const TableManager = forwardRef(function TableManager({
   useEffect(() => {
     if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
+    function buildCustomRelationsList(customPayload) {
+      if (!customPayload || typeof customPayload !== 'object') return [];
+      const entries = customPayload.relations || customPayload;
+      if (!entries || typeof entries !== 'object') return [];
+      const list = [];
+      Object.entries(entries).forEach(([column, mappings]) => {
+        if (!column || !Array.isArray(mappings)) return;
+        mappings.forEach((mapping, idx) => {
+          if (!mapping || typeof mapping !== 'object') return;
+          if (!mapping.table || !mapping.column) return;
+          list.push({
+            COLUMN_NAME: column,
+            REFERENCED_TABLE_NAME: mapping.table,
+            REFERENCED_COLUMN_NAME: mapping.column,
+            source: 'custom',
+            configIndex: idx,
+            ...(mapping.idField ? { idField: mapping.idField } : {}),
+            ...(Array.isArray(mapping.displayFields)
+              ? { displayFields: mapping.displayFields }
+              : {}),
+          });
+        });
+      });
+      return list;
+    }
+
     async function load() {
       try {
-        const res = await fetch(
-          `/api/tables/${encodeURIComponent(table)}/relations`,
-          { credentials: 'include' },
-        );
-        if (!res.ok) {
-          addToast(
-            t('failed_load_table_relations', 'Failed to load table relations'),
-            'error',
+        let rels = [];
+        let baseFetchFailed = false;
+        try {
+          const relRes = await fetch(
+            `/api/tables/${encodeURIComponent(table)}/relations`,
+            { credentials: 'include' },
           );
+          if (relRes.ok) {
+            const parsed = await relRes.json().catch(() => {
+              addToast(
+                t('failed_parse_table_relations', 'Failed to parse table relations'),
+                'error',
+              );
+              return [];
+            });
+            if (Array.isArray(parsed)) {
+              rels = parsed;
+            }
+          } else {
+            baseFetchFailed = true;
+          }
+        } catch (err) {
+          baseFetchFailed = true;
+        }
+
+        let customList = [];
+        let customFetchFailed = false;
+        try {
+          const customRes = await fetch(
+            `/api/tables/${encodeURIComponent(table)}/relations/custom`,
+            { credentials: 'include' },
+          );
+          if (customRes.ok) {
+            const customJson = await customRes.json().catch(() => ({}));
+            customList = buildCustomRelationsList(customJson);
+          } else if (customRes.status && customRes.status !== 404) {
+            customFetchFailed = true;
+          }
+        } catch {
+          customFetchFailed = true;
+        }
+
+        const combined = {};
+        const applyRelation = (entry, source = 'database') => {
+          if (!entry || typeof entry !== 'object') return;
+          const columnName =
+            entry.COLUMN_NAME || entry.column_name || entry.column || entry.columnName;
+          const refTable =
+            entry.REFERENCED_TABLE_NAME ||
+            entry.referenced_table_name ||
+            entry.referencedTableName ||
+            entry.referencedTable ||
+            entry.table ||
+            entry.tableName;
+          const refColumn =
+            entry.REFERENCED_COLUMN_NAME ||
+            entry.referenced_column_name ||
+            entry.referencedColumnName ||
+            entry.referencedColumn ||
+            entry.columnReference ||
+            entry.column;
+          if (!columnName || !refTable || !refColumn) return;
+          const key = resolveCanonicalKey(columnName);
+          const existing = combined[key] || {};
+          let displayFields = entry.displayFields ?? entry.display_fields;
+          if (typeof displayFields === 'string') {
+            displayFields = displayFields
+              .split(',')
+              .map((f) => f.trim())
+              .filter((f) => f);
+          }
+          if (!Array.isArray(displayFields)) {
+            displayFields = Array.isArray(existing.displayFields)
+              ? existing.displayFields
+              : [];
+          }
+          combined[key] = {
+            table: refTable,
+            column: refColumn,
+            idField:
+              entry.idField ||
+              entry.id_field ||
+              entry.ID_FIELD ||
+              existing.idField ||
+              refColumn,
+            displayFields,
+            source,
+          };
+        };
+
+        rels.forEach((rel) => applyRelation(rel, 'database'));
+        customList.forEach((rel) => applyRelation(rel, 'custom'));
+
+        const relationEntries = Object.entries(combined);
+        if (relationEntries.length === 0) {
+          if (baseFetchFailed && (customFetchFailed || customList.length === 0)) {
+            addToast(
+              t('failed_load_table_relations', 'Failed to load table relations'),
+              'error',
+            );
+          }
+          setRelations({});
+          setRefData({});
+          setRefRows({});
+          setRelationConfigs({});
           return;
         }
-        const rels = await res.json().catch(() => {
-          addToast(
-            t('failed_parse_table_relations', 'Failed to parse table relations'),
-            'error',
-          );
-          return [];
-        });
         if (canceled) return;
         const map = {};
-        rels.forEach((r) => {
-          const key = resolveCanonicalKey(r.COLUMN_NAME);
-          map[key] = {
-            table: r.REFERENCED_TABLE_NAME,
-            column: r.REFERENCED_COLUMN_NAME,
-          };
+        relationEntries.forEach(([key, value]) => {
+          map[key] = value;
         });
         setRelations(map);
         const dataMap = {};
@@ -1327,6 +1438,17 @@ const TableManager = forwardRef(function TableManager({
               );
             }
 
+            const effectiveCfg = {
+              ...(cfg || {}),
+              idField: cfg?.idField ?? rel.idField ?? rel.column,
+              displayFields:
+                Array.isArray(cfg?.displayFields) && cfg.displayFields.length > 0
+                  ? cfg.displayFields
+                  : Array.isArray(rel.displayFields)
+                  ? rel.displayFields
+                  : [],
+            };
+
             let tenantInfo = null;
             try {
               const ttRes = await fetch(
@@ -1387,14 +1509,14 @@ const TableManager = forwardRef(function TableManager({
             cfgMap[col] = {
               table: rel.table,
               column: rel.column,
-              idField: cfg?.idField ?? rel.column,
-              displayFields: cfg?.displayFields || [],
+              idField: effectiveCfg.idField,
+              displayFields: effectiveCfg.displayFields,
             };
             if (rows.length > 0) {
               rowMap[col] = {};
               const nestedDisplayLookups = await loadNestedDisplayLookups(
                 rel.table,
-                cfg?.displayFields || [],
+                effectiveCfg.displayFields,
               );
               if (canceled) return;
               dataMap[col] = rows.map((row) => {
@@ -1408,7 +1530,7 @@ const TableManager = forwardRef(function TableManager({
                   row,
                   keyMap,
                   relationColumn: rel.column,
-                  cfg,
+                  cfg: effectiveCfg,
                   nestedLookups: nestedDisplayLookups,
                 });
 
