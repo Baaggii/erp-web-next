@@ -343,15 +343,6 @@ const TableManager = forwardRef(function TableManager({
   const [refData, setRefData] = useState({});
   const [refRows, setRefRows] = useState({});
   const [relationConfigs, setRelationConfigs] = useState({});
-  const relationCachesRef = useRef({
-    displayConfig: new Map(),
-    tenantInfo: new Map(),
-    tableRows: new Map(),
-    relationMap: new Map(),
-    nestedLabel: new Map(),
-    referenceLoadErrors: new Set(),
-    referenceParseErrors: new Set(),
-  });
   const [columnMeta, setColumnMeta] = useState([]);
   const [autoInc, setAutoInc] = useState(new Set());
   const [showForm, setShowForm] = useState(false);
@@ -1104,16 +1095,7 @@ const TableManager = forwardRef(function TableManager({
   }, [requestStatus, table, user?.empid, dateFilter]);
 
   useEffect(() => {
-    if (!table || columnMeta.length === 0) return;
-    const {
-      displayConfig: displayConfigCache,
-      tenantInfo: tenantInfoCache,
-      tableRows: tableRowsCache,
-      relationMap: relationMapCache,
-      nestedLabel: nestedLabelCache,
-      referenceLoadErrors: referenceLoadErrorTables,
-      referenceParseErrors: referenceParseErrorTables,
-    } = relationCachesRef.current;
+    if (!table || Object.keys(columnCaseMap).length === 0) return;
     let canceled = false;
 
     function buildCustomRelationsList(customPayload) {
@@ -1633,7 +1615,7 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [table, company, branch, department, resolveCanonicalKey, columnMeta.length]);
+  }, [table, company, branch, department, resolveCanonicalKey]);
 
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
