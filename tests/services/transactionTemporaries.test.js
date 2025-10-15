@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 import {
   getTemporarySummary,
+  sanitizeCleanedValuesForInsert,
 } from '../../api-server/services/transactionTemporaries.js';
 
 function mockQuery(handler) {
@@ -35,4 +36,44 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
   } finally {
     restore();
   }
+});
+
+test('sanitizeCleanedValuesForInsert trims oversized string values and records warnings', async () => {
+  const columns = [
+    { name: 'g_burtgel_id', type: 'varchar', maxLength: 10 },
+    { name: 'g_id', type: 'int', maxLength: null },
+  ];
+  const input = {
+    g_burtgel_id: ' 123456789012345 ',
+    rows: [{ dummy: true }],
+  };
+
+  const result = await sanitizeCleanedValuesForInsert(
+    'transactions_contract',
+    input,
+    columns,
+  );
+
+  assert.deepEqual(result.values, { g_burtgel_id: '1234567890' });
+  assert.equal(result.warnings.length, 1);
+  assert.equal(result.warnings[0].column, 'g_burtgel_id');
+  assert.equal(result.warnings[0].type, 'maxLength');
+  assert.equal(result.warnings[0].maxLength, 10);
+  assert.equal(result.warnings[0].actualLength, 15);
+});
+
+test('sanitizeCleanedValuesForInsert unwraps select label objects before inserting', async () => {
+  const columns = [{ name: 'g_chig', type: 'int', maxLength: null }];
+  const input = {
+    g_chig: { value: 1, label: '1 - Мод' },
+  };
+
+  const result = await sanitizeCleanedValuesForInsert(
+    'transactions_contract',
+    input,
+    columns,
+  );
+
+  assert.deepEqual(result.values, { g_chig: 1 });
+  assert.equal(result.warnings.length, 0);
 });

@@ -111,6 +111,51 @@ function resolveScopeId(value) {
   return value;
 }
 
+const LABEL_WRAPPER_KEYS = new Set([
+  'value',
+  'label',
+  'name',
+  'title',
+  'text',
+  'display',
+  'displayName',
+  'code',
+]);
+
+function stripTemporaryLabelValue(value) {
+  if (value === undefined || value === null) return value;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const mapped = value.map((item) => {
+      const next = stripTemporaryLabelValue(item);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return changed ? mapped : value;
+  }
+  if (value instanceof Date) return value;
+  if (typeof File !== 'undefined' && value instanceof File) return value;
+  if (typeof Blob !== 'undefined' && value instanceof Blob) return value;
+  if (typeof value !== 'object') return value;
+
+  if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+    const keys = Object.keys(value);
+    const onlyKnownKeys = keys.every((key) => LABEL_WRAPPER_KEYS.has(key));
+    if (onlyKnownKeys) {
+      return stripTemporaryLabelValue(value.value);
+    }
+  }
+
+  let changed = false;
+  const result = {};
+  for (const [key, val] of Object.entries(value)) {
+    const next = stripTemporaryLabelValue(val);
+    if (next !== val) changed = true;
+    result[key] = next;
+  }
+  return changed ? result : value;
+}
+
 function getTemporaryId(entry) {
   if (!entry || entry.id === undefined || entry.id === null) return null;
   return String(entry.id);
@@ -2649,38 +2694,56 @@ const TableManager = forwardRef(function TableManager({
   async function handleSaveTemporary(submission) {
     if (!canCreateTemporary) return false;
     if (!submission || typeof submission !== 'object') return false;
-    const normalizedValues = submission.values || submission;
-    const rawOverride = submission.rawValues && typeof submission.rawValues === 'object'
-      ? submission.rawValues
-      : null;
-    const gridRows = Array.isArray(submission.normalizedRows)
+    const valueSource =
+      submission.values && typeof submission.values === 'object'
+        ? submission.values
+        : submission;
+    const normalizedValues =
+      valueSource && typeof valueSource === 'object' && !Array.isArray(valueSource)
+        ? stripTemporaryLabelValue(valueSource)
+        : {};
+    const rawOverride =
+      submission.rawValues && typeof submission.rawValues === 'object'
+        ? stripTemporaryLabelValue(submission.rawValues)
+        : null;
+    const gridRowsSource = Array.isArray(submission.normalizedRows)
       ? submission.normalizedRows
-      : Array.isArray(normalizedValues?.rows)
-      ? normalizedValues.rows
+      : Array.isArray(valueSource?.rows)
+      ? valueSource.rows
       : null;
-    const merged = { ...(editing || {}) };
+    const gridRows = Array.isArray(gridRowsSource)
+      ? stripTemporaryLabelValue(gridRowsSource)
+      : null;
+    const rawRows =
+      submission.rawRows && typeof submission.rawRows === 'object'
+        ? stripTemporaryLabelValue(submission.rawRows)
+        : null;
+    const mergedSource = { ...(editing || {}) };
     Object.entries(normalizedValues).forEach(([k, v]) => {
-      merged[k] = v;
+      mergedSource[k] = v;
     });
     Object.entries(formConfig?.defaultValues || {}).forEach(([k, v]) => {
-      if (merged[k] === undefined || merged[k] === '') merged[k] = v;
+      if (mergedSource[k] === undefined || mergedSource[k] === '') {
+        mergedSource[k] = stripTemporaryLabelValue(v);
+      }
     });
     if (isAdding && autoFillSession) {
       const columns = new Set(allColumns);
       userIdFields.forEach((f) => {
-        if (columns.has(f)) merged[f] = user?.empid;
+        if (columns.has(f)) mergedSource[f] = user?.empid;
       });
       branchIdFields.forEach((f) => {
-        if (columns.has(f) && branch !== undefined) merged[f] = branch;
+        if (columns.has(f) && branch !== undefined) mergedSource[f] = branch;
       });
       departmentIdFields.forEach((f) => {
-        if (columns.has(f) && department !== undefined) merged[f] = department;
+        if (columns.has(f) && department !== undefined) mergedSource[f] = department;
       });
       companyIdFields.forEach((f) => {
-        if (columns.has(f) && company !== undefined) merged[f] = company;
+        if (columns.has(f) && company !== undefined) mergedSource[f] = company;
       });
     }
 
+    const merged = stripTemporaryLabelValue(mergedSource);
     const cleaned = {};
     const skipFields = new Set([...autoCols, ...generatedCols, 'id', 'rows']);
     Object.entries(merged).forEach(([k, v]) => {
@@ -2693,23 +2756,20 @@ const TableManager = forwardRef(function TableManager({
       }
     });
 
+    const payloadValues = { ...normalizedValues };
+    if (gridRows) {
+      payloadValues.rows = gridRows;
+    }
     const payload = {
-      values: normalizedValues,
+      values: payloadValues,
       submittedAt: new Date().toISOString(),
     };
     if (gridRows) {
       payload.gridRows = gridRows;
-      const currentValues =
-        payload.values && typeof payload.values === 'object' && !Array.isArray(payload.values)
-          ? payload.values
-          : {};
-      if (!Array.isArray(currentValues.rows)) {
-        payload.values = { ...currentValues, rows: gridRows };
-      }
       payload.rowCount = gridRows.length;
     }
-    if (submission.rawRows) {
-      payload.rawRows = submission.rawRows;
+    if (rawRows) {
+      payload.rawRows = rawRows;
     }
     const body = {
       table,
@@ -3189,9 +3249,50 @@ const TableManager = forwardRef(function TableManager({
           credentials: 'include',
         },
       );
-      if (!res.ok) throw new Error('Failed to promote');
+      let data = null;
+      try {
+        data = await res.json();
+      } catch (err) {
+        data = null;
+      }
+      if (!res.ok) {
+        const message =
+          data?.message ||
+          data?.error ||
+          t('temporary_promote_failed', 'Failed to promote temporary');
+        if (!silent) {
+          addToast(message, 'error');
+        }
+        return false;
+      }
       if (!silent) {
         addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
+        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+          const warningDetails = data.warnings
+            .map((warn) => {
+              if (!warn || !warn.column) return null;
+              if (
+                warn.type === 'maxLength' &&
+                warn.actualLength != null &&
+                warn.maxLength != null
+              ) {
+                return `${warn.column} (${warn.actualLength}→${warn.maxLength})`;
+              }
+              return warn.column;
+            })
+            .filter(Boolean)
+            .join(', ');
+          if (warningDetails) {
+            addToast(
+              t(
+                'temporary_promoted_with_warnings',
+                'Some fields were adjusted to fit length limits: {{details}}',
+                { details: warningDetails },
+              ),
+              'warning',
+            );
+          }
+        }
         await refreshTemporarySummary();
         await fetchTemporaryList('review');
         setLocalRefresh((r) => r + 1);
