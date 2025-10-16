@@ -2771,6 +2771,7 @@ const TableManager = forwardRef(function TableManager({
           }
         }
         addToast(msg, 'success');
+        refreshRows();
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
         }
