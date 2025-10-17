@@ -187,12 +187,11 @@ const actionCellStyle = {
   border: '1px solid #d1d5db',
   whiteSpace: 'nowrap',
   display: 'flex',
+  flexWrap: 'wrap',
   justifyContent: 'flex-end',
   alignItems: 'center',
   columnGap: '0.25rem',
-  flexWrap: 'nowrap',
-  width: '16rem',
-  minWidth: '16rem',
+  rowGap: '0.25rem',
 };
 const actionBtnStyle = {
   background: '#f3f4f6',
