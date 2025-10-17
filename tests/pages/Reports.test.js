@@ -375,4 +375,115 @@ if (typeof mock.import !== 'function') {
 
     delete global.fetch;
   });
+
+  test('Reports surfaces detailed procedure errors', async () => {
+    const fetchCalls = [];
+    const errorMessage = "Request failed: Invalid default value for 'created_at'";
+    global.fetch = async (url, options = {}) => {
+      fetchCalls.push({ url, options });
+      if (url.startsWith('/api/report_procedures')) {
+        return {
+          ok: true,
+          json: async () => ({ procedures: [{ name: 'report_error' }] }),
+        };
+      }
+      if (url.startsWith('/api/procedures/report_error/params')) {
+        return {
+          ok: true,
+          json: async () => ({ parameters: [] }),
+        };
+      }
+      if (url.startsWith('/api/procedures') && options.method === 'POST') {
+        return {
+          ok: false,
+          status: 400,
+          statusText: 'Bad Request',
+          text: async () => JSON.stringify({ message: errorMessage }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    const addToastCalls = [];
+    const addToast = (message, type) => {
+      addToastCalls.push({ message, type });
+    };
+
+    const states = [];
+    const setters = [];
+    const indexRef = { current: 0 };
+    const contextValue = { company: 99, branch: 'B-77', department: 'D-8', user: { empid: 123 } };
+    const reactMock = createReactStub(states, setters, indexRef, contextValue);
+
+    const { default: ReportsPage } = await mock.import(
+      '../../src/erp.mgt.mn/pages/Reports.jsx',
+      {
+        react: {
+          default: reactMock,
+          useState: reactMock.useState,
+          useRef: reactMock.useRef,
+          useEffect: reactMock.useEffect,
+          useMemo: reactMock.useMemo,
+          useContext: reactMock.useContext,
+          createElement: reactMock.createElement,
+          Fragment: reactMock.Fragment,
+        },
+        '../context/AuthContext.jsx': { AuthContext: {} },
+        '../context/ToastContext.jsx': { useToast: () => ({ addToast }) },
+        '../hooks/useGeneralConfig.js': { default: () => ({ general: {} }) },
+        '../hooks/useHeaderMappings.js': { default: () => ({}) },
+        '../hooks/useButtonPerms.js': { default: () => ({}) },
+        '../components/CustomDatePicker.jsx': { default: (props) => ({ type: 'CustomDatePicker', props }) },
+        '../components/ReportTable.jsx': { default: () => null },
+        '../utils/formatTimestamp.js': { default: (date) => date.toISOString() },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    function render() {
+      indexRef.current = 0;
+      return ReportsPage();
+    }
+
+    render();
+    await Promise.resolve();
+    await Promise.resolve();
+    let tree = render();
+
+    const procedureSelect = collectNodes(
+      tree,
+      (node) => node.type === 'select' && hasOptionWithValue(node, ''),
+    )[0];
+    assert.ok(procedureSelect, 'Procedure select not found');
+
+    procedureSelect.props.onChange({ target: { value: 'report_error' } });
+
+    tree = render();
+    await Promise.resolve();
+    await Promise.resolve();
+    tree = render();
+
+    const runButton = collectNodes(tree, (node) => node.type === 'button')[0];
+    assert.ok(runButton, 'Run button missing');
+
+    await runButton.props.onClick();
+
+    const errorToast = addToastCalls.find((call) => call.type === 'error');
+    assert.ok(errorToast, 'Error toast not emitted');
+    assert.equal(
+      errorToast.message,
+      `Failed to run report_error: ${errorMessage}`,
+      'Error toast should include procedure name and backend message',
+    );
+
+    const infoToast = addToastCalls.find((call) => call.type === 'info');
+    assert.ok(infoToast, 'Info toast missing');
+
+    const postCall = fetchCalls.find(
+      ({ url, options }) => url.startsWith('/api/procedures') && options.method === 'POST',
+    );
+    assert.ok(postCall, 'Procedure POST call not captured');
+
+    delete global.fetch;
+  });
 }
