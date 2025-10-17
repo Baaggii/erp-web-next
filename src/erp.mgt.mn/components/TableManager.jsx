@@ -4729,7 +4729,17 @@ const TableManager = forwardRef(function TableManager({
                 {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
             ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 180 }}>Action</th>
+            <th
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #d1d5db',
+                whiteSpace: 'nowrap',
+                width: '24rem',
+                minWidth: '24rem',
+              }}
+            >
+              Action
+            </th>
           </tr>
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
@@ -4773,7 +4783,7 @@ const TableManager = forwardRef(function TableManager({
                 )}
               </th>
             ))}
-            <th></th>
+            <th style={{ width: '24rem', minWidth: '24rem' }}></th>
           </tr>
         </thead>
         <tbody>
