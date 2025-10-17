@@ -174,6 +174,40 @@ export default function Reports() {
     );
   }
 
+  function formatProcedureLabel(name) {
+    const label = getLabel(name);
+    if (label && name && label !== name) {
+      return `${label} (${name})`;
+    }
+    return label || name || 'procedure';
+  }
+
+  async function extractErrorMessage(response) {
+    if (!response) return '';
+    try {
+      const body = await response.text();
+      if (!body) {
+        return response.statusText || '';
+      }
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed) {
+          if (typeof parsed.message === 'string' && parsed.message.trim()) {
+            return parsed.message.trim();
+          }
+          if (typeof parsed.error === 'string' && parsed.error.trim()) {
+            return parsed.error.trim();
+          }
+        }
+      } catch (parseError) {
+        // Ignore JSON parse errors and fall back to plain text below.
+      }
+      return body.trim();
+    } catch (err) {
+      return response.statusText || '';
+    }
+  }
+
   useEffect(() => {
     const prefix = generalConfig?.general?.reportProcPrefix || '';
     const params = new URLSearchParams();
@@ -561,6 +595,7 @@ export default function Reports() {
       return acc;
     }, {});
     const label = getLabel(selectedProc);
+    const errorLabel = formatProcedureLabel(selectedProc);
     addToast(`Calling ${label}`, 'info');
     try {
       const q = new URLSearchParams();
@@ -599,10 +634,15 @@ export default function Reports() {
           orderedParams: finalParams,
         });
       } else {
-        addToast('Failed to run procedure', 'error');
+        const detailedMessage =
+          (await extractErrorMessage(res)) || 'Failed to run procedure';
+        addToast(`Failed to run ${errorLabel}: ${detailedMessage}`, 'error');
       }
-    } catch {
-      addToast('Failed to run procedure', 'error');
+    } catch (err) {
+      const fallbackMessage =
+        (typeof err?.message === 'string' && err.message.trim()) ||
+        'Failed to run procedure';
+      addToast(`Failed to run ${errorLabel}: ${fallbackMessage}`, 'error');
     }
   }
 
