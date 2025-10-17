@@ -188,15 +188,25 @@ const actionCellStyle = {
   whiteSpace: 'nowrap',
   display: 'flex',
   justifyContent: 'flex-end',
-  gap: '0.25rem',
+  alignItems: 'center',
+  columnGap: '0.25rem',
+  flexWrap: 'nowrap',
+  width: '24rem',
+  minWidth: '24rem',
 };
 const actionBtnStyle = {
   background: '#f3f4f6',
   border: '1px solid #d1d5db',
   borderRadius: '3px',
-  fontSize: '0.8rem',
-  padding: '0.25rem 0.5rem',
+  fontSize: '0.75rem',
+  padding: '0.25rem 0.4rem',
   cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '0.25rem',
+  lineHeight: 1,
+  whiteSpace: 'nowrap',
 };
 const deleteBtnStyle = {
   ...actionBtnStyle,
@@ -2771,6 +2781,7 @@ const TableManager = forwardRef(function TableManager({
           }
         }
         addToast(msg, 'success');
+        refreshRows();
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
         }
@@ -4719,7 +4730,17 @@ const TableManager = forwardRef(function TableManager({
                 {sort.column === c ? (sort.dir === 'asc' ? ' \u2191' : ' \u2193') : ''}
               </th>
             ))}
-            <th style={{ padding: '0.5rem', border: '1px solid #d1d5db', whiteSpace: 'nowrap', width: 180 }}>Action</th>
+            <th
+              style={{
+                padding: '0.5rem',
+                border: '1px solid #d1d5db',
+                whiteSpace: 'nowrap',
+                width: '24rem',
+                minWidth: '24rem',
+              }}
+            >
+              Action
+            </th>
           </tr>
           <tr>
             <th style={{ padding: '0.25rem', border: '1px solid #d1d5db', width: 60 }}></th>
@@ -4763,7 +4784,7 @@ const TableManager = forwardRef(function TableManager({
                 )}
               </th>
             ))}
-            <th></th>
+            <th style={{ width: '24rem', minWidth: '24rem' }}></th>
           </tr>
         </thead>
         <tbody>
