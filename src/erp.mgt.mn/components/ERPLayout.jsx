@@ -3257,6 +3257,84 @@ export function Header({
     }
   };
 
+  const workplaceLabels = useMemo(() => {
+    if (!session) return [];
+    const assignments = Array.isArray(session.workplace_assignments)
+      ? session.workplace_assignments
+      : [];
+    const labels = [];
+    const seen = new Set();
+    assignments.forEach((assignment) => {
+      if (!assignment || typeof assignment !== 'object') return;
+      const key =
+        assignment.workplace_session_id ??
+        assignment.workplace_id ??
+        assignment.workplace_name;
+      if (key == null) return;
+      const keyStr = String(key);
+      if (seen.has(keyStr)) return;
+      seen.add(keyStr);
+      const idParts = [];
+      if (assignment.workplace_id != null) {
+        idParts.push(`#${assignment.workplace_id}`);
+      }
+      if (
+        assignment.workplace_session_id != null &&
+        assignment.workplace_session_id !== assignment.workplace_id
+      ) {
+        idParts.push(`session ${assignment.workplace_session_id}`);
+      }
+      const idLabel = idParts.join(' · ');
+      const baseName = assignment.workplace_name
+        ? String(assignment.workplace_name).trim()
+        : '';
+      const contextParts = [];
+      if (assignment.department_name) {
+        contextParts.push(String(assignment.department_name).trim());
+      }
+      if (assignment.branch_name) {
+        contextParts.push(String(assignment.branch_name).trim());
+      }
+      const context = contextParts.filter(Boolean).join(' / ');
+      const labelParts = [idLabel, baseName, context].filter(
+        (part) => part && part.length,
+      );
+      if (labelParts.length) {
+        labels.push(labelParts.join(' – '));
+      }
+    });
+    if (!labels.length) {
+      const idParts = [];
+      if (session.workplace_id != null) {
+        idParts.push(`#${session.workplace_id}`);
+      }
+      if (
+        session.workplace_session_id != null &&
+        session.workplace_session_id !== session.workplace_id
+      ) {
+        idParts.push(`session ${session.workplace_session_id}`);
+      }
+      const baseName = session.workplace_name
+        ? String(session.workplace_name).trim()
+        : '';
+      const contextParts = [];
+      if (session.department_name) {
+        contextParts.push(String(session.department_name).trim());
+      }
+      if (session.branch_name) {
+        contextParts.push(String(session.branch_name).trim());
+      }
+      const context = contextParts.filter(Boolean).join(' / ');
+      const fallbackParts = [idParts.join(' · '), baseName, context].filter(
+        (part) => part && part.length,
+      );
+      if (fallbackParts.length) {
+        labels.push(fallbackParts.join(' – '));
+      }
+    }
+    return labels;
+  }, [session]);
+
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
       {isMobile && (
@@ -3303,7 +3381,8 @@ export function Header({
       {session && (
         <span style={styles.locationInfo}>
           🏢 {session.company_name}
-          {session.workplace_name && ` | 🏭 ${session.workplace_name}`}
+          {workplaceLabels.length > 0 &&
+            ` | 🏭 ${workplaceLabels.filter(Boolean).join(', ')}`}
           {session.department_name && ` | 🏬 ${session.department_name}`}
           {session.branch_name && ` | 📍 ${session.branch_name}`}
           {session.user_level_name && ` | 👤 ${session.user_level_name}`}
