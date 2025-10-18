@@ -1034,9 +1034,16 @@ export default function CodingTablesPage() {
 
     let defs = [];
     const seenDef = new Set();
+    const canonicalDefKey = (col) => {
+      if (!col) return '';
+      const normalized = normalizeField(col);
+      return normalized.replace(/_/g, '');
+    };
     const addDef = (col, def) => {
-      if (seenDef.has(col)) return;
-      seenDef.add(col);
+      const key = canonicalDefKey(col);
+      if (!key) return;
+      if (seenDef.has(key)) return;
+      seenDef.add(key);
       defs.push(def);
     };
     if (idCol) {
@@ -1175,7 +1182,14 @@ export default function CodingTablesPage() {
     ) {
       const defArr = [...(useUnique ? defs : defsNoUnique)];
       if (includeError) defArr.push('`error_description` VARCHAR(255)');
-      const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};`;
+      let autoIncrementClause = '';
+      if (idCol) {
+        const parsedAutoInc = Number.parseInt(autoIncStart, 10);
+        if (Number.isFinite(parsedAutoInc) && parsedAutoInc > 0) {
+          autoIncrementClause = ` AUTO_INCREMENT=${parsedAutoInc}`;
+        }
+      }
+      const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${autoIncrementClause};`;
 
       const trgSql = buildTriggerScripts(triggerSql, tableNameForSql);
       const trgPart = trgSql ? `\n${trgSql}` : '';
