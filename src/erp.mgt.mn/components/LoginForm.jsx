@@ -17,6 +17,7 @@ export default function LoginForm() {
   const [isCompanyStep, setIsCompanyStep] = useState(false);
   const [companyId, setCompanyId] = useState('');
   const [error, setError] = useState(null);
+  const auth = useContext(AuthContext);
   const {
     setUser,
     setSession,
@@ -33,6 +34,11 @@ export default function LoginForm() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+
+    if (!auth) {
+      setError(t('authContextUnavailable', 'Authentication context unavailable'));
+      return;
+    }
 
     try {
       // Send POST /api/auth/login with credentials: 'include'
