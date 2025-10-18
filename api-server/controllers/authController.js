@@ -40,24 +40,26 @@ export async function login(req, res, next) {
       session.user_level,
       session.company_id,
     );
-  const {
-    company_id: company,
-    branch_id: branch,
-    department_id: department,
-    position_id,
-    position,
-    senior_empid,
-    senior_plan_empid,
-  } = session || {};
+    const {
+      company_id: company,
+      branch_id: branch,
+      department_id: department,
+      position_id,
+      position,
+      workplace_id,
+      workplace_name,
+      senior_empid,
+      senior_plan_empid,
+    } = session || {};
 
-  const payload = {
-    id: user.id,
-    empid: user.empid,
-    position,
-    companyId: company,
-    userLevel: session.user_level,
-    seniorPlanEmpid: senior_plan_empid || null,
-  };
+    const payload = {
+      id: user.id,
+      empid: user.empid,
+      position,
+      companyId: company,
+      userLevel: session.user_level,
+      seniorPlanEmpid: senior_plan_empid || null,
+    };
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
 
@@ -84,7 +86,8 @@ export async function login(req, res, next) {
       branch,
       department,
       position_id,
-      position,
+      workplace: workplace_id,
+      workplace_name,
       senior_empid,
       senior_plan_empid,
       session,
@@ -117,6 +120,8 @@ export async function getProfile(req, res) {
     department_id: department,
     position_id,
     position,
+    workplace_id,
+    workplace_name,
     senior_empid,
     senior_plan_empid,
   } = session || {};
@@ -132,6 +137,8 @@ export async function getProfile(req, res) {
     department,
     position_id,
     position,
+    workplace: workplace_id,
+    workplace_name,
     senior_empid,
     senior_plan_empid,
     session,
@@ -172,6 +179,8 @@ export async function refresh(req, res) {
       department_id: department,
       position_id,
       position,
+      workplace_id,
+      workplace_name,
       senior_empid,
       senior_plan_empid,
     } = session || {};
@@ -209,6 +218,8 @@ export async function refresh(req, res) {
       department,
       position_id,
       position,
+      workplace: workplace_id,
+      workplace_name,
       senior_empid,
       senior_plan_empid,
       session,
