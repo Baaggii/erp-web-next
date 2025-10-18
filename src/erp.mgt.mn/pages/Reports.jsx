@@ -76,6 +76,7 @@ function normalizeNumericId(value) {
 }
 
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
+const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
 export default function Reports() {
   const { company, branch, department, position, workplace, user, session } =
@@ -89,6 +90,9 @@ export default function Reports() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
+  const [workplaceSelection, setWorkplaceSelection] = useState(
+    ALL_WORKPLACE_OPTION,
+  );
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const [snapshot, setSnapshot] = useState(null);
@@ -115,6 +119,7 @@ export default function Reports() {
   const presetSelectRef = useRef(null);
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
+  const workplaceSelectRef = useRef(null);
   const manualInputRefs = useRef({});
   const runButtonRef = useRef(null);
   const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
@@ -544,6 +549,7 @@ export default function Reports() {
     if (hasDateParams) refs.push(presetSelectRef);
     if (hasStartParam) refs.push(startDateRef);
     if (hasEndParam) refs.push(endDateRef);
+    if (showWorkplaceSelector) refs.push(workplaceSelectRef);
 
     const manualRefNames = new Set(manualParamNames);
     Object.keys(manualInputRefs.current).forEach((name) => {
@@ -559,7 +565,13 @@ export default function Reports() {
 
     refs.push(runButtonRef);
     return refs;
-  }, [hasDateParams, hasStartParam, hasEndParam, manualParamNames]);
+  }, [
+    hasDateParams,
+    hasStartParam,
+    hasEndParam,
+    manualParamNames,
+    showWorkplaceSelector,
+  ]);
 
   useEffect(() => {
     if (!selectedProc) return;
@@ -2305,6 +2317,26 @@ export default function Reports() {
                 inputRef={endDateRef}
                 onKeyDown={(event) => handleParameterKeyDown(event, endDateRef)}
               />
+            )}
+            {showWorkplaceSelector && (
+              <label style={{ marginLeft: '0.5rem' }}>
+                Workplace
+                <select
+                  value={workplaceSelection}
+                  onChange={(e) => setWorkplaceSelection(e.target.value)}
+                  style={{ marginLeft: '0.25rem' }}
+                  ref={workplaceSelectRef}
+                  onKeyDown={(event) =>
+                    handleParameterKeyDown(event, workplaceSelectRef)
+                  }
+                >
+                  {workplaceSelectOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
             {procParams.map((p, i) => {
               if (managedIndices.has(i)) return null;
