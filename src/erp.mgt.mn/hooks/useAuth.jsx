@@ -1,5 +1,6 @@
 // src/erp.mgt.mn/hooks/useAuth.jsx
 import { API_BASE } from '../utils/apiBase.js';
+import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 
 // src/erp.mgt.mn/hooks/useAuth.jsx
 
@@ -39,17 +40,21 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
   }
 
   const data = await res.json();
-  if (data?.session) {
+  const normalizedSession = normalizeEmploymentSession(data?.session);
+  const nextData = normalizedSession ? { ...data, session: normalizedSession } : data;
+  if (nextData?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
-      const workplaceId = data.workplace ?? data.session?.workplace_id;
-      if (data.session.senior_empid) {
-        stored.senior_empid = data.session.senior_empid;
+      const workplaceId = nextData.workplace ?? nextData.session?.workplace_id;
+      const workplaceSessionId = nextData.session?.workplace_session_id;
+      const workplaceSessionIds = nextData.session?.workplace_session_ids;
+      if (nextData.session.senior_empid) {
+        stored.senior_empid = nextData.session.senior_empid;
       } else {
         delete stored.senior_empid;
       }
-      if (data.session.senior_plan_empid) {
-        stored.senior_plan_empid = data.session.senior_plan_empid;
+      if (nextData.session.senior_plan_empid) {
+        stored.senior_plan_empid = nextData.session.senior_plan_empid;
       } else {
         delete stored.senior_plan_empid;
       }
@@ -58,12 +63,22 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       } else {
         delete stored.workplace;
       }
+      if (workplaceSessionId) {
+        stored.workplace_session_id = workplaceSessionId;
+      } else {
+        delete stored.workplace_session_id;
+      }
+      if (Array.isArray(workplaceSessionIds) && workplaceSessionIds.length) {
+        stored.workplace_session_ids = workplaceSessionIds;
+      } else {
+        delete stored.workplace_session_ids;
+      }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {
       /* ignore storage errors */
     }
   }
-  return data;
+  return nextData;
 }
 
 /**
@@ -93,17 +108,21 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
   const res = await fetch(`${API_BASE}/auth/me`, { credentials: 'include' });
   if (!res.ok) throw new Error(t('notAuthenticated', 'Not authenticated'));
   const data = await res.json();
-  if (data?.session) {
+  const normalizedSession = normalizeEmploymentSession(data?.session);
+  const nextData = normalizedSession ? { ...data, session: normalizedSession } : data;
+  if (nextData?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
-      const workplaceId = data.workplace ?? data.session?.workplace_id;
-      if (data.session.senior_empid) {
-        stored.senior_empid = data.session.senior_empid;
+      const workplaceId = nextData.workplace ?? nextData.session?.workplace_id;
+      const workplaceSessionId = nextData.session?.workplace_session_id;
+      const workplaceSessionIds = nextData.session?.workplace_session_ids;
+      if (nextData.session.senior_empid) {
+        stored.senior_empid = nextData.session.senior_empid;
       } else {
         delete stored.senior_empid;
       }
-      if (data.session.senior_plan_empid) {
-        stored.senior_plan_empid = data.session.senior_plan_empid;
+      if (nextData.session.senior_plan_empid) {
+        stored.senior_plan_empid = nextData.session.senior_plan_empid;
       } else {
         delete stored.senior_plan_empid;
       }
@@ -112,11 +131,21 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
       } else {
         delete stored.workplace;
       }
+      if (workplaceSessionId) {
+        stored.workplace_session_id = workplaceSessionId;
+      } else {
+        delete stored.workplace_session_id;
+      }
+      if (Array.isArray(workplaceSessionIds) && workplaceSessionIds.length) {
+        stored.workplace_session_ids = workplaceSessionIds;
+      } else {
+        delete stored.workplace_session_ids;
+      }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {
       /* ignore storage errors */
     }
   }
-  return data;
+  return nextData;
 }
 
