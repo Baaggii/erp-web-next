@@ -1034,9 +1034,16 @@ export default function CodingTablesPage() {
 
     let defs = [];
     const seenDef = new Set();
+    const canonicalDefKey = (col) => {
+      if (!col) return '';
+      const normalized = normalizeField(col);
+      return normalized.replace(/_/g, '');
+    };
     const addDef = (col, def) => {
-      if (seenDef.has(col)) return;
-      seenDef.add(col);
+      const key = canonicalDefKey(col);
+      if (!key) return;
+      if (seenDef.has(key)) return;
+      seenDef.add(key);
       defs.push(def);
     };
     if (idCol) {
@@ -1054,7 +1061,21 @@ export default function CodingTablesPage() {
       let def = `\`${dbC}\` ${colTypes[c]}`;
       if (localNotNull[c]) def += ' NOT NULL';
       addDef(dbC, def);
-      });
+    });
+    const auditColumnDefs = [
+      ['company_id', "`company_id` INT NOT NULL DEFAULT '2'"],
+      ['department_id', '`department_id` INT DEFAULT NULL'],
+      ['branch_id', '`branch_id` INT DEFAULT NULL'],
+      ['created_by', '`created_by` VARCHAR(50) DEFAULT NULL'],
+      ['created_at', '`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP'],
+      ['updated_by', '`updated_by` VARCHAR(50) DEFAULT NULL'],
+      [
+        'updated_at',
+        '`updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+      ],
+      ['deleted_at', '`deleted_at` TIMESTAMP NULL DEFAULT NULL'],
+    ];
+    auditColumnDefs.forEach(([col, def]) => addDef(col, def));
     const calcFields = parseCalcFields(calcText);
     calcFields.forEach((cf) => {
       defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
@@ -1161,7 +1182,14 @@ export default function CodingTablesPage() {
     ) {
       const defArr = [...(useUnique ? defs : defsNoUnique)];
       if (includeError) defArr.push('`error_description` VARCHAR(255)');
-      const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};`;
+      let autoIncrementClause = '';
+      if (idCol) {
+        const parsedAutoInc = Number.parseInt(autoIncStart, 10);
+        if (Number.isFinite(parsedAutoInc) && parsedAutoInc > 0) {
+          autoIncrementClause = ` AUTO_INCREMENT=${parsedAutoInc}`;
+        }
+      }
+      const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${autoIncrementClause};`;
 
       const trgSql = buildTriggerScripts(triggerSql, tableNameForSql);
       const trgPart = trgSql ? `\n${trgSql}` : '';
