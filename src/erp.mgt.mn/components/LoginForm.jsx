@@ -17,21 +17,28 @@ export default function LoginForm() {
   const [isCompanyStep, setIsCompanyStep] = useState(false);
   const [companyId, setCompanyId] = useState('');
   const [error, setError] = useState(null);
+  const auth = useContext(AuthContext);
   const {
-    setUser,
-    setSession,
-    setCompany,
-    setBranch,
-    setDepartment,
-    setPosition,
-    setPermissions,
-  } = useContext(AuthContext);
+    setUser = () => {},
+    setSession = () => {},
+    setCompany = () => {},
+    setBranch = () => {},
+    setDepartment = () => {},
+    setPosition = () => {},
+    setWorkplace = () => {},
+    setPermissions = () => {},
+  } = auth || {};
   const { t } = useContext(I18nContext);
   const navigate = useNavigate();
 
   async function handleSubmit(e) {
     e.preventDefault();
     setError(null);
+
+    if (!auth) {
+      setError(t('authContextUnavailable', 'Authentication context unavailable'));
+      return;
+    }
 
     try {
       // Send POST /api/auth/login with credentials: 'include'
@@ -57,6 +64,9 @@ export default function LoginForm() {
       setBranch(loggedIn.branch ?? loggedIn.session?.branch_id ?? null);
       setDepartment(loggedIn.department ?? loggedIn.session?.department_id ?? null);
       setPosition(loggedIn.position ?? loggedIn.session?.position_id ?? null);
+      setWorkplace(
+        loggedIn.workplace ?? loggedIn.session?.workplace_id ?? null,
+      );
       setPermissions(loggedIn.permissions || null);
       refreshCompanyModules(loggedIn.company);
       refreshModules();

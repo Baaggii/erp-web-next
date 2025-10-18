@@ -17,6 +17,8 @@ export const AuthContext = createContext({
   setDepartment: () => {},
   position: null,
   setPosition: () => {},
+  workplace: null,
+  setWorkplace: () => {},
   permissions: null,
   setPermissions: () => {},
   userSettings: {},
@@ -32,6 +34,7 @@ export default function AuthContextProvider({ children }) {
   const [branch, setBranch] = useState(null);
   const [department, setDepartment] = useState(null);
   const [position, setPosition] = useState(null);
+  const [workplace, setWorkplace] = useState(null);
   const [permissions, setPermissions] = useState(null);
   const [userSettings, setUserSettings] = useState(() => {
     try {
@@ -57,12 +60,17 @@ export default function AuthContextProvider({ children }) {
         setDepartment(data.department ?? null);
         trackSetState('AuthContext.setPosition');
         setPosition(data.position ?? null);
+        trackSetState('AuthContext.setWorkplace');
+        setWorkplace(data.workplace ?? null);
         const sessionUpdates = {};
         if (data.senior_empid) {
           sessionUpdates.senior_empid = data.senior_empid;
         }
         if (data.senior_plan_empid) {
           sessionUpdates.senior_plan_empid = data.senior_plan_empid;
+        }
+        if (data.workplace) {
+          sessionUpdates.workplace_id = data.workplace;
         }
         if (Object.keys(sessionUpdates).length) {
           trackSetState('AuthContext.setSession');
@@ -81,6 +89,7 @@ export default function AuthContextProvider({ children }) {
       branch,
       department,
       position,
+      workplace,
       senior_empid: session?.senior_empid,
       senior_plan_empid: session?.senior_plan_empid,
     };
@@ -89,6 +98,7 @@ export default function AuthContextProvider({ children }) {
       branch ||
       department ||
       position ||
+      workplace ||
       session?.senior_empid ||
       session?.senior_plan_empid
     ) {
@@ -101,6 +111,7 @@ export default function AuthContextProvider({ children }) {
     branch,
     department,
     position,
+    workplace,
     session?.senior_empid,
     session?.senior_plan_empid,
   ]);
@@ -128,6 +139,10 @@ export default function AuthContextProvider({ children }) {
           setDepartment(data.department ?? data.session?.department_id ?? null);
           trackSetState('AuthContext.setPosition');
           setPosition(data.position ?? data.session?.position_id ?? null);
+          trackSetState('AuthContext.setWorkplace');
+          setWorkplace(
+            data.workplace ?? data.session?.workplace_id ?? null,
+          );
           trackSetState('AuthContext.setPermissions');
           setPermissions(data.permissions || null);
           try {
@@ -166,6 +181,8 @@ export default function AuthContextProvider({ children }) {
           setDepartment(null);
           trackSetState('AuthContext.setPosition');
           setPosition(null);
+          trackSetState('AuthContext.setWorkplace');
+          setWorkplace(null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(null);
           trackSetState('AuthContext.setUserSettings');
@@ -185,10 +202,12 @@ export default function AuthContextProvider({ children }) {
         setDepartment(null);
         trackSetState('AuthContext.setPosition');
         setPosition(null);
-          trackSetState('AuthContext.setPermissions');
-          setPermissions(null);
-          trackSetState('AuthContext.setUserSettings');
-          setUserSettings({});
+        trackSetState('AuthContext.setWorkplace');
+        setWorkplace(null);
+        trackSetState('AuthContext.setPermissions');
+        setPermissions(null);
+        trackSetState('AuthContext.setUserSettings');
+        setUserSettings({});
       }
     }
 
@@ -214,6 +233,8 @@ export default function AuthContextProvider({ children }) {
       setDepartment(null);
       trackSetState('AuthContext.setPosition');
       setPosition(null);
+      trackSetState('AuthContext.setWorkplace');
+      setWorkplace(null);
       trackSetState('AuthContext.setPermissions');
       setPermissions(null);
       trackSetState('AuthContext.setUserSettings');
@@ -269,6 +290,8 @@ export default function AuthContextProvider({ children }) {
       setDepartment,
       position,
       setPosition,
+      workplace,
+      setWorkplace,
       permissions,
       setPermissions,
       userSettings,
@@ -281,6 +304,7 @@ export default function AuthContextProvider({ children }) {
       branch,
       department,
       position,
+      workplace,
       permissions,
       userSettings,
     ],
