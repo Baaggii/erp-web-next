@@ -19,6 +19,9 @@ export async function login(req, res, next) {
     }
 
     const sessions = await getEmploymentSessions(empid);
+    if (sessions.length === 0) {
+      return res.status(403).json({ message: 'No active workplace schedule found' });
+    }
 
     let session = null;
     if (companyId == null) {
@@ -87,7 +90,7 @@ export async function login(req, res, next) {
       senior_plan_empid,
       workplace: session?.workplace_id ?? null,
       workplace_name: session?.workplace_name ?? null,
-      session: session ?? null,
+      session,
       permissions,
     });
   } catch (err) {
