@@ -1054,7 +1054,21 @@ export default function CodingTablesPage() {
       let def = `\`${dbC}\` ${colTypes[c]}`;
       if (localNotNull[c]) def += ' NOT NULL';
       addDef(dbC, def);
-      });
+    });
+    const auditColumnDefs = [
+      ['company_id', "`company_id` INT NOT NULL DEFAULT '2'"],
+      ['department_id', '`department_id` INT DEFAULT NULL'],
+      ['branch_id', '`branch_id` INT DEFAULT NULL'],
+      ['created_by', '`created_by` VARCHAR(50) DEFAULT NULL'],
+      ['created_at', '`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP'],
+      ['updated_by', '`updated_by` VARCHAR(50) DEFAULT NULL'],
+      [
+        'updated_at',
+        '`updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+      ],
+      ['deleted_at', '`deleted_at` TIMESTAMP NULL DEFAULT NULL'],
+    ];
+    auditColumnDefs.forEach(([col, def]) => addDef(col, def));
     const calcFields = parseCalcFields(calcText);
     calcFields.forEach((cf) => {
       defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
