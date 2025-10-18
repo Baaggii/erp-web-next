@@ -3305,7 +3305,6 @@ export function Header({
           🏢 {session.company_name}
           {session.department_name && ` | 🏬 ${session.department_name}`}
           {session.branch_name && ` | 📍 ${session.branch_name}`}
-          {session.workplace_name && ` | 🏭 ${session.workplace_name}`}
           {session.user_level_name && ` | 👤 ${session.user_level_name}`}
         </span>
       )}

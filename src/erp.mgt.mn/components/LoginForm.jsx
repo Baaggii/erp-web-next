@@ -24,7 +24,6 @@ export default function LoginForm() {
     setBranch,
     setDepartment,
     setPosition,
-    setWorkplace,
     setPermissions,
   } = useContext(AuthContext);
   const { t } = useContext(I18nContext);
@@ -58,9 +57,6 @@ export default function LoginForm() {
       setBranch(loggedIn.branch ?? loggedIn.session?.branch_id ?? null);
       setDepartment(loggedIn.department ?? loggedIn.session?.department_id ?? null);
       setPosition(loggedIn.position ?? loggedIn.session?.position_id ?? null);
-      setWorkplace(
-        loggedIn.workplace ?? loggedIn.session?.workplace_id ?? null,
-      );
       setPermissions(loggedIn.permissions || null);
       refreshCompanyModules(loggedIn.company);
       refreshModules();
