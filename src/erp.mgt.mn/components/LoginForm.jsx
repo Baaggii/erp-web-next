@@ -19,15 +19,15 @@ export default function LoginForm() {
   const [error, setError] = useState(null);
   const auth = useContext(AuthContext);
   const {
-    setUser = () => {},
-    setSession = () => {},
-    setCompany = () => {},
-    setBranch = () => {},
-    setDepartment = () => {},
-    setPosition = () => {},
-    setWorkplace = () => {},
-    setPermissions = () => {},
-  } = auth || {};
+    setUser,
+    setSession,
+    setCompany,
+    setBranch,
+    setDepartment,
+    setPosition,
+    setWorkplace,
+    setPermissions,
+  } = useContext(AuthContext);
   const { t } = useContext(I18nContext);
   const navigate = useNavigate();
 
