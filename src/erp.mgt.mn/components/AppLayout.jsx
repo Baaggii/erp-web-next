@@ -18,43 +18,28 @@ export default function AppLayout({ children, title }) {
     navigate('/login');
   }
 
-  const { workplaceSummaries, workplaceIds } = useMemo(() => {
-    if (!session) {
-      return { workplaceSummaries: [], workplaceIds: [] };
-    }
+  const workplaceSummaries = useMemo(() => {
+    if (!session) return [];
 
     const assignments = Array.isArray(session.workplace_assignments)
       ? session.workplace_assignments
       : [];
 
-    const seenAssignments = new Set();
-    const knownSessionIds = new Set();
-    const workplaceIdSet = new Set();
+    const seen = new Set();
     const summaries = [];
 
     const parseId = (value) => {
       if (value === null || value === undefined) return null;
       if (typeof value === 'number') {
-        return Number.isFinite(value) ? String(value) : null;
+        return Number.isFinite(value) ? value : null;
       }
       if (typeof value === 'string') {
         const trimmed = value.trim();
-        return trimmed ? trimmed : null;
+        if (!trimmed) return null;
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
       }
       return null;
-    };
-
-    const collectWorkplaceId = (value) => {
-      const parsed = parseId(value);
-      if (parsed != null) {
-        workplaceIdSet.add(parsed);
-      }
-    };
-
-    const pushSummary = (label) => {
-      if (!label) return;
-      if (summaries.includes(label)) return;
-      summaries.push(label);
     };
 
     const formatAssignment = (assignment) => {
@@ -73,12 +58,8 @@ export default function AppLayout({ children, title }) {
       const normalizedSessionId = parseId(workplaceSessionId);
 
       const key = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
-      if (seenAssignments.has(key)) return null;
-      seenAssignments.add(key);
-
-      if (normalizedWorkplaceId != null) {
-        collectWorkplaceId(normalizedWorkplaceId);
-      }
+      if (seen.has(key)) return null;
+      seen.add(key);
 
       const labelParts = [];
       const baseName = assignment.workplace_name
@@ -120,71 +101,30 @@ export default function AppLayout({ children, title }) {
         }
       }
 
-      const label = labelParts.join(' – ');
-      if (!label) return null;
-
-      const sessionId =
-        normalizedSessionId ?? normalizedWorkplaceId ?? null;
-
-      if (sessionId != null) {
-        knownSessionIds.add(sessionId);
-      }
-
-      return label;
+      return labelParts.join(' – ');
     };
 
     assignments.forEach((assignment) => {
       const label = formatAssignment(assignment);
       if (label) {
-        pushSummary(label);
+        summaries.push(label);
       }
     });
-
-    const normalizedSessionIds = [];
-    const pushNormalizedId = (value) => {
-      const parsed = parseId(value);
-      if (parsed != null && !normalizedSessionIds.includes(parsed)) {
-        normalizedSessionIds.push(parsed);
-      }
-    };
-
-    pushNormalizedId(session.workplace_session_id);
-    if (Array.isArray(session.workplace_session_ids)) {
-      session.workplace_session_ids.forEach(pushNormalizedId);
-    }
-
-    normalizedSessionIds.forEach((sessionId) => {
-      if (knownSessionIds.has(sessionId)) return;
-      knownSessionIds.add(sessionId);
-      pushSummary(`Session ${sessionId}`);
-    });
-
-    collectWorkplaceId(session.workplace_id);
-    collectWorkplaceId(session.workplaceId);
-    collectWorkplaceId(session.workplace);
-    if (Array.isArray(session.workplace_ids)) {
-      session.workplace_ids.forEach(collectWorkplaceId);
-    }
 
     if (!summaries.length) {
       const fallbackLabel = formatAssignment({
         workplace_id: session.workplace_id ?? null,
-        workplace_session_id:
-          session.workplace_session_id ?? session.workplace_id ?? null,
+        workplace_session_id: session.workplace_session_id ?? session.workplace_id ?? null,
         workplace_name: session.workplace_name ?? null,
         department_name: session.department_name ?? null,
         branch_name: session.branch_name ?? null,
       });
       if (fallbackLabel) {
-        pushSummary(fallbackLabel);
+        summaries.push(fallbackLabel);
       }
     }
 
-    const workplaceIds = Array.from(workplaceIdSet).sort((a, b) =>
-      a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }),
-    );
-
-    return { workplaceSummaries: summaries, workplaceIds };
+    return summaries;
   }, [session]);
 
   return (
@@ -232,11 +172,6 @@ export default function AppLayout({ children, title }) {
                 {workplaceSummaries.length > 0 && (
                   <span className="text-xs text-gray-500">
                     {workplaceSummaries.join(' • ')}
-                  </span>
-                )}
-                {workplaceIds.length > 0 && (
-                  <span className="text-xs text-gray-500">
-                    {t('workplaceIds', 'Workplace IDs')}: {workplaceIds.join(', ')}
                   </span>
                 )}
               </div>
