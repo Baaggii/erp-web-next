@@ -61,10 +61,25 @@ function isEndDateParam(name) {
   return normalized.includes('end') || normalized.includes('to');
 }
 
+function normalizeNumericId(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? null : value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 
 export default function Reports() {
-  const { company, branch, department, user, session } = useContext(AuthContext);
+  const { company, branch, department, position, workplace, user, session } =
+    useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
@@ -445,15 +460,65 @@ export default function Reports() {
     dateParamInfo;
   const hasDateParams = hasStartParam || hasEndParam;
 
+  const sessionDefaults = useMemo(() => {
+    const branchId = session?.branch_id ?? normalizeNumericId(branch);
+    const companyId = session?.company_id ?? normalizeNumericId(company);
+    const departmentId = session?.department_id ?? normalizeNumericId(department);
+    const positionId =
+      session?.position_id ?? normalizeNumericId(position);
+    const workplaceId =
+      session?.workplace_id ?? normalizeNumericId(workplace);
+    const userEmpId =
+      user?.empid ?? session?.empid ?? session?.employee_id ?? null;
+    const userId = user?.id ?? session?.user_id ?? null;
+    const seniorEmpId = session?.senior_empid ?? null;
+    const seniorPlanEmpId = session?.senior_plan_empid ?? null;
+    const userLevel = session?.user_level ?? null;
+
+    return {
+      branchId: branchId ?? null,
+      companyId: companyId ?? null,
+      departmentId: departmentId ?? null,
+      positionId: positionId ?? null,
+      workplaceId: workplaceId ?? null,
+      userEmpId: userEmpId ?? null,
+      userId: userId ?? null,
+      seniorEmpId,
+      seniorPlanEmpId,
+      userLevel,
+    };
+  }, [
+    branch,
+    company,
+    department,
+    position,
+    session,
+    user,
+    workplace,
+  ]);
+
   const autoParams = useMemo(() => {
     return procParams.map((p, index) => {
       if (startIndices.has(index)) return startDate || null;
       if (endIndices.has(index)) return endDate || null;
-      const name = typeof p === 'string' ? p.toLowerCase() : '';
-      if (name.includes('branch')) return branch ?? null;
-      if (name.includes('department')) return department ?? null;
-      if (name.includes('company')) return company ?? null;
-      if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
+      const name =
+        typeof p === 'string' ? normalizeParamName(p) : '';
+      if (!name) return null;
+      if (name.includes('company')) return sessionDefaults.companyId;
+      if (name.includes('branch')) return sessionDefaults.branchId;
+      if (name.includes('department') || name.includes('dept'))
+        return sessionDefaults.departmentId;
+      if (name.includes('position')) return sessionDefaults.positionId;
+      if (name.includes('workplace') || name.includes('workloc'))
+        return sessionDefaults.workplaceId;
+      if (name.includes('seniorplan') || name.includes('plansenior'))
+        return sessionDefaults.seniorPlanEmpId;
+      if (name.includes('senior')) return sessionDefaults.seniorEmpId;
+      if (name.includes('userlevel')) return sessionDefaults.userLevel;
+      if (name.includes('userid'))
+        return sessionDefaults.userId ?? sessionDefaults.userEmpId;
+      if (name.includes('user') || name.includes('emp'))
+        return sessionDefaults.userEmpId;
       return null;
     });
   }, [
@@ -462,10 +527,7 @@ export default function Reports() {
     endIndices,
     startDate,
     endDate,
-    company,
-    branch,
-    department,
-    user,
+    sessionDefaults,
   ]);
 
   const manualParamNames = useMemo(() => {
