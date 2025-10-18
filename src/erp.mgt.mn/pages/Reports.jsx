@@ -468,28 +468,6 @@ export default function Reports() {
       session?.position_id ?? normalizeNumericId(position);
     const workplaceId =
       session?.workplace_id ?? normalizeNumericId(workplace);
-    const workplaceAssignments = Array.isArray(
-      session?.workplace_assignments,
-    )
-      ? session.workplace_assignments
-      : [];
-    const workplaceSessionIds = Array.from(
-      new Set(
-        workplaceAssignments
-          .map((assignment) =>
-            normalizeNumericId(
-              assignment?.workplace_session_id ?? assignment?.workplace_id,
-            ),
-          )
-          .filter((id) => id !== null),
-      ),
-    );
-    const workplaceSessionFilter =
-      workplaceSessionIds.length === 0
-        ? workplaceId ?? null
-        : workplaceSessionIds.length === 1
-        ? workplaceSessionIds[0]
-        : `IN(${workplaceSessionIds.join(',')})`;
     const userEmpId =
       user?.empid ?? session?.empid ?? session?.employee_id ?? null;
     const userId = user?.id ?? session?.user_id ?? null;
@@ -503,9 +481,6 @@ export default function Reports() {
       departmentId: departmentId ?? null,
       positionId: positionId ?? null,
       workplaceId: workplaceId ?? null,
-      workplaceSessionFilter:
-        workplaceSessionFilter !== null ? workplaceSessionFilter : null,
-      workplaceSessionIds,
       userEmpId: userEmpId ?? null,
       userId: userId ?? null,
       seniorEmpId,
@@ -534,18 +509,8 @@ export default function Reports() {
       if (name.includes('department') || name.includes('dept'))
         return sessionDefaults.departmentId;
       if (name.includes('position')) return sessionDefaults.positionId;
-      if (
-        name.includes('workplacesession') ||
-        name.includes('sessionworkplace') ||
-        name.includes('worklocsession')
-      )
-        return (
-          sessionDefaults.workplaceSessionFilter ?? sessionDefaults.workplaceId
-        );
       if (name.includes('workplace') || name.includes('workloc'))
-        return (
-          sessionDefaults.workplaceSessionFilter ?? sessionDefaults.workplaceId
-        );
+        return sessionDefaults.workplaceId;
       if (name.includes('seniorplan') || name.includes('plansenior'))
         return sessionDefaults.seniorPlanEmpId;
       if (name.includes('senior')) return sessionDefaults.seniorEmpId;
