@@ -6,6 +6,7 @@ import {
   getProcedureParams,
   getProcedureRawRows,
   getProcedureLockCandidates,
+  getEmploymentSession,
 } from '../../db/index.js';
 import { listPermittedProcedures } from '../utils/reportProcedures.js';
 
@@ -123,6 +124,51 @@ router.post('/raw', requireAuth, async (req, res, next) => {
     const allowed = new Set(procedures.map((p) => p.name));
     if (!allowed.has(name))
       return res.status(403).json({ message: 'Procedure not allowed' });
+    const sessionPayload = {
+      ...(session || {}),
+      empid: req.user?.empid,
+    };
+
+    let needsWorkplace = false;
+    try {
+      const parameters = await getProcedureParams(name);
+      needsWorkplace = parameters.some(
+        (param) => typeof param === 'string' && param.toLowerCase() === 'session_workplace_id',
+      );
+    } catch {
+      /* ignore lookup failures; we'll fall back to existing payload */
+    }
+
+    if (needsWorkplace && sessionPayload.workplace_id == null && req.user?.empid) {
+      const sessionCompanyId =
+        sessionPayload.company_id ??
+        sessionPayload.companyId ??
+        companyId ??
+        req.user?.companyId ??
+        null;
+      const sessionBranchId =
+        sessionPayload.branch_id ?? sessionPayload.branch ?? branchId ?? undefined;
+      const sessionDepartmentId =
+        sessionPayload.department_id ?? sessionPayload.department ?? departmentId ?? undefined;
+      try {
+        const resolved = await getEmploymentSession(req.user.empid, sessionCompanyId, {
+          branchId: sessionBranchId,
+          departmentId: sessionDepartmentId,
+        });
+        if (resolved?.workplace_id != null) {
+          sessionPayload.workplace_id = resolved.workplace_id;
+          if (sessionPayload.workplace == null) {
+            sessionPayload.workplace = resolved.workplace_id;
+          }
+          if (sessionPayload.workplace_name == null && resolved.workplace_name != null) {
+            sessionPayload.workplace_name = resolved.workplace_name;
+          }
+        }
+      } catch {
+        /* ignore lookup errors; continue with whatever we have */
+      }
+    }
+
     const { rows, sql, original, file, displayFields } = await getProcedureRawRows(
       name,
       params || {},
@@ -130,7 +176,7 @@ router.post('/raw', requireAuth, async (req, res, next) => {
       groupField,
       groupValue,
       Array.isArray(extraConditions) ? extraConditions : [],
-      { ...(session || {}), empid: req.user?.empid },
+      sessionPayload,
     );
     res.json({ rows, sql, original, file, displayFields });
   } catch (err) {

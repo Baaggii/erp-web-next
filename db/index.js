@@ -1055,7 +1055,7 @@ export async function getEmploymentSessions(empid) {
        ${companyRel.join}
        ${branchRel.join}
        ${deptRel.join}
-       INNER JOIN (
+       LEFT JOIN (
          SELECT company_id, branch_id, department_id, emp_id, workplace_id
          FROM (
            SELECT
@@ -1084,7 +1084,7 @@ export async function getEmploymentSessions(empid) {
         AND tw.branch_id = e.employment_branch_id
         AND tw.department_id = e.employment_department_id
         AND tw.workplace_id = es.workplace_id
-       LEFT JOIN code_workplace cw ON cw.workplace_id = tw.workplace_id
+       LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
@@ -1234,7 +1234,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          ${companyRel.join}
          ${branchRel.join}
          ${deptRel.join}
-         INNER JOIN (
+         LEFT JOIN (
            SELECT company_id, branch_id, department_id, emp_id, workplace_id
            FROM (
              SELECT
@@ -1263,7 +1263,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
           AND tw.branch_id = e.employment_branch_id
           AND tw.department_id = e.employment_department_id
           AND tw.workplace_id = es.workplace_id
-         LEFT JOIN code_workplace cw ON cw.workplace_id = tw.workplace_id
+         LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
          LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
          LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
          LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
