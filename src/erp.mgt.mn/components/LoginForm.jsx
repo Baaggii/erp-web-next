@@ -7,6 +7,7 @@ import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { useNavigate } from 'react-router-dom';
 import I18nContext from '../context/I18nContext.jsx';
+import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 
 export default function LoginForm() {
   // login using employee ID only
@@ -52,13 +53,26 @@ export default function LoginForm() {
       }
 
       // The login response already returns the user profile
-      setUser(loggedIn);
-      setSession(loggedIn.session || null);
-      setCompany(loggedIn.company ?? loggedIn.session?.company_id ?? null);
-      setBranch(loggedIn.branch ?? loggedIn.session?.branch_id ?? null);
-      setDepartment(loggedIn.department ?? loggedIn.session?.department_id ?? null);
-      setPosition(loggedIn.position ?? loggedIn.session?.position_id ?? null);
-      setWorkplace(loggedIn.workplace ?? loggedIn.session?.workplace_id ?? null);
+      const normalizedSession = normalizeEmploymentSession(loggedIn.session);
+      const nextUser = normalizedSession
+        ? { ...loggedIn, session: normalizedSession }
+        : loggedIn;
+
+      setUser(nextUser);
+      setSession(normalizedSession);
+      setCompany(
+        loggedIn.company ?? normalizedSession?.company_id ?? null,
+      );
+      setBranch(loggedIn.branch ?? normalizedSession?.branch_id ?? null);
+      setDepartment(
+        loggedIn.department ?? normalizedSession?.department_id ?? null,
+      );
+      setPosition(
+        loggedIn.position ?? normalizedSession?.position_id ?? null,
+      );
+      setWorkplace(
+        loggedIn.workplace ?? normalizedSession?.workplace_id ?? null,
+      );
       setPermissions(loggedIn.permissions || null);
       refreshCompanyModules(loggedIn.company);
       refreshModules();
