@@ -20,7 +20,7 @@ export async function login(req, res, next) {
 
     const sessions = await getEmploymentSessions(empid);
     if (sessions.length === 0) {
-      return res.status(403).json({ message: 'No active employment found' });
+      return res.status(403).json({ message: 'No active workplace schedule found' });
     }
 
     let session;
@@ -87,6 +87,8 @@ export async function login(req, res, next) {
       position,
       senior_empid,
       senior_plan_empid,
+      workplace: session?.workplace_id ?? null,
+      workplace_name: session?.workplace_name ?? null,
       session,
       permissions,
     });
@@ -119,6 +121,8 @@ export async function getProfile(req, res) {
     position,
     senior_empid,
     senior_plan_empid,
+    workplace_id,
+    workplace_name,
   } = session || {};
   res.json({
     id: req.user.id,
@@ -134,6 +138,8 @@ export async function getProfile(req, res) {
     position,
     senior_empid,
     senior_plan_empid,
+    workplace: workplace_id ?? null,
+    workplace_name: workplace_name ?? null,
     session,
     permissions,
   });
@@ -174,6 +180,8 @@ export async function refresh(req, res) {
       position,
       senior_empid,
       senior_plan_empid,
+      workplace_id,
+      workplace_name,
     } = session || {};
     const newPayload = {
       id: user.id,
@@ -211,6 +219,8 @@ export async function refresh(req, res) {
       position,
       senior_empid,
       senior_plan_empid,
+      workplace: workplace_id ?? null,
+      workplace_name: workplace_name ?? null,
       session,
       permissions,
     });

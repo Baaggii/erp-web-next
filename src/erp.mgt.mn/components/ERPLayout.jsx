@@ -3303,6 +3303,7 @@ export function Header({
       {session && (
         <span style={styles.locationInfo}>
           🏢 {session.company_name}
+          {session.workplace_name && ` | 🏭 ${session.workplace_name}`}
           {session.department_name && ` | 🏬 ${session.department_name}`}
           {session.branch_name && ` | 📍 ${session.branch_name}`}
           {session.user_level_name && ` | 👤 ${session.user_level_name}`}

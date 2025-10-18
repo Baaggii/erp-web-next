@@ -42,6 +42,7 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
   if (data?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
+      const workplaceId = data.workplace ?? data.session?.workplace_id;
       if (data.session.senior_empid) {
         stored.senior_empid = data.session.senior_empid;
       } else {
@@ -51,6 +52,11 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
         stored.senior_plan_empid = data.session.senior_plan_empid;
       } else {
         delete stored.senior_plan_empid;
+      }
+      if (workplaceId) {
+        stored.workplace = workplaceId;
+      } else {
+        delete stored.workplace;
       }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {
@@ -90,6 +96,7 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
   if (data?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
+      const workplaceId = data.workplace ?? data.session?.workplace_id;
       if (data.session.senior_empid) {
         stored.senior_empid = data.session.senior_empid;
       } else {
@@ -99,6 +106,11 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
         stored.senior_plan_empid = data.session.senior_plan_empid;
       } else {
         delete stored.senior_plan_empid;
+      }
+      if (workplaceId) {
+        stored.workplace = workplaceId;
+      } else {
+        delete stored.workplace;
       }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {
