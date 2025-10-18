@@ -126,58 +126,38 @@ export default function Reports() {
     const assignments = Array.isArray(session?.workplace_assignments)
       ? session.workplace_assignments
       : [];
-    const sessionIds = Array.isArray(session?.workplace_session_ids)
-      ? session.workplace_session_ids
-      : [];
     const options = [];
     const seen = new Set();
 
-    const parseId = (value) => {
-      if (value === null || value === undefined) return null;
-      if (typeof value === 'number') {
-        return Number.isFinite(value) ? value : null;
-      }
-      if (typeof value === 'string') {
-        const trimmed = value.trim();
-        if (!trimmed) return null;
-        const parsed = Number(trimmed);
-        return Number.isFinite(parsed) ? parsed : null;
-      }
-      return null;
-    };
-
-    const addOption = ({
-      workplaceId,
-      workplaceSessionId,
-      workplaceName,
-      branchName,
-      departmentName,
-    }) => {
-      const normalizedSessionId = parseId(workplaceSessionId);
-      if (normalizedSessionId == null) return;
-      const value = String(normalizedSessionId);
+    assignments.forEach((assignment) => {
+      if (!assignment || typeof assignment !== 'object') return;
+      const rawSessionId =
+        assignment.workplace_session_id ?? assignment.workplace_id;
+      if (rawSessionId == null) return;
+      const value = String(rawSessionId);
       if (seen.has(value)) return;
-
-      const normalizedWorkplaceId = parseId(workplaceId);
+      seen.add(value);
 
       const idParts = [];
-      if (normalizedWorkplaceId != null) {
-        idParts.push(`#${normalizedWorkplaceId}`);
+      if (assignment.workplace_id != null) {
+        idParts.push(`#${assignment.workplace_id}`);
       }
       if (
-        normalizedSessionId != null &&
-        normalizedSessionId !== normalizedWorkplaceId
+        assignment.workplace_session_id != null &&
+        assignment.workplace_session_id !== assignment.workplace_id
       ) {
-        idParts.push(`session ${normalizedSessionId}`);
+        idParts.push(`session ${assignment.workplace_session_id}`);
       }
       const idLabel = idParts.join(' · ');
-      const baseName = workplaceName ? String(workplaceName).trim() : '';
+      const baseName = assignment.workplace_name
+        ? String(assignment.workplace_name).trim()
+        : '';
       const contextParts = [];
-      if (departmentName) {
-        contextParts.push(String(departmentName).trim());
+      if (assignment.department_name) {
+        contextParts.push(String(assignment.department_name).trim());
       }
-      if (branchName) {
-        contextParts.push(String(branchName).trim());
+      if (assignment.branch_name) {
+        contextParts.push(String(assignment.branch_name).trim());
       }
       const context = contextParts.filter(Boolean).join(' / ');
       const labelParts = [idLabel, baseName, context].filter(
@@ -187,49 +167,59 @@ export default function Reports() {
       options.push({
         value,
         label: labelParts.length ? labelParts.join(' – ') : `Session ${value}`,
-        workplaceId: normalizedWorkplaceId ?? normalizedSessionId,
-        workplaceSessionId: normalizedSessionId,
-      });
-      seen.add(value);
-    };
-
-    assignments.forEach((assignment) => {
-      if (!assignment || typeof assignment !== 'object') return;
-      const sessionId =
-        assignment.workplace_session_id ?? assignment.workplace_id ?? null;
-      addOption({
-        workplaceId: assignment.workplace_id ?? null,
-        workplaceSessionId: sessionId,
-        workplaceName: assignment.workplace_name ?? null,
-        branchName: assignment.branch_name ?? null,
-        departmentName: assignment.department_name ?? null,
+        workplaceId: normalizeNumericId(assignment.workplace_id),
+        workplaceSessionId: normalizeNumericId(
+          assignment.workplace_session_id ?? assignment.workplace_id,
+        ),
       });
     });
 
-    const fallbackIds = new Set();
-    sessionIds.forEach((id) => {
-      const parsed = parseId(id);
-      if (parsed != null) {
-        fallbackIds.add(parsed);
-      }
-    });
-
-    const fallbackSessionId = parseId(
-      session?.workplace_session_id ?? session?.workplace_id ?? workplace,
+    const fallbackSessionId = normalizeNumericId(
+      session?.workplace_session_id ??
+        session?.workplace_id ??
+        normalizeNumericId(workplace),
     );
-    if (fallbackSessionId != null) {
-      fallbackIds.add(fallbackSessionId);
-    }
 
-    fallbackIds.forEach((id) => {
-      addOption({
-        workplaceId: session?.workplace_id ?? id,
-        workplaceSessionId: id,
-        workplaceName: session?.workplace_name ?? null,
-        branchName: session?.branch_name ?? null,
-        departmentName: session?.department_name ?? null,
-      });
-    });
+    if (fallbackSessionId != null) {
+      const fallbackValue = String(fallbackSessionId);
+      const alreadyExists = options.some((option) => option.value === fallbackValue);
+      if (!alreadyExists) {
+        const idParts = [];
+        if (session?.workplace_id != null) {
+          idParts.push(`#${session.workplace_id}`);
+        }
+        if (
+          session?.workplace_session_id != null &&
+          session.workplace_session_id !== session.workplace_id
+        ) {
+          idParts.push(`session ${session.workplace_session_id}`);
+        }
+        const idLabel = idParts.join(' · ');
+        const baseName = session?.workplace_name
+          ? String(session.workplace_name).trim()
+          : '';
+        const contextParts = [];
+        if (session?.department_name) {
+          contextParts.push(String(session.department_name).trim());
+        }
+        if (session?.branch_name) {
+          contextParts.push(String(session.branch_name).trim());
+        }
+        const context = contextParts.filter(Boolean).join(' / ');
+        const labelParts = [idLabel, baseName, context].filter(
+          (part) => part && part.length,
+        );
+        options.push({
+          value: fallbackValue,
+          label: labelParts.length
+            ? labelParts.join(' – ')
+            : `Session ${fallbackValue}`,
+          workplaceId:
+            normalizeNumericId(session?.workplace_id) ?? fallbackSessionId,
+          workplaceSessionId: fallbackSessionId,
+        });
+      }
+    }
 
     options.sort((a, b) => a.label.localeCompare(b.label));
 
