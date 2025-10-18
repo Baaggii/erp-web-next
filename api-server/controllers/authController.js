@@ -23,41 +23,42 @@ export async function login(req, res, next) {
       return res.status(403).json({ message: 'No active workplace schedule found' });
     }
 
-    let session;
+    let session = null;
     if (companyId == null) {
       if (sessions.length > 1) {
         return res.json({ needsCompany: true, sessions });
       }
-      session = sessions[0];
+      session = sessions[0] ?? null;
     } else {
-      session = sessions.find((s) => s.company_id === Number(companyId));
-      if (!session) {
+      session = sessions.find((s) => s.company_id === Number(companyId)) ?? null;
+      if (!session && sessions.length > 0) {
         return res.status(400).json({ message: 'Invalid company selection' });
       }
     }
 
-    const permissions = await getUserLevelActions(
-      session.user_level,
-      session.company_id,
-    );
-  const {
-    company_id: company,
-    branch_id: branch,
-    department_id: department,
-    position_id,
-    position,
-    senior_empid,
-    senior_plan_empid,
-  } = session || {};
+    const permissions =
+      session?.user_level && session?.company_id
+        ? await getUserLevelActions(session.user_level, session.company_id)
+        : {};
 
-  const payload = {
-    id: user.id,
-    empid: user.empid,
-    position,
-    companyId: company,
-    userLevel: session.user_level,
-    seniorPlanEmpid: senior_plan_empid || null,
-  };
+    const {
+      company_id: company = null,
+      branch_id: branch = null,
+      department_id: department = null,
+      position_id = null,
+      position = null,
+      senior_empid = null,
+      senior_plan_empid = null,
+    } = session || {};
+
+    const payload = {
+      id: user.id,
+      empid: user.empid,
+      position,
+      companyId: company,
+      userLevel: session?.user_level ?? null,
+      seniorPlanEmpid: senior_plan_empid || null,
+    };
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
 
