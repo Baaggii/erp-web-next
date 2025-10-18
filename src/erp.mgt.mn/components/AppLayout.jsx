@@ -25,8 +25,7 @@ export default function AppLayout({ children, title }) {
       ? session.workplace_assignments
       : [];
 
-    const seenAssignments = new Set();
-    const knownSessionIds = new Set();
+    const seen = new Set();
     const summaries = [];
 
     const parseId = (value) => {
@@ -41,12 +40,6 @@ export default function AppLayout({ children, title }) {
         return Number.isFinite(parsed) ? parsed : null;
       }
       return null;
-    };
-
-    const pushSummary = (label) => {
-      if (!label) return;
-      if (summaries.includes(label)) return;
-      summaries.push(label);
     };
 
     const formatAssignment = (assignment) => {
@@ -65,8 +58,8 @@ export default function AppLayout({ children, title }) {
       const normalizedSessionId = parseId(workplaceSessionId);
 
       const key = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
-      if (seenAssignments.has(key)) return null;
-      seenAssignments.add(key);
+      if (seen.has(key)) return null;
+      seen.add(key);
 
       const labelParts = [];
       const baseName = assignment.workplace_name
@@ -108,56 +101,26 @@ export default function AppLayout({ children, title }) {
         }
       }
 
-      const label = labelParts.join(' – ');
-      if (!label) return null;
-
-      const sessionId =
-        normalizedSessionId ?? normalizedWorkplaceId ?? null;
-
-      if (sessionId != null) {
-        knownSessionIds.add(sessionId);
-      }
-
-      return label;
+      return labelParts.join(' – ');
     };
 
     assignments.forEach((assignment) => {
       const label = formatAssignment(assignment);
       if (label) {
-        pushSummary(label);
+        summaries.push(label);
       }
-    });
-
-    const normalizedSessionIds = [];
-    const pushNormalizedId = (value) => {
-      const parsed = parseId(value);
-      if (parsed != null && !normalizedSessionIds.includes(parsed)) {
-        normalizedSessionIds.push(parsed);
-      }
-    };
-
-    pushNormalizedId(session.workplace_session_id);
-    if (Array.isArray(session.workplace_session_ids)) {
-      session.workplace_session_ids.forEach(pushNormalizedId);
-    }
-
-    normalizedSessionIds.forEach((sessionId) => {
-      if (knownSessionIds.has(sessionId)) return;
-      knownSessionIds.add(sessionId);
-      pushSummary(`Session ${sessionId}`);
     });
 
     if (!summaries.length) {
       const fallbackLabel = formatAssignment({
         workplace_id: session.workplace_id ?? null,
-        workplace_session_id:
-          session.workplace_session_id ?? session.workplace_id ?? null,
+        workplace_session_id: session.workplace_session_id ?? session.workplace_id ?? null,
         workplace_name: session.workplace_name ?? null,
         department_name: session.department_name ?? null,
         branch_name: session.branch_name ?? null,
       });
       if (fallbackLabel) {
-        pushSummary(fallbackLabel);
+        summaries.push(fallbackLabel);
       }
     }
 
