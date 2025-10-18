@@ -19,45 +19,43 @@ export async function login(req, res, next) {
     }
 
     const sessions = await getEmploymentSessions(empid);
-    if (sessions.length === 0) {
-      return res.status(403).json({ message: 'No active employment found' });
-    }
 
-    let session;
+    let session = null;
     if (companyId == null) {
       if (sessions.length > 1) {
         return res.json({ needsCompany: true, sessions });
       }
-      session = sessions[0];
+      session = sessions[0] ?? null;
     } else {
-      session = sessions.find((s) => s.company_id === Number(companyId));
-      if (!session) {
+      session = sessions.find((s) => s.company_id === Number(companyId)) ?? null;
+      if (!session && sessions.length > 0) {
         return res.status(400).json({ message: 'Invalid company selection' });
       }
     }
 
-    const permissions = await getUserLevelActions(
-      session.user_level,
-      session.company_id,
-    );
-  const {
-    company_id: company,
-    branch_id: branch,
-    department_id: department,
-    position_id,
-    position,
-    senior_empid,
-    senior_plan_empid,
-  } = session || {};
+    const permissions =
+      session?.user_level && session?.company_id
+        ? await getUserLevelActions(session.user_level, session.company_id)
+        : {};
 
-  const payload = {
-    id: user.id,
-    empid: user.empid,
-    position,
-    companyId: company,
-    userLevel: session.user_level,
-    seniorPlanEmpid: senior_plan_empid || null,
-  };
+    const {
+      company_id: company = null,
+      branch_id: branch = null,
+      department_id: department = null,
+      position_id = null,
+      position = null,
+      senior_empid = null,
+      senior_plan_empid = null,
+    } = session || {};
+
+    const payload = {
+      id: user.id,
+      empid: user.empid,
+      position,
+      companyId: company,
+      userLevel: session?.user_level ?? null,
+      seniorPlanEmpid: senior_plan_empid || null,
+    };
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
 
@@ -87,7 +85,9 @@ export async function login(req, res, next) {
       position,
       senior_empid,
       senior_plan_empid,
-      session,
+      workplace: session?.workplace_id ?? null,
+      workplace_name: session?.workplace_name ?? null,
+      session: session ?? null,
       permissions,
     });
   } catch (err) {
@@ -119,6 +119,8 @@ export async function getProfile(req, res) {
     position,
     senior_empid,
     senior_plan_empid,
+    workplace_id,
+    workplace_name,
   } = session || {};
   res.json({
     id: req.user.id,
@@ -134,6 +136,8 @@ export async function getProfile(req, res) {
     position,
     senior_empid,
     senior_plan_empid,
+    workplace: workplace_id ?? null,
+    workplace_name: workplace_name ?? null,
     session,
     permissions,
   });
@@ -174,6 +178,8 @@ export async function refresh(req, res) {
       position,
       senior_empid,
       senior_plan_empid,
+      workplace_id,
+      workplace_name,
     } = session || {};
     const newPayload = {
       id: user.id,
@@ -211,6 +217,8 @@ export async function refresh(req, res) {
       position,
       senior_empid,
       senior_plan_empid,
+      workplace: workplace_id ?? null,
+      workplace_name: workplace_name ?? null,
       session,
       permissions,
     });
