@@ -1052,34 +1052,39 @@ export async function getEmploymentSessions(empid) {
           ul.name AS user_level_name,
           GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
        FROM tbl_employment e
-      ${companyRel.join}
-      ${branchRel.join}
-      ${deptRel.join}
-      LEFT JOIN (
-        SELECT company_id, branch_id, department_id, emp_id, workplace_id
-        FROM (
-          SELECT
-            es.company_id,
-            es.branch_id,
-            es.department_id,
-            es.emp_id,
-            es.workplace_id,
-            ROW_NUMBER() OVER (
-              PARTITION BY es.emp_id, es.company_id, es.branch_id, es.department_id
-              ORDER BY es.start_date DESC, es.id DESC
-            ) AS rn
-          FROM tbl_employment_schedule es
-          WHERE es.start_date <= CURRENT_DATE()
-            AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
-            AND es.deleted_at IS NULL
-        ) ranked
-        WHERE ranked.rn = 1
-      ) es
-        ON es.emp_id = e.employment_emp_id
-       AND es.company_id = e.employment_company_id
-       AND es.branch_id = e.employment_branch_id
-       AND es.department_id = e.employment_department_id
-      LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+       ${companyRel.join}
+       ${branchRel.join}
+       ${deptRel.join}
+       INNER JOIN (
+         SELECT company_id, branch_id, department_id, emp_id, workplace_id
+         FROM (
+           SELECT
+             es.company_id,
+             es.branch_id,
+             es.department_id,
+             es.emp_id,
+             es.workplace_id,
+             ROW_NUMBER() OVER (
+               PARTITION BY es.emp_id, es.company_id, es.branch_id, es.department_id
+               ORDER BY es.start_date DESC, es.id DESC
+             ) AS rn
+           FROM tbl_employment_schedule es
+           WHERE es.start_date <= CURRENT_DATE()
+             AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
+             AND es.deleted_at IS NULL
+         ) ranked
+         WHERE ranked.rn = 1
+       ) es
+         ON es.emp_id = e.employment_emp_id
+        AND es.company_id = e.employment_company_id
+        AND es.branch_id = e.employment_branch_id
+        AND es.department_id = e.employment_department_id
+       LEFT JOIN tbl_workplace tw
+         ON tw.company_id = e.employment_company_id
+        AND tw.branch_id = e.employment_branch_id
+        AND tw.department_id = e.employment_department_id
+        AND tw.workplace_id = es.workplace_id
+       LEFT JOIN code_workplace cw ON cw.workplace_id = tw.workplace_id
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
@@ -1226,34 +1231,39 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
             ul.name AS user_level_name,
             GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
          FROM tbl_employment e
-        ${companyRel.join}
-        ${branchRel.join}
-        ${deptRel.join}
-        LEFT JOIN (
-          SELECT company_id, branch_id, department_id, emp_id, workplace_id
-          FROM (
-            SELECT
-              es.company_id,
-              es.branch_id,
-              es.department_id,
-              es.emp_id,
-              es.workplace_id,
-              ROW_NUMBER() OVER (
-                PARTITION BY es.emp_id, es.company_id, es.branch_id, es.department_id
-                ORDER BY es.start_date DESC, es.id DESC
-              ) AS rn
-            FROM tbl_employment_schedule es
-            WHERE es.start_date <= CURRENT_DATE()
-              AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
-              AND es.deleted_at IS NULL
-          ) ranked
-          WHERE ranked.rn = 1
-        ) es
-          ON es.emp_id = e.employment_emp_id
-         AND es.company_id = e.employment_company_id
-         AND es.branch_id = e.employment_branch_id
-         AND es.department_id = e.employment_department_id
-        LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+         ${companyRel.join}
+         ${branchRel.join}
+         ${deptRel.join}
+         INNER JOIN (
+           SELECT company_id, branch_id, department_id, emp_id, workplace_id
+           FROM (
+             SELECT
+               es.company_id,
+               es.branch_id,
+               es.department_id,
+               es.emp_id,
+               es.workplace_id,
+               ROW_NUMBER() OVER (
+                 PARTITION BY es.emp_id, es.company_id, es.branch_id, es.department_id
+                 ORDER BY es.start_date DESC, es.id DESC
+               ) AS rn
+             FROM tbl_employment_schedule es
+             WHERE es.start_date <= CURRENT_DATE()
+               AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
+               AND es.deleted_at IS NULL
+           ) ranked
+           WHERE ranked.rn = 1
+         ) es
+           ON es.emp_id = e.employment_emp_id
+          AND es.company_id = e.employment_company_id
+          AND es.branch_id = e.employment_branch_id
+          AND es.department_id = e.employment_department_id
+         LEFT JOIN tbl_workplace tw
+           ON tw.company_id = e.employment_company_id
+          AND tw.branch_id = e.employment_branch_id
+          AND tw.department_id = e.employment_department_id
+          AND tw.workplace_id = es.workplace_id
+         LEFT JOIN code_workplace cw ON cw.workplace_id = tw.workplace_id
          LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
          LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
          LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
