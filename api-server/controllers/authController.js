@@ -36,40 +36,9 @@ export async function login(req, res, next) {
       }
     }
 
-    const workplaceAssignments = session
-      ? sessions
-          .filter((s) => s.company_id === session.company_id)
-          .map(
-            ({
-              branch_id,
-              branch_name,
-              department_id,
-              department_name,
-              workplace_id,
-              workplace_name,
-              workplace_session_id,
-            }) => ({
-              branch_id: branch_id ?? null,
-              branch_name: branch_name ?? null,
-              department_id: department_id ?? null,
-              department_name: department_name ?? null,
-              workplace_id: workplace_id ?? null,
-              workplace_name: workplace_name ?? null,
-              workplace_session_id: workplace_session_id ?? null,
-            }),
-          )
-      : [];
-
-    const sessionPayload = session
-      ? { ...session, workplace_assignments: workplaceAssignments }
-      : null;
-
     const permissions =
-      sessionPayload?.user_level && sessionPayload?.company_id
-        ? await getUserLevelActions(
-            sessionPayload.user_level,
-            sessionPayload.company_id,
-          )
+      session?.user_level && session?.company_id
+        ? await getUserLevelActions(session.user_level, session.company_id)
         : {};
 
     const {
@@ -80,14 +49,14 @@ export async function login(req, res, next) {
       position = null,
       senior_empid = null,
       senior_plan_empid = null,
-    } = sessionPayload || {};
+    } = session || {};
 
     const payload = {
       id: user.id,
       empid: user.empid,
       position,
       companyId: company,
-      userLevel: sessionPayload?.user_level ?? null,
+      userLevel: session?.user_level ?? null,
       seniorPlanEmpid: senior_plan_empid || null,
     };
     const token = jwtService.sign(payload);
@@ -109,9 +78,9 @@ export async function login(req, res, next) {
       id: user.id,
       empid: user.empid,
       position,
-      full_name: sessionPayload?.employee_name,
-      user_level: sessionPayload?.user_level,
-      user_level_name: sessionPayload?.user_level_name,
+      full_name: session?.employee_name,
+      user_level: session?.user_level,
+      user_level_name: session?.user_level_name,
       company,
       branch,
       department,
@@ -119,9 +88,9 @@ export async function login(req, res, next) {
       position,
       senior_empid,
       senior_plan_empid,
-      workplace: sessionPayload?.workplace_id ?? null,
-      workplace_name: sessionPayload?.workplace_name ?? null,
-      session: sessionPayload,
+      workplace: session?.workplace_id ?? null,
+      workplace_name: session?.workplace_name ?? null,
+      session,
       permissions,
     });
   } catch (err) {
@@ -141,44 +110,9 @@ export async function logout(req, res) {
 }
 
 export async function getProfile(req, res) {
-  const [session, sessions] = await Promise.all([
-    getEmploymentSession(req.user.empid, req.user.companyId),
-    getEmploymentSessions(req.user.empid),
-  ]);
-
-  const workplaceAssignments = session
-    ? sessions
-        .filter((s) => s.company_id === session.company_id)
-        .map(
-          ({
-            branch_id,
-            branch_name,
-            department_id,
-            department_name,
-            workplace_id,
-            workplace_name,
-            workplace_session_id,
-          }) => ({
-            branch_id: branch_id ?? null,
-            branch_name: branch_name ?? null,
-            department_id: department_id ?? null,
-            department_name: department_name ?? null,
-            workplace_id: workplace_id ?? null,
-            workplace_name: workplace_name ?? null,
-            workplace_session_id: workplace_session_id ?? null,
-          }),
-        )
-    : [];
-
-  const sessionPayload = session
-    ? { ...session, workplace_assignments: workplaceAssignments }
-    : null;
-
-  const permissions = sessionPayload?.user_level
-    ? await getUserLevelActions(
-        sessionPayload.user_level,
-        sessionPayload.company_id,
-      )
+  const session = await getEmploymentSession(req.user.empid, req.user.companyId);
+  const permissions = session?.user_level
+    ? await getUserLevelActions(session.user_level, session.company_id)
     : {};
   const {
     company_id: company,
@@ -190,14 +124,14 @@ export async function getProfile(req, res) {
     senior_plan_empid,
     workplace_id,
     workplace_name,
-  } = sessionPayload || {};
+  } = session || {};
   res.json({
     id: req.user.id,
     empid: req.user.empid,
     position: req.user.position,
-    full_name: sessionPayload?.employee_name,
-    user_level: sessionPayload?.user_level,
-    user_level_name: sessionPayload?.user_level_name,
+    full_name: session?.employee_name,
+    user_level: session?.user_level,
+    user_level_name: session?.user_level_name,
     company,
     branch,
     department,
@@ -207,7 +141,7 @@ export async function getProfile(req, res) {
     senior_plan_empid,
     workplace: workplace_id ?? null,
     workplace_name: workplace_name ?? null,
-    session: sessionPayload,
+    session,
     permissions,
   });
 }
@@ -235,44 +169,9 @@ export async function refresh(req, res) {
     const payload = jwtService.verifyRefresh(token);
     const user = await getUserById(payload.id);
     if (!user) throw new Error('User not found');
-    const [session, sessions] = await Promise.all([
-      getEmploymentSession(user.empid, payload.companyId),
-      getEmploymentSessions(user.empid),
-    ]);
-
-    const workplaceAssignments = session
-      ? sessions
-          .filter((s) => s.company_id === session.company_id)
-          .map(
-            ({
-              branch_id,
-              branch_name,
-              department_id,
-              department_name,
-              workplace_id,
-              workplace_name,
-              workplace_session_id,
-            }) => ({
-              branch_id: branch_id ?? null,
-              branch_name: branch_name ?? null,
-              department_id: department_id ?? null,
-              department_name: department_name ?? null,
-              workplace_id: workplace_id ?? null,
-              workplace_name: workplace_name ?? null,
-              workplace_session_id: workplace_session_id ?? null,
-            }),
-          )
-      : [];
-
-    const sessionPayload = session
-      ? { ...session, workplace_assignments: workplaceAssignments }
-      : null;
-
-    const permissions = sessionPayload?.user_level
-      ? await getUserLevelActions(
-          sessionPayload.user_level,
-          sessionPayload.company_id,
-        )
+    const session = await getEmploymentSession(user.empid, payload.companyId);
+    const permissions = session?.user_level
+      ? await getUserLevelActions(session.user_level, session.company_id)
       : {};
     const {
       company_id: company,
@@ -284,13 +183,13 @@ export async function refresh(req, res) {
       senior_plan_empid,
       workplace_id,
       workplace_name,
-    } = sessionPayload || {};
+    } = session || {};
     const newPayload = {
       id: user.id,
       empid: user.empid,
       position,
       companyId: company,
-      userLevel: sessionPayload?.user_level,
+      userLevel: session.user_level,
       seniorPlanEmpid: senior_plan_empid || null,
     };
     const newAccess = jwtService.sign(newPayload);
@@ -311,9 +210,9 @@ export async function refresh(req, res) {
       id: user.id,
       empid: user.empid,
       position,
-      full_name: sessionPayload?.employee_name,
-      user_level: sessionPayload?.user_level,
-      user_level_name: sessionPayload?.user_level_name,
+      full_name: session?.employee_name,
+      user_level: session?.user_level,
+      user_level_name: session?.user_level_name,
       company,
       branch,
       department,
@@ -323,7 +222,7 @@ export async function refresh(req, res) {
       senior_plan_empid,
       workplace: workplace_id ?? null,
       workplace_name: workplace_name ?? null,
-      session: sessionPayload,
+      session,
       permissions,
     });
   } catch (err) {

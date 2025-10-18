@@ -3257,53 +3257,6 @@ export function Header({
     }
   };
 
-  const workplaceLabels = useMemo(() => {
-    if (!session) return [];
-    const assignments = Array.isArray(session.workplace_assignments)
-      ? session.workplace_assignments
-      : [];
-    const labels = [];
-    const seen = new Set();
-    assignments.forEach((assignment) => {
-      if (!assignment || typeof assignment !== 'object') return;
-      const key =
-        assignment.workplace_session_id ??
-        assignment.workplace_id ??
-        assignment.workplace_name;
-      if (key == null) return;
-      const keyStr = String(key);
-      if (seen.has(keyStr)) return;
-      seen.add(keyStr);
-      const baseName = assignment.workplace_name
-        ? String(assignment.workplace_name).trim()
-        : assignment.workplace_id != null
-        ? `#${assignment.workplace_id}`
-        : '';
-      const contextParts = [];
-      if (assignment.department_name) {
-        contextParts.push(String(assignment.department_name).trim());
-      }
-      if (assignment.branch_name) {
-        contextParts.push(String(assignment.branch_name).trim());
-      }
-      const context = contextParts.filter(Boolean).join(' / ');
-      const label = [baseName, context]
-        .filter((part) => part && part.length)
-        .join(context ? ' ' : '');
-      if (label) labels.push(label);
-    });
-    if (!labels.length) {
-      const fallback =
-        (session.workplace_name && String(session.workplace_name).trim()) || '';
-      if (fallback) {
-        labels.push(fallback);
-      } else if (session.workplace_id != null) {
-        labels.push(`#${session.workplace_id}`);
-      }
-    }
-    return labels;
-  }, [session]);
-
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
       {isMobile && (
@@ -3350,8 +3303,7 @@ export function Header({
       {session && (
         <span style={styles.locationInfo}>
           🏢 {session.company_name}
-          {workplaceLabels.length > 0 &&
-            ` | 🏭 ${workplaceLabels.filter(Boolean).join(', ')}`}
+          {session.workplace_name && ` | 🏭 ${session.workplace_name}`}
           {session.department_name && ` | 🏬 ${session.department_name}`}
           {session.branch_name && ` | 📍 ${session.branch_name}`}
           {session.user_level_name && ` | 👤 ${session.user_level_name}`}

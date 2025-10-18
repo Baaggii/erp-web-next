@@ -919,7 +919,6 @@ function mapEmploymentRow(row) {
     senior_plan_empid,
     workplace_id,
     workplace_name,
-    workplace_session_id,
     permission_list,
     ...rest
   } = row;
@@ -954,7 +953,6 @@ function mapEmploymentRow(row) {
     senior_plan_empid,
     workplace_id,
     workplace_name,
-    workplace_session_id,
     ...rest,
     permissions,
   };
@@ -1045,7 +1043,6 @@ export async function getEmploymentSessions(empid) {
           e.employment_department_id AS department_id,
           ${deptRel.nameExpr} AS department_name,
           es.workplace_id AS workplace_id,
-          es.workplace_session_id AS workplace_session_id,
           cw.workplace_name AS workplace_name,
           e.employment_position_id AS position_id,
           e.employment_senior_empid AS senior_empid,
@@ -1059,13 +1056,7 @@ export async function getEmploymentSessions(empid) {
        ${branchRel.join}
        ${deptRel.join}
        LEFT JOIN (
-         SELECT
-           company_id,
-           branch_id,
-           department_id,
-           emp_id,
-           workplace_id,
-           id AS workplace_session_id
+         SELECT company_id, branch_id, department_id, emp_id, workplace_id
          FROM (
            SELECT
              es.company_id,
@@ -1073,7 +1064,6 @@ export async function getEmploymentSessions(empid) {
              es.department_id,
              es.emp_id,
              es.workplace_id,
-             es.id,
              ROW_NUMBER() OVER (
                PARTITION BY es.emp_id, es.company_id, es.branch_id, es.department_id
                ORDER BY es.start_date DESC, es.id DESC
@@ -1102,7 +1092,7 @@ export async function getEmploymentSessions(empid) {
       GROUP BY e.employment_company_id, company_name,
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
-                es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                es.workplace_id, cw.workplace_name,
                 e.employment_position_id,
                 e.employment_senior_empid,
                 e.employment_senior_plan_empid,
@@ -1232,7 +1222,6 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
             e.employment_department_id AS department_id,
             ${deptRel.nameExpr} AS department_name,
             es.workplace_id AS workplace_id,
-            es.workplace_session_id AS workplace_session_id,
             cw.workplace_name AS workplace_name,
             e.employment_position_id AS position_id,
             e.employment_senior_empid AS senior_empid,
@@ -1246,13 +1235,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          ${branchRel.join}
          ${deptRel.join}
          LEFT JOIN (
-           SELECT
-             company_id,
-             branch_id,
-             department_id,
-             emp_id,
-             workplace_id,
-             id AS workplace_session_id
+           SELECT company_id, branch_id, department_id, emp_id, workplace_id
            FROM (
              SELECT
                es.company_id,
@@ -1260,7 +1243,6 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                es.department_id,
                es.emp_id,
                es.workplace_id,
-               es.id,
                ROW_NUMBER() OVER (
                  PARTITION BY es.emp_id, es.company_id, es.branch_id, es.department_id
                  ORDER BY es.start_date DESC, es.id DESC
@@ -1289,7 +1271,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          GROUP BY e.employment_company_id, company_name,
                   e.employment_branch_id, branch_name,
                   e.employment_department_id, department_name,
-                  es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                  es.workplace_id, cw.workplace_name,
                   e.employment_position_id,
                   e.employment_senior_empid,
                   e.employment_senior_plan_empid,
