@@ -303,18 +303,6 @@ export default function Reports() {
     );
   }, [requiresYearMonthParams, manualParams, yearParamNames, monthParamNames]);
 
-  const hasAnyYearMonthInput = useMemo(() => {
-    if (!requiresYearMonthParams) return false;
-    const hasAnyValue = (names) =>
-      names.some((name) => {
-        const rawValue = manualParams[name];
-        if (rawValue === null || rawValue === undefined) return false;
-        if (typeof rawValue === 'string') return rawValue.length > 0;
-        return true;
-      });
-    return hasAnyValue(yearParamNames) || hasAnyValue(monthParamNames);
-  }, [requiresYearMonthParams, manualParams, yearParamNames, monthParamNames]);
-
   const selectedYearMonth = useMemo(() => {
     if (!hasWorkplaceParam || !yearMonthValuesProvided) return null;
     const resolveValue = (names) => {
@@ -353,36 +341,21 @@ export default function Reports() {
     monthParamNames,
   ]);
 
-  const shouldUseWorkplaceSelection = useMemo(() => {
-    if (!hasWorkplaceParam) return false;
-    if (!requiresYearMonthParams) return true;
-    if (selectedYearMonth) return true;
-    if (hasAnyYearMonthInput && Array.isArray(workplaceAssignmentsForPeriod)) {
-      return true;
-    }
-    return false;
-  }, [
-    hasWorkplaceParam,
-    requiresYearMonthParams,
-    selectedYearMonth,
-    hasAnyYearMonthInput,
-    workplaceAssignmentsForPeriod,
-  ]);
+  const shouldUseWorkplaceSelection =
+    hasWorkplaceParam &&
+    (!requiresYearMonthParams || Boolean(selectedYearMonth));
 
   const showWorkplaceSelector =
     shouldUseWorkplaceSelection && workplaceSelectOptions.length > 1;
 
   useEffect(() => {
-    if (!shouldUseWorkplaceSelection) {
-      setWorkplaceAssignmentsForPeriod(null);
-      return undefined;
-    }
-
-    if (!selectedYearMonth) {
-      return undefined;
-    }
-
     let cancelled = false;
+    if (!shouldUseWorkplaceSelection || !selectedYearMonth) {
+      setWorkplaceAssignmentsForPeriod(null);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const params = new URLSearchParams();
     params.set('year', String(selectedYearMonth.year));
@@ -394,6 +367,7 @@ export default function Reports() {
     }
 
     const controller = new AbortController();
+    setWorkplaceAssignmentsForPeriod([]);
 
     async function loadWorkplaceAssignments() {
       try {
