@@ -11,11 +11,13 @@ import {
   deleteProcedure,
   getStoredProcedureSql,
   getEmploymentSession,
+  getEmploymentSessions,
   listDatabaseViews,
   getViewSql,
   deleteView,
 } from '../../db/index.js';
 import { generateProcedureConfig } from '../utils/generateProcedureConfig.js';
+import { normalizeEmploymentSession } from '../utils/employmentSessionNormalization.js';
 
 const PROTECTED_PROCEDURE_PREFIXES = ['dynrep_'];
 
@@ -138,6 +140,66 @@ router.get('/procedures', requireAuth, async (req, res, next) => {
     const list = names.map((name) => ({ name, isDefault: map.get(name) ?? false }));
 
     res.json({ names: list });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/workplace_sessions', requireAuth, async (req, res, next) => {
+  try {
+    const yearRaw = req.query.year;
+    const monthRaw = req.query.month;
+    if (yearRaw == null || monthRaw == null) {
+      return res.status(400).json({ message: 'year and month required' });
+    }
+    const year = Number.parseInt(String(yearRaw), 10);
+    const month = Number.parseInt(String(monthRaw), 10);
+    if (!Number.isFinite(year) || !Number.isFinite(month)) {
+      return res.status(400).json({ message: 'Invalid year or month' });
+    }
+    if (month < 1 || month > 12) {
+      return res.status(400).json({ message: 'Invalid month' });
+    }
+    const effectiveDate = new Date(Date.UTC(year, month - 1, 1));
+    const sessions = await getEmploymentSessions(req.user.empid, {
+      effectiveDate,
+    });
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+      return res.json({ session: null });
+    }
+    const preferredCompanyId =
+      req.user.companyId != null ? Number(req.user.companyId) : null;
+    const baseSession =
+      (preferredCompanyId != null
+        ? sessions.find((s) => s.company_id === preferredCompanyId)
+        : null) || sessions[0] || null;
+    if (!baseSession) {
+      return res.json({ session: null });
+    }
+    const companySessions = sessions.filter(
+      (s) => s.company_id === baseSession.company_id,
+    );
+    const assignments = companySessions.map(
+      ({
+        branch_id,
+        branch_name,
+        department_id,
+        department_name,
+        workplace_id,
+        workplace_name,
+        workplace_session_id,
+      }) => ({
+        branch_id: branch_id ?? null,
+        branch_name: branch_name ?? null,
+        department_id: department_id ?? null,
+        department_name: department_name ?? null,
+        workplace_id: workplace_id ?? null,
+        workplace_name: workplace_name ?? null,
+        workplace_session_id: workplace_session_id ?? null,
+      }),
+    );
+    const normalized = normalizeEmploymentSession(baseSession, assignments);
+    res.json({ session: normalized });
   } catch (err) {
     next(err);
   }

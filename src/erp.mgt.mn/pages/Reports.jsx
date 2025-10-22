@@ -78,6 +78,124 @@ function normalizeNumericId(value) {
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
+function buildWorkplaceOptions(sessionData, fallbackWorkplaceValue) {
+  if (!sessionData || typeof sessionData !== 'object') return [];
+
+  const assignments = Array.isArray(sessionData.workplace_assignments)
+    ? sessionData.workplace_assignments
+    : [];
+  const options = [];
+  const seen = new Set();
+
+  assignments.forEach((assignment) => {
+    if (!assignment || typeof assignment !== 'object') return;
+    const rawSessionId =
+      assignment.workplace_session_id ?? assignment.workplace_id;
+    if (rawSessionId == null) return;
+    const value = String(rawSessionId);
+    if (seen.has(value)) return;
+    seen.add(value);
+
+    const idParts = [];
+    if (assignment.workplace_id != null) {
+      idParts.push(`#${assignment.workplace_id}`);
+    }
+    if (
+      assignment.workplace_session_id != null &&
+      assignment.workplace_session_id !== assignment.workplace_id
+    ) {
+      idParts.push(`session ${assignment.workplace_session_id}`);
+    }
+    const idLabel = idParts.join(' · ');
+    const baseName = assignment.workplace_name
+      ? String(assignment.workplace_name).trim()
+      : '';
+    const contextParts = [];
+    if (assignment.department_name) {
+      contextParts.push(String(assignment.department_name).trim());
+    }
+    if (assignment.branch_name) {
+      contextParts.push(String(assignment.branch_name).trim());
+    }
+    const context = contextParts.filter(Boolean).join(' / ');
+    const labelParts = [idLabel, baseName, context].filter(
+      (part) => part && part.length,
+    );
+
+    options.push({
+      value,
+      label: labelParts.length ? labelParts.join(' – ') : `Session ${value}`,
+      workplaceId: normalizeNumericId(assignment.workplace_id),
+      workplaceSessionId: normalizeNumericId(
+        assignment.workplace_session_id ?? assignment.workplace_id,
+      ),
+    });
+  });
+
+  const fallbackSessionId = normalizeNumericId(
+    sessionData?.workplace_session_id ??
+      sessionData?.workplace_id ??
+      normalizeNumericId(fallbackWorkplaceValue),
+  );
+
+  if (fallbackSessionId != null) {
+    const fallbackValue = String(fallbackSessionId);
+    const alreadyExists = options.some((option) => option.value === fallbackValue);
+    if (!alreadyExists) {
+      const idParts = [];
+      if (sessionData?.workplace_id != null) {
+        idParts.push(`#${sessionData.workplace_id}`);
+      }
+      if (
+        sessionData?.workplace_session_id != null &&
+        sessionData.workplace_session_id !== sessionData.workplace_id
+      ) {
+        idParts.push(`session ${sessionData.workplace_session_id}`);
+      }
+      const idLabel = idParts.join(' · ');
+      const baseName = sessionData?.workplace_name
+        ? String(sessionData.workplace_name).trim()
+        : '';
+      const contextParts = [];
+      if (sessionData?.department_name) {
+        contextParts.push(String(sessionData.department_name).trim());
+      }
+      if (sessionData?.branch_name) {
+        contextParts.push(String(sessionData.branch_name).trim());
+      }
+      const context = contextParts.filter(Boolean).join(' / ');
+      const labelParts = [idLabel, baseName, context].filter(
+        (part) => part && part.length,
+      );
+      options.push({
+        value: fallbackValue,
+        label: labelParts.length
+          ? labelParts.join(' – ')
+          : `Session ${fallbackValue}`,
+        workplaceId:
+          normalizeNumericId(sessionData?.workplace_id) ?? fallbackSessionId,
+        workplaceSessionId: fallbackSessionId,
+      });
+    }
+  }
+
+  options.sort((a, b) => a.label.localeCompare(b.label));
+
+  if (options.length > 1) {
+    return [
+      {
+        value: ALL_WORKPLACE_OPTION,
+        label: 'All workplaces',
+        workplaceId: null,
+        workplaceSessionId: null,
+      },
+      ...options,
+    ];
+  }
+
+  return options;
+}
+
 export default function Reports() {
   const { company, branch, department, position, workplace, user, session } =
     useContext(AuthContext);
@@ -93,6 +211,7 @@ export default function Reports() {
   const [workplaceSelection, setWorkplaceSelection] = useState(
     ALL_WORKPLACE_OPTION,
   );
+  const [dynamicWorkplaceSession, setDynamicWorkplaceSession] = useState(null);
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const [snapshot, setSnapshot] = useState(null);
@@ -122,121 +241,93 @@ export default function Reports() {
   const workplaceSelectRef = useRef(null);
   const manualInputRefs = useRef({});
   const runButtonRef = useRef(null);
+  const baseWorkplaceSelectOptions = useMemo(
+    () => buildWorkplaceOptions(session, workplace),
+    [session, workplace],
+  );
+
   const workplaceSelectOptions = useMemo(() => {
-    const assignments = Array.isArray(session?.workplace_assignments)
-      ? session.workplace_assignments
-      : [];
-    const options = [];
-    const seen = new Set();
+    if (dynamicWorkplaceSession) {
+      return buildWorkplaceOptions(dynamicWorkplaceSession, workplace);
+    }
+    return baseWorkplaceSelectOptions;
+  }, [dynamicWorkplaceSession, baseWorkplaceSelectOptions, workplace]);
 
-    assignments.forEach((assignment) => {
-      if (!assignment || typeof assignment !== 'object') return;
-      const rawSessionId =
-        assignment.workplace_session_id ?? assignment.workplace_id;
-      if (rawSessionId == null) return;
-      const value = String(rawSessionId);
-      if (seen.has(value)) return;
-      seen.add(value);
-
-      const idParts = [];
-      if (assignment.workplace_id != null) {
-        idParts.push(`#${assignment.workplace_id}`);
-      }
-      if (
-        assignment.workplace_session_id != null &&
-        assignment.workplace_session_id !== assignment.workplace_id
-      ) {
-        idParts.push(`session ${assignment.workplace_session_id}`);
-      }
-      const idLabel = idParts.join(' · ');
-      const baseName = assignment.workplace_name
-        ? String(assignment.workplace_name).trim()
-        : '';
-      const contextParts = [];
-      if (assignment.department_name) {
-        contextParts.push(String(assignment.department_name).trim());
-      }
-      if (assignment.branch_name) {
-        contextParts.push(String(assignment.branch_name).trim());
-      }
-      const context = contextParts.filter(Boolean).join(' / ');
-      const labelParts = [idLabel, baseName, context].filter(
-        (part) => part && part.length,
-      );
-
-      options.push({
-        value,
-        label: labelParts.length ? labelParts.join(' – ') : `Session ${value}`,
-        workplaceId: normalizeNumericId(assignment.workplace_id),
-        workplaceSessionId: normalizeNumericId(
-          assignment.workplace_session_id ?? assignment.workplace_id,
-        ),
-      });
-    });
-
-    const fallbackSessionId = normalizeNumericId(
-      session?.workplace_session_id ??
-        session?.workplace_id ??
-        normalizeNumericId(workplace),
-    );
-
-    if (fallbackSessionId != null) {
-      const fallbackValue = String(fallbackSessionId);
-      const alreadyExists = options.some((option) => option.value === fallbackValue);
-      if (!alreadyExists) {
-        const idParts = [];
-        if (session?.workplace_id != null) {
-          idParts.push(`#${session.workplace_id}`);
-        }
-        if (
-          session?.workplace_session_id != null &&
-          session.workplace_session_id !== session.workplace_id
-        ) {
-          idParts.push(`session ${session.workplace_session_id}`);
-        }
-        const idLabel = idParts.join(' · ');
-        const baseName = session?.workplace_name
-          ? String(session.workplace_name).trim()
-          : '';
-        const contextParts = [];
-        if (session?.department_name) {
-          contextParts.push(String(session.department_name).trim());
-        }
-        if (session?.branch_name) {
-          contextParts.push(String(session.branch_name).trim());
-        }
-        const context = contextParts.filter(Boolean).join(' / ');
-        const labelParts = [idLabel, baseName, context].filter(
-          (part) => part && part.length,
-        );
-        options.push({
-          value: fallbackValue,
-          label: labelParts.length
-            ? labelParts.join(' – ')
-            : `Session ${fallbackValue}`,
-          workplaceId:
-            normalizeNumericId(session?.workplace_id) ?? fallbackSessionId,
-          workplaceSessionId: fallbackSessionId,
+  useEffect(() => {
+    if (!selectedProc) {
+      setDynamicWorkplaceSession(null);
+      return undefined;
+    }
+    if (!hasWorkplaceParam) {
+      setDynamicWorkplaceSession(null);
+      return undefined;
+    }
+    if (!yearParamName || !monthParamName) {
+      setDynamicWorkplaceSession(null);
+      return undefined;
+    }
+    if (!yearParamValue || !monthParamValue) {
+      setDynamicWorkplaceSession(null);
+      return undefined;
+    }
+    const year = Number.parseInt(yearParamValue, 10);
+    const month = Number.parseInt(monthParamValue, 10);
+    if (
+      !Number.isFinite(year) ||
+      year < 1900 ||
+      year > 9999 ||
+      !Number.isFinite(month) ||
+      month < 1 ||
+      month > 12
+    ) {
+      setDynamicWorkplaceSession(null);
+      return undefined;
+    }
+    const controller = new AbortController();
+    let cancelled = false;
+    async function loadWorkplaces() {
+      try {
+        const params = new URLSearchParams({
+          year: String(year),
+          month: String(month),
         });
+        const res = await fetch(
+          `/api/report_builder/workplace_sessions?${params.toString()}`,
+          {
+            credentials: 'include',
+            signal: controller.signal,
+          },
+        );
+        if (!res.ok) {
+          if (!cancelled) {
+            setDynamicWorkplaceSession(null);
+          }
+          return;
+        }
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled) {
+          setDynamicWorkplaceSession(data.session ?? null);
+        }
+      } catch (err) {
+        if (err?.name === 'AbortError') return;
+        if (!cancelled) {
+          setDynamicWorkplaceSession(null);
+        }
       }
     }
-
-    options.sort((a, b) => a.label.localeCompare(b.label));
-
-    if (options.length > 1) {
-      return [
-        {
-          value: ALL_WORKPLACE_OPTION,
-          label: 'All workplaces',
-          workplaceId: null,
-          workplaceSessionId: null,
-        },
-        ...options,
-      ];
-    }
-
-    return options;
-  }, [session, workplace]);
+    loadWorkplaces();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    selectedProc,
+    hasWorkplaceParam,
+    yearParamName,
+    monthParamName,
+    yearParamValue,
+    monthParamValue,
+  ]);
 
   useEffect(() => {
     if (!workplaceSelectOptions.length) {
@@ -726,6 +817,51 @@ export default function Reports() {
       return list;
     }, []);
   }, [procParams, managedIndices, autoParams]);
+
+  const hasWorkplaceParam = useMemo(() => {
+    return procParams.some((param) => {
+      if (typeof param !== 'string') return false;
+      const name = normalizeParamName(param);
+      if (!name) return false;
+      return name.includes('workplace') || name.includes('workloc');
+    });
+  }, [procParams]);
+
+  const manualParamMetadata = useMemo(
+    () =>
+      manualParamNames.map((name) => ({
+        original: name,
+        normalized: typeof name === 'string' ? normalizeParamName(name) : '',
+      })),
+    [manualParamNames],
+  );
+
+  const yearParamName = useMemo(() => {
+    const match = manualParamMetadata.find((item) => {
+      if (!item.normalized) return false;
+      return item.normalized.includes('year');
+    });
+    return match ? match.original : null;
+  }, [manualParamMetadata]);
+
+  const monthParamName = useMemo(() => {
+    const match = manualParamMetadata.find((item) => {
+      if (!item.normalized) return false;
+      return item.normalized.includes('month');
+    });
+    return match ? match.original : null;
+  }, [manualParamMetadata]);
+
+  const yearParamValue = useMemo(
+    () => (yearParamName ? String(manualParams[yearParamName] ?? '').trim() : ''),
+    [manualParams, yearParamName],
+  );
+
+  const monthParamValue = useMemo(
+    () =>
+      monthParamName ? String(manualParams[monthParamName] ?? '').trim() : '',
+    [manualParams, monthParamName],
+  );
 
   const activeControlRefs = useMemo(() => {
     const refs = [];
