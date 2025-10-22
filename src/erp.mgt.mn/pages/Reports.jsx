@@ -289,48 +289,10 @@ export default function Reports() {
     );
   }, [requiresYearMonthParams, manualParams, yearParamNames, monthParamNames]);
 
-  const yearMonthParamsReady = useMemo(() => {
-    if (!requiresYearMonthParams) return true;
-    if (!yearMonthValuesProvided) return false;
-    return yearMonthParamsCommitted;
-  }, [requiresYearMonthParams, yearMonthValuesProvided, yearMonthParamsCommitted]);
-
-  const shouldUseWorkplaceSelection = hasWorkplaceParam && yearMonthParamsReady;
+  const shouldUseWorkplaceSelection = hasWorkplaceParam && yearMonthValuesProvided;
 
   const showWorkplaceSelector =
     shouldUseWorkplaceSelection && workplaceSelectOptions.length > 1;
-
-  const isYearMonthParamName = useCallback(
-    (name) =>
-      requiresYearMonthParams &&
-      typeof name === 'string' &&
-      (yearParamNames.includes(name) || monthParamNames.includes(name)),
-    [requiresYearMonthParams, yearParamNames, monthParamNames],
-  );
-
-  useEffect(() => {
-    if (!requiresYearMonthParams) {
-      setYearMonthParamsCommitted(true);
-      return;
-    }
-    setYearMonthParamsCommitted(false);
-  }, [
-    requiresYearMonthParams,
-    yearParamNames,
-    monthParamNames,
-    selectedProc,
-  ]);
-
-  useEffect(() => {
-    if (!requiresYearMonthParams) return;
-    if (!yearMonthValuesProvided && yearMonthParamsCommitted) {
-      setYearMonthParamsCommitted(false);
-    }
-  }, [
-    requiresYearMonthParams,
-    yearMonthValuesProvided,
-    yearMonthParamsCommitted,
-  ]);
 
   useEffect(() => {
     if (!showWorkplaceSelector || !workplaceSelectOptions.length) {
@@ -869,11 +831,18 @@ export default function Reports() {
   const handleManualParamChange = useCallback(
     (name, value) => {
       setManualParams((prev) => ({ ...prev, [name]: value }));
-      if (isYearMonthParamName(name)) {
+      if (
+        requiresYearMonthParams &&
+        (yearParamNameSet.has(name) || monthParamNameSet.has(name))
+      ) {
         setYearMonthParamsCommitted(false);
       }
     },
-    [isYearMonthParamName],
+    [
+      requiresYearMonthParams,
+      yearParamNameSet,
+      monthParamNameSet,
+    ],
   );
 
   const finalParams = useMemo(() => {
@@ -891,7 +860,9 @@ export default function Reports() {
   function handleParameterKeyDown(event, currentRef, paramName) {
     if (event.key !== 'Enter') return;
     const isYearMonthParam =
-      typeof paramName === 'string' && isYearMonthParamName(paramName);
+      requiresYearMonthParams &&
+      typeof paramName === 'string' &&
+      (yearParamNameSet.has(paramName) || monthParamNameSet.has(paramName));
     if (isYearMonthParam && yearMonthValuesProvided) {
       setYearMonthParamsCommitted(true);
     }
