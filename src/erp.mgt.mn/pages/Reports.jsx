@@ -122,6 +122,181 @@ export default function Reports() {
   const workplaceSelectRef = useRef(null);
   const manualInputRefs = useRef({});
   const runButtonRef = useRef(null);
+  const workplaceSelectOptions = useMemo(() => {
+    const assignments = Array.isArray(session?.workplace_assignments)
+      ? session.workplace_assignments
+      : [];
+    const sessionIds = Array.isArray(session?.workplace_session_ids)
+      ? session.workplace_session_ids
+      : [];
+    const options = [];
+    const seen = new Set();
+
+    const parseId = (value) => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    };
+
+    const addOption = ({
+      workplaceId,
+      workplaceSessionId,
+      workplaceName,
+      branchName,
+      departmentName,
+    }) => {
+      const normalizedSessionId = parseId(workplaceSessionId);
+      if (normalizedSessionId == null) return;
+      const value = String(normalizedSessionId);
+      if (seen.has(value)) return;
+
+      const normalizedWorkplaceId = parseId(workplaceId);
+
+      const idParts = [];
+      if (normalizedWorkplaceId != null) {
+        idParts.push(`#${normalizedWorkplaceId}`);
+      }
+      if (
+        normalizedSessionId != null &&
+        normalizedSessionId !== normalizedWorkplaceId
+      ) {
+        idParts.push(`session ${normalizedSessionId}`);
+      }
+      const idLabel = idParts.join(' · ');
+      const baseName = workplaceName ? String(workplaceName).trim() : '';
+      const contextParts = [];
+      if (departmentName) {
+        contextParts.push(String(departmentName).trim());
+      }
+      if (branchName) {
+        contextParts.push(String(branchName).trim());
+      }
+      const context = contextParts.filter(Boolean).join(' / ');
+      const labelParts = [idLabel, baseName, context].filter(
+        (part) => part && part.length,
+      );
+
+      options.push({
+        value,
+        label: labelParts.length ? labelParts.join(' – ') : `Session ${value}`,
+        workplaceId: normalizedWorkplaceId ?? normalizedSessionId,
+        workplaceSessionId: normalizedSessionId,
+      });
+      seen.add(value);
+    };
+
+    assignments.forEach((assignment) => {
+      if (!assignment || typeof assignment !== 'object') return;
+      const sessionId =
+        assignment.workplace_session_id ?? assignment.workplace_id ?? null;
+      addOption({
+        workplaceId: assignment.workplace_id ?? null,
+        workplaceSessionId: sessionId,
+        workplaceName: assignment.workplace_name ?? null,
+        branchName: assignment.branch_name ?? null,
+        departmentName: assignment.department_name ?? null,
+      });
+    });
+
+    const fallbackIds = new Set();
+    sessionIds.forEach((id) => {
+      const parsed = parseId(id);
+      if (parsed != null) {
+        fallbackIds.add(parsed);
+      }
+    });
+
+    const fallbackSessionId = parseId(
+      session?.workplace_session_id ?? session?.workplace_id ?? workplace,
+    );
+    if (fallbackSessionId != null) {
+      fallbackIds.add(fallbackSessionId);
+    }
+
+    fallbackIds.forEach((id) => {
+      addOption({
+        workplaceId: session?.workplace_id ?? id,
+        workplaceSessionId: id,
+        workplaceName: session?.workplace_name ?? null,
+        branchName: session?.branch_name ?? null,
+        departmentName: session?.department_name ?? null,
+      });
+    });
+
+    options.sort((a, b) => a.label.localeCompare(b.label));
+
+    if (options.length > 1) {
+      return [
+        {
+          value: ALL_WORKPLACE_OPTION,
+          label: 'All workplaces',
+          workplaceId: null,
+          workplaceSessionId: null,
+        },
+        ...options,
+      ];
+    }
+
+    return options;
+  }, [session, workplace]);
+
+  useEffect(() => {
+    if (!workplaceSelectOptions.length) {
+      if (workplaceSelection !== ALL_WORKPLACE_OPTION) {
+        setWorkplaceSelection(ALL_WORKPLACE_OPTION);
+      }
+      return;
+    }
+    const values = new Set(workplaceSelectOptions.map((option) => option.value));
+    if (!values.has(workplaceSelection)) {
+      setWorkplaceSelection(workplaceSelectOptions[0].value);
+    }
+  }, [workplaceSelectOptions, workplaceSelection]);
+
+  const showWorkplaceSelector = workplaceSelectOptions.length > 1;
+
+  const selectedWorkplaceOption = useMemo(() => {
+    if (!workplaceSelectOptions.length) return null;
+    return (
+      workplaceSelectOptions.find((option) => option.value === workplaceSelection) ||
+      null
+    );
+  }, [workplaceSelectOptions, workplaceSelection]);
+
+  const selectedWorkplaceIds = useMemo(() => {
+    if (!selectedWorkplaceOption) {
+      return { workplaceId: null, workplaceSessionId: null };
+    }
+    if (selectedWorkplaceOption.value === ALL_WORKPLACE_OPTION) {
+      return { workplaceId: null, workplaceSessionId: null };
+    }
+    const workplaceSessionId = normalizeNumericId(
+      selectedWorkplaceOption.workplaceSessionId ??
+        selectedWorkplaceOption.workplaceId ??
+        selectedWorkplaceOption.value,
+    );
+    const workplaceId = normalizeNumericId(
+      selectedWorkplaceOption.workplaceId ??
+        selectedWorkplaceOption.workplaceSessionId ??
+        selectedWorkplaceOption.value,
+    );
+    return {
+      workplaceId: workplaceId ?? null,
+      workplaceSessionId: workplaceSessionId ?? workplaceId ?? null,
+    };
+  }, [selectedWorkplaceOption]);
+
+  const { workplaceId: selectedWorkplaceId, workplaceSessionId: selectedWorkplaceSessionId } =
+    selectedWorkplaceIds;
+
   const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
   const procMap = useHeaderMappings(procNames);
   useEffect(() => {
@@ -471,8 +646,12 @@ export default function Reports() {
     const departmentId = session?.department_id ?? normalizeNumericId(department);
     const positionId =
       session?.position_id ?? normalizeNumericId(position);
-    const workplaceId =
+    const baseWorkplaceId =
       session?.workplace_id ?? normalizeNumericId(workplace);
+    const baseWorkplaceSessionId =
+      normalizeNumericId(session?.workplace_session_id) ??
+      normalizeNumericId(session?.workplace_id) ??
+      normalizeNumericId(workplace);
     const userEmpId =
       user?.empid ?? session?.empid ?? session?.employee_id ?? null;
     const userId = user?.id ?? session?.user_id ?? null;
@@ -480,12 +659,18 @@ export default function Reports() {
     const seniorPlanEmpId = session?.senior_plan_empid ?? null;
     const userLevel = session?.user_level ?? null;
 
+    const effectiveWorkplaceId =
+      selectedWorkplaceId ?? baseWorkplaceId ?? null;
+    const effectiveWorkplaceSessionId =
+      selectedWorkplaceSessionId ?? baseWorkplaceSessionId ?? effectiveWorkplaceId;
+
     return {
       branchId: branchId ?? null,
       companyId: companyId ?? null,
       departmentId: departmentId ?? null,
       positionId: positionId ?? null,
-      workplaceId: workplaceId ?? null,
+      workplaceId: effectiveWorkplaceId ?? null,
+      workplaceSessionId: effectiveWorkplaceSessionId ?? null,
       userEmpId: userEmpId ?? null,
       userId: userId ?? null,
       seniorEmpId,
@@ -500,6 +685,8 @@ export default function Reports() {
     session,
     user,
     workplace,
+    selectedWorkplaceId,
+    selectedWorkplaceSessionId,
   ]);
 
   const autoParams = useMemo(() => {
@@ -509,6 +696,12 @@ export default function Reports() {
       const name =
         typeof p === 'string' ? normalizeParamName(p) : '';
       if (!name) return null;
+      if (
+        name.includes('sessionworkplace') ||
+        name.includes('workplacesession')
+      ) {
+        return sessionDefaults.workplaceSessionId;
+      }
       if (name.includes('company')) return sessionDefaults.companyId;
       if (name.includes('branch')) return sessionDefaults.branchId;
       if (name.includes('department') || name.includes('dept'))
