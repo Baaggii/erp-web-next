@@ -963,8 +963,13 @@ function mapEmploymentRow(row) {
 /**
  * List all employment sessions for an employee
  */
-export async function getEmploymentSessions(empid) {
+export async function getEmploymentSessions(empid, options = {}) {
   const configCompanyId = GLOBAL_COMPANY_ID;
+  const scheduleDate = options?.effectiveDate
+    ? formatDateForDb(options.effectiveDate).slice(0, 10)
+    : null;
+  const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
+  const scheduleDateParams = scheduleDate ? [scheduleDate, scheduleDate] : [];
   const [
     companyCfgRaw,
     branchCfgRaw,
@@ -1084,8 +1089,8 @@ export async function getEmploymentSessions(empid) {
                ORDER BY es.start_date DESC, es.id DESC
              ) AS rn
            FROM tbl_employment_schedule es
-           WHERE es.start_date <= CURRENT_DATE()
-             AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
+           WHERE es.start_date <= ${scheduleDateSql}
+             AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
              AND es.deleted_at IS NULL
          ) ranked
          WHERE ranked.rn = 1
@@ -1113,7 +1118,7 @@ export async function getEmploymentSessions(empid) {
                 e.employment_senior_plan_empid,
                 employee_name, e.employment_user_level, ul.name
       ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`,
-      [empid],
+      [...scheduleDateParams, empid],
     );
   return rows.map(mapEmploymentRow);
 }
@@ -1131,6 +1136,11 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
   const departmentPreference = hasDepartmentPref
     ? options.departmentId ?? null
     : undefined;
+  const scheduleDate = options?.effectiveDate
+    ? formatDateForDb(options.effectiveDate).slice(0, 10)
+    : null;
+  const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
+  const scheduleDateParams = scheduleDate ? [scheduleDate, scheduleDate] : [];
 
   if (companyId !== undefined && companyId !== null) {
     const configCompanyId = Number.isFinite(Number(companyId))
@@ -1276,8 +1286,8 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                  ORDER BY es.start_date DESC, es.id DESC
                ) AS rn
              FROM tbl_employment_schedule es
-             WHERE es.start_date <= CURRENT_DATE()
-               AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
+             WHERE es.start_date <= ${scheduleDateSql}
+               AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
                AND es.deleted_at IS NULL
            ) ranked
            WHERE ranked.rn = 1
@@ -1306,7 +1316,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                   employee_name, e.employment_user_level, ul.name
          ORDER BY ${orderParts.join(', ')}
          LIMIT 1`,
-        params,
+        [...scheduleDateParams, ...params],
       );
     if (rows.length === 0) return null;
     return mapEmploymentRow(rows[0]);
