@@ -238,65 +238,8 @@ export default function Reports() {
     return options;
   }, [session, workplace]);
 
-  const normalizedProcParams = useMemo(() => {
-    return procParams.map((param) => ({
-      original: param,
-      normalized: typeof param === 'string' ? normalizeParamName(param) : '',
-    }));
-  }, [procParams]);
-
-  const hasWorkplaceParam = useMemo(
-    () =>
-      normalizedProcParams.some(({ normalized }) => {
-        if (!normalized) return false;
-        return normalized.includes('workplace') || normalized.includes('workloc');
-      }),
-    [normalizedProcParams],
-  );
-
-  const yearParamNames = useMemo(
-    () =>
-      normalizedProcParams
-        .filter(({ normalized }) => normalized && normalized.includes('year'))
-        .map(({ original }) => original),
-    [normalizedProcParams],
-  );
-
-  const monthParamNames = useMemo(
-    () =>
-      normalizedProcParams
-        .filter(({ normalized }) => normalized && normalized.includes('month'))
-        .map(({ original }) => original),
-    [normalizedProcParams],
-  );
-
-  const requiresYearMonthParams = useMemo(
-    () => yearParamNames.length > 0 && monthParamNames.length > 0,
-    [yearParamNames, monthParamNames],
-  );
-
-  const yearMonthValuesProvided = useMemo(() => {
-    if (!requiresYearMonthParams) return true;
-    const hasValue = (name) => {
-      const rawValue = manualParams[name];
-      if (rawValue === null || rawValue === undefined) return false;
-      if (typeof rawValue === 'string') return rawValue.trim().length > 0;
-      return true;
-    };
-    return (
-      yearParamNames.every(hasValue) && monthParamNames.every(hasValue)
-    );
-  }, [requiresYearMonthParams, manualParams, yearParamNames, monthParamNames]);
-
-  const shouldUseWorkplaceSelection =
-    hasWorkplaceParam && yearMonthValuesProvided;
-
-  const showWorkplaceSelector =
-    shouldUseWorkplaceSelection && workplaceSelectOptions.length > 1;
-
-
   useEffect(() => {
-    if (!showWorkplaceSelector || !workplaceSelectOptions.length) {
+    if (!workplaceSelectOptions.length) {
       if (workplaceSelection !== ALL_WORKPLACE_OPTION) {
         setWorkplaceSelection(ALL_WORKPLACE_OPTION);
       }
@@ -306,23 +249,20 @@ export default function Reports() {
     if (!values.has(workplaceSelection)) {
       setWorkplaceSelection(workplaceSelectOptions[0].value);
     }
-  }, [
-    showWorkplaceSelector,
-    workplaceSelectOptions,
-    workplaceSelection,
-  ]);
+  }, [workplaceSelectOptions, workplaceSelection]);
+
+  const showWorkplaceSelector = workplaceSelectOptions.length > 1;
 
   const selectedWorkplaceOption = useMemo(() => {
-    if (!showWorkplaceSelector || !workplaceSelectOptions.length) return null;
+    if (!workplaceSelectOptions.length) return null;
     return (
       workplaceSelectOptions.find((option) => option.value === workplaceSelection) ||
-      workplaceSelectOptions[0] ||
       null
     );
-  }, [showWorkplaceSelector, workplaceSelectOptions, workplaceSelection]);
+  }, [workplaceSelectOptions, workplaceSelection]);
 
   const selectedWorkplaceIds = useMemo(() => {
-    if (!showWorkplaceSelector || !selectedWorkplaceOption) {
+    if (!selectedWorkplaceOption) {
       return { workplaceId: null, workplaceSessionId: null };
     }
     if (selectedWorkplaceOption.value === ALL_WORKPLACE_OPTION) {
@@ -342,7 +282,7 @@ export default function Reports() {
       workplaceId: workplaceId ?? null,
       workplaceSessionId: workplaceSessionId ?? workplaceId ?? null,
     };
-  }, [showWorkplaceSelector, selectedWorkplaceOption]);
+  }, [selectedWorkplaceOption]);
 
   const { workplaceId: selectedWorkplaceId, workplaceSessionId: selectedWorkplaceSessionId } =
     selectedWorkplaceIds;
@@ -710,13 +650,9 @@ export default function Reports() {
     const userLevel = session?.user_level ?? null;
 
     const effectiveWorkplaceId =
-      shouldUseWorkplaceSelection && selectedWorkplaceId != null
-        ? selectedWorkplaceId
-        : baseWorkplaceId ?? null;
+      selectedWorkplaceId ?? baseWorkplaceId ?? null;
     const effectiveWorkplaceSessionId =
-      shouldUseWorkplaceSelection && selectedWorkplaceSessionId != null
-        ? selectedWorkplaceSessionId
-        : baseWorkplaceSessionId ?? baseWorkplaceId ?? null;
+      selectedWorkplaceSessionId ?? baseWorkplaceSessionId ?? effectiveWorkplaceId;
 
     return {
       branchId: branchId ?? null,
@@ -741,7 +677,6 @@ export default function Reports() {
     workplace,
     selectedWorkplaceId,
     selectedWorkplaceSessionId,
-    shouldUseWorkplaceSelection,
   ]);
 
   const autoParams = useMemo(() => {
@@ -829,13 +764,6 @@ export default function Reports() {
     }
   }, [selectedProc, activeControlRefs]);
 
-  const handleManualParamChange = useCallback(
-    (name, value) => {
-      setManualParams((prev) => ({ ...prev, [name]: value }));
-    },
-    [],
-  );
-
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
@@ -848,7 +776,7 @@ export default function Reports() {
     [finalParams],
   );
 
-  function handleParameterKeyDown(event, currentRef, paramName) {
+  function handleParameterKeyDown(event, currentRef) {
     if (event.key !== 'Enter') return;
     const currentIndex = activeControlRefs.findIndex((ref) => ref === currentRef);
     if (currentIndex === -1) return;
@@ -2605,13 +2533,11 @@ export default function Reports() {
                   placeholder={p}
                   value={val}
                   onChange={(e) =>
-                    handleManualParamChange(p, e.target.value)
+                    setManualParams((m) => ({ ...m, [p]: e.target.value }))
                   }
                   style={{ marginLeft: '0.5rem' }}
                   ref={inputRef}
-                  onKeyDown={(event) =>
-                    handleParameterKeyDown(event, inputRef, p)
-                  }
+                  onKeyDown={(event) => handleParameterKeyDown(event, inputRef)}
                 />
               );
             })}
