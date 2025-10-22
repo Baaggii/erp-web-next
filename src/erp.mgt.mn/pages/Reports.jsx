@@ -271,12 +271,6 @@ export default function Reports() {
     [normalizedProcParams],
   );
 
-  const yearParamNameSet = useMemo(() => new Set(yearParamNames), [yearParamNames]);
-  const monthParamNameSet = useMemo(
-    () => new Set(monthParamNames),
-    [monthParamNames],
-  );
-
   const requiresYearMonthParams = useMemo(
     () => yearParamNames.length > 0 && monthParamNames.length > 0,
     [yearParamNames, monthParamNames],
@@ -295,40 +289,10 @@ export default function Reports() {
     );
   }, [requiresYearMonthParams, manualParams, yearParamNames, monthParamNames]);
 
-  const yearMonthParamsReady = useMemo(() => {
-    if (!requiresYearMonthParams) return true;
-    if (!yearMonthValuesProvided) return false;
-    return yearMonthParamsCommitted;
-  }, [requiresYearMonthParams, yearMonthValuesProvided, yearMonthParamsCommitted]);
-
-  const shouldUseWorkplaceSelection = hasWorkplaceParam && yearMonthParamsReady;
+  const shouldUseWorkplaceSelection = hasWorkplaceParam && yearMonthValuesProvided;
 
   const showWorkplaceSelector =
     shouldUseWorkplaceSelection && workplaceSelectOptions.length > 1;
-
-  useEffect(() => {
-    if (!requiresYearMonthParams) {
-      setYearMonthParamsCommitted(true);
-      return;
-    }
-    setYearMonthParamsCommitted(false);
-  }, [
-    requiresYearMonthParams,
-    yearParamNames,
-    monthParamNames,
-    selectedProc,
-  ]);
-
-  useEffect(() => {
-    if (!requiresYearMonthParams) return;
-    if (!yearMonthValuesProvided && yearMonthParamsCommitted) {
-      setYearMonthParamsCommitted(false);
-    }
-  }, [
-    requiresYearMonthParams,
-    yearMonthValuesProvided,
-    yearMonthParamsCommitted,
-  ]);
 
   useEffect(() => {
     if (!showWorkplaceSelector || !workplaceSelectOptions.length) {
