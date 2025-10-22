@@ -1075,7 +1075,12 @@ export async function getEmploymentSessions(empid) {
              es.workplace_id,
              es.id,
              ROW_NUMBER() OVER (
-               PARTITION BY es.emp_id, es.company_id, es.branch_id, es.department_id
+               PARTITION BY
+                 es.emp_id,
+                 es.company_id,
+                 es.branch_id,
+                 es.department_id,
+                 es.workplace_id
                ORDER BY es.start_date DESC, es.id DESC
              ) AS rn
            FROM tbl_employment_schedule es
@@ -1262,7 +1267,12 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                es.workplace_id,
                es.id,
                ROW_NUMBER() OVER (
-                 PARTITION BY es.emp_id, es.company_id, es.branch_id, es.department_id
+                 PARTITION BY
+                   es.emp_id,
+                   es.company_id,
+                   es.branch_id,
+                   es.department_id,
+                   es.workplace_id
                  ORDER BY es.start_date DESC, es.id DESC
                ) AS rn
              FROM tbl_employment_schedule es
