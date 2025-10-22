@@ -909,61 +909,6 @@ export async function getUserByEmpId(empid) {
   return user;
 }
 
-function formatDateOnly(value) {
-  try {
-    return formatDateForDb(value).slice(0, 10);
-  } catch {
-    return null;
-  }
-}
-
-const EMPLOYMENT_SCHEDULE_DEFAULT_FILTER =
-  'WHERE es.start_date <= CURRENT_DATE() AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE()) AND es.deleted_at IS NULL';
-
-function resolveEmploymentScheduleFilter(options = {}) {
-  const between = options?.effectiveBetween;
-  if (between && (between.start || between.end)) {
-    const formattedStart = formatDateOnly(between.start);
-    const formattedEnd = formatDateOnly(between.end);
-
-    if (formattedStart && formattedEnd) {
-      return {
-        clause:
-          'WHERE es.start_date <= ? AND (es.end_date IS NULL OR es.end_date >= ?) AND es.deleted_at IS NULL',
-        params: [formattedEnd, formattedStart],
-      };
-    }
-
-    if (formattedEnd) {
-      return {
-        clause: 'WHERE es.start_date <= ? AND es.deleted_at IS NULL',
-        params: [formattedEnd],
-      };
-    }
-
-    if (formattedStart) {
-      return {
-        clause: 'WHERE (es.end_date IS NULL OR es.end_date >= ?) AND es.deleted_at IS NULL',
-        params: [formattedStart],
-      };
-    }
-  }
-
-  const effectiveDate = options?.effectiveDate;
-  if (!effectiveDate) {
-    return { clause: EMPLOYMENT_SCHEDULE_DEFAULT_FILTER, params: [] };
-  }
-  const formatted = formatDateOnly(effectiveDate);
-  if (!formatted) {
-    return { clause: EMPLOYMENT_SCHEDULE_DEFAULT_FILTER, params: [] };
-  }
-  return {
-    clause:
-      'WHERE es.start_date <= ? AND (es.end_date IS NULL OR es.end_date >= ?) AND es.deleted_at IS NULL',
-    params: [formatted, formatted],
-  };
-}
-
 function mapEmploymentRow(row) {
   const {
     company_id,
@@ -1018,7 +963,7 @@ function mapEmploymentRow(row) {
 /**
  * List all employment sessions for an employee
  */
-export async function getEmploymentSessions(empid, options = {}) {
+export async function getEmploymentSessions(empid) {
   const configCompanyId = GLOBAL_COMPANY_ID;
   const [
     companyCfgRaw,
@@ -1091,8 +1036,6 @@ export async function getEmploymentSessions(empid, options = {}) {
     "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
   );
 
-    const scheduleFilter = resolveEmploymentScheduleFilter(options);
-
     const [rows] = await pool.query(
       `SELECT
           e.employment_company_id AS company_id,
@@ -1141,7 +1084,9 @@ export async function getEmploymentSessions(empid, options = {}) {
                ORDER BY es.start_date DESC, es.id DESC
              ) AS rn
            FROM tbl_employment_schedule es
-           ${scheduleFilter.clause}
+           WHERE es.start_date <= CURRENT_DATE()
+             AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
+             AND es.deleted_at IS NULL
          ) ranked
          WHERE ranked.rn = 1
        ) es
@@ -1168,7 +1113,7 @@ export async function getEmploymentSessions(empid, options = {}) {
                 e.employment_senior_plan_empid,
                 employee_name, e.employment_user_level, ul.name
       ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`,
-      [...scheduleFilter.params, empid],
+      [empid],
     );
   return rows.map(mapEmploymentRow);
 }
@@ -1186,7 +1131,6 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
   const departmentPreference = hasDepartmentPref
     ? options.departmentId ?? null
     : undefined;
-  const scheduleFilter = resolveEmploymentScheduleFilter(options);
 
   if (companyId !== undefined && companyId !== null) {
     const configCompanyId = Number.isFinite(Number(companyId))
@@ -1264,7 +1208,7 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     );
 
     const orderPriority = [];
-    const params = [...scheduleFilter.params, empid, companyId];
+    const params = [empid, companyId];
     if (hasBranchPref) {
       orderPriority.push('CASE WHEN e.employment_branch_id <=> ? THEN 0 ELSE 1 END');
       params.push(branchPreference);
@@ -1332,7 +1276,9 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                  ORDER BY es.start_date DESC, es.id DESC
                ) AS rn
              FROM tbl_employment_schedule es
-             ${scheduleFilter.clause}
+             WHERE es.start_date <= CURRENT_DATE()
+               AND (es.end_date IS NULL OR es.end_date >= CURRENT_DATE())
+               AND es.deleted_at IS NULL
            ) ranked
            WHERE ranked.rn = 1
          ) es
@@ -1358,14 +1304,14 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
                   e.employment_senior_empid,
                   e.employment_senior_plan_empid,
                   employee_name, e.employment_user_level, ul.name
-        ORDER BY ${orderParts.join(', ')}
-        LIMIT 1`,
+         ORDER BY ${orderParts.join(', ')}
+         LIMIT 1`,
         params,
       );
     if (rows.length === 0) return null;
     return mapEmploymentRow(rows[0]);
   }
-  const sessions = await getEmploymentSessions(empid, options);
+  const sessions = await getEmploymentSessions(empid);
   return sessions[0] || null;
 }
 
