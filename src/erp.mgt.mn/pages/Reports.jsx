@@ -95,6 +95,7 @@ export default function Reports() {
   );
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
+  const [yearMonthParamsCommitted, setYearMonthParamsCommitted] = useState(false);
   const [snapshot, setSnapshot] = useState(null);
   const [lockCandidates, setLockCandidates] = useState([]);
   const [lockSelections, setLockSelections] = useState({});
@@ -827,6 +828,23 @@ export default function Reports() {
     }
   }, [selectedProc, activeControlRefs]);
 
+  const handleManualParamChange = useCallback(
+    (name, value) => {
+      setManualParams((prev) => ({ ...prev, [name]: value }));
+      if (
+        requiresYearMonthParams &&
+        (yearParamNameSet.has(name) || monthParamNameSet.has(name))
+      ) {
+        setYearMonthParamsCommitted(false);
+      }
+    },
+    [
+      requiresYearMonthParams,
+      yearParamNameSet,
+      monthParamNameSet,
+    ],
+  );
+
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
@@ -839,8 +857,15 @@ export default function Reports() {
     [finalParams],
   );
 
-  function handleParameterKeyDown(event, currentRef) {
+  function handleParameterKeyDown(event, currentRef, paramName) {
     if (event.key !== 'Enter') return;
+    const isYearMonthParam =
+      requiresYearMonthParams &&
+      typeof paramName === 'string' &&
+      (yearParamNameSet.has(paramName) || monthParamNameSet.has(paramName));
+    if (isYearMonthParam && yearMonthValuesProvided) {
+      setYearMonthParamsCommitted(true);
+    }
     const currentIndex = activeControlRefs.findIndex((ref) => ref === currentRef);
     if (currentIndex === -1) return;
     event.preventDefault();
@@ -2596,11 +2621,13 @@ export default function Reports() {
                   placeholder={p}
                   value={val}
                   onChange={(e) =>
-                    setManualParams((m) => ({ ...m, [p]: e.target.value }))
+                    handleManualParamChange(p, e.target.value)
                   }
                   style={{ marginLeft: '0.5rem' }}
                   ref={inputRef}
-                  onKeyDown={(event) => handleParameterKeyDown(event, inputRef)}
+                  onKeyDown={(event) =>
+                    handleParameterKeyDown(event, inputRef, p)
+                  }
                 />
               );
             })}
