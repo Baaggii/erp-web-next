@@ -2576,7 +2576,9 @@ const TableManager = forwardRef(function TableManager({
       if (merged[k] === undefined || merged[k] === '') merged[k] = v;
     });
 
-    if (isAdding && autoFillSession) {
+    const shouldAutoFill =
+      isAdding && autoFillSession && requestType !== 'temporary-promote';
+    if (shouldAutoFill) {
       userIdFields.forEach((f) => {
         if (columns.has(f)) merged[f] = user?.empid;
       });
@@ -2838,7 +2840,9 @@ const TableManager = forwardRef(function TableManager({
         mergedSource[k] = stripTemporaryLabelValue(v);
       }
     });
-    if (isAdding && autoFillSession) {
+    const shouldTemporaryAutoFill =
+      isAdding && autoFillSession && requestType !== 'temporary-promote';
+    if (shouldTemporaryAutoFill) {
       const columns = new Set(allColumns);
       userIdFields.forEach((f) => {
         if (columns.has(f)) mergedSource[f] = user?.empid;
@@ -2868,19 +2872,25 @@ const TableManager = forwardRef(function TableManager({
     });
 
     const payloadValues = { ...normalizedValues };
+    let payloadGridRows = null;
     if (gridRows) {
-      payloadValues.rows = gridRows;
+      payloadGridRows = gridRows.map((row) =>
+        row && typeof row === 'object' && !Array.isArray(row) ? { ...row } : row,
+      );
+      payloadValues.rows = payloadGridRows;
     }
     const payload = {
       values: payloadValues,
       submittedAt: new Date().toISOString(),
     };
-    if (gridRows) {
-      payload.gridRows = gridRows;
-      payload.rowCount = gridRows.length;
+    if (payloadGridRows) {
+      payload.gridRows = payloadGridRows;
+      payload.rowCount = payloadGridRows.length;
     }
     if (rawRows) {
-      payload.rawRows = rawRows;
+      payload.rawRows = rawRows.map((row) =>
+        row && typeof row === 'object' && !Array.isArray(row) ? { ...row } : row,
+      );
     }
     const body = {
       table,
@@ -3355,10 +3365,18 @@ const TableManager = forwardRef(function TableManager({
     )
       return false;
     try {
-      const payload =
+      let payload =
         overrideValues && typeof overrideValues === 'object'
           ? stripTemporaryLabelValue(overrideValues)
           : null;
+      if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        const filtered = {};
+        Object.entries(payload).forEach(([key, value]) => {
+          if (String(key).toLowerCase() === 'created_by') return;
+          filtered[key] = value;
+        });
+        payload = filtered;
+      }
       const hasBody = payload && Object.keys(payload).length > 0;
       const res = await fetch(
         `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/promote`,
@@ -3605,6 +3623,13 @@ const TableManager = forwardRef(function TableManager({
     ) {
       return;
     }
+    setPendingTemporaryPromotion(null);
+    setShowForm(false);
+    setEditing(null);
+    setIsAdding(false);
+    setGridRows([]);
+    setRequestType(null);
+
     let successCount = 0;
     const failedIds = [];
     for (const id of ids) {
