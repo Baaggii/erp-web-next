@@ -94,7 +94,8 @@ export async function login(req, res, next) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const sessions = await getEmploymentSessions(empid);
+    const effectiveDate = new Date();
+    const sessions = await getEmploymentSessions(empid, { effectiveDate });
     if (!Array.isArray(sessions) || sessions.length === 0) {
       return res
         .status(403)
@@ -281,9 +282,10 @@ export async function logout(req, res) {
 }
 
 export async function getProfile(req, res) {
+  const effectiveDate = new Date();
   const [session, sessions] = await Promise.all([
-    getEmploymentSession(req.user.empid, req.user.companyId),
-    getEmploymentSessions(req.user.empid),
+    getEmploymentSession(req.user.empid, req.user.companyId, { effectiveDate }),
+    getEmploymentSessions(req.user.empid, { effectiveDate }),
   ]);
 
   const workplaceAssignments = session
@@ -381,9 +383,10 @@ export async function refresh(req, res) {
     const payload = jwtService.verifyRefresh(token);
     const user = await getUserById(payload.id);
     if (!user) throw new Error('User not found');
+    const effectiveDate = new Date();
     const [session, sessions] = await Promise.all([
-      getEmploymentSession(user.empid, payload.companyId),
-      getEmploymentSessions(user.empid),
+      getEmploymentSession(user.empid, payload.companyId, { effectiveDate }),
+      getEmploymentSessions(user.empid, { effectiveDate }),
     ]);
 
     const workplaceAssignments = session
