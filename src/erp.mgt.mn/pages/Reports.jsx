@@ -115,6 +115,7 @@ export default function Reports() {
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
+  const usingBaseAssignments = !Array.isArray(workplaceAssignmentsForPeriod);
   const expandedTransactionDetailsRef = useRef(expandedTransactionDetails);
   const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
   const requestLockDetailsRef = useRef(requestLockDetailsState);
@@ -195,7 +196,7 @@ export default function Reports() {
         normalizeNumericId(workplace),
     );
 
-    if (fallbackSessionId != null) {
+    if (usingBaseAssignments && fallbackSessionId != null) {
       const fallbackValue = String(fallbackSessionId);
       const alreadyExists = options.some((option) => option.value === fallbackValue);
       if (!alreadyExists) {
@@ -251,7 +252,7 @@ export default function Reports() {
     }
 
     return options;
-  }, [session, workplace, workplaceAssignments]);
+  }, [session, workplace, workplaceAssignments, usingBaseAssignments]);
 
   const normalizedProcParams = useMemo(() => {
     return procParams.map((param) => ({
@@ -341,17 +342,19 @@ export default function Reports() {
     monthParamNames,
   ]);
 
-  const shouldUseWorkplaceSelection =
-    hasWorkplaceParam &&
-    (!requiresYearMonthParams || Boolean(selectedYearMonth));
-
-  const showWorkplaceSelector =
-    shouldUseWorkplaceSelection && workplaceSelectOptions.length > 1;
+  const showWorkplaceSelector = hasWorkplaceParam;
 
   useEffect(() => {
     let cancelled = false;
-    if (!shouldUseWorkplaceSelection || !selectedYearMonth) {
+    if (!hasWorkplaceParam || !requiresYearMonthParams) {
       setWorkplaceAssignmentsForPeriod(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (!selectedYearMonth) {
+      setWorkplaceAssignmentsForPeriod([]);
       return () => {
         cancelled = true;
       };
@@ -405,7 +408,8 @@ export default function Reports() {
       controller.abort();
     };
   }, [
-    shouldUseWorkplaceSelection,
+    hasWorkplaceParam,
+    requiresYearMonthParams,
     selectedYearMonth,
     session?.company_id,
     company,
@@ -827,11 +831,11 @@ export default function Reports() {
     const userLevel = session?.user_level ?? null;
 
     const effectiveWorkplaceId =
-      shouldUseWorkplaceSelection && selectedWorkplaceId != null
+      selectedWorkplaceId != null
         ? selectedWorkplaceId
         : baseWorkplaceId ?? null;
     const effectiveWorkplaceSessionId =
-      shouldUseWorkplaceSelection && selectedWorkplaceSessionId != null
+      selectedWorkplaceSessionId != null
         ? selectedWorkplaceSessionId
         : baseWorkplaceSessionId ?? baseWorkplaceId ?? null;
 
@@ -858,7 +862,6 @@ export default function Reports() {
     workplace,
     selectedWorkplaceId,
     selectedWorkplaceSessionId,
-    shouldUseWorkplaceSelection,
   ]);
 
   const autoParams = useMemo(() => {
