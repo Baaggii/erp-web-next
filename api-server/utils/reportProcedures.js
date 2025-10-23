@@ -68,16 +68,32 @@ export async function listPermittedProcedures(
     if (prefix && !proc.toLowerCase().includes(prefix.toLowerCase())) continue;
     const access = allowedCfg[proc];
     if (access) {
+      const hasBranches = Array.isArray(access.branches)
+        ? access.branches.length > 0
+        : false;
+      const hasDepartments = Array.isArray(access.departments)
+        ? access.departments.length > 0
+        : false;
+      const hasPermissions = Array.isArray(access.permissions)
+        ? access.permissions.length > 0
+        : false;
+
+      if (!hasBranches && !hasDepartments && !hasPermissions) {
+        // Configuration exists but no visibility rules were defined – hide it entirely.
+        continue;
+      }
+
       if (access.branches.length && hasBranch && !access.branches.includes(bId))
         continue;
       if (access.departments.length && hasDept && !access.departments.includes(dId))
         continue;
-      if (
-        access.permissions.length &&
-        (userCtx.userLevelId == null ||
-          !access.permissions.includes(userCtx.userLevelId))
-      )
-        continue;
+      if (hasPermissions) {
+        if (
+          userCtx.userLevelId == null ||
+          !access.permissions.includes(userCtx.userLevelId)
+        )
+          continue;
+      }
     }
     let isDefault = true;
     if (formProcs.has(proc) && !formsDefault) isDefault = false;

@@ -80,6 +80,12 @@ if (typeof mock.import !== 'function') {
         '../hooks/useModules.js': {
           refreshModules: () => refreshCalls.push('called'),
         },
+        '../hooks/useHeaderMappings.js': {
+          default: () => ({}),
+        },
+        '../hooks/useGeneralConfig.js': {
+          default: () => ({ general: {} }),
+        },
       },
     );
 
