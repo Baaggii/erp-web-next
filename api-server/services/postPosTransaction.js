@@ -1,8 +1,13 @@
 import fs from 'fs/promises';
-import path from 'path';
 import { pool } from '../../db/index.js';
 import { getConfigPath } from '../utils/configPaths.js';
 import { hasPosTransactionAccess } from './posTransactionConfig.js';
+import {
+  sanitizeTableName,
+  dropSelfReferentialTriggers,
+  applyDynamicTransactionFields,
+  getCaseInsensitive,
+} from './transactionTableUtils.js';
 
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
@@ -547,14 +552,29 @@ function applyMasterForeignKeys(table, row, fkMap, masterRow) {
 }
 
 async function upsertRow(conn, table, row) {
-  const cols = Object.keys(row);
+  const cleanTable = sanitizeTableName(table);
+  if (!cleanTable) {
+    throw new Error('Invalid table name');
+  }
+  const payload = { ...row };
+  await dropSelfReferentialTriggers(conn, cleanTable);
+  await applyDynamicTransactionFields(conn, cleanTable, payload);
+  const cols = Object.keys(payload);
   if (!cols.length) return null;
   const placeholders = cols.map(() => '?').join(',');
-  const updates = cols.map((c) => `${c}=VALUES(${c})`).join(',');
-  const sql = `INSERT INTO ${table} (${cols.join(',')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updates}`;
-  const params = cols.map((c) => row[c]);
+  const escapeColumn = (col) => `\`${String(col).replace(/`/g, '``')}\``;
+  const quotedCols = cols.map(escapeColumn);
+  const updates = cols.map((c) => `${escapeColumn(c)}=VALUES(${escapeColumn(c)})`).join(', ');
+  const sql =
+    `INSERT INTO \`${cleanTable}\` (${quotedCols.join(',')}) VALUES (${placeholders}) ` +
+    `ON DUPLICATE KEY UPDATE ${updates}`;
+  const params = cols.map((c) => (payload[c] === undefined ? null : payload[c]));
   const [res] = await conn.query(sql, params);
-  return res.insertId && res.insertId !== 0 ? res.insertId : row.id;
+  const insertId =
+    res.insertId && res.insertId !== 0
+      ? res.insertId
+      : getCaseInsensitive(payload, 'id');
+  return insertId ?? null;
 }
 
 export async function postPosTransaction(
