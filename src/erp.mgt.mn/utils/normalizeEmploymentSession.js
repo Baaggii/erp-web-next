@@ -45,6 +45,10 @@ export default function normalizeEmploymentSession(session) {
         assignment.workplace_id ??
         assignment.workplaceId,
     );
+    if (workplaceId === null || sessionId === null) {
+      return list;
+    }
+
     const normalizedAssignment = {
       ...assignment,
       workplace_id: workplaceId,

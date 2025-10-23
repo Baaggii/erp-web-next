@@ -135,7 +135,7 @@ export async function listReportWorkplaces(req, res, next) {
       if (!session || session.workplace_session_id == null) return;
       const workplaceId = normalizeNumericId(session.workplace_id);
       const workplaceSessionId = normalizeNumericId(session.workplace_session_id);
-      if (workplaceSessionId === null) return;
+      if (workplaceSessionId === null || workplaceId === null) return;
       const key = `${workplaceId ?? ''}|${workplaceSessionId}`;
       if (seen.has(key)) return;
       seen.add(key);
