@@ -3263,17 +3263,50 @@ export function Header({
       ? session.workplace_assignments
       : [];
     const labels = [];
-    const seen = new Set();
+    const seenComposite = new Set();
+    const seenWorkplaceIds = new Set();
+    const seenSessionIds = new Set();
+    const parseId = (value) => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    };
+
     assignments.forEach((assignment) => {
       if (!assignment || typeof assignment !== 'object') return;
-      const key =
-        assignment.workplace_session_id ??
-        assignment.workplace_id ??
-        assignment.workplace_name;
-      if (key == null) return;
-      const keyStr = String(key);
-      if (seen.has(keyStr)) return;
-      seen.add(keyStr);
+      const workplaceId =
+        assignment.workplace_id !== undefined
+          ? assignment.workplace_id
+          : assignment.workplaceId;
+      const sessionId =
+        assignment.workplace_session_id !== undefined
+          ? assignment.workplace_session_id
+          : assignment.workplaceSessionId;
+      const normalizedWorkplaceId = parseId(workplaceId);
+      const normalizedSessionId = parseId(sessionId);
+      const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
+      if (seenComposite.has(compositeKey)) return;
+      if (
+        (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) ||
+        (normalizedSessionId != null && seenSessionIds.has(normalizedSessionId))
+      ) {
+        return;
+      }
+      seenComposite.add(compositeKey);
+      if (normalizedWorkplaceId != null) {
+        seenWorkplaceIds.add(normalizedWorkplaceId);
+      }
+      if (normalizedSessionId != null) {
+        seenSessionIds.add(normalizedSessionId);
+      }
       const idParts = [];
       if (assignment.workplace_id != null) {
         idParts.push(`#${assignment.workplace_id}`);

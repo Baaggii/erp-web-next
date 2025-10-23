@@ -48,18 +48,10 @@ export async function dropSelfReferentialTriggers(conn, table) {
     conn.__droppedSelfReferentialTables.add(cleanTable);
     return;
   }
-  const lowerTable = cleanTable.toLowerCase();
-  const pattern = new RegExp(
-    '\\bUPDATE\\s+(?:(?:\\w+|`[^`]+`)\\.)?`?' + escapeRegex(cleanTable) + '`?\\b',
-    'i',
-  );
+  const pattern = new RegExp(`\\bUPDATE\\s+` + escapeRegex(cleanTable) + `\\b`, 'i');
   for (const trigger of rows) {
     const statement = trigger?.ACTION_STATEMENT || '';
-    if (!statement) continue;
-    const normalized = String(statement).replace(/`/g, '').toLowerCase();
-    const referencesSelf =
-      pattern.test(statement) || normalized.includes(`update ${lowerTable}`);
-    if (!referencesSelf) continue;
+    if (!statement || !pattern.test(statement)) continue;
     const name = trigger?.TRIGGER_NAME;
     if (!name) continue;
     const safeName = String(name).replace(/`/g, '``');
