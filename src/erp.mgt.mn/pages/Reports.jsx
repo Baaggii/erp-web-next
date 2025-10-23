@@ -303,18 +303,6 @@ export default function Reports() {
     );
   }, [requiresYearMonthParams, manualParams, yearParamNames, monthParamNames]);
 
-  const hasAnyYearMonthInput = useMemo(() => {
-    if (!requiresYearMonthParams) return false;
-    const hasAnyValue = (names) =>
-      names.some((name) => {
-        const rawValue = manualParams[name];
-        if (rawValue === null || rawValue === undefined) return false;
-        if (typeof rawValue === 'string') return rawValue.length > 0;
-        return true;
-      });
-    return hasAnyValue(yearParamNames) || hasAnyValue(monthParamNames);
-  }, [requiresYearMonthParams, manualParams, yearParamNames, monthParamNames]);
-
   const selectedYearMonth = useMemo(() => {
     if (!hasWorkplaceParam || !yearMonthValuesProvided) return null;
     const resolveValue = (names) => {
@@ -353,30 +341,21 @@ export default function Reports() {
     monthParamNames,
   ]);
 
-  const showWorkplaceSelector = useMemo(() => {
-    if (!hasWorkplaceParam) return false;
-    return workplaceSelectOptions.length > 0;
-  }, [hasWorkplaceParam, workplaceSelectOptions]);
+  const shouldUseWorkplaceSelection =
+    hasWorkplaceParam &&
+    (!requiresYearMonthParams || Boolean(selectedYearMonth));
+
+  const showWorkplaceSelector =
+    shouldUseWorkplaceSelection && workplaceSelectOptions.length > 1;
 
   useEffect(() => {
-    if (!hasWorkplaceParam) {
-      setWorkplaceAssignmentsForPeriod(null);
-      return undefined;
-    }
-
-    if (!requiresYearMonthParams) {
-      setWorkplaceAssignmentsForPeriod(null);
-      return undefined;
-    }
-
-    if (!selectedYearMonth) {
-      if (!hasAnyYearMonthInput) {
-        setWorkplaceAssignmentsForPeriod(null);
-      }
-      return undefined;
-    }
-
     let cancelled = false;
+    if (!shouldUseWorkplaceSelection || !selectedYearMonth) {
+      setWorkplaceAssignmentsForPeriod(null);
+      return () => {
+        cancelled = true;
+      };
+    }
 
     const params = new URLSearchParams();
     params.set('year', String(selectedYearMonth.year));
@@ -388,6 +367,7 @@ export default function Reports() {
     }
 
     const controller = new AbortController();
+    setWorkplaceAssignmentsForPeriod([]);
 
     async function loadWorkplaceAssignments() {
       try {
@@ -425,10 +405,8 @@ export default function Reports() {
       controller.abort();
     };
   }, [
-    hasWorkplaceParam,
-    requiresYearMonthParams,
+    shouldUseWorkplaceSelection,
     selectedYearMonth,
-    hasAnyYearMonthInput,
     session?.company_id,
     company,
     addToast,
@@ -848,13 +826,12 @@ export default function Reports() {
     const seniorPlanEmpId = session?.senior_plan_empid ?? null;
     const userLevel = session?.user_level ?? null;
 
-    const hasWorkplaceOverride =
-      showWorkplaceSelector && selectedWorkplaceOption != null;
-    const effectiveWorkplaceId = hasWorkplaceOverride && selectedWorkplaceId != null
-      ? selectedWorkplaceId
-      : baseWorkplaceId ?? null;
+    const effectiveWorkplaceId =
+      shouldUseWorkplaceSelection && selectedWorkplaceId != null
+        ? selectedWorkplaceId
+        : baseWorkplaceId ?? null;
     const effectiveWorkplaceSessionId =
-      hasWorkplaceOverride && selectedWorkplaceSessionId != null
+      shouldUseWorkplaceSelection && selectedWorkplaceSessionId != null
         ? selectedWorkplaceSessionId
         : baseWorkplaceSessionId ?? baseWorkplaceId ?? null;
 
@@ -881,8 +858,7 @@ export default function Reports() {
     workplace,
     selectedWorkplaceId,
     selectedWorkplaceSessionId,
-    showWorkplaceSelector,
-    selectedWorkplaceOption,
+    shouldUseWorkplaceSelection,
   ]);
 
   const autoParams = useMemo(() => {
