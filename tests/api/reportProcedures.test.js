@@ -102,3 +102,69 @@ test('listPermittedProcedures merges trigger procedures and respects filters', a
     });
   }
 });
+
+test('listPermittedProcedures hides procedures without visibility rules', async () => {
+  const companyId = 6789;
+  await writeJsonConfig(companyId, 'transactionForms.json', {
+    tbl_reports: {
+      Summary: {
+        procedures: ['empty_proc', 'visible_proc'],
+      },
+    },
+  });
+  await writeJsonConfig(companyId, 'report_management/allowedReports.json', {
+    empty_proc: { branches: [], departments: [], permissions: [] },
+    visible_proc: { branches: [], departments: [], permissions: [5] },
+  });
+
+  const origQuery = pool.query;
+  pool.query = async (sql, params) => {
+    if (typeof sql === 'string' && sql.startsWith('SHOW TRIGGERS')) {
+      return [[]];
+    }
+    if (
+      typeof sql === 'string' &&
+      sql.includes('FROM information_schema.ROUTINES')
+    ) {
+      return [[
+        { ROUTINE_NAME: 'empty_proc' },
+        { ROUTINE_NAME: 'visible_proc' },
+      ]];
+    }
+    if (typeof sql === 'string' && sql.includes('FROM tbl_employment')) {
+      return [[
+        {
+          company_id: companyId,
+          company_name: 'Acme Co',
+          branch_id: 1,
+          branch_name: 'HQ',
+          department_id: 2,
+          department_name: 'Operations',
+          position_id: 0,
+          senior_empid: null,
+          senior_plan_empid: null,
+          employee_name: 'Tester',
+          user_level: 5,
+          user_level_name: 'Level 5',
+          permission_list: '',
+        },
+      ]];
+    }
+    return [[ ]];
+  };
+
+  try {
+    const { procedures } = await listPermittedProcedures({}, companyId, {
+      empid: 'emp-visibility',
+    });
+    const names = procedures.map((p) => p.name).sort();
+    assert.ok(!names.includes('empty_proc'));
+    assert.ok(names.includes('visible_proc'));
+  } finally {
+    pool.query = origQuery;
+    await fs.rm(path.join(process.cwd(), 'config', String(companyId)), {
+      recursive: true,
+      force: true,
+    });
+  }
+});
