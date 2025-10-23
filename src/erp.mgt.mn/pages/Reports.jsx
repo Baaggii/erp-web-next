@@ -1220,50 +1220,9 @@ export default function Reports() {
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
-      const rawValue = auto ?? manualParams[p] ?? null;
-      if (rawValue === null || rawValue === undefined) {
-        return rawValue;
-      }
-      if (typeof p !== 'string') {
-        return rawValue;
-      }
-      const normalizedName = normalizeParamName(p);
-      if (!normalizedName) {
-        return rawValue;
-      }
-      if (
-        (normalizedName.includes('workplace') || normalizedName.includes('workloc')) &&
-        !normalizedName.includes('name')
-      ) {
-        const numericValue = normalizeNumericId(rawValue);
-        if (numericValue !== null) {
-          return numericValue;
-        }
-        if (normalizedName.includes('session')) {
-          const fallbackSessionId = normalizeNumericId(
-            selectedWorkplaceSessionId ?? selectedWorkplaceId,
-          );
-          if (fallbackSessionId !== null) {
-            return fallbackSessionId;
-          }
-        } else {
-          const fallbackWorkplaceId = normalizeNumericId(
-            selectedWorkplaceId ?? selectedWorkplaceSessionId,
-          );
-          if (fallbackWorkplaceId !== null) {
-            return fallbackWorkplaceId;
-          }
-        }
-      }
-      return rawValue;
+      return auto ?? manualParams[p] ?? null;
     });
-  }, [
-    procParams,
-    autoParams,
-    manualParams,
-    selectedWorkplaceId,
-    selectedWorkplaceSessionId,
-  ]);
+  }, [procParams, autoParams, manualParams]);
 
   const allParamsProvided = useMemo(
     () => finalParams.every((v) => v !== null && v !== ''),
