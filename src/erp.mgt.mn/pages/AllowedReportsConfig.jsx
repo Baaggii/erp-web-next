@@ -2,6 +2,7 @@ import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { refreshModules } from '../hooks/useModules.js';
+import useHeaderMappings from '../hooks/useHeaderMappings.js';
 
 export default function AllowedReportsConfig() {
   const { addToast } = useToast();
@@ -19,6 +20,7 @@ export default function AllowedReportsConfig() {
   const [deptCfg, setDeptCfg] = useState({});
   const [permRows, setPermRows] = useState([]);
   const [permCfg, setPermCfg] = useState({});
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     fetch('/api/report_access', { credentials: 'include' })
@@ -28,10 +30,12 @@ export default function AllowedReportsConfig() {
       .then((data) => {
         setReports(data.allowedReports || {});
         setIsDefault(!!data.isDefault);
+        setIsLoading(false);
       })
       .catch(() => {
         setReports({});
         setIsDefault(true);
+        setIsLoading(false);
       });
 
     fetch('/api/report_builder/procedures', { credentials: 'include' })
@@ -70,6 +74,9 @@ export default function AllowedReportsConfig() {
       .catch(() => setPermCfg({ idField: null, displayFields: [] }));
   }, []);
 
+  const procedureKeys = useMemo(() => Object.keys(reports || {}), [reports]);
+  const headerMappings = useHeaderMappings(procedureKeys);
+
   const branchOptions = useMemo(() => {
     const idField = branchCfg?.idField || 'id';
     return branchRows.map((b) => {
@@ -85,6 +92,12 @@ export default function AllowedReportsConfig() {
       return { value: String(val), label };
     });
   }, [branchRows, branchCfg]);
+
+  const branchLabelMap = useMemo(() => {
+    const map = new Map();
+    branchOptions.forEach((b) => map.set(String(b.value), b.label));
+    return map;
+  }, [branchOptions]);
 
   const deptOptions = useMemo(() => {
     const idField = deptCfg?.idField || 'id';
@@ -102,6 +115,12 @@ export default function AllowedReportsConfig() {
     });
   }, [deptRows, deptCfg]);
 
+  const deptLabelMap = useMemo(() => {
+    const map = new Map();
+    deptOptions.forEach((d) => map.set(String(d.value), d.label));
+    return map;
+  }, [deptOptions]);
+
   const permOptions = useMemo(() => {
     const idField = permCfg?.idField || 'id';
     return permRows.map((r) => {
@@ -117,6 +136,12 @@ export default function AllowedReportsConfig() {
       return { value: String(val), label };
     });
   }, [permRows, permCfg]);
+
+  const permLabelMap = useMemo(() => {
+    const map = new Map();
+    permOptions.forEach((p) => map.set(String(p.value), p.label));
+    return map;
+  }, [permOptions]);
 
   function edit(p) {
     const info = reports[p] || { branches: [], departments: [], permissions: [] };
@@ -190,59 +215,318 @@ export default function AllowedReportsConfig() {
     }
   }
 
+  const renderCollection = (values = [], map) => {
+    if (!values.length) {
+      return <span style={{ color: '#999' }}>All</span>;
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        {values.map((val) => {
+          const key = String(val);
+          const label = map.get(key);
+          return (
+            <span
+              key={key}
+              style={{
+                display: 'inline-block',
+                background: '#f0f4ff',
+                border: '1px solid #d6def8',
+                borderRadius: '6px',
+                padding: '0.15rem 0.35rem',
+                fontSize: '0.85rem',
+                lineHeight: 1.2,
+              }}
+            >
+              {label ? (
+                <>
+                  {label}
+                  <span style={{ color: '#666', marginLeft: '0.3rem' }}>
+                    ({key})
+                  </span>
+                </>
+              ) : (
+                key
+              )}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderPermissions = (values = []) => {
+    if (!values.length) {
+      return <span style={{ color: '#d77' }}>None selected</span>;
+    }
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+        {values.map((val) => {
+          const key = String(val);
+          const label = permLabelMap.get(key);
+          return (
+            <span
+              key={key}
+              style={{
+                display: 'inline-block',
+                background: '#f6f1ff',
+                border: '1px solid #e1d7fb',
+                borderRadius: '6px',
+                padding: '0.15rem 0.35rem',
+                fontSize: '0.85rem',
+                lineHeight: 1.2,
+              }}
+            >
+              {label ? (
+                <>
+                  {label}
+                  <span style={{ color: '#666', marginLeft: '0.3rem' }}>
+                    ({key})
+                  </span>
+                </>
+              ) : (
+                key
+              )}
+            </span>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const reportEntries = useMemo(
+    () =>
+      Object.entries(reports || {}).sort(([a], [b]) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' }),
+      ),
+    [reports],
+  );
+
   return (
-    <div>
-      <h2>Allowed Reports</h2>
-      <div style={{ display: 'flex', gap: '1rem' }}>
-        <div>
-          <table>
-            <thead>
-              <tr>
-                <th>Procedure</th>
-                <th>Branches</th>
-                <th>Departments</th>
-                <th>Permissions</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(reports).map(([p, info]) => (
-                <tr key={p}>
-                  <td>{p}</td>
-                  <td>{(info.branches || []).join(', ')}</td>
-                  <td>{(info.departments || []).join(', ')}</td>
-                  <td>
-                    {(info.permissions || [])
-                      .map((perm) => {
-                        const opt = permOptions.find(
-                          (o) => o.value === String(perm),
-                        );
-                        return opt ? opt.label : perm;
-                      })
-                      .join(', ')}
-                  </td>
-                  <td>
-                    <button onClick={() => edit(p)}>Edit</button>
-                    <button
-                      onClick={() => handleDelete(p)}
-                      style={{ marginLeft: '0.5rem' }}
-                    >
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button
-            type="button"
-            onClick={handleNew}
-            style={{ marginTop: '0.5rem' }}
+    <div style={{ padding: '1rem' }}>
+      <h2 style={{ marginBottom: '0.75rem' }}>Allowed Reports</h2>
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'minmax(420px, 1.4fr) minmax(320px, 1fr)',
+          gap: '1.5rem',
+          alignItems: 'start',
+        }}
+      >
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: '8px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '0.75rem 1rem',
+              borderBottom: '1px solid #e5e7eb',
+              background: '#f8fafc',
+            }}
           >
-            New
-          </button>
+            <div>
+              <strong>Current Rules</strong>
+              {isDefault ? (
+                <span style={{ color: '#64748b', marginLeft: '0.5rem' }}>
+                  Default configuration
+                </span>
+              ) : null}
+            </div>
+            <button type="button" onClick={handleNew}>
+              New
+            </button>
+          </div>
+          <div style={{ maxHeight: '460px', overflow: 'auto' }}>
+            <table
+              style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontSize: '0.95rem',
+              }}
+            >
+              <thead>
+                <tr style={{ background: '#f1f5f9' }}>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                      width: '22%',
+                    }}
+                  >
+                    Procedure
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                      width: '24%',
+                    }}
+                  >
+                    Label
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    Branches
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    Departments
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    Permissions
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    Visibility
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'right',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                      width: '80px',
+                    }}
+                  ></th>
+                </tr>
+              </thead>
+              <tbody>
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} style={{ padding: '1rem', textAlign: 'center' }}>
+                      Loading…
+                    </td>
+                  </tr>
+                ) : reportEntries.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} style={{ padding: '1rem', textAlign: 'center' }}>
+                      No report access rules configured.
+                    </td>
+                  </tr>
+                ) : (
+                  reportEntries.map(([p, info]) => {
+                    const branches = info.branches || [];
+                    const departments = info.departments || [];
+                    const permissionsList = info.permissions || [];
+                    const hasBranches = branches.length > 0;
+                    const hasDepartments = departments.length > 0;
+                    const hasPermissions = permissionsList.length > 0;
+                    const allOpen = !hasBranches && !hasDepartments && !hasPermissions;
+                    const label = headerMappings?.[p];
+                    return (
+                      <tr key={p}>
+                        <td
+                          style={{
+                            padding: '0.65rem 0.75rem',
+                            borderBottom: '1px solid #e2e8f0',
+                            fontFamily: 'monospace',
+                          }}
+                        >
+                          {p}
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.65rem 0.75rem',
+                            borderBottom: '1px solid #e2e8f0',
+                            color: label ? '#0f172a' : '#94a3b8',
+                          }}
+                        >
+                          {label || '—'}
+                        </td>
+                        <td style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
+                          {renderCollection(branches, branchLabelMap)}
+                        </td>
+                        <td style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
+                          {renderCollection(departments, deptLabelMap)}
+                        </td>
+                        <td style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
+                          {renderPermissions(permissionsList)}
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.65rem 0.75rem',
+                            borderBottom: '1px solid #e2e8f0',
+                            color: allOpen ? '#b91c1c' : '#0f172a',
+                            fontSize: '0.85rem',
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {allOpen
+                            ? 'Hidden (no restrictions)'
+                            : [
+                                hasBranches ? `${branches.length} branch${
+                                      branches.length === 1 ? '' : 'es'
+                                    }` : 'All branches',
+                                hasDepartments
+                                  ? `${departments.length} department${
+                                      departments.length === 1 ? '' : 's'
+                                    }`
+                                  : 'All departments',
+                                hasPermissions
+                                  ? `${permissionsList.length} permission level${
+                                      permissionsList.length === 1 ? '' : 's'
+                                    }`
+                                  : 'No permissions selected',
+                              ].join(' · ')}
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.5rem 0.75rem',
+                            borderBottom: '1px solid #e2e8f0',
+                            textAlign: 'right',
+                          }}
+                        >
+                          <button onClick={() => edit(p)} style={{ marginRight: '0.35rem' }}>
+                            Edit
+                          </button>
+                          <button onClick={() => handleDelete(p)}>Delete</button>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-        <div>
+        <div
+          style={{
+            background: '#fff',
+            borderRadius: '8px',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
+            padding: '1rem 1.25rem',
+          }}
+        >
           <div>
             <label>
               Procedure:{' '}
