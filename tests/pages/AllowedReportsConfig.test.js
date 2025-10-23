@@ -83,9 +83,6 @@ if (typeof mock.import !== 'function') {
         '../hooks/useHeaderMappings.js': {
           default: () => ({}),
         },
-        '../hooks/useGeneralConfig.js': {
-          default: () => ({ general: {} }),
-        },
       },
     );
 

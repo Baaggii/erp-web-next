@@ -53,17 +53,19 @@ export async function listReportWorkplaces(req, res, next) {
       ? sessions.filter((session) => session.company_id === normalizedCompanyId)
       : sessions;
 
-    const assignments = filtered.map((session) => ({
-      company_id: session.company_id ?? null,
-      company_name: session.company_name ?? null,
-      branch_id: session.branch_id ?? null,
-      branch_name: session.branch_name ?? null,
-      department_id: session.department_id ?? null,
-      department_name: session.department_name ?? null,
-      workplace_id: session.workplace_id ?? null,
-      workplace_name: session.workplace_name ?? null,
-      workplace_session_id: session.workplace_session_id ?? null,
-    }));
+    const assignments = filtered
+      .filter((session) => session.workplace_session_id != null)
+      .map((session) => ({
+        company_id: session.company_id ?? null,
+        company_name: session.company_name ?? null,
+        branch_id: session.branch_id ?? null,
+        branch_name: session.branch_name ?? null,
+        department_id: session.department_id ?? null,
+        department_name: session.department_name ?? null,
+        workplace_id: session.workplace_id ?? null,
+        workplace_name: session.workplace_name ?? null,
+        workplace_session_id: session.workplace_session_id ?? null,
+      }));
 
     res.json({ assignments });
   } catch (err) {

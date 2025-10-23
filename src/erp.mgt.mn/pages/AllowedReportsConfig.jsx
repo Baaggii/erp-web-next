@@ -3,7 +3,6 @@ import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { refreshModules } from '../hooks/useModules.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
-import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 export default function AllowedReportsConfig() {
   const { addToast } = useToast();
@@ -22,25 +21,6 @@ export default function AllowedReportsConfig() {
   const [permRows, setPermRows] = useState([]);
   const [permCfg, setPermCfg] = useState({});
   const [isLoading, setIsLoading] = useState(true);
-  const [currentWidth, setCurrentWidth] = useState(() => {
-    if (typeof window === 'undefined') return 520;
-    const stored = Number(window.localStorage.getItem('reportAccess.currentWidth'));
-    return Number.isFinite(stored) && stored >= 360 ? stored : 520;
-  });
-  const [columnWidths, setColumnWidths] = useState(() => {
-    if (typeof window === 'undefined') return {};
-    try {
-      const stored = window.localStorage.getItem('reportAccess.columnWidths');
-      if (!stored) return {};
-      const parsed = JSON.parse(stored);
-      return parsed && typeof parsed === 'object' ? parsed : {};
-    } catch {
-      return {};
-    }
-  });
-  const [isResizingPane, setIsResizingPane] = useState(false);
-  const [activeColumn, setActiveColumn] = useState(null);
-  const generalConfig = useGeneralConfig();
 
   useEffect(() => {
     fetch('/api/report_access', { credentials: 'include' })
@@ -321,208 +301,15 @@ export default function AllowedReportsConfig() {
     [reports],
   );
 
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('reportAccess.currentWidth', String(currentWidth));
-  }, [currentWidth]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(
-      'reportAccess.columnWidths',
-      JSON.stringify(columnWidths),
-    );
-  }, [columnWidths]);
-
-  const tableColumns = useMemo(
-    () => [
-      {
-        key: 'procedure',
-        header: 'Procedure',
-        minWidth: 160,
-        defaultWidth: 220,
-        render: (proc) => (
-          <span style={{ fontFamily: 'monospace' }}>{proc}</span>
-        ),
-      },
-      {
-        key: 'label',
-        header: 'Label',
-        minWidth: 160,
-        defaultWidth: 220,
-        render: (proc) => {
-          const override = generalConfig.general?.procLabels?.[proc];
-          const label = override || headerMappings?.[proc];
-          return (
-            <span style={{ color: label ? '#0f172a' : '#94a3b8' }}>
-              {label || '—'}
-            </span>
-          );
-        },
-      },
-      {
-        key: 'branches',
-        header: 'Branches',
-        minWidth: 200,
-        defaultWidth: 240,
-        render: (proc, info) => renderCollection(info.branches || [], branchLabelMap),
-      },
-      {
-        key: 'departments',
-        header: 'Departments',
-        minWidth: 200,
-        defaultWidth: 240,
-        render: (proc, info) => renderCollection(info.departments || [], deptLabelMap),
-      },
-      {
-        key: 'permissions',
-        header: 'Permissions',
-        minWidth: 200,
-        defaultWidth: 260,
-        render: (proc, info) => renderPermissions(info.permissions || []),
-      },
-      {
-        key: 'visibility',
-        header: 'Visibility',
-        minWidth: 220,
-        defaultWidth: 280,
-        render: (proc, info) => {
-          const branchesList = info.branches || [];
-          const departmentsList = info.departments || [];
-          const permissionsList = info.permissions || [];
-          const hasBranches = branchesList.length > 0;
-          const hasDepartments = departmentsList.length > 0;
-          const hasPermissions = permissionsList.length > 0;
-          const allOpen = !hasBranches && !hasDepartments && !hasPermissions;
-          return (
-            <span
-              style={{
-                color: allOpen ? '#b91c1c' : '#0f172a',
-                fontSize: '0.85rem',
-                lineHeight: 1.4,
-                display: 'inline-block',
-              }}
-            >
-              {allOpen
-                ? 'Hidden (no restrictions)'
-                : [
-                    hasBranches
-                      ? `${branchesList.length} branch${
-                          branchesList.length === 1 ? '' : 'es'
-                        }`
-                      : 'All branches',
-                    hasDepartments
-                      ? `${departmentsList.length} department${
-                          departmentsList.length === 1 ? '' : 's'
-                        }`
-                      : 'All departments',
-                    hasPermissions
-                      ? `${permissionsList.length} permission level${
-                          permissionsList.length === 1 ? '' : 's'
-                        }`
-                      : 'No permissions selected',
-                  ].join(' · ')}
-            </span>
-          );
-        },
-      },
-      {
-        key: 'actions',
-        header: '',
-        minWidth: 120,
-        defaultWidth: 120,
-        render: (proc) => (
-          <div style={{ textAlign: 'right' }}>
-            <button onClick={() => edit(proc)} style={{ marginRight: '0.35rem' }}>
-              Edit
-            </button>
-            <button onClick={() => handleDelete(proc)}>Delete</button>
-          </div>
-        ),
-      },
-    ],
-    [
-      branchLabelMap,
-      deptLabelMap,
-      generalConfig.general?.procLabels,
-      headerMappings,
-    ],
-  );
-
-  const getColumnWidth = useCallback(
-    (key) => {
-      const width = columnWidths[key];
-      if (typeof width === 'number' && width >= 120) return width;
-      const fallback = tableColumns.find((col) => col.key === key)?.defaultWidth;
-      return fallback ?? 160;
-    },
-    [columnWidths, tableColumns],
-  );
-
-  const handleColumnResizeStart = useCallback(
-    (key, event) => {
-      if (typeof window === 'undefined') return;
-      event.preventDefault();
-      const startX = event.clientX;
-      const startWidth = getColumnWidth(key);
-      setActiveColumn(key);
-
-      function onMove(e) {
-        const delta = e.clientX - startX;
-        const min = tableColumns.find((col) => col.key === key)?.minWidth || 120;
-        const next = Math.max(min, startWidth + delta);
-        setColumnWidths((prev) => ({ ...prev, [key]: next }));
-      }
-
-      function onUp() {
-        setActiveColumn(null);
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-      }
-
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp, { once: true });
-    },
-    [getColumnWidth, tableColumns],
-  );
-
-  const handlePaneResizeStart = useCallback(
-    (event) => {
-      if (typeof window === 'undefined') return;
-      event.preventDefault();
-      const startX = event.clientX;
-      const startWidth = currentWidth;
-      setIsResizingPane(true);
-
-      function onMove(e) {
-        const delta = e.clientX - startX;
-        const minWidth = 360;
-        const maxWidth = Math.max(minWidth, window.innerWidth - 280);
-        const next = Math.min(Math.max(minWidth, startWidth + delta), maxWidth);
-        setCurrentWidth(next);
-      }
-
-      function onUp() {
-        setIsResizingPane(false);
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-      }
-
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp, { once: true });
-    },
-    [currentWidth],
-  );
-
   return (
     <div style={{ padding: '1rem' }}>
       <h2 style={{ marginBottom: '0.75rem' }}>Allowed Reports</h2>
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: `${currentWidth}px 12px minmax(320px, 1fr)`,
+          gridTemplateColumns: 'minmax(420px, 1.4fr) minmax(320px, 1fr)',
+          gap: '1.5rem',
           alignItems: 'start',
-          gap: '0',
         }}
       >
         <div
@@ -556,131 +343,180 @@ export default function AllowedReportsConfig() {
               New
             </button>
           </div>
-          <div
-            style={{
-              maxHeight: '460px',
-              overflow: 'auto',
-              resize: 'vertical',
-            }}
-          >
+          <div style={{ maxHeight: '460px', overflow: 'auto' }}>
             <table
               style={{
                 width: '100%',
                 borderCollapse: 'collapse',
-                tableLayout: 'fixed',
                 fontSize: '0.95rem',
               }}
             >
-              <colgroup>
-                {tableColumns.map((col) => (
-                  <col key={col.key} style={{ width: `${getColumnWidth(col.key)}px` }} />
-                ))}
-              </colgroup>
               <thead>
                 <tr style={{ background: '#f1f5f9' }}>
-                  {tableColumns.map((col, index) => {
-                    const isLast = index === tableColumns.length - 1;
-                    return (
-                      <th
-                        key={col.key}
-                        style={{
-                          textAlign: isLast ? 'right' : 'left',
-                          padding: '0.5rem 0.75rem',
-                          borderBottom: '1px solid #e2e8f0',
-                          position: 'relative',
-                        }}
-                      >
-                        <span>{col.header}</span>
-                        {!isLast ? (
-                          <span
-                            onMouseDown={(e) => handleColumnResizeStart(col.key, e)}
-                            style={{
-                              position: 'absolute',
-                              top: 0,
-                              right: '-4px',
-                              width: '8px',
-                              height: '100%',
-                              cursor: 'col-resize',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                            }}
-                          >
-                            <span
-                              style={{
-                                width: '2px',
-                                height: '60%',
-                                background:
-                                  activeColumn === col.key ? '#2563eb' : 'transparent',
-                              }}
-                            />
-                          </span>
-                        ) : null}
-                      </th>
-                    );
-                  })}
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                      width: '22%',
+                    }}
+                  >
+                    Procedure
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                      width: '24%',
+                    }}
+                  >
+                    Label
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    Branches
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    Departments
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    Permissions
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                    }}
+                  >
+                    Visibility
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'right',
+                      padding: '0.5rem 0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                      width: '80px',
+                    }}
+                  ></th>
                 </tr>
               </thead>
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td
-                      colSpan={tableColumns.length}
-                      style={{ padding: '1rem', textAlign: 'center' }}
-                    >
+                    <td colSpan={7} style={{ padding: '1rem', textAlign: 'center' }}>
                       Loading…
                     </td>
                   </tr>
                 ) : reportEntries.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={tableColumns.length}
-                      style={{ padding: '1rem', textAlign: 'center' }}
-                    >
+                    <td colSpan={7} style={{ padding: '1rem', textAlign: 'center' }}>
                       No report access rules configured.
                     </td>
                   </tr>
                 ) : (
-                  reportEntries.map(([p, info]) => (
-                    <tr key={p}>
-                      {tableColumns.map((col) => (
+                  reportEntries.map(([p, info]) => {
+                    const branches = info.branches || [];
+                    const departments = info.departments || [];
+                    const permissionsList = info.permissions || [];
+                    const hasBranches = branches.length > 0;
+                    const hasDepartments = departments.length > 0;
+                    const hasPermissions = permissionsList.length > 0;
+                    const allOpen = !hasBranches && !hasDepartments && !hasPermissions;
+                    const label = headerMappings?.[p];
+                    return (
+                      <tr key={p}>
                         <td
-                          key={col.key}
                           style={{
                             padding: '0.65rem 0.75rem',
                             borderBottom: '1px solid #e2e8f0',
-                            verticalAlign: 'top',
+                            fontFamily: 'monospace',
                           }}
                         >
-                          {col.render(p, info)}
+                          {p}
                         </td>
-                      ))}
-                    </tr>
-                  ))
+                        <td
+                          style={{
+                            padding: '0.65rem 0.75rem',
+                            borderBottom: '1px solid #e2e8f0',
+                            color: label ? '#0f172a' : '#94a3b8',
+                          }}
+                        >
+                          {label || '—'}
+                        </td>
+                        <td style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
+                          {renderCollection(branches, branchLabelMap)}
+                        </td>
+                        <td style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
+                          {renderCollection(departments, deptLabelMap)}
+                        </td>
+                        <td style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
+                          {renderPermissions(permissionsList)}
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.65rem 0.75rem',
+                            borderBottom: '1px solid #e2e8f0',
+                            color: allOpen ? '#b91c1c' : '#0f172a',
+                            fontSize: '0.85rem',
+                            lineHeight: 1.4,
+                          }}
+                        >
+                          {allOpen
+                            ? 'Hidden (no restrictions)'
+                            : [
+                                hasBranches ? `${branches.length} branch${
+                                      branches.length === 1 ? '' : 'es'
+                                    }` : 'All branches',
+                                hasDepartments
+                                  ? `${departments.length} department${
+                                      departments.length === 1 ? '' : 's'
+                                    }`
+                                  : 'All departments',
+                                hasPermissions
+                                  ? `${permissionsList.length} permission level${
+                                      permissionsList.length === 1 ? '' : 's'
+                                    }`
+                                  : 'No permissions selected',
+                              ].join(' · ')}
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.5rem 0.75rem',
+                            borderBottom: '1px solid #e2e8f0',
+                            textAlign: 'right',
+                          }}
+                        >
+                          <button onClick={() => edit(p)} style={{ marginRight: '0.35rem' }}>
+                            Edit
+                          </button>
+                          <button onClick={() => handleDelete(p)}>Delete</button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
-        </div>
-        <div
-          onMouseDown={handlePaneResizeStart}
-          style={{
-            width: '12px',
-            cursor: 'col-resize',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            userSelect: 'none',
-          }}
-        >
-          <div
-            style={{
-              width: '3px',
-              height: '60%',
-              borderRadius: '999px',
-              background: isResizingPane ? '#2563eb' : '#cbd5f5',
-            }}
-          />
         </div>
         <div
           style={{
