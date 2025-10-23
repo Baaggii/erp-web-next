@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useContext, useMemo } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { refreshModules } from '../hooks/useModules.js';
@@ -538,7 +538,7 @@ export default function AllowedReportsConfig() {
                       .filter((p) => !p.isDefault)
                       .map((p) => (
                         <option key={p.name} value={p.name}>
-                          {formatProcedureOption(p.name)}
+                          {p.name}
                         </option>
                       ))}
                   </optgroup>
@@ -549,7 +549,7 @@ export default function AllowedReportsConfig() {
                       .filter((p) => p.isDefault)
                       .map((p) => (
                         <option key={p.name} value={p.name}>
-                          {formatProcedureOption(p.name)}
+                          {p.name}
                         </option>
                       ))}
                   </optgroup>
