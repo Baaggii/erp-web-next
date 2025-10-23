@@ -46,7 +46,40 @@ export default function LoginForm() {
         setStoredCreds({ empid, password });
         setEmpid('');
         setPassword('');
-        setCompanyOptions(loggedIn.sessions || []);
+        const normalizedCompanies = [];
+        const seen = new Set();
+        if (Array.isArray(loggedIn.sessions)) {
+          loggedIn.sessions.forEach((sessionOption) => {
+            if (!sessionOption || typeof sessionOption !== 'object') return;
+            const rawId = sessionOption.company_id;
+            const normalizedId =
+              rawId === undefined || rawId === null
+                ? null
+                : Number.isFinite(Number(rawId))
+                  ? Number(rawId)
+                  : null;
+            if (normalizedId === null) return;
+            const key = `id:${normalizedId}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            const fallbackName =
+              sessionOption.company_name && String(sessionOption.company_name).trim().length
+                ? String(sessionOption.company_name).trim()
+                : `Company #${normalizedId}`;
+            normalizedCompanies.push({
+              company_id: normalizedId,
+              company_name: fallbackName,
+            });
+          });
+        }
+        normalizedCompanies.sort((a, b) => {
+          const nameA = (a.company_name || '').toLowerCase();
+          const nameB = (b.company_name || '').toLowerCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          return 0;
+        });
+        setCompanyOptions(normalizedCompanies);
         setCompanyId('');
         setIsCompanyStep(true);
         return;
