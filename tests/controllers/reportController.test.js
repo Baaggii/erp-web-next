@@ -120,3 +120,76 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
     },
   ]);
 });
+
+test('listReportWorkplaces prefers endDate when provided', async () => {
+  let capturedEffectiveDate = null;
+  __setGetEmploymentSessions(async (_empId, options) => {
+    capturedEffectiveDate = options?.effectiveDate ?? null;
+    return [
+      {
+        company_id: 1,
+        company_name: 'Alpha',
+        branch_id: 1,
+        branch_name: 'Main',
+        department_id: 2,
+        department_name: 'Sales',
+        workplace_id: 5,
+        workplace_name: 'HQ',
+        workplace_session_id: 101,
+      },
+    ];
+  });
+
+  const req = {
+    user: { empid: 42, companyId: 1 },
+    query: { startDate: '2025-10-01', endDate: '2025-10-31', date: '2025-10-01' },
+  };
+  const res = createRes();
+
+  try {
+    await listReportWorkplaces(req, res, (err) => {
+      throw err || new Error('next should not be called');
+    });
+  } finally {
+    __resetGetEmploymentSessions();
+  }
+
+  assert.equal(res.statusCode, 200);
+  assert.ok(res.payload);
+  assert.ok(capturedEffectiveDate instanceof Date);
+  assert.equal(
+    capturedEffectiveDate?.toISOString(),
+    new Date(Date.UTC(2025, 9, 31)).toISOString(),
+  );
+  assert.equal(res.payload.assignments.length, 1);
+});
+
+test('listReportWorkplaces uses last day of month when year/month provided', async () => {
+  let capturedEffectiveDate = null;
+  __setGetEmploymentSessions(async (_empId, options) => {
+    capturedEffectiveDate = options?.effectiveDate ?? null;
+    return [];
+  });
+
+  const req = {
+    user: { empid: 1, companyId: null },
+    query: { year: '2024', month: '2' },
+  };
+  const res = createRes();
+
+  try {
+    await listReportWorkplaces(req, res, (err) => {
+      throw err || new Error('next should not be called');
+    });
+  } finally {
+    __resetGetEmploymentSessions();
+  }
+
+  assert.equal(res.statusCode, 200);
+  assert.ok(res.payload);
+  assert.ok(capturedEffectiveDate instanceof Date);
+  assert.equal(
+    capturedEffectiveDate?.toISOString(),
+    new Date(Date.UTC(2024, 1, 29)).toISOString(),
+  );
+});

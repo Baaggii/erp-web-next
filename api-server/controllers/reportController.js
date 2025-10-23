@@ -89,12 +89,16 @@ export async function listReportWorkplaces(req, res, next) {
       }
     }
 
+    const explicitDate = parseDateOnly(req.query.date);
+    const startDate = parseDateOnly(req.query.startDate);
+    const endDate = parseDateOnly(req.query.endDate);
+
     let effectiveDate = null;
-    const explicitDate =
-      parseDateOnly(req.query.date) ||
-      parseDateOnly(req.query.startDate) ||
-      parseDateOnly(req.query.endDate);
-    if (explicitDate) {
+    if (endDate) {
+      effectiveDate = endDate;
+    } else if (startDate) {
+      effectiveDate = startDate;
+    } else if (explicitDate) {
       effectiveDate = explicitDate;
     } else {
       const { year, month } = req.query;
@@ -114,7 +118,9 @@ export async function listReportWorkplaces(req, res, next) {
         return res.status(400).json({ message: 'Invalid month value' });
       }
 
-      effectiveDate = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
+      const firstOfMonth = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
+      const endOfMonth = new Date(Date.UTC(parsedYear, parsedMonth, 0));
+      effectiveDate = endOfMonth >= firstOfMonth ? endOfMonth : firstOfMonth;
     }
 
     if (!(effectiveDate instanceof Date) || Number.isNaN(effectiveDate.getTime())) {
