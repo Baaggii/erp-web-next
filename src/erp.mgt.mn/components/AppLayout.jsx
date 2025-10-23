@@ -25,7 +25,9 @@ export default function AppLayout({ children, title }) {
       ? session.workplace_assignments
       : [];
 
-    const seen = new Set();
+    const seenComposite = new Set();
+    const seenWorkplaceIds = new Set();
+    const seenSessionIds = new Set();
     const summaries = [];
 
     const parseId = (value) => {
@@ -57,9 +59,23 @@ export default function AppLayout({ children, title }) {
       const normalizedWorkplaceId = parseId(workplaceId);
       const normalizedSessionId = parseId(workplaceSessionId);
 
-      const key = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
-      if (seen.has(key)) return null;
-      seen.add(key);
+      const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
+      if (seenComposite.has(compositeKey)) return null;
+
+      if (
+        (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) ||
+        (normalizedSessionId != null && seenSessionIds.has(normalizedSessionId))
+      ) {
+        return null;
+      }
+
+      seenComposite.add(compositeKey);
+      if (normalizedWorkplaceId != null) {
+        seenWorkplaceIds.add(normalizedWorkplaceId);
+      }
+      if (normalizedSessionId != null) {
+        seenSessionIds.add(normalizedSessionId);
+      }
 
       const labelParts = [];
       const baseName = assignment.workplace_name
