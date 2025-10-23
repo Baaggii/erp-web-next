@@ -390,7 +390,14 @@ export default function Reports() {
 
     if (workplaceDateQuery.status !== 'ready' || !workplaceDateQuery.params) {
       workplaceSelectionTouchedRef.current = false;
-      setWorkplaceAssignmentsForPeriod(null);
+      if (workplaceDateQuery.status === 'waiting') {
+        setWorkplaceAssignmentsForPeriod((prev) => {
+          if (Array.isArray(prev) && prev.length === 0) return prev;
+          return [];
+        });
+      } else {
+        setWorkplaceAssignmentsForPeriod((prev) => (prev === null ? prev : null));
+      }
       return () => {
         cancelled = true;
       };
@@ -410,6 +417,10 @@ export default function Reports() {
 
     const controller = new AbortController();
     workplaceSelectionTouchedRef.current = false;
+    setWorkplaceAssignmentsForPeriod((prev) => {
+      if (Array.isArray(prev) && prev.length === 0) return prev;
+      return [];
+    });
 
     async function loadWorkplaceAssignments() {
       try {
