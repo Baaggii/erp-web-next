@@ -152,22 +152,25 @@ export async function login(req, res, next) {
     }
 
     const sessions = await getEmploymentSessions(empid);
-    if (!Array.isArray(sessions) || sessions.length === 0) {
-      return res
-        .status(403)
-        .json({ message: 'No employment record found for employee' });
+    const activeSessions = sessions.filter(
+      (session) => session?.workplace_session_id != null,
+    );
+
+    if (activeSessions.length === 0) {
+      return res.status(403).json({ message: 'No active workplace schedule found' });
     }
 
     const companySessions = dedupeSessionsByCompany(sessions);
     let session = null;
     if (companyId == null) {
-      if (companySessions.length > 1) {
-        return res.json({ needsCompany: true, sessions: companySessions });
+      if (activeSessions.length > 1) {
+        return res.json({ needsCompany: true, sessions: activeSessions });
       }
-      session = companySessions[0] ?? null;
+      session = activeSessions[0] ?? null;
     } else {
-      const numericCompanyId = Number(companyId);
-      if (!Number.isFinite(numericCompanyId)) {
+      session =
+        activeSessions.find((s) => s.company_id === Number(companyId)) ?? null;
+      if (!session && activeSessions.length > 0) {
         return res.status(400).json({ message: 'Invalid company selection' });
       }
       session =
@@ -184,7 +187,27 @@ export async function login(req, res, next) {
     }
 
     const workplaceAssignments = session
-      ? filterCurrentScheduleAssignments(sessions, session.company_id)
+      ? activeSessions
+          .filter((s) => s.company_id === session.company_id)
+          .map(
+            ({
+              branch_id,
+              branch_name,
+              department_id,
+              department_name,
+              workplace_id,
+              workplace_name,
+              workplace_session_id,
+            }) => ({
+              branch_id: branch_id ?? null,
+              branch_name: branch_name ?? null,
+              department_id: department_id ?? null,
+              department_name: department_name ?? null,
+              workplace_id: workplace_id ?? null,
+              workplace_name: workplace_name ?? null,
+              workplace_session_id: workplace_session_id ?? null,
+            }),
+          )
       : [];
 
     const sessionPayload = session

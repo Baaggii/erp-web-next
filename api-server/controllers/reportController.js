@@ -53,8 +53,9 @@ export async function listReportWorkplaces(req, res, next) {
       ? sessions.filter((session) => session.company_id === normalizedCompanyId)
       : sessions;
 
-    const mapAssignments = (items) =>
-      items.map((session) => ({
+    const assignments = filtered
+      .filter((session) => session.workplace_session_id != null)
+      .map((session) => ({
         company_id: session.company_id ?? null,
         company_name: session.company_name ?? null,
         branch_id: session.branch_id ?? null,
@@ -65,32 +66,6 @@ export async function listReportWorkplaces(req, res, next) {
         workplace_name: session.workplace_name ?? null,
         workplace_session_id: session.workplace_session_id ?? null,
       }));
-
-    const prioritized = filtered.filter(
-      (session) => session.workplace_session_id != null,
-    );
-
-    const source = prioritized.length
-      ? prioritized
-      : filtered;
-
-    const deduped = [];
-    const seen = new Set();
-    source.forEach((session) => {
-      if (!session || typeof session !== 'object') return;
-      const key = [
-        session.company_id ?? 'null',
-        session.branch_id ?? 'null',
-        session.department_id ?? 'null',
-        session.workplace_id ?? 'null',
-        session.workplace_session_id ?? 'null',
-      ].join('|');
-      if (seen.has(key)) return;
-      seen.add(key);
-      deduped.push(session);
-    });
-
-    const assignments = mapAssignments(deduped);
 
     res.json({ assignments });
   } catch (err) {
