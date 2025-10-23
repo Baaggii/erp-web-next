@@ -969,7 +969,9 @@ export async function getEmploymentSessions(empid, options = {}) {
     ? formatDateForDb(options.effectiveDate).slice(0, 10)
     : null;
   const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
-  const scheduleDateParams = scheduleDate ? [scheduleDate, scheduleDate] : [];
+  const scheduleDateParams = scheduleDate
+    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
+    : [];
   const [
     companyCfgRaw,
     branchCfgRaw,
@@ -1065,35 +1067,34 @@ export async function getEmploymentSessions(empid, options = {}) {
        ${deptRel.join}
        LEFT JOIN (
          SELECT
-           company_id,
-           branch_id,
-           department_id,
-           emp_id,
-           workplace_id,
-           id AS workplace_session_id
-         FROM (
+           es.company_id,
+           es.branch_id,
+           es.department_id,
+           es.emp_id,
+           es.workplace_id,
+           es.id AS workplace_session_id
+         FROM tbl_employment_schedule es
+         INNER JOIN (
            SELECT
-             es.company_id,
-             es.branch_id,
-             es.department_id,
-             es.emp_id,
-             es.workplace_id,
-             es.id,
-             ROW_NUMBER() OVER (
-               PARTITION BY
-                 es.emp_id,
-                 es.company_id,
-                 es.branch_id,
-                 es.department_id,
-                 es.workplace_id
-               ORDER BY es.start_date DESC, es.id DESC
-             ) AS rn
-           FROM tbl_employment_schedule es
-           WHERE es.start_date <= ${scheduleDateSql}
-             AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
-             AND es.deleted_at IS NULL
-         ) ranked
-         WHERE ranked.rn = 1
+             company_id,
+             branch_id,
+             department_id,
+             emp_id,
+             MAX(start_date) AS latest_start_date
+           FROM tbl_employment_schedule
+           WHERE start_date <= ${scheduleDateSql}
+             AND (end_date IS NULL OR end_date >= ${scheduleDateSql})
+             AND deleted_at IS NULL
+           GROUP BY company_id, branch_id, department_id, emp_id
+         ) latest
+           ON latest.company_id = es.company_id
+          AND latest.branch_id = es.branch_id
+          AND latest.department_id = es.department_id
+          AND latest.emp_id = es.emp_id
+          AND latest.latest_start_date = es.start_date
+         WHERE es.start_date <= ${scheduleDateSql}
+           AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
+           AND es.deleted_at IS NULL
        ) es
          ON es.emp_id = e.employment_emp_id
         AND es.company_id = e.employment_company_id
@@ -1140,7 +1141,9 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
     ? formatDateForDb(options.effectiveDate).slice(0, 10)
     : null;
   const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
-  const scheduleDateParams = scheduleDate ? [scheduleDate, scheduleDate] : [];
+  const scheduleDateParams = scheduleDate
+    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
+    : [];
 
   if (companyId !== undefined && companyId !== null) {
     const configCompanyId = Number.isFinite(Number(companyId))
@@ -1262,35 +1265,34 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          ${deptRel.join}
          LEFT JOIN (
            SELECT
-             company_id,
-             branch_id,
-             department_id,
-             emp_id,
-             workplace_id,
-             id AS workplace_session_id
-           FROM (
+             es.company_id,
+             es.branch_id,
+             es.department_id,
+             es.emp_id,
+             es.workplace_id,
+             es.id AS workplace_session_id
+           FROM tbl_employment_schedule es
+           INNER JOIN (
              SELECT
-               es.company_id,
-               es.branch_id,
-               es.department_id,
-               es.emp_id,
-               es.workplace_id,
-               es.id,
-               ROW_NUMBER() OVER (
-                 PARTITION BY
-                   es.emp_id,
-                   es.company_id,
-                   es.branch_id,
-                   es.department_id,
-                   es.workplace_id
-                 ORDER BY es.start_date DESC, es.id DESC
-               ) AS rn
-             FROM tbl_employment_schedule es
-             WHERE es.start_date <= ${scheduleDateSql}
-               AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
-               AND es.deleted_at IS NULL
-           ) ranked
-           WHERE ranked.rn = 1
+               company_id,
+               branch_id,
+               department_id,
+               emp_id,
+               MAX(start_date) AS latest_start_date
+             FROM tbl_employment_schedule
+             WHERE start_date <= ${scheduleDateSql}
+               AND (end_date IS NULL OR end_date >= ${scheduleDateSql})
+               AND deleted_at IS NULL
+             GROUP BY company_id, branch_id, department_id, emp_id
+           ) latest
+             ON latest.company_id = es.company_id
+            AND latest.branch_id = es.branch_id
+            AND latest.department_id = es.department_id
+            AND latest.emp_id = es.emp_id
+            AND latest.latest_start_date = es.start_date
+           WHERE es.start_date <= ${scheduleDateSql}
+             AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
+             AND es.deleted_at IS NULL
          ) es
            ON es.emp_id = e.employment_emp_id
           AND es.company_id = e.employment_company_id
