@@ -90,25 +90,30 @@ export async function login(req, res, next) {
     }
 
     const sessions = await getEmploymentSessions(empid);
-    if (sessions.length === 0) {
+    const activeSessions = sessions.filter(
+      (session) => session?.workplace_session_id != null,
+    );
+
+    if (activeSessions.length === 0) {
       return res.status(403).json({ message: 'No active workplace schedule found' });
     }
 
     let session = null;
     if (companyId == null) {
-      if (sessions.length > 1) {
-        return res.json({ needsCompany: true, sessions });
+      if (activeSessions.length > 1) {
+        return res.json({ needsCompany: true, sessions: activeSessions });
       }
-      session = sessions[0] ?? null;
+      session = activeSessions[0] ?? null;
     } else {
-      session = sessions.find((s) => s.company_id === Number(companyId)) ?? null;
-      if (!session && sessions.length > 0) {
+      session =
+        activeSessions.find((s) => s.company_id === Number(companyId)) ?? null;
+      if (!session && activeSessions.length > 0) {
         return res.status(400).json({ message: 'Invalid company selection' });
       }
     }
 
     const workplaceAssignments = session
-      ? sessions
+      ? activeSessions
           .filter((s) => s.company_id === session.company_id)
           .map(
             ({
