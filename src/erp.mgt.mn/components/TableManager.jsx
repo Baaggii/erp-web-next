@@ -2904,30 +2904,48 @@ const TableManager = forwardRef(function TableManager({
         credentials: 'include',
         body: JSON.stringify(body),
       });
+      const responseText = await res.text();
+      let responseData = null;
+      if (responseText) {
+        try {
+          responseData = JSON.parse(responseText);
+        } catch {
+          responseData = null;
+        }
+      }
       if (!res.ok) {
         let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
-        try {
-          const data = await res.json();
-          if (data?.message) {
-            errorMessage = `${errorMessage}: ${data.message}`;
-          }
-        } catch {
-          try {
-            const text = await res.text();
-            if (text) {
-              errorMessage = `${errorMessage}: ${text}`;
-            }
-          } catch {}
+        if (responseData?.message) {
+          errorMessage = `${errorMessage}: ${responseData.message}`;
+        } else if (responseText) {
+          errorMessage = `${errorMessage}: ${responseText}`;
         }
         addToast(errorMessage, 'error');
         return false;
       }
+      const createdTemporaryId =
+        responseData?.id ??
+        responseData?.temporaryId ??
+        responseData?.tempId ??
+        null;
       addToast(t('temporary_saved', 'Saved as temporary draft'), 'success');
       setShowForm(false);
       setEditing(null);
       setIsAdding(false);
       setGridRows([]);
       await refreshTemporarySummary();
+      if (
+        supportsTemporary &&
+        availableTemporaryScopes.includes('created') &&
+        temporaryScope === 'created'
+      ) {
+        await fetchTemporaryList('created', {
+          focusId:
+            createdTemporaryId !== undefined && createdTemporaryId !== null
+              ? String(createdTemporaryId)
+              : undefined,
+        });
+      }
       return true;
     } catch (err) {
       console.error('Temporary save failed', err);
