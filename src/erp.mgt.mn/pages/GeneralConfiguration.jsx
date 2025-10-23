@@ -443,6 +443,24 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
+              title={t('workplace_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Display workplace fetch diagnostics in Reports',
+              })}
+            >
+              <label>
+                Show Workplace Fetch Toasts{' '}
+                <input
+                  name="workplaceFetchToastEnabled"
+                  type="checkbox"
+                  checked={active.workplaceFetchToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
               title={t('proc_toast_enabled', {
                 ns: 'tooltip',
                 defaultValue: 'Display procedure messages as toasts',

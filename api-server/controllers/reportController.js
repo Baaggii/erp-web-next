@@ -89,12 +89,16 @@ export async function listReportWorkplaces(req, res, next) {
       }
     }
 
+    const explicitDate = parseDateOnly(req.query.date);
+    const startDate = parseDateOnly(req.query.startDate);
+    const endDate = parseDateOnly(req.query.endDate);
+
     let effectiveDate = null;
-    const explicitDate =
-      parseDateOnly(req.query.date) ||
-      parseDateOnly(req.query.startDate) ||
-      parseDateOnly(req.query.endDate);
-    if (explicitDate) {
+    if (endDate) {
+      effectiveDate = endDate;
+    } else if (startDate) {
+      effectiveDate = startDate;
+    } else if (explicitDate) {
       effectiveDate = explicitDate;
     } else {
       const { year, month } = req.query;
@@ -114,7 +118,9 @@ export async function listReportWorkplaces(req, res, next) {
         return res.status(400).json({ message: 'Invalid month value' });
       }
 
-      effectiveDate = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
+      const firstOfMonth = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
+      const endOfMonth = new Date(Date.UTC(parsedYear, parsedMonth, 0));
+      effectiveDate = endOfMonth >= firstOfMonth ? endOfMonth : firstOfMonth;
     }
 
     if (!(effectiveDate instanceof Date) || Number.isNaN(effectiveDate.getTime())) {
@@ -139,16 +145,46 @@ export async function listReportWorkplaces(req, res, next) {
       const key = `${workplaceId ?? ''}|${workplaceSessionId}`;
       if (seen.has(key)) return;
       seen.add(key);
+
+      const companyId = normalizeNumericId(session.company_id);
+      const branchId = normalizeNumericId(session.branch_id);
+      const departmentId = normalizeNumericId(session.department_id);
+      const companyName =
+        typeof session.company_name === 'string'
+          ? session.company_name.trim() || null
+          : session.company_name ?? null;
+      const branchName =
+        typeof session.branch_name === 'string'
+          ? session.branch_name.trim() || null
+          : session.branch_name ?? null;
+      const departmentName =
+        typeof session.department_name === 'string'
+          ? session.department_name.trim() || null
+          : session.department_name ?? null;
+      const workplaceName =
+        typeof session.workplace_name === 'string'
+          ? session.workplace_name.trim() || null
+          : session.workplace_name ?? null;
+
       assignments.push({
-        company_id: normalizeNumericId(session.company_id),
-        company_name: session.company_name ?? null,
-        branch_id: normalizeNumericId(session.branch_id),
-        branch_name: session.branch_name ?? null,
-        department_id: normalizeNumericId(session.department_id),
-        department_name: session.department_name ?? null,
+        company_id: companyId,
+        companyId,
+        company_name: companyName,
+        companyName,
+        branch_id: branchId,
+        branchId,
+        branch_name: branchName,
+        branchName,
+        department_id: departmentId,
+        departmentId,
+        department_name: departmentName,
+        departmentName,
         workplace_id: workplaceId,
-        workplace_name: session.workplace_name ?? null,
+        workplaceId,
+        workplace_name: workplaceName,
+        workplaceName,
         workplace_session_id: workplaceSessionId,
+        workplaceSessionId,
       });
     });
 
