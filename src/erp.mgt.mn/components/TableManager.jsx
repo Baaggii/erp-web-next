@@ -358,6 +358,7 @@ const TableManager = forwardRef(function TableManager({
   const [editing, setEditing] = useState(null);
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
+  const [temporaryPromotionQueue, setTemporaryPromotionQueue] = useState([]);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
@@ -2686,12 +2687,25 @@ const TableManager = forwardRef(function TableManager({
         overrideValues: cleaned,
       });
       if (ok) {
+        const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
+        setTemporaryPromotionQueue(remainingQueue);
+        setTemporarySelection((prev) => {
+          if (!prev || prev.size === 0 || !prev.has(temporaryId)) return prev;
+          const next = new Set(prev);
+          next.delete(temporaryId);
+          return next;
+        });
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
         setRequestType(null);
         setPendingTemporaryPromotion(null);
+        if (nextEntry) {
+          setTimeout(() => {
+            openTemporaryPromotion(nextEntry, { resetQueue: false });
+          }, 0);
+        }
       }
       return ok;
     }
@@ -2867,73 +2881,148 @@ const TableManager = forwardRef(function TableManager({
       }
     });
 
-    const payloadValues = { ...normalizedValues };
-    if (gridRows) {
-      payloadValues.rows = gridRows;
+    const headerNormalizedValues = { ...normalizedValues };
+    if (gridRows && 'rows' in headerNormalizedValues) {
+      delete headerNormalizedValues.rows;
     }
-    const payload = {
-      values: payloadValues,
-      submittedAt: new Date().toISOString(),
+
+    const headerRawValues = rawOverride ? { ...rawOverride } : { ...merged };
+    if (Array.isArray(headerRawValues?.rows)) {
+      delete headerRawValues.rows;
+    }
+
+    const submittedAt = new Date().toISOString();
+    const baseTenant = {
+      company_id: company ?? null,
+      branch_id: branch ?? null,
+      department_id: department ?? null,
     };
-    if (gridRows) {
-      payload.gridRows = gridRows;
-      payload.rowCount = gridRows.length;
-    }
-    if (rawRows) {
-      payload.rawRows = rawRows;
-    }
-    const body = {
+    const baseRequest = {
       table,
       formName: formName || formConfig?.moduleLabel || null,
       configName: formName || null,
       moduleKey: formConfig?.moduleKey || null,
-      payload,
-      rawValues: rawOverride || merged,
-      cleanedValues: cleaned,
-      tenant: {
-        company_id: company ?? null,
-        branch_id: branch ?? null,
-        department_id: department ?? null,
-      },
+      tenant: baseTenant,
     };
 
-    try {
-      const res = await fetch(`${API_BASE}/transaction_temporaries`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
-        try {
-          const data = await res.json();
-          if (data?.message) {
-            errorMessage = `${errorMessage}: ${data.message}`;
+    const rowsToProcess = gridRows && gridRows.length > 0 ? gridRows : [null];
+    const rawRowList = Array.isArray(rawRows) ? rawRows : [];
+    let successCount = 0;
+    let failureCount = 0;
+
+    for (let idx = 0; idx < rowsToProcess.length; idx += 1) {
+      const row = rowsToProcess[idx];
+      const rowRawSource = Array.isArray(rawRowList) ? rawRowList[idx] : null;
+      const rowValues = row ? { ...headerNormalizedValues, ...row } : { ...normalizedValues };
+      const rowCleaned = { ...cleaned };
+      if (row) {
+        Object.entries(row).forEach(([k, v]) => {
+          const lower = k.toLowerCase();
+          if (skipFields.has(k) || skipFields.has(lower) || k.startsWith('_')) return;
+          if (auditFieldSet.has(lower) && !(editSet?.has(lower))) return;
+          if (v !== '') {
+            rowCleaned[k] =
+              typeof v === 'string' ? normalizeDateInput(v, placeholders[k]) : v;
           }
-        } catch {
-          try {
-            const text = await res.text();
-            if (text) {
-              errorMessage = `${errorMessage}: ${text}`;
-            }
-          } catch {}
-        }
-        addToast(errorMessage, 'error');
-        return false;
+        });
       }
-      addToast(t('temporary_saved', 'Saved as temporary draft'), 'success');
-      setShowForm(false);
-      setEditing(null);
-      setIsAdding(false);
-      setGridRows([]);
-      await refreshTemporarySummary();
-      return true;
-    } catch (err) {
-      console.error('Temporary save failed', err);
-      addToast(t('temporary_save_failed', 'Failed to save temporary draft'), 'error');
-      return false;
+
+      const rowPayload = {
+        values: rowValues,
+        submittedAt,
+      };
+      if (row) {
+        rowPayload.gridRows = [row];
+        rowPayload.rowCount = 1;
+        if (rowRawSource) {
+          rowPayload.rawRows = [stripTemporaryLabelValue(rowRawSource)];
+        }
+      } else if (rawRows && !Array.isArray(rawRows)) {
+        rowPayload.rawRows = rawRows;
+      }
+
+      const rowRawValues = row
+        ? (() => {
+            const combined = { ...headerRawValues };
+            const source =
+              rowRawSource && typeof rowRawSource === 'object'
+                ? stripTemporaryLabelValue(rowRawSource)
+                : null;
+            Object.entries(source || row || {}).forEach(([k, v]) => {
+              combined[k] = v;
+            });
+            return combined;
+          })()
+        : rawOverride || merged;
+
+      const body = {
+        ...baseRequest,
+        payload: rowPayload,
+        rawValues: rowRawValues,
+        cleanedValues: rowCleaned,
+      };
+
+      try {
+        const res = await fetch(`${API_BASE}/transaction_temporaries`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
+          try {
+            const data = await res.json();
+            if (data?.message) {
+              errorMessage = `${errorMessage}: ${data.message}`;
+            }
+          } catch {
+            try {
+              const text = await res.text();
+              if (text) {
+                errorMessage = `${errorMessage}: ${text}`;
+              }
+            } catch {}
+          }
+          if (rowsToProcess.length > 1) {
+            errorMessage = `${errorMessage} (row ${idx + 1})`;
+          }
+          addToast(errorMessage, 'error');
+          failureCount += 1;
+          continue;
+        }
+        successCount += 1;
+      } catch (err) {
+        console.error('Temporary save failed', err);
+        const baseMessage = t('temporary_save_failed', 'Failed to save temporary draft');
+        addToast(
+          rowsToProcess.length > 1
+            ? `${baseMessage} (row ${idx + 1})`
+            : baseMessage,
+          'error',
+        );
+        failureCount += 1;
+      }
     }
+
+    if (successCount > 0) {
+      const message =
+        successCount > 1
+          ? t('temporary_saved_multiple', 'Saved {{count}} temporary drafts', {
+              count: successCount,
+            })
+          : t('temporary_saved', 'Saved as temporary draft');
+      addToast(message, 'success');
+      await refreshTemporarySummary();
+      if (failureCount === 0) {
+        setShowForm(false);
+        setEditing(null);
+        setIsAdding(false);
+        setGridRows([]);
+      }
+    }
+
+    return failureCount === 0 && successCount > 0;
   }
 
   async function executeDeleteRow(id, cascade) {
@@ -3428,10 +3517,13 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const openTemporaryPromotion = useCallback(
-    async (entry) => {
+    async (entry, { resetQueue = true } = {}) => {
       if (!entry) return;
       const temporaryId = getTemporaryId(entry);
       if (!temporaryId) return;
+      if (resetQueue) {
+        setTemporaryPromotionQueue([]);
+      }
       await ensureColumnMeta();
 
       const valueSources = [
@@ -3483,6 +3575,7 @@ const TableManager = forwardRef(function TableManager({
       setRequestType,
       setShowTemporaryModal,
       setShowForm,
+      setTemporaryPromotionQueue,
     ],
   );
 
@@ -3595,6 +3688,18 @@ const TableManager = forwardRef(function TableManager({
     if (!canSelectTemporaries) return;
     const ids = Array.from(temporarySelection);
     if (ids.length === 0) return;
+    const pendingEntries = ids
+      .map((id) =>
+        temporaryList.find((entry) => getTemporaryId(entry) === id),
+      )
+      .filter((entry) => entry && entry.status === 'pending');
+    if (pendingEntries.length === 0) {
+      addToast(
+        t('temporary_promote_missing', 'Unable to promote temporary submission'),
+        'error',
+      );
+      return;
+    }
     if (
       !window.confirm(
         t(
@@ -3605,50 +3710,16 @@ const TableManager = forwardRef(function TableManager({
     ) {
       return;
     }
-    let successCount = 0;
-    const failedIds = [];
-    for (const id of ids) {
-      const ok = await promoteTemporary(id, {
-        skipConfirm: true,
-        silent: true,
-      });
-      if (ok) successCount += 1;
-      else failedIds.push(id);
-    }
-    if (successCount > 0) {
-      addToast(
-        t('temporary_promoted_bulk', 'Promoted {{count}} temporary transactions', {
-          count: successCount,
-        }),
-        'success',
-      );
-      await refreshTemporarySummary();
-      await fetchTemporaryList('review');
-      setLocalRefresh((r) => r + 1);
-    }
-    if (failedIds.length > 0) {
-      addToast(
-        t(
-          'temporary_promote_partial_failure',
-          'Failed to promote {{count}} transactions',
-          { count: failedIds.length },
-        ),
-        'error',
-      );
-    }
-    if (failedIds.length > 0) {
-      setTemporarySelection(new Set(failedIds));
-    } else if (successCount > 0) {
-      setTemporarySelection(new Set());
-    }
+    const [firstEntry, ...remaining] = pendingEntries;
+    setTemporaryPromotionQueue(remaining);
+    await openTemporaryPromotion(firstEntry, { resetQueue: false });
   }, [
     canSelectTemporaries,
     temporarySelection,
-    promoteTemporary,
+    temporaryList,
+    openTemporaryPromotion,
     addToast,
     t,
-    refreshTemporarySummary,
-    fetchTemporaryList,
   ]);
 
   if (!table) return null;
@@ -5349,6 +5420,7 @@ const TableManager = forwardRef(function TableManager({
           setGridRows([]);
           setRequestType(null);
           setPendingTemporaryPromotion(null);
+          setTemporaryPromotionQueue([]);
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
