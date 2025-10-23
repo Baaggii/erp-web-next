@@ -81,6 +81,68 @@ function normalizeEmploymentSession(session, assignments = []) {
   };
 }
 
+function dedupeSessionsByCompany(sessions = []) {
+  if (!Array.isArray(sessions) || sessions.length === 0) {
+    return [];
+  }
+
+  const map = new Map();
+  sessions.forEach((session) => {
+    if (!session || typeof session !== 'object') return;
+    const companyId = session.company_id ?? null;
+    if (!map.has(companyId)) {
+      map.set(companyId, session);
+      return;
+    }
+
+    const current = map.get(companyId);
+    const currentHasSchedule = current?.workplace_session_id != null;
+    const incomingHasSchedule = session.workplace_session_id != null;
+    if (incomingHasSchedule && !currentHasSchedule) {
+      map.set(companyId, session);
+    }
+  });
+
+  return Array.from(map.values());
+}
+
+function filterCurrentScheduleAssignments(sessions, companyId) {
+  if (!Array.isArray(sessions) || sessions.length === 0) {
+    return [];
+  }
+
+  const deduped = [];
+  const seen = new Set();
+
+  sessions.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    if (item.company_id !== companyId) return;
+    if (item.workplace_session_id == null) return;
+
+    const key = [
+      item.workplace_session_id ?? 'null',
+      item.workplace_id ?? 'null',
+      item.branch_id ?? 'null',
+      item.department_id ?? 'null',
+    ].join('|');
+
+    if (seen.has(key)) return;
+    seen.add(key);
+
+    deduped.push({
+      branch_id: item.branch_id ?? null,
+      branch_name: item.branch_name ?? null,
+      department_id: item.department_id ?? null,
+      department_name: item.department_name ?? null,
+      workplace_id: item.workplace_id ?? null,
+      workplace_name: item.workplace_name ?? null,
+      workplace_session_id: item.workplace_session_id ?? null,
+    });
+  });
+
+  return deduped;
+}
+
 export async function login(req, res, next) {
   try {
     const { empid, password, companyId } = req.body;
@@ -98,6 +160,7 @@ export async function login(req, res, next) {
       return res.status(403).json({ message: 'No active workplace schedule found' });
     }
 
+    const companySessions = dedupeSessionsByCompany(sessions);
     let session = null;
     if (companyId == null) {
       if (activeSessions.length > 1) {
@@ -110,6 +173,17 @@ export async function login(req, res, next) {
       if (!session && activeSessions.length > 0) {
         return res.status(400).json({ message: 'Invalid company selection' });
       }
+      session =
+        companySessions.find((s) => s.company_id === numericCompanyId) ?? null;
+      if (!session) {
+        return res.status(400).json({ message: 'Invalid company selection' });
+      }
+    }
+
+    if (!session) {
+      return res
+        .status(403)
+        .json({ message: 'No employment session available for login' });
     }
 
     const workplaceAssignments = session
@@ -225,27 +299,7 @@ export async function getProfile(req, res) {
   ]);
 
   const workplaceAssignments = session
-    ? sessions
-        .filter((s) => s.company_id === session.company_id)
-        .map(
-          ({
-            branch_id,
-            branch_name,
-            department_id,
-            department_name,
-            workplace_id,
-            workplace_name,
-            workplace_session_id,
-          }) => ({
-            branch_id: branch_id ?? null,
-            branch_name: branch_name ?? null,
-            department_id: department_id ?? null,
-            department_name: department_name ?? null,
-            workplace_id: workplace_id ?? null,
-            workplace_name: workplace_name ?? null,
-            workplace_session_id: workplace_session_id ?? null,
-          }),
-        )
+    ? filterCurrentScheduleAssignments(sessions, session.company_id)
     : [];
 
   const sessionPayload = session
@@ -321,27 +375,7 @@ export async function refresh(req, res) {
     ]);
 
     const workplaceAssignments = session
-      ? sessions
-          .filter((s) => s.company_id === session.company_id)
-          .map(
-            ({
-              branch_id,
-              branch_name,
-              department_id,
-              department_name,
-              workplace_id,
-              workplace_name,
-              workplace_session_id,
-            }) => ({
-              branch_id: branch_id ?? null,
-              branch_name: branch_name ?? null,
-              department_id: department_id ?? null,
-              department_name: department_name ?? null,
-              workplace_id: workplace_id ?? null,
-              workplace_name: workplace_name ?? null,
-              workplace_session_id: workplace_session_id ?? null,
-            }),
-          )
+      ? filterCurrentScheduleAssignments(sessions, session.company_id)
       : [];
 
     const sessionPayload = session
