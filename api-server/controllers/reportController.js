@@ -145,46 +145,16 @@ export async function listReportWorkplaces(req, res, next) {
       const key = `${workplaceId ?? ''}|${workplaceSessionId}`;
       if (seen.has(key)) return;
       seen.add(key);
-
-      const companyId = normalizeNumericId(session.company_id);
-      const branchId = normalizeNumericId(session.branch_id);
-      const departmentId = normalizeNumericId(session.department_id);
-      const companyName =
-        typeof session.company_name === 'string'
-          ? session.company_name.trim() || null
-          : session.company_name ?? null;
-      const branchName =
-        typeof session.branch_name === 'string'
-          ? session.branch_name.trim() || null
-          : session.branch_name ?? null;
-      const departmentName =
-        typeof session.department_name === 'string'
-          ? session.department_name.trim() || null
-          : session.department_name ?? null;
-      const workplaceName =
-        typeof session.workplace_name === 'string'
-          ? session.workplace_name.trim() || null
-          : session.workplace_name ?? null;
-
       assignments.push({
-        company_id: companyId,
-        companyId,
-        company_name: companyName,
-        companyName,
-        branch_id: branchId,
-        branchId,
-        branch_name: branchName,
-        branchName,
-        department_id: departmentId,
-        departmentId,
-        department_name: departmentName,
-        departmentName,
+        company_id: normalizeNumericId(session.company_id),
+        company_name: session.company_name ?? null,
+        branch_id: normalizeNumericId(session.branch_id),
+        branch_name: session.branch_name ?? null,
+        department_id: normalizeNumericId(session.department_id),
+        department_name: session.department_name ?? null,
         workplace_id: workplaceId,
-        workplaceId,
-        workplace_name: workplaceName,
-        workplaceName,
+        workplace_name: session.workplace_name ?? null,
         workplace_session_id: workplaceSessionId,
-        workplaceSessionId,
       });
     });
 
