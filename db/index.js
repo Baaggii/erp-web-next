@@ -1065,35 +1065,66 @@ export async function getEmploymentSessions(empid, options = {}) {
        ${deptRel.join}
        LEFT JOIN (
          SELECT
-           company_id,
-           branch_id,
-           department_id,
-           emp_id,
-           workplace_id,
-           id AS workplace_session_id
+           annotated.company_id,
+           annotated.branch_id,
+           annotated.department_id,
+           annotated.emp_id,
+           annotated.workplace_id,
+           annotated.id AS workplace_session_id
          FROM (
            SELECT
-             es.company_id,
-             es.branch_id,
-             es.department_id,
-             es.emp_id,
-             es.workplace_id,
-             es.id,
+             windowed.company_id,
+             windowed.branch_id,
+             windowed.department_id,
+             windowed.emp_id,
+             windowed.workplace_id,
+             windowed.id,
+             windowed.start_date,
+             windowed.end_date,
+             CASE
+               WHEN windowed.end_date IS NOT NULL THEN windowed.end_date
+               WHEN windowed.next_start_date IS NOT NULL
+                 AND windowed.next_start_date > windowed.start_date
+                 THEN DATE_SUB(windowed.next_start_date, INTERVAL 1 DAY)
+               ELSE NULL
+             END AS effective_end_date,
              ROW_NUMBER() OVER (
                PARTITION BY
-                 es.emp_id,
-                 es.company_id,
-                 es.branch_id,
-                 es.department_id,
-                 es.workplace_id
-               ORDER BY es.start_date DESC, es.id DESC
+                 windowed.emp_id,
+                 windowed.company_id,
+                 windowed.branch_id,
+                 windowed.department_id,
+                 windowed.workplace_id
+               ORDER BY windowed.start_date DESC, windowed.id DESC
              ) AS rn
-           FROM tbl_employment_schedule es
-           WHERE es.start_date <= ${scheduleDateSql}
-             AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
-             AND es.deleted_at IS NULL
-         ) ranked
-         WHERE ranked.rn = 1
+           FROM (
+             SELECT
+               es.company_id,
+               es.branch_id,
+               es.department_id,
+               es.emp_id,
+               es.workplace_id,
+               es.id,
+               es.start_date,
+               es.end_date,
+               (
+                 SELECT MIN(es2.start_date)
+                 FROM tbl_employment_schedule es2
+                 WHERE es2.deleted_at IS NULL
+                   AND es2.emp_id = es.emp_id
+                   AND es2.company_id = es.company_id
+                   AND es2.start_date > es.start_date
+               ) AS next_start_date
+             FROM tbl_employment_schedule es
+             WHERE es.deleted_at IS NULL
+           ) windowed
+         ) annotated
+         WHERE annotated.rn = 1
+           AND annotated.start_date <= ${scheduleDateSql}
+           AND (
+             annotated.effective_end_date IS NULL OR
+             annotated.effective_end_date >= ${scheduleDateSql}
+           )
        ) es
          ON es.emp_id = e.employment_emp_id
         AND es.company_id = e.employment_company_id
@@ -1262,35 +1293,66 @@ export async function getEmploymentSession(empid, companyId, options = {}) {
          ${deptRel.join}
          LEFT JOIN (
            SELECT
-             company_id,
-             branch_id,
-             department_id,
-             emp_id,
-             workplace_id,
-             id AS workplace_session_id
+             annotated.company_id,
+             annotated.branch_id,
+             annotated.department_id,
+             annotated.emp_id,
+             annotated.workplace_id,
+             annotated.id AS workplace_session_id
            FROM (
              SELECT
-               es.company_id,
-               es.branch_id,
-               es.department_id,
-               es.emp_id,
-               es.workplace_id,
-               es.id,
+               windowed.company_id,
+               windowed.branch_id,
+               windowed.department_id,
+               windowed.emp_id,
+               windowed.workplace_id,
+               windowed.id,
+               windowed.start_date,
+               windowed.end_date,
+               CASE
+                 WHEN windowed.end_date IS NOT NULL THEN windowed.end_date
+                 WHEN windowed.next_start_date IS NOT NULL
+                   AND windowed.next_start_date > windowed.start_date
+                   THEN DATE_SUB(windowed.next_start_date, INTERVAL 1 DAY)
+                 ELSE NULL
+               END AS effective_end_date,
                ROW_NUMBER() OVER (
                  PARTITION BY
-                   es.emp_id,
-                   es.company_id,
-                   es.branch_id,
-                   es.department_id,
-                   es.workplace_id
-                 ORDER BY es.start_date DESC, es.id DESC
+                   windowed.emp_id,
+                   windowed.company_id,
+                   windowed.branch_id,
+                   windowed.department_id,
+                   windowed.workplace_id
+                 ORDER BY windowed.start_date DESC, windowed.id DESC
                ) AS rn
-             FROM tbl_employment_schedule es
-             WHERE es.start_date <= ${scheduleDateSql}
-               AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
-               AND es.deleted_at IS NULL
-           ) ranked
-           WHERE ranked.rn = 1
+             FROM (
+               SELECT
+                 es.company_id,
+                 es.branch_id,
+                 es.department_id,
+                 es.emp_id,
+                 es.workplace_id,
+                 es.id,
+                 es.start_date,
+                 es.end_date,
+                 (
+                   SELECT MIN(es2.start_date)
+                   FROM tbl_employment_schedule es2
+                   WHERE es2.deleted_at IS NULL
+                     AND es2.emp_id = es.emp_id
+                     AND es2.company_id = es.company_id
+                     AND es2.start_date > es.start_date
+                 ) AS next_start_date
+               FROM tbl_employment_schedule es
+               WHERE es.deleted_at IS NULL
+             ) windowed
+           ) annotated
+           WHERE annotated.rn = 1
+             AND annotated.start_date <= ${scheduleDateSql}
+             AND (
+               annotated.effective_end_date IS NULL OR
+               annotated.effective_end_date >= ${scheduleDateSql}
+             )
          ) es
            ON es.emp_id = e.employment_emp_id
           AND es.company_id = e.employment_company_id

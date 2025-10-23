@@ -39,7 +39,7 @@ function normalizeWorkplaceAssignments(assignments = []) {
     const workplaceSessionId = normalizeNumericId(rawSessionId);
 
     // Only keep assignments that have an active workplace schedule.
-    if (workplaceSessionId === null) return;
+    if (workplaceSessionId === null || workplaceId === null) return;
 
     const key = `${workplaceId ?? ''}|${workplaceSessionId}`;
     if (seen.has(key)) return;
