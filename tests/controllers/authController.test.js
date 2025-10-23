@@ -30,8 +30,9 @@ function createRes() {
 
 test('login prompts for company selection when companyId undefined', async () => {
   const sessions = [
-    { company_id: 0, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '' },
-    { company_id: 1, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '' },
+    { company_id: 0, company_name: 'Alpha', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: null },
+    { company_id: 0, company_name: 'Alpha', branch_id: 2, department_id: 2, position_id: 2, position: 'Q', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: 10 },
+    { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: 20 },
   ];
   const restore = mockPoolSequential([
     [[{ id: 1, empid: 1, password: 'hashed' }]],
@@ -44,13 +45,17 @@ test('login prompts for company selection when companyId undefined', async () =>
   restore();
   assert.equal(res.code, 200);
   assert.equal(res.body.needsCompany, true);
-  assert.equal(res.body.sessions.length, sessions.length);
+  assert.equal(res.body.sessions.length, 2);
+  assert.deepEqual(
+    res.body.sessions.map((c) => c.company_name),
+    ['Alpha', 'Beta'],
+  );
 });
 
 test('login succeeds when companyId is 0', async () => {
   const sessions = [
-    { company_id: 0, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '' },
-    { company_id: 1, branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '' },
+    { company_id: 0, company_name: 'Alpha', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp0', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: null },
+    { company_id: 1, company_name: 'Beta', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp1', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: 30 },
   ];
   const restore = mockPoolSequential([
     [[{ id: 1, empid: 1, password: 'hashed' }]],
@@ -66,4 +71,24 @@ test('login succeeds when companyId is 0', async () => {
   assert.equal(res.body.session.company_id, 0);
   assert.equal(res.body.senior_plan_empid, null);
   assert.equal(res.body.session.senior_plan_empid, null);
+});
+
+test('login succeeds without workplace assignments', async () => {
+  const sessions = [
+    { company_id: 2, company_name: 'Gamma', branch_id: 1, department_id: 1, position_id: 1, position: 'P', senior_empid: null, senior_plan_empid: null, employee_name: 'Emp2', user_level: 1, user_level_name: 'Admin', permission_list: '', workplace_session_id: null },
+  ];
+  const restore = mockPoolSequential([
+    [[{ id: 1, empid: 1, password: 'hashed' }]],
+    [sessions],
+    [[]],
+    [[]],
+  ]);
+  const res = createRes();
+  await login({ body: { empid: 1, password: 'pw' } }, res, () => {});
+  restore();
+  assert.equal(res.code, 200);
+  assert.equal(res.body.company, 2);
+  assert.equal(res.body.workplace, null);
+  assert.equal(res.body.session.workplace_session_id, null);
+  assert.deepEqual(res.body.session.workplace_assignments, []);
 });
