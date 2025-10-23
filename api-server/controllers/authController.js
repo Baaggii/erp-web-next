@@ -73,9 +73,7 @@ function normalizeEmploymentSession(session, assignments = []) {
     (normalizedAssignments.find((item) => item.workplace_id !== null)?.workplace_id ??
       null);
   const fallbackSessionId =
-    normalizedSessionId ??
-    fallbackWorkplaceId ??
-    (sessionIds.length ? sessionIds[0] : null);
+    normalizedSessionId ?? (sessionIds.length ? sessionIds[0] : null);
 
   return {
     ...session,
