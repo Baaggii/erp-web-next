@@ -3266,10 +3266,12 @@ export function Header({
     const seen = new Set();
     assignments.forEach((assignment) => {
       if (!assignment || typeof assignment !== 'object') return;
-      const sessionId =
-        assignment.workplace_session_id ?? assignment.workplaceSessionId;
-      if (sessionId == null) return;
-      const keyStr = String(sessionId);
+      const key =
+        assignment.workplace_session_id ??
+        assignment.workplace_id ??
+        assignment.workplace_name;
+      if (key == null) return;
+      const keyStr = String(key);
       if (seen.has(keyStr)) return;
       seen.add(keyStr);
       const idParts = [];
@@ -3301,7 +3303,7 @@ export function Header({
         labels.push(labelParts.join(' – '));
       }
     });
-    if (!labels.length && session.workplace_session_id != null) {
+    if (!labels.length) {
       const idParts = [];
       if (session.workplace_id != null) {
         idParts.push(`#${session.workplace_id}`);

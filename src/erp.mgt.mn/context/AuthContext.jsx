@@ -4,20 +4,6 @@ import { debugLog, trackSetState } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 
-function parseNumericId(value) {
-  if (value === undefined || value === null) return null;
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : null;
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
 // Create the AuthContext
 export const AuthContext = createContext({
   user: null,
@@ -67,13 +53,6 @@ export default function AuthContextProvider({ children }) {
     if (stored) {
       try {
         const data = JSON.parse(stored);
-        const storedSessionId = parseNumericId(data.workplace_session_id);
-        const storedWorkplaceId = parseNumericId(data.workplace);
-        const storedSessionIds = Array.isArray(data.workplace_session_ids)
-          ? data.workplace_session_ids
-              .map((value) => parseNumericId(value))
-              .filter((value) => value !== null)
-          : [];
         trackSetState('AuthContext.setCompany');
         setCompany(data.company ?? null);
         trackSetState('AuthContext.setBranch');
@@ -83,7 +62,7 @@ export default function AuthContextProvider({ children }) {
         trackSetState('AuthContext.setPosition');
         setPosition(data.position ?? null);
         trackSetState('AuthContext.setWorkplace');
-        setWorkplace(storedSessionId !== null ? storedWorkplaceId ?? null : null);
+        setWorkplace(data.workplace ?? null);
         const sessionUpdates = {};
         if (data.senior_empid) {
           sessionUpdates.senior_empid = data.senior_empid;
@@ -91,14 +70,14 @@ export default function AuthContextProvider({ children }) {
         if (data.senior_plan_empid) {
           sessionUpdates.senior_plan_empid = data.senior_plan_empid;
         }
-        if (storedSessionId !== null) {
-          if (storedWorkplaceId !== null) {
-            sessionUpdates.workplace_id = storedWorkplaceId;
-          }
-          sessionUpdates.workplace_session_id = storedSessionId;
-          if (storedSessionIds.length) {
-            sessionUpdates.workplace_session_ids = storedSessionIds;
-          }
+        if (data.workplace) {
+          sessionUpdates.workplace_id = data.workplace;
+        }
+        if (data.workplace_session_id) {
+          sessionUpdates.workplace_session_id = data.workplace_session_id;
+        }
+        if (Array.isArray(data.workplace_session_ids)) {
+          sessionUpdates.workplace_session_ids = data.workplace_session_ids;
         }
         if (Object.keys(sessionUpdates).length) {
           trackSetState('AuthContext.setSession');
@@ -114,41 +93,33 @@ export default function AuthContextProvider({ children }) {
 
   useEffect(() => {
     debugLog('AuthContext: persist ids');
-    const hasActiveWorkplaceSession = session?.workplace_session_id != null;
     const data = {
       company,
       branch,
       department,
       position,
+      workplace,
       senior_empid: session?.senior_empid,
       senior_plan_empid: session?.senior_plan_empid,
     };
-    if (hasActiveWorkplaceSession) {
-      if (workplace != null) {
-        data.workplace = workplace;
-      } else if (session?.workplace_id != null) {
-        data.workplace = session.workplace_id;
-      }
+    if (session?.workplace_session_id != null) {
       data.workplace_session_id = session.workplace_session_id;
-      if (
-        Array.isArray(session?.workplace_session_ids) &&
-        session.workplace_session_ids.length
-      ) {
-        data.workplace_session_ids = session.workplace_session_ids;
-      }
     }
-    const shouldPersist = Boolean(
+    if (Array.isArray(session?.workplace_session_ids) && session.workplace_session_ids.length) {
+      data.workplace_session_ids = session.workplace_session_ids;
+    }
+    if (
       company ||
-        branch ||
-        department ||
-        position ||
-        session?.senior_empid ||
-        session?.senior_plan_empid ||
-        hasActiveWorkplaceSession ||
-        (Array.isArray(session?.workplace_session_ids) &&
-          session.workplace_session_ids.length),
-    );
-    if (shouldPersist) {
+      branch ||
+      department ||
+      position ||
+      workplace ||
+      session?.senior_empid ||
+      session?.senior_plan_empid ||
+      session?.workplace_session_id ||
+      (Array.isArray(session?.workplace_session_ids) &&
+        session.workplace_session_ids.length)
+    ) {
       localStorage.setItem('erp_session_ids', JSON.stringify(data));
     } else {
       localStorage.removeItem('erp_session_ids');
@@ -193,11 +164,7 @@ export default function AuthContextProvider({ children }) {
           trackSetState('AuthContext.setPosition');
           setPosition(data.position ?? normalizedSession?.position_id ?? null);
           trackSetState('AuthContext.setWorkplace');
-          const resolvedWorkplace =
-            normalizedSession?.workplace_session_id != null
-              ? data.workplace ?? normalizedSession?.workplace_id ?? null
-              : null;
-          setWorkplace(resolvedWorkplace);
+          setWorkplace(data.workplace ?? normalizedSession?.workplace_id ?? null);
           trackSetState('AuthContext.setPermissions');
           setPermissions(data.permissions || null);
           try {
