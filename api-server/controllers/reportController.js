@@ -1,10 +1,37 @@
-import { fetchReportData, getEmploymentSessions } from '../../db/index.js';
+import * as db from '../../db/index.js';
+
+function normalizeNumericId(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+let getEmploymentSessionsImpl = db.getEmploymentSessions;
+
+export function __setGetEmploymentSessions(fetcher) {
+  if (typeof fetcher !== 'function') {
+    throw new TypeError('fetcher must be a function');
+  }
+  getEmploymentSessionsImpl = fetcher;
+}
+
+export function __resetGetEmploymentSessions() {
+  getEmploymentSessionsImpl = db.getEmploymentSessions;
+}
 
 // Controller to handle fetching report data by ID
 export async function getReportData(req, res, next) {
   try {
     const { reportId } = req.params;
-    const data = await fetchReportData(reportId, req.query);
+    const data = await db.fetchReportData(reportId, req.query);
     res.json(data);
   } catch (err) {
     next(err);
@@ -45,7 +72,7 @@ export async function listReportWorkplaces(req, res, next) {
       }
     }
 
-    const sessions = await getEmploymentSessions(req.user.empid, {
+    const sessions = await getEmploymentSessionsImpl(req.user.empid, {
       effectiveDate,
     });
 
@@ -53,19 +80,28 @@ export async function listReportWorkplaces(req, res, next) {
       ? sessions.filter((session) => session.company_id === normalizedCompanyId)
       : sessions;
 
-    const assignments = filtered
-      .filter((session) => session.workplace_session_id != null)
-      .map((session) => ({
-        company_id: session.company_id ?? null,
+    const seen = new Set();
+    const assignments = [];
+    filtered.forEach((session) => {
+      if (!session || session.workplace_session_id == null) return;
+      const workplaceId = normalizeNumericId(session.workplace_id);
+      const workplaceSessionId = normalizeNumericId(session.workplace_session_id);
+      if (workplaceSessionId === null) return;
+      const key = `${workplaceId ?? ''}|${workplaceSessionId}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      assignments.push({
+        company_id: normalizeNumericId(session.company_id),
         company_name: session.company_name ?? null,
-        branch_id: session.branch_id ?? null,
+        branch_id: normalizeNumericId(session.branch_id),
         branch_name: session.branch_name ?? null,
-        department_id: session.department_id ?? null,
+        department_id: normalizeNumericId(session.department_id),
         department_name: session.department_name ?? null,
-        workplace_id: session.workplace_id ?? null,
+        workplace_id: workplaceId,
         workplace_name: session.workplace_name ?? null,
-        workplace_session_id: session.workplace_session_id ?? null,
-      }));
+        workplace_session_id: workplaceSessionId,
+      });
+    });
 
     res.json({ assignments });
   } catch (err) {

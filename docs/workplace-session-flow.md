@@ -10,18 +10,18 @@ server, persisted on the client, and finally rendered in the application UI.
    filtered by `company_id` when the user selects a specific company.
 2. **Normalize assignments:** `normalizeWorkplaceAssignments` converts each raw
    assignment into a canonical shape (`workplace_id`, `workplace_session_id`,
-   names, etc.) and collects the unique `workplace_session_id` values that belong
-   to the company.【F:api-server/controllers/authController.js†L26-L64】
+   names, etc.), drops entries without an active schedule, and collects the
+   unique session identifiers for the current company.【F:api-server/controllers/authController.js†L27-L86】
 3. **Normalize primary session:** `normalizeEmploymentSession` merges the primary
    employment session with the normalized assignments, fills missing
    `workplace_id`/`workplace_session_id` values with deterministic fallbacks, and
    returns an array of `workplace_session_ids` so the client can access every
-   session identifier that belongs to the company.【F:api-server/controllers/authController.js†L66-L103】
+   active session identifier that belongs to the company.【F:api-server/controllers/authController.js†L62-L86】
 4. **Return session metadata:** The login payload includes the normalized session
    object and echoes the `workplace_session_id` as well as the full list of
    `workplace_session_ids`. The same normalization path is reused by the profile
    (`/auth/me`) and refresh endpoints so every auth response exposes identical
-   metadata.【F:api-server/controllers/authController.js†L105-L186】
+   metadata that reflects only the active workplace schedules.【F:api-server/controllers/authController.js†L89-L265】【F:api-server/controllers/authController.js†L283-L358】【F:api-server/controllers/authController.js†L375-L418】
 
 ## Client persistence
 

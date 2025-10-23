@@ -27,6 +27,7 @@ function normalizeNumericId(value) {
 function normalizeWorkplaceAssignments(assignments = []) {
   const normalized = [];
   const sessionIds = [];
+  const seen = new Set();
 
   assignments.forEach((assignment) => {
     if (!assignment || typeof assignment !== 'object') return;
@@ -35,18 +36,22 @@ function normalizeWorkplaceAssignments(assignments = []) {
       assignment.workplace_session_id !== undefined
         ? assignment.workplace_session_id
         : assignment.workplaceSessionId;
-    const workplaceSessionId =
-      normalizeNumericId(rawSessionId) ?? workplaceId ?? null;
+    const workplaceSessionId = normalizeNumericId(rawSessionId);
+
+    // Only keep assignments that have an active workplace schedule.
+    if (workplaceSessionId === null) return;
+
+    const key = `${workplaceId ?? ''}|${workplaceSessionId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+
     const normalizedAssignment = {
       ...assignment,
       workplace_id: workplaceId,
       workplace_session_id: workplaceSessionId,
     };
     normalized.push(normalizedAssignment);
-    if (
-      workplaceSessionId !== null &&
-      !sessionIds.includes(workplaceSessionId)
-    ) {
+    if (!sessionIds.includes(workplaceSessionId)) {
       sessionIds.push(workplaceSessionId);
     }
   });
@@ -90,51 +95,108 @@ export async function login(req, res, next) {
     }
 
     const sessions = await getEmploymentSessions(empid);
-    const activeSessions = sessions.filter(
-      (session) => session?.workplace_session_id != null,
-    );
-
-    if (activeSessions.length === 0) {
-      return res.status(403).json({ message: 'No active workplace schedule found' });
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+      return res
+        .status(403)
+        .json({ message: 'No employment sessions available for this user' });
     }
 
-    let session = null;
-    if (companyId == null) {
-      if (activeSessions.length > 1) {
-        return res.json({ needsCompany: true, sessions: activeSessions });
+    const companyGroups = new Map();
+    sessions.forEach((session) => {
+      if (!session || typeof session !== 'object') return;
+      const normalizedCompanyId = normalizeNumericId(session.company_id);
+      const groupKey =
+        normalizedCompanyId === null
+          ? `null:${session.company_name ?? ''}`
+          : `id:${normalizedCompanyId}`;
+      if (!companyGroups.has(groupKey)) {
+        const name = session.company_name
+          ? String(session.company_name).trim()
+          : normalizedCompanyId !== null
+            ? `Company #${normalizedCompanyId}`
+            : 'Unknown company';
+        companyGroups.set(groupKey, {
+          companyId: normalizedCompanyId,
+          companyName: name,
+          sessions: [],
+        });
       }
-      session = activeSessions[0] ?? null;
-    } else {
-      session =
-        activeSessions.find((s) => s.company_id === Number(companyId)) ?? null;
-      if (!session && activeSessions.length > 0) {
+      companyGroups.get(groupKey).sessions.push(session);
+    });
+
+    const pickDefaultSession = (items = []) => {
+      if (!Array.isArray(items) || items.length === 0) return null;
+      const withWorkplace = items.find(
+        (item) => item?.workplace_session_id != null,
+      );
+      return withWorkplace ?? items[0];
+    };
+
+    const hasCompanySelection =
+      companyId !== undefined && companyId !== null;
+    let selectedCompanyId = null;
+    if (hasCompanySelection) {
+      selectedCompanyId = normalizeNumericId(companyId);
+      if (selectedCompanyId === null) {
         return res.status(400).json({ message: 'Invalid company selection' });
       }
     }
 
-    const workplaceAssignments = session
-      ? activeSessions
-          .filter((s) => s.company_id === session.company_id)
-          .map(
-            ({
-              branch_id,
-              branch_name,
-              department_id,
-              department_name,
-              workplace_id,
-              workplace_name,
-              workplace_session_id,
-            }) => ({
-              branch_id: branch_id ?? null,
-              branch_name: branch_name ?? null,
-              department_id: department_id ?? null,
-              department_name: department_name ?? null,
-              workplace_id: workplace_id ?? null,
-              workplace_name: workplace_name ?? null,
-              workplace_session_id: workplace_session_id ?? null,
-            }),
-          )
-      : [];
+    let sessionGroup = null;
+    if (!hasCompanySelection) {
+      if (companyGroups.size > 1) {
+        const options = Array.from(companyGroups.values()).map(
+          ({ companyId: id, companyName: name }) => ({
+            company_id: id,
+            company_name: name,
+          }),
+        );
+        options.sort((a, b) => {
+          const nameA = (a.company_name || '').toLowerCase();
+          const nameB = (b.company_name || '').toLowerCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          return 0;
+        });
+        return res.json({ needsCompany: true, sessions: options });
+      }
+      sessionGroup = companyGroups.values().next().value || null;
+    } else {
+      const key = `id:${selectedCompanyId}`;
+      sessionGroup = companyGroups.get(key) || null;
+      if (!sessionGroup) {
+        return res.status(400).json({ message: 'Invalid company selection' });
+      }
+    }
+
+    const session = pickDefaultSession(sessionGroup?.sessions || []);
+    if (!session) {
+      return res
+        .status(403)
+        .json({ message: 'No employment session found for the selected company' });
+    }
+
+    const workplaceAssignments = (sessionGroup?.sessions || [])
+      .filter((s) => s && s.workplace_session_id != null)
+      .map(
+        ({
+          branch_id,
+          branch_name,
+          department_id,
+          department_name,
+          workplace_id,
+          workplace_name,
+          workplace_session_id,
+        }) => ({
+          branch_id: branch_id ?? null,
+          branch_name: branch_name ?? null,
+          department_id: department_id ?? null,
+          department_name: department_name ?? null,
+          workplace_id: workplace_id ?? null,
+          workplace_name: workplace_name ?? null,
+          workplace_session_id: workplace_session_id ?? null,
+        }),
+      );
 
     const sessionPayload = session
       ? normalizeEmploymentSession(session, workplaceAssignments)
@@ -226,7 +288,11 @@ export async function getProfile(req, res) {
 
   const workplaceAssignments = session
     ? sessions
-        .filter((s) => s.company_id === session.company_id)
+        .filter(
+          (s) =>
+            s.company_id === session.company_id &&
+            s.workplace_session_id != null,
+        )
         .map(
           ({
             branch_id,
@@ -322,7 +388,11 @@ export async function refresh(req, res) {
 
     const workplaceAssignments = session
       ? sessions
-          .filter((s) => s.company_id === session.company_id)
+          .filter(
+            (s) =>
+              s.company_id === session.company_id &&
+              s.workplace_session_id != null,
+          )
           .map(
             ({
               branch_id,
