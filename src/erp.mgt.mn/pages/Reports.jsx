@@ -87,10 +87,6 @@ function normalizeWorkplaceAssignment(assignment) {
       assignment.workplaceId,
   );
 
-  if (workplaceId == null || workplaceSessionId == null) {
-    return null;
-  }
-
   return {
     ...assignment,
     workplace_id: workplaceId,

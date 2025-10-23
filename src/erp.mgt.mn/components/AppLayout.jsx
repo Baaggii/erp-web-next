@@ -59,10 +59,6 @@ export default function AppLayout({ children, title }) {
       const normalizedWorkplaceId = parseId(workplaceId);
       const normalizedSessionId = parseId(workplaceSessionId);
 
-      if (normalizedWorkplaceId === null || normalizedSessionId === null) {
-        return null;
-      }
-
       const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
       if (seenComposite.has(compositeKey)) return null;
 

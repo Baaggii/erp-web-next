@@ -3292,7 +3292,6 @@ export function Header({
           : assignment.workplaceSessionId;
       const normalizedWorkplaceId = parseId(workplaceId);
       const normalizedSessionId = parseId(sessionId);
-      if (normalizedWorkplaceId === null || normalizedSessionId === null) return;
       const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
       if (seenComposite.has(compositeKey)) return;
       if (
