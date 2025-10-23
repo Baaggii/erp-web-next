@@ -56,6 +56,7 @@ export default function AppLayout({ children, title }) {
 
       const normalizedWorkplaceId = parseId(workplaceId);
       const normalizedSessionId = parseId(workplaceSessionId);
+      if (normalizedSessionId === null) return null;
 
       const key = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
       if (seen.has(key)) return null;
@@ -94,13 +95,6 @@ export default function AppLayout({ children, title }) {
         labelParts.push(contextParts.join(' / '));
       }
 
-      if (!labelParts.length) {
-        const fallbackId = normalizedSessionId ?? normalizedWorkplaceId;
-        if (fallbackId != null) {
-          labelParts.push(`Session ${fallbackId}`);
-        }
-      }
-
       return labelParts.join(' – ');
     };
 
@@ -111,10 +105,10 @@ export default function AppLayout({ children, title }) {
       }
     });
 
-    if (!summaries.length) {
+    if (!summaries.length && session.workplace_session_id != null) {
       const fallbackLabel = formatAssignment({
         workplace_id: session.workplace_id ?? null,
-        workplace_session_id: session.workplace_session_id ?? session.workplace_id ?? null,
+        workplace_session_id: session.workplace_session_id ?? null,
         workplace_name: session.workplace_name ?? null,
         department_name: session.department_name ?? null,
         branch_name: session.branch_name ?? null,

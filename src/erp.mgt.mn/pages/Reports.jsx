@@ -79,7 +79,7 @@ const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
 export default function Reports() {
-  const { company, branch, department, position, workplace, user, session } =
+  const { company, branch, department, position, user, session } =
     useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const { addToast } = useToast();
@@ -123,6 +123,7 @@ export default function Reports() {
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
   const workplaceSelectRef = useRef(null);
+  const workplaceSelectionTouchedRef = useRef(false);
   const manualInputRefs = useRef({});
   const runButtonRef = useRef(null);
   const baseWorkplaceAssignments = useMemo(
@@ -147,10 +148,11 @@ export default function Reports() {
 
     assignments.forEach((assignment) => {
       if (!assignment || typeof assignment !== 'object') return;
-      const rawSessionId =
-        assignment.workplace_session_id ?? assignment.workplace_id;
-      if (rawSessionId == null) return;
-      const value = String(rawSessionId);
+      const sessionId = normalizeNumericId(
+        assignment.workplace_session_id ?? assignment.workplaceSessionId,
+      );
+      if (sessionId === null) return;
+      const value = String(sessionId);
       if (seen.has(value)) return;
       seen.add(value);
 
@@ -184,17 +186,11 @@ export default function Reports() {
         value,
         label: labelParts.length ? labelParts.join(' – ') : `Session ${value}`,
         workplaceId: normalizeNumericId(assignment.workplace_id),
-        workplaceSessionId: normalizeNumericId(
-          assignment.workplace_session_id ?? assignment.workplace_id,
-        ),
+        workplaceSessionId: sessionId,
       });
     });
 
-    const fallbackSessionId = normalizeNumericId(
-      session?.workplace_session_id ??
-        session?.workplace_id ??
-        normalizeNumericId(workplace),
-    );
+    const fallbackSessionId = normalizeNumericId(session?.workplace_session_id);
 
     if (usingBaseAssignments && fallbackSessionId != null) {
       const fallbackValue = String(fallbackSessionId);
@@ -230,8 +226,7 @@ export default function Reports() {
           label: labelParts.length
             ? labelParts.join(' – ')
             : `Session ${fallbackValue}`,
-          workplaceId:
-            normalizeNumericId(session?.workplace_id) ?? fallbackSessionId,
+          workplaceId: normalizeNumericId(session?.workplace_id),
           workplaceSessionId: fallbackSessionId,
         });
       }
@@ -252,7 +247,7 @@ export default function Reports() {
     }
 
     return options;
-  }, [session, workplace, workplaceAssignments, usingBaseAssignments]);
+  }, [session, workplaceAssignments, usingBaseAssignments]);
 
   const normalizedProcParams = useMemo(() => {
     return procParams.map((param) => ({
@@ -344,25 +339,63 @@ export default function Reports() {
 
   const showWorkplaceSelector = hasWorkplaceParam;
 
+  const workplaceDateQuery = useMemo(() => {
+    if (!hasWorkplaceParam) {
+      return { status: 'disabled', params: null };
+    }
+    if (requiresYearMonthParams) {
+      if (!selectedYearMonth) {
+        return { status: 'waiting', params: null };
+      }
+      return {
+        status: 'ready',
+        params: {
+          year: String(selectedYearMonth.year),
+          month: String(selectedYearMonth.month),
+        },
+      };
+    }
+    const normalizedStart = startDate ? String(startDate).trim() : '';
+    const normalizedEnd = endDate ? String(endDate).trim() : '';
+    const effective = normalizedStart || normalizedEnd;
+    if (!effective) {
+      return { status: 'waiting', params: null };
+    }
+    const params = { date: effective };
+    if (normalizedStart) params.startDate = normalizedStart;
+    if (normalizedEnd) params.endDate = normalizedEnd;
+    return { status: 'ready', params };
+  }, [
+    hasWorkplaceParam,
+    requiresYearMonthParams,
+    selectedYearMonth,
+    startDate,
+    endDate,
+  ]);
+
   useEffect(() => {
     let cancelled = false;
-    if (!hasWorkplaceParam || !requiresYearMonthParams) {
+    if (!hasWorkplaceParam) {
       setWorkplaceAssignmentsForPeriod(null);
       return () => {
         cancelled = true;
       };
     }
 
-    if (!selectedYearMonth) {
-      setWorkplaceAssignmentsForPeriod([]);
+    if (workplaceDateQuery.status !== 'ready' || !workplaceDateQuery.params) {
+      workplaceSelectionTouchedRef.current = false;
+      setWorkplaceAssignmentsForPeriod(null);
       return () => {
         cancelled = true;
       };
     }
 
     const params = new URLSearchParams();
-    params.set('year', String(selectedYearMonth.year));
-    params.set('month', String(selectedYearMonth.month));
+    Object.entries(workplaceDateQuery.params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).length) {
+        params.set(key, String(value));
+      }
+    });
     const companyIdForQuery =
       normalizeNumericId(session?.company_id) ?? normalizeNumericId(company);
     if (companyIdForQuery != null) {
@@ -370,7 +403,7 @@ export default function Reports() {
     }
 
     const controller = new AbortController();
-    setWorkplaceAssignmentsForPeriod([]);
+    workplaceSelectionTouchedRef.current = false;
 
     async function loadWorkplaceAssignments() {
       try {
@@ -389,13 +422,15 @@ export default function Reports() {
           ? data.assignments
           : [];
         if (!cancelled) {
+          workplaceSelectionTouchedRef.current = false;
           setWorkplaceAssignmentsForPeriod(assignments);
         }
       } catch (err) {
         if (cancelled || err?.name === 'AbortError') return;
+        workplaceSelectionTouchedRef.current = false;
         setWorkplaceAssignmentsForPeriod(null);
         addToast(
-          'Failed to load workplaces for the selected year and month',
+          'Failed to load workplaces for the selected period',
           'error',
         );
       }
@@ -409,8 +444,7 @@ export default function Reports() {
     };
   }, [
     hasWorkplaceParam,
-    requiresYearMonthParams,
-    selectedYearMonth,
+    workplaceDateQuery,
     session?.company_id,
     company,
     addToast,
@@ -419,18 +453,45 @@ export default function Reports() {
   useEffect(() => {
     if (!showWorkplaceSelector || !workplaceSelectOptions.length) {
       if (workplaceSelection !== ALL_WORKPLACE_OPTION) {
+        workplaceSelectionTouchedRef.current = false;
         setWorkplaceSelection(ALL_WORKPLACE_OPTION);
       }
       return;
     }
+
     const values = new Set(workplaceSelectOptions.map((option) => option.value));
+    const normalizedSessionId = normalizeNumericId(session?.workplace_session_id);
+    const preferredOption =
+      (normalizedSessionId !== null
+        ? workplaceSelectOptions.find(
+            (option) => option.workplaceSessionId === normalizedSessionId,
+          )
+        : null) ||
+      null;
+    const fallbackOption =
+      workplaceSelectOptions.find(
+        (option) => option.value !== ALL_WORKPLACE_OPTION,
+      ) || workplaceSelectOptions[0] || null;
+
+    if (!workplaceSelectionTouchedRef.current) {
+      const automaticOption = preferredOption ?? fallbackOption;
+      if (automaticOption && workplaceSelection !== automaticOption.value) {
+        setWorkplaceSelection(automaticOption.value);
+        return;
+      }
+    }
+
     if (!values.has(workplaceSelection)) {
-      setWorkplaceSelection(workplaceSelectOptions[0].value);
+      const nextOption = preferredOption ?? fallbackOption;
+      if (nextOption && workplaceSelection !== nextOption.value) {
+        setWorkplaceSelection(nextOption.value);
+      }
     }
   }, [
     showWorkplaceSelector,
     workplaceSelectOptions,
     workplaceSelection,
+    session?.workplace_session_id,
   ]);
 
   const selectedWorkplaceOption = useMemo(() => {
@@ -450,18 +511,12 @@ export default function Reports() {
       return { workplaceId: null, workplaceSessionId: null };
     }
     const workplaceSessionId = normalizeNumericId(
-      selectedWorkplaceOption.workplaceSessionId ??
-        selectedWorkplaceOption.workplaceId ??
-        selectedWorkplaceOption.value,
+      selectedWorkplaceOption.workplaceSessionId,
     );
-    const workplaceId = normalizeNumericId(
-      selectedWorkplaceOption.workplaceId ??
-        selectedWorkplaceOption.workplaceSessionId ??
-        selectedWorkplaceOption.value,
-    );
+    const workplaceId = normalizeNumericId(selectedWorkplaceOption.workplaceId);
     return {
-      workplaceId: workplaceId ?? null,
-      workplaceSessionId: workplaceSessionId ?? workplaceId ?? null,
+      workplaceId: workplaceSessionId !== null ? workplaceId ?? null : null,
+      workplaceSessionId: workplaceSessionId ?? null,
     };
   }, [showWorkplaceSelector, selectedWorkplaceOption]);
 
@@ -817,12 +872,13 @@ export default function Reports() {
     const departmentId = session?.department_id ?? normalizeNumericId(department);
     const positionId =
       session?.position_id ?? normalizeNumericId(position);
+    const baseWorkplaceSessionId = normalizeNumericId(
+      session?.workplace_session_id,
+    );
     const baseWorkplaceId =
-      session?.workplace_id ?? normalizeNumericId(workplace);
-    const baseWorkplaceSessionId =
-      normalizeNumericId(session?.workplace_session_id) ??
-      normalizeNumericId(session?.workplace_id) ??
-      normalizeNumericId(workplace);
+      baseWorkplaceSessionId !== null
+        ? normalizeNumericId(session?.workplace_id)
+        : null;
     const userEmpId =
       user?.empid ?? session?.empid ?? session?.employee_id ?? null;
     const userId = user?.id ?? session?.user_id ?? null;
@@ -830,14 +886,16 @@ export default function Reports() {
     const seniorPlanEmpId = session?.senior_plan_empid ?? null;
     const userLevel = session?.user_level ?? null;
 
-    const effectiveWorkplaceId =
-      selectedWorkplaceId != null
-        ? selectedWorkplaceId
-        : baseWorkplaceId ?? null;
     const effectiveWorkplaceSessionId =
       selectedWorkplaceSessionId != null
         ? selectedWorkplaceSessionId
-        : baseWorkplaceSessionId ?? baseWorkplaceId ?? null;
+        : baseWorkplaceSessionId;
+    const effectiveWorkplaceId =
+      selectedWorkplaceId != null
+        ? selectedWorkplaceId
+        : effectiveWorkplaceSessionId != null
+          ? baseWorkplaceId ?? null
+          : null;
 
     return {
       branchId: branchId ?? null,
@@ -859,7 +917,6 @@ export default function Reports() {
     position,
     session,
     user,
-    workplace,
     selectedWorkplaceId,
     selectedWorkplaceSessionId,
   ]);
@@ -2698,7 +2755,10 @@ export default function Reports() {
                 Workplace
                 <select
                   value={workplaceSelection}
-                  onChange={(e) => setWorkplaceSelection(e.target.value)}
+                  onChange={(e) => {
+                    workplaceSelectionTouchedRef.current = true;
+                    setWorkplaceSelection(e.target.value);
+                  }}
                   style={{ marginLeft: '0.25rem' }}
                   ref={workplaceSelectRef}
                   onKeyDown={(event) =>

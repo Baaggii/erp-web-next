@@ -2,6 +2,20 @@
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 
+function normalizeNumericId(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 // src/erp.mgt.mn/hooks/useAuth.jsx
 
 /**
@@ -45,9 +59,22 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
   if (nextData?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
-      const workplaceId = nextData.workplace ?? nextData.session?.workplace_id;
-      const workplaceSessionId = nextData.session?.workplace_session_id;
-      const workplaceSessionIds = nextData.session?.workplace_session_ids;
+      const workplaceSessionId = normalizeNumericId(
+        nextData.session?.workplace_session_id,
+      );
+      const workplaceId =
+        workplaceSessionId !== null
+          ? normalizeNumericId(
+              nextData.workplace ?? nextData.session?.workplace_id,
+            )
+          : null;
+      const workplaceSessionIds = Array.isArray(
+        nextData.session?.workplace_session_ids,
+      )
+        ? nextData.session.workplace_session_ids
+            .map((value) => normalizeNumericId(value))
+            .filter((value) => value !== null)
+        : [];
       if (nextData.session.senior_empid) {
         stored.senior_empid = nextData.session.senior_empid;
       } else {
@@ -58,20 +85,22 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       } else {
         delete stored.senior_plan_empid;
       }
-      if (workplaceId) {
-        stored.workplace = workplaceId;
-      } else {
-        delete stored.workplace;
-      }
-      if (workplaceSessionId) {
+      if (workplaceSessionId !== null) {
         stored.workplace_session_id = workplaceSessionId;
+        if (workplaceId !== null) {
+          stored.workplace = workplaceId;
+        } else {
+          delete stored.workplace;
+        }
+        if (workplaceSessionIds.length) {
+          stored.workplace_session_ids = workplaceSessionIds;
+        } else {
+          delete stored.workplace_session_ids;
+        }
       } else {
         delete stored.workplace_session_id;
-      }
-      if (Array.isArray(workplaceSessionIds) && workplaceSessionIds.length) {
-        stored.workplace_session_ids = workplaceSessionIds;
-      } else {
         delete stored.workplace_session_ids;
+        delete stored.workplace;
       }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {
@@ -113,9 +142,22 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
   if (nextData?.session) {
     try {
       const stored = JSON.parse(localStorage.getItem('erp_session_ids') || '{}');
-      const workplaceId = nextData.workplace ?? nextData.session?.workplace_id;
-      const workplaceSessionId = nextData.session?.workplace_session_id;
-      const workplaceSessionIds = nextData.session?.workplace_session_ids;
+      const workplaceSessionId = normalizeNumericId(
+        nextData.session?.workplace_session_id,
+      );
+      const workplaceId =
+        workplaceSessionId !== null
+          ? normalizeNumericId(
+              nextData.workplace ?? nextData.session?.workplace_id,
+            )
+          : null;
+      const workplaceSessionIds = Array.isArray(
+        nextData.session?.workplace_session_ids,
+      )
+        ? nextData.session.workplace_session_ids
+            .map((value) => normalizeNumericId(value))
+            .filter((value) => value !== null)
+        : [];
       if (nextData.session.senior_empid) {
         stored.senior_empid = nextData.session.senior_empid;
       } else {
@@ -126,20 +168,22 @@ export async function fetchProfile(t = (key, fallback) => fallback || key) {
       } else {
         delete stored.senior_plan_empid;
       }
-      if (workplaceId) {
-        stored.workplace = workplaceId;
-      } else {
-        delete stored.workplace;
-      }
-      if (workplaceSessionId) {
+      if (workplaceSessionId !== null) {
         stored.workplace_session_id = workplaceSessionId;
+        if (workplaceId !== null) {
+          stored.workplace = workplaceId;
+        } else {
+          delete stored.workplace;
+        }
+        if (workplaceSessionIds.length) {
+          stored.workplace_session_ids = workplaceSessionIds;
+        } else {
+          delete stored.workplace_session_ids;
+        }
       } else {
         delete stored.workplace_session_id;
-      }
-      if (Array.isArray(workplaceSessionIds) && workplaceSessionIds.length) {
-        stored.workplace_session_ids = workplaceSessionIds;
-      } else {
         delete stored.workplace_session_ids;
+        delete stored.workplace;
       }
       localStorage.setItem('erp_session_ids', JSON.stringify(stored));
     } catch {
