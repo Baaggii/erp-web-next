@@ -358,6 +358,7 @@ const TableManager = forwardRef(function TableManager({
   const [editing, setEditing] = useState(null);
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
+  const [temporaryPromotionQueue, setTemporaryPromotionQueue] = useState([]);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
@@ -2686,12 +2687,25 @@ const TableManager = forwardRef(function TableManager({
         overrideValues: cleaned,
       });
       if (ok) {
+        const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
+        setTemporaryPromotionQueue(remainingQueue);
+        setTemporarySelection((prev) => {
+          if (!prev || prev.size === 0 || !prev.has(temporaryId)) return prev;
+          const next = new Set(prev);
+          next.delete(temporaryId);
+          return next;
+        });
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
         setRequestType(null);
         setPendingTemporaryPromotion(null);
+        if (nextEntry) {
+          setTimeout(() => {
+            openTemporaryPromotion(nextEntry, { resetQueue: false });
+          }, 0);
+        }
       }
       return ok;
     }
@@ -3503,10 +3517,13 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const openTemporaryPromotion = useCallback(
-    async (entry) => {
+    async (entry, { resetQueue = true } = {}) => {
       if (!entry) return;
       const temporaryId = getTemporaryId(entry);
       if (!temporaryId) return;
+      if (resetQueue) {
+        setTemporaryPromotionQueue([]);
+      }
       await ensureColumnMeta();
 
       const valueSources = [
@@ -3558,6 +3575,7 @@ const TableManager = forwardRef(function TableManager({
       setRequestType,
       setShowTemporaryModal,
       setShowForm,
+      setTemporaryPromotionQueue,
     ],
   );
 
@@ -3670,6 +3688,18 @@ const TableManager = forwardRef(function TableManager({
     if (!canSelectTemporaries) return;
     const ids = Array.from(temporarySelection);
     if (ids.length === 0) return;
+    const pendingEntries = ids
+      .map((id) =>
+        temporaryList.find((entry) => getTemporaryId(entry) === id),
+      )
+      .filter((entry) => entry && entry.status === 'pending');
+    if (pendingEntries.length === 0) {
+      addToast(
+        t('temporary_promote_missing', 'Unable to promote temporary submission'),
+        'error',
+      );
+      return;
+    }
     if (
       !window.confirm(
         t(
@@ -3680,50 +3710,16 @@ const TableManager = forwardRef(function TableManager({
     ) {
       return;
     }
-    let successCount = 0;
-    const failedIds = [];
-    for (const id of ids) {
-      const ok = await promoteTemporary(id, {
-        skipConfirm: true,
-        silent: true,
-      });
-      if (ok) successCount += 1;
-      else failedIds.push(id);
-    }
-    if (successCount > 0) {
-      addToast(
-        t('temporary_promoted_bulk', 'Promoted {{count}} temporary transactions', {
-          count: successCount,
-        }),
-        'success',
-      );
-      await refreshTemporarySummary();
-      await fetchTemporaryList('review');
-      setLocalRefresh((r) => r + 1);
-    }
-    if (failedIds.length > 0) {
-      addToast(
-        t(
-          'temporary_promote_partial_failure',
-          'Failed to promote {{count}} transactions',
-          { count: failedIds.length },
-        ),
-        'error',
-      );
-    }
-    if (failedIds.length > 0) {
-      setTemporarySelection(new Set(failedIds));
-    } else if (successCount > 0) {
-      setTemporarySelection(new Set());
-    }
+    const [firstEntry, ...remaining] = pendingEntries;
+    setTemporaryPromotionQueue(remaining);
+    await openTemporaryPromotion(firstEntry, { resetQueue: false });
   }, [
     canSelectTemporaries,
     temporarySelection,
-    promoteTemporary,
+    temporaryList,
+    openTemporaryPromotion,
     addToast,
     t,
-    refreshTemporarySummary,
-    fetchTemporaryList,
   ]);
 
   if (!table) return null;
@@ -5424,6 +5420,7 @@ const TableManager = forwardRef(function TableManager({
           setGridRows([]);
           setRequestType(null);
           setPendingTemporaryPromotion(null);
+          setTemporaryPromotionQueue([]);
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
