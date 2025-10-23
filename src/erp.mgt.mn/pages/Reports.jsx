@@ -384,7 +384,14 @@ export default function Reports() {
 
     if (workplaceDateQuery.status !== 'ready' || !workplaceDateQuery.params) {
       workplaceSelectionTouchedRef.current = false;
-      setWorkplaceAssignmentsForPeriod(null);
+      if (workplaceDateQuery.status === 'waiting') {
+        setWorkplaceAssignmentsForPeriod((prev) => {
+          if (Array.isArray(prev) && prev.length === 0) return prev;
+          return [];
+        });
+      } else {
+        setWorkplaceAssignmentsForPeriod((prev) => (prev === null ? prev : null));
+      }
       return () => {
         cancelled = true;
       };
@@ -404,6 +411,10 @@ export default function Reports() {
 
     const controller = new AbortController();
     workplaceSelectionTouchedRef.current = false;
+    setWorkplaceAssignmentsForPeriod((prev) => {
+      if (Array.isArray(prev) && prev.length === 0) return prev;
+      return [];
+    });
 
     async function loadWorkplaceAssignments() {
       try {
@@ -460,25 +471,31 @@ export default function Reports() {
     }
 
     const values = new Set(workplaceSelectOptions.map((option) => option.value));
-    const normalizedSessionId = normalizeNumericId(session?.workplace_session_id);
+    const normalizedSessionId = normalizeNumericId(
+      session?.workplace_session_id ??
+        session?.workplace_id ??
+        workplace,
+    );
     const preferredOption =
-      (normalizedSessionId !== null
-        ? workplaceSelectOptions.find(
-            (option) => option.workplaceSessionId === normalizedSessionId,
-          )
-        : null) ||
-      null;
+      normalizedSessionId != null
+        ? workplaceSelectOptions.find((option) => {
+            if (option.workplaceSessionId != null) {
+              return option.workplaceSessionId === normalizedSessionId;
+            }
+            const numericValue = normalizeNumericId(option.value);
+            return numericValue === normalizedSessionId;
+          }) || null
+        : null;
     const fallbackOption =
       workplaceSelectOptions.find(
         (option) => option.value !== ALL_WORKPLACE_OPTION,
       ) || workplaceSelectOptions[0] || null;
 
-    if (!workplaceSelectionTouchedRef.current) {
-      const automaticOption = preferredOption ?? fallbackOption;
-      if (automaticOption && workplaceSelection !== automaticOption.value) {
-        setWorkplaceSelection(automaticOption.value);
-        return;
+    if (!workplaceSelectionTouchedRef.current && preferredOption) {
+      if (workplaceSelection !== preferredOption.value) {
+        setWorkplaceSelection(preferredOption.value);
       }
+      return;
     }
 
     if (!values.has(workplaceSelection)) {
@@ -492,6 +509,8 @@ export default function Reports() {
     workplaceSelectOptions,
     workplaceSelection,
     session?.workplace_session_id,
+    session?.workplace_id,
+    workplace,
   ]);
 
   const selectedWorkplaceOption = useMemo(() => {

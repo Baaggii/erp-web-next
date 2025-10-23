@@ -1,12 +1,50 @@
-import React, { useEffect, useState, useContext, useMemo } from 'react';
+import React, {
+  useEffect,
+  useState,
+  useContext,
+  useMemo,
+  useRef,
+} from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { refreshModules } from '../hooks/useModules.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import useGeneralConfig from '../hooks/useGeneralConfig.js';
+
+const STORAGE_KEYS = {
+  columnWidths: 'reportAccess.columnWidths',
+  rulesWidth: 'reportAccess.rulesWidth',
+};
+
+const COLUMN_DEFAULT_WIDTHS = {
+  procedure: 200,
+  label: 220,
+  branches: 240,
+  departments: 240,
+  permissions: 220,
+  visibility: 300,
+  actions: 120,
+};
+
+const COLUMN_MIN_WIDTHS = {
+  procedure: 140,
+  label: 160,
+  branches: 180,
+  departments: 180,
+  permissions: 160,
+  visibility: 200,
+  actions: 96,
+};
+
+const MIN_RULES_WIDTH = 360;
+const MAX_RULES_WIDTH = 900;
+const DEFAULT_RULES_WIDTH = 560;
+const MAX_COLUMN_WIDTH = 720;
 
 export default function AllowedReportsConfig() {
   const { addToast } = useToast();
   useContext(AuthContext); // ensure auth context usage if needed
+  const generalConfig = useGeneralConfig();
   const [reports, setReports] = useState({});
   const [proc, setProc] = useState('');
   const [branches, setBranches] = useState([]);
@@ -21,6 +59,133 @@ export default function AllowedReportsConfig() {
   const [permRows, setPermRows] = useState([]);
   const [permCfg, setPermCfg] = useState({});
   const [isLoading, setIsLoading] = useState(true);
+  const columnResizeRef = useRef({ key: null, startX: 0, startWidth: 0 });
+  const rulesResizeRef = useRef({ active: false, startX: 0, startWidth: 0 });
+  const [columnWidths, setColumnWidths] = useState(() => {
+    if (typeof window === 'undefined') {
+      return { ...COLUMN_DEFAULT_WIDTHS };
+    }
+    try {
+      const stored = window.localStorage.getItem(STORAGE_KEYS.columnWidths);
+      const parsed = stored ? JSON.parse(stored) : {};
+      return { ...COLUMN_DEFAULT_WIDTHS, ...parsed };
+    } catch {
+      return { ...COLUMN_DEFAULT_WIDTHS };
+    }
+  });
+  const [rulesWidth, setRulesWidth] = useState(() => {
+    if (typeof window === 'undefined') return DEFAULT_RULES_WIDTH;
+    const raw = Number(window.localStorage.getItem(STORAGE_KEYS.rulesWidth));
+    if (Number.isFinite(raw)) {
+      return Math.min(MAX_RULES_WIDTH, Math.max(MIN_RULES_WIDTH, raw));
+    }
+    return DEFAULT_RULES_WIDTH;
+  });
+
+  const startColumnResize = (key) => (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const currentWidth =
+      columnWidths[key] ?? COLUMN_DEFAULT_WIDTHS[key] ?? COLUMN_MIN_WIDTHS[key];
+    columnResizeRef.current = {
+      key,
+      startX: event.clientX,
+      startWidth: currentWidth,
+    };
+    if (typeof document !== 'undefined') {
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+    }
+  };
+
+  const startRulesResize = (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    rulesResizeRef.current = {
+      active: true,
+      startX: event.clientX,
+      startWidth: rulesWidth,
+    };
+    if (typeof document !== 'undefined') {
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+    }
+  };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEYS.columnWidths,
+        JSON.stringify(columnWidths),
+      );
+    } catch {
+      // ignore persistence failures
+    }
+  }, [columnWidths]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      window.localStorage.setItem(
+        STORAGE_KEYS.rulesWidth,
+        String(rulesWidth),
+      );
+    } catch {
+      // ignore persistence failures
+    }
+  }, [rulesWidth]);
+
+  useEffect(() => {
+    function handleMove(event) {
+      const { key, startX, startWidth } = columnResizeRef.current || {};
+      if (key) {
+        const delta = event.clientX - startX;
+        const minWidth = COLUMN_MIN_WIDTHS[key] ?? 120;
+        const nextWidth = Math.min(
+          MAX_COLUMN_WIDTH,
+          Math.max(minWidth, startWidth + delta),
+        );
+        setColumnWidths((prev) => {
+          if (prev[key] === nextWidth) return prev;
+          return { ...prev, [key]: nextWidth };
+        });
+        return;
+      }
+      const { active, startWidth: rulesStartWidth, startX: rulesStartX } =
+        rulesResizeRef.current || {};
+      if (active) {
+        const delta = event.clientX - rulesStartX;
+        const next = Math.min(
+          MAX_RULES_WIDTH,
+          Math.max(MIN_RULES_WIDTH, rulesStartWidth + delta),
+        );
+        setRulesWidth((prev) => (prev === next ? prev : next));
+      }
+    }
+
+    function handleUp() {
+      if (
+        (columnResizeRef.current && columnResizeRef.current.key) ||
+        rulesResizeRef.current?.active
+      ) {
+        columnResizeRef.current = { key: null, startX: 0, startWidth: 0 };
+        rulesResizeRef.current = { active: false, startX: 0, startWidth: 0 };
+        if (typeof document !== 'undefined') {
+          document.body.style.userSelect = '';
+          document.body.style.cursor = '';
+        }
+      }
+    }
+
+    document.addEventListener('mousemove', handleMove);
+    document.addEventListener('mouseup', handleUp);
+    return () => {
+      document.removeEventListener('mousemove', handleMove);
+      document.removeEventListener('mouseup', handleUp);
+    };
+  }, []);
 
   useEffect(() => {
     fetch('/api/report_access', { credentials: 'include' })
@@ -74,8 +239,59 @@ export default function AllowedReportsConfig() {
       .catch(() => setPermCfg({ idField: null, displayFields: [] }));
   }, []);
 
+  const procLabels = generalConfig?.general?.procLabels || {};
   const procedureKeys = useMemo(() => Object.keys(reports || {}), [reports]);
   const headerMappings = useHeaderMappings(procedureKeys);
+
+  const columnWidth = (key) =>
+    columnWidths[key] ??
+    COLUMN_DEFAULT_WIDTHS[key] ??
+    COLUMN_MIN_WIDTHS[key] ??
+    180;
+
+  const headerStyle = (key, align = 'left') => ({
+    textAlign: align,
+    padding: '0.5rem 0.75rem',
+    borderBottom: '1px solid #e2e8f0',
+    position: 'relative',
+    width: `${columnWidth(key)}px`,
+    minWidth: `${COLUMN_MIN_WIDTHS[key] ?? 120}px`,
+    maxWidth: `${MAX_COLUMN_WIDTH}px`,
+    boxSizing: 'border-box',
+    background: '#f1f5f9',
+  });
+
+  const cellStyle = (key, align = 'left') => ({
+    padding: '0.65rem 0.75rem',
+    borderBottom: '1px solid #e2e8f0',
+    width: `${columnWidth(key)}px`,
+    minWidth: `${COLUMN_MIN_WIDTHS[key] ?? 120}px`,
+    maxWidth: `${MAX_COLUMN_WIDTH}px`,
+    boxSizing: 'border-box',
+    textAlign: align,
+    verticalAlign: 'top',
+    whiteSpace: 'normal',
+    wordBreak: 'break-word',
+  });
+
+  const resizeHandleStyle = {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: '8px',
+    cursor: 'col-resize',
+    display: 'flex',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    height: '100%',
+  };
+
+  const resizeHandleBarStyle = {
+    width: '2px',
+    borderRadius: '9999px',
+    background: '#cbd5f5',
+    height: '100%',
+  };
 
   const branchOptions = useMemo(() => {
     const idField = branchCfg?.idField || 'id';
@@ -306,19 +522,24 @@ export default function AllowedReportsConfig() {
       <h2 style={{ marginBottom: '0.75rem' }}>Allowed Reports</h2>
       <div
         style={{
-          display: 'grid',
-          gridTemplateColumns: 'minmax(420px, 1.4fr) minmax(320px, 1fr)',
-          gap: '1.5rem',
-          alignItems: 'start',
+          display: 'flex',
+          alignItems: 'stretch',
+          gap: '0.75rem',
         }}
       >
         <div
           style={{
+            flex: '0 0 auto',
+            width: `${rulesWidth}px`,
+            minWidth: `${MIN_RULES_WIDTH}px`,
+            maxWidth: `${MAX_RULES_WIDTH}px`,
             background: '#fff',
             borderRadius: '8px',
             border: '1px solid #e5e7eb',
             boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
             overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'column',
           }}
         >
           <div
@@ -343,80 +564,92 @@ export default function AllowedReportsConfig() {
               New
             </button>
           </div>
-          <div style={{ maxHeight: '460px', overflow: 'auto' }}>
+          <div
+            style={{
+              flex: '1 1 auto',
+              maxHeight: '460px',
+              overflow: 'auto',
+            }}
+          >
             <table
               style={{
                 width: '100%',
                 borderCollapse: 'collapse',
                 fontSize: '0.95rem',
+                tableLayout: 'fixed',
               }}
             >
               <thead>
                 <tr style={{ background: '#f1f5f9' }}>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '0.5rem 0.75rem',
-                      borderBottom: '1px solid #e2e8f0',
-                      width: '22%',
-                    }}
-                  >
+                  <th style={headerStyle('procedure')}>
                     Procedure
+                    <span
+                      aria-hidden="true"
+                      onMouseDown={startColumnResize('procedure')}
+                      style={resizeHandleStyle}
+                    >
+                      <span style={resizeHandleBarStyle} />
+                    </span>
                   </th>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '0.5rem 0.75rem',
-                      borderBottom: '1px solid #e2e8f0',
-                      width: '24%',
-                    }}
-                  >
+                  <th style={headerStyle('label')}>
                     Label
+                    <span
+                      aria-hidden="true"
+                      onMouseDown={startColumnResize('label')}
+                      style={resizeHandleStyle}
+                    >
+                      <span style={resizeHandleBarStyle} />
+                    </span>
                   </th>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '0.5rem 0.75rem',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
+                  <th style={headerStyle('branches')}>
                     Branches
+                    <span
+                      aria-hidden="true"
+                      onMouseDown={startColumnResize('branches')}
+                      style={resizeHandleStyle}
+                    >
+                      <span style={resizeHandleBarStyle} />
+                    </span>
                   </th>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '0.5rem 0.75rem',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
+                  <th style={headerStyle('departments')}>
                     Departments
+                    <span
+                      aria-hidden="true"
+                      onMouseDown={startColumnResize('departments')}
+                      style={resizeHandleStyle}
+                    >
+                      <span style={resizeHandleBarStyle} />
+                    </span>
                   </th>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '0.5rem 0.75rem',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
+                  <th style={headerStyle('permissions')}>
                     Permissions
+                    <span
+                      aria-hidden="true"
+                      onMouseDown={startColumnResize('permissions')}
+                      style={resizeHandleStyle}
+                    >
+                      <span style={resizeHandleBarStyle} />
+                    </span>
                   </th>
-                  <th
-                    style={{
-                      textAlign: 'left',
-                      padding: '0.5rem 0.75rem',
-                      borderBottom: '1px solid #e2e8f0',
-                    }}
-                  >
+                  <th style={headerStyle('visibility')}>
                     Visibility
+                    <span
+                      aria-hidden="true"
+                      onMouseDown={startColumnResize('visibility')}
+                      style={resizeHandleStyle}
+                    >
+                      <span style={resizeHandleBarStyle} />
+                    </span>
                   </th>
-                  <th
-                    style={{
-                      textAlign: 'right',
-                      padding: '0.5rem 0.75rem',
-                      borderBottom: '1px solid #e2e8f0',
-                      width: '80px',
-                    }}
-                  ></th>
+                  <th style={headerStyle('actions', 'right')}>
+                    <span
+                      aria-hidden="true"
+                      onMouseDown={startColumnResize('actions')}
+                      style={resizeHandleStyle}
+                    >
+                      <span style={resizeHandleBarStyle} />
+                    </span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -440,41 +673,43 @@ export default function AllowedReportsConfig() {
                     const hasBranches = branches.length > 0;
                     const hasDepartments = departments.length > 0;
                     const hasPermissions = permissionsList.length > 0;
-                    const allOpen = !hasBranches && !hasDepartments && !hasPermissions;
-                    const label = headerMappings?.[p];
+                    const allOpen =
+                      !hasBranches && !hasDepartments && !hasPermissions;
+                    const labelValue =
+                      procLabels[p] || headerMappings?.[p] || '';
                     return (
                       <tr key={p}>
                         <td
                           style={{
-                            padding: '0.65rem 0.75rem',
-                            borderBottom: '1px solid #e2e8f0',
+                            ...cellStyle('procedure'),
                             fontFamily: 'monospace',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
                           }}
                         >
                           {p}
                         </td>
                         <td
                           style={{
-                            padding: '0.65rem 0.75rem',
-                            borderBottom: '1px solid #e2e8f0',
-                            color: label ? '#0f172a' : '#94a3b8',
+                            ...cellStyle('label'),
+                            color: labelValue ? '#0f172a' : '#94a3b8',
                           }}
                         >
-                          {label || '—'}
+                          {labelValue || '—'}
                         </td>
-                        <td style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={cellStyle('branches')}>
                           {renderCollection(branches, branchLabelMap)}
                         </td>
-                        <td style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={cellStyle('departments')}>
                           {renderCollection(departments, deptLabelMap)}
                         </td>
-                        <td style={{ padding: '0.65rem 0.75rem', borderBottom: '1px solid #e2e8f0' }}>
+                        <td style={cellStyle('permissions')}>
                           {renderPermissions(permissionsList)}
                         </td>
                         <td
                           style={{
-                            padding: '0.65rem 0.75rem',
-                            borderBottom: '1px solid #e2e8f0',
+                            ...cellStyle('visibility'),
                             color: allOpen ? '#b91c1c' : '#0f172a',
                             fontSize: '0.85rem',
                             lineHeight: 1.4,
@@ -483,9 +718,11 @@ export default function AllowedReportsConfig() {
                           {allOpen
                             ? 'Hidden (no restrictions)'
                             : [
-                                hasBranches ? `${branches.length} branch${
+                                hasBranches
+                                  ? `${branches.length} branch${
                                       branches.length === 1 ? '' : 'es'
-                                    }` : 'All branches',
+                                    }`
+                                  : 'All branches',
                                 hasDepartments
                                   ? `${departments.length} department${
                                       departments.length === 1 ? '' : 's'
@@ -500,12 +737,14 @@ export default function AllowedReportsConfig() {
                         </td>
                         <td
                           style={{
-                            padding: '0.5rem 0.75rem',
-                            borderBottom: '1px solid #e2e8f0',
-                            textAlign: 'right',
+                            ...cellStyle('actions', 'right'),
+                            whiteSpace: 'nowrap',
                           }}
                         >
-                          <button onClick={() => edit(p)} style={{ marginRight: '0.35rem' }}>
+                          <button
+                            onClick={() => edit(p)}
+                            style={{ marginRight: '0.35rem' }}
+                          >
                             Edit
                           </button>
                           <button onClick={() => handleDelete(p)}>Delete</button>
@@ -519,12 +758,30 @@ export default function AllowedReportsConfig() {
           </div>
         </div>
         <div
+          role="separator"
+          aria-orientation="vertical"
+          onMouseDown={startRulesResize}
           style={{
+            flex: '0 0 auto',
+            width: '8px',
+            cursor: 'col-resize',
+            display: 'flex',
+            alignItems: 'stretch',
+            justifyContent: 'center',
+          }}
+        >
+          <span style={resizeHandleBarStyle} />
+        </div>
+        <div
+          style={{
+            flex: '1 1 0%',
+            minWidth: '280px',
             background: '#fff',
             borderRadius: '8px',
             border: '1px solid #e5e7eb',
             boxShadow: '0 1px 2px rgba(15, 23, 42, 0.08)',
             padding: '1rem 1.25rem',
+            minHeight: 0,
           }}
         >
           <div>
