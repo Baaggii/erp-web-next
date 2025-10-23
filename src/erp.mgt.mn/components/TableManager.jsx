@@ -387,6 +387,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
   const temporaryRowRefs = useRef(new Map());
+  const autoTemporaryLoadScopesRef = useRef(new Set());
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -3422,7 +3423,12 @@ const TableManager = forwardRef(function TableManager({
     lastExternalTriggerRef.current = triggerKey;
     setTemporaryScope(scopeToOpen);
     setShowTemporaryModal(true);
-    fetchTemporaryList(scopeToOpen);
+    autoTemporaryLoadScopesRef.current.delete(scopeToOpen);
+    const focusId =
+      queuedTemporaryTrigger.id != null && queuedTemporaryTrigger.id !== ''
+        ? queuedTemporaryTrigger.id
+        : null;
+    fetchTemporaryList(scopeToOpen, focusId ? { focusId } : undefined);
   }, [
     fetchTemporaryList,
     queuedTemporaryTrigger,
@@ -3431,6 +3437,33 @@ const TableManager = forwardRef(function TableManager({
     temporarySummary,
     availableTemporaryScopes,
     defaultTemporaryScope,
+  ]);
+
+  useEffect(() => {
+    if (!showTemporaryModal) {
+      autoTemporaryLoadScopesRef.current.clear();
+      return;
+    }
+    if (
+      !supportsTemporary ||
+      availableTemporaryScopes.length === 0 ||
+      temporaryLoading ||
+      temporaryList.length > 0
+    ) {
+      return;
+    }
+    const attemptedScopes = autoTemporaryLoadScopesRef.current;
+    if (attemptedScopes.has(temporaryScope)) return;
+    attemptedScopes.add(temporaryScope);
+    fetchTemporaryList(temporaryScope);
+  }, [
+    showTemporaryModal,
+    supportsTemporary,
+    availableTemporaryScopes,
+    temporaryLoading,
+    temporaryList.length,
+    temporaryScope,
+    fetchTemporaryList,
   ]);
 
   async function promoteTemporary(
