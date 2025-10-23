@@ -131,9 +131,15 @@ export async function listReportWorkplaces(req, res, next) {
       effectiveDate,
     });
 
-    const filtered = normalizedCompanyId
-      ? sessions.filter((session) => session.company_id === normalizedCompanyId)
-      : sessions;
+    const filtered =
+      normalizedCompanyId !== null
+        ? sessions.filter((session) => {
+            const sessionCompanyId = normalizeNumericId(
+              session?.company_id ?? session?.companyId,
+            );
+            return sessionCompanyId === normalizedCompanyId;
+          })
+        : sessions;
 
     const seen = new Set();
     const assignments = [];
