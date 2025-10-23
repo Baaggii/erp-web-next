@@ -36,14 +36,12 @@ export default function normalizeEmploymentSession(session) {
 
   const normalizedAssignments = rawAssignments.reduce((list, assignment) => {
     if (!assignment || typeof assignment !== 'object') return list;
+    const sessionId = normalizeNumericId(
+      assignment.workplace_session_id ?? assignment.workplaceSessionId,
+    );
+    if (sessionId === null) return list;
     const workplaceId = normalizeNumericId(
       assignment.workplace_id ?? assignment.workplaceId,
-    );
-    const sessionId = normalizeNumericId(
-      assignment.workplace_session_id ??
-        assignment.workplaceSessionId ??
-        assignment.workplace_id ??
-        assignment.workplaceId,
     );
     const normalizedAssignment = {
       ...assignment,
@@ -62,10 +60,7 @@ export default function normalizeEmploymentSession(session) {
     session.workplace_id ?? session.workplaceId,
   );
   const normalizedSessionId = normalizeNumericId(
-    session.workplace_session_id ??
-      session.workplaceSessionId ??
-      session.workplace_id ??
-      session.workplaceId,
+    session.workplace_session_id ?? session.workplaceSessionId,
   );
 
   const fallbackWorkplaceId =

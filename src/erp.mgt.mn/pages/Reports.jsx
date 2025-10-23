@@ -79,7 +79,7 @@ const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
 export default function Reports() {
-  const { company, branch, department, position, workplace, user, session } =
+  const { company, branch, department, position, user, session } =
     useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const { addToast } = useToast();
@@ -148,10 +148,11 @@ export default function Reports() {
 
     assignments.forEach((assignment) => {
       if (!assignment || typeof assignment !== 'object') return;
-      const rawSessionId =
-        assignment.workplace_session_id ?? assignment.workplace_id;
-      if (rawSessionId == null) return;
-      const value = String(rawSessionId);
+      const sessionId = normalizeNumericId(
+        assignment.workplace_session_id ?? assignment.workplaceSessionId,
+      );
+      if (sessionId === null) return;
+      const value = String(sessionId);
       if (seen.has(value)) return;
       seen.add(value);
 
@@ -185,17 +186,11 @@ export default function Reports() {
         value,
         label: labelParts.length ? labelParts.join(' – ') : `Session ${value}`,
         workplaceId: normalizeNumericId(assignment.workplace_id),
-        workplaceSessionId: normalizeNumericId(
-          assignment.workplace_session_id ?? assignment.workplace_id,
-        ),
+        workplaceSessionId: sessionId,
       });
     });
 
-    const fallbackSessionId = normalizeNumericId(
-      session?.workplace_session_id ??
-        session?.workplace_id ??
-        normalizeNumericId(workplace),
-    );
+    const fallbackSessionId = normalizeNumericId(session?.workplace_session_id);
 
     if (usingBaseAssignments && fallbackSessionId != null) {
       const fallbackValue = String(fallbackSessionId);
@@ -231,8 +226,7 @@ export default function Reports() {
           label: labelParts.length
             ? labelParts.join(' – ')
             : `Session ${fallbackValue}`,
-          workplaceId:
-            normalizeNumericId(session?.workplace_id) ?? fallbackSessionId,
+          workplaceId: normalizeNumericId(session?.workplace_id),
           workplaceSessionId: fallbackSessionId,
         });
       }
@@ -253,7 +247,7 @@ export default function Reports() {
     }
 
     return options;
-  }, [session, workplace, workplaceAssignments, usingBaseAssignments]);
+  }, [session, workplaceAssignments, usingBaseAssignments]);
 
   const normalizedProcParams = useMemo(() => {
     return procParams.map((param) => ({
@@ -536,18 +530,12 @@ export default function Reports() {
       return { workplaceId: null, workplaceSessionId: null };
     }
     const workplaceSessionId = normalizeNumericId(
-      selectedWorkplaceOption.workplaceSessionId ??
-        selectedWorkplaceOption.workplaceId ??
-        selectedWorkplaceOption.value,
+      selectedWorkplaceOption.workplaceSessionId,
     );
-    const workplaceId = normalizeNumericId(
-      selectedWorkplaceOption.workplaceId ??
-        selectedWorkplaceOption.workplaceSessionId ??
-        selectedWorkplaceOption.value,
-    );
+    const workplaceId = normalizeNumericId(selectedWorkplaceOption.workplaceId);
     return {
-      workplaceId: workplaceId ?? null,
-      workplaceSessionId: workplaceSessionId ?? workplaceId ?? null,
+      workplaceId: workplaceSessionId !== null ? workplaceId ?? null : null,
+      workplaceSessionId: workplaceSessionId ?? null,
     };
   }, [showWorkplaceSelector, selectedWorkplaceOption]);
 
@@ -903,12 +891,13 @@ export default function Reports() {
     const departmentId = session?.department_id ?? normalizeNumericId(department);
     const positionId =
       session?.position_id ?? normalizeNumericId(position);
+    const baseWorkplaceSessionId = normalizeNumericId(
+      session?.workplace_session_id,
+    );
     const baseWorkplaceId =
-      session?.workplace_id ?? normalizeNumericId(workplace);
-    const baseWorkplaceSessionId =
-      normalizeNumericId(session?.workplace_session_id) ??
-      normalizeNumericId(session?.workplace_id) ??
-      normalizeNumericId(workplace);
+      baseWorkplaceSessionId !== null
+        ? normalizeNumericId(session?.workplace_id)
+        : null;
     const userEmpId =
       user?.empid ?? session?.empid ?? session?.employee_id ?? null;
     const userId = user?.id ?? session?.user_id ?? null;
@@ -916,14 +905,16 @@ export default function Reports() {
     const seniorPlanEmpId = session?.senior_plan_empid ?? null;
     const userLevel = session?.user_level ?? null;
 
-    const effectiveWorkplaceId =
-      selectedWorkplaceId != null
-        ? selectedWorkplaceId
-        : baseWorkplaceId ?? null;
     const effectiveWorkplaceSessionId =
       selectedWorkplaceSessionId != null
         ? selectedWorkplaceSessionId
-        : baseWorkplaceSessionId ?? baseWorkplaceId ?? null;
+        : baseWorkplaceSessionId;
+    const effectiveWorkplaceId =
+      selectedWorkplaceId != null
+        ? selectedWorkplaceId
+        : effectiveWorkplaceSessionId != null
+          ? baseWorkplaceId ?? null
+          : null;
 
     return {
       branchId: branchId ?? null,
@@ -945,7 +936,6 @@ export default function Reports() {
     position,
     session,
     user,
-    workplace,
     selectedWorkplaceId,
     selectedWorkplaceSessionId,
   ]);
