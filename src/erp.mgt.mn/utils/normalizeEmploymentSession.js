@@ -76,7 +76,6 @@ export default function normalizeEmploymentSession(session) {
 
   const fallbackSessionId =
     normalizedSessionId ??
-    fallbackWorkplaceId ??
     (assignmentSessionIds.length ? assignmentSessionIds[0] : null);
 
   return {

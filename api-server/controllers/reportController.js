@@ -38,25 +38,42 @@ export async function getReportData(req, res, next) {
   }
 }
 
+function parseDateOnly(value) {
+  if (value === undefined || value === null) return null;
+  const str = typeof value === 'string' ? value.trim() : String(value);
+  if (!str) return null;
+  // Accept YYYY-MM-DD or YYYY/MM/DD formats
+  const normalized = str.replace(/\//g, '-');
+  const match = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (!match) return null;
+  const [_, yearStr, monthStr, dayStr] = match;
+  const year = Number.parseInt(yearStr, 10);
+  const month = Number.parseInt(monthStr, 10);
+  const day = Number.parseInt(dayStr, 10);
+  if (
+    !Number.isFinite(year) ||
+    year < 1900 ||
+    year > 9999 ||
+    !Number.isFinite(month) ||
+    month < 1 ||
+    month > 12 ||
+    !Number.isFinite(day) ||
+    day < 1 ||
+    day > 31
+  ) {
+    return null;
+  }
+  const utcDate = Date.UTC(year, month - 1, day);
+  if (!Number.isFinite(utcDate)) return null;
+  return new Date(utcDate);
+}
+
 export async function listReportWorkplaces(req, res, next) {
   try {
     if (!req.user?.empid) {
       return res.status(400).json({ message: 'Missing employee context' });
     }
 
-    const { year, month } = req.query;
-    const parsedYear = Number.parseInt(year, 10);
-    const parsedMonth = Number.parseInt(month, 10);
-
-    if (!Number.isFinite(parsedYear) || parsedYear < 1900 || parsedYear > 9999) {
-      return res.status(400).json({ message: 'Invalid year value' });
-    }
-
-    if (!Number.isFinite(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) {
-      return res.status(400).json({ message: 'Invalid month value' });
-    }
-
-    const effectiveDate = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
     const companyInput = req.query.companyId ?? req.user.companyId;
     let normalizedCompanyId = null;
     if (companyInput !== undefined && companyInput !== null) {
@@ -70,6 +87,38 @@ export async function listReportWorkplaces(req, res, next) {
           normalizedCompanyId = numeric;
         }
       }
+    }
+
+    let effectiveDate = null;
+    const explicitDate =
+      parseDateOnly(req.query.date) ||
+      parseDateOnly(req.query.startDate) ||
+      parseDateOnly(req.query.endDate);
+    if (explicitDate) {
+      effectiveDate = explicitDate;
+    } else {
+      const { year, month } = req.query;
+      if (year === undefined || month === undefined) {
+        return res
+          .status(400)
+          .json({ message: 'Missing effective date parameters' });
+      }
+      const parsedYear = Number.parseInt(year, 10);
+      const parsedMonth = Number.parseInt(month, 10);
+
+      if (!Number.isFinite(parsedYear) || parsedYear < 1900 || parsedYear > 9999) {
+        return res.status(400).json({ message: 'Invalid year value' });
+      }
+
+      if (!Number.isFinite(parsedMonth) || parsedMonth < 1 || parsedMonth > 12) {
+        return res.status(400).json({ message: 'Invalid month value' });
+      }
+
+      effectiveDate = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
+    }
+
+    if (!(effectiveDate instanceof Date) || Number.isNaN(effectiveDate.getTime())) {
+      return res.status(400).json({ message: 'Invalid date parameters' });
     }
 
     const sessions = await getEmploymentSessionsImpl(req.user.empid, {
