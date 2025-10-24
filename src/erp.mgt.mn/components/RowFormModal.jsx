@@ -2014,6 +2014,7 @@ const RowFormModal = function RowFormModal({
           labelFields={relationConfigMap[c].displayFields || []}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
+            notifyAutoResetGuardOnEdit(c);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -2055,6 +2056,7 @@ const RowFormModal = function RowFormModal({
           idField={viewDisplays[viewSourceMap[c]]?.idField || c}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
+            notifyAutoResetGuardOnEdit(c);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -2096,6 +2098,7 @@ const RowFormModal = function RowFormModal({
           idField={autoSelectConfigs[c].idField}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
+            notifyAutoResetGuardOnEdit(c);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -2130,6 +2133,7 @@ const RowFormModal = function RowFormModal({
         value={formVals[c]}
         onFocus={() => handleFocusField(c)}
         onChange={(e) => {
+          notifyAutoResetGuardOnEdit(c);
           const value = e.target.value;
           setFormValuesWithGenerated((prev) => {
             if (prev[c] === value) return prev;
@@ -2178,6 +2182,7 @@ const RowFormModal = function RowFormModal({
             : formVals[c]
         }
         onChange={(e) => {
+          notifyAutoResetGuardOnEdit(c);
           const value = e.target.value;
           setFormValuesWithGenerated((prev) => {
             if (prev[c] === value) return prev;
