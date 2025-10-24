@@ -1043,8 +1043,7 @@ export async function getEmploymentSessions(empid, options = {}) {
     "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
   );
 
-    const [rows] = await pool.query(
-      `SELECT
+  const sql = `SELECT
           e.employment_company_id AS company_id,
           ${companyRel.nameExpr} AS company_name,
           e.employment_branch_id AS branch_id,
@@ -1118,10 +1117,23 @@ export async function getEmploymentSessions(empid, options = {}) {
                 e.employment_senior_empid,
                 e.employment_senior_plan_empid,
                 employee_name, e.employment_user_level, ul.name
-      ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`,
-      [...scheduleDateParams, empid],
-    );
-  return rows.map(mapEmploymentRow);
+      ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
+  const params = [...scheduleDateParams, empid];
+  const [rows] = await pool.query(sql, params);
+  const sessions = rows.map(mapEmploymentRow);
+  if (options?.includeDiagnostics) {
+    const formattedSql =
+      typeof mysql?.format === 'function' ? mysql.format(sql, params) : null;
+    Object.defineProperty(sessions, '__diagnostics', {
+      value: {
+        sql,
+        params,
+        formattedSql,
+      },
+      enumerable: false,
+    });
+  }
+  return sessions;
 }
 
 /**
