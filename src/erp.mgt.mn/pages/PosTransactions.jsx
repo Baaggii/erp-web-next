@@ -314,17 +314,41 @@ export function buildComputedFieldMap(
   });
 
   (posFields || []).forEach((entry = {}) => {
-    const parts = Array.isArray(entry.parts) ? entry.parts : [];
-    if (parts.length < 2) return;
-    const calcParts = parts.slice(1).filter((cell = {}) => {
-      if (!cell) return false;
+    const parts = Array.isArray(entry.parts) ? entry.parts.filter(Boolean) : [];
+    if (parts.length === 0) return;
+
+    const [target, ...rest] = parts;
+    const targetTable = typeof target?.table === 'string' ? target.table.trim() : '';
+    const targetField = typeof target?.field === 'string' ? target.field.trim() : '';
+    if (!targetTable || !targetField) return;
+
+    const normalizedRest = rest.filter((cell = {}) => cell && typeof cell === 'object');
+    const hasFormulaSources = normalizedRest.some((cell = {}) => {
       const tbl = typeof cell.table === 'string' ? cell.table.trim() : '';
       const fld = typeof cell.field === 'string' ? cell.field.trim() : '';
       return Boolean(tbl && fld);
     });
-    if (calcParts.length === 0) return;
-    const target = parts[0];
-    if (target) addField(target.table, target.field, 'posFormula');
+
+    const hasExplicitOperators = normalizedRest.some((cell = {}) => {
+      const agg = typeof cell.agg === 'string' ? cell.agg.trim() : '';
+      if (!agg) return false;
+      if (agg === '=') return false;
+      return true;
+    });
+
+    const hasLiteralValue = normalizedRest.some((cell = {}) => {
+      if (cell.value === 0) return true;
+      if (cell.value === null || cell.value === undefined) return false;
+      if (typeof cell.value === 'string') return cell.value.trim() !== '';
+      return true;
+    });
+
+    const targetDeclaresEquality =
+      typeof target?.agg === 'string' && target.agg.trim() === '=' && normalizedRest.length === 0;
+
+    if (hasFormulaSources || hasExplicitOperators || hasLiteralValue || targetDeclaresEquality) {
+      addField(targetTable, targetField, 'posFormula');
+    }
   });
 
   return result;
