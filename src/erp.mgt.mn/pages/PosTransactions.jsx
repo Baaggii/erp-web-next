@@ -134,8 +134,16 @@ function getCalcFieldCells(map) {
   );
 }
 
-export function findCalcFieldMismatch(data, calcFields) {
+export function findCalcFieldMismatch(data, calcFields, options = {}) {
   if (!Array.isArray(calcFields) || calcFields.length === 0) return null;
+
+  const tablesFilter = Array.isArray(options?.tables)
+    ? new Set(
+        options.tables
+          .map((table) => (typeof table === 'string' ? table.trim() : ''))
+          .filter(Boolean),
+      )
+    : null;
 
   const base = data && typeof data === 'object' ? data : {};
   const expected = syncCalcFields(base, calcFields);
@@ -146,15 +154,31 @@ export function findCalcFieldMismatch(data, calcFields) {
     if (cells.length < 2) continue;
 
     for (const cell of cells) {
+      if (tablesFilter && !tablesFilter.has(cell.table)) continue;
       const actualContainer = base[cell.table];
       const expectedContainer = expected[cell.table];
       const mismatch = compareCellValues(actualContainer, expectedContainer, cell.field);
 
       if (mismatch) {
+        const location = [cell.table, cell.field].filter(Boolean).join('.');
+        const rowHint =
+          typeof mismatch.rowIndex === 'number' ? ` (row ${mismatch.rowIndex + 1})` : '';
+        const messageParts = [];
+        if (map?.name) {
+          messageParts.push(`Map ${map.name}`);
+        }
+        messageParts.push(`Mismatch for ${location}${rowHint}`);
+        if (mismatch.expected !== undefined && mismatch.expected !== null) {
+          messageParts.push(`expected ${mismatch.expected}`);
+        }
+        if (mismatch.actual !== undefined && mismatch.actual !== null) {
+          messageParts.push(`found ${mismatch.actual}`);
+        }
         return {
           map,
           table: cell.table,
           field: cell.field,
+          message: messageParts.join(': '),
           ...mismatch,
         };
       }
@@ -239,7 +263,6 @@ export function buildComputedFieldMap(
   columnCaseMap = {},
   tables = [],
 ) {
-  const AGGREGATE_FUNCTIONS = new Set(['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']);
   const tableCaseMap = {};
   tables.forEach((entry) => {
     if (!entry) return;
@@ -299,16 +322,16 @@ export function buildComputedFieldMap(
 
   calcFields.forEach((map = {}) => {
     const cells = getCalcFieldCells(map);
-    if (cells.length < 2) return;
-    const aggregateCells = cells.filter((cell = {}) => {
-      const agg = typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
-      if (!agg) return false;
-      return AGGREGATE_FUNCTIONS.has(agg);
-    });
-    if (aggregateCells.length === 0) return;
-    cells.forEach((cell = {}) => {
-      const agg = typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
-      if (agg && AGGREGATE_FUNCTIONS.has(agg)) return;
+    if (cells.length === 0) return;
+    const computedIndexes = Array.isArray(map.__computedCellIndexes)
+      ? map.__computedCellIndexes
+          .map((idx) => (Number.isInteger(idx) ? idx : null))
+          .filter((idx) => idx !== null)
+      : [];
+    if (computedIndexes.length === 0) return;
+    computedIndexes.forEach((idx) => {
+      const cell = cells[idx];
+      if (!cell) return;
       addField(cell.table, cell.field, 'calcField');
     });
   });

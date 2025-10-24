@@ -4,6 +4,7 @@ import {
   valuesEqual,
 } from './generatedColumns.js';
 import { syncCalcFields } from './syncCalcFields.js';
+import { parseLocalizedNumber } from '../../../utils/parseLocalizedNumber.js';
 
 const arrayIndexPattern = /^(0|[1-9]\d*)$/;
 
@@ -224,6 +225,67 @@ export function applyGeneratedColumnsForValues(valuesByTable, pipelineMap) {
   return mutated ? next : valuesByTable;
 }
 
+function coerceNumber(value) {
+  const num = parseLocalizedNumber(value);
+  if (num === null) {
+    if (value === null || value === undefined || value === '') return 0;
+    const direct = Number(value);
+    return Number.isFinite(direct) ? direct : 0;
+  }
+  return num;
+}
+
+function computePosAggregator(agg, source, field) {
+  if (!agg) return null;
+  const key = agg.trim().toUpperCase();
+  if (key === 'SUM' || key === 'AVG' || key === 'MIN' || key === 'MAX') {
+    let values = [];
+    if (Array.isArray(source)) {
+      values = source
+        .filter(isPlainRecord)
+        .map((row) => parseLocalizedNumber(row?.[field]))
+        .filter((num) => num !== null);
+    } else if (isPlainRecord(source)) {
+      const single = parseLocalizedNumber(source[field]);
+      if (single !== null) values = [single];
+    }
+    if (values.length === 0) {
+      return key === 'MIN' ? Infinity : key === 'MAX' ? -Infinity : 0;
+    }
+    if (key === 'SUM') {
+      return values.reduce((acc, num) => acc + num, 0);
+    }
+    if (key === 'AVG') {
+      return values.reduce((acc, num) => acc + num, 0) / values.length;
+    }
+    if (key === 'MIN') {
+      return Math.min(...values);
+    }
+    if (key === 'MAX') {
+      return Math.max(...values);
+    }
+  }
+  if (key === 'COUNT') {
+    if (Array.isArray(source)) {
+      return source.filter((row) => {
+        if (!isPlainRecord(row)) return false;
+        const value = row[field];
+        if (value === undefined || value === null) return false;
+        if (typeof value === 'string' && value.trim() === '') return false;
+        return true;
+      }).length;
+    }
+    if (isPlainRecord(source)) {
+      const value = source[field];
+      if (value === undefined || value === null) return 0;
+      if (typeof value === 'string' && value.trim() === '') return 0;
+      return 1;
+    }
+    return 0;
+  }
+  return null;
+}
+
 export function applyPosFields(vals, posFieldConfig) {
   if (!Array.isArray(posFieldConfig)) return vals;
 
@@ -240,33 +302,45 @@ export function applyPosFields(vals, posFieldConfig) {
     for (const p of calc) {
       if (!p?.table || !p?.field) continue;
       const data = next[p.table];
-      let num = 0;
+      const agg = typeof p.agg === 'string' ? p.agg.trim().toUpperCase() : '';
 
-      if (Array.isArray(data)) {
-        if (p.agg === 'SUM' || p.agg === 'AVG') {
-          const sum = data.reduce(
-            (sumAcc, row) => sumAcc + (Number(row?.[p.field]) || 0),
-            0,
-          );
-          num = p.agg === 'AVG' ? (data.length ? sum / data.length : 0) : sum;
+      let num = null;
+      if (agg) {
+        num = computePosAggregator(agg, data, p.field);
+      }
+      if (num === null || num === Infinity || num === -Infinity) {
+        if (Array.isArray(data)) {
+          const first = data.find((row) => isPlainRecord(row) && row[p.field] !== undefined);
+          num = coerceNumber(first?.[p.field]);
+        } else if (isPlainRecord(data)) {
+          num = coerceNumber(data[p.field]);
         } else {
-          num = Number(data[0]?.[p.field]) || 0;
+          num = 0;
         }
-      } else {
-        num = Number(data?.[p.field]) || 0;
       }
 
-      if (p.agg === '=' && !init) {
+      if (agg === '=' && !init) {
         val = num;
         init = true;
-      } else if (p.agg === '+') {
+      } else if (agg === '+') {
         val += num;
-      } else if (p.agg === '-') {
+      } else if (agg === '-') {
         val -= num;
-      } else if (p.agg === '*') {
+      } else if (agg === '*') {
         val *= num;
-      } else if (p.agg === '/') {
-        val /= num;
+      } else if (agg === '/') {
+        if (num === 0) {
+          val = 0;
+        } else {
+          val /= num;
+        }
+      } else if (agg === 'SUM' || agg === 'AVG' || agg === 'MIN' || agg === 'MAX' || agg === 'COUNT') {
+        if (!init) {
+          val = num;
+          init = true;
+        } else {
+          val = num;
+        }
       } else {
         val = num;
         init = true;
