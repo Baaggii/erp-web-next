@@ -443,6 +443,24 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
+              title={t('pos_guard_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Display reasons when POS fields are read-only',
+              })}
+            >
+              <label>
+                Show POS Guard Toasts{' '}
+                <input
+                  name="posGuardToastEnabled"
+                  type="checkbox"
+                  checked={active.posGuardToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
               title={t('workplace_toast_enabled', {
                 ns: 'tooltip',
                 defaultValue: 'Display workplace fetch diagnostics in Reports',

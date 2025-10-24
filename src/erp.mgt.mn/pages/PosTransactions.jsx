@@ -251,31 +251,50 @@ export function buildComputedFieldMap(
 
   const result = {};
 
-  const ensureTableSet = (table) => {
+  const ensureTableEntry = (table) => {
     const normalized = String(table);
     if (!normalized) return null;
     if (!tableCaseMap[normalized.toLowerCase()]) {
       tableCaseMap[normalized.toLowerCase()] = normalized;
     }
     const canonical = tableCaseMap[normalized.toLowerCase()] || normalized;
-    if (!result[canonical]) result[canonical] = new Set();
+    if (!result[canonical]) {
+      const set = new Set();
+      set.reasonMap = new Map();
+      result[canonical] = set;
+    } else if (!(result[canonical].reasonMap instanceof Map)) {
+      result[canonical].reasonMap = new Map();
+    }
     return { set: result[canonical], table: canonical };
   };
 
-  const addField = (table, field) => {
+  const addField = (table, field, reason) => {
     if (!table || !field) return;
     const rawTable = String(table);
     const rawField = String(field);
     if (!rawTable || !rawField) return;
     const lowerTable = rawTable.toLowerCase();
+    if (!tableCaseMap[lowerTable]) {
+      tableCaseMap[lowerTable] = rawTable;
+    }
     const canonicalTable = tableCaseMap[lowerTable] || rawTable;
-    const tableEntry = ensureTableSet(canonicalTable);
-    if (!tableEntry) return;
     const caseMap = columnCaseMap[canonicalTable] || {};
     const lowerField = rawField.toLowerCase();
     const canonicalField = caseMap[lowerField] || rawField;
     const normalizedField = String(canonicalField).toLowerCase();
+    const tableEntry = ensureTableEntry(canonicalTable);
+    if (!tableEntry) return;
     tableEntry.set.add(normalizedField);
+    if (reason) {
+      const map = tableEntry.set.reasonMap || new Map();
+      let reasonSet = map.get(normalizedField);
+      if (!reasonSet) {
+        reasonSet = new Set();
+        map.set(normalizedField, reasonSet);
+      }
+      reasonSet.add(reason);
+      tableEntry.set.reasonMap = map;
+    }
   };
 
   calcFields.forEach((map = {}) => {
@@ -290,15 +309,22 @@ export function buildComputedFieldMap(
     cells.forEach((cell = {}) => {
       const agg = typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
       if (agg && AGGREGATE_FUNCTIONS.has(agg)) return;
-      addField(cell.table, cell.field);
+      addField(cell.table, cell.field, 'calcField');
     });
   });
 
   (posFields || []).forEach((entry = {}) => {
     const parts = Array.isArray(entry.parts) ? entry.parts : [];
-    if (parts.length === 0) return;
+    if (parts.length < 2) return;
+    const calcParts = parts.slice(1).filter((cell = {}) => {
+      if (!cell) return false;
+      const tbl = typeof cell.table === 'string' ? cell.table.trim() : '';
+      const fld = typeof cell.field === 'string' ? cell.field.trim() : '';
+      return Boolean(tbl && fld);
+    });
+    if (calcParts.length === 0) return;
     const target = parts[0];
-    if (target) addField(target.table, target.field);
+    if (target) addField(target.table, target.field, 'posFormula');
   });
 
   return result;
@@ -1387,7 +1413,12 @@ export default function PosTransactionsPage() {
         memoColumnCaseMap,
         tableList,
       ),
-    [normalizedCalcFields, config?.posFields, memoColumnCaseMap, tableList],
+    [
+      normalizedCalcFields,
+      config?.posFields,
+      memoColumnCaseMap,
+      tableList,
+    ],
   );
 
   const memoNumericScaleMap = useMemo(() => {
@@ -2290,15 +2321,38 @@ export default function PosTransactionsPage() {
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const computedFields = computedFieldMap[t.table] || new Set();
+                const computedEntry = computedFieldMap[t.table];
+                const computedFields =
+                  computedEntry instanceof Set
+                    ? computedEntry
+                    : Array.isArray(computedEntry)
+                      ? new Set(
+                          computedEntry
+                            .filter((field) => typeof field === 'string')
+                            .map((field) => field.toLowerCase()),
+                        )
+                      : new Set();
+                const computedReasonMap =
+                  computedEntry && computedEntry.reasonMap instanceof Map
+                    ? computedEntry.reasonMap
+                    : undefined;
                 const allFieldLowerSet = new Set(allFields.map((f) => f.toLowerCase()));
                 const disabledLower = new Set();
                 let disabled = [];
+                const disabledReasonMap = {};
+                const addReason = (field, code) => {
+                  if (!field || !code) return;
+                  if (!disabledReasonMap[field]) {
+                    disabledReasonMap[field] = new Set();
+                  }
+                  disabledReasonMap[field].add(code);
+                };
                 if (editSet) {
                   disabled = allFields.filter((c) => {
                     const lower = c.toLowerCase();
                     if (editSet.has(lower)) return false;
                     disabledLower.add(lower);
+                    addReason(c, 'missingEditableConfig');
                     return true;
                   });
                 }
@@ -2306,14 +2360,27 @@ export default function PosTransactionsPage() {
                   if (!field) return;
                   const normalizedLower = String(field).toLowerCase();
                   if (!allFieldLowerSet.has(normalizedLower)) return;
-                  if (disabledLower.has(normalizedLower)) return;
                   const canonicalField =
                     caseMap[normalizedLower] ||
                     allFields.find((f) => f.toLowerCase() === normalizedLower) ||
                     normalizedLower;
-                  disabled.push(canonicalField);
-                  disabledLower.add(normalizedLower);
+                  if (!disabledLower.has(normalizedLower)) {
+                    disabled.push(canonicalField);
+                    disabledLower.add(normalizedLower);
+                  }
+                  const reasonCodes = computedReasonMap?.get(normalizedLower);
+                  if (reasonCodes instanceof Set && reasonCodes.size > 0) {
+                    reasonCodes.forEach((code) => addReason(canonicalField, code));
+                  } else {
+                    addReason(canonicalField, 'computed');
+                  }
                 });
+                const disabledFieldReasons = Object.fromEntries(
+                  Object.entries(disabledReasonMap).map(([field, codes]) => [
+                    field,
+                    Array.from(codes),
+                  ]),
+                );
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
@@ -2355,6 +2422,7 @@ export default function PosTransactionsPage() {
                       visible
                       columns={allFields}
                       disabledFields={disabled}
+                      disabledFieldReasons={disabledFieldReasons}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
                       row={values[t.table]}
