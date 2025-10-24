@@ -268,16 +268,13 @@ export function buildComputedFieldMap(
     const rawField = String(field);
     if (!rawTable || !rawField) return;
     const lowerTable = rawTable.toLowerCase();
-    if (!tableCaseMap[lowerTable]) {
-      tableCaseMap[lowerTable] = rawTable;
-    }
     const canonicalTable = tableCaseMap[lowerTable] || rawTable;
+    const tableEntry = ensureTableSet(canonicalTable);
+    if (!tableEntry) return;
     const caseMap = columnCaseMap[canonicalTable] || {};
     const lowerField = rawField.toLowerCase();
     const canonicalField = caseMap[lowerField] || rawField;
     const normalizedField = String(canonicalField).toLowerCase();
-    const tableEntry = ensureTableSet(canonicalTable);
-    if (!tableEntry) return;
     tableEntry.set.add(normalizedField);
   };
 
@@ -1390,12 +1387,7 @@ export default function PosTransactionsPage() {
         memoColumnCaseMap,
         tableList,
       ),
-    [
-      normalizedCalcFields,
-      config?.posFields,
-      memoColumnCaseMap,
-      tableList,
-    ],
+    [normalizedCalcFields, config?.posFields, memoColumnCaseMap, tableList],
   );
 
   const memoNumericScaleMap = useMemo(() => {
