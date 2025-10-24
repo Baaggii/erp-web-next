@@ -306,20 +306,16 @@ export function buildComputedFieldMap(
       return AGGREGATE_FUNCTIONS.has(agg);
     });
     if (aggregateCells.length === 0) return;
-    aggregateCells.forEach((cell = {}) => {
+    cells.forEach((cell = {}) => {
+      const agg = typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
+      if (agg && AGGREGATE_FUNCTIONS.has(agg)) return;
       addField(cell.table, cell.field, 'calcField');
     });
   });
 
   (posFields || []).forEach((entry = {}) => {
     const parts = Array.isArray(entry.parts) ? entry.parts : [];
-    const target = parts[0];
-
-    if (parts.length === 1) {
-      if (target) addField(target.table, target.field, 'posFormula');
-      return;
-    }
-
+    if (parts.length < 2) return;
     const calcParts = parts.slice(1).filter((cell = {}) => {
       if (!cell) return false;
       const tbl = typeof cell.table === 'string' ? cell.table.trim() : '';
@@ -327,6 +323,7 @@ export function buildComputedFieldMap(
       return Boolean(tbl && fld);
     });
     if (calcParts.length === 0) return;
+    const target = parts[0];
     if (target) addField(target.table, target.field, 'posFormula');
   });
 
