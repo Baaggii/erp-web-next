@@ -315,6 +315,26 @@ const CALC_FIELD_AGGREGATORS = {
   },
 };
 
+export function evaluateCalcAggregator(aggKey, source, field) {
+  if (!aggKey) {
+    return { value: null, hasValue: false };
+  }
+  const normalized = aggKey.trim().toUpperCase();
+  const aggregator = CALC_FIELD_AGGREGATORS[normalized];
+  if (!aggregator) {
+    return { value: null, hasValue: false };
+  }
+  const computed = aggregator.compute(source, field);
+  const finalized = aggregator.finalize(computed);
+  if (finalized && finalized.hasValue) {
+    return finalized;
+  }
+  return {
+    value: finalized?.value ?? null,
+    hasValue: false,
+  };
+}
+
 export function syncCalcFields(vals, mapConfig) {
   if (!Array.isArray(mapConfig)) return vals;
   const base = vals && typeof vals === 'object' ? vals : {};
@@ -372,21 +392,31 @@ export function syncCalcFields(vals, mapConfig) {
         aggregatorState.set(aggKey, computed);
         aggregatorOrder.push(aggKey);
       }
-    }
 
-    let computedValue;
-    let hasComputedValue = false;
+      const aggregatorState = new Map();
+      const aggregatorOrder = [];
 
-    for (const aggKey of aggregatorOrder) {
-      const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
-      if (!aggregator) continue;
-      const finalized = aggregator.finalize(aggregatorState.get(aggKey));
-      if (finalized?.hasValue) {
-        computedValue = finalized.value;
-        hasComputedValue = true;
-        break;
+      for (let idx = 0; idx < cells.length; idx += 1) {
+        const cell = cells[idx];
+        const aggKey =
+          typeof cell.__aggKey === 'string'
+            ? cell.__aggKey
+            : typeof cell.agg === 'string'
+              ? cell.agg.trim().toUpperCase()
+              : '';
+        const aggregator = aggKey ? CALC_FIELD_AGGREGATORS[aggKey] : null;
+        if (!aggregator) continue;
+        if (computedIndexSet.has(idx)) continue;
+        const source = next[cell.table];
+        const computed = aggregator.compute(source, cell.field);
+        if (aggregatorState.has(aggKey)) {
+          const merged = aggregator.merge(aggregatorState.get(aggKey), computed);
+          aggregatorState.set(aggKey, merged);
+        } else {
+          aggregatorState.set(aggKey, computed);
+          aggregatorOrder.push(aggKey);
+        }
       }
-    }
 
     if (!hasComputedValue) {
       for (let idx = 0; idx < cells.length; idx += 1) {
@@ -436,61 +466,90 @@ export function syncCalcFields(vals, mapConfig) {
         continue;
       }
 
-      if (Array.isArray(target)) {
-        const sectionFields = collectSectionFields(map, table);
-        const metadata = extractArrayMetadata(target) || {};
-        const metadataHasField = Object.prototype.hasOwnProperty.call(
-          metadata,
-          field,
-        );
-        const missingInRows = !target.some(
-          (row) =>
-            isPlainObject(row) && Object.prototype.hasOwnProperty.call(row, field),
-        );
+      if (!hasComputedValue) continue;
 
-        let tableChanged = false;
-        let resultRows = target;
+      for (let idx = 0; idx < cells.length; idx += 1) {
+        const cell = cells[idx];
+        const { table, field } = cell;
+        const aggKey =
+          typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
+        const aggregator = aggKey ? CALC_FIELD_AGGREGATORS[aggKey] : null;
 
-        if (target.length > 0) {
-          const mapped = target.map((row) => {
-            if (!isPlainObject(row)) return row;
-            if (row[field] === computedValue) return row;
-            tableChanged = true;
-            return { ...row, [field]: computedValue };
-          });
-          if (tableChanged) {
-            resultRows = assignArrayMetadata(mapped, target);
-          }
+        if (aggregator && !computedIndexSet.has(idx)) {
+          continue;
         }
 
-        const shouldUpdateMetadata =
-          sectionFields.has(field) || metadataHasField || missingInRows;
+        const target = next[table];
 
-        if (shouldUpdateMetadata) {
-          const ensureClone = () => {
-            if (resultRows === target) {
-              resultRows = assignArrayMetadata(target.slice(), target);
-            }
-            if (!tableChanged && resultRows !== target) {
+        if (target === undefined || target === null) {
+          next = { ...next, [table]: { [field]: computedValue } };
+          iterationChanged = true;
+          continue;
+        }
+
+        if (Array.isArray(target)) {
+          const sectionFields = collectSectionFields(map, table);
+          const metadata = extractArrayMetadata(target) || {};
+          const metadataHasField = Object.prototype.hasOwnProperty.call(
+            metadata,
+            field,
+          );
+          const missingInRows = !target.some(
+            (row) =>
+              isPlainObject(row) && Object.prototype.hasOwnProperty.call(row, field),
+          );
+
+          let tableChanged = false;
+          let resultRows = target;
+
+          if (target.length > 0) {
+            const mapped = target.map((row) => {
+              if (!isPlainObject(row)) return row;
+              if (row[field] === computedValue) return row;
               tableChanged = true;
+              return { ...row, [field]: computedValue };
+            });
+            if (tableChanged) {
+              resultRows = assignArrayMetadata(mapped, target);
             }
-          };
-          if ((resultRows?.[field] ?? undefined) !== computedValue) {
-            ensureClone();
-            resultRows[field] = computedValue;
           }
-        }
 
-        if (tableChanged) {
-          next = { ...next, [table]: resultRows };
+          const shouldUpdateMetadata =
+            sectionFields.has(field) || metadataHasField || missingInRows;
+
+          if (shouldUpdateMetadata) {
+            const ensureClone = () => {
+              if (resultRows === target) {
+                resultRows = assignArrayMetadata(target.slice(), target);
+              }
+              if (!tableChanged && resultRows !== target) {
+                tableChanged = true;
+              }
+            };
+            if ((resultRows?.[field] ?? undefined) !== computedValue) {
+              ensureClone();
+              resultRows[field] = computedValue;
+            }
+          }
+
+          if (tableChanged) {
+            next = { ...next, [table]: resultRows };
+            iterationChanged = true;
+          }
+        } else if (isPlainObject(target)) {
+          if (target[field] === computedValue) continue;
+          next = { ...next, [table]: { ...target, [field]: computedValue } };
+          iterationChanged = true;
+        } else {
+          if (aggregator) continue;
+          next = { ...next, [table]: { [field]: computedValue } };
+          iterationChanged = true;
         }
-      } else if (isPlainObject(target)) {
-        if (target[field] === computedValue) continue;
-        next = { ...next, [table]: { ...target, [field]: computedValue } };
-      } else {
-        if (aggregator) continue;
-        next = { ...next, [table]: { [field]: computedValue } };
       }
+    }
+
+    if (!iterationChanged) {
+      break;
     }
   }
 
