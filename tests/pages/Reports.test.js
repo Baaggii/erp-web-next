@@ -666,6 +666,10 @@ if (typeof mock.import !== 'function') {
       /companyId=99/.test(workplaceCall.url),
       'Company parameter missing from workplace fetch',
     );
+    assert.ok(
+      /userId=321/.test(workplaceCall.url),
+      'User parameter missing from workplace fetch',
+    );
 
     const startToast = addToastCalls.find(
       (call) =>
@@ -675,6 +679,15 @@ if (typeof mock.import !== 'function') {
     );
     assert.ok(startToast, 'Fetch start toast not emitted');
     assert.equal(startToast.type, 'info');
+    assert.match(
+      startToast.message,
+      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=99&userId=321/,
+      'Fetch start toast should include request query',
+    );
+    assert.ok(
+      startToast.message.includes('"userId":"321"'),
+      'Fetch start toast should include user identifier in params summary',
+    );
 
     const successToast = addToastCalls.find(
       (call) => call.type === 'success' && call.message.includes('Workplace fetch params'),
@@ -687,6 +700,15 @@ if (typeof mock.import !== 'function') {
     assert.ok(
       successToast.message.includes('SQL: SELECT * FROM tbl_employment_schedule WHERE emp_id = ? AND company_id = ?;'),
       'Success toast should include executed SQL when diagnostics are present',
+    );
+    assert.match(
+      successToast.message,
+      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=99&userId=321/,
+      'Success toast should include request query',
+    );
+    assert.ok(
+      successToast.message.includes('"userId":"321"'),
+      'Success toast should include user identifier in params summary',
     );
     assert.ok(
       successToast.message.includes('session 22') || successToast.message.includes('#2'),
