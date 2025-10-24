@@ -3,7 +3,7 @@ import {
   applyGeneratedColumnEvaluators,
   valuesEqual,
 } from './generatedColumns.js';
-import { syncCalcFields, evaluateCalcAggregator } from './syncCalcFields.js';
+import { syncCalcFields } from './syncCalcFields.js';
 import { parseLocalizedNumber } from '../../../utils/parseLocalizedNumber.js';
 
 const arrayIndexPattern = /^(0|[1-9]\d*)$/;
@@ -236,17 +236,54 @@ function coerceNumber(value) {
 }
 
 function computePosAggregator(agg, source, field) {
-  if (!agg) return { value: null, hasValue: false };
+  if (!agg) return null;
   const key = agg.trim().toUpperCase();
-  const result = evaluateCalcAggregator(key, source, field);
-  if (result.hasValue) {
-    return result;
+  if (key === 'SUM' || key === 'AVG' || key === 'MIN' || key === 'MAX') {
+    let values = [];
+    if (Array.isArray(source)) {
+      values = source
+        .filter(isPlainRecord)
+        .map((row) => parseLocalizedNumber(row?.[field]))
+        .filter((num) => num !== null);
+    } else if (isPlainRecord(source)) {
+      const single = parseLocalizedNumber(source[field]);
+      if (single !== null) values = [single];
+    }
+    if (values.length === 0) {
+      return key === 'MIN' ? Infinity : key === 'MAX' ? -Infinity : 0;
+    }
+    if (key === 'SUM') {
+      return values.reduce((acc, num) => acc + num, 0);
+    }
+    if (key === 'AVG') {
+      return values.reduce((acc, num) => acc + num, 0) / values.length;
+    }
+    if (key === 'MIN') {
+      return Math.min(...values);
+    }
+    if (key === 'MAX') {
+      return Math.max(...values);
+    }
   }
   if (key === 'COUNT') {
-    // COUNT returning zero for empty sources is still meaningful
-    return { value: result.value ?? 0, hasValue: true };
+    if (Array.isArray(source)) {
+      return source.filter((row) => {
+        if (!isPlainRecord(row)) return false;
+        const value = row[field];
+        if (value === undefined || value === null) return false;
+        if (typeof value === 'string' && value.trim() === '') return false;
+        return true;
+      }).length;
+    }
+    if (isPlainRecord(source)) {
+      const value = source[field];
+      if (value === undefined || value === null) return 0;
+      if (typeof value === 'string' && value.trim() === '') return 0;
+      return 1;
+    }
+    return 0;
   }
-  return { value: result.value, hasValue: false };
+  return null;
 }
 
 export function applyPosFields(vals, posFieldConfig) {
@@ -268,15 +305,10 @@ export function applyPosFields(vals, posFieldConfig) {
       const agg = typeof p.agg === 'string' ? p.agg.trim().toUpperCase() : '';
 
       let num = null;
-      let hasValue = false;
       if (agg) {
-        const result = computePosAggregator(agg, data, p.field);
-        if (result.hasValue) {
-          num = result.value;
-          hasValue = true;
-        }
+        num = computePosAggregator(agg, data, p.field);
       }
-      if (!hasValue) {
+      if (num === null || num === Infinity || num === -Infinity) {
         if (Array.isArray(data)) {
           const first = data.find((row) => isPlainRecord(row) && row[p.field] !== undefined);
           num = coerceNumber(first?.[p.field]);
@@ -285,7 +317,6 @@ export function applyPosFields(vals, posFieldConfig) {
         } else {
           num = 0;
         }
-        hasValue = true;
       }
 
       if (agg === '=' && !init) {
@@ -303,15 +334,13 @@ export function applyPosFields(vals, posFieldConfig) {
         } else {
           val /= num;
         }
-      } else if (
-        agg === 'SUM' ||
-        agg === 'AVG' ||
-        agg === 'MIN' ||
-        agg === 'MAX' ||
-        agg === 'COUNT'
-      ) {
-        val = num;
-        if (!init) init = true;
+      } else if (agg === 'SUM' || agg === 'AVG' || agg === 'MIN' || agg === 'MAX' || agg === 'COUNT') {
+        if (!init) {
+          val = num;
+          init = true;
+        } else {
+          val = num;
+        }
       } else {
         val = num;
         init = true;

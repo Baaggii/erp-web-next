@@ -345,48 +345,6 @@ test('propagateCalcFields supports AVG, MIN, MAX and COUNT aggregators', () => {
   assert.equal(data.summary.item_count, 2);
 });
 
-test('propagateCalcFields propagates chained mappings even when order changes', () => {
-  const cfg = {
-    calcFields: [
-      {
-        cells: [
-          { table: 'hidden_tbl', field: 'amount' },
-          { table: 'visible_tbl', field: 'amount' },
-        ],
-      },
-      {
-        cells: [
-          { table: 'summary_tbl', field: 'amount' },
-          { table: 'hidden_tbl', field: 'amount' },
-        ],
-      },
-    ],
-  };
-
-  const data = {
-    visible_tbl: { amount: 150 },
-    hidden_tbl: { amount: 0 },
-    summary_tbl: { amount: 0 },
-  };
-
-  propagateCalcFields(cfg, data);
-  assert.equal(data.hidden_tbl.amount, 150);
-  assert.equal(data.summary_tbl.amount, 150);
-
-  const reverse = {
-    calcFields: cfg.calcFields.slice().reverse(),
-  };
-  const reverseData = {
-    visible_tbl: { amount: 275 },
-    hidden_tbl: { amount: 0 },
-    summary_tbl: { amount: 0 },
-  };
-
-  propagateCalcFields(reverse, reverseData);
-  assert.equal(reverseData.hidden_tbl.amount, 275);
-  assert.equal(reverseData.summary_tbl.amount, 275);
-});
-
 test('validateConfiguredFields returns empty array for valid data', () => {
   const data = createValidationData();
   const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);

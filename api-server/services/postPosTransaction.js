@@ -372,100 +372,122 @@ function coerceNumber(value) {
   return num;
 }
 
-function evaluateCalcAggregator(aggKey, source, field) {
-  if (!aggKey) {
-    return { value: null, hasValue: false };
-  }
-  const normalized = aggKey.trim().toUpperCase();
-  const aggregator = CALC_FIELD_AGGREGATORS[normalized];
-  if (!aggregator) {
-    return { value: null, hasValue: false };
-  }
-  const computed = aggregator.compute(source, field);
-  const finalized = aggregator.finalize(computed);
-  if (finalized && finalized.hasValue) {
-    return finalized;
-  }
-  return {
-    value: finalized?.value ?? null,
-    hasValue: false,
-  };
-}
-
 function computeFormulaAggregator(agg, source, field) {
-  if (!agg) return { value: null, hasValue: false };
-  const result = evaluateCalcAggregator(agg, source, field);
-  if (result.hasValue) {
-    return result;
+  if (!agg) return null;
+  const key = agg.trim().toUpperCase();
+  if (key === 'SUM' || key === 'AVG' || key === 'MIN' || key === 'MAX') {
+    let values = [];
+    if (Array.isArray(source)) {
+      values = source
+        .filter((row) => row && typeof row === 'object')
+        .map((row) => parseLocalizedNumber(getValue(row, field)))
+        .filter((num) => num !== null);
+    } else if (isPlainObject(source)) {
+      const single = parseLocalizedNumber(getValue(source, field));
+      if (single !== null) values = [single];
+    }
+    if (values.length === 0) {
+      return key === 'MIN' ? Infinity : key === 'MAX' ? -Infinity : 0;
+    }
+    if (key === 'SUM') {
+      return values.reduce((acc, num) => acc + num, 0);
+    }
+    if (key === 'AVG') {
+      return values.reduce((acc, num) => acc + num, 0) / values.length;
+    }
+    if (key === 'MIN') {
+      return Math.min(...values);
+    }
+    if (key === 'MAX') {
+      return Math.max(...values);
+    }
   }
-  if (String(agg).trim().toUpperCase() === 'COUNT') {
-    return { value: result.value ?? 0, hasValue: true };
+  if (key === 'COUNT') {
+    if (Array.isArray(source)) {
+      return source.filter((row) => {
+        if (!row || typeof row !== 'object') return false;
+        const value = getValue(row, field);
+        if (value === undefined || value === null) return false;
+        if (typeof value === 'string' && value.trim() === '') return false;
+        return true;
+      }).length;
+    }
+    if (isPlainObject(source)) {
+      const value = getValue(source, field);
+      if (value === undefined || value === null) return 0;
+      if (typeof value === 'string' && value.trim() === '') return 0;
+      return 1;
+    }
+    return 0;
   }
-  return { value: result.value, hasValue: false };
+  return null;
 }
 
 export function propagateCalcFields(cfg, data) {
   if (!Array.isArray(cfg.calcFields)) return;
-  const maps = cfg.calcFields.map((map) => ({
-    cells: getCalcFieldCells(map),
-  }));
-  const maxIterations = maps.length > 0 ? maps.length * 2 : 1;
+  for (const map of cfg.calcFields) {
+    const cells = getCalcFieldCells(map);
+    if (!cells.length) continue;
 
-  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
-    let iterationChanged = false;
+    const computedIndexes = determineComputedIndexes(cells);
+    const computedIndexSet = new Set(computedIndexes);
 
-    for (const { cells } of maps) {
-      if (!cells.length) continue;
+    const aggregatorState = new Map();
+    const aggregatorOrder = [];
 
-      const computedIndexes = determineComputedIndexes(cells);
-      const computedIndexSet = new Set(computedIndexes);
-
-      const aggregatorState = new Map();
-      const aggregatorOrder = [];
-
-      for (let idx = 0; idx < cells.length; idx += 1) {
-        const cell = cells[idx];
-        const aggKey = cell.__aggKey;
-        if (!aggKey) continue;
-        const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
-        if (!aggregator) continue;
-        if (computedIndexSet.has(idx)) continue;
-        const source = data[cell.table];
-        const computed = aggregator.compute(source, cell.field);
-        if (aggregatorState.has(aggKey)) {
-          const merged = aggregator.merge(aggregatorState.get(aggKey), computed);
-          aggregatorState.set(aggKey, merged);
-        } else {
-          aggregatorState.set(aggKey, computed);
-          aggregatorOrder.push(aggKey);
-        }
+    for (const cell of cells) {
+      const aggKey = cell.__aggKey;
+      if (!aggKey) continue;
+      const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
+      if (!aggregator) continue;
+      const source = data[cell.table];
+      const computed = aggregator.compute(source, cell.field);
+      if (aggregatorState.has(aggKey)) {
+        const merged = aggregator.merge(aggregatorState.get(aggKey), computed);
+        aggregatorState.set(aggKey, merged);
+      } else {
+        aggregatorState.set(aggKey, computed);
+        aggregatorOrder.push(aggKey);
       }
 
-      let computedValue;
-      let hasComputedValue = false;
+    let computedValue;
+    let hasComputedValue = false;
 
-      for (const aggKey of aggregatorOrder) {
-        const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
-        if (!aggregator) continue;
-        const finalized = aggregator.finalize(aggregatorState.get(aggKey));
-        if (finalized?.hasValue) {
-          computedValue = finalized.value;
+    for (const aggKey of aggregatorOrder) {
+      const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
+      if (!aggregator) continue;
+      const finalized = aggregator.finalize(aggregatorState.get(aggKey));
+      if (finalized?.hasValue) {
+        computedValue = finalized.value;
+        hasComputedValue = true;
+        break;
+      }
+    }
+
+    if (!hasComputedValue) {
+      for (let idx = 0; idx < cells.length; idx += 1) {
+        if (computedIndexSet.has(idx)) continue;
+        const cell = cells[idx];
+        const source = data[cell.table];
+        const direct = pickFirstDefinedFieldValue(source, cell.field);
+        if (direct !== undefined) {
+          computedValue = direct;
           hasComputedValue = true;
           break;
         }
       }
+    }
 
-      if (!hasComputedValue) {
-        for (let idx = 0; idx < cells.length; idx += 1) {
-          if (computedIndexSet.has(idx)) continue;
-          const cell = cells[idx];
-          const source = data[cell.table];
-          const direct = pickFirstDefinedFieldValue(source, cell.field);
-          if (direct !== undefined) {
-            computedValue = direct;
-            hasComputedValue = true;
-            break;
-          }
+    if (!hasComputedValue) {
+      for (let idx = 0; idx < cells.length; idx += 1) {
+        if (!computedIndexSet.has(idx)) continue;
+        const cell = cells[idx];
+        const source = data[cell.table];
+        const direct = pickFirstDefinedFieldValue(source, cell.field);
+        if (direct !== undefined) {
+          computedValue = direct;
+          hasComputedValue = true;
+          break;
         }
       }
 
@@ -483,16 +505,13 @@ export function propagateCalcFields(cfg, data) {
         }
       }
 
-      if (!hasComputedValue) continue;
-
-      for (let idx = 0; idx < cells.length; idx += 1) {
-        const cell = cells[idx];
-        if (!cell) continue;
-        const { table, field } = cell;
-        if (!table || !field) continue;
-        if (cell.__aggKey && !computedIndexSet.has(idx)) continue;
-        const target = data[table];
-        if (!target) continue;
+    for (const cell of cells) {
+      const { table, field } = cell || {};
+      if (!table || !field) continue;
+      if (cell.__aggKey && !computedIndexSet.has(idx)) continue;
+      const target = data[table];
+      if (!target) continue;
+      if (cell.__aggKey && Array.isArray(target)) continue;
 
         if (Array.isArray(target)) {
           let tableChanged = false;
@@ -533,15 +552,10 @@ function evalPosFormulas(cfg, data) {
       const tData = data[p.table] || {};
       const agg = typeof p.agg === 'string' ? p.agg.trim().toUpperCase() : '';
       let num = null;
-      let hasValue = false;
       if (agg) {
-        const result = computeFormulaAggregator(agg, tData, p.field);
-        if (result.hasValue) {
-          num = result.value;
-          hasValue = true;
-        }
+        num = computeFormulaAggregator(agg, tData, p.field);
       }
-      if (!hasValue) {
+      if (num === null || num === Infinity || num === -Infinity) {
         if (Array.isArray(tData)) {
           const first = tData.find(
             (row) => row && typeof row === 'object' && row[p.field] !== undefined,
@@ -552,7 +566,6 @@ function evalPosFormulas(cfg, data) {
         } else {
           num = 0;
         }
-        hasValue = true;
       }
 
       if (agg === '=' && !init) {
@@ -570,14 +583,7 @@ function evalPosFormulas(cfg, data) {
         } else {
           val /= num;
         }
-      } else if (
-        agg === '=' ||
-        agg === 'SUM' ||
-        agg === 'AVG' ||
-        agg === 'MIN' ||
-        agg === 'MAX' ||
-        agg === 'COUNT'
-      ) {
+      } else if (agg === '=' || agg === 'SUM' || agg === 'AVG' || agg === 'MIN' || agg === 'MAX' || agg === 'COUNT') {
         val = num;
         if (!init) init = true;
       } else {

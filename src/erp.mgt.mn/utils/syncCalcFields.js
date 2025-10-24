@@ -5,13 +5,7 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-export const SUPPORTED_CALC_AGGREGATORS = new Set([
-  'SUM',
-  'AVG',
-  'COUNT',
-  'MIN',
-  'MAX',
-]);
+const SUPPORTED_CALC_AGGREGATORS = new Set(['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']);
 
 function normalizeCalcFieldCell(cell) {
   if (!cell || typeof cell !== 'object') return null;
@@ -346,45 +340,57 @@ export function syncCalcFields(vals, mapConfig) {
   const base = vals && typeof vals === 'object' ? vals : {};
   let next = { ...base };
 
-  const normalizedMaps = mapConfig.map((map) => ({
-    original: map,
-    cells: getNormalizedCells(map),
-  }));
+  for (const map of mapConfig) {
+    const cells = getNormalizedCells(map);
+    if (!cells.length) continue;
 
-  const maxIterations = normalizedMaps.length > 0 ? normalizedMaps.length * 2 : 1;
-
-  for (let iteration = 0; iteration < maxIterations; iteration += 1) {
-    let iterationChanged = false;
-
-    for (const entry of normalizedMaps) {
-      const { cells, original: map } = entry;
-      if (!cells.length) continue;
-
-      const computedIndexSet = new Set(
-        Array.isArray(map.__computedCellIndexes)
-          ? map.__computedCellIndexes
-              .map((idx) => (Number.isInteger(idx) ? idx : null))
-              .filter((idx) => idx !== null)
-          : [],
+    const computedIndexSet = new Set(
+      Array.isArray(map.__computedCellIndexes)
+        ? map.__computedCellIndexes
+            .map((idx) => (Number.isInteger(idx) ? idx : null))
+            .filter((idx) => idx !== null)
+        : [],
+    );
+    if (computedIndexSet.size === 0) {
+      const hasAggregator = cells.some((cell) =>
+        SUPPORTED_CALC_AGGREGATORS.has(cell.__aggKey),
       );
-      if (computedIndexSet.size === 0) {
-        const hasAggregator = cells.some((cell) =>
-          SUPPORTED_CALC_AGGREGATORS.has(cell.__aggKey),
-        );
-        if (hasAggregator) {
-          let added = false;
-          cells.forEach((cell, idx) => {
-            if (!SUPPORTED_CALC_AGGREGATORS.has(cell.__aggKey)) {
-              computedIndexSet.add(idx);
-              added = true;
-            }
-          });
-          if (!added && cells.length > 0) {
-            computedIndexSet.add(0);
+      if (hasAggregator) {
+        let added = false;
+        cells.forEach((cell, idx) => {
+          if (!SUPPORTED_CALC_AGGREGATORS.has(cell.__aggKey)) {
+            computedIndexSet.add(idx);
+            added = true;
           }
-        } else if (cells.length > 0) {
+        });
+        if (!added && cells.length > 0) {
           computedIndexSet.add(0);
         }
+      } else if (cells.length > 0) {
+        computedIndexSet.add(0);
+      }
+    }
+
+    const aggregatorState = new Map();
+    const aggregatorOrder = [];
+
+    for (const cell of cells) {
+      const aggKey =
+        typeof cell.__aggKey === 'string'
+          ? cell.__aggKey
+          : typeof cell.agg === 'string'
+            ? cell.agg.trim().toUpperCase()
+            : '';
+      const aggregator = aggKey ? CALC_FIELD_AGGREGATORS[aggKey] : null;
+      if (!aggregator) continue;
+      const source = next[cell.table];
+      const computed = aggregator.compute(source, cell.field);
+      if (aggregatorState.has(aggKey)) {
+        const merged = aggregator.merge(aggregatorState.get(aggKey), computed);
+        aggregatorState.set(aggKey, merged);
+      } else {
+        aggregatorState.set(aggKey, computed);
+        aggregatorOrder.push(aggKey);
       }
 
       const aggregatorState = new Map();
@@ -412,46 +418,52 @@ export function syncCalcFields(vals, mapConfig) {
         }
       }
 
-      let computedValue;
-      let hasComputedValue = false;
-
-      for (const aggKey of aggregatorOrder) {
-        const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
-        if (!aggregator) continue;
-        const finalized = aggregator.finalize(aggregatorState.get(aggKey));
-        if (finalized?.hasValue) {
-          computedValue = finalized.value;
+    if (!hasComputedValue) {
+      for (let idx = 0; idx < cells.length; idx += 1) {
+        if (computedIndexSet.has(idx)) continue;
+        const cell = cells[idx];
+        const source = next[cell.table];
+        const val = pickFirstDefinedFieldValue(source, cell.field);
+        if (val !== undefined) {
+          computedValue = val;
           hasComputedValue = true;
           break;
         }
       }
+    }
 
-      if (!hasComputedValue) {
-        for (let idx = 0; idx < cells.length; idx += 1) {
-          if (computedIndexSet.has(idx)) continue;
-          const cell = cells[idx];
-          const source = next[cell.table];
-          const val = pickFirstDefinedFieldValue(source, cell.field);
-          if (val !== undefined) {
-            computedValue = val;
-            hasComputedValue = true;
-            break;
-          }
+    if (!hasComputedValue) {
+      for (let idx = 0; idx < cells.length; idx += 1) {
+        if (!computedIndexSet.has(idx)) continue;
+        const cell = cells[idx];
+        const source = next[cell.table];
+        const val = pickFirstDefinedFieldValue(source, cell.field);
+        if (val !== undefined) {
+          computedValue = val;
+          hasComputedValue = true;
+          break;
         }
       }
+    }
 
-      if (!hasComputedValue) {
-        for (let idx = 0; idx < cells.length; idx += 1) {
-          if (!computedIndexSet.has(idx)) continue;
-          const cell = cells[idx];
-          const source = next[cell.table];
-          const val = pickFirstDefinedFieldValue(source, cell.field);
-          if (val !== undefined) {
-            computedValue = val;
-            hasComputedValue = true;
-            break;
-          }
-        }
+    if (!hasComputedValue) continue;
+
+    for (let idx = 0; idx < cells.length; idx += 1) {
+      const cell = cells[idx];
+      const { table, field } = cell;
+      const aggKey =
+        typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
+      const aggregator = aggKey ? CALC_FIELD_AGGREGATORS[aggKey] : null;
+
+      if (aggregator && !computedIndexSet.has(idx)) {
+        continue;
+      }
+
+      const target = next[table];
+
+      if (target === undefined || target === null) {
+        next = { ...next, [table]: { [field]: computedValue } };
+        continue;
       }
 
       if (!hasComputedValue) continue;
