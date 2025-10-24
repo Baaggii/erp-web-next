@@ -533,10 +533,6 @@ export default function Reports() {
           throw new Error('Failed to load workplaces for selected period');
         }
         const data = await res.json().catch(() => ({}));
-        const diagnostics =
-          data && typeof data === 'object' ? data.diagnostics ?? null : null;
-        const formattedSql =
-          diagnostics?.formattedSql || diagnostics?.sql || null;
         const assignments = Array.isArray(data.assignments)
           ? data.assignments
           : [];
@@ -610,11 +606,10 @@ export default function Reports() {
                 : normalizedAssignments.length > 0
                 ? ' (no valid IDs returned; showing raw results)'
                 : ' (using base assignments)';
-            let toastMessage = `${baseMessage}${suffix}`;
-            if (formattedSql) {
-              toastMessage += `\nSQL: ${formattedSql}`;
-            }
-            addToast(toastMessage, validCount > 0 ? 'success' : 'info');
+            addToast(
+              `${baseMessage}${suffix}`,
+              validCount > 0 ? 'success' : 'info',
+            );
           }
         }
       } catch (err) {
