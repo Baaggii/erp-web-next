@@ -250,7 +250,7 @@ if (typeof mock.import !== 'function') {
     assert.ok(mismatchSession, 'should detect mismatched multi-row values');
   });
 
-  test('buildComputedFieldMap collects aggregated targets', async () => {
+  test('buildComputedFieldMap collects aggregate cells and POS targets', async () => {
     const { buildComputedFieldMap } = await mock.import(
       '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
       {},
@@ -289,11 +289,12 @@ if (typeof mock.import !== 'function') {
     );
 
     assert.ok(map.transactions instanceof Set);
-    assert.strictEqual(map.transactions_inventory, undefined);
-    assert.deepEqual(
-      Array.from(map.transactions).sort(),
-      ['grandtotal', 'totalamount'],
-    );
+    assert.ok(map.transactions_inventory instanceof Set);
+    assert.deepEqual(Array.from(map.transactions).sort(), ['grandtotal']);
+    assert.deepEqual(Array.from(map.transactions_inventory).sort(), ['amount']);
+    const detailReasons = map.transactions_inventory.reasonMap?.get('amount');
+    assert.ok(detailReasons instanceof Set);
+    assert.equal(detailReasons.has('calcField'), true);
   });
 
   test('buildComputedFieldMap includes POS targets even when flagged editable', async () => {
@@ -422,15 +423,45 @@ if (typeof mock.import !== 'function') {
       },
     ];
 
-    const columnCaseMap = { transactions: { total: 'Total' } };
-    const tables = ['transactions'];
+    const columnCaseMap = {
+      transactions: { total: 'Total' },
+      transactions_detail: { linetotal: 'LineTotal' },
+    };
+    const tables = ['transactions', 'transactions_detail'];
 
     const map = buildComputedFieldMap(calcFields, [], columnCaseMap, tables);
-    assert.ok(map.transactions instanceof Set);
-    assert.equal(map.transactions.has('total'), true);
-    const reasonSet = map.transactions.reasonMap?.get('total');
+    assert.ok(map.transactions_detail instanceof Set);
+    assert.equal(map.transactions_detail.has('linetotal'), true);
+    const reasonSet = map.transactions_detail.reasonMap?.get('linetotal');
     assert.ok(reasonSet instanceof Set);
     assert.equal(reasonSet.has('calcField'), true);
+  });
+
+  test('buildComputedFieldMap marks single-part POS formulas as computed', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [{ table: 'transactions', field: 'MirrorNote' }],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: { mirrornote: 'MirrorNote' },
+    };
+
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, tables);
+
+    assert.ok(map.transactions instanceof Set);
+    assert.equal(map.transactions.has('mirrornote'), true);
+    const reasonSet = map.transactions.reasonMap?.get('mirrornote');
+    assert.ok(reasonSet instanceof Set);
+    assert.equal(reasonSet.has('posFormula'), true);
   });
 
 
