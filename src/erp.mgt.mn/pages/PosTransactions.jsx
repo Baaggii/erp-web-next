@@ -330,6 +330,96 @@ export function buildComputedFieldMap(
   return result;
 }
 
+export function collectDisabledFieldsAndReasons({
+  allFields = [],
+  editSet = null,
+  computedEntry = undefined,
+  caseMap = {},
+  sessionFields = [],
+}) {
+  const normalizedFields = Array.isArray(allFields)
+    ? allFields.filter((field) => typeof field === 'string' && field)
+    : [];
+  const allFieldLowerSet = new Set(normalizedFields.map((field) => field.toLowerCase()));
+  const disabledLower = new Set();
+  const disabled = [];
+  const reasonMap = new Map();
+
+  const addReason = (field, code) => {
+    if (!field || !code) return;
+    const canonical = String(field);
+    if (!reasonMap.has(canonical)) {
+      reasonMap.set(canonical, new Set());
+    }
+    reasonMap.get(canonical).add(String(code));
+  };
+
+  if (editSet instanceof Set && editSet.size > 0) {
+    normalizedFields.forEach((field) => {
+      const lower = field.toLowerCase();
+      if (editSet.has(lower)) return;
+      if (disabledLower.has(lower)) return;
+      disabledLower.add(lower);
+      disabled.push(field);
+      addReason(field, 'missingEditableConfig');
+    });
+  }
+
+  let computedFieldsSet;
+  if (computedEntry instanceof Set) {
+    computedFieldsSet = computedEntry;
+  } else if (Array.isArray(computedEntry)) {
+    computedFieldsSet = new Set(
+      computedEntry
+        .filter((field) => typeof field === 'string')
+        .map((field) => field.toLowerCase()),
+    );
+  } else {
+    computedFieldsSet = new Set();
+  }
+
+  const computedReasonMap =
+    computedEntry && computedEntry.reasonMap instanceof Map ? computedEntry.reasonMap : undefined;
+
+  computedFieldsSet.forEach((field) => {
+    if (!field) return;
+    const normalizedLower = String(field).toLowerCase();
+    if (!allFieldLowerSet.has(normalizedLower)) return;
+    let canonicalField =
+      caseMap[normalizedLower] ||
+      normalizedFields.find((entry) => entry.toLowerCase() === normalizedLower) ||
+      field;
+    if (typeof canonicalField !== 'string') canonicalField = String(canonicalField);
+    if (!disabledLower.has(normalizedLower)) {
+      disabled.push(canonicalField);
+      disabledLower.add(normalizedLower);
+    }
+    const reasonCodes = computedReasonMap?.get(normalizedLower);
+    if (reasonCodes instanceof Set && reasonCodes.size > 0) {
+      reasonCodes.forEach((code) => addReason(canonicalField, code));
+    } else {
+      addReason(canonicalField, 'computed');
+    }
+  });
+
+  (Array.isArray(sessionFields) ? sessionFields : []).forEach((field) => {
+    if (typeof field !== 'string' || !field) return;
+    const lower = field.toLowerCase();
+    if (!allFieldLowerSet.has(lower)) return;
+    let canonicalField =
+      caseMap[lower] ||
+      normalizedFields.find((entry) => entry.toLowerCase() === lower) ||
+      field;
+    if (typeof canonicalField !== 'string') canonicalField = String(canonicalField);
+    addReason(canonicalField, 'sessionFieldAutoReset');
+  });
+
+  return {
+    disabled,
+    reasonMap,
+  };
+}
+
 function parseErrorField(msg) {
   if (!msg) return null;
   let m = msg.match(/FOREIGN KEY \(`([^`]*)`\)/i);
