@@ -238,6 +238,7 @@ export function buildComputedFieldMap(
   posFields = [],
   columnCaseMap = {},
   tables = [],
+  editableFieldMap = {},
 ) {
   const AGGREGATE_FUNCTIONS = new Set(['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']);
   const tableCaseMap = {};
@@ -268,13 +269,19 @@ export function buildComputedFieldMap(
     const rawField = String(field);
     if (!rawTable || !rawField) return;
     const lowerTable = rawTable.toLowerCase();
+    if (!tableCaseMap[lowerTable]) {
+      tableCaseMap[lowerTable] = rawTable;
+    }
     const canonicalTable = tableCaseMap[lowerTable] || rawTable;
-    const tableEntry = ensureTableSet(canonicalTable);
-    if (!tableEntry) return;
     const caseMap = columnCaseMap[canonicalTable] || {};
     const lowerField = rawField.toLowerCase();
     const canonicalField = caseMap[lowerField] || rawField;
     const normalizedField = String(canonicalField).toLowerCase();
+    const editableSet =
+      editableFieldMap?.[canonicalTable] || editableFieldMap?.[canonicalTable.toLowerCase()];
+    if (editableSet && editableSet.has(normalizedField)) return;
+    const tableEntry = ensureTableSet(canonicalTable);
+    if (!tableEntry) return;
     tableEntry.set.add(normalizedField);
   };
 
@@ -1379,6 +1386,36 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
 
+  const editableFieldMap = useMemo(() => {
+    const map = {};
+    Object.entries(memoFormConfigs).forEach(([tbl, fc = {}]) => {
+      const caseMap = memoColumnCaseMap[tbl] || {};
+      const canonicalize = (list) => {
+        if (!Array.isArray(list) || list.length === 0) return [];
+        const seen = new Set();
+        const result = [];
+        list.forEach((field) => {
+          if (field == null) return;
+          const raw = String(field).trim();
+          if (!raw) return;
+          const mapped = caseMap[raw.toLowerCase()] || raw;
+          if (seen.has(mapped)) return;
+          seen.add(mapped);
+          result.push(mapped);
+        });
+        return result;
+      };
+      const provided = canonicalize(fc.editableFields);
+      const defaults = canonicalize(fc.editableDefaultFields);
+      const combined = Array.from(new Set([...defaults, ...provided]));
+      if (combined.length === 0) return;
+      const lowered = new Set(combined.map((name) => name.toLowerCase()));
+      map[tbl] = lowered;
+      map[String(tbl).toLowerCase()] = lowered;
+    });
+    return map;
+  }, [memoFormConfigs, memoColumnCaseMap]);
+
   const computedFieldMap = useMemo(
     () =>
       buildComputedFieldMap(
@@ -1386,8 +1423,15 @@ export default function PosTransactionsPage() {
         config?.posFields || [],
         memoColumnCaseMap,
         tableList,
+        editableFieldMap,
       ),
-    [normalizedCalcFields, config?.posFields, memoColumnCaseMap, tableList],
+    [
+      normalizedCalcFields,
+      config?.posFields,
+      memoColumnCaseMap,
+      tableList,
+      editableFieldMap,
+    ],
   );
 
   const memoNumericScaleMap = useMemo(() => {

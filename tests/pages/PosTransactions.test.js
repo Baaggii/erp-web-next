@@ -294,6 +294,37 @@ if (typeof mock.import !== 'function') {
     );
   });
 
+  test('buildComputedFieldMap skips editable POS targets', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Note' },
+          { table: 'transactions', field: 'Note', agg: '=' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = { transactions: { note: 'Note' } };
+    const tables = ['transactions'];
+    const editableSet = new Set(['note']);
+    const editableFieldMap = { transactions: editableSet };
+
+    const map = buildComputedFieldMap(
+      [],
+      posFields,
+      columnCaseMap,
+      tables,
+      editableFieldMap,
+    );
+
+    assert.strictEqual(map.transactions, undefined);
+  });
+
 
   test('generated column configs support lowercase generation_expression metadata', async () => {
     const actualTransactionValues = await import(
