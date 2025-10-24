@@ -661,10 +661,6 @@ if (typeof mock.import !== 'function') {
       /companyId=99/.test(workplaceCall.url),
       'Company parameter missing from workplace fetch',
     );
-    assert.ok(
-      /employeeId=321/.test(workplaceCall.url),
-      'Employee parameter missing from workplace fetch',
-    );
 
     const startToast = addToastCalls.find(
       (call) =>

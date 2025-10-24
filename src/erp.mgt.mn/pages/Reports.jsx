@@ -175,7 +175,6 @@ export default function Reports() {
   const workplaceSelectionTouchedRef = useRef(false);
   const manualInputRefs = useRef({});
   const runButtonRef = useRef(null);
-  const autoParamValuesRef = useRef([]);
   const baseWorkplaceAssignments = useMemo(
     () =>
       Array.isArray(session?.workplace_assignments)
@@ -357,17 +356,6 @@ export default function Reports() {
     }));
   }, [procParams]);
 
-  const paramIndexMap = useMemo(() => {
-    const map = new Map();
-    procParams.forEach((param, index) => {
-      if (typeof param !== 'string') return;
-      if (!map.has(param)) {
-        map.set(param, index);
-      }
-    });
-    return map;
-  }, [procParams]);
-
   const hasWorkplaceParam = useMemo(
     () =>
       normalizedProcParams.some(({ normalized }) => {
@@ -389,50 +377,6 @@ export default function Reports() {
     () =>
       normalizedProcParams
         .filter(({ normalized }) => normalized && normalized.includes('month'))
-        .map(({ original }) => original),
-    [normalizedProcParams],
-  );
-
-  const companyIdParamNames = useMemo(
-    () =>
-      normalizedProcParams
-        .filter(({ normalized }) => {
-          if (!normalized) return false;
-          if (!normalized.includes('company')) return false;
-          if (normalized.includes('name')) return false;
-          if (normalized.includes('code') && !normalized.includes('id'))
-            return false;
-          return (
-            normalized.includes('companyid') || normalized.includes('company')
-          );
-        })
-        .map(({ original }) => original),
-    [normalizedProcParams],
-  );
-
-  const employeeParamNames = useMemo(
-    () =>
-      normalizedProcParams
-        .filter(({ normalized }) => {
-          if (!normalized) return false;
-          if (normalized.includes('senior')) return false;
-          if (normalized.includes('plan')) return false;
-          if (normalized.includes('supervisor')) return false;
-          if (normalized.includes('approver')) return false;
-          const includesSession = normalized.includes('session');
-          if (
-            includesSession &&
-            (normalized.includes('emp') || normalized.includes('employee'))
-          ) {
-            return true;
-          }
-          if (!includesSession) {
-            if (!normalized.includes('emp')) return false;
-            if (!normalized.includes('id')) return false;
-            return true;
-          }
-          return false;
-        })
         .map(({ original }) => original),
     [normalizedProcParams],
   );
@@ -548,48 +492,6 @@ export default function Reports() {
 
     const params = new URLSearchParams();
     const paramsObject = {};
-    const getParamNumericValue = (names) => {
-      if (!Array.isArray(names) || names.length === 0) return null;
-      for (const name of names) {
-        if (typeof name !== 'string') continue;
-        const index = paramIndexMap.get(name);
-        let rawValue;
-        if (index !== undefined) {
-          const autoValue = autoParamValuesRef.current?.[index];
-          if (autoValue !== null && autoValue !== undefined) {
-            rawValue = autoValue;
-          } else if (
-            Object.prototype.hasOwnProperty.call(manualParams, name)
-          ) {
-            rawValue = manualParams[name];
-          }
-        } else if (Object.prototype.hasOwnProperty.call(manualParams, name)) {
-          rawValue = manualParams[name];
-        }
-        const numeric = normalizeNumericId(rawValue);
-        if (numeric !== null) {
-          return numeric;
-        }
-      }
-      return null;
-    };
-
-    const overrideCompanyId = getParamNumericValue(companyIdParamNames);
-    const sessionCompanyId = normalizeNumericId(session?.company_id);
-    const contextCompanyId = normalizeNumericId(company);
-    const companyIdForQuery =
-      overrideCompanyId ?? sessionCompanyId ?? contextCompanyId ?? null;
-
-    const overrideEmployeeId = getParamNumericValue(employeeParamNames);
-    const sessionEmployeeId = normalizeNumericId(
-      session?.empid ??
-        session?.employee_id ??
-        session?.employeeId ??
-        user?.empid ??
-        user?.employee_id ??
-        user?.employeeId,
-    );
-    const employeeIdForQuery = overrideEmployeeId ?? sessionEmployeeId ?? null;
     Object.entries(workplaceDateQuery.params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && String(value).length) {
         const valueStr = String(value);
@@ -597,16 +499,12 @@ export default function Reports() {
         paramsObject[key] = valueStr;
       }
     });
+    const companyIdForQuery =
+      normalizeNumericId(session?.company_id) ?? normalizeNumericId(company);
     if (companyIdForQuery != null) {
       const companyIdValue = String(companyIdForQuery);
       params.set('companyId', companyIdValue);
       paramsObject.companyId = companyIdValue;
-    }
-
-    if (employeeIdForQuery != null) {
-      const employeeIdValue = String(employeeIdForQuery);
-      params.set('employeeId', employeeIdValue);
-      paramsObject.employeeId = employeeIdValue;
     }
 
     const controller = new AbortController();
@@ -742,17 +640,7 @@ export default function Reports() {
     hasWorkplaceParam,
     workplaceDateQuery,
     session?.company_id,
-    session?.empid,
-    session?.employee_id,
-    session?.employeeId,
     company,
-    user?.empid,
-    user?.employee_id,
-    user?.employeeId,
-    manualParams,
-    paramIndexMap,
-    companyIdParamNames,
-    employeeParamNames,
     addToast,
     workplaceFetchDiagnosticsEnabled,
   ]);
@@ -1289,10 +1177,6 @@ export default function Reports() {
     endDate,
     sessionDefaults,
   ]);
-
-  useEffect(() => {
-    autoParamValuesRef.current = autoParams;
-  }, [autoParams]);
 
   const manualParamNames = useMemo(() => {
     return procParams.reduce((list, param, index) => {
