@@ -437,17 +437,6 @@ export default function Reports() {
     monthParamNames,
   ]);
 
-  const selectedManualDate = useMemo(() => {
-    if (!hasWorkplaceParam || singleDateParamNames.length === 0) return null;
-    for (const name of singleDateParamNames) {
-      const raw = manualParams[name];
-      if (raw === undefined || raw === null) continue;
-      const str = String(raw).trim();
-      if (str) return str;
-    }
-    return null;
-  }, [hasWorkplaceParam, singleDateParamNames, manualParams]);
-
   const showWorkplaceSelector = hasWorkplaceParam;
 
   const workplaceDateQuery = useMemo(() => {
@@ -466,26 +455,6 @@ export default function Reports() {
         },
       };
     }
-    if (selectedManualDate) {
-      const normalizedManualDate = normalizeDateInput(
-        selectedManualDate,
-        'YYYY-MM-DD',
-      );
-      const manualDateValue = normalizedManualDate?.trim()
-        ? normalizedManualDate
-        : String(selectedManualDate).trim();
-      if (!manualDateValue) {
-        return { status: 'waiting', params: null };
-      }
-      return {
-        status: 'ready',
-        params: {
-          date: manualDateValue,
-          startDate: manualDateValue,
-          endDate: manualDateValue,
-        },
-      };
-    }
     const normalizedStart = startDate ? String(startDate).trim() : '';
     const normalizedEnd = endDate ? String(endDate).trim() : '';
     const effective = normalizedStart || normalizedEnd;
@@ -500,43 +469,9 @@ export default function Reports() {
     hasWorkplaceParam,
     requiresYearMonthParams,
     selectedYearMonth,
-    selectedManualDate,
     startDate,
     endDate,
   ]);
-
-  const workplaceDateQueryParams = useMemo(() => {
-    if (workplaceDateQuery.status !== 'ready' || !workplaceDateQuery.params) {
-      return null;
-    }
-    const normalizedEntries = Object.entries(workplaceDateQuery.params).reduce(
-      (list, [key, value]) => {
-        if (value === undefined || value === null) return list;
-        const stringValue = String(value).trim();
-        if (!stringValue) return list;
-        list.push([key, stringValue]);
-        return list;
-      },
-      [],
-    );
-    if (!normalizedEntries.length) return null;
-    return normalizedEntries.reduce((acc, [key, value]) => {
-      acc[key] = value;
-      return acc;
-    }, {});
-  }, [workplaceDateQuery]);
-
-  const workplaceDateQueryKey = useMemo(() => {
-    if (!workplaceDateQueryParams) return null;
-    return Object.entries(workplaceDateQueryParams)
-      .sort(([a], [b]) => {
-        if (a < b) return -1;
-        if (a > b) return 1;
-        return 0;
-      })
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
-      .join('&');
-  }, [workplaceDateQueryParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -547,11 +482,7 @@ export default function Reports() {
       };
     }
 
-    if (
-      workplaceDateQuery.status !== 'ready' ||
-      !workplaceDateQueryParams ||
-      !workplaceDateQueryKey
-    ) {
+    if (workplaceDateQuery.status !== 'ready' || !workplaceDateQuery.params) {
       workplaceSelectionTouchedRef.current = false;
       setWorkplaceAssignmentsForPeriod(null);
       return () => {
@@ -561,9 +492,12 @@ export default function Reports() {
 
     const params = new URLSearchParams();
     const paramsObject = {};
-    Object.entries(workplaceDateQueryParams).forEach(([key, value]) => {
-      params.set(key, value);
-      paramsObject[key] = value;
+    Object.entries(workplaceDateQuery.params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).length) {
+        const valueStr = String(value);
+        params.set(key, valueStr);
+        paramsObject[key] = valueStr;
+      }
     });
     const companyIdForQuery =
       normalizeNumericId(session?.company_id) ?? normalizeNumericId(company);
@@ -709,9 +643,7 @@ export default function Reports() {
     };
   }, [
     hasWorkplaceParam,
-    workplaceDateQuery.status,
-    workplaceDateQueryParams,
-    workplaceDateQueryKey,
+    workplaceDateQuery,
     session?.company_id,
     company,
     addToast,
@@ -1127,37 +1059,25 @@ export default function Reports() {
       managedIndices: new Set(),
       startIndices: new Set(),
       endIndices: new Set(),
-      singleDateIndices: new Set(),
     };
     procParams.forEach((param, index) => {
       if (typeof param !== 'string') return;
-      const matchesStart = isStartDateParam(param);
-      const matchesEnd = isEndDateParam(param);
-      if (matchesStart) {
+      if (isStartDateParam(param)) {
         info.hasStartParam = true;
         info.managedIndices.add(index);
         info.startIndices.add(index);
       }
-      if (matchesEnd) {
+      if (isEndDateParam(param)) {
         info.hasEndParam = true;
         info.managedIndices.add(index);
         info.endIndices.add(index);
-      }
-      if (!matchesStart && !matchesEnd && isLikelyDateField(param)) {
-        info.singleDateIndices.add(index);
       }
     });
     return info;
   }, [procParams]);
 
-  const {
-    hasStartParam,
-    hasEndParam,
-    managedIndices,
-    startIndices,
-    endIndices,
-    singleDateIndices,
-  } = dateParamInfo;
+  const { hasStartParam, hasEndParam, managedIndices, startIndices, endIndices } =
+    dateParamInfo;
   const hasDateParams = hasStartParam || hasEndParam;
 
   const sessionDefaults = useMemo(() => {
@@ -1271,17 +1191,6 @@ export default function Reports() {
       return list;
     }, []);
   }, [procParams, managedIndices, autoParams]);
-
-  const singleDateParamNames = useMemo(() => {
-    if (!singleDateIndices || singleDateIndices.size === 0) return [];
-    return procParams.reduce((list, param, index) => {
-      if (!singleDateIndices.has(index)) return list;
-      if (typeof param === 'string') {
-        list.push(param);
-      }
-      return list;
-    }, []);
-  }, [procParams, singleDateIndices]);
 
   const activeControlRefs = useMemo(() => {
     const refs = [];
