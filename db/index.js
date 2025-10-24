@@ -49,6 +49,87 @@ import { formatDateForDb } from "../api-server/utils/formatDate.js";
 
 const PROTECTED_PROCEDURE_PREFIXES = ["dynrep_"];
 
+function escapeForDiagnostics(value) {
+  if (value === undefined || value === null) {
+    return "NULL";
+  }
+
+  if (mysql && typeof mysql.escape === "function") {
+    try {
+      return mysql.escape(value);
+    } catch {
+      // fall through to manual escaping
+    }
+  }
+
+  if (value instanceof Date) {
+    return `'${formatDateForDb(value)}'`;
+  }
+
+  if (Buffer.isBuffer(value)) {
+    return `X'${value.toString("hex")}'`;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => escapeForDiagnostics(item)).join(", ");
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    return Number.isFinite(Number(value)) ? String(value) : "NULL";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "TRUE" : "FALSE";
+  }
+
+  if (typeof value === "object") {
+    return escapeForDiagnostics(JSON.stringify(value));
+  }
+
+  const str = String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\u0008/g, "\\b")
+    .replace(/\u000c/g, "\\f")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t")
+    .replace(/\u0000/g, "\\0")
+    .replace(/\u001a/g, "\\Z")
+    .replace(/'/g, "\\'");
+  return `'${str}'`;
+}
+
+function formatSqlForDiagnostics(sql, params) {
+  if (!sql) return "";
+  if (!Array.isArray(params) || params.length === 0) {
+    return sql;
+  }
+
+  if (mysql && typeof mysql.format === "function") {
+    try {
+      return mysql.format(sql, params);
+    } catch {
+      // fall back to manual formatting below
+    }
+  }
+
+  let index = 0;
+  const formatted = sql.replace(/\?/g, () => {
+    if (index >= params.length) {
+      return "?";
+    }
+    const replacement = escapeForDiagnostics(params[index]);
+    index += 1;
+    return replacement;
+  });
+
+  if (index < params.length) {
+    return `${formatted} /* +${params.length - index} params */`;
+  }
+
+  return formatted;
+}
+
 async function isProtectedProcedure(name) {
   if (!name) return false;
   if (PROTECTED_PROCEDURE_PREFIXES.some((p) => name.startsWith(p))) return true;
