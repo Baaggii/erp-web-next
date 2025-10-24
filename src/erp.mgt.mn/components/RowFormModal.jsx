@@ -2294,6 +2294,7 @@ const RowFormModal = function RowFormModal({
             onRowsChange={handleGridRowsChange}
             requiredFields={requiredFields}
             disabledFields={disabledFields}
+            disabledFieldReasons={disabledFieldReasons}
             defaultValues={defaultValues}
             dateField={dateField}
             rows={gridRows}
