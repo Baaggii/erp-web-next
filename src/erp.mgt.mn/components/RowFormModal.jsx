@@ -28,6 +28,7 @@ const RowFormModal = function RowFormModal({
   relationData = {},
   fieldTypeMap = {},
   disabledFields = [],
+  disabledFieldReasons = {},
   labels = {},
   requiredFields = [],
   onChange = () => {},
@@ -145,6 +146,71 @@ const RowFormModal = function RowFormModal({
   const disabledSet = React.useMemo(
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
+  );
+  const disabledReasonLookup = React.useMemo(() => {
+    const map = {};
+    Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
+      if (!key) return;
+      const lower = String(key).toLowerCase();
+      const list = Array.isArray(value) ? value : [value];
+      const unique = map[lower] ? new Set(map[lower]) : new Set();
+      list.forEach((entry) => {
+        if (!entry && entry !== 0) return;
+        unique.add(String(entry));
+      });
+      map[lower] = Array.from(unique);
+    });
+    return map;
+  }, [disabledFieldReasons]);
+  const guardToastEnabled = !!general.posGuardToastEnabled;
+  const lastGuardToastRef = useRef({ field: null, ts: 0 });
+  const describeGuardReasons = React.useCallback(
+    (codes = []) => {
+      if (!Array.isArray(codes) || codes.length === 0) return [];
+      const seen = new Set();
+      const messages = [];
+      codes.forEach((code) => {
+        if (!code && code !== 0) return;
+        const normalized = String(code);
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        switch (normalized) {
+          case 'missingEditableConfig':
+            messages.push(
+              t(
+                'pos_guard_reason_missing_editable',
+                'Field is not configured as editable in the POS layout',
+              ),
+            );
+            break;
+          case 'calcField':
+            messages.push(
+              t(
+                'pos_guard_reason_calc_field',
+                'Value is derived from a calc field mapping',
+              ),
+            );
+            break;
+          case 'posFormula':
+            messages.push(
+              t(
+                'pos_guard_reason_pos_formula',
+                'Value is calculated by a POS formula',
+              ),
+            );
+            break;
+          case 'computed':
+            messages.push(
+              t('pos_guard_reason_computed', 'Value is automatically computed'),
+            );
+            break;
+          default:
+            messages.push(normalized);
+        }
+      });
+      return messages;
+    },
+    [t],
   );
   const { user, company, branch, department, userSettings } = useContext(AuthContext);
   const columnCaseMapKey = React.useMemo(
@@ -1522,6 +1588,29 @@ const RowFormModal = function RowFormModal({
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
+    if (guardToastEnabled && col) {
+      const lower = String(col).toLowerCase();
+      if (disabledSet.has(lower)) {
+        const reasons = describeGuardReasons(disabledReasonLookup[lower] || []);
+        const message =
+          reasons.length > 0
+            ? t('pos_guard_toast_message_with_reasons', '{{field}} is read-only: {{reasons}}', {
+                field: col,
+                reasons: reasons.join('; '),
+              })
+            : t('pos_guard_toast_message', '{{field}} is read-only.', { field: col });
+        const now = Date.now();
+        const last = lastGuardToastRef.current;
+        if (last.field !== lower || now - last.ts > 400) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message, type: 'info' },
+            }),
+          );
+          lastGuardToastRef.current = { field: lower, ts: now };
+        }
+      }
+    }
     const view = viewSourceMap[col];
     if (view && !alreadyRequestedRef.current.has(view)) {
       alreadyRequestedRef.current.add(view);
@@ -1888,6 +1977,10 @@ const RowFormModal = function RowFormModal({
           className="border rounded bg-gray-100 px-2 py-1"
           style={readonlyBoxStyle}
           ref={(el) => (readonlyRefs.current[c] = el)}
+          tabIndex={0}
+          role="textbox"
+          aria-readonly="true"
+          onFocus={() => handleFocusField(c)}
         >
           {display}
         </div>
