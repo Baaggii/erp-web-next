@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useContext, memo, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useContext, memo } from 'react';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
@@ -163,7 +163,7 @@ const RowFormModal = function RowFormModal({
     return map;
   }, [disabledFieldReasons]);
   const guardToastEnabled = !!general.posGuardToastEnabled;
-  const lastGuardToastRef = useRef({ field: null, ts: 0 });
+  const lastGuardToastRef = useRef({ field: null, ts: 0, message: null, context: null });
   const describeGuardReasons = React.useCallback(
     (codes = []) => {
       if (!Array.isArray(codes) || codes.length === 0) return [];
@@ -211,6 +211,75 @@ const RowFormModal = function RowFormModal({
       return messages;
     },
     [t],
+  );
+  const notifyAutoResetGuardOnEdit = React.useCallback(
+    (field) => {
+      if (!guardToastEnabled || !field) return;
+      const fieldName = String(field);
+      const lower = fieldName.toLowerCase();
+      const rawCodes = disabledReasonLookup[lower];
+      const codes = Array.isArray(rawCodes)
+        ? rawCodes
+        : rawCodes || rawCodes === 0
+          ? [rawCodes]
+          : [];
+      if (codes.length === 0) return;
+      const hasAutoReset = codes.some((code) => String(code) === 'sessionFieldAutoReset');
+      const hasComputed = codes.some((code) =>
+        ['calcField', 'posFormula', 'computed'].includes(String(code)),
+      );
+      if (!hasAutoReset && !hasComputed) return;
+      const reasons = describeGuardReasons(codes);
+      const reasonsText = (reasons.length > 0 ? reasons : codes.map((code) => String(code))).join(
+        '; ',
+      );
+      let message;
+      if (hasAutoReset && hasComputed) {
+        message = t(
+          'pos_guard_toast_message_edit_auto_reset_and_computed',
+          '{{field}} edit resets automatically and calculated values prevail: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else if (hasAutoReset) {
+        message = t(
+          'pos_guard_toast_message_edit_auto_reset',
+          '{{field}} edit resets automatically: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else {
+        message = t(
+          'pos_guard_toast_message_edit_computed',
+          '{{field}} edit cannot override calculated values: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      }
+      const now = Date.now();
+      const last = lastGuardToastRef.current;
+      if (
+        last.field === lower &&
+        last.message === message &&
+        last.context === 'edit' &&
+        now - last.ts <= 400
+      ) {
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message, type: 'info' },
+        }),
+      );
+      lastGuardToastRef.current = { field: lower, ts: now, message, context: 'edit' };
+    },
+    [guardToastEnabled, disabledReasonLookup, describeGuardReasons, t],
   );
   const { user, company, branch, department, userSettings } = useContext(AuthContext);
   const columnCaseMapKey = React.useMemo(
@@ -1601,13 +1670,18 @@ const RowFormModal = function RowFormModal({
             : t('pos_guard_toast_message', '{{field}} is read-only.', { field: col });
         const now = Date.now();
         const last = lastGuardToastRef.current;
-        if (last.field !== lower || now - last.ts > 400) {
+        if (
+          last.field !== lower ||
+          now - last.ts > 400 ||
+          last.message !== message ||
+          last.context !== 'focus'
+        ) {
           window.dispatchEvent(
             new CustomEvent('toast', {
               detail: { message, type: 'info' },
             }),
           );
-          lastGuardToastRef.current = { field: lower, ts: now };
+          lastGuardToastRef.current = { field: lower, ts: now, message, context: 'focus' };
         }
       }
     }
