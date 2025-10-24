@@ -117,7 +117,7 @@ export async function listReportWorkplaces(req, res, next) {
       return res.status(400).json({ message: 'Invalid date parameters' });
     }
 
-    const sessions = await getEmploymentSessionsImpl(req.user.empid, {
+    const sessionResult = await getEmploymentSessionsImpl(req.user.empid, {
       effectiveDate,
       includeDiagnostics: true,
     });
