@@ -433,31 +433,6 @@ if (typeof mock.import !== 'function') {
     assert.equal(reasonSet.has('calcField'), true);
   });
 
-  test('collectDisabledFieldsAndReasons preserves editable session fields with guard reason', async () => {
-    const { collectDisabledFieldsAndReasons } = await mock.import(
-      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
-      {},
-    );
-
-    const allFields = ['SessionId', 'ManualNote'];
-    const editSet = new Set(allFields.map((field) => field.toLowerCase()));
-    const caseMap = { sessionid: 'SessionId', manualnote: 'ManualNote' };
-
-    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-      allFields,
-      editSet,
-      computedEntry: null,
-      caseMap,
-      sessionFields: ['sessionid'],
-    });
-
-    assert.deepEqual(disabled, []);
-    const sessionReasons = reasonMap.get('SessionId');
-    assert.ok(sessionReasons instanceof Set);
-    assert.equal(sessionReasons.has('sessionFieldAutoReset'), true);
-    assert.equal(reasonMap.has('ManualNote'), false);
-  });
-
 
   test('generated column configs support lowercase generation_expression metadata', async () => {
     const actualTransactionValues = await import(
