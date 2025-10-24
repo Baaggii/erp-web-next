@@ -449,6 +449,7 @@ export function propagateCalcFields(cfg, data) {
         aggregatorState.set(aggKey, computed);
         aggregatorOrder.push(aggKey);
       }
+    }
 
     let computedValue;
     let hasComputedValue = false;
@@ -490,20 +491,9 @@ export function propagateCalcFields(cfg, data) {
           break;
         }
       }
+    }
 
-      if (!hasComputedValue) {
-        for (let idx = 0; idx < cells.length; idx += 1) {
-          if (!computedIndexSet.has(idx)) continue;
-          const cell = cells[idx];
-          const source = data[cell.table];
-          const direct = pickFirstDefinedFieldValue(source, cell.field);
-          if (direct !== undefined) {
-            computedValue = direct;
-            hasComputedValue = true;
-            break;
-          }
-        }
-      }
+    if (!hasComputedValue) continue;
 
     for (const cell of cells) {
       const { table, field } = cell || {};
@@ -513,29 +503,15 @@ export function propagateCalcFields(cfg, data) {
       if (!target) continue;
       if (cell.__aggKey && Array.isArray(target)) continue;
 
-        if (Array.isArray(target)) {
-          let tableChanged = false;
-          for (const row of target) {
-            if (!row || typeof row !== 'object') continue;
-            if (row[field] === computedValue) continue;
-            setValue(row, field, computedValue);
-            tableChanged = true;
-          }
-          if ((target?.[field] ?? undefined) !== computedValue) {
-            setValue(target, field, computedValue);
-            tableChanged = true;
-          }
-          if (tableChanged) iterationChanged = true;
-        } else if (isPlainObject(target)) {
-          if (target[field] === computedValue) continue;
-          setValue(target, field, computedValue);
-          iterationChanged = true;
+      if (Array.isArray(target)) {
+        for (const row of target) {
+          if (!row || typeof row !== 'object') continue;
+          setValue(row, field, computedValue);
         }
+        setValue(target, field, computedValue);
+      } else if (isPlainObject(target)) {
+        setValue(target, field, computedValue);
       }
-    }
-
-    if (!iterationChanged) {
-      break;
     }
   }
 }
