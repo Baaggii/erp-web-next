@@ -1243,69 +1243,24 @@ export default function Reports() {
       if (!normalizedName) {
         return rawValue;
       }
-      const includesWorkplace =
-        normalizedName.includes('workplace') || normalizedName.includes('workloc');
-      const includesSession = normalizedName.includes('session');
-      if (includesWorkplace && !normalizedName.includes('name')) {
-        const resolvedWorkplaceId = normalizeNumericId(
-          selectedWorkplaceId ??
-            sessionDefaults.workplaceId ??
-            selectedWorkplaceSessionId ??
-            sessionDefaults.workplaceSessionId,
-        );
-        const resolvedSessionId = normalizeNumericId(
-          selectedWorkplaceSessionId ??
-            sessionDefaults.workplaceSessionId ??
-            selectedWorkplaceId ??
-            sessionDefaults.workplaceId,
-        );
+      if (
+        (normalizedName.includes('workplace') || normalizedName.includes('workloc')) &&
+        !normalizedName.includes('name')
+      ) {
         const numericValue = normalizeNumericId(rawValue);
         if (numericValue !== null) {
-          if (
-            includesSession &&
-            resolvedWorkplaceId !== null &&
-            resolvedSessionId !== null &&
-            numericValue === resolvedSessionId &&
-            resolvedWorkplaceId !== resolvedSessionId
-          ) {
-            return resolvedWorkplaceId;
-          }
           return numericValue;
         }
         const tokenCandidates = extractNumericTokens(String(rawValue));
         if (tokenCandidates.length > 0) {
-          const preferSessionTokens = includesSession && !includesWorkplace;
-          const preferredIds = preferSessionTokens
-            ? [
-                normalizeNumericId(
-                  selectedWorkplaceSessionId ?? sessionDefaults.workplaceSessionId,
-                ),
-                normalizeNumericId(
-                  selectedWorkplaceId ?? sessionDefaults.workplaceId,
-                ),
-              ]
-            : [
-                normalizeNumericId(
-                  selectedWorkplaceId ?? sessionDefaults.workplaceId,
-                ),
-                normalizeNumericId(
-                  selectedWorkplaceSessionId ?? sessionDefaults.workplaceSessionId,
-                ),
-              ];
-          const matchingToken = tokenCandidates.find((token) =>
-            preferredIds.some((id) => id != null && id === token),
-          );
-          if (Number.isFinite(matchingToken)) {
-            return matchingToken;
-          }
-          const candidate = preferSessionTokens
+          const candidate = normalizedName.includes('session')
             ? tokenCandidates[tokenCandidates.length - 1]
             : tokenCandidates[0];
           if (Number.isFinite(candidate)) {
             return candidate;
           }
         }
-        if (includesSession && !includesWorkplace) {
+        if (normalizedName.includes('session')) {
           const fallbackSessionId = normalizeNumericId(
             selectedWorkplaceSessionId ??
               sessionDefaults.workplaceSessionId ??

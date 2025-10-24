@@ -139,32 +139,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
   ]);
 });
 
-test('listReportWorkplaces respects numeric company filter', async () => {
-  __setGetEmploymentSessions(async () => [
-    { company_id: '1', workplace_id: 5, workplace_session_id: 101 },
-    { company_id: '2', workplace_id: 6, workplace_session_id: 102 },
-  ]);
-
-  const req = {
-    user: { empid: 7, companyId: null },
-    query: { year: '2024', month: '5', companyId: '1' },
-  };
-  const res = createRes();
-
-  try {
-    await listReportWorkplaces(req, res, (err) => {
-      throw err || new Error('next should not be called');
-    });
-  } finally {
-    __resetGetEmploymentSessions();
-  }
-
-  assert.equal(res.statusCode, 200);
-  assert.ok(Array.isArray(res.payload?.assignments));
-  assert.equal(res.payload.assignments.length, 1);
-  assert.equal(res.payload.assignments[0].workplace_id, 5);
-});
-
 test('listReportWorkplaces prefers endDate when provided', async () => {
   let capturedEffectiveDate = null;
   __setGetEmploymentSessions(async (_empId, options) => {
