@@ -1148,7 +1148,9 @@ export default function Reports() {
         name.includes('sessionworkplace') ||
         name.includes('workplacesession')
       ) {
-        return sessionDefaults.workplaceSessionId;
+        return (
+          sessionDefaults.workplaceId ?? sessionDefaults.workplaceSessionId
+        );
       }
       if (name.includes('company')) return sessionDefaults.companyId;
       if (name.includes('branch')) return sessionDefaults.branchId;
@@ -1253,14 +1255,32 @@ export default function Reports() {
         }
         const tokenCandidates = extractNumericTokens(String(rawValue));
         if (tokenCandidates.length > 0) {
-          const candidate = normalizedName.includes('session')
-            ? tokenCandidates[tokenCandidates.length - 1]
-            : tokenCandidates[0];
+          const normalizedPreferences = [
+            selectedWorkplaceId,
+            sessionDefaults.workplaceId,
+            selectedWorkplaceSessionId,
+            sessionDefaults.workplaceSessionId,
+          ]
+            .map((value) => normalizeNumericId(value))
+            .filter((value) => value !== null);
+          const preferredToken = normalizedPreferences.find((preferred) =>
+            tokenCandidates.includes(preferred),
+          );
+          const candidate = preferredToken ?? tokenCandidates[0];
           if (Number.isFinite(candidate)) {
             return candidate;
           }
         }
         if (normalizedName.includes('session')) {
+          const fallbackWorkplaceId = normalizeNumericId(
+            selectedWorkplaceId ??
+              sessionDefaults.workplaceId ??
+              selectedWorkplaceSessionId ??
+              sessionDefaults.workplaceSessionId,
+          );
+          if (fallbackWorkplaceId !== null) {
+            return fallbackWorkplaceId;
+          }
           const fallbackSessionId = normalizeNumericId(
             selectedWorkplaceSessionId ??
               sessionDefaults.workplaceSessionId ??
