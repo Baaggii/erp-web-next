@@ -612,8 +612,7 @@ export default function Reports() {
                 : ' (using base assignments)';
             let toastMessage = `${baseMessage}${suffix}`;
             if (formattedSql) {
-              const separator = toastMessage.endsWith(')') ? ' · ' : ' ';
-              toastMessage += `${separator}SQL: ${formattedSql}`;
+              toastMessage += `\nSQL: ${formattedSql}`;
             }
             addToast(toastMessage, validCount > 0 ? 'success' : 'info');
           }
