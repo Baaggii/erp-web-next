@@ -507,6 +507,22 @@ export default function Reports() {
       paramsObject.companyId = companyIdValue;
     }
 
+    const userIdForQuery = (() => {
+      const raw =
+        user?.empid ??
+        session?.empid ??
+        session?.employee_id ??
+        session?.employeeId ??
+        null;
+      if (raw === undefined || raw === null) return null;
+      const str = String(raw).trim();
+      return str.length ? str : null;
+    })();
+    if (userIdForQuery !== null) {
+      params.set('userId', userIdForQuery);
+      paramsObject.userId = userIdForQuery;
+    }
+
     const controller = new AbortController();
     workplaceSelectionTouchedRef.current = false;
     setWorkplaceAssignmentsForPeriod(null);
@@ -654,6 +670,10 @@ export default function Reports() {
     hasWorkplaceParam,
     workplaceDateQuery,
     session?.company_id,
+    session?.empid,
+    session?.employee_id,
+    session?.employeeId,
+    user?.empid,
     company,
     addToast,
     workplaceFetchDiagnosticsEnabled,
