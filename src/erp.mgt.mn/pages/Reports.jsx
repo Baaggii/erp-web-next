@@ -75,6 +75,18 @@ function normalizeNumericId(value) {
   return null;
 }
 
+function extractNumericTokens(value) {
+  if (typeof value !== 'string') return [];
+  const matches = value.match(/\d+/g);
+  if (!matches) return [];
+  return matches
+    .map((token) => {
+      const parsed = Number.parseInt(token, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    })
+    .filter((num) => num !== null);
+}
+
 function normalizeWorkplaceAssignment(assignment) {
   if (!assignment || typeof assignment !== 'object') return null;
   const workplaceId = normalizeNumericId(
@@ -87,11 +99,26 @@ function normalizeWorkplaceAssignment(assignment) {
       assignment.workplaceId,
   );
 
+  const finalSessionId =
+    workplaceSessionId ?? workplaceId ?? normalizeNumericId(assignment.value);
+  const finalWorkplaceId = workplaceId ?? finalSessionId ?? null;
+
   return {
     ...assignment,
-    workplace_id: workplaceId,
-    workplace_session_id: workplaceSessionId,
+    workplace_id: finalWorkplaceId,
+    workplace_session_id: finalSessionId,
   };
+}
+
+function summarizeForToast(payload) {
+  try {
+    const json = JSON.stringify(payload);
+    if (!json) return '{}';
+    if (json.length <= 140) return json;
+    return `${json.slice(0, 137)}…`;
+  } catch {
+    return '[unserializable]';
+  }
 }
 
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
@@ -134,6 +161,9 @@ export default function Reports() {
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
+  const workplaceFetchDiagnosticsEnabled = Boolean(
+    generalConfig?.general?.workplaceFetchToastEnabled,
+  );
   const usingBaseAssignments = !Array.isArray(workplaceAssignmentsForPeriod);
   const expandedTransactionDetailsRef = useRef(expandedTransactionDetails);
   const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
@@ -158,6 +188,7 @@ export default function Reports() {
     }
     return baseWorkplaceAssignments;
   }, [workplaceAssignmentsForPeriod, baseWorkplaceAssignments]);
+
   const workplaceSelectOptions = useMemo(() => {
     const assignments = Array.isArray(workplaceAssignments)
       ? workplaceAssignments
@@ -460,25 +491,39 @@ export default function Reports() {
     }
 
     const params = new URLSearchParams();
+    const paramsObject = {};
     Object.entries(workplaceDateQuery.params).forEach(([key, value]) => {
       if (value !== undefined && value !== null && String(value).length) {
-        params.set(key, String(value));
+        const valueStr = String(value);
+        params.set(key, valueStr);
+        paramsObject[key] = valueStr;
       }
     });
     const companyIdForQuery =
       normalizeNumericId(session?.company_id) ?? normalizeNumericId(company);
     if (companyIdForQuery != null) {
-      params.set('companyId', String(companyIdForQuery));
+      const companyIdValue = String(companyIdForQuery);
+      params.set('companyId', companyIdValue);
+      paramsObject.companyId = companyIdValue;
     }
 
     const controller = new AbortController();
     workplaceSelectionTouchedRef.current = false;
     setWorkplaceAssignmentsForPeriod(null);
 
+    const queryString = params.toString();
+    const paramsSummary = summarizeForToast(paramsObject);
+
     async function loadWorkplaceAssignments() {
+      if (workplaceFetchDiagnosticsEnabled) {
+        addToast(
+          `Fetching workplaces with params ${paramsSummary}`,
+          'info',
+        );
+      }
       try {
         const res = await fetch(
-          `/api/reports/workplaces?${params.toString()}`,
+          `/api/reports/workplaces?${queryString}`,
           {
             credentials: 'include',
             signal: controller.signal,
@@ -491,14 +536,93 @@ export default function Reports() {
         const assignments = Array.isArray(data.assignments)
           ? data.assignments
           : [];
+        const normalizedAssignments = [];
+        const validAssignments = [];
+        assignments.forEach((assignment) => {
+          const normalized = normalizeWorkplaceAssignment(assignment);
+          if (!normalized) return;
+          const workplaceId = normalizeNumericId(
+            normalized.workplace_id ??
+              normalized.workplace_session_id ??
+              normalized.workplaceId ??
+              normalized.workplaceSessionId,
+          );
+          const sessionId = normalizeNumericId(
+            normalized.workplace_session_id ??
+              normalized.workplace_id ??
+              normalized.workplaceSessionId ??
+              normalized.workplaceId,
+          );
+          if (workplaceId != null || sessionId != null) {
+            const enriched = {
+              ...normalized,
+              workplace_id: workplaceId ?? sessionId ?? null,
+              workplace_session_id: sessionId ?? workplaceId ?? null,
+            };
+            normalizedAssignments.push(enriched);
+            if (
+              normalizeNumericId(enriched.workplace_id) !== null &&
+              normalizeNumericId(enriched.workplace_session_id) !== null
+            ) {
+              validAssignments.push(enriched);
+            }
+          }
+        });
+        const validCount = validAssignments.length;
         if (!cancelled) {
           workplaceSelectionTouchedRef.current = false;
-          setWorkplaceAssignmentsForPeriod(assignments);
+          if (validCount > 0) {
+            setWorkplaceAssignmentsForPeriod(validAssignments);
+          } else if (normalizedAssignments.length > 0) {
+            setWorkplaceAssignmentsForPeriod(normalizedAssignments);
+          } else {
+            setWorkplaceAssignmentsForPeriod(null);
+          }
+          if (workplaceFetchDiagnosticsEnabled) {
+            let sampleText = '';
+            if (validCount > 0) {
+              const hasSample = validAssignments.some((assignment) => {
+                const workplaceId = normalizeNumericId(
+                  assignment.workplace_id ?? assignment.workplaceId,
+                );
+                const sessionId = normalizeNumericId(
+                  assignment.workplace_session_id ??
+                    assignment.workplaceSessionId ??
+                    assignment.workplace_id ??
+                    assignment.workplaceId,
+                );
+                if (workplaceId === null || sessionId === null) return false;
+                sampleText = ` (first #${workplaceId}${
+                  sessionId !== workplaceId ? ` session ${sessionId}` : ''
+                })`;
+                return true;
+              });
+              if (!hasSample) sampleText = '';
+            }
+            const baseMessage = `Workplace fetch params ${paramsSummary} → ${validCount}/${assignments.length} valid assignments`;
+            const suffix =
+              validCount > 0
+                ? sampleText
+                : normalizedAssignments.length > 0
+                ? ' (no valid IDs returned; showing raw results)'
+                : ' (using base assignments)';
+            addToast(
+              `${baseMessage}${suffix}`,
+              validCount > 0 ? 'success' : 'info',
+            );
+          }
         }
       } catch (err) {
         if (cancelled || err?.name === 'AbortError') return;
         workplaceSelectionTouchedRef.current = false;
         setWorkplaceAssignmentsForPeriod(null);
+        if (workplaceFetchDiagnosticsEnabled) {
+          const detailedMessage = err?.message || 'Unknown error';
+          addToast(
+            `Workplace fetch params ${paramsSummary} failed: ${detailedMessage}`,
+            'error',
+          );
+        }
         addToast(
           'Failed to load workplaces for the selected period',
           'error',
@@ -518,6 +642,7 @@ export default function Reports() {
     session?.company_id,
     company,
     addToast,
+    workplaceFetchDiagnosticsEnabled,
   ]);
 
   useEffect(() => {
@@ -1107,9 +1232,112 @@ export default function Reports() {
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
-      return auto ?? manualParams[p] ?? null;
+      const rawValue = auto ?? manualParams[p] ?? null;
+      if (rawValue === null || rawValue === undefined) {
+        return rawValue;
+      }
+      if (typeof p !== 'string') {
+        return rawValue;
+      }
+      const normalizedName = normalizeParamName(p);
+      if (!normalizedName) {
+        return rawValue;
+      }
+      const includesWorkplace =
+        normalizedName.includes('workplace') || normalizedName.includes('workloc');
+      const includesSession = normalizedName.includes('session');
+      if (includesWorkplace && !normalizedName.includes('name')) {
+        const resolvedWorkplaceId = normalizeNumericId(
+          selectedWorkplaceId ??
+            sessionDefaults.workplaceId ??
+            selectedWorkplaceSessionId ??
+            sessionDefaults.workplaceSessionId,
+        );
+        const resolvedSessionId = normalizeNumericId(
+          selectedWorkplaceSessionId ??
+            sessionDefaults.workplaceSessionId ??
+            selectedWorkplaceId ??
+            sessionDefaults.workplaceId,
+        );
+        const numericValue = normalizeNumericId(rawValue);
+        if (numericValue !== null) {
+          if (
+            includesSession &&
+            resolvedWorkplaceId !== null &&
+            resolvedSessionId !== null &&
+            numericValue === resolvedSessionId &&
+            resolvedWorkplaceId !== resolvedSessionId
+          ) {
+            return resolvedWorkplaceId;
+          }
+          return numericValue;
+        }
+        const tokenCandidates = extractNumericTokens(String(rawValue));
+        if (tokenCandidates.length > 0) {
+          const preferSessionTokens = includesSession && !includesWorkplace;
+          const preferredIds = preferSessionTokens
+            ? [
+                normalizeNumericId(
+                  selectedWorkplaceSessionId ?? sessionDefaults.workplaceSessionId,
+                ),
+                normalizeNumericId(
+                  selectedWorkplaceId ?? sessionDefaults.workplaceId,
+                ),
+              ]
+            : [
+                normalizeNumericId(
+                  selectedWorkplaceId ?? sessionDefaults.workplaceId,
+                ),
+                normalizeNumericId(
+                  selectedWorkplaceSessionId ?? sessionDefaults.workplaceSessionId,
+                ),
+              ];
+          const matchingToken = tokenCandidates.find((token) =>
+            preferredIds.some((id) => id != null && id === token),
+          );
+          if (Number.isFinite(matchingToken)) {
+            return matchingToken;
+          }
+          const candidate = preferSessionTokens
+            ? tokenCandidates[tokenCandidates.length - 1]
+            : tokenCandidates[0];
+          if (Number.isFinite(candidate)) {
+            return candidate;
+          }
+        }
+        if (includesSession && !includesWorkplace) {
+          const fallbackSessionId = normalizeNumericId(
+            selectedWorkplaceSessionId ??
+              sessionDefaults.workplaceSessionId ??
+              selectedWorkplaceId ??
+              sessionDefaults.workplaceId,
+          );
+          if (fallbackSessionId !== null) {
+            return fallbackSessionId;
+          }
+        } else {
+          const fallbackWorkplaceId = normalizeNumericId(
+            selectedWorkplaceId ??
+              sessionDefaults.workplaceId ??
+              selectedWorkplaceSessionId ??
+              sessionDefaults.workplaceSessionId,
+          );
+          if (fallbackWorkplaceId !== null) {
+            return fallbackWorkplaceId;
+          }
+        }
+        return null;
+      }
+      return rawValue;
     });
-  }, [procParams, autoParams, manualParams]);
+  }, [
+    procParams,
+    autoParams,
+    manualParams,
+    selectedWorkplaceId,
+    selectedWorkplaceSessionId,
+    sessionDefaults,
+  ]);
 
   const allParamsProvided = useMemo(
     () => finalParams.every((v) => v !== null && v !== ''),
@@ -1193,7 +1421,8 @@ export default function Reports() {
     }, {});
     const label = getLabel(selectedProc);
     const errorLabel = formatProcedureLabel(selectedProc);
-    addToast(`Calling ${label}`, 'info');
+    const paramSummary = summarizeForToast(paramMap);
+    addToast(`Calling ${label} with params ${paramSummary}`, 'info');
     try {
       const q = new URLSearchParams();
       if (branch) q.set('branchId', branch);
@@ -1211,7 +1440,9 @@ export default function Reports() {
         const data = await res.json().catch(() => ({ row: [] }));
         const rows = Array.isArray(data.row) ? data.row : [];
         addToast(
-          `${label} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
+          `${label} params ${paramSummary} → ${rows.length} row${
+            rows.length === 1 ? '' : 's'
+          }`,
           'success',
         );
         setApprovalReason('');
@@ -1233,13 +1464,19 @@ export default function Reports() {
       } else {
         const detailedMessage =
           (await extractErrorMessage(res)) || 'Failed to run procedure';
-        addToast(`Failed to run ${errorLabel}: ${detailedMessage}`, 'error');
+        addToast(
+          `Failed to run ${errorLabel} with params ${paramSummary}: ${detailedMessage}`,
+          'error',
+        );
       }
     } catch (err) {
       const fallbackMessage =
         (typeof err?.message === 'string' && err.message.trim()) ||
         'Failed to run procedure';
-      addToast(`Failed to run ${errorLabel}: ${fallbackMessage}`, 'error');
+      addToast(
+        `Failed to run ${errorLabel} with params ${paramSummary}: ${fallbackMessage}`,
+        'error',
+      );
     }
   }
 
@@ -2842,27 +3079,29 @@ export default function Reports() {
               />
             )}
             {showWorkplaceSelector && (
-              <label style={{ marginLeft: '0.5rem' }}>
-                Workplace
-                <select
-                  value={workplaceSelection}
-                  onChange={(e) => {
-                    workplaceSelectionTouchedRef.current = true;
-                    setWorkplaceSelection(e.target.value);
-                  }}
-                  style={{ marginLeft: '0.25rem' }}
-                  ref={workplaceSelectRef}
-                  onKeyDown={(event) =>
-                    handleParameterKeyDown(event, workplaceSelectRef)
-                  }
-                >
-                  {workplaceSelectOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <>
+                <label style={{ marginLeft: '0.5rem' }}>
+                  Workplace
+                  <select
+                    value={workplaceSelection}
+                    onChange={(e) => {
+                      workplaceSelectionTouchedRef.current = true;
+                      setWorkplaceSelection(e.target.value);
+                    }}
+                    style={{ marginLeft: '0.25rem' }}
+                    ref={workplaceSelectRef}
+                    onKeyDown={(event) =>
+                      handleParameterKeyDown(event, workplaceSelectRef)
+                    }
+                  >
+                    {workplaceSelectOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
             )}
             {procParams.map((p, i) => {
               if (managedIndices.has(i)) return null;
