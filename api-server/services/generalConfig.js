@@ -25,6 +25,7 @@ const defaults = {
     viewToastEnabled: true,
     reportRowToastEnabled: true,
     imageToastEnabled: false,
+    workplaceFetchToastEnabled: false,
     debugLoggingEnabled: false,
     editLabelsEnabled: false,
     showTourButtons: true,
