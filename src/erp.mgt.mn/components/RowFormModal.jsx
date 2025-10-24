@@ -597,7 +597,10 @@ const RowFormModal = function RowFormModal({
         return next;
       });
       if (notify && pendingDiff && Object.keys(pendingDiff).length > 0) {
-        onChange(pendingDiff);
+        onChange(pendingDiff, {
+          reason: 'formChange',
+          columns: Object.keys(pendingDiff),
+        });
       }
       return { snapshot: snapshot ?? formValsRef.current, diff: pendingDiff };
     },
@@ -1203,6 +1206,8 @@ const RowFormModal = function RowFormModal({
     const processed = new Set();
     const queued = new Set();
     const queue = [];
+    const executedProcedures = new Set();
+    const touchedColumns = new Set();
 
     const normalizeColumn = (name) => {
       if (!name && name !== 0) return null;
@@ -1524,6 +1529,10 @@ const RowFormModal = function RowFormModal({
 
         if (!row || typeof row !== 'object') continue;
 
+        if (procName) {
+          executedProcedures.add(procName);
+        }
+
         const result = applyProcedureResultToForm(row, workingFormVals, workingExtraVals);
         workingFormVals = result.formVals;
         workingExtraVals = result.extraVals;
@@ -1532,7 +1541,16 @@ const RowFormModal = function RowFormModal({
           Object.assign(aggregatedChanges, result.changedValues);
           result.changedColumns.forEach((changedCol) => {
             const normalizedChanged = normalizeColumn(changedCol) || changedCol;
+            if (normalizedChanged) {
+              touchedColumns.add(normalizedChanged);
+            }
             if (hasTrigger(normalizedChanged)) enqueue(normalizedChanged);
+          });
+          Object.keys(result.changedValues).forEach((key) => {
+            const normalizedKey = normalizeColumn(key) || key;
+            if (normalizedKey) {
+              touchedColumns.add(normalizedKey);
+            }
           });
         }
         if (general.procToastEnabled) {
@@ -1550,7 +1568,14 @@ const RowFormModal = function RowFormModal({
       const { diff: generatedDiff } = setFormValuesWithGenerated(() => workingFormVals, { notify: false }) || {};
       const combinedChanges = { ...(generatedDiff || {}), ...aggregatedChanges };
       if (Object.keys(combinedChanges).length > 0) {
-        onChange(combinedChanges);
+        Object.keys(combinedChanges).forEach((key) => {
+          if (key) touchedColumns.add(key);
+        });
+        onChange(combinedChanges, {
+          reason: 'procedure',
+          columns: Array.from(touchedColumns),
+          procedures: Array.from(executedProcedures),
+        });
       }
     }
   }
