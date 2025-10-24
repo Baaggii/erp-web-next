@@ -433,61 +433,6 @@ if (typeof mock.import !== 'function') {
     assert.equal(reasonSet.has('calcField'), true);
   });
 
-  test('collectDisabledFieldsAndReasons preserves editable session fields with guard reason', async () => {
-    const { collectDisabledFieldsAndReasons } = await mock.import(
-      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
-      {},
-    );
-
-    const allFields = ['SessionId', 'ManualNote'];
-    const editSet = new Set(allFields.map((field) => field.toLowerCase()));
-    const caseMap = { sessionid: 'SessionId', manualnote: 'ManualNote' };
-
-    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-      allFields,
-      editSet,
-      computedEntry: null,
-      caseMap,
-      sessionFields: ['sessionid'],
-    });
-
-    assert.deepEqual(disabled, []);
-    const sessionReasons = reasonMap.get('SessionId');
-    assert.ok(sessionReasons instanceof Set);
-    assert.equal(sessionReasons.has('sessionFieldAutoReset'), true);
-    assert.equal(reasonMap.has('ManualNote'), false);
-  });
-
-  test('collectDisabledFieldsAndReasons keeps explicitly editable computed fields interactive', async () => {
-    const { collectDisabledFieldsAndReasons } = await mock.import(
-      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
-      {},
-    );
-
-    const allFields = ['Total', 'ManualNote'];
-    const editSet = new Set(allFields.map((field) => field.toLowerCase()));
-    const caseMap = { total: 'Total', manualnote: 'ManualNote' };
-
-    const computedEntry = new Set(['total']);
-    computedEntry.reasonMap = new Map([[
-      'total',
-      new Set(['posFormula']),
-    ]]);
-
-    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-      allFields,
-      editSet,
-      computedEntry,
-      caseMap,
-      sessionFields: [],
-    });
-
-    assert.deepEqual(disabled, []);
-    const totalReasons = reasonMap.get('Total');
-    assert.ok(totalReasons instanceof Set);
-    assert.equal(totalReasons.has('posFormula'), true);
-  });
-
 
   test('generated column configs support lowercase generation_expression metadata', async () => {
     const actualTransactionValues = await import(

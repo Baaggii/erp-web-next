@@ -75,6 +75,18 @@ function normalizeNumericId(value) {
   return null;
 }
 
+function extractNumericTokens(value) {
+  if (typeof value !== 'string') return [];
+  const matches = value.match(/\d+/g);
+  if (!matches) return [];
+  return matches
+    .map((token) => {
+      const parsed = Number.parseInt(token, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    })
+    .filter((num) => num !== null);
+}
+
 function normalizeWorkplaceAssignment(assignment) {
   if (!assignment || typeof assignment !== 'object') return null;
   const workplaceId = normalizeNumericId(
@@ -521,6 +533,10 @@ export default function Reports() {
           throw new Error('Failed to load workplaces for selected period');
         }
         const data = await res.json().catch(() => ({}));
+        const diagnostics =
+          data && typeof data === 'object' ? data.diagnostics ?? null : null;
+        const formattedSql =
+          diagnostics?.formattedSql || diagnostics?.sql || null;
         const assignments = Array.isArray(data.assignments)
           ? data.assignments
           : [];
@@ -594,10 +610,11 @@ export default function Reports() {
                 : normalizedAssignments.length > 0
                 ? ' (no valid IDs returned; showing raw results)'
                 : ' (using base assignments)';
-            addToast(
-              `${baseMessage}${suffix}`,
-              validCount > 0 ? 'success' : 'info',
-            );
+            let toastMessage = `${baseMessage}${suffix}`;
+            if (formattedSql) {
+              toastMessage += `\nSQL: ${formattedSql}`;
+            }
+            addToast(toastMessage, validCount > 0 ? 'success' : 'info');
           }
         }
       } catch (err) {
@@ -1136,7 +1153,9 @@ export default function Reports() {
         name.includes('sessionworkplace') ||
         name.includes('workplacesession')
       ) {
-        return sessionDefaults.workplaceSessionId;
+        return (
+          sessionDefaults.workplaceId ?? sessionDefaults.workplaceSessionId
+        );
       }
       if (name.includes('company')) return sessionDefaults.companyId;
       if (name.includes('branch')) return sessionDefaults.branchId;
@@ -1220,9 +1239,85 @@ export default function Reports() {
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
-      return auto ?? manualParams[p] ?? null;
+      const rawValue = auto ?? manualParams[p] ?? null;
+      if (rawValue === null || rawValue === undefined) {
+        return rawValue;
+      }
+      if (typeof p !== 'string') {
+        return rawValue;
+      }
+      const normalizedName = normalizeParamName(p);
+      if (!normalizedName) {
+        return rawValue;
+      }
+      if (
+        (normalizedName.includes('workplace') || normalizedName.includes('workloc')) &&
+        !normalizedName.includes('name')
+      ) {
+        const numericValue = normalizeNumericId(rawValue);
+        if (numericValue !== null) {
+          return numericValue;
+        }
+        const tokenCandidates = extractNumericTokens(String(rawValue));
+        if (tokenCandidates.length > 0) {
+          const normalizedPreferences = [
+            selectedWorkplaceId,
+            sessionDefaults.workplaceId,
+            selectedWorkplaceSessionId,
+            sessionDefaults.workplaceSessionId,
+          ]
+            .map((value) => normalizeNumericId(value))
+            .filter((value) => value !== null);
+          const preferredToken = normalizedPreferences.find((preferred) =>
+            tokenCandidates.includes(preferred),
+          );
+          const candidate = preferredToken ?? tokenCandidates[0];
+          if (Number.isFinite(candidate)) {
+            return candidate;
+          }
+        }
+        if (normalizedName.includes('session')) {
+          const fallbackWorkplaceId = normalizeNumericId(
+            selectedWorkplaceId ??
+              sessionDefaults.workplaceId ??
+              selectedWorkplaceSessionId ??
+              sessionDefaults.workplaceSessionId,
+          );
+          if (fallbackWorkplaceId !== null) {
+            return fallbackWorkplaceId;
+          }
+          const fallbackSessionId = normalizeNumericId(
+            selectedWorkplaceSessionId ??
+              sessionDefaults.workplaceSessionId ??
+              selectedWorkplaceId ??
+              sessionDefaults.workplaceId,
+          );
+          if (fallbackSessionId !== null) {
+            return fallbackSessionId;
+          }
+        } else {
+          const fallbackWorkplaceId = normalizeNumericId(
+            selectedWorkplaceId ??
+              sessionDefaults.workplaceId ??
+              selectedWorkplaceSessionId ??
+              sessionDefaults.workplaceSessionId,
+          );
+          if (fallbackWorkplaceId !== null) {
+            return fallbackWorkplaceId;
+          }
+        }
+        return null;
+      }
+      return rawValue;
     });
-  }, [procParams, autoParams, manualParams]);
+  }, [
+    procParams,
+    autoParams,
+    manualParams,
+    selectedWorkplaceId,
+    selectedWorkplaceSessionId,
+    sessionDefaults,
+  ]);
 
   const allParamsProvided = useMemo(
     () => finalParams.every((v) => v !== null && v !== ''),
@@ -1306,7 +1401,8 @@ export default function Reports() {
     }, {});
     const label = getLabel(selectedProc);
     const errorLabel = formatProcedureLabel(selectedProc);
-    addToast(`Calling ${label}`, 'info');
+    const paramSummary = summarizeForToast(paramMap);
+    addToast(`Calling ${label} with params ${paramSummary}`, 'info');
     try {
       const q = new URLSearchParams();
       if (branch) q.set('branchId', branch);
@@ -1324,7 +1420,9 @@ export default function Reports() {
         const data = await res.json().catch(() => ({ row: [] }));
         const rows = Array.isArray(data.row) ? data.row : [];
         addToast(
-          `${label} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
+          `${label} params ${paramSummary} → ${rows.length} row${
+            rows.length === 1 ? '' : 's'
+          }`,
           'success',
         );
         setApprovalReason('');
@@ -1346,13 +1444,19 @@ export default function Reports() {
       } else {
         const detailedMessage =
           (await extractErrorMessage(res)) || 'Failed to run procedure';
-        addToast(`Failed to run ${errorLabel}: ${detailedMessage}`, 'error');
+        addToast(
+          `Failed to run ${errorLabel} with params ${paramSummary}: ${detailedMessage}`,
+          'error',
+        );
       }
     } catch (err) {
       const fallbackMessage =
         (typeof err?.message === 'string' && err.message.trim()) ||
         'Failed to run procedure';
-      addToast(`Failed to run ${errorLabel}: ${fallbackMessage}`, 'error');
+      addToast(
+        `Failed to run ${errorLabel} with params ${paramSummary}: ${fallbackMessage}`,
+        'error',
+      );
     }
   }
 

@@ -390,21 +390,15 @@ export function collectDisabledFieldsAndReasons({
       normalizedFields.find((entry) => entry.toLowerCase() === normalizedLower) ||
       field;
     if (typeof canonicalField !== 'string') canonicalField = String(canonicalField);
-
+    if (!disabledLower.has(normalizedLower)) {
+      disabled.push(canonicalField);
+      disabledLower.add(normalizedLower);
+    }
     const reasonCodes = computedReasonMap?.get(normalizedLower);
     if (reasonCodes instanceof Set && reasonCodes.size > 0) {
       reasonCodes.forEach((code) => addReason(canonicalField, code));
     } else {
       addReason(canonicalField, 'computed');
-    }
-
-    if (editSet instanceof Set && editSet.has(normalizedLower)) {
-      return;
-    }
-
-    if (!disabledLower.has(normalizedLower)) {
-      disabled.push(canonicalField);
-      disabledLower.add(normalizedLower);
     }
   });
 
@@ -2418,15 +2412,61 @@ export default function PosTransactionsPage() {
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
                 const computedEntry = computedFieldMap[t.table];
-                const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-                  allFields,
-                  editSet,
-                  computedEntry,
-                  caseMap,
-                  sessionFields: sessionFieldsByTable[t.table] || [],
+                const computedFields =
+                  computedEntry instanceof Set
+                    ? computedEntry
+                    : Array.isArray(computedEntry)
+                      ? new Set(
+                          computedEntry
+                            .filter((field) => typeof field === 'string')
+                            .map((field) => field.toLowerCase()),
+                        )
+                      : new Set();
+                const computedReasonMap =
+                  computedEntry && computedEntry.reasonMap instanceof Map
+                    ? computedEntry.reasonMap
+                    : undefined;
+                const allFieldLowerSet = new Set(allFields.map((f) => f.toLowerCase()));
+                const disabledLower = new Set();
+                let disabled = [];
+                const disabledReasonMap = {};
+                const addReason = (field, code) => {
+                  if (!field || !code) return;
+                  if (!disabledReasonMap[field]) {
+                    disabledReasonMap[field] = new Set();
+                  }
+                  disabledReasonMap[field].add(code);
+                };
+                if (editSet) {
+                  disabled = allFields.filter((c) => {
+                    const lower = c.toLowerCase();
+                    if (editSet.has(lower)) return false;
+                    disabledLower.add(lower);
+                    addReason(c, 'missingEditableConfig');
+                    return true;
+                  });
+                }
+                computedFields.forEach((field) => {
+                  if (!field) return;
+                  const normalizedLower = String(field).toLowerCase();
+                  if (!allFieldLowerSet.has(normalizedLower)) return;
+                  const canonicalField =
+                    caseMap[normalizedLower] ||
+                    allFields.find((f) => f.toLowerCase() === normalizedLower) ||
+                    normalizedLower;
+                  if (!disabledLower.has(normalizedLower)) {
+                    disabled.push(canonicalField);
+                    disabledLower.add(normalizedLower);
+                  }
+                  const reasonCodes = computedReasonMap?.get(normalizedLower);
+                  if (reasonCodes instanceof Set && reasonCodes.size > 0) {
+                    reasonCodes.forEach((code) => addReason(canonicalField, code));
+                  } else {
+                    addReason(canonicalField, 'computed');
+                  }
                 });
                 const disabledFieldReasons = Object.fromEntries(
-                  Array.from(reasonMap.entries()).map(([field, codes]) => [
+                  Object.entries(disabledReasonMap).map(([field, codes]) => [
                     field,
                     Array.from(codes),
                   ]),

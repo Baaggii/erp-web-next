@@ -463,7 +463,8 @@ export default function GeneralConfiguration() {
             <TooltipWrapper
               title={t('workplace_toast_enabled', {
                 ns: 'tooltip',
-                defaultValue: 'Display workplace fetch diagnostics in Reports',
+                defaultValue:
+                  'Display workplace fetch diagnostics in Reports, including parameters, SQL, and counts',
               })}
             >
               <label>

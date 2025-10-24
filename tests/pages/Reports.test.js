@@ -527,6 +527,9 @@ if (typeof mock.import !== 'function') {
                 department_id: 8,
               },
             ],
+            diagnostics: {
+              formattedSql: 'SELECT * FROM tbl_employment_schedule WHERE emp_id = ? AND company_id = ?;',
+            },
           }),
         };
       }
@@ -583,7 +586,9 @@ if (typeof mock.import !== 'function') {
         },
         '../context/AuthContext.jsx': { AuthContext: {} },
         '../context/ToastContext.jsx': { useToast: () => ({ addToast }) },
-        '../hooks/useGeneralConfig.js': { default: () => ({ general: {} }) },
+        '../hooks/useGeneralConfig.js': {
+          default: () => ({ general: { workplaceFetchToastEnabled: true } }),
+        },
         '../hooks/useHeaderMappings.js': { default: () => ({}) },
         '../hooks/useButtonPerms.js': { default: () => ({}) },
         '../components/CustomDatePicker.jsx': {
@@ -678,6 +683,10 @@ if (typeof mock.import !== 'function') {
     assert.ok(
       successToast.message.includes('→ 1/1 valid assignments'),
       'Success toast should summarize assignment counts',
+    );
+    assert.ok(
+      successToast.message.includes('SQL: SELECT * FROM tbl_employment_schedule WHERE emp_id = ? AND company_id = ?;'),
+      'Success toast should include executed SQL when diagnostics are present',
     );
     assert.ok(
       successToast.message.includes('session 22') || successToast.message.includes('#2'),
