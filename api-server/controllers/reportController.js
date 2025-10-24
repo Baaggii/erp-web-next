@@ -119,13 +119,7 @@ export async function listReportWorkplaces(req, res, next) {
 
     const sessions = await getEmploymentSessionsImpl(req.user.empid, {
       effectiveDate,
-      includeDiagnostics: true,
     });
-
-    const diagnostics =
-      sessions && typeof sessions === 'object' && '__diagnostics' in sessions
-        ? sessions.__diagnostics
-        : null;
 
     const filtered =
       normalizedCompanyId !== null
@@ -186,7 +180,7 @@ export async function listReportWorkplaces(req, res, next) {
 
     const { assignments } = normalizeWorkplaceAssignments(rawAssignments);
 
-    res.json({ assignments, diagnostics: responseDiagnostics });
+    res.json({ assignments });
   } catch (err) {
     next(err);
   }
