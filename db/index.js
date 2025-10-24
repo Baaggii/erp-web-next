@@ -1203,7 +1203,8 @@ export async function getEmploymentSessions(empid, options = {}) {
   const [rows] = await pool.query(sql, params);
   const sessions = rows.map(mapEmploymentRow);
   if (options?.includeDiagnostics) {
-    const formattedSql = formatSqlForDiagnostics(sql, params);
+    const formattedSql =
+      typeof mysql?.format === 'function' ? mysql.format(sql, params) : null;
     Object.defineProperty(sessions, '__diagnostics', {
       value: {
         sql,

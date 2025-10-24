@@ -186,18 +186,6 @@ export async function listReportWorkplaces(req, res, next) {
 
     const { assignments } = normalizeWorkplaceAssignments(rawAssignments);
 
-    const formattedSql =
-      diagnostics?.formattedSql || diagnostics?.sql || null;
-    const responseDiagnostics = formattedSql
-      ? {
-          formattedSql,
-          sql: diagnostics?.sql ?? formattedSql,
-          params: Array.isArray(diagnostics?.params)
-            ? diagnostics.params
-            : null,
-        }
-      : null;
-
     res.json({ assignments, diagnostics: responseDiagnostics });
   } catch (err) {
     next(err);
