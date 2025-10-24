@@ -6,6 +6,7 @@ import React, {
   useEffect,
   useCallback,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
@@ -79,6 +80,7 @@ function InlineTransactionTable(
     configHash: _configHash,
     tableColumns = [],
     numericScaleMap = {},
+    disabledFieldReasons = {},
   },
   ref,
 ) {
@@ -94,6 +96,7 @@ function InlineTransactionTable(
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
+  const { t } = useTranslation(['translation']);
   const userIdSet = new Set(userIdFields);
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
@@ -121,6 +124,155 @@ function InlineTransactionTable(
   const disabledSet = React.useMemo(
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
+  );
+  const guardReasonLookup = React.useMemo(() => {
+    const map = {};
+    Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
+      if (!key) return;
+      const lower = String(key).toLowerCase();
+      const list = Array.isArray(value) ? value : [value];
+      const unique = map[lower] ? new Set(map[lower]) : new Set();
+      list.forEach((entry) => {
+        if (!entry && entry !== 0) return;
+        unique.add(String(entry));
+      });
+      map[lower] = Array.from(unique);
+    });
+    return map;
+  }, [disabledFieldReasons]);
+  const guardToastEnabled = !!general.posGuardToastEnabled;
+  const lastGuardToastRef = useRef({ field: null, ts: 0, message: null, context: null });
+  const describeGuardReasons = useCallback(
+    (codes = []) => {
+      if (!Array.isArray(codes) || codes.length === 0) return [];
+      const seen = new Set();
+      const messages = [];
+      codes.forEach((code) => {
+        if (!code && code !== 0) return;
+        const normalized = String(code);
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        switch (normalized) {
+          case 'missingEditableConfig':
+            messages.push(
+              t(
+                'pos_guard_reason_missing_editable',
+                'Field is not configured as editable in the POS layout',
+              ),
+            );
+            break;
+          case 'calcField':
+            messages.push(
+              t(
+                'pos_guard_reason_calc_field',
+                'Value is derived from a calc field mapping; preserveManualChangesAfterRecalc keeps the calculated result.',
+              ),
+            );
+            break;
+          case 'posFormula':
+            messages.push(
+              t(
+                'pos_guard_reason_pos_formula',
+                'Value is calculated by a POS formula; preserveManualChangesAfterRecalc keeps the calculated result.',
+              ),
+            );
+            break;
+          case 'sessionFieldAutoReset':
+            messages.push(
+              t(
+                'pos_guard_reason_session_auto_reset',
+                'Value resets automatically to match the active POS session',
+              ),
+            );
+            break;
+          case 'computed':
+            messages.push(
+              t(
+                'pos_guard_reason_computed',
+                'Value is automatically computed and preserved by preserveManualChangesAfterRecalc.',
+              ),
+            );
+            break;
+          default:
+            messages.push(normalized);
+        }
+      });
+      return messages;
+    },
+    [t],
+  );
+  const notifyGuardToastOnEdit = useCallback(
+    (field) => {
+      if (!guardToastEnabled || !field) return;
+      const fieldName = String(field);
+      const lower = fieldName.toLowerCase();
+      const codes = Array.isArray(guardReasonLookup[lower]) ? guardReasonLookup[lower] : [];
+      const reasons = describeGuardReasons(codes);
+      const reasonsText = (reasons.length > 0 ? reasons : codes.map((code) => String(code))).join('; ');
+      const hasAutoReset = codes.includes('sessionFieldAutoReset');
+      const hasComputed = codes.some((code) =>
+        ['calcField', 'posFormula', 'computed'].includes(String(code)),
+      );
+      let message;
+      if (hasAutoReset && hasComputed) {
+        message = t(
+          'pos_guard_toast_message_edit_auto_reset_and_computed',
+          '{{field}} edit resets automatically and calculated values prevail: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else if (hasAutoReset) {
+        message = t(
+          'pos_guard_toast_message_edit_auto_reset',
+          '{{field}} edit resets automatically: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else if (hasComputed) {
+        message = t(
+          'pos_guard_toast_message_edit_computed',
+          '{{field}} edit cannot override calculated values: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else if (reasons.length > 0) {
+        message = t(
+          'pos_guard_toast_message_edit_guarded',
+          '{{field}} edit guard info: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else {
+        message = t('pos_guard_toast_message_edit_success', '{{field}} edit saved.', {
+          field: fieldName,
+        });
+      }
+      const now = Date.now();
+      const last = lastGuardToastRef.current;
+      if (
+        last.field === lower &&
+        last.message === message &&
+        last.context === 'edit' &&
+        now - last.ts <= 2000
+      ) {
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message, type: 'info' },
+        }),
+      );
+      lastGuardToastRef.current = { field: lower, ts: now, message, context: 'edit' };
+    },
+    [guardToastEnabled, guardReasonLookup, describeGuardReasons, t],
   );
 
   const columnCaseMapKey = React.useMemo(
@@ -1332,6 +1484,58 @@ function InlineTransactionTable(
 
   function handleFocusField(col) {
     showTriggerInfo(col);
+    if (guardToastEnabled && col) {
+      const fieldName = String(col);
+      const lower = fieldName.toLowerCase();
+      const codes = Array.isArray(guardReasonLookup[lower]) ? guardReasonLookup[lower] : [];
+      const reasons = describeGuardReasons(codes);
+      const isDisabled = disabledSet.has(lower);
+      if (isDisabled || reasons.length > 0) {
+        let message;
+        if (isDisabled) {
+          message =
+            reasons.length > 0
+              ? t(
+                  'pos_guard_toast_message_with_reasons',
+                  '{{field}} is read-only: {{reasons}}',
+                  {
+                    field: fieldName,
+                    reasons: reasons.join('; '),
+                  },
+                )
+              : t('pos_guard_toast_message', '{{field}} is read-only.', { field: fieldName });
+        } else {
+          message =
+            reasons.length > 0
+              ? t(
+                  'pos_guard_toast_message_guarded_with_reasons',
+                  '{{field}} guard info: {{reasons}}',
+                  {
+                    field: fieldName,
+                    reasons: reasons.join('; '),
+                  },
+                )
+              : t('pos_guard_toast_message_guarded', '{{field}} has guard information.', {
+                  field: fieldName,
+                });
+        }
+        const now = Date.now();
+        const last = lastGuardToastRef.current;
+        if (
+          last.field !== lower ||
+          now - last.ts > 400 ||
+          last.message !== message ||
+          last.context !== 'focus'
+        ) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message, type: 'info' },
+            }),
+          );
+          lastGuardToastRef.current = { field: lower, ts: now, message, context: 'focus' };
+        }
+      }
+    }
     const view = viewSourceMap[col];
     if (view && !alreadyRequestedRef.current.has(view)) {
       alreadyRequestedRef.current.add(view);
@@ -1455,6 +1659,9 @@ function InlineTransactionTable(
 
 
   function handleChange(rowIdx, field, value) {
+    if (field && !String(field || '').startsWith('_')) {
+      notifyGuardToastOnEdit(field);
+    }
     if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
       return;
     }
@@ -1706,6 +1913,7 @@ function InlineTransactionTable(
     e.preventDefault();
     const field = fields[colIdx];
     if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
+      notifyGuardToastOnEdit(field);
       return;
     }
     const isLookupField =
@@ -1860,6 +2068,10 @@ function InlineTransactionTable(
             className="px-1 border rounded bg-gray-100"
             style={readonlyStyle}
             ref={(el) => (inputRefs.current[`ro-${idx}-${f}`] = el)}
+            tabIndex={0}
+            role="textbox"
+            aria-readonly="true"
+            onFocus={() => handleFocusField(f)}
           >
             {display}
           </div>

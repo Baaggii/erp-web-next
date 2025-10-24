@@ -7,7 +7,9 @@ if (typeof mock.import !== 'function') {
   test('shouldLoadRelations helper', { skip: true }, () => {});
   test('applySessionIdToTables helper', { skip: true }, () => {});
   test('calc field preflight respects SUM aggregators and multi rows', { skip: true }, () => {});
-  test('buildComputedFieldMap gathers calc and pos targets', { skip: true }, () => {});
+  test('buildComputedFieldMap collects aggregated targets', { skip: true }, () => {});
+  test('buildComputedFieldMap includes POS targets even when flagged editable', { skip: true }, () => {});
+  test('computed field map keeps non-formula editable columns enabled', { skip: true }, () => {});
   test('generated column configs support lowercase generation_expression metadata', { skip: true }, () => {});
 } else {
   test('shouldLoadRelations helper', async () => {
@@ -292,6 +294,198 @@ if (typeof mock.import !== 'function') {
       Array.from(map.transactions).sort(),
       ['grandtotal', 'totalamount'],
     );
+  });
+
+  test('buildComputedFieldMap includes POS targets even when flagged editable', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Note' },
+          { table: 'transactions', field: 'Note', agg: '=' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = { transactions: { note: 'Note' } };
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, tables);
+
+    assert.ok(map.transactions instanceof Set);
+    assert.deepEqual(Array.from(map.transactions), ['note']);
+    assert.ok(map.transactions.reasonMap instanceof Map);
+    const reasonSet = map.transactions.reasonMap.get('note');
+    assert.ok(reasonSet instanceof Set);
+    assert.deepEqual(Array.from(reasonSet).sort(), ['posFormula']);
+  });
+
+  test('buildComputedFieldMap ignores POS entries without calc sources', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      { parts: [{ table: 'transactions', field: 'ManualNote' }] },
+      {
+        parts: [
+          { table: 'transactions', field: 'ManualCode' },
+          { table: '', field: '', agg: '=' },
+          { field: 'ignored' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = { transactions: { manualnote: 'ManualNote' } };
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, tables);
+
+    assert.equal(map.transactions, undefined);
+  });
+
+  test('computed field map keeps non-formula editable columns enabled', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Total' },
+          { table: 'transactions_detail', field: 'line_total', agg: 'SUM' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: { total: 'Total', amount: 'Amount' },
+    };
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, tables);
+    const computedSet = map.transactions;
+
+    assert.ok(computedSet instanceof Set);
+    assert.equal(computedSet.has('total'), true);
+    assert.equal(computedSet.has('amount'), false);
+    const totalReasons = computedSet.reasonMap?.get('total');
+    assert.ok(totalReasons instanceof Set);
+    assert.equal(totalReasons.has('posFormula'), true);
+
+    const visible = ['Amount', 'Total'];
+    const editSet = new Set(visible.map((field) => field.toLowerCase()));
+    const disabledLower = new Set();
+    const disabled = [];
+
+    visible.forEach((field) => {
+      const lower = field.toLowerCase();
+      if (editSet.has(lower)) return;
+      disabledLower.add(lower);
+      disabled.push(field);
+    });
+
+    computedSet.forEach((field) => {
+      if (!field) return;
+      const lower = field.toLowerCase();
+      if (disabledLower.has(lower)) return;
+      const canonical =
+        columnCaseMap.transactions?.[lower] ||
+        visible.find((entry) => entry.toLowerCase() === lower) ||
+        lower;
+      disabledLower.add(lower);
+      disabled.push(canonical);
+    });
+
+    assert.deepEqual(disabled, ['Total']);
+    assert.equal(disabled.includes('Amount'), false);
+  });
+
+  test('buildComputedFieldMap captures calc field reasons', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const calcFields = [
+      {
+        cells: [
+          { table: 'transactions', field: 'Total', agg: '' },
+          { table: 'transactions_detail', field: 'LineTotal', agg: 'SUM' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = { transactions: { total: 'Total' } };
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap(calcFields, [], columnCaseMap, tables);
+    assert.ok(map.transactions instanceof Set);
+    assert.equal(map.transactions.has('total'), true);
+    const reasonSet = map.transactions.reasonMap?.get('total');
+    assert.ok(reasonSet instanceof Set);
+    assert.equal(reasonSet.has('calcField'), true);
+  });
+
+  test('collectDisabledFieldsAndReasons preserves editable session fields with guard reason', async () => {
+    const { collectDisabledFieldsAndReasons } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const allFields = ['SessionId', 'ManualNote'];
+    const editSet = new Set(allFields.map((field) => field.toLowerCase()));
+    const caseMap = { sessionid: 'SessionId', manualnote: 'ManualNote' };
+
+    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
+      allFields,
+      editSet,
+      computedEntry: null,
+      caseMap,
+      sessionFields: ['sessionid'],
+    });
+
+    assert.deepEqual(disabled, []);
+    const sessionReasons = reasonMap.get('SessionId');
+    assert.ok(sessionReasons instanceof Set);
+    assert.equal(sessionReasons.has('sessionFieldAutoReset'), true);
+    assert.equal(reasonMap.has('ManualNote'), false);
+  });
+
+  test('collectDisabledFieldsAndReasons keeps explicitly editable computed fields interactive', async () => {
+    const { collectDisabledFieldsAndReasons } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const allFields = ['Total', 'ManualNote'];
+    const editSet = new Set(allFields.map((field) => field.toLowerCase()));
+    const caseMap = { total: 'Total', manualnote: 'ManualNote' };
+
+    const computedEntry = new Set(['total']);
+    computedEntry.reasonMap = new Map([[
+      'total',
+      new Set(['posFormula']),
+    ]]);
+
+    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
+      allFields,
+      editSet,
+      computedEntry,
+      caseMap,
+      sessionFields: [],
+    });
+
+    assert.deepEqual(disabled, []);
+    const totalReasons = reasonMap.get('Total');
+    assert.ok(totalReasons instanceof Set);
+    assert.equal(totalReasons.has('posFormula'), true);
   });
 
 

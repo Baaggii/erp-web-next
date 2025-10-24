@@ -28,6 +28,7 @@ const RowFormModal = function RowFormModal({
   relationData = {},
   fieldTypeMap = {},
   disabledFields = [],
+  disabledFieldReasons = {},
   labels = {},
   requiredFields = [],
   onChange = () => {},
@@ -145,6 +146,156 @@ const RowFormModal = function RowFormModal({
   const disabledSet = React.useMemo(
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
+  );
+  const guardReasonLookup = React.useMemo(() => {
+    const map = {};
+    Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
+      if (!key) return;
+      const lower = String(key).toLowerCase();
+      const list = Array.isArray(value) ? value : [value];
+      const unique = map[lower] ? new Set(map[lower]) : new Set();
+      list.forEach((entry) => {
+        if (!entry && entry !== 0) return;
+        unique.add(String(entry));
+      });
+      map[lower] = Array.from(unique);
+    });
+    return map;
+  }, [disabledFieldReasons]);
+  const guardToastEnabled = !!general.posGuardToastEnabled;
+  const lastGuardToastRef = useRef({ field: null, ts: 0, message: null, context: null });
+  const describeGuardReasons = React.useCallback(
+    (codes = []) => {
+      if (!Array.isArray(codes) || codes.length === 0) return [];
+      const seen = new Set();
+      const messages = [];
+      codes.forEach((code) => {
+        if (!code && code !== 0) return;
+        const normalized = String(code);
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        switch (normalized) {
+          case 'missingEditableConfig':
+            messages.push(
+              t(
+                'pos_guard_reason_missing_editable',
+                'Field is not configured as editable in the POS layout',
+              ),
+            );
+            break;
+          case 'calcField':
+            messages.push(
+              t(
+                'pos_guard_reason_calc_field',
+                'Value is derived from a calc field mapping; preserveManualChangesAfterRecalc keeps the calculated result.',
+              ),
+            );
+            break;
+          case 'posFormula':
+            messages.push(
+              t(
+                'pos_guard_reason_pos_formula',
+                'Value is calculated by a POS formula; preserveManualChangesAfterRecalc keeps the calculated result.',
+              ),
+            );
+            break;
+          case 'sessionFieldAutoReset':
+            messages.push(
+              t(
+                'pos_guard_reason_session_auto_reset',
+                'Value resets automatically to match the active POS session',
+              ),
+            );
+            break;
+          case 'computed':
+            messages.push(
+              t(
+                'pos_guard_reason_computed',
+                'Value is automatically computed and preserved by preserveManualChangesAfterRecalc.',
+              ),
+            );
+            break;
+          default:
+            messages.push(normalized);
+        }
+      });
+      return messages;
+    },
+    [t],
+  );
+  const notifyGuardToastOnEdit = React.useCallback(
+    (col) => {
+      if (!guardToastEnabled || !col) return;
+      const lower = String(col).toLowerCase();
+      const codes = Array.isArray(guardReasonLookup[lower]) ? guardReasonLookup[lower] : [];
+      const reasons = describeGuardReasons(codes);
+      const reasonsText = (reasons.length > 0 ? reasons : codes.map((code) => String(code))).join('; ');
+      const hasAutoReset = codes.includes('sessionFieldAutoReset');
+      const hasComputed = codes.some((code) =>
+        ['calcField', 'posFormula', 'computed'].includes(String(code)),
+      );
+      let message;
+      if (hasAutoReset && hasComputed) {
+        message = t(
+          'pos_guard_toast_message_edit_auto_reset_and_computed',
+          '{{field}} edit resets automatically and calculated values prevail: {{reasons}}',
+          {
+            field: col,
+            reasons: reasonsText,
+          },
+        );
+      } else if (hasAutoReset) {
+        message = t(
+          'pos_guard_toast_message_edit_auto_reset',
+          '{{field}} edit resets automatically: {{reasons}}',
+          {
+            field: col,
+            reasons: reasonsText,
+          },
+        );
+      } else if (hasComputed) {
+        message = t(
+          'pos_guard_toast_message_edit_computed',
+          '{{field}} edit cannot override calculated values: {{reasons}}',
+          {
+            field: col,
+            reasons: reasonsText,
+          },
+        );
+      } else if (reasons.length > 0) {
+        message = t(
+          'pos_guard_toast_message_edit_guarded',
+          '{{field}} edit guard info: {{reasons}}',
+          {
+            field: col,
+            reasons: reasonsText,
+          },
+        );
+      } else {
+        message = t(
+          'pos_guard_toast_message_edit_success',
+          '{{field}} edit saved.',
+          { field: col },
+        );
+      }
+      const now = Date.now();
+      const last = lastGuardToastRef.current;
+      if (
+        last.field === lower &&
+        last.message === message &&
+        last.context === 'edit' &&
+        now - last.ts <= 2000
+      ) {
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message, type: 'info' },
+        }),
+      );
+      lastGuardToastRef.current = { field: lower, ts: now, message, context: 'edit' };
+    },
+    [guardToastEnabled, guardReasonLookup, describeGuardReasons, t],
   );
   const { user, company, branch, department, userSettings } = useContext(AuthContext);
   const columnCaseMapKey = React.useMemo(
@@ -1522,6 +1673,56 @@ const RowFormModal = function RowFormModal({
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
+    if (guardToastEnabled && col) {
+      const lower = String(col).toLowerCase();
+      const reasons = describeGuardReasons(guardReasonLookup[lower] || []);
+      const isDisabled = disabledSet.has(lower);
+      if (isDisabled || reasons.length > 0) {
+        let message;
+        if (isDisabled) {
+          message =
+            reasons.length > 0
+              ? t(
+                  'pos_guard_toast_message_with_reasons',
+                  '{{field}} is read-only: {{reasons}}',
+                  {
+                    field: col,
+                    reasons: reasons.join('; '),
+                  },
+                )
+              : t('pos_guard_toast_message', '{{field}} is read-only.', { field: col });
+        } else {
+          message =
+            reasons.length > 0
+              ? t(
+                  'pos_guard_toast_message_guarded_with_reasons',
+                  '{{field}} guard info: {{reasons}}',
+                  {
+                    field: col,
+                    reasons: reasons.join('; '),
+                  },
+                )
+              : t('pos_guard_toast_message_guarded', '{{field}} has guard information.', {
+                  field: col,
+                });
+        }
+        const now = Date.now();
+        const last = lastGuardToastRef.current;
+        if (
+          last.field !== lower ||
+          now - last.ts > 400 ||
+          last.message !== message ||
+          last.context !== 'focus'
+        ) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message, type: 'info' },
+            }),
+          );
+          lastGuardToastRef.current = { field: lower, ts: now, message, context: 'focus' };
+        }
+      }
+    }
     const view = viewSourceMap[col];
     if (view && !alreadyRequestedRef.current.has(view)) {
       alreadyRequestedRef.current.add(view);
@@ -1888,6 +2089,10 @@ const RowFormModal = function RowFormModal({
           className="border rounded bg-gray-100 px-2 py-1"
           style={readonlyBoxStyle}
           ref={(el) => (readonlyRefs.current[c] = el)}
+          tabIndex={0}
+          role="textbox"
+          aria-readonly="true"
+          onFocus={() => handleFocusField(c)}
         >
           {display}
         </div>
@@ -1921,6 +2126,7 @@ const RowFormModal = function RowFormModal({
           labelFields={relationConfigMap[c].displayFields || []}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
+            notifyGuardToastOnEdit(c);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -1962,6 +2168,7 @@ const RowFormModal = function RowFormModal({
           idField={viewDisplays[viewSourceMap[c]]?.idField || c}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
+            notifyGuardToastOnEdit(c);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -2003,6 +2210,7 @@ const RowFormModal = function RowFormModal({
           idField={autoSelectConfigs[c].idField}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
+            notifyGuardToastOnEdit(c);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -2037,6 +2245,7 @@ const RowFormModal = function RowFormModal({
         value={formVals[c]}
         onFocus={() => handleFocusField(c)}
         onChange={(e) => {
+          notifyGuardToastOnEdit(c);
           const value = e.target.value;
           setFormValuesWithGenerated((prev) => {
             if (prev[c] === value) return prev;
@@ -2085,6 +2294,7 @@ const RowFormModal = function RowFormModal({
             : formVals[c]
         }
         onChange={(e) => {
+          notifyGuardToastOnEdit(c);
           const value = e.target.value;
           setFormValuesWithGenerated((prev) => {
             if (prev[c] === value) return prev;
@@ -2196,6 +2406,7 @@ const RowFormModal = function RowFormModal({
             onRowsChange={handleGridRowsChange}
             requiredFields={requiredFields}
             disabledFields={disabledFields}
+            disabledFieldReasons={disabledFieldReasons}
             defaultValues={defaultValues}
             dateField={dateField}
             rows={gridRows}
