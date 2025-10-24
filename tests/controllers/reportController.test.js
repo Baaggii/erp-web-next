@@ -4,8 +4,6 @@ import {
   listReportWorkplaces,
   __setGetEmploymentSessions,
   __resetGetEmploymentSessions,
-  __setDescribeEmploymentSessionsQuery,
-  __resetDescribeEmploymentSessionsQuery,
 } from '../../api-server/controllers/reportController.js';
 
 function createRes() {
@@ -93,7 +91,6 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
     });
   } finally {
     __resetGetEmploymentSessions();
-    __resetDescribeEmploymentSessionsQuery();
   }
 
   assert.equal(res.statusCode, 200);
@@ -173,7 +170,6 @@ test('listReportWorkplaces prefers endDate when provided', async () => {
     });
   } finally {
     __resetGetEmploymentSessions();
-    __resetDescribeEmploymentSessionsQuery();
   }
 
   assert.equal(res.statusCode, 200);
@@ -205,7 +201,6 @@ test('listReportWorkplaces uses last day of month when year/month provided', asy
     });
   } finally {
     __resetGetEmploymentSessions();
-    __resetDescribeEmploymentSessionsQuery();
   }
 
   assert.equal(res.statusCode, 200);
@@ -215,36 +210,4 @@ test('listReportWorkplaces uses last day of month when year/month provided', asy
     capturedEffectiveDate?.toISOString(),
     new Date(Date.UTC(2024, 1, 29)).toISOString(),
   );
-});
-
-test('listReportWorkplaces falls back to diagnostics helper when primary fetch lacks SQL', async () => {
-  __setGetEmploymentSessions(async () => []);
-  __setDescribeEmploymentSessionsQuery(async () => ({
-    sql: 'SELECT 1',
-    formattedSql: 'SELECT 1',
-    params: [1],
-  }));
-
-  const req = {
-    user: { empid: 7, companyId: null },
-    query: { year: '2025', month: '10' },
-  };
-  const res = createRes();
-
-  try {
-    await listReportWorkplaces(req, res, (err) => {
-      throw err || new Error('next should not be called');
-    });
-  } finally {
-    __resetGetEmploymentSessions();
-    __resetDescribeEmploymentSessionsQuery();
-  }
-
-  assert.equal(res.statusCode, 200);
-  assert.ok(res.payload);
-  assert.deepEqual(res.payload.diagnostics, {
-    formattedSql: 'SELECT 1',
-    sql: 'SELECT 1',
-    params: [1],
-  });
 });
