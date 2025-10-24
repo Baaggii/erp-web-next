@@ -1,7 +1,11 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { fetchTriggersForTables } from '../../src/erp.mgt.mn/utils/fetchTriggersForTables.js';
-import { syncCalcFields } from '../../src/erp.mgt.mn/utils/syncCalcFields.js';
+import {
+  syncCalcFields,
+  normalizeCalcFieldConfig,
+} from '../../src/erp.mgt.mn/utils/syncCalcFields.js';
+import { applyPosFields } from '../../src/erp.mgt.mn/utils/transactionValues.js';
 
 if (typeof mock.import !== 'function') {
   test('shouldLoadRelations helper', { skip: true }, () => {});
@@ -237,6 +241,7 @@ if (typeof mock.import !== 'function') {
       calcFields,
     );
     assert.ok(mismatchTotals, 'should detect mismatched SUM totals');
+    assert.match(mismatchTotals.message, /Map 1|Mismatch/, 'includes descriptive message');
 
     const mismatchSession = findCalcFieldMismatch(
       {
@@ -248,6 +253,50 @@ if (typeof mock.import !== 'function') {
       calcFields,
     );
     assert.ok(mismatchSession, 'should detect mismatched multi-row values');
+
+    const filtered = findCalcFieldMismatch(baseData, calcFields, {
+      tables: ['transactions_plan'],
+    });
+    assert.equal(filtered, null, 'unaffected tables should skip mismatch scan');
+  });
+
+  test('findCalcFieldMismatch detects POS formula mismatches', async () => {
+    const { findCalcFieldMismatch } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        name: 'POS Total',
+        parts: [
+          { table: 'transactions_pos', field: 'total_amount' },
+          { table: 'transactions_order', field: 'ordrap', agg: 'SUM' },
+        ],
+      },
+    ];
+
+    const values = {
+      transactions_pos: { total_amount: 300 },
+      transactions_order: [
+        { ordrap: 100 },
+        { ordrap: 200 },
+      ],
+    };
+
+    assert.equal(findCalcFieldMismatch(values, [], { posFields }), null);
+
+    const mismatch = findCalcFieldMismatch(
+      {
+        ...values,
+        transactions_pos: { total_amount: 250 },
+      },
+      [],
+      { posFields },
+    );
+
+    assert.ok(mismatch, 'should detect mismatched POS formula');
+    assert.match(mismatch.message, /Formula/);
   });
 
   test('buildComputedFieldMap collects aggregated targets', async () => {
@@ -294,6 +343,37 @@ if (typeof mock.import !== 'function') {
       Array.from(map.transactions).sort(),
       ['grandtotal', 'totalamount'],
     );
+  });
+
+  test('buildComputedFieldMap marks first cell as computed for simple maps', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+    const { normalizeCalcFieldConfig } = await mock.import(
+      '../../src/erp.mgt.mn/utils/syncCalcFields.js',
+      {},
+    );
+
+    const calcFields = normalizeCalcFieldConfig([
+      {
+        cells: [
+          { table: 'transactions_pos', field: 'pos_date' },
+          { table: 'transactions_order', field: 'ordrdate' },
+        ],
+      },
+    ]);
+
+    const map = buildComputedFieldMap(
+      calcFields,
+      [],
+      {},
+      ['transactions_pos', 'transactions_order'],
+    );
+
+    assert.ok(map.transactions_pos instanceof Set);
+    assert.deepEqual(Array.from(map.transactions_pos), ['pos_date']);
+    assert.equal(map.transactions_order, undefined);
   });
 
   test('buildComputedFieldMap includes POS targets even when flagged editable', async () => {
@@ -726,11 +806,11 @@ test('fetchTriggersForTables caches trigger metadata for hidden tables', async (
   assert.equal(thirdBatch.length, 0);
 });
 
-test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
-  const calcFields = [
-    {
-      cells: [
-        { table: 'transactions_pos', field: 'total_quantity' },
+  test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
+    const calcFields = [
+      {
+        cells: [
+          { table: 'transactions_pos', field: 'total_quantity' },
         { table: 'transactions_order', field: 'ordrsub', agg: 'SUM' },
         { table: 'transactions_inventory', field: 'bmtr_sub', agg: 'SUM' },
         { table: 'transactions_income', field: 'total_quantity' },
@@ -796,13 +876,189 @@ test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
   assert.equal(cleared.transactions_income.total_quantity, 0);
   assert.equal(cleared.transactions_pos.total_amount, 0);
   assert.equal(cleared.transactions_income.or_or, 0);
-});
+  });
 
-test('syncCalcFields uses visible table values for cross-table mappings', () => {
-  const calcFields = [
-    {
-      cells: [
-        { table: 'transactions_pos', field: 'total_quantity' },
+  test('syncCalcFields keeps aggregator sources editable for single tables', () => {
+    const calcFields = normalizeCalcFieldConfig([
+      {
+        cells: [
+          { table: 'summary', field: 'grand_total' },
+          { table: 'helper', field: 'amount', agg: 'SUM' },
+          { table: 'mirror', field: 'amount' },
+        ],
+      },
+    ]);
+
+    const initial = {
+      summary: { grand_total: 0 },
+      helper: { amount: '5' },
+      mirror: { amount: 0 },
+    };
+
+    const synced = syncCalcFields(initial, calcFields);
+    assert.equal(synced.summary.grand_total, 5);
+    assert.equal(synced.mirror.amount, 5);
+    assert.equal(synced.helper.amount, '5');
+
+    const manualOverride = {
+      ...synced,
+      mirror: { amount: 999 },
+    };
+
+    const afterManual = syncCalcFields(manualOverride, calcFields);
+    assert.equal(afterManual.summary.grand_total, 5);
+    assert.equal(afterManual.mirror.amount, 5);
+    assert.equal(afterManual.helper.amount, '5');
+
+    const updatedSource = {
+      ...afterManual,
+      helper: { amount: '12' },
+    };
+
+    const recalculated = syncCalcFields(updatedSource, calcFields);
+    assert.equal(recalculated.summary.grand_total, 12);
+    assert.equal(recalculated.mirror.amount, 12);
+    assert.equal(recalculated.helper.amount, '12');
+  });
+
+  test('syncCalcFields propagates chained mappings across multiple passes', () => {
+    const calcFields = normalizeCalcFieldConfig([
+      {
+        name: 'VisibleToHidden',
+        cells: [
+          { table: 'hidden_tbl', field: 'amount' },
+          { table: 'visible_tbl', field: 'amount' },
+        ],
+      },
+      {
+        name: 'HiddenToSummary',
+        cells: [
+          { table: 'summary_tbl', field: 'amount' },
+          { table: 'hidden_tbl', field: 'amount' },
+        ],
+      },
+    ]);
+
+    const initial = {
+      visible_tbl: { amount: 0 },
+      hidden_tbl: { amount: 0 },
+      summary_tbl: { amount: 0 },
+    };
+
+    const synced = syncCalcFields(
+      {
+        ...initial,
+        visible_tbl: { amount: 125 },
+      },
+      calcFields,
+    );
+    assert.equal(synced.hidden_tbl.amount, 125);
+    assert.equal(synced.summary_tbl.amount, 125);
+
+    const reversedOrder = syncCalcFields(
+      {
+        ...synced,
+        visible_tbl: { amount: 250 },
+      },
+      calcFields.slice().reverse(),
+    );
+    assert.equal(reversedOrder.hidden_tbl.amount, 250);
+    assert.equal(reversedOrder.summary_tbl.amount, 250);
+  });
+
+  test('syncCalcFields supports AVG, MIN, MAX and COUNT aggregators', () => {
+    const calcFields = [
+      {
+        cells: [
+          { table: 'summary', field: 'avg_qty' },
+          { table: 'detail', field: 'qty', agg: 'AVG' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'summary', field: 'min_price' },
+          { table: 'detail', field: 'price', agg: 'MIN' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'summary', field: 'max_price' },
+          { table: 'detail', field: 'price', agg: 'MAX' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'summary', field: 'item_count' },
+          { table: 'detail', field: 'qty', agg: 'COUNT' },
+        ],
+      },
+    ];
+
+    const initial = {
+      summary: {},
+      detail: [
+        { qty: '1,5', price: '10.00' },
+        { qty: '2', price: '15.50' },
+        { qty: null, price: '9,75' },
+      ],
+    };
+
+    const synced = syncCalcFields(initial, calcFields);
+    assert.equal(Number(synced.summary.avg_qty.toFixed(2)), 1.75);
+    assert.equal(synced.summary.min_price, 9.75);
+    assert.equal(synced.summary.max_price, 15.5);
+    assert.equal(synced.summary.item_count, 2);
+  });
+
+  test('applyPosFields handles localized numbers and aggregators', () => {
+    const posFields = [
+      {
+        parts: [
+          { table: 'summary', field: 'avg_price', agg: '=' },
+          { table: 'detail', field: 'price', agg: 'AVG' },
+        ],
+      },
+      {
+        parts: [
+          { table: 'summary', field: 'total_qty', agg: '=' },
+          { table: 'detail', field: 'qty', agg: 'SUM' },
+        ],
+      },
+      {
+        parts: [
+          { table: 'summary', field: 'min_qty', agg: '=' },
+          { table: 'detail', field: 'qty', agg: 'MIN' },
+        ],
+      },
+      {
+        parts: [
+          { table: 'summary', field: 'item_count', agg: '=' },
+          { table: 'detail', field: 'qty', agg: 'COUNT' },
+        ],
+      },
+    ];
+
+    const initial = {
+      summary: {},
+      detail: [
+        { qty: '1,5', price: '10 000' },
+        { qty: '', price: '5,00' },
+        { qty: '2', price: '12.5' },
+      ],
+    };
+
+    const applied = applyPosFields(initial, posFields);
+    assert.equal(Number(applied.summary.avg_price.toFixed(2)), 3339.17);
+    assert.equal(applied.summary.total_qty, 3.5);
+    assert.equal(applied.summary.min_qty, 1.5);
+    assert.equal(applied.summary.item_count, 2);
+  });
+
+  test('syncCalcFields uses visible table values for cross-table mappings', () => {
+    const calcFields = [
+      {
+        cells: [
+          { table: 'transactions_pos', field: 'total_quantity' },
         { table: 'transactions_order', field: 'ordrsub', agg: 'SUM' },
         { table: 'transactions_inventory', field: 'bmtr_sub', agg: 'SUM' },
       ],
