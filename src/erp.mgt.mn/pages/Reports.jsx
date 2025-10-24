@@ -500,7 +500,9 @@ export default function Reports() {
       }
     });
     const companyIdForQuery =
-      normalizeNumericId(session?.company_id) ?? normalizeNumericId(company);
+      normalizeNumericId(workplaceCompanyIdForQuery) ??
+      normalizeNumericId(session?.company_id) ??
+      normalizeNumericId(company);
     if (companyIdForQuery != null) {
       const companyIdValue = String(companyIdForQuery);
       params.set('companyId', companyIdValue);
@@ -639,6 +641,7 @@ export default function Reports() {
   }, [
     hasWorkplaceParam,
     workplaceDateQuery,
+    workplaceCompanyIdForQuery,
     session?.company_id,
     company,
     addToast,
@@ -1177,6 +1180,25 @@ export default function Reports() {
     endDate,
     sessionDefaults,
   ]);
+
+  const workplaceCompanyIdForQuery = useMemo(() => {
+    for (let index = 0; index < normalizedProcParams.length; index += 1) {
+      const meta = normalizedProcParams[index];
+      if (!meta?.normalized || !meta.normalized.includes('company')) continue;
+
+      const manualCandidate = normalizeNumericId(manualParams[meta.original]);
+      if (manualCandidate !== null) {
+        return manualCandidate;
+      }
+
+      const autoCandidate = normalizeNumericId(autoParams[index]);
+      if (autoCandidate !== null) {
+        return autoCandidate;
+      }
+    }
+
+    return null;
+  }, [normalizedProcParams, manualParams, autoParams]);
 
   const manualParamNames = useMemo(() => {
     return procParams.reduce((list, param, index) => {
