@@ -70,7 +70,16 @@ function parseDateOnly(value) {
 
 export async function listReportWorkplaces(req, res, next) {
   try {
-    if (!req.user?.empid) {
+    const employeeInput =
+      req.query.employeeId ?? req.query.empId ?? req.query.empid ?? null;
+    const overrideEmployeeId = normalizeNumericId(employeeInput);
+    const fallbackEmployeeId = normalizeNumericId(
+      req.user?.empid ?? req.user?.employeeId ?? req.user?.employee_id,
+    );
+    const normalizedEmployeeId =
+      overrideEmployeeId ?? fallbackEmployeeId ?? null;
+
+    if (normalizedEmployeeId === null) {
       return res.status(400).json({ message: 'Missing employee context' });
     }
 
@@ -127,7 +136,7 @@ export async function listReportWorkplaces(req, res, next) {
       return res.status(400).json({ message: 'Invalid date parameters' });
     }
 
-    const sessions = await getEmploymentSessionsImpl(req.user.empid, {
+    const sessions = await getEmploymentSessionsImpl(normalizedEmployeeId, {
       effectiveDate,
     });
 
