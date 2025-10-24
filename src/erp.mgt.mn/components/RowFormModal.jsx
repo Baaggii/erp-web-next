@@ -147,7 +147,7 @@ const RowFormModal = function RowFormModal({
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
   );
-  const guardReasonLookup = React.useMemo(() => {
+  const disabledReasonLookup = React.useMemo(() => {
     const map = {};
     Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
       if (!key) return;
@@ -163,7 +163,7 @@ const RowFormModal = function RowFormModal({
     return map;
   }, [disabledFieldReasons]);
   const guardToastEnabled = !!general.posGuardToastEnabled;
-  const lastGuardToastRef = useRef({ field: null, ts: 0, message: null });
+  const lastGuardToastRef = useRef({ field: null, ts: 0 });
   const describeGuardReasons = React.useCallback(
     (codes = []) => {
       if (!Array.isArray(codes) || codes.length === 0) return [];
@@ -1590,46 +1590,24 @@ const RowFormModal = function RowFormModal({
     showTriggerInfo(col);
     if (guardToastEnabled && col) {
       const lower = String(col).toLowerCase();
-      const reasons = describeGuardReasons(guardReasonLookup[lower] || []);
-      const isDisabled = disabledSet.has(lower);
-      if (isDisabled || reasons.length > 0) {
-        let message;
-        if (isDisabled) {
-          message =
-            reasons.length > 0
-              ? t(
-                  'pos_guard_toast_message_with_reasons',
-                  '{{field}} is read-only: {{reasons}}',
-                  {
-                    field: col,
-                    reasons: reasons.join('; '),
-                  },
-                )
-              : t('pos_guard_toast_message', '{{field}} is read-only.', { field: col });
-        } else {
-          message =
-            reasons.length > 0
-              ? t(
-                  'pos_guard_toast_message_guarded_with_reasons',
-                  '{{field}} guard info: {{reasons}}',
-                  {
-                    field: col,
-                    reasons: reasons.join('; '),
-                  },
-                )
-              : t('pos_guard_toast_message_guarded', '{{field}} has guard information.', {
-                  field: col,
-                });
-        }
+      if (disabledSet.has(lower)) {
+        const reasons = describeGuardReasons(disabledReasonLookup[lower] || []);
+        const message =
+          reasons.length > 0
+            ? t('pos_guard_toast_message_with_reasons', '{{field}} is read-only: {{reasons}}', {
+                field: col,
+                reasons: reasons.join('; '),
+              })
+            : t('pos_guard_toast_message', '{{field}} is read-only.', { field: col });
         const now = Date.now();
         const last = lastGuardToastRef.current;
-        if (last.field !== lower || now - last.ts > 400 || last.message !== message) {
+        if (last.field !== lower || now - last.ts > 400) {
           window.dispatchEvent(
             new CustomEvent('toast', {
               detail: { message, type: 'info' },
             }),
           );
-          lastGuardToastRef.current = { field: lower, ts: now, message };
+          lastGuardToastRef.current = { field: lower, ts: now };
         }
       }
     }
