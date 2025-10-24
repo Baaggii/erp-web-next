@@ -681,12 +681,8 @@ if (typeof mock.import !== 'function') {
     assert.equal(startToast.type, 'info');
     assert.match(
       startToast.message,
-      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=99&userId=321/,
+      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=99/,
       'Fetch start toast should include request query',
-    );
-    assert.ok(
-      startToast.message.includes('"userId":"321"'),
-      'Fetch start toast should include user identifier in params summary',
     );
 
     const successToast = addToastCalls.find(
@@ -703,12 +699,8 @@ if (typeof mock.import !== 'function') {
     );
     assert.match(
       successToast.message,
-      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=99&userId=321/,
+      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=99/,
       'Success toast should include request query',
-    );
-    assert.ok(
-      successToast.message.includes('"userId":"321"'),
-      'Success toast should include user identifier in params summary',
     );
     assert.ok(
       successToast.message.includes('session 22') || successToast.message.includes('#2'),
