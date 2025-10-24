@@ -268,16 +268,13 @@ export function buildComputedFieldMap(
     const rawField = String(field);
     if (!rawTable || !rawField) return;
     const lowerTable = rawTable.toLowerCase();
-    if (!tableCaseMap[lowerTable]) {
-      tableCaseMap[lowerTable] = rawTable;
-    }
     const canonicalTable = tableCaseMap[lowerTable] || rawTable;
+    const tableEntry = ensureTableSet(canonicalTable);
+    if (!tableEntry) return;
     const caseMap = columnCaseMap[canonicalTable] || {};
     const lowerField = rawField.toLowerCase();
     const canonicalField = caseMap[lowerField] || rawField;
     const normalizedField = String(canonicalField).toLowerCase();
-    const tableEntry = ensureTableSet(canonicalTable);
-    if (!tableEntry) return;
     tableEntry.set.add(normalizedField);
   };
 
@@ -299,14 +296,7 @@ export function buildComputedFieldMap(
 
   (posFields || []).forEach((entry = {}) => {
     const parts = Array.isArray(entry.parts) ? entry.parts : [];
-    if (parts.length < 2) return;
-    const calcParts = parts.slice(1).filter((cell = {}) => {
-      if (!cell) return false;
-      const tbl = typeof cell.table === 'string' ? cell.table.trim() : '';
-      const fld = typeof cell.field === 'string' ? cell.field.trim() : '';
-      return Boolean(tbl && fld);
-    });
-    if (calcParts.length === 0) return;
+    if (parts.length === 0) return;
     const target = parts[0];
     if (target) addField(target.table, target.field);
   });
@@ -1397,12 +1387,7 @@ export default function PosTransactionsPage() {
         memoColumnCaseMap,
         tableList,
       ),
-    [
-      normalizedCalcFields,
-      config?.posFields,
-      memoColumnCaseMap,
-      tableList,
-    ],
+    [normalizedCalcFields, config?.posFields, memoColumnCaseMap, tableList],
   );
 
   const memoNumericScaleMap = useMemo(() => {
