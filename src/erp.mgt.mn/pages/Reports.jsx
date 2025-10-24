@@ -437,6 +437,17 @@ export default function Reports() {
     monthParamNames,
   ]);
 
+  const selectedManualDate = useMemo(() => {
+    if (!hasWorkplaceParam || singleDateParamNames.length === 0) return null;
+    for (const name of singleDateParamNames) {
+      const raw = manualParams[name];
+      if (raw === undefined || raw === null) continue;
+      const str = String(raw).trim();
+      if (str) return str;
+    }
+    return null;
+  }, [hasWorkplaceParam, singleDateParamNames, manualParams]);
+
   const showWorkplaceSelector = hasWorkplaceParam;
 
   const workplaceDateQuery = useMemo(() => {
@@ -455,6 +466,26 @@ export default function Reports() {
         },
       };
     }
+    if (selectedManualDate) {
+      const normalizedManualDate = normalizeDateInput(
+        selectedManualDate,
+        'YYYY-MM-DD',
+      );
+      const manualDateValue = normalizedManualDate?.trim()
+        ? normalizedManualDate
+        : String(selectedManualDate).trim();
+      if (!manualDateValue) {
+        return { status: 'waiting', params: null };
+      }
+      return {
+        status: 'ready',
+        params: {
+          date: manualDateValue,
+          startDate: manualDateValue,
+          endDate: manualDateValue,
+        },
+      };
+    }
     const normalizedStart = startDate ? String(startDate).trim() : '';
     const normalizedEnd = endDate ? String(endDate).trim() : '';
     const effective = normalizedStart || normalizedEnd;
@@ -469,6 +500,7 @@ export default function Reports() {
     hasWorkplaceParam,
     requiresYearMonthParams,
     selectedYearMonth,
+    selectedManualDate,
     startDate,
     endDate,
   ]);
@@ -1059,25 +1091,37 @@ export default function Reports() {
       managedIndices: new Set(),
       startIndices: new Set(),
       endIndices: new Set(),
+      singleDateIndices: new Set(),
     };
     procParams.forEach((param, index) => {
       if (typeof param !== 'string') return;
-      if (isStartDateParam(param)) {
+      const matchesStart = isStartDateParam(param);
+      const matchesEnd = isEndDateParam(param);
+      if (matchesStart) {
         info.hasStartParam = true;
         info.managedIndices.add(index);
         info.startIndices.add(index);
       }
-      if (isEndDateParam(param)) {
+      if (matchesEnd) {
         info.hasEndParam = true;
         info.managedIndices.add(index);
         info.endIndices.add(index);
+      }
+      if (!matchesStart && !matchesEnd && isLikelyDateField(param)) {
+        info.singleDateIndices.add(index);
       }
     });
     return info;
   }, [procParams]);
 
-  const { hasStartParam, hasEndParam, managedIndices, startIndices, endIndices } =
-    dateParamInfo;
+  const {
+    hasStartParam,
+    hasEndParam,
+    managedIndices,
+    startIndices,
+    endIndices,
+    singleDateIndices,
+  } = dateParamInfo;
   const hasDateParams = hasStartParam || hasEndParam;
 
   const sessionDefaults = useMemo(() => {
@@ -1191,6 +1235,17 @@ export default function Reports() {
       return list;
     }, []);
   }, [procParams, managedIndices, autoParams]);
+
+  const singleDateParamNames = useMemo(() => {
+    if (!singleDateIndices || singleDateIndices.size === 0) return [];
+    return procParams.reduce((list, param, index) => {
+      if (!singleDateIndices.has(index)) return list;
+      if (typeof param === 'string') {
+        list.push(param);
+      }
+      return list;
+    }, []);
+  }, [procParams, singleDateIndices]);
 
   const activeControlRefs = useMemo(() => {
     const refs = [];
