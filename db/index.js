@@ -1200,31 +1200,20 @@ async function buildEmploymentSessionsQuery(empid, options = {}) {
                 employee_name, e.employment_user_level, ul.name
       ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
   const params = [...scheduleDateParams, empid];
-
-  return { sql, params };
-}
-
-export async function getEmploymentSessions(empid, options = {}) {
-  const { sql, params } = await buildEmploymentSessionsQuery(empid, options);
   const [rows] = await pool.query(sql, params);
   const sessions = rows.map(mapEmploymentRow);
-
   if (options?.includeDiagnostics) {
-    const formattedSql = formatSqlForDiagnostics(sql, params);
-    const diagnostics = {
-      sql,
-      params,
-      formattedSql,
-    };
-
+    const formattedSql =
+      typeof mysql?.format === 'function' ? mysql.format(sql, params) : null;
     Object.defineProperty(sessions, '__diagnostics', {
-      value: diagnostics,
+      value: {
+        sql,
+        params,
+        formattedSql,
+      },
       enumerable: false,
     });
-
-    return { sessions, diagnostics };
   }
-
   return sessions;
 }
 
