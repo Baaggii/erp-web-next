@@ -418,16 +418,18 @@ export function syncCalcFields(vals, mapConfig) {
 
     if (!hasComputedValue) continue;
 
-    for (const cell of cells) {
+    for (let idx = 0; idx < cells.length; idx += 1) {
+      const cell = cells[idx];
       const { table, field } = cell;
       const aggKey =
         typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
       const aggregator = aggKey ? CALC_FIELD_AGGREGATORS[aggKey] : null;
-      const target = next[table];
 
-      if (aggregator && Array.isArray(target)) {
+      if (aggregator && !computedIndexSet.has(idx)) {
         continue;
       }
+
+      const target = next[table];
 
       if (target === undefined || target === null) {
         next = { ...next, [table]: { [field]: computedValue } };

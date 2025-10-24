@@ -498,6 +498,7 @@ export function propagateCalcFields(cfg, data) {
     for (const cell of cells) {
       const { table, field } = cell || {};
       if (!table || !field) continue;
+      if (cell.__aggKey && !computedIndexSet.has(idx)) continue;
       const target = data[table];
       if (!target) continue;
       if (cell.__aggKey && Array.isArray(target)) continue;
