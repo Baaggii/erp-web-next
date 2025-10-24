@@ -50,8 +50,8 @@ cadence (default 30&nbsp;seconds). Enable `txnToastEnabled` when you need the
 app to surface debug toasts for transaction fetch/edit flows; it defaults to
 `false` so the extra notifications stay hidden in production. Set
 `workplaceFetchToastEnabled` to surface diagnostic toasts whenever the Reports
-page fetches workplace assignments, including the parameters used and the
-result counts.
+page fetches workplace assignments, including the parameters used, the SQL
+query executed, and the result counts.
 
 The **Images** tab exposes `basePath`, `cleanupDays` and an `ignoreOnSearch` list.
 `basePath` sets the root directory for uploaded transaction images. The default
