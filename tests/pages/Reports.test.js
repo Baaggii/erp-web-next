@@ -695,4 +695,193 @@ if (typeof mock.import !== 'function') {
 
     delete global.fetch;
   });
+
+  test('Reports fetches workplaces when a single date parameter is provided', async () => {
+    const fetchCalls = [];
+    global.fetch = async (url, options = {}) => {
+      fetchCalls.push({ url, options });
+      if (url.startsWith('/api/report_procedures')) {
+        return {
+          ok: true,
+          json: async () => ({
+            procedures: [{ name: 'report_with_workplace_date' }],
+          }),
+        };
+      }
+      if (url.startsWith('/api/procedures/report_with_workplace_date/params')) {
+        return {
+          ok: true,
+          json: async () => ({
+            parameters: ['workplace_id', 'report_date'],
+          }),
+        };
+      }
+      if (url.startsWith('/api/reports/workplaces')) {
+        return {
+          ok: true,
+          json: async () => ({
+            assignments: [
+              {
+                workplace_id: '2',
+                workplace_session_id: '22',
+                workplace_name: 'Date workplace',
+                company_id: 99,
+                branch_id: 77,
+                department_id: 8,
+              },
+            ],
+          }),
+        };
+      }
+      if (url.startsWith('/api/procedures') && options.method === 'POST') {
+        return { ok: true, json: async () => ({ row: [], fieldTypeMap: {} }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    const addToastCalls = [];
+    const addToast = (message, type) => {
+      addToastCalls.push({ message, type });
+    };
+
+    const states = [];
+    const setters = [];
+    const indexRef = { current: 0 };
+    const contextValue = {
+      company: 99,
+      branch: 77,
+      department: 8,
+      workplace: 11,
+      user: { empid: 321 },
+      session: {
+        company_id: 99,
+        branch_id: 77,
+        department_id: 8,
+        workplace_id: 1,
+        workplace_session_id: 11,
+        workplace_name: 'Base workplace',
+        workplace_assignments: [
+          {
+            workplace_id: 1,
+            workplace_session_id: 11,
+            workplace_name: 'Base workplace',
+          },
+        ],
+      },
+    };
+    const reactMock = createReactStub(states, setters, indexRef, contextValue);
+
+    const { default: ReportsPage } = await mock.import(
+      '../../src/erp.mgt.mn/pages/Reports.jsx',
+      {
+        react: {
+          default: reactMock,
+          useState: reactMock.useState,
+          useRef: reactMock.useRef,
+          useEffect: reactMock.useEffect,
+          useMemo: reactMock.useMemo,
+          useContext: reactMock.useContext,
+          createElement: reactMock.createElement,
+          Fragment: reactMock.Fragment,
+        },
+        '../context/AuthContext.jsx': { AuthContext: {} },
+        '../context/ToastContext.jsx': { useToast: () => ({ addToast }) },
+        '../hooks/useGeneralConfig.js': {
+          default: () => ({ general: { workplaceFetchToastEnabled: true } }),
+        },
+        '../hooks/useHeaderMappings.js': { default: () => ({}) },
+        '../hooks/useButtonPerms.js': { default: () => ({}) },
+        '../components/CustomDatePicker.jsx': {
+          default: (props) => ({ type: 'CustomDatePicker', props }),
+        },
+        '../components/ReportTable.jsx': { default: () => null },
+        '../utils/formatTimestamp.js': { default: (date) => date.toISOString() },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    function render() {
+      indexRef.current = 0;
+      return ReportsPage();
+    }
+
+    render();
+    await Promise.resolve();
+    await Promise.resolve();
+    let tree = render();
+
+    const procedureSelect = collectNodes(
+      tree,
+      (node) => node.type === 'select' && hasOptionWithValue(node, ''),
+    )[0];
+    assert.ok(procedureSelect, 'Procedure select not found for date test');
+
+    procedureSelect.props.onChange({
+      target: { value: 'report_with_workplace_date' },
+    });
+
+    tree = render();
+    await Promise.resolve();
+    await Promise.resolve();
+    tree = render();
+
+    const dateInput = collectNodes(
+      tree,
+      (node) => node.type === 'input' && node.props?.placeholder === 'report_date',
+    )[0];
+    assert.ok(dateInput, 'Report date input missing');
+    dateInput.props.onChange({ target: { value: '2025-10-19' } });
+
+    tree = render();
+    await Promise.resolve();
+    await Promise.resolve();
+    tree = render();
+
+    const workplaceOption = collectNodes(
+      tree,
+      (node) => node.type === 'option' && node.props?.value === '22',
+    )[0];
+    assert.ok(
+      workplaceOption,
+      'Fetched workplace option not populated for single date parameter',
+    );
+
+    const workplaceCall = fetchCalls.find(({ url }) =>
+      url.startsWith('/api/reports/workplaces?'),
+    );
+    assert.ok(
+      workplaceCall,
+      'Workplace fetch call not executed for single date parameter',
+    );
+    assert.ok(
+      /date=2025-10-19/.test(workplaceCall.url),
+      'Single date parameter missing from workplace fetch URL',
+    );
+    assert.ok(
+      /companyId=99/.test(workplaceCall.url),
+      'Company parameter missing from workplace fetch for single date',
+    );
+
+    const startToast = addToastCalls.find(
+      (call) =>
+        call.message.includes('Fetching workplaces with params') &&
+        call.message.includes('"date":"2025-10-19"'),
+    );
+    assert.ok(startToast, 'Fetch start toast not emitted for single date');
+    assert.equal(startToast.type, 'info');
+
+    const successToast = addToastCalls.find(
+      (call) =>
+        call.type === 'success' &&
+        call.message.includes('Workplace fetch params') &&
+        call.message.includes('"date":"2025-10-19"'),
+    );
+    assert.ok(successToast, 'Success toast not emitted for single date fetch');
+    assert.ok(
+      successToast.message.includes('→ 1/1 valid assignments'),
+      'Success toast should summarize assignment counts for single date',
+    );
+
+    delete global.fetch;
+  });
 }
