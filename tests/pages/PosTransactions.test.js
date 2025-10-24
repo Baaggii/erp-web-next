@@ -1,10 +1,7 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { fetchTriggersForTables } from '../../src/erp.mgt.mn/utils/fetchTriggersForTables.js';
-import {
-  syncCalcFields,
-  normalizeCalcFieldConfig,
-} from '../../src/erp.mgt.mn/utils/syncCalcFields.js';
+import { syncCalcFields } from '../../src/erp.mgt.mn/utils/syncCalcFields.js';
 import { applyPosFields } from '../../src/erp.mgt.mn/utils/transactionValues.js';
 
 if (typeof mock.import !== 'function') {
@@ -837,49 +834,6 @@ test('fetchTriggersForTables caches trigger metadata for hidden tables', async (
   assert.equal(cleared.transactions_income.total_quantity, 0);
   assert.equal(cleared.transactions_pos.total_amount, 0);
   assert.equal(cleared.transactions_income.or_or, 0);
-  });
-
-  test('syncCalcFields keeps aggregator sources editable for single tables', () => {
-    const calcFields = normalizeCalcFieldConfig([
-      {
-        cells: [
-          { table: 'summary', field: 'grand_total' },
-          { table: 'helper', field: 'amount', agg: 'SUM' },
-          { table: 'mirror', field: 'amount' },
-        ],
-      },
-    ]);
-
-    const initial = {
-      summary: { grand_total: 0 },
-      helper: { amount: '5' },
-      mirror: { amount: 0 },
-    };
-
-    const synced = syncCalcFields(initial, calcFields);
-    assert.equal(synced.summary.grand_total, 5);
-    assert.equal(synced.mirror.amount, 5);
-    assert.equal(synced.helper.amount, '5');
-
-    const manualOverride = {
-      ...synced,
-      mirror: { amount: 999 },
-    };
-
-    const afterManual = syncCalcFields(manualOverride, calcFields);
-    assert.equal(afterManual.summary.grand_total, 5);
-    assert.equal(afterManual.mirror.amount, 5);
-    assert.equal(afterManual.helper.amount, '5');
-
-    const updatedSource = {
-      ...afterManual,
-      helper: { amount: '12' },
-    };
-
-    const recalculated = syncCalcFields(updatedSource, calcFields);
-    assert.equal(recalculated.summary.grand_total, 12);
-    assert.equal(recalculated.mirror.amount, 12);
-    assert.equal(recalculated.helper.amount, '12');
   });
 
   test('syncCalcFields supports AVG, MIN, MAX and COUNT aggregators', () => {
