@@ -512,23 +512,24 @@ export default function Reports() {
     setWorkplaceAssignmentsForPeriod(null);
 
     const queryString = params.toString();
+    const queryUrl = queryString
+      ? `/api/reports/workplaces?${queryString}`
+      : '/api/reports/workplaces';
     const paramsSummary = summarizeForToast(paramsObject);
 
     async function loadWorkplaceAssignments() {
       if (workplaceFetchDiagnosticsEnabled) {
-        addToast(
-          `Fetching workplaces with params ${paramsSummary}`,
-          'info',
-        );
+        let startMessage = `Fetching workplaces with params ${paramsSummary}`;
+        if (queryString) {
+          startMessage += `\nQuery: ${queryUrl}`;
+        }
+        addToast(startMessage, 'info');
       }
       try {
-        const res = await fetch(
-          `/api/reports/workplaces?${queryString}`,
-          {
-            credentials: 'include',
-            signal: controller.signal,
-          },
-        );
+        const res = await fetch(queryUrl, {
+          credentials: 'include',
+          signal: controller.signal,
+        });
         if (!res.ok) {
           throw new Error('Failed to load workplaces for selected period');
         }
@@ -611,8 +612,15 @@ export default function Reports() {
                 ? ' (no valid IDs returned; showing raw results)'
                 : ' (using base assignments)';
             let toastMessage = `${baseMessage}${suffix}`;
+            const details = [];
+            if (queryString) {
+              details.push(`Query: ${queryUrl}`);
+            }
             if (formattedSql) {
-              toastMessage += `\nSQL: ${formattedSql}`;
+              details.push(`SQL: ${formattedSql}`);
+            }
+            if (details.length) {
+              toastMessage += `\n${details.join('\n')}`;
             }
             addToast(toastMessage, validCount > 0 ? 'success' : 'info');
           }
@@ -623,10 +631,11 @@ export default function Reports() {
         setWorkplaceAssignmentsForPeriod(null);
         if (workplaceFetchDiagnosticsEnabled) {
           const detailedMessage = err?.message || 'Unknown error';
-          addToast(
-            `Workplace fetch params ${paramsSummary} failed: ${detailedMessage}`,
-            'error',
-          );
+          let errorMessage = `Workplace fetch params ${paramsSummary} failed: ${detailedMessage}`;
+          if (queryString) {
+            errorMessage += `\nQuery: ${queryUrl}`;
+          }
+          addToast(errorMessage, 'error');
         }
         addToast(
           'Failed to load workplaces for the selected period',
