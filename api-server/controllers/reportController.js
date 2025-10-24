@@ -5,6 +5,7 @@ import {
 } from '../utils/workplaceAssignments.js';
 
 let getEmploymentSessionsImpl = db.getEmploymentSessions;
+let describeEmploymentSessionsQueryImpl = db.describeEmploymentSessionsQuery;
 
 export function __setGetEmploymentSessions(fetcher) {
   if (typeof fetcher !== 'function') {
@@ -15,6 +16,17 @@ export function __setGetEmploymentSessions(fetcher) {
 
 export function __resetGetEmploymentSessions() {
   getEmploymentSessionsImpl = db.getEmploymentSessions;
+}
+
+export function __setDescribeEmploymentSessionsQuery(fetcher) {
+  if (typeof fetcher !== 'function') {
+    throw new TypeError('fetcher must be a function');
+  }
+  describeEmploymentSessionsQueryImpl = fetcher;
+}
+
+export function __resetDescribeEmploymentSessionsQuery() {
+  describeEmploymentSessionsQueryImpl = db.describeEmploymentSessionsQuery;
 }
 
 // Controller to handle fetching report data by ID

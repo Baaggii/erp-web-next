@@ -1044,7 +1044,7 @@ function mapEmploymentRow(row) {
 /**
  * List all employment sessions for an employee
  */
-export async function getEmploymentSessions(empid, options = {}) {
+async function buildEmploymentSessionsQuery(empid, options = {}) {
   const configCompanyId = GLOBAL_COMPANY_ID;
   const scheduleDate = options?.effectiveDate
     ? formatDateForDb(options.effectiveDate).slice(0, 10)
@@ -1216,6 +1216,18 @@ export async function getEmploymentSessions(empid, options = {}) {
   }
   return sessions;
 }
+
+
+
+export async function describeEmploymentSessionsQuery(empid, options = {}) {
+  const { sql, params } = await buildEmploymentSessionsQuery(empid, options);
+  return {
+    sql,
+    params,
+    formattedSql: formatSqlForDiagnostics(sql, params),
+  };
+}
+
 
 /**
  * Fetch employment session info and permission flags for an employee.
