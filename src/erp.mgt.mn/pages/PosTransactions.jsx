@@ -136,6 +136,8 @@ function getCalcFieldCells(map) {
 }
 
 export function findCalcFieldMismatch(data, calcFields, options = {}) {
+  if (!Array.isArray(calcFields) || calcFields.length === 0) return null;
+
   const tablesFilter = Array.isArray(options?.tables)
     ? new Set(
         options.tables
@@ -179,47 +181,6 @@ export function findCalcFieldMismatch(data, calcFields, options = {}) {
           map,
           table: cell.table,
           field: cell.field,
-          message: messageParts.join(': '),
-          ...mismatch,
-        };
-      }
-    }
-  }
-
-  const posFields = Array.isArray(options?.posFields) ? options.posFields : [];
-  if (posFields.length > 0) {
-    const expectedFormulaBase = cloneValuesForRecalc(expectedCalc);
-    const expectedFormulas = applyPosFields(expectedFormulaBase, posFields);
-
-    for (const entry of posFields) {
-      const parts = Array.isArray(entry?.parts) ? entry.parts : [];
-      if (parts.length < 2) continue;
-      const target = parts[0];
-      if (!target?.table || !target?.field) continue;
-      if (tablesFilter && !tablesFilter.has(target.table)) continue;
-
-      const actualContainer = base[target.table];
-      const expectedContainer = expectedFormulas[target.table];
-      const mismatch = compareCellValues(actualContainer, expectedContainer, target.field);
-      if (mismatch) {
-        const location = [target.table, target.field].filter(Boolean).join('.');
-        const rowHint =
-          typeof mismatch.rowIndex === 'number' ? ` (row ${mismatch.rowIndex + 1})` : '';
-        const messageParts = [];
-        if (entry?.name) {
-          messageParts.push(`Formula ${entry.name}`);
-        }
-        messageParts.push(`Mismatch for ${location}${rowHint}`);
-        if (mismatch.expected !== undefined && mismatch.expected !== null) {
-          messageParts.push(`expected ${mismatch.expected}`);
-        }
-        if (mismatch.actual !== undefined && mismatch.actual !== null) {
-          messageParts.push(`found ${mismatch.actual}`);
-        }
-        return {
-          formula: entry,
-          table: target.table,
-          field: target.field,
           message: messageParts.join(': '),
           ...mismatch,
         };
