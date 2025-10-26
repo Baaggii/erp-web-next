@@ -4172,30 +4172,6 @@ const TableManager = forwardRef(function TableManager({
     return true;
   });
 
-  const lockedDefaults = Array.from(
-    new Set(
-      Object.entries(formConfig?.defaultValues || {})
-        .filter(([rawKey, value]) => {
-          if (value === undefined || value === '') return false;
-          if ((formConfig?.editableDefaultFields || []).includes(rawKey)) return false;
-
-          const canonicalKey = resolveCanonicalKey(rawKey);
-          const relationKeyMatches = [rawKey, canonicalKey].filter(Boolean);
-          const hasRelationMetadata = relationKeyMatches.some((key) => {
-            if (key == null) return false;
-            return (
-              relationOpts[key] !== undefined ||
-              relationConfigs[key] !== undefined ||
-              viewSourceMap[key] !== undefined
-            );
-          });
-          return !hasRelationMetadata;
-        })
-        .map(([k]) => resolveCanonicalKey(k))
-        .filter(Boolean),
-    ),
-  );
-
   const canonicalizeFormFields = useMemo(
     () =>
       (fields) => {
@@ -4248,14 +4224,6 @@ const TableManager = forwardRef(function TableManager({
     : [];
   if (requestType === 'temporary-promote') {
     disabledFields = Array.from(new Set([...formColumns]));
-  } else if (isAdding) {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
-  } else if (editing) {
-    disabledFields = Array.from(
-      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
-    );
-  } else {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
   }
   disabledFields = canonicalizeFormFields(disabledFields) || [];
 
