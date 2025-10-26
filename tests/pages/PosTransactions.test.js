@@ -322,30 +322,6 @@ if (typeof mock.import !== 'function') {
     assert.equal(map.transactions.has('totalamount'), false);
   });
 
-  test('buildComputedFieldMap ignores POS formulas with single unique source', async () => {
-    const { buildComputedFieldMap } = await mock.import(
-      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
-      {},
-    );
-
-    const posFields = [
-      {
-        parts: [
-          { table: 'transactions', field: 'GrandTotal' },
-          { table: 'transactions', field: 'GrandTotal', agg: '=' },
-          { table: 'transactions', field: 'GRANDTOTAL', agg: '+' },
-        ],
-      },
-    ];
-
-    const columnCaseMap = { transactions: { grandtotal: 'GrandTotal' } };
-    const tables = ['transactions'];
-
-    const map = buildComputedFieldMap([], posFields, columnCaseMap, tables);
-
-    assert.equal(map.transactions, undefined);
-  });
-
   test('buildComputedFieldMap keeps calc map targets editable', async () => {
     const { buildComputedFieldMap } = await mock.import(
       '../../src/erp.mgt.mn/pages/PosTransactions.jsx',

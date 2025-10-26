@@ -34,7 +34,6 @@ import {
   restoreValuesFromTransport,
   cloneValuesForRecalc,
   createGeneratedColumnPipeline,
-  applyPosFields,
   recalcTotals as recalcPosTotals,
 } from '../utils/transactionValues.js';
 
@@ -152,12 +151,9 @@ export function findCalcFieldMismatch(data, calcFields, options = {}) {
     : null;
 
   const base = data && typeof data === 'object' ? data : {};
-  const calcFieldList = hasCalc ? calcFields : [];
-  const expectedAfterCalc = hasCalc ? syncCalcFields(base, calcFields) : base;
-  const expectedValues =
-    posFieldList.length > 0 ? applyPosFields(expectedAfterCalc, posFieldList) : expectedAfterCalc;
+  const expected = syncCalcFields(base, calcFields);
 
-  for (const map of calcFieldList) {
+  for (const map of calcFields) {
     const cells = getCalcFieldCells(map);
 
     if (cells.length < 2) continue;
@@ -165,7 +161,7 @@ export function findCalcFieldMismatch(data, calcFields, options = {}) {
     for (const cell of cells) {
       if (tablesFilter && !tablesFilter.has(cell.table)) continue;
       const actualContainer = base[cell.table];
-      const expectedContainer = expectedValues[cell.table];
+      const expectedContainer = expected[cell.table];
       const mismatch = compareCellValues(actualContainer, expectedContainer, cell.field);
 
       if (mismatch) {
@@ -381,10 +377,9 @@ export function buildComputedFieldMap(
       const key = `${tbl.toLowerCase()}::${fld.toLowerCase()}`;
       uniqueSources.add(key);
     });
-
-    if (uniqueSources.size < 2) return;
-
-    addField(target.table, target.field, 'posFormula');
+    if (calcParts.length < 2) return;
+    const target = parts[0];
+    if (target) addField(target.table, target.field, 'posFormula');
   });
 
   return result;
@@ -1326,42 +1321,6 @@ export default function PosTransactionsPage() {
     [config],
   );
 
-  const calcFieldNeighborTables = useMemo(() => {
-    const relationMap = new Map();
-
-    const registerGroup = (tables) => {
-      const unique = Array.from(
-        new Set(
-          tables
-            .map((table) => (typeof table === 'string' ? table.trim() : String(table || '')))
-            .filter((name) => Boolean(name)),
-        ),
-      );
-      unique.forEach((table) => {
-        if (!relationMap.has(table)) {
-          relationMap.set(table, new Set());
-        }
-        const neighbors = relationMap.get(table);
-        unique.forEach((other) => {
-          if (!other || other === table) return;
-          neighbors.add(other);
-        });
-      });
-    };
-
-    (normalizedCalcFields || []).forEach((map) => {
-      const cells = getCalcFieldCells(map);
-      registerGroup(cells.map((cell) => cell.table));
-    });
-
-    (config?.posFields || []).forEach((entry = {}) => {
-      const parts = Array.isArray(entry.parts) ? entry.parts : [];
-      registerGroup(parts.map((part) => part?.table));
-    });
-
-    return relationMap;
-  }, [normalizedCalcFields, config?.posFields]);
-
   const multiTableSet = React.useMemo(() => {
     const set = new Set();
     formList.forEach((t) => {
@@ -1856,8 +1815,7 @@ export default function PosTransactionsPage() {
     });
   }, [values]);
 
-  function handleChange(tbl, changes, meta = null) {
-    let mismatch = null;
+  function handleChange(tbl, changes) {
     setValues((v) => {
       const prev = v?.[tbl];
       const desiredRow = isPlainRecord(prev)
@@ -1865,42 +1823,14 @@ export default function PosTransactionsPage() {
         : { ...changes };
       const merged = { ...v, [tbl]: desiredRow };
       const recalculated = recalcTotals(merged);
-      const finalValues = preserveManualChangesAfterRecalc({
+      return preserveManualChangesAfterRecalc({
         table: tbl,
         changes,
         computedFieldMap,
         desiredRow,
         recalculatedValues: recalculated,
       });
-
-      const reason = meta?.reason;
-      if (reason === 'procedure' || reason === 'trigger') {
-        const tablesToValidate = new Set();
-        const addTable = (name) => {
-          if (!name && name !== 0) return;
-          const normalized = String(name).trim();
-          if (normalized) tablesToValidate.add(normalized);
-        };
-        addTable(tbl);
-        const neighborKey = String(tbl ?? '').trim();
-        if (neighborKey) {
-          const neighbors = calcFieldNeighborTables.get(neighborKey);
-          if (neighbors instanceof Set) {
-            neighbors.forEach((neighbor) => addTable(neighbor));
-          }
-        }
-        mismatch = findCalcFieldMismatch(finalValues, normalizedCalcFields, {
-          tables: Array.from(tablesToValidate),
-          posFields: config?.posFields,
-        });
-      }
-
-      return finalValues;
     });
-
-    if (mismatch) {
-      addToast(mismatch.message || 'Calculated fields mismatch after trigger', 'error');
-    }
   }
 
   function handleRowsChange(tbl, rows) {
@@ -2289,9 +2219,7 @@ export default function PosTransactionsPage() {
         if (payload[tbl][k] === undefined) payload[tbl][k] = v;
       });
     });
-    const mismatch = findCalcFieldMismatch(payload, normalizedCalcFields, {
-      posFields: config?.posFields,
-    });
+    const mismatch = findCalcFieldMismatch(payload, normalizedCalcFields);
     if (mismatch) {
       addToast('Mapping mismatch', 'error');
       return;
@@ -2626,7 +2554,7 @@ export default function PosTransactionsPage() {
                       fieldTypeMap={memoFieldTypeMap[t.table] || {}}
                       columnCaseMap={memoColumnCaseMap[t.table] || {}}
                       tableColumns={columnMeta[t.table] || []}
-                      onChange={(changes, meta) => handleChange(t.table, changes, meta)}
+                      onChange={(changes) => handleChange(t.table, changes)}
                       onRowsChange={(rows) => handleRowsChange(t.table, rows)}
                       onSubmit={() => true}
                       useGrid={t.view === 'table' || t.type === 'multi'}
