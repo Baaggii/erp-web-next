@@ -385,252 +385,12 @@ export function buildComputedFieldMap(
   return result;
 }
 
-function normalizeReasonList(value) {
-  if (value == null) return null;
-  if (Array.isArray(value)) {
-    const normalized = value
-      .map((entry) => {
-        if (entry == null) return null;
-        return String(entry);
-      })
-      .filter((entry) => entry);
-    return normalized.length > 0 ? normalized : null;
-  }
-  if (value && typeof value === 'object') {
-    if (Array.isArray(value.values)) {
-      return normalizeReasonList(value.values);
-    }
-    if (typeof value.value === 'string' || typeof value.value === 'number') {
-      return normalizeReasonList(value.value);
-    }
-  }
-  return [String(value)];
-}
-
-const TYPE_HINT_KEYS = new Map(
-  [
-    ['ui', 'ui'],
-    ['ui_lock', 'ui'],
-    ['ui_locks', 'ui'],
-    ['ui_cells', 'ui'],
-    ['ui_cell', 'ui'],
-    ['uicells', 'ui'],
-    ['uilocks', 'ui'],
-    ['ui_cell_locks', 'ui'],
-    ['uicelllocks', 'ui'],
-    ['uilockcells', 'ui'],
-    ['uiLockCells'.toLowerCase(), 'ui'],
-    ['uiCells'.toLowerCase(), 'ui'],
-    ['uiLock'.toLowerCase(), 'ui'],
-    ['noneditable', 'nonEditable'],
-    ['non_editable', 'nonEditable'],
-    ['noneditablecells', 'nonEditable'],
-    ['non_editable_cells', 'nonEditable'],
-    ['noneditablecelllocks', 'nonEditable'],
-    ['non_editable_cell_locks', 'nonEditable'],
-    ['noneditablelockcells', 'nonEditable'],
-    ['nonEditableCells'.toLowerCase(), 'nonEditable'],
-    ['nonEditableLockCells'.toLowerCase(), 'nonEditable'],
-    ['nonEditable'.toLowerCase(), 'nonEditable'],
-    ['read_only', 'nonEditable'],
-    ['read-only', 'nonEditable'],
-    ['readonly', 'nonEditable'],
-  ].map(([key, value]) => [key.toLowerCase(), value]),
-);
-
-const ENTRY_CONTAINER_KEYS = new Set(
-  [
-    'cells',
-    'locks',
-    'cellLocks',
-    'cell_locks',
-    'entries',
-    'items',
-    'list',
-    'fields',
-    'columns',
-  ].map((key) => key.toLowerCase()),
-);
-
-const TABLE_CONTAINER_KEYS = new Set(
-  ['tables', 'perTable', 'byTable', 'tableLocks', 'tableMap']
-    .map((key) => key.toLowerCase()),
-);
-
-const REASON_KEYS = new Set(
-  ['reasons', 'reasonCodes', 'reason_codes', 'reason', 'reasonCode', 'codes']
-    .map((key) => key.toLowerCase()),
-);
-
-function collectDynamicLockEntries(value, context = {}, out = []) {
-  if (value == null) return out;
-
-  if (Array.isArray(value)) {
-    value.forEach((entry) => collectDynamicLockEntries(entry, context, out));
-    return out;
-  }
-
-  if (typeof value === 'string' || typeof value === 'number') {
-    if (context.table) {
-      out.push({
-        table: context.table,
-        field: String(value),
-        type: context.type,
-        reasons: context.reasons ? Array.from(context.reasons) : null,
-      });
-    }
-    return out;
-  }
-
-  if (typeof value !== 'object') return out;
-
-  const fieldCandidate =
-    value.field ??
-    value.Field ??
-    value.column ??
-    value.Column ??
-    value.name ??
-    value.Name ??
-    null;
-  const tableCandidate =
-    value.table ??
-    value.Table ??
-    value.tbl ??
-    value.tblName ??
-    value.tableName ??
-    context.table ??
-    null;
-  let typeCandidate =
-    value.lockType ??
-    value.lock_type ??
-    value.type ??
-    value.category ??
-    value.kind ??
-    context.type ??
-    null;
-
-  if (!typeCandidate) {
-    if (value.isEditable === false || value.editable === false) typeCandidate = 'nonEditable';
-    else if (value.isEditable === true || value.editable === true) typeCandidate = 'ui';
-    else if (value.ui === true) typeCandidate = 'ui';
-  }
-
-  const reasonCandidate =
-    value.reasonCodes ??
-    value.reason_codes ??
-    value.reasonCode ??
-    value.reason ??
-    value.reasons ??
-    context.reasons ??
-    null;
-
-  if (fieldCandidate) {
-    const reasons = normalizeReasonList(reasonCandidate);
-    out.push({
-      table: tableCandidate,
-      field: fieldCandidate,
-      type: typeCandidate,
-      reasons,
-    });
-    return out;
-  }
-
-  const baseContext = {
-    table: tableCandidate,
-    type: typeCandidate,
-    reasons: normalizeReasonList(reasonCandidate) || context.reasons,
-  };
-
-  Object.entries(value).forEach(([rawKey, child]) => {
-    const key = String(rawKey);
-    const lower = key.toLowerCase();
-    if (REASON_KEYS.has(lower)) {
-      // Skip explicit reason containers; handled via reasonCandidate.
-      return;
-    }
-
-    if (TYPE_HINT_KEYS.has(lower)) {
-      const hint = TYPE_HINT_KEYS.get(lower);
-      collectDynamicLockEntries(child, { ...baseContext, type: hint }, out);
-      return;
-    }
-
-    if (ENTRY_CONTAINER_KEYS.has(lower)) {
-      collectDynamicLockEntries(child, baseContext, out);
-      return;
-    }
-
-    if (TABLE_CONTAINER_KEYS.has(lower)) {
-      collectDynamicLockEntries(child, { ...baseContext, table: baseContext.table }, out);
-      return;
-    }
-
-    collectDynamicLockEntries(child, { ...baseContext, table: key }, out);
-  });
-
-  return out;
-}
-
-export function extractDynamicTransactionLocks(sources = [], table) {
-  const list = Array.isArray(sources) ? sources : [sources];
-  const entries = [];
-  list.forEach((source) => {
-    if (source == null) return;
-    collectDynamicLockEntries(source, {}, entries);
-  });
-  const lowerTable = table ? String(table).toLowerCase() : '';
-  const nonEditable = new Set();
-  const reasonMap = new Map();
-
-  entries.forEach(({ table: entryTable, field, type, reasons }) => {
-    if (!field) return;
-    if (entryTable) {
-      const lowerEntryTable = String(entryTable).toLowerCase();
-      if (lowerEntryTable && lowerTable && lowerEntryTable !== lowerTable) return;
-    }
-    let normalizedType = type ? String(type).toLowerCase() : '';
-    if (TYPE_HINT_KEYS.has(normalizedType)) {
-      normalizedType = TYPE_HINT_KEYS.get(normalizedType);
-    }
-    const isUiLock = normalizedType === 'ui';
-    const isNonEditable =
-      normalizedType === 'noneditable' ||
-      normalizedType === 'non_editable' ||
-      normalizedType === 'noneditablecell' ||
-      normalizedType === 'noneditablecells' ||
-      normalizedType === 'non_editable_cells' ||
-      normalizedType === 'readonly' ||
-      normalizedType === 'read_only' ||
-      normalizedType === 'read-only' ||
-      normalizedType === 'locked' ||
-      normalizedType === 'nonEditable';
-
-    if (normalizedType && !isUiLock && !isNonEditable) return;
-    if (isUiLock) return;
-
-    const lowerField = String(field).toLowerCase();
-    if (!lowerField) return;
-    nonEditable.add(lowerField);
-    const normalizedReasons = normalizeReasonList(reasons);
-    if (normalizedReasons && normalizedReasons.length > 0) {
-      const set = reasonMap.get(lowerField) || new Set();
-      normalizedReasons.forEach((code) => {
-        if (code) set.add(String(code));
-      });
-      if (set.size > 0) reasonMap.set(lowerField, set);
-    }
-  });
-
-  return { nonEditable, reasonMap };
-}
-
 export function collectDisabledFieldsAndReasons({
   allFields = [],
   editSet = null,
   computedEntry = undefined,
   caseMap = {},
   sessionFields = [],
-  dynamicLocks = null,
 }) {
   const normalizedFields = Array.isArray(allFields)
     ? allFields.filter((field) => typeof field === 'string' && field)
@@ -708,29 +468,6 @@ export function collectDisabledFieldsAndReasons({
     if (typeof canonicalField !== 'string') canonicalField = String(canonicalField);
     addReason(canonicalField, 'sessionFieldAutoReset');
   });
-
-  if (dynamicLocks && dynamicLocks.nonEditable instanceof Set) {
-    dynamicLocks.nonEditable.forEach((field) => {
-      if (!field) return;
-      const normalizedLower = String(field).toLowerCase();
-      if (!allFieldLowerSet.has(normalizedLower)) return;
-      let canonicalField =
-        caseMap[normalizedLower] ||
-        normalizedFields.find((entry) => entry.toLowerCase() === normalizedLower) ||
-        field;
-      if (typeof canonicalField !== 'string') canonicalField = String(canonicalField);
-      if (!disabledLower.has(normalizedLower)) {
-        disabled.push(canonicalField);
-        disabledLower.add(normalizedLower);
-      }
-      const reasonCodes = dynamicLocks.reasonMap?.get(normalizedLower);
-      if (reasonCodes instanceof Set && reasonCodes.size > 0) {
-        reasonCodes.forEach((code) => addReason(canonicalField, code));
-      } else {
-        addReason(canonicalField, 'dynamicNonEditable');
-      }
-    });
-  }
 
   return {
     disabled,
@@ -1579,8 +1316,6 @@ export default function PosTransactionsPage() {
     [formList],
   );
 
-  const tableListKey = useMemo(() => tableList.join('|'), [tableList]);
-
   const normalizedCalcFields = useMemo(
     () => normalizeCalcFieldConfig(config?.calcFields),
     [config],
@@ -1814,53 +1549,6 @@ export default function PosTransactionsPage() {
     });
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
-
-  const dynamicCellLockMap = useMemo(() => {
-    if (!config) return {};
-    const map = {};
-    const rootSources = [];
-    const candidateRoots = [
-      config.dynamicTransaction,
-      config.dynamic_transaction,
-      config.dynamicTransactionCellLocks,
-      config.dynamic_transaction_cell_locks,
-      config.dynamicCellLocks,
-      config.dynamic_cell_locks,
-    ];
-    candidateRoots.forEach((candidate) => {
-      if (candidate && typeof candidate === 'object') {
-        rootSources.push(candidate);
-      }
-    });
-
-    tableList.forEach((tbl) => {
-      if (!tbl) return;
-      const perTableSources = [...rootSources];
-      const fc = memoFormConfigs[tbl];
-      if (fc && typeof fc === 'object') {
-        [
-          fc.dynamicTransaction,
-          fc.dynamic_transaction,
-          fc.dynamicTransactionCellLocks,
-          fc.dynamic_transaction_cell_locks,
-          fc.dynamicCellLocks,
-          fc.dynamic_cell_locks,
-        ].forEach((candidate) => {
-          if (candidate && typeof candidate === 'object') {
-            perTableSources.push(candidate);
-          }
-        });
-      }
-
-      if (perTableSources.length === 0) return;
-      const info = extractDynamicTransactionLocks(perTableSources, tbl);
-      if (info.nonEditable.size > 0 || (info.reasonMap && info.reasonMap.size > 0)) {
-        map[tbl] = info;
-      }
-    });
-
-    return map;
-  }, [configVersion, config, memoFormConfigs, tableListKey]);
 
   const computedFieldMap = useMemo(
     () =>
@@ -2787,7 +2475,6 @@ export default function PosTransactionsPage() {
                   computedEntry: computedFieldMap[t.table],
                   caseMap,
                   sessionFields: tableSessionFields,
-                  dynamicLocks: dynamicCellLockMap[t.table],
                 });
                 const disabledFieldReasons = {};
                 if (reasonMap instanceof Map) {
