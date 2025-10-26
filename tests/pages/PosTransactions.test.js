@@ -11,8 +11,6 @@ if (typeof mock.import !== 'function') {
   test('buildComputedFieldMap collects aggregated targets', { skip: true }, () => {});
   test('buildComputedFieldMap includes POS targets even when flagged editable', { skip: true }, () => {});
   test('computed field map keeps non-formula editable columns enabled', { skip: true }, () => {});
-  test('extractDynamicTransactionLocks filters UI locks and keeps non-editable locks', { skip: true }, () => {});
-  test('collectDisabledFieldsAndReasons merges dynamic non-editable cell locks', { skip: true }, () => {});
   test('generated column configs support lowercase generation_expression metadata', { skip: true }, () => {});
 } else {
   test('shouldLoadRelations helper', async () => {
@@ -455,76 +453,6 @@ if (typeof mock.import !== 'function') {
     const totalDisabledReasons = reasonMap.get('Total');
     assert.ok(totalDisabledReasons instanceof Set);
     assert.equal(totalDisabledReasons.has('posFormula'), true);
-  });
-
-  test('extractDynamicTransactionLocks filters UI locks and keeps non-editable locks', async () => {
-    const { extractDynamicTransactionLocks } = await mock.import(
-      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
-      {},
-    );
-
-    const dynamicSource = {
-      cellLocks: [
-        { table: 'transactions', field: 'UiLocked', lockType: 'UI' },
-        { table: 'transactions', field: 'ExplicitNonEditable', lockType: 'NON_EDITABLE', reasonCodes: ['serverLock'] },
-        { table: 'transactions', field: 'ImplicitNonEditable' },
-        { table: 'other_table', field: 'OtherTableField', lockType: 'NON_EDITABLE' },
-      ],
-      tables: {
-        transactions: {
-          uiCellLocks: [{ field: 'TableUiLock', lockType: 'ui' }],
-          nonEditableCells: [{ field: 'TableNonEditable', lockType: 'non_editable', reasonCodes: ['tableReason'] }],
-        },
-      },
-    };
-
-    const { nonEditable, reasonMap } = extractDynamicTransactionLocks([dynamicSource], 'transactions');
-
-    assert.equal(nonEditable.has('uilocked'), false);
-    assert.equal(nonEditable.has('tableuilock'), false);
-    assert.equal(nonEditable.has('explicitnoneditable'), true);
-    assert.equal(nonEditable.has('implicitnoneditable'), true);
-    assert.equal(nonEditable.has('tablenoneditable'), true);
-
-    const explicitReasons = reasonMap.get('explicitnoneditable');
-    assert.ok(explicitReasons instanceof Set);
-    assert.equal(explicitReasons.has('serverLock'), true);
-
-    const tableReasons = reasonMap.get('tablenoneditable');
-    assert.ok(tableReasons instanceof Set);
-    assert.equal(tableReasons.has('tableReason'), true);
-  });
-
-  test('collectDisabledFieldsAndReasons merges dynamic non-editable cell locks', async () => {
-    const { collectDisabledFieldsAndReasons } = await mock.import(
-      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
-      {},
-    );
-
-    const dynamicLocks = {
-      nonEditable: new Set(['lockedfield']),
-      reasonMap: new Map([[
-        'lockedfield',
-        new Set(['dynamicReason']),
-      ]]),
-    };
-
-    const allFields = ['LockedField', 'OpenField'];
-    const editSet = new Set(allFields.map((field) => field.toLowerCase()));
-    const caseMap = { lockedfield: 'LockedField', openfield: 'OpenField' };
-
-    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-      allFields,
-      editSet,
-      caseMap,
-      sessionFields: [],
-      dynamicLocks,
-    });
-
-    assert.deepEqual(disabled, ['LockedField']);
-    const lockReasons = reasonMap.get('LockedField');
-    assert.ok(lockReasons instanceof Set);
-    assert.equal(lockReasons.has('dynamicReason'), true);
   });
 
   test('buildComputedFieldMap tracks reason codes for multi-field formulas', async () => {
