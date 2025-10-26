@@ -365,17 +365,11 @@ export function buildComputedFieldMap(
   (posFields || []).forEach((entry = {}) => {
     const parts = Array.isArray(entry.parts) ? entry.parts : [];
     if (parts.length < 2) return;
-    const target = parts[0];
-    if (!target?.table || !target?.field) return;
-
-    const uniqueSources = new Set();
-    parts.slice(1).forEach((cell = {}) => {
-      if (!cell) return;
+    const calcParts = parts.slice(1).filter((cell = {}) => {
+      if (!cell) return false;
       const tbl = typeof cell.table === 'string' ? cell.table.trim() : '';
       const fld = typeof cell.field === 'string' ? cell.field.trim() : '';
-      if (!tbl || !fld) return;
-      const key = `${tbl.toLowerCase()}::${fld.toLowerCase()}`;
-      uniqueSources.add(key);
+      return Boolean(tbl && fld);
     });
     if (calcParts.length < 2) return;
     const target = parts[0];
