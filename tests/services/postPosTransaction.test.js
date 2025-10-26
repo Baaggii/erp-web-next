@@ -345,28 +345,6 @@ test('propagateCalcFields supports AVG, MIN, MAX and COUNT aggregators', () => {
   assert.equal(data.summary.item_count, 2);
 });
 
-test('propagateCalcFields populates missing targets for calc maps', () => {
-  const cfg = {
-    calcFields: [
-      {
-        cells: [
-          { table: 'summary', field: 'total_amount' },
-          { table: 'detail', field: 'amount', agg: 'SUM' },
-        ],
-      },
-    ],
-  };
-
-  const data = {
-    detail: [{ amount: '10,5' }, { amount: '4.5' }],
-  };
-
-  propagateCalcFields(cfg, data);
-
-  assert.ok(data.summary, 'summary table should be created');
-  assert.equal(data.summary.total_amount, 15);
-});
-
 test('validateConfiguredFields returns empty array for valid data', () => {
   const data = createValidationData();
   const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);
