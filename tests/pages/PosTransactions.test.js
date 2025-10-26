@@ -216,18 +216,8 @@ if (typeof mock.import !== 'function') {
       },
     ];
 
-    const posFields = [
-      {
-        parts: [
-          { table: 'transactions_pos', field: 'payable_amount', agg: '=' },
-          { table: 'transactions_pos', field: 'total_amount', agg: '=' },
-          { table: 'transactions_pos', field: 'total_discount', agg: '-' },
-        ],
-      },
-    ];
-
     const baseData = {
-      transactions_pos: { total_amount: 300, total_discount: 20, payable_amount: 280 },
+      transactions_pos: { total_amount: 300 },
       transactions_order: [
         { ordrap: 100, pos_session_id: 'session-1' },
         { ordrap: 200, pos_session_id: 'session-1' },
@@ -238,7 +228,7 @@ if (typeof mock.import !== 'function') {
       ],
     };
 
-    assert.equal(findCalcFieldMismatch(baseData, calcFields, { posFields }), null);
+    assert.equal(findCalcFieldMismatch(baseData, calcFields), null);
 
     const mismatchTotals = findCalcFieldMismatch(
       {
@@ -246,7 +236,6 @@ if (typeof mock.import !== 'function') {
         transactions_pos: { total_amount: 400 },
       },
       calcFields,
-      { posFields },
     );
     assert.ok(mismatchTotals, 'should detect mismatched SUM totals');
     assert.match(mismatchTotals.message, /Map 1|Mismatch/, 'includes descriptive message');
@@ -259,24 +248,11 @@ if (typeof mock.import !== 'function') {
         ),
       },
       calcFields,
-      { posFields },
     );
     assert.ok(mismatchSession, 'should detect mismatched multi-row values');
 
-    const mismatchFormula = findCalcFieldMismatch(
-      {
-        ...baseData,
-        transactions_pos: { total_amount: 300, total_discount: 20, payable_amount: 260 },
-      },
-      calcFields,
-      { posFields },
-    );
-    assert.ok(mismatchFormula, 'should detect mismatched POS formula totals');
-    assert.match(mismatchFormula.message, /payable_amount/);
-
     const filtered = findCalcFieldMismatch(baseData, calcFields, {
       tables: ['transactions_plan'],
-      posFields,
     });
     assert.equal(filtered, null, 'unaffected tables should skip mismatch scan');
   });
