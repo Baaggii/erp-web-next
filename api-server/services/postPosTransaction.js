@@ -495,13 +495,23 @@ export function propagateCalcFields(cfg, data) {
 
     if (!hasComputedValue) continue;
 
-    for (const cell of cells) {
-      const { table, field } = cell || {};
+    for (let idx = 0; idx < cells.length; idx += 1) {
+      const cell = cells[idx];
+      if (!cell) continue;
+      const { table, field } = cell;
       if (!table || !field) continue;
-      if (cell.__aggKey && !computedIndexSet.has(idx)) continue;
+
+      const isAggregatorCell = Boolean(cell.__aggKey);
+      if (isAggregatorCell && !computedIndexSet.has(idx)) continue;
+
       const target = data[table];
-      if (!target) continue;
-      if (cell.__aggKey && Array.isArray(target)) continue;
+
+      if (target === undefined || target === null) {
+        if (!isAggregatorCell || computedIndexSet.has(idx)) {
+          data[table] = { [field]: computedValue };
+        }
+        continue;
+      }
 
       if (Array.isArray(target)) {
         for (const row of target) {
@@ -509,8 +519,16 @@ export function propagateCalcFields(cfg, data) {
           setValue(row, field, computedValue);
         }
         setValue(target, field, computedValue);
-      } else if (isPlainObject(target)) {
+        continue;
+      }
+
+      if (isPlainObject(target)) {
         setValue(target, field, computedValue);
+        continue;
+      }
+
+      if (!isAggregatorCell || computedIndexSet.has(idx)) {
+        data[table] = { [field]: computedValue };
       }
     }
   }
