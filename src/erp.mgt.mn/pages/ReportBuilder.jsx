@@ -23,7 +23,7 @@ const SESSION_PARAMS = [
 ];
 
 const PARAM_TYPES = ['INT', 'DATE', 'VARCHAR(50)', 'DECIMAL(10,2)'];
-const AGGREGATES = ['NONE', 'SUM', 'COUNT', 'MAX', 'MIN'];
+const AGGREGATES = ['NONE', 'SUM', 'AVG', 'COUNT', 'MAX', 'MIN'];
 const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
 const CALC_OPERATORS = ['+', '-', '*', '/'];
 const PAREN_OPTIONS = [0, 1, 2, 3];
