@@ -136,7 +136,12 @@ function getCalcFieldCells(map) {
 }
 
 export function findCalcFieldMismatch(data, calcFields, options = {}) {
-  if (!Array.isArray(calcFields) || calcFields.length === 0) return null;
+  const hasCalc = Array.isArray(calcFields) && calcFields.length > 0;
+  const posFieldList = Array.isArray(options?.posFields)
+    ? options.posFields.filter((entry) => Array.isArray(entry?.parts) && entry.parts.length >= 2)
+    : [];
+
+  if (!hasCalc && posFieldList.length === 0) return null;
 
   const tablesFilter = Array.isArray(options?.tables)
     ? new Set(
@@ -147,11 +152,12 @@ export function findCalcFieldMismatch(data, calcFields, options = {}) {
     : null;
 
   const base = data && typeof data === 'object' ? data : {};
-  const expectedCalc = Array.isArray(calcFields) && calcFields.length > 0
-    ? syncCalcFields(base, calcFields)
-    : base;
+  const calcFieldList = hasCalc ? calcFields : [];
+  const expectedAfterCalc = hasCalc ? syncCalcFields(base, calcFields) : base;
+  const expectedValues =
+    posFieldList.length > 0 ? applyPosFields(expectedAfterCalc, posFieldList) : expectedAfterCalc;
 
-  for (const map of Array.isArray(calcFields) ? calcFields : []) {
+  for (const map of calcFieldList) {
     const cells = getCalcFieldCells(map);
 
     if (cells.length < 2) continue;
@@ -159,7 +165,7 @@ export function findCalcFieldMismatch(data, calcFields, options = {}) {
     for (const cell of cells) {
       if (tablesFilter && !tablesFilter.has(cell.table)) continue;
       const actualContainer = base[cell.table];
-      const expectedContainer = expectedCalc[cell.table];
+      const expectedContainer = expectedValues[cell.table];
       const mismatch = compareCellValues(actualContainer, expectedContainer, cell.field);
 
       if (mismatch) {
@@ -186,6 +192,43 @@ export function findCalcFieldMismatch(data, calcFields, options = {}) {
         };
       }
     }
+  }
+
+  for (const entry of posFieldList) {
+    const parts = Array.isArray(entry?.parts) ? entry.parts : [];
+    if (parts.length < 2) continue;
+    const target = parts[0];
+    if (!target?.table || !target?.field) continue;
+    if (tablesFilter && !tablesFilter.has(target.table)) continue;
+
+    const actualContainer = base[target.table];
+    const expectedContainer = expectedValues[target.table];
+    const mismatch = compareCellValues(actualContainer, expectedContainer, target.field);
+
+    if (!mismatch) continue;
+
+    const location = [target.table, target.field].filter(Boolean).join('.');
+    const rowHint =
+      typeof mismatch.rowIndex === 'number' ? ` (row ${mismatch.rowIndex + 1})` : '';
+    const messageParts = [];
+    if (entry?.name) {
+      messageParts.push(`POS ${entry.name}`);
+    }
+    messageParts.push(`Mismatch for ${location}${rowHint}`);
+    if (mismatch.expected !== undefined && mismatch.expected !== null) {
+      messageParts.push(`expected ${mismatch.expected}`);
+    }
+    if (mismatch.actual !== undefined && mismatch.actual !== null) {
+      messageParts.push(`found ${mismatch.actual}`);
+    }
+
+    return {
+      map: entry,
+      table: target.table,
+      field: target.field,
+      message: messageParts.join(': '),
+      ...mismatch,
+    };
   }
 
   return null;
@@ -323,22 +366,6 @@ export function buildComputedFieldMap(
     }
   };
 
-  calcFields.forEach((map = {}) => {
-    const cells = getCalcFieldCells(map);
-    if (cells.length === 0) return;
-    const computedIndexes = Array.isArray(map.__computedCellIndexes)
-      ? map.__computedCellIndexes
-          .map((idx) => (Number.isInteger(idx) ? idx : null))
-          .filter((idx) => idx !== null)
-      : [];
-    if (computedIndexes.length === 0) return;
-    computedIndexes.forEach((idx) => {
-      const cell = cells[idx];
-      if (!cell) return;
-      addField(cell.table, cell.field, 'calcField');
-    });
-  });
-
   (posFields || []).forEach((entry = {}) => {
     const parts = Array.isArray(entry.parts) ? entry.parts : [];
     if (parts.length < 2) return;
@@ -348,7 +375,7 @@ export function buildComputedFieldMap(
       const fld = typeof cell.field === 'string' ? cell.field.trim() : '';
       return Boolean(tbl && fld);
     });
-    if (calcParts.length === 0) return;
+    if (calcParts.length < 2) return;
     const target = parts[0];
     if (target) addField(target.table, target.field, 'posFormula');
   });
@@ -2504,66 +2531,22 @@ export default function PosTransactionsPage() {
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const computedEntry = computedFieldMap[t.table];
-                const computedFields =
-                  computedEntry instanceof Set
-                    ? computedEntry
-                    : Array.isArray(computedEntry)
-                      ? new Set(
-                          computedEntry
-                            .filter((field) => typeof field === 'string')
-                            .map((field) => field.toLowerCase()),
-                        )
-                      : new Set();
-                const computedReasonMap =
-                  computedEntry && computedEntry.reasonMap instanceof Map
-                    ? computedEntry.reasonMap
-                    : undefined;
-                const allFieldLowerSet = new Set(allFields.map((f) => f.toLowerCase()));
-                const disabledLower = new Set();
-                let disabled = [];
-                const disabledReasonMap = {};
-                const addReason = (field, code) => {
-                  if (!field || !code) return;
-                  if (!disabledReasonMap[field]) {
-                    disabledReasonMap[field] = new Set();
-                  }
-                  disabledReasonMap[field].add(code);
-                };
-                if (editSet) {
-                  disabled = allFields.filter((c) => {
-                    const lower = c.toLowerCase();
-                    if (editSet.has(lower)) return false;
-                    disabledLower.add(lower);
-                    addReason(c, 'missingEditableConfig');
-                    return true;
+                const tableSessionFields = (sessionFields || [])
+                  .filter((sf) => sf?.table === t.table && typeof sf?.field === 'string')
+                  .map((sf) => sf.field);
+                const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
+                  allFields,
+                  editSet,
+                  computedEntry: computedFieldMap[t.table],
+                  caseMap,
+                  sessionFields: tableSessionFields,
+                });
+                const disabledFieldReasons = {};
+                if (reasonMap instanceof Map) {
+                  reasonMap.forEach((codes, field) => {
+                    disabledFieldReasons[field] = Array.from(codes);
                   });
                 }
-                computedFields.forEach((field) => {
-                  if (!field) return;
-                  const normalizedLower = String(field).toLowerCase();
-                  if (!allFieldLowerSet.has(normalizedLower)) return;
-                  const canonicalField =
-                    caseMap[normalizedLower] ||
-                    allFields.find((f) => f.toLowerCase() === normalizedLower) ||
-                    normalizedLower;
-                  if (!disabledLower.has(normalizedLower)) {
-                    disabled.push(canonicalField);
-                    disabledLower.add(normalizedLower);
-                  }
-                  const reasonCodes = computedReasonMap?.get(normalizedLower);
-                  if (reasonCodes instanceof Set && reasonCodes.size > 0) {
-                    reasonCodes.forEach((code) => addReason(canonicalField, code));
-                  } else {
-                    addReason(canonicalField, 'computed');
-                  }
-                });
-                const disabledFieldReasons = Object.fromEntries(
-                  Object.entries(disabledReasonMap).map(([field, codes]) => [
-                    field,
-                    Array.from(codes),
-                  ]),
-                );
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
