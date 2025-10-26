@@ -2460,66 +2460,22 @@ export default function PosTransactionsPage() {
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const computedEntry = computedFieldMap[t.table];
-                const computedFields =
-                  computedEntry instanceof Set
-                    ? computedEntry
-                    : Array.isArray(computedEntry)
-                      ? new Set(
-                          computedEntry
-                            .filter((field) => typeof field === 'string')
-                            .map((field) => field.toLowerCase()),
-                        )
-                      : new Set();
-                const computedReasonMap =
-                  computedEntry && computedEntry.reasonMap instanceof Map
-                    ? computedEntry.reasonMap
-                    : undefined;
-                const allFieldLowerSet = new Set(allFields.map((f) => f.toLowerCase()));
-                const disabledLower = new Set();
-                let disabled = [];
-                const disabledReasonMap = {};
-                const addReason = (field, code) => {
-                  if (!field || !code) return;
-                  if (!disabledReasonMap[field]) {
-                    disabledReasonMap[field] = new Set();
-                  }
-                  disabledReasonMap[field].add(code);
-                };
-                if (editSet) {
-                  disabled = allFields.filter((c) => {
-                    const lower = c.toLowerCase();
-                    if (editSet.has(lower)) return false;
-                    disabledLower.add(lower);
-                    addReason(c, 'missingEditableConfig');
-                    return true;
+                const tableSessionFields = (sessionFields || [])
+                  .filter((sf) => sf?.table === t.table && typeof sf?.field === 'string')
+                  .map((sf) => sf.field);
+                const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
+                  allFields,
+                  editSet,
+                  computedEntry: computedFieldMap[t.table],
+                  caseMap,
+                  sessionFields: tableSessionFields,
+                });
+                const disabledFieldReasons = {};
+                if (reasonMap instanceof Map) {
+                  reasonMap.forEach((codes, field) => {
+                    disabledFieldReasons[field] = Array.from(codes);
                   });
                 }
-                computedFields.forEach((field) => {
-                  if (!field) return;
-                  const normalizedLower = String(field).toLowerCase();
-                  if (!allFieldLowerSet.has(normalizedLower)) return;
-                  const canonicalField =
-                    caseMap[normalizedLower] ||
-                    allFields.find((f) => f.toLowerCase() === normalizedLower) ||
-                    normalizedLower;
-                  if (!disabledLower.has(normalizedLower)) {
-                    disabled.push(canonicalField);
-                    disabledLower.add(normalizedLower);
-                  }
-                  const reasonCodes = computedReasonMap?.get(normalizedLower);
-                  if (reasonCodes instanceof Set && reasonCodes.size > 0) {
-                    reasonCodes.forEach((code) => addReason(canonicalField, code));
-                  } else {
-                    addReason(canonicalField, 'computed');
-                  }
-                });
-                const disabledFieldReasons = Object.fromEntries(
-                  Object.entries(disabledReasonMap).map(([field, codes]) => [
-                    field,
-                    Array.from(codes),
-                  ]),
-                );
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },

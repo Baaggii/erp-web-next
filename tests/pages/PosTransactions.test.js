@@ -407,7 +407,7 @@ if (typeof mock.import !== 'function') {
   });
 
   test('computed field map keeps non-formula editable columns enabled', async () => {
-    const { buildComputedFieldMap } = await mock.import(
+    const { buildComputedFieldMap, collectDisabledFieldsAndReasons } = await mock.import(
       '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
       {},
     );
@@ -439,30 +439,20 @@ if (typeof mock.import !== 'function') {
 
     const visible = ['Amount', 'Total'];
     const editSet = new Set(visible.map((field) => field.toLowerCase()));
-    const disabledLower = new Set();
-    const disabled = [];
 
-    visible.forEach((field) => {
-      const lower = field.toLowerCase();
-      if (editSet.has(lower)) return;
-      disabledLower.add(lower);
-      disabled.push(field);
-    });
-
-    computedSet.forEach((field) => {
-      if (!field) return;
-      const lower = field.toLowerCase();
-      if (disabledLower.has(lower)) return;
-      const canonical =
-        columnCaseMap.transactions?.[lower] ||
-        visible.find((entry) => entry.toLowerCase() === lower) ||
-        lower;
-      disabledLower.add(lower);
-      disabled.push(canonical);
+    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
+      allFields: visible,
+      editSet,
+      computedEntry: computedSet,
+      caseMap: columnCaseMap.transactions,
     });
 
     assert.deepEqual(disabled, ['Total']);
     assert.equal(disabled.includes('Amount'), false);
+
+    const totalDisabledReasons = reasonMap.get('Total');
+    assert.ok(totalDisabledReasons instanceof Set);
+    assert.equal(totalDisabledReasons.has('posFormula'), true);
   });
 
   test('buildComputedFieldMap tracks reason codes for multi-field formulas', async () => {
