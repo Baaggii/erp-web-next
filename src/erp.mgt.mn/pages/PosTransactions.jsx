@@ -378,6 +378,8 @@ export function buildComputedFieldMap(
       uniqueSources.add(key);
     });
     if (calcParts.length < 2) return;
+    const target = parts[0];
+    if (target) addField(target.table, target.field, 'posFormula');
   });
 
   return result;
