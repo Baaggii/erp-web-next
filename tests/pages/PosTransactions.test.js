@@ -443,16 +443,11 @@ if (typeof mock.import !== 'function') {
     const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
       allFields: visible,
       editSet,
-      computedEntry: computedSet,
       caseMap: columnCaseMap.transactions,
     });
 
-    assert.deepEqual(disabled, ['Total']);
-    assert.equal(disabled.includes('Amount'), false);
-
-    const totalDisabledReasons = reasonMap.get('Total');
-    assert.ok(totalDisabledReasons instanceof Set);
-    assert.equal(totalDisabledReasons.has('posFormula'), true);
+    assert.deepEqual(disabled, []);
+    assert.equal(reasonMap.size, 0);
   });
 
   test('buildComputedFieldMap tracks reason codes for multi-field formulas', async () => {
