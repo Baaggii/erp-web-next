@@ -161,6 +161,14 @@ function InlineTransactionTable(
               ),
             );
             break;
+          case 'posLock':
+            messages.push(
+              t(
+                'pos_guard_reason_pos_lock',
+                'Field is locked and cannot be edited',
+              ),
+            );
+            break;
           case 'calcField':
             messages.push(
               t(
@@ -211,13 +219,13 @@ function InlineTransactionTable(
       const reasonsText = (reasons.length > 0 ? reasons : codes.map((code) => String(code))).join('; ');
       const hasAutoReset = codes.includes('sessionFieldAutoReset');
       const hasComputed = codes.some((code) =>
-        ['calcField', 'posFormula', 'computed'].includes(String(code)),
+        ['calcField', 'posFormula', 'computed', 'posLock'].includes(String(code)),
       );
       let message;
       if (hasAutoReset && hasComputed) {
         message = t(
           'pos_guard_toast_message_edit_auto_reset_and_computed',
-          '{{field}} edit resets automatically and calculated values prevail: {{reasons}}',
+          '{{field}} edit resets automatically and calculated or locked values prevail: {{reasons}}',
           {
             field: fieldName,
             reasons: reasonsText,
@@ -235,7 +243,7 @@ function InlineTransactionTable(
       } else if (hasComputed) {
         message = t(
           'pos_guard_toast_message_edit_computed',
-          '{{field}} edit cannot override calculated values: {{reasons}}',
+          '{{field}} edit cannot override calculated or locked values: {{reasons}}',
           {
             field: fieldName,
             reasons: reasonsText,

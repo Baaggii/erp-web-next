@@ -183,6 +183,14 @@ const RowFormModal = function RowFormModal({
               ),
             );
             break;
+          case 'posLock':
+            messages.push(
+              t(
+                'pos_guard_reason_pos_lock',
+                'Field is locked and cannot be edited',
+              ),
+            );
+            break;
           case 'calcField':
             messages.push(
               t(

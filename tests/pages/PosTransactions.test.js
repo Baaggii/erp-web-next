@@ -482,6 +482,113 @@ if (typeof mock.import !== 'function') {
     assert.equal(reasonSet.has('posFormula'), true);
   });
 
+  test('buildComputedFieldMap only guards non-editable POS locks', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Total' },
+          { table: 'transactions', field: 'Subtotal', agg: '=' },
+        ],
+        locks: [
+          { field: 'Total', editable: false, reasonCodes: ['workflowLock'] },
+          { table: 'transactions', field: 'Subtotal', editable: true, reason: 'skip-me' },
+          { table: 'transactions', field: 'Discount', nonEditable: 'yes', codes: ['discountHold'] },
+          { table: 'transactions', field: 'Fee', editable: 'Y' },
+        ],
+        formConfigurations: [
+          {
+            locks: [
+              { table: 'transactions', field: 'Total', nonEditable: true },
+              { table: 'transactions', field: 'Discount', nonEditable: true },
+            ],
+          },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: {
+        total: 'Total',
+        subtotal: 'Subtotal',
+        discount: 'Discount',
+      },
+    };
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, ['transactions']);
+    assert.ok(map.transactions instanceof Set);
+    assert.equal(map.transactions.has('total'), true);
+    assert.equal(map.transactions.has('discount'), true);
+    assert.equal(map.transactions.has('subtotal'), false);
+    assert.equal(map.transactions.has('fee'), false);
+
+    const reasonMap = map.transactions.reasonMap;
+    assert.ok(reasonMap instanceof Map);
+
+    const totalReasons = reasonMap.get('total');
+    assert.ok(totalReasons instanceof Set);
+    assert.equal(totalReasons.has('posFormula'), true);
+    assert.equal(totalReasons.has('posLock'), true);
+    assert.equal(totalReasons.has('workflowLock'), true);
+
+    const discountReasons = reasonMap.get('discount');
+    assert.ok(discountReasons instanceof Set);
+    assert.equal(discountReasons.has('posLock'), true);
+    assert.equal(discountReasons.has('discountHold'), true);
+
+    assert.equal(reasonMap.has('subtotal'), false);
+    assert.equal(reasonMap.has('fee'), false);
+  });
+
+  test('buildComputedFieldMap ignores POS locks missing dynamic configuration', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Total' },
+          { table: 'transactions', field: 'Subtotal', agg: '=' },
+        ],
+        locks: [
+          { table: 'transactions', field: 'Total', nonEditable: true, reason: 'configuredLock' },
+          { table: 'transactions', field: 'Fee', nonEditable: true, reason: 'missingConfig' },
+        ],
+        formConfigurations: [
+          {
+            locks: [{ table: 'transactions', field: 'Total', nonEditable: true }],
+          },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: {
+        total: 'Total',
+        subtotal: 'Subtotal',
+        fee: 'Fee',
+      },
+    };
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, ['transactions']);
+    assert.ok(map.transactions instanceof Set);
+    assert.equal(map.transactions.has('total'), true);
+    assert.equal(map.transactions.has('fee'), false);
+
+    const reasonMap = map.transactions.reasonMap;
+    assert.ok(reasonMap instanceof Map);
+    const totalReasons = reasonMap.get('total');
+    assert.ok(totalReasons instanceof Set);
+    assert.equal(totalReasons.has('configuredLock'), true);
+    assert.equal(reasonMap.has('fee'), false);
+  });
+
 
   test('generated column configs support lowercase generation_expression metadata', async () => {
     const actualTransactionValues = await import(

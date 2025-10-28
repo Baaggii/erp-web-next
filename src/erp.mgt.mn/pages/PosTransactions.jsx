@@ -299,6 +299,397 @@ export function extractSessionFieldsFromConfig(config) {
   return fields;
 }
 
+function normalizeIdentifier(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  return null;
+}
+
+const LOCK_TRUE_VALUES = new Set([
+  'true',
+  '1',
+  'yes',
+  'y',
+  'locked',
+  'readonly',
+  'read-only',
+  'noneditable',
+  'non-editable',
+  'disabled',
+  'blocked',
+  'forbidden',
+  'prevent_edit',
+  'prevent-edit',
+  'noedit',
+]);
+
+const LOCK_FALSE_VALUES = new Set([
+  'false',
+  '0',
+  'no',
+  'n',
+  'editable',
+  'unlocked',
+  'allow',
+  'allowed',
+  'enabled',
+  'enable',
+  'write',
+  'writable',
+  'edit',
+]);
+
+function coerceLockBoolean(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const normalized = normalizeIdentifier(String(value));
+  if (!normalized) return null;
+  const token = normalized.toLowerCase();
+  if (LOCK_TRUE_VALUES.has(token)) return true;
+  if (LOCK_FALSE_VALUES.has(token)) return false;
+  return null;
+}
+
+function normalizeLockDescriptor(raw, fallbackTable, fallbackField) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  let table =
+    normalizeIdentifier(raw.table) ||
+    normalizeIdentifier(raw.table_name) ||
+    normalizeIdentifier(raw.tableName) ||
+    normalizeIdentifier(raw.tbl) ||
+    normalizeIdentifier(raw.target?.table) ||
+    normalizeIdentifier(raw.cell?.table);
+  let field =
+    normalizeIdentifier(raw.field) ||
+    normalizeIdentifier(raw.field_name) ||
+    normalizeIdentifier(raw.fieldName) ||
+    normalizeIdentifier(raw.column) ||
+    normalizeIdentifier(raw.column_name) ||
+    normalizeIdentifier(raw.columnName) ||
+    normalizeIdentifier(raw.target?.field) ||
+    normalizeIdentifier(raw.cell?.field);
+
+  if (!table && normalizeIdentifier(fallbackTable)) table = normalizeIdentifier(fallbackTable);
+  if (!field && normalizeIdentifier(fallbackField)) field = normalizeIdentifier(fallbackField);
+  if (!table || !field) return null;
+
+  const explicitNonEditable = coerceLockBoolean(
+    raw.nonEditable ??
+      raw.locked ??
+      raw.isLocked ??
+      raw.readOnly ??
+      raw.readonly ??
+      raw.disabled ??
+      raw.preventEdit ??
+      raw['prevent_edit'],
+  );
+  const explicitEditable = coerceLockBoolean(
+    raw.editable ?? raw.canEdit ?? raw.allowEdit ?? raw.isEditable ?? raw.enabled,
+  );
+
+  let nonEditable = explicitNonEditable;
+  if (nonEditable === null && explicitEditable !== null) {
+    nonEditable = !explicitEditable;
+  }
+  if (nonEditable === null) {
+    const mode = coerceLockBoolean(raw.mode ?? raw.lockMode ?? raw.accessMode ?? raw.permission);
+    if (mode !== null) nonEditable = mode;
+  }
+  if (nonEditable === null) {
+    const status = coerceLockBoolean(
+      raw.status ?? raw.lockStatus ?? raw.state ?? raw.stage,
+    );
+    if (status !== null) nonEditable = status;
+  }
+  if (nonEditable === null) nonEditable = false;
+
+  const reasons = new Set();
+  const addReason = (value) => {
+    if (value === undefined || value === null) return;
+    const str = String(value).trim();
+    if (!str) return;
+    reasons.add(str);
+  };
+
+  const candidates = [
+    raw.reasonCodes,
+    raw.reasonCode,
+    raw.reasons,
+    raw.reason,
+    raw.codes,
+    raw.code,
+    raw.tags,
+    raw.tag,
+    raw.messages,
+    raw.message,
+    raw.lockReason,
+    raw.lockReasons,
+    raw.lock_code,
+    raw.lockCode,
+  ];
+  candidates.forEach((candidate) => {
+    if (Array.isArray(candidate)) {
+      candidate.forEach(addReason);
+    } else {
+      addReason(candidate);
+    }
+  });
+
+  return {
+    table,
+    field,
+    nonEditable: Boolean(nonEditable),
+    reasons: Array.from(reasons),
+  };
+}
+
+function extractConfiguredNonEditableLockKeys(entry = {}) {
+  const formConfigsRaw = entry?.formConfigurations;
+  const formConfigList = Array.isArray(formConfigsRaw)
+    ? formConfigsRaw
+    : formConfigsRaw && typeof formConfigsRaw === 'object'
+      ? Object.values(formConfigsRaw)
+      : [];
+
+  if (formConfigList.length === 0) return null;
+
+  const allowed = new Set();
+
+  const register = (raw, fallbackTable, fallbackField) => {
+    const normalized = normalizeLockDescriptor(raw, fallbackTable, fallbackField);
+    if (!normalized?.table || !normalized?.field) return;
+    if (!normalized.nonEditable) return;
+    const key = `${normalized.table.toLowerCase()}::${normalized.field.toLowerCase()}`;
+    allowed.add(key);
+  };
+
+  const visit = (value, fallbackTable, fallbackField) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, fallbackTable, fallbackField));
+      return;
+    }
+    if (typeof value === 'object') {
+      const nestedTable =
+        normalizeIdentifier(value.table) ||
+        normalizeIdentifier(value.table_name) ||
+        normalizeIdentifier(value.tableName) ||
+        normalizeIdentifier(value.tbl) ||
+        normalizeIdentifier(value.target?.table) ||
+        normalizeIdentifier(value.cell?.table) ||
+        fallbackTable;
+      const nestedField =
+        normalizeIdentifier(value.field) ||
+        normalizeIdentifier(value.field_name) ||
+        normalizeIdentifier(value.fieldName) ||
+        normalizeIdentifier(value.column) ||
+        normalizeIdentifier(value.column_name) ||
+        normalizeIdentifier(value.columnName) ||
+        normalizeIdentifier(value.target?.field) ||
+        normalizeIdentifier(value.cell?.field) ||
+        fallbackField;
+
+      const hasEditFlag =
+        Object.prototype.hasOwnProperty.call(value, 'editable') ||
+        Object.prototype.hasOwnProperty.call(value, 'nonEditable') ||
+        Object.prototype.hasOwnProperty.call(value, 'locked') ||
+        Object.prototype.hasOwnProperty.call(value, 'isLocked') ||
+        Object.prototype.hasOwnProperty.call(value, 'readOnly') ||
+        Object.prototype.hasOwnProperty.call(value, 'readonly') ||
+        Object.prototype.hasOwnProperty.call(value, 'disabled') ||
+        Object.prototype.hasOwnProperty.call(value, 'preventEdit') ||
+        Object.prototype.hasOwnProperty.call(value, 'prevent_edit') ||
+        Object.prototype.hasOwnProperty.call(value, 'mode') ||
+        Object.prototype.hasOwnProperty.call(value, 'lockMode') ||
+        Object.prototype.hasOwnProperty.call(value, 'accessMode') ||
+        Object.prototype.hasOwnProperty.call(value, 'permission') ||
+        Object.prototype.hasOwnProperty.call(value, 'status') ||
+        Object.prototype.hasOwnProperty.call(value, 'lockStatus') ||
+        Object.prototype.hasOwnProperty.call(value, 'state') ||
+        Object.prototype.hasOwnProperty.call(value, 'stage');
+
+      if (hasEditFlag) register(value, nestedTable, nestedField);
+
+      visit(value.locks, nestedTable, nestedField);
+      visit(value.lockCells, nestedTable, nestedField);
+      visit(value.cellLocks, nestedTable, nestedField);
+      visit(value.lockEntries, nestedTable, nestedField);
+      visit(value.lockList, nestedTable, nestedField);
+      visit(value.lockMetadata, nestedTable, nestedField);
+      visit(value.lockInfo, nestedTable, nestedField);
+      visit(value.lockData, nestedTable, nestedField);
+      visit(value.cells, nestedTable, nestedField);
+      visit(value.parts, nestedTable, nestedField);
+      visit(value.entries, nestedTable, nestedField);
+      visit(value.items, nestedTable, nestedField);
+      visit(value.rows, nestedTable, nestedField);
+      if (value.meta && typeof value.meta === 'object') {
+        visit(value.meta.locks, nestedTable, nestedField);
+      }
+      if (value.metadata && typeof value.metadata === 'object') {
+        visit(value.metadata.locks, nestedTable, nestedField);
+      }
+    }
+  };
+
+  formConfigList.forEach((cfg) => {
+    if (!cfg || typeof cfg !== 'object') return;
+    const fallbackTable =
+      normalizeIdentifier(cfg.table) ||
+      normalizeIdentifier(cfg.target?.table) ||
+      null;
+    const fallbackField =
+      normalizeIdentifier(cfg.field) ||
+      normalizeIdentifier(cfg.target?.field) ||
+      null;
+
+    visit(cfg, fallbackTable, fallbackField);
+  });
+
+  return allowed;
+}
+
+function extractLockDescriptors(entry = {}, allowedTargets = null) {
+  const descriptorMap = new Map();
+
+  const allowSet =
+    allowedTargets instanceof Set && allowedTargets.size >= 0 ? allowedTargets : null;
+
+  const isAllowed = (table, field) => {
+    if (!allowSet) return true;
+    const tbl = normalizeIdentifier(table);
+    const fld = normalizeIdentifier(field);
+    if (!tbl || !fld) return false;
+    const key = `${tbl.toLowerCase()}::${fld.toLowerCase()}`;
+    return allowSet.has(key);
+  };
+
+  const registerDescriptor = (raw, fallbackTable, fallbackField) => {
+    const normalized = normalizeLockDescriptor(raw, fallbackTable, fallbackField);
+    if (!normalized) return;
+    if (!isAllowed(normalized.table, normalized.field)) return;
+    const tableKey = normalized.table.toLowerCase();
+    const fieldKey = normalized.field.toLowerCase();
+    const key = `${tableKey}::${fieldKey}`;
+    let existing = descriptorMap.get(key);
+    if (!existing) {
+      existing = {
+        table: normalized.table,
+        field: normalized.field,
+        nonEditable: Boolean(normalized.nonEditable),
+        reasons: new Set(normalized.reasons.map(String)),
+      };
+      descriptorMap.set(key, existing);
+    } else {
+      existing.nonEditable = existing.nonEditable || Boolean(normalized.nonEditable);
+      normalized.reasons.forEach((code) => {
+        if (code === undefined || code === null) return;
+        const str = String(code).trim();
+        if (!str) return;
+        existing.reasons.add(str);
+      });
+    }
+  };
+
+  const addSource = (source, fallbackTable, fallbackField) => {
+    if (!source) return;
+    if (Array.isArray(source)) {
+      source.forEach((item) => addSource(item, fallbackTable, fallbackField));
+      return;
+    }
+    if (typeof source === 'object') {
+      const nestedTable =
+        normalizeIdentifier(source.table) ||
+        normalizeIdentifier(source.table_name) ||
+        normalizeIdentifier(source.tableName) ||
+        normalizeIdentifier(source.tbl) ||
+        fallbackTable;
+      const nestedField =
+        normalizeIdentifier(source.field) ||
+        normalizeIdentifier(source.field_name) ||
+        normalizeIdentifier(source.fieldName) ||
+        normalizeIdentifier(source.column) ||
+        normalizeIdentifier(source.column_name) ||
+        normalizeIdentifier(source.columnName) ||
+        fallbackField;
+      if (Array.isArray(source.locks)) {
+        addSource(source.locks, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.lockCells)) {
+        addSource(source.lockCells, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.cellLocks)) {
+        addSource(source.cellLocks, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.lockEntries)) {
+        addSource(source.lockEntries, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.entries)) {
+        addSource(source.entries, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.items)) {
+        addSource(source.items, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.rows)) {
+        addSource(source.rows, nestedTable, nestedField);
+      }
+      if (source.meta && typeof source.meta === 'object') {
+        addSource(source.meta.locks, nestedTable, nestedField);
+      }
+      if (source.metadata && typeof source.metadata === 'object') {
+        addSource(source.metadata.locks, nestedTable, nestedField);
+      }
+    }
+    registerDescriptor(source, fallbackTable, fallbackField);
+  };
+
+  const primaryPart =
+    Array.isArray(entry.parts) && entry.parts.length > 0 ? entry.parts[0] : null;
+  const entryFallbackTable = normalizeIdentifier(primaryPart?.table);
+  const entryFallbackField = normalizeIdentifier(primaryPart?.field);
+
+  addSource(entry.locks, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockCells, entryFallbackTable, entryFallbackField);
+  addSource(entry.cellLocks, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockEntries, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockList, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockMetadata, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockInfo, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockData, entryFallbackTable, entryFallbackField);
+  if (entry.meta && typeof entry.meta === 'object') {
+    addSource(entry.meta.locks, entryFallbackTable, entryFallbackField);
+  }
+  if (entry.metadata && typeof entry.metadata === 'object') {
+    addSource(entry.metadata.locks, entryFallbackTable, entryFallbackField);
+  }
+
+  if (Array.isArray(entry.parts)) {
+    entry.parts.forEach((part) => {
+      if (!part || typeof part !== 'object') return;
+      const partTable = normalizeIdentifier(part.table);
+      const partField = normalizeIdentifier(part.field);
+      addSource(part.locks, partTable, partField);
+      addSource(part.lockCells, partTable, partField);
+      addSource(part.lockMetadata, partTable, partField);
+      if (part.metadata && typeof part.metadata === 'object') {
+        addSource(part.metadata.locks, partTable, partField);
+      }
+    });
+  }
+
+  return Array.from(descriptorMap.values()).map((entry) => ({
+    table: entry.table,
+    field: entry.field,
+    nonEditable: entry.nonEditable,
+    reasons: Array.from(entry.reasons),
+  }));
+}
+
 export function buildComputedFieldMap(
   calcFields = [],
   posFields = [],
@@ -306,78 +697,144 @@ export function buildComputedFieldMap(
   tables = [],
 ) {
   const tableCaseMap = {};
-  tables.forEach((entry) => {
+  const columnCaseLookup = {};
+
+  const registerTableName = (name) => {
+    const normalized = normalizeIdentifier(name);
+    if (!normalized) return null;
+    const lower = normalized.toLowerCase();
+    if (!tableCaseMap[lower]) {
+      tableCaseMap[lower] = normalized;
+    }
+    return tableCaseMap[lower];
+  };
+
+  const registerColumnCaseMap = (tableName, map) => {
+    const canonicalTable = registerTableName(tableName);
+    if (!canonicalTable) return;
+    const lowerTable = canonicalTable.toLowerCase();
+    const fieldMap = {};
+    if (map && typeof map === 'object') {
+      Object.entries(map).forEach(([key, value]) => {
+        if (typeof key !== 'string') return;
+        const lowerKey = key.toLowerCase();
+        if (typeof value === 'string' && value) {
+          fieldMap[lowerKey] = value;
+        }
+      });
+    }
+    columnCaseLookup[lowerTable] = fieldMap;
+  };
+
+  (Array.isArray(tables) ? tables : []).forEach((entry) => {
     if (!entry) return;
     const name = typeof entry === 'string' ? entry : entry.table;
-    if (!name) return;
-    const key = String(name).toLowerCase();
-    if (!tableCaseMap[key]) tableCaseMap[key] = String(name);
+    registerTableName(name);
+  });
+
+  Object.entries(columnCaseMap || {}).forEach(([tableName, map]) => {
+    registerColumnCaseMap(tableName, map);
   });
 
   const result = {};
 
-  const ensureTableEntry = (table) => {
-    const normalized = String(table);
-    if (!normalized) return null;
-    if (!tableCaseMap[normalized.toLowerCase()]) {
-      tableCaseMap[normalized.toLowerCase()] = normalized;
+  const ensureTableEntry = (tableName) => {
+    const canonicalTable = registerTableName(tableName);
+    if (!canonicalTable) return null;
+    let entry = result[canonicalTable];
+    if (!entry) {
+      entry = new Set();
+      entry.reasonMap = new Map();
+      result[canonicalTable] = entry;
+    } else if (!(entry.reasonMap instanceof Map)) {
+      entry.reasonMap = new Map();
     }
-    const canonical = tableCaseMap[normalized.toLowerCase()] || normalized;
-    if (!result[canonical]) {
-      const set = new Set();
-      set.reasonMap = new Map();
-      result[canonical] = set;
-    } else if (!(result[canonical].reasonMap instanceof Map)) {
-      result[canonical].reasonMap = new Map();
-    }
-    return { set: result[canonical], table: canonical };
+    return entry;
   };
 
-  const addField = (table, field, reason) => {
-    if (!table || !field) return;
-    const rawTable = String(table);
-    const rawField = String(field);
-    if (!rawTable || !rawField) return;
-    const lowerTable = rawTable.toLowerCase();
-    if (!tableCaseMap[lowerTable]) {
-      tableCaseMap[lowerTable] = rawTable;
-    }
-    const canonicalTable = tableCaseMap[lowerTable] || rawTable;
-    const caseMap = columnCaseMap[canonicalTable] || {};
-    const lowerField = rawField.toLowerCase();
-    const canonicalField = caseMap[lowerField] || rawField;
-    const normalizedField = String(canonicalField).toLowerCase();
-    const tableEntry = ensureTableEntry(canonicalTable);
-    if (!tableEntry) return;
-    tableEntry.set.add(normalizedField);
-    if (reason) {
-      const map = tableEntry.set.reasonMap || new Map();
-      let reasonSet = map.get(normalizedField);
-      if (!reasonSet) {
-        reasonSet = new Set();
-        map.set(normalizedField, reasonSet);
-      }
-      reasonSet.add(reason);
-      tableEntry.set.reasonMap = map;
-    }
+  const canonicalizeField = (tableName, fieldName) => {
+    const canonicalTable = registerTableName(tableName);
+    if (!canonicalTable) return null;
+    const normalizedField = normalizeIdentifier(fieldName);
+    if (!normalizedField) return null;
+    const lowerTable = canonicalTable.toLowerCase();
+    const caseMap = columnCaseLookup[lowerTable] || {};
+    const lowerField = normalizedField.toLowerCase();
+    const canonicalField = caseMap[lowerField] || normalizedField;
+    return {
+      table: canonicalTable,
+      field: canonicalField,
+      lower: canonicalField.toLowerCase(),
+    };
   };
+
+  const addReason = (tableName, fieldName, reason) => {
+    const canonical = canonicalizeField(tableName, fieldName);
+    if (!canonical) return;
+    const entry = ensureTableEntry(canonical.table);
+    if (!entry) return;
+    entry.add(canonical.lower);
+    if (!reason && reason !== 0) return;
+    let reasonMap = entry.reasonMap;
+    if (!(reasonMap instanceof Map)) {
+      reasonMap = new Map();
+      entry.reasonMap = reasonMap;
+    }
+    let reasonSet = reasonMap.get(canonical.lower);
+    if (!reasonSet) {
+      reasonSet = new Set();
+      reasonMap.set(canonical.lower, reasonSet);
+    }
+    reasonSet.add(String(reason));
+  };
+
+  (calcFields || []).forEach((map = {}) => {
+    const cells = getCalcFieldCells(map);
+    if (!cells.length) return;
+    const computedIndexes = Array.isArray(map.__computedCellIndexes)
+      ? map.__computedCellIndexes
+      : [];
+    computedIndexes.forEach((idx) => {
+      const cell = cells[idx];
+      if (!cell || !cell.table || !cell.field) return;
+      addReason(cell.table, cell.field, 'calcField');
+    });
+  });
 
   (posFields || []).forEach((entry = {}) => {
     const parts = Array.isArray(entry.parts) ? entry.parts : [];
     if (parts.length < 2) return;
-    const target = parts[0];
-    if (!target?.table || !target?.field) return;
+    const [target, ...calcParts] = parts;
+    const targetTable = normalizeIdentifier(target?.table);
+    const targetField = normalizeIdentifier(target?.field);
+    if (!targetTable || !targetField) return;
 
     const uniqueSources = new Set();
-    parts.slice(1).forEach((cell = {}) => {
-      if (!cell) return;
-      const tbl = typeof cell.table === 'string' ? cell.table.trim() : '';
-      const fld = typeof cell.field === 'string' ? cell.field.trim() : '';
+    calcParts.forEach((cell = {}) => {
+      const tbl = normalizeIdentifier(cell.table);
+      const fld = normalizeIdentifier(cell.field);
       if (!tbl || !fld) return;
-      const key = `${tbl.toLowerCase()}::${fld.toLowerCase()}`;
-      uniqueSources.add(key);
+      uniqueSources.add(`${tbl.toLowerCase()}::${fld.toLowerCase()}`);
     });
-    if (calcParts.length < 2) return;
+    if (uniqueSources.size === 0) return;
+
+    addReason(targetTable, targetField, 'posFormula');
+
+    const allowedLockTargets = extractConfiguredNonEditableLockKeys(entry);
+    const lockDescriptors = extractLockDescriptors(entry, allowedLockTargets);
+    lockDescriptors.forEach((lock) => {
+      if (!lock?.table || !lock?.field) return;
+      if (!lock.nonEditable) return;
+      addReason(lock.table, lock.field, 'posLock');
+      if (Array.isArray(lock.reasons)) {
+        lock.reasons.forEach((code) => {
+          if (code === undefined || code === null) return;
+          const str = String(code).trim();
+          if (!str) return;
+          addReason(lock.table, lock.field, str);
+        });
+      }
+    });
   });
 
   return result;
