@@ -723,7 +723,6 @@ export function buildComputedFieldMap(
 export function collectDisabledFieldsAndReasons({
   allFields = [],
   editSet = null,
-  computedEntry = undefined,
   caseMap = {},
   sessionFields = [],
 }) {
@@ -754,43 +753,6 @@ export function collectDisabledFieldsAndReasons({
       addReason(field, 'missingEditableConfig');
     });
   }
-
-  let computedFieldsSet;
-  if (computedEntry instanceof Set) {
-    computedFieldsSet = computedEntry;
-  } else if (Array.isArray(computedEntry)) {
-    computedFieldsSet = new Set(
-      computedEntry
-        .filter((field) => typeof field === 'string')
-        .map((field) => field.toLowerCase()),
-    );
-  } else {
-    computedFieldsSet = new Set();
-  }
-
-  const computedReasonMap =
-    computedEntry && computedEntry.reasonMap instanceof Map ? computedEntry.reasonMap : undefined;
-
-  computedFieldsSet.forEach((field) => {
-    if (!field) return;
-    const normalizedLower = String(field).toLowerCase();
-    if (!allFieldLowerSet.has(normalizedLower)) return;
-    let canonicalField =
-      caseMap[normalizedLower] ||
-      normalizedFields.find((entry) => entry.toLowerCase() === normalizedLower) ||
-      field;
-    if (typeof canonicalField !== 'string') canonicalField = String(canonicalField);
-    if (!disabledLower.has(normalizedLower)) {
-      disabled.push(canonicalField);
-      disabledLower.add(normalizedLower);
-    }
-    const reasonCodes = computedReasonMap?.get(normalizedLower);
-    if (reasonCodes instanceof Set && reasonCodes.size > 0) {
-      reasonCodes.forEach((code) => addReason(canonicalField, code));
-    } else {
-      addReason(canonicalField, 'computed');
-    }
-  });
 
   (Array.isArray(sessionFields) ? sessionFields : []).forEach((field) => {
     if (typeof field !== 'string' || !field) return;
@@ -2807,7 +2769,6 @@ export default function PosTransactionsPage() {
                 const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
                   allFields,
                   editSet,
-                  computedEntry: computedFieldMap[t.table],
                   caseMap,
                   sessionFields: tableSessionFields,
                 });
