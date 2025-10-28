@@ -63,19 +63,7 @@ export async function listReportWorkplaces(req, res, next) {
     }
 
     const companyInput = req.query.companyId ?? req.user.companyId;
-    let normalizedCompanyId = null;
-    if (companyInput !== undefined && companyInput !== null) {
-      const raw =
-        typeof companyInput === 'string'
-          ? companyInput.trim()
-          : companyInput;
-      if (raw !== '' && raw !== null) {
-        const numeric = Number(raw);
-        if (Number.isFinite(numeric)) {
-          normalizedCompanyId = numeric;
-        }
-      }
-    }
+    const normalizedCompanyId = normalizeNumericId(companyInput);
 
     const explicitDate = parseDateOnly(req.query.date);
     const startDate = parseDateOnly(req.query.startDate);
@@ -111,9 +99,7 @@ export async function listReportWorkplaces(req, res, next) {
       const currentUtcMonth = now.getUTCMonth() + 1;
 
       if (parsedYear === currentUtcYear && parsedMonth === currentUtcMonth) {
-        effectiveDate = new Date(
-          Date.UTC(parsedYear, parsedMonth - 1, now.getUTCDate()),
-        );
+        effectiveDate = new Date();
       } else {
         effectiveDate = new Date(Date.UTC(parsedYear, parsedMonth, 0));
       }
@@ -181,12 +167,12 @@ export async function listReportWorkplaces(req, res, next) {
 
     const defaultSession = pickDefaultSession(filtered);
 
-    const normalizedSession = defaultSession
+    const sessionPayload = defaultSession
       ? normalizeEmploymentSession(defaultSession, workplaceAssignments)
       : null;
 
     res.json({
-      assignments: normalizedSession?.workplace_assignments ?? [],
+      assignments: sessionPayload?.workplace_assignments ?? [],
       diagnostics,
     });
   } catch (err) {
