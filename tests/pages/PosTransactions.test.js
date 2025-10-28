@@ -531,6 +531,123 @@ if (typeof mock.import !== 'function') {
     assert.equal(reasonMap.has('fee'), false);
   });
 
+  test('buildComputedFieldMap skips guard reasons for editable POS fields', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Total' },
+          { table: 'transactions', field: 'Subtotal', agg: '=' },
+        ],
+        locks: [
+          { table: 'transactions', field: 'Total', nonEditable: true, reasons: ['workflowLock'] },
+          { table: 'transactions', field: 'Discount', nonEditable: true, reasons: ['discountHold'] },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: {
+        total: 'Total',
+        subtotal: 'Subtotal',
+        discount: 'Discount',
+      },
+    };
+
+    const editableFieldMap = { transactions: new Set(['total']) };
+
+    const map = buildComputedFieldMap(
+      [],
+      posFields,
+      columnCaseMap,
+      ['transactions'],
+      editableFieldMap,
+    );
+
+    assert.ok(map.transactions instanceof Set);
+    assert.equal(map.transactions.has('total'), true);
+
+    const reasonMap = map.transactions.reasonMap;
+    assert.ok(reasonMap instanceof Map);
+    assert.equal(reasonMap.has('total'), false);
+
+    const discountReasons = reasonMap.get('discount');
+    assert.ok(discountReasons instanceof Set);
+    assert.equal(discountReasons.has('discountHold'), true);
+  });
+
+  test('buildComputedFieldMap omits guard reasons for editable master and child tables', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions_pos', field: 'Total_Amount' },
+          { table: 'transactions_pos', field: 'Subtotal', agg: '=' },
+        ],
+        locks: [
+          { table: 'transactions_pos', field: 'Total_Amount', nonEditable: true, reasons: ['workflow'] },
+          { table: 'transactions_order', field: 'ordrap', nonEditable: true, reasons: ['childLock'] },
+        ],
+      },
+      {
+        parts: [
+          { table: 'transactions_order', field: 'ordrsub' },
+          { table: 'transactions_order', field: 'ordrsub', agg: '=' },
+        ],
+        locks: [
+          { table: 'transactions_order', field: 'ordrsub', nonEditable: true, reasons: ['orderLock'] },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions_pos: {
+        total_amount: 'Total_Amount',
+        subtotal: 'Subtotal',
+      },
+      transactions_order: {
+        ordrsub: 'ordrsub',
+        ordrap: 'ordrap',
+      },
+    };
+
+    const editableFieldMap = {
+      transactions_pos: { fields: new Set(['Total_Amount']), hasExplicitConfig: true },
+      transactions_order: { values: ['ordrsub'], hasExplicitConfig: true },
+    };
+
+    const map = buildComputedFieldMap(
+      [],
+      posFields,
+      columnCaseMap,
+      ['transactions_pos', 'transactions_order'],
+      editableFieldMap,
+    );
+
+    assert.ok(map.transactions_pos instanceof Set);
+    assert.equal(map.transactions_pos.has('total_amount'), true);
+    const masterReasons = map.transactions_pos.reasonMap;
+    assert.ok(masterReasons instanceof Map);
+    assert.equal(masterReasons.has('total_amount'), false);
+
+    assert.ok(map.transactions_order instanceof Set);
+    assert.equal(map.transactions_order.has('ordrsub'), true);
+    const orderReasons = map.transactions_order.reasonMap;
+    assert.ok(orderReasons instanceof Map);
+    assert.equal(orderReasons.has('ordrsub'), false);
+    const ordrapReasons = orderReasons.get('ordrap');
+    assert.ok(ordrapReasons instanceof Set);
+    assert.equal(ordrapReasons.has('childLock'), true);
+  });
+
 
   test('generated column configs support lowercase generation_expression metadata', async () => {
     const actualTransactionValues = await import(
