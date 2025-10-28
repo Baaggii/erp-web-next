@@ -1321,7 +1321,6 @@ export async function getEmploymentSessions(empid, options = {}) {
   const [rows] = await pool.query(sql, params);
   const sessions = rows.map(mapEmploymentRow);
   if (options?.includeDiagnostics) {
-    const diagnostics = { sql, params };
     let formattedSql = null;
     if (typeof mysql?.format === 'function') {
       try {
@@ -1330,15 +1329,15 @@ export async function getEmploymentSessions(empid, options = {}) {
         formattedSql = null;
       }
     }
-    if (typeof formattedSql !== 'string') {
-      formattedSql = null;
+    if (typeof formattedSql !== 'string' || formattedSql.length === 0) {
+      formattedSql = sql;
     }
-    if (formattedSql && formattedSql.trim().length === 0) {
-      formattedSql = null;
-    }
-    diagnostics.formattedSql = formattedSql ?? sql;
     Object.defineProperty(sessions, '__diagnostics', {
-      value: diagnostics,
+      value: {
+        sql,
+        params,
+        formattedSql,
+      },
       enumerable: false,
     });
   }
