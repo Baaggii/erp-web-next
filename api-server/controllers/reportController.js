@@ -202,7 +202,7 @@ export async function listReportWorkplaces(req, res, next) {
 
     res.json({
       assignments: sessionPayload?.workplace_assignments ?? [],
-      diagnostics,
+      diagnostics: diagnosticsPayload,
     });
   } catch (err) {
     next(err);
