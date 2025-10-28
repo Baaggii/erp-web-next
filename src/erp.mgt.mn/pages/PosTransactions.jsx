@@ -1850,38 +1850,32 @@ export default function PosTransactionsPage() {
   const editableFieldLookup = useMemo(() => {
     const lookup = {};
 
-    const canonicalizeList = (list, caseMap = {}) => {
+    const normalizeList = (list, caseMap = {}) => {
       if (!Array.isArray(list)) return [];
       const seen = new Set();
-      const ordered = [];
       list.forEach((field) => {
         if (field == null) return;
         const raw = String(field).trim();
         if (!raw) return;
-        const mapped = caseMap[raw.toLowerCase()] || raw;
-        if (!seen.has(mapped)) {
-          seen.add(mapped);
-          ordered.push(mapped);
+        const lower = raw.toLowerCase();
+        const canonical = caseMap[lower] || raw;
+        const canonicalLower = canonical.toLowerCase();
+        if (!seen.has(canonicalLower)) {
+          seen.add(canonicalLower);
         }
       });
-      return ordered;
+      return Array.from(seen);
     };
 
     Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
       if (!fc) return;
       const caseMap = memoColumnCaseMap[tbl] || {};
-      const provided = canonicalizeList(fc.editableFields, caseMap);
-      const defaults = canonicalizeList(fc.editableDefaultFields, caseMap);
-      const combinedList = Array.from(new Set([...defaults, ...provided]));
-      const hasExplicitConfig =
-        Array.isArray(fc.editableFields) || Array.isArray(fc.editableDefaultFields);
-
-      if (!hasExplicitConfig && combinedList.length === 0) return;
-
-      lookup[tbl] = {
-        fields: new Set(combinedList.map((field) => field.toLowerCase())),
-        hasExplicitConfig,
-      };
+      const provided = normalizeList(fc.editableFields, caseMap);
+      const defaults = normalizeList(fc.editableDefaultFields, caseMap);
+      const combined = new Set([...defaults, ...provided]);
+      if (combined.size > 0) {
+        lookup[tbl] = combined;
+      }
     });
 
     return lookup;

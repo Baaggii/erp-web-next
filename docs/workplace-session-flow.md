@@ -11,12 +11,12 @@ server, persisted on the client, and finally rendered in the application UI.
 2. **Normalize assignments:** `normalizeWorkplaceAssignments` converts each raw
    assignment into a canonical shape (`workplace_id`, `workplace_session_id`,
    names, etc.), drops entries without an active schedule, and collects the
-   unique session identifiers for the current company.【F:api-server/controllers/authController.js†L27-L86】
+   unique session identifiers for the current company.【F:api-server/controllers/authController.js†L31-L134】
 3. **Normalize primary session:** `normalizeEmploymentSession` merges the primary
    employment session with the normalized assignments, fills missing
    `workplace_id`/`workplace_session_id` values with deterministic fallbacks, and
    returns an array of `workplace_session_ids` so the client can access every
-   active session identifier that belongs to the company.【F:api-server/controllers/authController.js†L62-L86】
+   active session identifier that belongs to the company.【F:api-server/utils/employmentSession.js†L111-L185】
 4. **Return session metadata:** The login payload includes the normalized session
    object and echoes the `workplace_session_id` as well as the full list of
    `workplace_session_ids`. The same normalization path is reused by the profile

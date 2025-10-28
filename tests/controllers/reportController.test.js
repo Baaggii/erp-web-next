@@ -139,6 +139,75 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
   ]);
 });
 
+test(
+  'listReportWorkplaces fills fallback IDs when assignments omit workplace data',
+  async () => {
+    __setGetEmploymentSessions(async () => [
+      {
+        company_id: 1,
+        company_name: 'Alpha',
+        branch_id: '12',
+        branch_name: 'HQ',
+        department_id: null,
+        department_name: null,
+        workplace_id: null,
+        workplace_name: 'Main Office',
+        workplace_session_id: '700',
+      },
+      {
+        company_id: 1,
+        company_name: 'Alpha',
+        branch_id: '12',
+        branch_name: 'HQ',
+        department_id: '34',
+        department_name: 'Sales',
+        workplace_id: '55',
+        workplace_name: 'Main Office',
+        workplace_session_id: '700',
+      },
+    ]);
+
+    const req = {
+      user: { empid: 77, companyId: 1 },
+      query: { year: '2024', month: '3' },
+    };
+    const res = createRes();
+
+    try {
+      await listReportWorkplaces(req, res, (err) => {
+        throw err || new Error('next should not be called');
+      });
+    } finally {
+      __resetGetEmploymentSessions();
+    }
+
+    assert.equal(res.statusCode, 200);
+    assert.ok(res.payload);
+    assert.deepEqual(res.payload.assignments, [
+      {
+        company_id: 1,
+        companyId: 1,
+        company_name: 'Alpha',
+        companyName: 'Alpha',
+        branch_id: 12,
+        branchId: 12,
+        branch_name: 'HQ',
+        branchName: 'HQ',
+        department_id: 34,
+        departmentId: 34,
+        department_name: 'Sales',
+        departmentName: 'Sales',
+        workplace_id: 55,
+        workplaceId: 55,
+        workplace_name: 'Main Office',
+        workplaceName: 'Main Office',
+        workplace_session_id: 700,
+        workplaceSessionId: 700,
+      },
+    ]);
+  },
+);
+
 test('listReportWorkplaces prefers endDate when provided', async () => {
   let capturedEffectiveDate = null;
   __setGetEmploymentSessions(async (_empId, options) => {
@@ -180,6 +249,61 @@ test('listReportWorkplaces prefers endDate when provided', async () => {
     new Date(Date.UTC(2025, 9, 31)).toISOString(),
   );
   assert.equal(res.payload.assignments.length, 1);
+});
+
+test('listReportWorkplaces handles bigint identifiers from the database', async () => {
+  __setGetEmploymentSessions(async () => [
+    {
+      company_id: 1n,
+      company_name: 'MegaCorp',
+      branch_id: 2n,
+      branch_name: 'North',
+      department_id: 3n,
+      department_name: 'Ops',
+      workplace_id: 4n,
+      workplace_name: 'Plant',
+      workplace_session_id: 5n,
+    },
+  ]);
+
+  const req = {
+    user: { empid: 123, companyId: 1 },
+    query: { year: '2025', month: '7' },
+  };
+  const res = createRes();
+
+  try {
+    await listReportWorkplaces(req, res, (err) => {
+      throw err || new Error('next should not be called');
+    });
+  } finally {
+    __resetGetEmploymentSessions();
+  }
+
+  assert.equal(res.statusCode, 200);
+  assert.ok(res.payload);
+  assert.deepEqual(res.payload.assignments, [
+    {
+      company_id: 1,
+      companyId: 1,
+      company_name: 'MegaCorp',
+      companyName: 'MegaCorp',
+      branch_id: 2,
+      branchId: 2,
+      branch_name: 'North',
+      branchName: 'North',
+      department_id: 3,
+      departmentId: 3,
+      department_name: 'Ops',
+      departmentName: 'Ops',
+      workplace_id: 4,
+      workplaceId: 4,
+      workplace_name: 'Plant',
+      workplaceName: 'Plant',
+      workplace_session_id: 5,
+      workplaceSessionId: 5,
+    },
+  ]);
 });
 
 test('listReportWorkplaces uses last day of month when year/month provided', async () => {
