@@ -76,30 +76,22 @@ function normalizeNumericId(value) {
   return null;
 }
 
-function resolveSessionParam(candidates, options = {}) {
-  const { coerceNumberToString = false } = options;
+function normalizeIdParamValue(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : null;
+  }
+  return null;
+}
+
+function resolveIdParam(...candidates) {
   for (const candidate of candidates) {
-    if (candidate === undefined || candidate === null) continue;
-    if (typeof candidate === 'string') {
-      const trimmed = candidate.trim();
-      if (!trimmed) continue;
-      return { queryValue: trimmed, summaryValue: trimmed };
-    }
-    if (typeof candidate === 'number') {
-      if (!Number.isFinite(candidate)) continue;
-      const stringified = String(candidate);
-      return {
-        queryValue: stringified,
-        summaryValue: coerceNumberToString ? stringified : candidate,
-      };
-    }
-    if (typeof candidate === 'bigint') {
-      const stringified = candidate.toString();
-      return {
-        queryValue: stringified,
-        summaryValue: coerceNumberToString ? stringified : candidate,
-      };
-    }
+    const normalized = normalizeIdParamValue(candidate);
+    if (normalized !== null) return normalized;
   }
   return null;
 }
@@ -585,27 +577,60 @@ export default function Reports() {
         paramsObject[key] = valueStr;
       }
     });
-    const companyParam = resolveSessionParam([
+    const companyIdForQuery = resolveIdParam(
       session?.company_id,
       session?.companyId,
-    ]);
-    if (companyParam) {
-      params.set('companyId', companyParam.queryValue);
-      paramsObject.companyId = companyParam.summaryValue;
+      company,
+    );
+    if (companyIdForQuery !== null) {
+      params.set('companyId', companyIdForQuery);
+      paramsObject.companyId = companyIdForQuery;
     }
 
-    const userIdParam = resolveSessionParam(
-      [
-        session?.empid,
-        session?.employee_id,
-        session?.employeeId,
-        user?.empid,
-      ],
-      { coerceNumberToString: true },
+    const branchIdForQuery = resolveIdParam(
+      session?.branch_id,
+      session?.branchId,
+      branch,
     );
-    if (userIdParam) {
-      params.set('userId', userIdParam.queryValue);
-      paramsObject.userId = userIdParam.summaryValue;
+    if (branchIdForQuery !== null) {
+      params.set('branchId', branchIdForQuery);
+      paramsObject.branchId = branchIdForQuery;
+    }
+
+    const departmentIdForQuery = resolveIdParam(
+      session?.department_id,
+      session?.departmentId,
+      department,
+    );
+    if (departmentIdForQuery !== null) {
+      params.set('departmentId', departmentIdForQuery);
+      paramsObject.departmentId = departmentIdForQuery;
+    }
+
+    const positionIdForQuery = resolveIdParam(
+      session?.position_id,
+      session?.positionId,
+      position,
+    );
+    if (positionIdForQuery !== null) {
+      params.set('positionId', positionIdForQuery);
+      paramsObject.positionId = positionIdForQuery;
+    }
+
+    const userIdForQuery = (() => {
+      const raw =
+        session?.empid ??
+        session?.employee_id ??
+        session?.employeeId ??
+        user?.empid ??
+        null;
+      if (raw === undefined || raw === null) return null;
+      const str = String(raw).trim();
+      return str.length ? str : null;
+    })();
+    if (userIdForQuery !== null) {
+      params.set('userId', userIdForQuery);
+      paramsObject.userId = userIdForQuery;
     }
 
     const controller = new AbortController();
