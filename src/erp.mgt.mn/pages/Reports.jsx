@@ -224,12 +224,8 @@ export default function Reports() {
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
-  const workplaceFetchToastToggle = useMemo(
-    () => resolveWorkplaceFetchToastToggle(generalConfig),
-    [generalConfig],
-  );
   const workplaceFetchDiagnosticsEnabled = normalizeBoolean(
-    workplaceFetchToastToggle,
+    generalConfig?.general?.workplaceFetchToastEnabled,
     true,
   );
   const usingBaseAssignments = !Array.isArray(workplaceAssignmentsForPeriod);
