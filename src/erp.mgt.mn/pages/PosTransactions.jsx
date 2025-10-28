@@ -903,59 +903,6 @@ export function buildComputedFieldMap(
   return result;
 }
 
-export function collectDisabledFieldsAndReasons({
-  allFields = [],
-  editSet = null,
-  caseMap = {},
-  sessionFields = [],
-}) {
-  const normalizedFields = Array.isArray(allFields)
-    ? allFields.filter((field) => typeof field === 'string' && field)
-    : [];
-  const allFieldLowerSet = new Set(normalizedFields.map((field) => field.toLowerCase()));
-  const disabledLower = new Set();
-  const disabled = [];
-  const reasonMap = new Map();
-
-  const addReason = (field, code) => {
-    if (!field || !code) return;
-    const canonical = String(field);
-    if (!reasonMap.has(canonical)) {
-      reasonMap.set(canonical, new Set());
-    }
-    reasonMap.get(canonical).add(String(code));
-  };
-
-  if (editSet instanceof Set && editSet.size > 0) {
-    normalizedFields.forEach((field) => {
-      const lower = field.toLowerCase();
-      if (editSet.has(lower)) return;
-      if (disabledLower.has(lower)) return;
-      disabledLower.add(lower);
-      disabled.push(field);
-      addReason(field, 'missingEditableConfig');
-    });
-  }
-
-  (Array.isArray(sessionFields) ? sessionFields : []).forEach((field) => {
-    if (typeof field !== 'string' || !field) return;
-    const lower = field.toLowerCase();
-    if (!allFieldLowerSet.has(lower)) return;
-    if (editSet instanceof Set && editSet.has(lower)) return;
-    let canonicalField =
-      caseMap[lower] ||
-      normalizedFields.find((entry) => entry.toLowerCase() === lower) ||
-      field;
-    if (typeof canonicalField !== 'string') canonicalField = String(canonicalField);
-    addReason(canonicalField, 'sessionFieldAutoReset');
-  });
-
-  return {
-    disabled,
-    reasonMap,
-  };
-}
-
 function parseErrorField(msg) {
   if (!msg) return null;
   let m = msg.match(/FOREIGN KEY \(`([^`]*)`\)/i);
@@ -2994,31 +2941,9 @@ export default function PosTransactionsPage() {
                 const footerFields = canonicalizeFields(fc.footerFields);
                 const totalAmountFields = canonicalizeFields(fc.totalAmountFields);
                 const totalCurrencyFields = canonicalizeFields(fc.totalCurrencyFields);
-                const provided = canonicalizeFields(fc.editableFields);
-                const defaults = canonicalizeFields(fc.editableDefaultFields);
-                const editVals = Array.from(new Set([...defaults, ...provided]));
-                const editSet =
-                  editVals.length > 0
-                    ? new Set(editVals.map((f) => f.toLowerCase()))
-                    : null;
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const tableSessionFields = (sessionFields || [])
-                  .filter((sf) => sf?.table === t.table && typeof sf?.field === 'string')
-                  .map((sf) => sf.field);
-                const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-                  allFields,
-                  editSet,
-                  caseMap,
-                  sessionFields: tableSessionFields,
-                });
-                const disabledFieldReasons = {};
-                if (reasonMap instanceof Map) {
-                  reasonMap.forEach((codes, field) => {
-                    disabledFieldReasons[field] = Array.from(codes);
-                  });
-                }
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
@@ -3059,8 +2984,6 @@ export default function PosTransactionsPage() {
                       inline
                       visible
                       columns={allFields}
-                      disabledFields={disabled}
-                      disabledFieldReasons={disabledFieldReasons}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
                       row={values[t.table]}
@@ -3102,14 +3025,7 @@ export default function PosTransactionsPage() {
                         let next = idx + 1;
                         while (next < formList.length) {
                           const nf = memoFormConfigs[formList[next].table];
-                          const provided = Array.isArray(nf?.editableFields)
-                            ? nf.editableFields
-                            : [];
-                          const defaults = Array.isArray(nf?.editableDefaultFields)
-                            ? nf.editableDefaultFields
-                            : [];
-                          const ed = Array.from(new Set([...defaults, ...provided]));
-                          if (ed.length > 0) break;
+                          if (nf) break;
                           next += 1;
                         }
                         if (next < formList.length) focusFirst(formList[next].table);

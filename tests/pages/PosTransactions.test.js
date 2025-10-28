@@ -10,7 +10,7 @@ if (typeof mock.import !== 'function') {
   test('calc field preflight respects SUM aggregators and multi rows', { skip: true }, () => {});
   test('buildComputedFieldMap collects aggregated targets', { skip: true }, () => {});
   test('buildComputedFieldMap includes POS targets even when flagged editable', { skip: true }, () => {});
-  test('computed field map keeps non-formula editable columns enabled', { skip: true }, () => {});
+  test('computed field map keeps non-formula columns free of guard reasons', { skip: true }, () => {});
   test('generated column configs support lowercase generation_expression metadata', { skip: true }, () => {});
 } else {
   test('shouldLoadRelations helper', async () => {
@@ -406,8 +406,8 @@ if (typeof mock.import !== 'function') {
     assert.equal(map.transactions, undefined);
   });
 
-  test('computed field map keeps non-formula editable columns enabled', async () => {
-    const { buildComputedFieldMap, collectDisabledFieldsAndReasons } = await mock.import(
+  test('computed field map keeps non-formula columns free of guard reasons', async () => {
+    const { buildComputedFieldMap } = await mock.import(
       '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
       {},
     );
@@ -437,17 +437,7 @@ if (typeof mock.import !== 'function') {
     assert.ok(totalReasons instanceof Set);
     assert.equal(totalReasons.has('posFormula'), true);
 
-    const visible = ['Amount', 'Total'];
-    const editSet = new Set(visible.map((field) => field.toLowerCase()));
-
-    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-      allFields: visible,
-      editSet,
-      caseMap: columnCaseMap.transactions,
-    });
-
-    assert.deepEqual(disabled, []);
-    assert.equal(reasonMap.size, 0);
+    assert.equal(computedSet.reasonMap?.has('amount'), false);
   });
 
   test('buildComputedFieldMap tracks reason codes for multi-field formulas', async () => {
