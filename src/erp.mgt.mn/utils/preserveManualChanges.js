@@ -5,6 +5,7 @@ export function preserveManualChangesAfterRecalc({
   table,
   changes,
   computedFieldMap = {},
+  editableFieldMap = {},
   desiredRow,
   recalculatedValues,
   equals = valuesEqual,
@@ -29,27 +30,11 @@ export function preserveManualChangesAfterRecalc({
     return recalculatedValues;
   }
 
-  const rawComputed = computedFieldMap?.[table];
-  let computedSet;
-  if (rawComputed instanceof Set) {
-    computedSet = rawComputed;
-  } else if (Array.isArray(rawComputed)) {
-    computedSet = new Set(
-      rawComputed
-        .filter((field) => typeof field === 'string')
-        .map((field) => field.toLowerCase()),
-    );
-  } else {
-    computedSet = new Set();
-  }
-
   let nextContainer = currentContainer;
   let mutated = false;
 
   changedFields.forEach((field) => {
     if (typeof field !== 'string' || field.length === 0) return;
-    const lower = field.toLowerCase();
-    if (computedSet.has(lower)) return;
     if (!Object.prototype.hasOwnProperty.call(desiredRow, field)) return;
     const desiredValue = desiredRow[field];
     if (equals(nextContainer[field], desiredValue)) return;

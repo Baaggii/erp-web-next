@@ -1567,7 +1567,14 @@
         "transport_price",
         "assembly_price"
       ],
-      "editableFields": [],
+      "editableFields": [
+        "total_amount",
+        "total_discount",
+        "payable_amount",
+        "total_quantity",
+        "pos_date",
+        "status"
+      ],
       "tooltips": {
         "session_id": "tooltip.session_id",
         "company_id": "tooltip.company_id",

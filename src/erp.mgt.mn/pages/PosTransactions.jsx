@@ -672,10 +672,30 @@ export function buildComputedFieldMap(
   (calcFields || []).forEach((map = {}) => {
     const cells = getCalcFieldCells(map);
     if (!cells.length) return;
-    const computedIndexes = Array.isArray(map.__computedCellIndexes)
+
+    const normalizedIndexes = Array.isArray(map.__computedCellIndexes)
       ? map.__computedCellIndexes
+          .map((idx) => (Number.isInteger(idx) ? idx : null))
+          .filter((idx) => idx !== null && idx >= 0 && idx < cells.length)
       : [];
-    computedIndexes.forEach((idx) => {
+
+    if (normalizedIndexes.length === 0) return;
+
+    const hasAggregator = cells.some((cell = {}) => {
+      if (typeof cell.__aggKey === 'string' && cell.__aggKey) return true;
+      if (typeof cell.agg === 'string') {
+        const normalized = cell.agg.trim();
+        if (normalized) return true;
+      }
+      return false;
+    });
+
+    const fallsBackToFirstCell =
+      !hasAggregator && normalizedIndexes.length === 1 && normalizedIndexes[0] === 0;
+
+    if (fallsBackToFirstCell) return;
+
+    normalizedIndexes.forEach((idx) => {
       const cell = cells[idx];
       if (!cell || !cell.table || !cell.field) return;
       addReason(cell.table, cell.field, 'calcField');
@@ -723,7 +743,6 @@ export function buildComputedFieldMap(
 export function collectDisabledFieldsAndReasons({
   allFields = [],
   editSet = null,
-  computedEntry = undefined,
   caseMap = {},
   sessionFields = [],
 }) {
@@ -731,7 +750,6 @@ export function collectDisabledFieldsAndReasons({
     ? allFields.filter((field) => typeof field === 'string' && field)
     : [];
   const allFieldLowerSet = new Set(normalizedFields.map((field) => field.toLowerCase()));
-  const disabledLower = new Set();
   const disabled = [];
   const reasonMap = new Map();
 
@@ -743,54 +761,6 @@ export function collectDisabledFieldsAndReasons({
     }
     reasonMap.get(canonical).add(String(code));
   };
-
-  if (editSet instanceof Set && editSet.size > 0) {
-    normalizedFields.forEach((field) => {
-      const lower = field.toLowerCase();
-      if (editSet.has(lower)) return;
-      if (disabledLower.has(lower)) return;
-      disabledLower.add(lower);
-      disabled.push(field);
-      addReason(field, 'missingEditableConfig');
-    });
-  }
-
-  let computedFieldsSet;
-  if (computedEntry instanceof Set) {
-    computedFieldsSet = computedEntry;
-  } else if (Array.isArray(computedEntry)) {
-    computedFieldsSet = new Set(
-      computedEntry
-        .filter((field) => typeof field === 'string')
-        .map((field) => field.toLowerCase()),
-    );
-  } else {
-    computedFieldsSet = new Set();
-  }
-
-  const computedReasonMap =
-    computedEntry && computedEntry.reasonMap instanceof Map ? computedEntry.reasonMap : undefined;
-
-  computedFieldsSet.forEach((field) => {
-    if (!field) return;
-    const normalizedLower = String(field).toLowerCase();
-    if (!allFieldLowerSet.has(normalizedLower)) return;
-    let canonicalField =
-      caseMap[normalizedLower] ||
-      normalizedFields.find((entry) => entry.toLowerCase() === normalizedLower) ||
-      field;
-    if (typeof canonicalField !== 'string') canonicalField = String(canonicalField);
-    if (!disabledLower.has(normalizedLower)) {
-      disabled.push(canonicalField);
-      disabledLower.add(normalizedLower);
-    }
-    const reasonCodes = computedReasonMap?.get(normalizedLower);
-    if (reasonCodes instanceof Set && reasonCodes.size > 0) {
-      reasonCodes.forEach((code) => addReason(canonicalField, code));
-    } else {
-      addReason(canonicalField, 'computed');
-    }
-  });
 
   (Array.isArray(sessionFields) ? sessionFields : []).forEach((field) => {
     if (typeof field !== 'string' || !field) return;
@@ -1885,6 +1855,46 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
 
+  const editableFieldLookup = useMemo(() => {
+    const lookup = {};
+
+    const canonicalizeList = (list, caseMap = {}) => {
+      if (!Array.isArray(list)) return [];
+      const seen = new Set();
+      const ordered = [];
+      list.forEach((field) => {
+        if (field == null) return;
+        const raw = String(field).trim();
+        if (!raw) return;
+        const mapped = caseMap[raw.toLowerCase()] || raw;
+        if (!seen.has(mapped)) {
+          seen.add(mapped);
+          ordered.push(mapped);
+        }
+      });
+      return ordered;
+    };
+
+    Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
+      if (!fc) return;
+      const caseMap = memoColumnCaseMap[tbl] || {};
+      const provided = canonicalizeList(fc.editableFields, caseMap);
+      const defaults = canonicalizeList(fc.editableDefaultFields, caseMap);
+      const combinedList = Array.from(new Set([...defaults, ...provided]));
+      const hasExplicitConfig =
+        Array.isArray(fc.editableFields) || Array.isArray(fc.editableDefaultFields);
+
+      if (!hasExplicitConfig && combinedList.length === 0) return;
+
+      lookup[tbl] = {
+        fields: new Set(combinedList.map((field) => field.toLowerCase())),
+        hasExplicitConfig,
+      };
+    });
+
+    return lookup;
+  }, [memoFormConfigs, memoColumnCaseMap, visibleTablesKey, configVersion]);
+
   const computedFieldMap = useMemo(
     () =>
       buildComputedFieldMap(
@@ -2162,6 +2172,7 @@ export default function PosTransactionsPage() {
         table: tbl,
         changes,
         computedFieldMap,
+        editableFieldMap: editableFieldLookup,
         desiredRow,
         recalculatedValues: recalculated,
       });
@@ -2807,7 +2818,6 @@ export default function PosTransactionsPage() {
                 const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
                   allFields,
                   editSet,
-                  computedEntry: computedFieldMap[t.table],
                   caseMap,
                   sessionFields: tableSessionFields,
                 });
