@@ -641,6 +641,30 @@ export default function Reports() {
       paramsObject.positionId = positionIdForQuery;
     }
 
+    const branchIdForQuery =
+      normalizeNumericId(session?.branch_id) ?? normalizeNumericId(branch);
+    if (branchIdForQuery != null) {
+      const branchIdValue = String(branchIdForQuery);
+      params.set('branchId', branchIdValue);
+      paramsObject.branchId = branchIdValue;
+    }
+
+    const departmentIdForQuery =
+      normalizeNumericId(session?.department_id) ?? normalizeNumericId(department);
+    if (departmentIdForQuery != null) {
+      const departmentIdValue = String(departmentIdForQuery);
+      params.set('departmentId', departmentIdValue);
+      paramsObject.departmentId = departmentIdValue;
+    }
+
+    const positionIdForQuery =
+      normalizeNumericId(session?.position_id) ?? normalizeNumericId(position);
+    if (positionIdForQuery != null) {
+      const positionIdValue = String(positionIdForQuery);
+      params.set('positionId', positionIdValue);
+      paramsObject.positionId = positionIdValue;
+    }
+
     const userIdForQuery = (() => {
       const raw =
         user?.empid ??

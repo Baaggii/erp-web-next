@@ -562,12 +562,12 @@ if (typeof mock.import !== 'function') {
       workplace: 11,
       user: { empid: 321 },
       session: {
-        company_id: '001',
-        branch_id: '00077',
-        department_id: '00110',
-        position_id: '0006',
-        workplace_id: '01',
-        workplace_session_id: '11',
+        company_id: 99,
+        branch_id: 77,
+        department_id: 8,
+        position_id: 6,
+        workplace_id: 1,
+        workplace_session_id: 11,
         workplace_name: 'Base workplace',
         workplace_assignments: [
           {
@@ -680,15 +680,15 @@ if (typeof mock.import !== 'function') {
       'User parameter missing from workplace fetch',
     );
     assert.ok(
-      /branchId=00077/.test(workplaceCall.url),
+      /branchId=77/.test(workplaceCall.url),
       'Branch parameter missing from workplace fetch',
     );
     assert.ok(
-      /departmentId=00110/.test(workplaceCall.url),
+      /departmentId=8/.test(workplaceCall.url),
       'Department parameter missing from workplace fetch',
     );
     assert.ok(
-      /positionId=0006/.test(workplaceCall.url),
+      /positionId=6/.test(workplaceCall.url),
       'Position parameter missing from workplace fetch',
     );
 
