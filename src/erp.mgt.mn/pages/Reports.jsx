@@ -17,6 +17,7 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import CustomDatePicker from '../components/CustomDatePicker.jsx';
 import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import normalizeBoolean from '../utils/normalizeBoolean.js';
 import Modal from '../components/Modal.jsx';
 import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
 import {
@@ -196,8 +197,10 @@ export default function Reports() {
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
-  const workplaceFetchDiagnosticsEnabled =
-    generalConfig?.general?.workplaceFetchToastEnabled !== false;
+  const workplaceFetchDiagnosticsEnabled = normalizeBoolean(
+    generalConfig?.general?.workplaceFetchToastEnabled,
+    true,
+  );
   const usingBaseAssignments = !Array.isArray(workplaceAssignmentsForPeriod);
   const expandedTransactionDetailsRef = useRef(expandedTransactionDetails);
   const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
