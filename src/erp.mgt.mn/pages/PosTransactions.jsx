@@ -750,7 +750,6 @@ export function collectDisabledFieldsAndReasons({
     ? allFields.filter((field) => typeof field === 'string' && field)
     : [];
   const allFieldLowerSet = new Set(normalizedFields.map((field) => field.toLowerCase()));
-  const disabledLower = new Set();
   const disabled = [];
   const reasonMap = new Map();
 
