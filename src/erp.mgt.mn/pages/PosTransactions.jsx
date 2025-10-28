@@ -576,9 +576,11 @@ export function buildComputedFieldMap(
   posFields = [],
   columnCaseMap = {},
   tables = [],
+  editableFieldMap = {},
 ) {
   const tableCaseMap = {};
   const columnCaseLookup = {};
+  const editableTableLookup = {};
 
   const registerTableName = (name) => {
     const normalized = normalizeIdentifier(name);
@@ -617,6 +619,55 @@ export function buildComputedFieldMap(
     registerColumnCaseMap(tableName, map);
   });
 
+  const registerEditableFields = (tableName, fields) => {
+    const canonicalTable = registerTableName(tableName);
+    if (!canonicalTable) return;
+    const lowerTable = canonicalTable.toLowerCase();
+    let fieldSet = editableTableLookup[lowerTable];
+    if (!fieldSet) {
+      fieldSet = new Set();
+      editableTableLookup[lowerTable] = fieldSet;
+    }
+
+    const addField = (value) => {
+      if (value === undefined || value === null) return;
+      const raw = String(value).trim();
+      if (!raw) return;
+      fieldSet.add(raw.toLowerCase());
+    };
+
+    if (fields instanceof Set || fields instanceof Map) {
+      fields.forEach((value, key) => {
+        if (fields instanceof Map) {
+          if (!value) return;
+          addField(key);
+        } else {
+          addField(value);
+        }
+      });
+      return;
+    }
+
+    if (Array.isArray(fields)) {
+      fields.forEach(addField);
+      return;
+    }
+
+    if (fields && typeof fields === 'object') {
+      Object.entries(fields).forEach(([key, value]) => {
+        if (!value) return;
+        addField(key);
+      });
+      return;
+    }
+
+    addField(fields);
+  };
+
+  Object.entries(editableFieldMap || {}).forEach(([tableName, fields]) => {
+    registerEditableFields(tableName, fields);
+  });
+
   const result = {};
 
   const ensureTableEntry = (tableName) => {
@@ -649,12 +700,27 @@ export function buildComputedFieldMap(
     };
   };
 
-  const addReason = (tableName, fieldName, reason) => {
+  const ensureFieldEntry = (tableName, fieldName) => {
     const canonical = canonicalizeField(tableName, fieldName);
-    if (!canonical) return;
+    if (!canonical) return null;
     const entry = ensureTableEntry(canonical.table);
     if (!entry) return;
     entry.add(canonical.lower);
+    return { entry, canonical };
+  };
+
+  const shouldSkipReason = (canonical) => {
+    if (!canonical) return false;
+    const editableSet = editableTableLookup[canonical.table.toLowerCase()];
+    if (!(editableSet instanceof Set) || editableSet.size === 0) return false;
+    return editableSet.has(canonical.lower);
+  };
+
+  const addReason = (tableName, fieldName, reason) => {
+    const info = ensureFieldEntry(tableName, fieldName);
+    if (!info) return;
+    const { entry, canonical } = info;
+    if (shouldSkipReason(canonical)) return;
     if (!reason && reason !== 0) return;
     let reasonMap = entry.reasonMap;
     if (!(reasonMap instanceof Map)) {
@@ -778,6 +844,7 @@ export function collectDisabledFieldsAndReasons({
     if (typeof field !== 'string' || !field) return;
     const lower = field.toLowerCase();
     if (!allFieldLowerSet.has(lower)) return;
+    if (editSet instanceof Set && editSet.has(lower)) return;
     let canonicalField =
       caseMap[lower] ||
       normalizedFields.find((entry) => entry.toLowerCase() === lower) ||
@@ -1908,12 +1975,14 @@ export default function PosTransactionsPage() {
         config?.posFields || [],
         memoColumnCaseMap,
         tableList,
+        editableFieldLookup,
       ),
     [
       normalizedCalcFields,
       config?.posFields,
       memoColumnCaseMap,
       tableList,
+      editableFieldLookup,
     ],
   );
 

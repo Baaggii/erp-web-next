@@ -47,13 +47,35 @@ export function preserveManualChangesAfterRecalc({
   const rawEditable = editableFieldMap?.[table];
   let editableSet = null;
   if (rawEditable instanceof Set) {
-    editableSet = rawEditable;
+    editableSet = new Set(
+      Array.from(rawEditable)
+        .filter((field) => typeof field === 'string')
+        .map((field) => field.toLowerCase()),
+    );
   } else if (Array.isArray(rawEditable)) {
     editableSet = new Set(
       rawEditable
         .filter((field) => typeof field === 'string')
         .map((field) => field.toLowerCase()),
     );
+  } else if (rawEditable && typeof rawEditable === 'object') {
+    const candidate = rawEditable.fields ?? rawEditable.list ?? rawEditable.values;
+    if (candidate instanceof Set) {
+      editableSet = new Set(
+        Array.from(candidate)
+          .filter((field) => typeof field === 'string')
+          .map((field) => field.toLowerCase()),
+      );
+    } else if (Array.isArray(candidate)) {
+      editableSet = new Set(
+        candidate
+          .filter((field) => typeof field === 'string')
+          .map((field) => field.toLowerCase()),
+      );
+    }
+    if (rawEditable.hasExplicitConfig && (!editableSet || editableSet.size === 0)) {
+      editableSet = null;
+    }
   }
 
   let nextContainer = currentContainer;
@@ -62,7 +84,7 @@ export function preserveManualChangesAfterRecalc({
   changedFields.forEach((field) => {
     if (typeof field !== 'string' || field.length === 0) return;
     const lower = field.toLowerCase();
-    if (computedSet.has(lower) && !(editableSet && editableSet.has(lower))) return;
+    if (computedSet.has(lower) && editableSet && !editableSet.has(lower)) return;
     if (!Object.prototype.hasOwnProperty.call(desiredRow, field)) return;
     const desiredValue = desiredRow[field];
     if (equals(nextContainer[field], desiredValue)) return;
