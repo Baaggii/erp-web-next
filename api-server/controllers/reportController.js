@@ -108,8 +108,17 @@ export async function listReportWorkplaces(req, res, next) {
         return res.status(400).json({ message: 'Invalid month value' });
       }
 
-      const midOfMonth = new Date(Date.UTC(parsedYear, parsedMonth - 1, 15));
-      effectiveDate = midOfMonth;
+      const now = new Date();
+      const currentUtcYear = now.getUTCFullYear();
+      const currentUtcMonth = now.getUTCMonth() + 1;
+
+      if (parsedYear === currentUtcYear && parsedMonth === currentUtcMonth) {
+        effectiveDate = new Date(
+          Date.UTC(parsedYear, parsedMonth - 1, now.getUTCDate()),
+        );
+      } else {
+        effectiveDate = new Date(Date.UTC(parsedYear, parsedMonth, 0));
+      }
     }
 
     if (!(effectiveDate instanceof Date) || Number.isNaN(effectiveDate.getTime())) {
