@@ -1331,10 +1331,10 @@ export async function getEmploymentSessions(empid, options = {}) {
         formattedSql = null;
       }
     }
-    if (typeof formattedSql !== 'string') {
-      formattedSql = null;
-    }
-    if (formattedSql && formattedSql.trim().length === 0) {
+    if (typeof formattedSql === 'string') {
+      const trimmed = formattedSql.trim();
+      formattedSql = trimmed.length ? trimmed : null;
+    } else {
       formattedSql = null;
     }
     diagnostics.formattedSql =
