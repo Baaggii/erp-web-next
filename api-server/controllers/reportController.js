@@ -180,39 +180,13 @@ export async function listReportWorkplaces(req, res, next) {
       ? assignmentsForResponse
       : [];
 
-    const rawDiagnostics = (diagnostics && { ...diagnostics }) || {};
-    const parsedQueryRowCount = (() => {
-      const rawValue = rawDiagnostics.rowCount;
-      if (rawValue === undefined || rawValue === null) {
-        return null;
-      }
-      if (typeof rawValue === 'number') {
-        return Number.isFinite(rawValue) ? rawValue : null;
-      }
-      if (typeof rawValue === 'string') {
-        const trimmed = rawValue.trim();
-        if (!trimmed) {
-          return null;
-        }
-        const parsed = Number(trimmed);
-        return Number.isFinite(parsed) ? parsed : null;
-      }
-      return null;
-    })();
-
     const diagnosticsPayload = {
-      ...rawDiagnostics,
+      ...(diagnostics ?? {}),
       effectiveDate:
         effectiveDate instanceof Date && !Number.isNaN(effectiveDate.getTime())
           ? effectiveDate.toISOString()
           : null,
-      rowCount:
-        parsedQueryRowCount !== null ? parsedQueryRowCount : sessionList.length,
-      queryRowCount:
-        parsedQueryRowCount !== null
-          ? parsedQueryRowCount
-          : rawDiagnostics.rowCount ?? null,
-      sessionRowCount: sessionList.length,
+      rowCount: sessionList.length,
       filteredCount: filtered.length,
       assignmentCount: workplaceAssignments.length,
       normalizedAssignmentCount: Array.isArray(safeAssignments)
@@ -227,8 +201,8 @@ export async function listReportWorkplaces(req, res, next) {
     };
 
     res.json({
-      assignments: safeAssignments,
-      diagnostics: diagnosticsPayload,
+      assignments: sessionPayload?.workplace_assignments ?? [],
+      diagnostics,
     });
   } catch (err) {
     next(err);

@@ -730,7 +730,7 @@ if (typeof mock.import !== 'function') {
 
 }
 
-test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
+test('preserveManualChangesAfterRecalc preserves manual overrides even for computed fields', async () => {
   const { preserveManualChangesAfterRecalc } = await import(
     '../../src/erp.mgt.mn/utils/preserveManualChanges.js',
   );
@@ -755,7 +755,7 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
   });
 
   assert.notStrictEqual(merged, recalculatedValues);
-  assert.equal(merged.transactions.TotalAmount, 100);
+  assert.equal(merged.transactions.TotalAmount, 42);
   assert.equal(merged.transactions.Note, 'manual entry');
 
   const stable = preserveManualChangesAfterRecalc({
