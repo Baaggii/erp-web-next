@@ -109,62 +109,6 @@ export async function listReportWorkplaces(req, res, next) {
       return res.status(400).json({ message: 'Invalid date parameters' });
     }
 
-    const sessionContext =
-      req.session && typeof req.session === 'object' ? req.session : null;
-
-    const preferredSessionIdSet = new Set();
-    const preferredWorkplaceIdSet = new Set();
-
-    const addPreferredSessionId = (value) => {
-      const normalized = normalizeNumericId(value);
-      if (normalized !== null) preferredSessionIdSet.add(normalized);
-    };
-
-    const addPreferredWorkplaceId = (value) => {
-      const normalized = normalizeNumericId(value);
-      if (normalized !== null) preferredWorkplaceIdSet.add(normalized);
-    };
-
-    const collectQueryValues = (raw) => {
-      if (raw === undefined || raw === null) return [];
-      return Array.isArray(raw) ? raw : [raw];
-    };
-
-    collectQueryValues(req.query.currentWorkplaceSessionId).forEach(
-      addPreferredSessionId,
-    );
-    collectQueryValues(req.query.workplaceSessionId).forEach(
-      addPreferredSessionId,
-    );
-
-    collectQueryValues(req.query.currentWorkplaceId).forEach(
-      addPreferredWorkplaceId,
-    );
-    collectQueryValues(req.query.workplaceId).forEach(addPreferredWorkplaceId);
-
-    if (sessionContext) {
-      addPreferredSessionId(
-        sessionContext.workplace_session_id ?? sessionContext.workplaceSessionId,
-      );
-      if (Array.isArray(sessionContext.workplace_session_ids)) {
-        sessionContext.workplace_session_ids.forEach(addPreferredSessionId);
-      }
-      addPreferredWorkplaceId(
-        sessionContext.workplace_id ?? sessionContext.workplaceId,
-      );
-      if (Array.isArray(sessionContext.workplace_assignments)) {
-        sessionContext.workplace_assignments.forEach((assignment) => {
-          if (!assignment || typeof assignment !== 'object') return;
-          addPreferredSessionId(
-            assignment.workplace_session_id ?? assignment.workplaceSessionId,
-          );
-          addPreferredWorkplaceId(
-            assignment.workplace_id ?? assignment.workplaceId,
-          );
-        });
-      }
-    }
-
     const sessions = await getEmploymentSessionsImpl(req.user.empid, {
       effectiveDate,
       includeDiagnostics: true,
@@ -204,27 +148,7 @@ export async function listReportWorkplaces(req, res, next) {
           })
         : sessionList;
 
-    const matchesPreference = (session) => {
-      if (!session || typeof session !== 'object') return false;
-      const sessionId = normalizeNumericId(
-        session.workplace_session_id ?? session.workplaceSessionId,
-      );
-      if (sessionId !== null && preferredSessionIdSet.has(sessionId)) {
-        return true;
-      }
-      const workplaceId = normalizeNumericId(
-        session.workplace_id ?? session.workplaceId,
-      );
-      if (workplaceId !== null && preferredWorkplaceIdSet.has(workplaceId)) {
-        return true;
-      }
-      return false;
-    };
-
-    const preferredMatches = filtered.filter(matchesPreference);
-    const relevantSessions = preferredMatches.length ? preferredMatches : filtered;
-
-    const workplaceAssignments = relevantSessions
+    const workplaceAssignments = filtered
       .filter((s) => s && s.workplace_session_id != null)
       .map(
         ({
@@ -258,77 +182,11 @@ export async function listReportWorkplaces(req, res, next) {
       return withWorkplace ?? items[0];
     };
 
-    const companyMatchesSessionContext = () => {
-      if (!sessionContext) return false;
-      if (normalizedCompanyId === null) return true;
-      const contextCompanyId = normalizeNumericId(
-        sessionContext.company_id ?? sessionContext.companyId,
-      );
-      return contextCompanyId === normalizedCompanyId;
-    };
+    const defaultSession = pickDefaultSession(filtered);
 
-    const selectPreferredSession = (sessionsToSearch) => {
-      if (!Array.isArray(sessionsToSearch) || sessionsToSearch.length === 0) {
-        return null;
-      }
-      const bySessionId = sessionsToSearch.find((session) => {
-        const sessionId = normalizeNumericId(
-          session?.workplace_session_id ?? session?.workplaceSessionId,
-        );
-        return sessionId !== null && preferredSessionIdSet.has(sessionId);
-      });
-      if (bySessionId) return bySessionId;
-      const byWorkplaceId = sessionsToSearch.find((session) => {
-        const workplaceId = normalizeNumericId(
-          session?.workplace_id ?? session?.workplaceId,
-        );
-        return workplaceId !== null && preferredWorkplaceIdSet.has(workplaceId);
-      });
-      return byWorkplaceId ?? null;
-    };
-
-    let sessionPayload = null;
-    let sessionSource = 'none';
-    const preferredSession = selectPreferredSession(preferredMatches);
-    if (preferredSession) {
-      sessionPayload = normalizeEmploymentSession(
-        preferredSession,
-        workplaceAssignments,
-      );
-      sessionSource = 'preferred';
-    } else if (sessionContext && companyMatchesSessionContext()) {
-      sessionPayload = normalizeEmploymentSession(
-        sessionContext,
-        workplaceAssignments,
-      );
-      sessionSource = 'context';
-      const normalizedSessionId = normalizeNumericId(
-        sessionPayload?.workplace_session_id ?? sessionPayload?.workplaceSessionId,
-      );
-      if (
-        preferredSessionIdSet.size > 0 &&
-        (normalizedSessionId === null ||
-          !preferredSessionIdSet.has(normalizedSessionId))
-      ) {
-        sessionPayload = null;
-        sessionSource = 'fallback';
-      }
-    }
-
-    if (!sessionPayload) {
-      const defaultSession = pickDefaultSession(relevantSessions);
-      if (defaultSession) {
-        sessionPayload = normalizeEmploymentSession(
-          defaultSession,
-          workplaceAssignments,
-        );
-        if (sessionSource === 'fallback') {
-          sessionSource = 'default';
-        } else if (sessionSource === 'none') {
-          sessionSource = 'default';
-        }
-      }
-    }
+    const sessionPayload = defaultSession
+      ? normalizeEmploymentSession(defaultSession, workplaceAssignments)
+      : null;
 
     const assignmentsForResponse = Array.isArray(
       sessionPayload?.workplace_assignments,
@@ -348,7 +206,6 @@ export async function listReportWorkplaces(req, res, next) {
           : null,
       rowCount: sessionList.length,
       filteredCount: filtered.length,
-      preferredMatchCount: preferredMatches.length,
       assignmentCount: workplaceAssignments.length,
       normalizedAssignmentCount: Array.isArray(safeAssignments)
         ? safeAssignments.length
@@ -359,9 +216,6 @@ export async function listReportWorkplaces(req, res, next) {
         sessionPayload?.workplace_session_id ??
         sessionPayload?.workplaceSessionId ??
         null,
-      preferredWorkplaceSessionIds: Array.from(preferredSessionIdSet),
-      preferredWorkplaceIds: Array.from(preferredWorkplaceIdSet),
-      sessionSource,
     };
 
     res.json({
