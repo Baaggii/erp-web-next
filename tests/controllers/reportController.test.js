@@ -139,6 +139,64 @@ test('listReportWorkplaces dedupes workplace assignments', async () => {
   ]);
 });
 
+test('listReportWorkplaces exposes SQL diagnostics for workplace toasts', async () => {
+  let capturedOptions = null;
+  const sessions = [
+    {
+      company_id: 7,
+      company_name: 'Sample Co',
+      branch_id: 2,
+      branch_name: 'North',
+      department_id: 3,
+      department_name: 'Ops',
+      workplace_id: 11,
+      workplace_name: 'Default workplace',
+      workplace_session_id: 101,
+    },
+  ];
+  Object.defineProperty(sessions, '__diagnostics', {
+    value: {
+      sql: 'SELECT * FROM tbl_employment_schedule WHERE emp_id = ?',
+      params: [99],
+    },
+    enumerable: false,
+  });
+
+  __setGetEmploymentSessions(async (empid, options) => {
+    capturedOptions = options;
+    return sessions;
+  });
+
+  const req = {
+    user: { empid: 99, companyId: 7 },
+    query: { year: '2024', month: '6' },
+  };
+  const res = createRes();
+
+  try {
+    await listReportWorkplaces(req, res, (err) => {
+      throw err || new Error('next should not be called');
+    });
+  } finally {
+    __resetGetEmploymentSessions();
+  }
+
+  assert.equal(res.statusCode, 200);
+  assert.ok(capturedOptions, 'Expected getEmploymentSessions options to be captured');
+  assert.equal(capturedOptions.includeDiagnostics, true);
+  assert.ok(res.payload?.diagnostics, 'Diagnostics payload missing from response');
+  assert.equal(
+    res.payload.diagnostics.formattedSql,
+    'SELECT * FROM tbl_employment_schedule WHERE emp_id = ?',
+    'formattedSql should fall back to sql when formatted text is absent',
+  );
+  assert.equal(
+    res.payload.diagnostics.sql,
+    'SELECT * FROM tbl_employment_schedule WHERE emp_id = ?',
+    'Original sql should be preserved for consumers that expect it',
+  );
+});
+
 test(
   'listReportWorkplaces fills fallback IDs when assignments omit workplace data',
   async () => {
