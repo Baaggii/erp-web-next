@@ -171,6 +171,35 @@ export async function listReportWorkplaces(req, res, next) {
       ? normalizeEmploymentSession(defaultSession, workplaceAssignments)
       : null;
 
+    const assignmentsForResponse = Array.isArray(
+      sessionPayload?.workplace_assignments,
+    )
+      ? sessionPayload.workplace_assignments
+      : workplaceAssignments;
+    const safeAssignments = Array.isArray(assignmentsForResponse)
+      ? assignmentsForResponse
+      : [];
+
+    const diagnosticsPayload = {
+      ...(diagnostics ?? {}),
+      effectiveDate:
+        effectiveDate instanceof Date && !Number.isNaN(effectiveDate.getTime())
+          ? effectiveDate.toISOString()
+          : null,
+      rowCount: sessionList.length,
+      filteredCount: filtered.length,
+      assignmentCount: workplaceAssignments.length,
+      normalizedAssignmentCount: Array.isArray(safeAssignments)
+        ? safeAssignments.length
+        : 0,
+      selectedWorkplaceId:
+        sessionPayload?.workplace_id ?? sessionPayload?.workplaceId ?? null,
+      selectedWorkplaceSessionId:
+        sessionPayload?.workplace_session_id ??
+        sessionPayload?.workplaceSessionId ??
+        null,
+    };
+
     res.json({
       assignments: sessionPayload?.workplace_assignments ?? [],
       diagnostics,
