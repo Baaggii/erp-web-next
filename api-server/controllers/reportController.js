@@ -108,9 +108,8 @@ export async function listReportWorkplaces(req, res, next) {
         return res.status(400).json({ message: 'Invalid month value' });
       }
 
-      const firstOfMonth = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
-      const endOfMonth = new Date(Date.UTC(parsedYear, parsedMonth, 0));
-      effectiveDate = endOfMonth >= firstOfMonth ? endOfMonth : firstOfMonth;
+      const midOfMonth = new Date(Date.UTC(parsedYear, parsedMonth - 1, 15));
+      effectiveDate = midOfMonth;
     }
 
     if (!(effectiveDate instanceof Date) || Number.isNaN(effectiveDate.getTime())) {
