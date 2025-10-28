@@ -76,6 +76,27 @@ function normalizeNumericId(value) {
   return null;
 }
 
+function normalizeIdentifierValue(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  }
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? null : String(value);
+  }
+  return null;
+}
+
+function identifierKey(value) {
+  const numeric = normalizeNumericId(value);
+  if (numeric !== null) {
+    return `#${numeric}`;
+  }
+  const asString = normalizeIdentifierValue(value);
+  return asString ? asString.toLowerCase() : null;
+}
+
 function extractNumericTokens(value) {
   if (typeof value !== 'string') return [];
   const matches = value.match(/\d+/g);
@@ -90,18 +111,17 @@ function extractNumericTokens(value) {
 
 function normalizeWorkplaceAssignment(assignment) {
   if (!assignment || typeof assignment !== 'object') return null;
-  const workplaceId = normalizeNumericId(
+  const workplaceId = normalizeIdentifierValue(
     assignment.workplace_id ?? assignment.workplaceId,
   );
-  const workplaceSessionId = normalizeNumericId(
+  const workplaceSessionId = normalizeIdentifierValue(
     assignment.workplace_session_id ??
       assignment.workplaceSessionId ??
       assignment.workplace_id ??
       assignment.workplaceId,
   );
 
-  const finalSessionId =
-    workplaceSessionId ?? workplaceId ?? normalizeNumericId(assignment.value);
+  const finalSessionId = workplaceSessionId ?? workplaceId ?? null;
   const finalWorkplaceId = workplaceId ?? finalSessionId ?? null;
 
   return {
@@ -254,15 +274,31 @@ export default function Reports() {
 
       const hasWorkplaceId = normalizedWorkplaceId != null;
       const hasSessionId = normalizedSessionId != null;
+      const workplaceKey = hasWorkplaceId
+        ? identifierKey(normalizedWorkplaceId)
+        : null;
+      const sessionKey = hasSessionId
+        ? identifierKey(normalizedSessionId)
+        : null;
       const compositeKey =
-        hasWorkplaceId && hasSessionId
-          ? `${normalizedWorkplaceId}|${normalizedSessionId}`
+        hasWorkplaceId && hasSessionId && workplaceKey && sessionKey
+          ? `${workplaceKey}|${sessionKey}`
           : null;
       if (compositeKey && seenComposite.has(compositeKey)) return;
-      if (!hasSessionId && hasWorkplaceId && seenWorkplaceIds.has(normalizedWorkplaceId)) {
+      if (
+        !hasSessionId &&
+        hasWorkplaceId &&
+        workplaceKey &&
+        seenWorkplaceIds.has(workplaceKey)
+      ) {
         return;
       }
-      if (!hasWorkplaceId && hasSessionId && seenSessionIds.has(normalizedSessionId)) {
+      if (
+        !hasWorkplaceId &&
+        hasSessionId &&
+        sessionKey &&
+        seenSessionIds.has(sessionKey)
+      ) {
         return;
       }
 
@@ -303,19 +339,23 @@ export default function Reports() {
       if (compositeKey) {
         seenComposite.add(compositeKey);
       }
-      if (hasWorkplaceId) {
-        seenWorkplaceIds.add(normalizedWorkplaceId);
+      if (hasWorkplaceId && workplaceKey) {
+        seenWorkplaceIds.add(workplaceKey);
       }
-      if (hasSessionId) {
-        seenSessionIds.add(normalizedSessionId);
+      if (hasSessionId && sessionKey) {
+        seenSessionIds.add(sessionKey);
       }
     });
 
-    const fallbackWorkplaceId = normalizeNumericId(
-      session?.workplace_id ?? normalizeNumericId(workplace),
+    const fallbackWorkplaceId = normalizeIdentifierValue(
+      session?.workplace_id ?? session?.workplaceId ?? workplace,
     );
-    const fallbackSessionId = normalizeNumericId(
-      session?.workplace_session_id ?? session?.workplace_id ?? normalizeNumericId(workplace),
+    const fallbackSessionId = normalizeIdentifierValue(
+      session?.workplace_session_id ??
+        session?.workplaceSessionId ??
+        session?.workplace_id ??
+        session?.workplaceId ??
+        workplace,
     );
 
     if (usingBaseAssignments) {
@@ -328,9 +368,18 @@ export default function Reports() {
       if (valueSource != null) {
         const hasFallbackWorkplace = fallbackWorkplaceId != null;
         const hasFallbackSession = fallbackSessionId != null;
+        const fallbackWorkplaceKey = hasFallbackWorkplace
+          ? identifierKey(fallbackWorkplaceId)
+          : null;
+        const fallbackSessionKey = hasFallbackSession
+          ? identifierKey(fallbackSessionId)
+          : null;
         const compositeKey =
-          hasFallbackWorkplace && hasFallbackSession
-            ? `${fallbackWorkplaceId}|${fallbackSessionId}`
+          hasFallbackWorkplace &&
+          hasFallbackSession &&
+          fallbackWorkplaceKey &&
+          fallbackSessionKey
+            ? `${fallbackWorkplaceKey}|${fallbackSessionKey}`
             : null;
         const duplicateByComposite = compositeKey
           ? seenComposite.has(compositeKey)
@@ -338,11 +387,13 @@ export default function Reports() {
         const duplicateByWorkplace =
           !hasFallbackSession &&
           hasFallbackWorkplace &&
-          seenWorkplaceIds.has(fallbackWorkplaceId);
+          fallbackWorkplaceKey &&
+          seenWorkplaceIds.has(fallbackWorkplaceKey);
         const duplicateBySession =
           !hasFallbackWorkplace &&
           hasFallbackSession &&
-          seenSessionIds.has(fallbackSessionId);
+          fallbackSessionKey &&
+          seenSessionIds.has(fallbackSessionKey);
         if (!duplicateByComposite && !duplicateByWorkplace && !duplicateBySession) {
           const value = String(valueSource);
           const idParts = [];
@@ -380,11 +431,11 @@ export default function Reports() {
           if (compositeKey) {
             seenComposite.add(compositeKey);
           }
-          if (hasFallbackWorkplace) {
-            seenWorkplaceIds.add(fallbackWorkplaceId);
+          if (hasFallbackWorkplace && fallbackWorkplaceKey) {
+            seenWorkplaceIds.add(fallbackWorkplaceKey);
           }
-          if (hasFallbackSession) {
-            seenSessionIds.add(fallbackSessionId);
+          if (hasFallbackSession && fallbackSessionKey) {
+            seenSessionIds.add(fallbackSessionKey);
           }
         }
       }
@@ -558,11 +609,36 @@ export default function Reports() {
       }
     });
     const companyIdForQuery =
-      normalizeNumericId(session?.company_id) ?? normalizeNumericId(company);
+      normalizeIdentifierValue(session?.company_id ?? session?.companyId) ??
+      normalizeIdentifierValue(company);
     if (companyIdForQuery != null) {
-      const companyIdValue = String(companyIdForQuery);
-      params.set('companyId', companyIdValue);
-      paramsObject.companyId = companyIdValue;
+      params.set('companyId', companyIdForQuery);
+      paramsObject.companyId = companyIdForQuery;
+    }
+
+    const branchIdForQuery =
+      normalizeIdentifierValue(session?.branch_id ?? session?.branchId) ??
+      normalizeIdentifierValue(branch);
+    if (branchIdForQuery != null) {
+      params.set('branchId', branchIdForQuery);
+      paramsObject.branchId = branchIdForQuery;
+    }
+
+    const departmentIdForQuery =
+      normalizeIdentifierValue(
+        session?.department_id ?? session?.departmentId,
+      ) ?? normalizeIdentifierValue(department);
+    if (departmentIdForQuery != null) {
+      params.set('departmentId', departmentIdForQuery);
+      paramsObject.departmentId = departmentIdForQuery;
+    }
+
+    const positionIdForQuery =
+      normalizeIdentifierValue(session?.position_id ?? session?.positionId) ??
+      normalizeIdentifierValue(position);
+    if (positionIdForQuery != null) {
+      params.set('positionId', positionIdForQuery);
+      paramsObject.positionId = positionIdForQuery;
     }
 
     const branchIdForQuery =
@@ -634,10 +710,24 @@ export default function Reports() {
         const data = await res.json().catch(() => ({}));
         const diagnostics =
           data && typeof data === 'object' ? data.diagnostics ?? null : null;
-        const formattedSql =
-          stringifyDiagnosticValue(diagnostics?.formattedSql) ??
-          stringifyDiagnosticValue(diagnostics?.sql) ??
-          null;
+        const sqlCandidates = [
+          diagnostics?.formattedSql,
+          diagnostics?.formatted_sql,
+          diagnostics?.formattedSQL,
+          diagnostics?.sql_text,
+          diagnostics?.sqlText,
+          diagnostics?.sql,
+          diagnostics?.query,
+          diagnostics?.statement,
+        ];
+        let formattedSql = null;
+        for (const candidate of sqlCandidates) {
+          if (formattedSql) break;
+          const value = stringifyDiagnosticValue(candidate);
+          if (value) {
+            formattedSql = value;
+          }
+        }
         const diagnosticCounts = [];
         const normalizeCount = (value) =>
           typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -669,13 +759,13 @@ export default function Reports() {
         assignments.forEach((assignment) => {
           const normalized = normalizeWorkplaceAssignment(assignment);
           if (!normalized) return;
-          const workplaceId = normalizeNumericId(
+          const workplaceId = normalizeIdentifierValue(
             normalized.workplace_id ??
               normalized.workplace_session_id ??
               normalized.workplaceId ??
               normalized.workplaceSessionId,
           );
-          const sessionId = normalizeNumericId(
+          const sessionId = normalizeIdentifierValue(
             normalized.workplace_session_id ??
               normalized.workplace_id ??
               normalized.workplaceSessionId ??
@@ -688,10 +778,7 @@ export default function Reports() {
               workplace_session_id: sessionId ?? workplaceId ?? null,
             };
             normalizedAssignments.push(enriched);
-            if (
-              normalizeNumericId(enriched.workplace_id) !== null &&
-              normalizeNumericId(enriched.workplace_session_id) !== null
-            ) {
+            if (enriched.workplace_id != null && enriched.workplace_session_id != null) {
               validAssignments.push(enriched);
             }
           }
@@ -710,19 +797,28 @@ export default function Reports() {
             let sampleText = '';
             if (validCount > 0) {
               const hasSample = validAssignments.some((assignment) => {
-                const workplaceId = normalizeNumericId(
+                const workplaceId = normalizeIdentifierValue(
                   assignment.workplace_id ?? assignment.workplaceId,
                 );
-                const sessionId = normalizeNumericId(
+                const sessionId = normalizeIdentifierValue(
                   assignment.workplace_session_id ??
                     assignment.workplaceSessionId ??
                     assignment.workplace_id ??
                     assignment.workplaceId,
                 );
-                if (workplaceId === null || sessionId === null) return false;
-                sampleText = ` (first #${workplaceId}${
-                  sessionId !== workplaceId ? ` session ${sessionId}` : ''
-                })`;
+                if (workplaceId === null && sessionId === null) return false;
+                const parts = [];
+                if (workplaceId !== null) {
+                  parts.push(`#${workplaceId}`);
+                }
+                if (
+                  sessionId !== null &&
+                  sessionId !== workplaceId
+                ) {
+                  parts.push(`session ${sessionId}`);
+                }
+                if (!parts.length) return false;
+                sampleText = ` (first ${parts.join(' · ')})`;
                 return true;
               });
               if (!hasSample) sampleText = '';
@@ -768,6 +864,12 @@ export default function Reports() {
             const consumedDiagnosticKeys = new Set([
               'sql',
               'formattedSql',
+              'formatted_sql',
+              'formattedSQL',
+              'sql_text',
+              'sqlText',
+              'query',
+              'statement',
               'params',
               'rowCount',
               'filteredCount',

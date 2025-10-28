@@ -519,8 +519,8 @@ if (typeof mock.import !== 'function') {
           json: async () => ({
             assignments: [
               {
-                workplace_id: '2',
-                workplace_session_id: '22',
+                workplace_id: '002',
+                workplace_session_id: 'ws-22',
                 workplace_name: 'Period workplace',
                 company_id: 99,
                 branch_id: 77,
@@ -528,10 +528,9 @@ if (typeof mock.import !== 'function') {
               },
             ],
             diagnostics: {
-              formattedSql: [
-                'SELECT * FROM tbl_employment_schedule WHERE emp_id = ?',
-                'AND company_id = ?;',
-              ],
+              formatted_sql: {
+                text: 'SELECT * FROM tbl_employment_schedule WHERE emp_id = ?\nAND company_id = ?;',
+              },
               params: [
                 { name: 'empid', value: 321 },
                 { name: 'companyId', value: 99 },
@@ -572,8 +571,8 @@ if (typeof mock.import !== 'function') {
         workplace_name: 'Base workplace',
         workplace_assignments: [
           {
-            workplace_id: 1,
-            workplace_session_id: 11,
+            workplace_id: '01',
+            workplace_session_id: '11',
             workplace_name: 'Base workplace',
           },
         ],
@@ -656,7 +655,7 @@ if (typeof mock.import !== 'function') {
 
     const workplaceOption = collectNodes(
       tree,
-      (node) => node.type === 'option' && node.props?.value === '22',
+      (node) => node.type === 'option' && node.props?.value === 'ws-22',
     )[0];
     assert.ok(workplaceOption, 'Fetched workplace option not populated');
 
@@ -673,7 +672,7 @@ if (typeof mock.import !== 'function') {
       'Month parameter missing from workplace fetch',
     );
     assert.ok(
-      /companyId=99/.test(workplaceCall.url),
+      /companyId=001/.test(workplaceCall.url),
       'Company parameter missing from workplace fetch',
     );
     assert.ok(
@@ -703,7 +702,7 @@ if (typeof mock.import !== 'function') {
     assert.equal(startToast.type, 'info');
     assert.match(
       startToast.message,
-      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=99/,
+      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=001/,
       'Fetch start toast should include request query',
     );
 
@@ -731,11 +730,12 @@ if (typeof mock.import !== 'function') {
     );
     assert.match(
       successToast.message,
-      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=99/,
+      /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=001/,
       'Success toast should include request query',
     );
     assert.ok(
-      successToast.message.includes('session 22') || successToast.message.includes('#2'),
+      successToast.message.includes('session ws-22') ||
+        successToast.message.includes('#002'),
       'Success toast should reference fetched assignment identifiers',
     );
 
