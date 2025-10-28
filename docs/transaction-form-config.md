@@ -9,11 +9,10 @@ Each **transaction** entry allows you to specify:
 - **requiredFields** – columns that cannot be left empty
 - **defaultValues** – map of column default values
 - **editableDefaultFields** – list of columns where users may change the prefilled default
-- **editableFields** – list of columns highlighted for manual entry in the form
-    The POS UI no longer disables inputs automatically, so every visible field
-    is editable. These lists now act as hints for focus/navigation helpers and
-    documentation rather than enforcement, and computed `calcFields`/`posFields`
-    mappings never override that behaviour.
+- **editableFields** – list of columns that remain editable in the form
+    Fields omitted from both editable lists render as read-only in the POS
+    layout. Computed `calcFields`/`posFields` mappings no longer force a column
+    to be disabled; only the dynamic configuration determines editability.
 - **userIdFields** – fields automatically filled with the creating user ID
 - **branchIdFields** – fields automatically filled with the branch ID
 - **departmentIdFields** – fields automatically filled with the department ID

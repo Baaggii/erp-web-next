@@ -63,19 +63,7 @@ export async function listReportWorkplaces(req, res, next) {
     }
 
     const companyInput = req.query.companyId ?? req.user.companyId;
-    let normalizedCompanyId = null;
-    if (companyInput !== undefined && companyInput !== null) {
-      const raw =
-        typeof companyInput === 'string'
-          ? companyInput.trim()
-          : companyInput;
-      if (raw !== '' && raw !== null) {
-        const numeric = Number(raw);
-        if (Number.isFinite(numeric)) {
-          normalizedCompanyId = numeric;
-        }
-      }
-    }
+    const normalizedCompanyId = normalizeNumericId(companyInput);
 
     const explicitDate = parseDateOnly(req.query.date);
     const startDate = parseDateOnly(req.query.startDate);
@@ -111,9 +99,7 @@ export async function listReportWorkplaces(req, res, next) {
       const currentUtcMonth = now.getUTCMonth() + 1;
 
       if (parsedYear === currentUtcYear && parsedMonth === currentUtcMonth) {
-        effectiveDate = new Date(
-          Date.UTC(parsedYear, parsedMonth - 1, now.getUTCDate()),
-        );
+        effectiveDate = new Date();
       } else {
         effectiveDate = new Date(Date.UTC(parsedYear, parsedMonth, 0));
       }
@@ -149,6 +135,8 @@ export async function listReportWorkplaces(req, res, next) {
       .filter((s) => s && s.workplace_session_id != null)
       .map(
         ({
+          company_id,
+          company_name,
           branch_id,
           branch_name,
           department_id,
@@ -157,6 +145,8 @@ export async function listReportWorkplaces(req, res, next) {
           workplace_name,
           workplace_session_id,
         }) => ({
+          company_id: company_id ?? null,
+          company_name: company_name ?? null,
           branch_id: branch_id ?? null,
           branch_name: branch_name ?? null,
           department_id: department_id ?? null,
@@ -177,12 +167,12 @@ export async function listReportWorkplaces(req, res, next) {
 
     const defaultSession = pickDefaultSession(filtered);
 
-    const normalizedSession = defaultSession
+    const sessionPayload = defaultSession
       ? normalizeEmploymentSession(defaultSession, workplaceAssignments)
       : null;
 
     res.json({
-      assignments: normalizedSession?.workplace_assignments ?? [],
+      assignments: sessionPayload?.workplace_assignments ?? [],
       diagnostics,
     });
   } catch (err) {
