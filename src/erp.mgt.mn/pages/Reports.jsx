@@ -184,27 +184,6 @@ function normalizeSqlDiagnosticValue(value) {
   return trimmed.length ? trimmed : null;
 }
 
-function resolveWorkplaceFetchToastToggle(config) {
-  if (!config || typeof config !== 'object') return undefined;
-  const generalConfig = config.general;
-  if (
-    generalConfig &&
-    typeof generalConfig === 'object' &&
-    Object.prototype.hasOwnProperty.call(
-      generalConfig,
-      'workplaceFetchToastEnabled',
-    )
-  ) {
-    return generalConfig.workplaceFetchToastEnabled;
-  }
-  if (
-    Object.prototype.hasOwnProperty.call(config, 'workplaceFetchToastEnabled')
-  ) {
-    return config.workplaceFetchToastEnabled;
-  }
-  return undefined;
-}
-
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
@@ -815,9 +794,20 @@ export default function Reports() {
             if (queryString) {
               details.push(`Query: ${queryUrl}`);
             }
-            const formattedSqlForToast = normalizeSqlDiagnosticValue(
-              formattedSql ?? diagnostics?.formattedSql ?? diagnostics?.sql,
-            );
+            const formattedSqlForToast = (() => {
+              if (typeof formattedSql === 'string' && formattedSql.length) {
+                return formattedSql;
+              }
+              const diagnosticFormatted =
+                typeof diagnostics?.formattedSql === 'string'
+                  ? diagnostics.formattedSql
+                  : null;
+              const fallback =
+                diagnosticFormatted && diagnosticFormatted.trim().length > 0
+                  ? diagnosticFormatted
+                  : diagnostics?.sql;
+              return stringifyDiagnosticValue(fallback);
+            })();
             if (formattedSqlForToast) {
               details.push(`SQL: ${formattedSqlForToast}`);
             } else if (diagnostics && typeof diagnostics === 'object') {
