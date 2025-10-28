@@ -678,6 +678,22 @@ if (typeof mock.import !== 'function') {
       /userId=321/.test(workplaceCall.url),
       'User parameter missing from workplace fetch',
     );
+    assert.ok(
+      /currentWorkplaceSessionId=11/.test(workplaceCall.url),
+      'Current workplace session missing from workplace fetch',
+    );
+    assert.ok(
+      /currentWorkplaceId=1/.test(workplaceCall.url),
+      'Current workplace ID missing from workplace fetch',
+    );
+    assert.ok(
+      /workplaceSessionId=11/.test(workplaceCall.url),
+      'Workplace session list missing from workplace fetch',
+    );
+    assert.ok(
+      /workplaceId=1/.test(workplaceCall.url),
+      'Workplace list missing from workplace fetch',
+    );
 
     const startToast = addToastCalls.find(
       (call) =>
@@ -691,6 +707,18 @@ if (typeof mock.import !== 'function') {
       startToast.message,
       /Query: \/api\/reports\/workplaces\?year=2025&month=10&companyId=99/,
       'Fetch start toast should include request query',
+    );
+    assert.ok(
+      startToast.message.includes('"currentWorkplaceSessionId":"11"'),
+      'Start toast should include current workplace session',
+    );
+    assert.ok(
+      startToast.message.includes('"workplaceSessionIds"'),
+      'Start toast should include workplace session list',
+    );
+    assert.ok(
+      startToast.message.includes('"workplaceIds"'),
+      'Start toast should include workplace list',
     );
 
     const successToast = addToastCalls.find(

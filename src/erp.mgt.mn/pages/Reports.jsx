@@ -581,6 +581,78 @@ export default function Reports() {
       paramsObject.userId = userIdForQuery;
     }
 
+    const preferredSessionIds = new Set();
+    const preferredWorkplaceIds = new Set();
+
+    const sessionWorkplaceSessionId = normalizeNumericId(
+      session?.workplace_session_id ?? session?.workplaceSessionId,
+    );
+    if (sessionWorkplaceSessionId != null) {
+      const value = String(sessionWorkplaceSessionId);
+      params.set('currentWorkplaceSessionId', value);
+      paramsObject.currentWorkplaceSessionId = value;
+      preferredSessionIds.add(sessionWorkplaceSessionId);
+    }
+
+    const sessionWorkplaceId = normalizeNumericId(
+      session?.workplace_id ?? session?.workplaceId ?? workplace,
+    );
+    if (sessionWorkplaceId != null) {
+      const value = String(sessionWorkplaceId);
+      params.set('currentWorkplaceId', value);
+      paramsObject.currentWorkplaceId = value;
+      preferredWorkplaceIds.add(sessionWorkplaceId);
+    }
+
+    if (Array.isArray(session?.workplace_session_ids)) {
+      session.workplace_session_ids.forEach((rawId) => {
+        const normalized = normalizeNumericId(rawId);
+        if (normalized != null) {
+          preferredSessionIds.add(normalized);
+        }
+      });
+    }
+
+    if (Array.isArray(session?.workplace_assignments)) {
+      session.workplace_assignments.forEach((assignment) => {
+        if (!assignment || typeof assignment !== 'object') return;
+        const normalizedSessionId = normalizeNumericId(
+          assignment.workplace_session_id ?? assignment.workplaceSessionId,
+        );
+        if (normalizedSessionId != null) {
+          preferredSessionIds.add(normalizedSessionId);
+        }
+        const normalizedWorkplaceId = normalizeNumericId(
+          assignment.workplace_id ?? assignment.workplaceId,
+        );
+        if (normalizedWorkplaceId != null) {
+          preferredWorkplaceIds.add(normalizedWorkplaceId);
+        }
+      });
+    }
+
+    if (preferredSessionIds.size > 0) {
+      paramsObject.workplaceSessionIds = Array.from(preferredSessionIds).map(
+        (id) => String(id),
+      );
+      Array.from(preferredSessionIds)
+        .map((id) => String(id))
+        .forEach((id) => {
+          params.append('workplaceSessionId', id);
+        });
+    }
+
+    if (preferredWorkplaceIds.size > 0) {
+      paramsObject.workplaceIds = Array.from(preferredWorkplaceIds).map((id) =>
+        String(id),
+      );
+      Array.from(preferredWorkplaceIds)
+        .map((id) => String(id))
+        .forEach((id) => {
+          params.append('workplaceId', id);
+        });
+    }
+
     const controller = new AbortController();
     workplaceSelectionTouchedRef.current = false;
     setWorkplaceAssignmentsForPeriod(null);
@@ -623,6 +695,9 @@ export default function Reports() {
         const normalizedAssignmentCount = normalizeCount(
           diagnostics?.normalizedAssignmentCount,
         );
+        const preferredMatchCount = normalizeCount(
+          diagnostics?.preferredMatchCount,
+        );
         if (rowCount !== null) {
           diagnosticCounts.push(`rows: ${rowCount}`);
         }
@@ -636,6 +711,9 @@ export default function Reports() {
           diagnosticCounts.push(
             `normalized: ${normalizedAssignmentCount}`,
           );
+        }
+        if (preferredMatchCount !== null) {
+          diagnosticCounts.push(`preferred: ${preferredMatchCount}`);
         }
         const assignments = Array.isArray(data.assignments)
           ? data.assignments
@@ -746,13 +824,14 @@ export default function Reports() {
               'formattedSql',
               'params',
               'rowCount',
-              'filteredCount',
-              'assignmentCount',
-              'normalizedAssignmentCount',
-              'effectiveDate',
-              'selectedWorkplaceId',
-              'selectedWorkplaceSessionId',
-            ]);
+            'filteredCount',
+            'assignmentCount',
+            'normalizedAssignmentCount',
+            'preferredMatchCount',
+            'effectiveDate',
+            'selectedWorkplaceId',
+            'selectedWorkplaceSessionId',
+          ]);
             if (
               Array.isArray(diagnostics?.params) &&
               diagnostics.params.length
