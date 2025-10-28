@@ -2994,50 +2994,29 @@ export default function PosTransactionsPage() {
                 const footerFields = canonicalizeFields(fc.footerFields);
                 const totalAmountFields = canonicalizeFields(fc.totalAmountFields);
                 const totalCurrencyFields = canonicalizeFields(fc.totalCurrencyFields);
+                const provided = canonicalizeFields(fc.editableFields);
+                const defaults = canonicalizeFields(fc.editableDefaultFields);
+                const editVals = Array.from(new Set([...defaults, ...provided]));
+                const editSet =
+                  editVals.length > 0
+                    ? new Set(editVals.map((f) => f.toLowerCase()))
+                    : null;
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const canonicalizeField = (lowerField) => {
-                  if (typeof lowerField !== 'string' || !lowerField) return null;
-                  const fromCaseMap = caseMap[lowerField];
-                  if (typeof fromCaseMap === 'string' && fromCaseMap) {
-                    return fromCaseMap;
-                  }
-                  const match = allFields.find(
-                    (field) => typeof field === 'string' && field.toLowerCase() === lowerField,
-                  );
-                  if (match) return match;
-                  return lowerField;
-                };
-                const computedEntry = computedFieldMap?.[t.table];
-                const disabled = [];
-                const disabledLower = new Set();
+                const tableSessionFields = (sessionFields || [])
+                  .filter((sf) => sf?.table === t.table && typeof sf?.field === 'string')
+                  .map((sf) => sf.field);
+                const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
+                  allFields,
+                  editSet,
+                  caseMap,
+                  sessionFields: tableSessionFields,
+                });
                 const disabledFieldReasons = {};
-                if (computedEntry instanceof Set) {
-                  const reasonLookup = computedEntry.reasonMap;
-                  const allowedReasons = new Set(['calcField', 'posFormula']);
-                  computedEntry.forEach((lowerField) => {
-                    if (typeof lowerField !== 'string' || !lowerField) return;
-                    const canonical = canonicalizeField(lowerField);
-                    if (!canonical) return;
-                    const normalizedLower = canonical.toLowerCase();
-                    if (disabledLower.has(normalizedLower)) return;
-                    const reasonSet =
-                      reasonLookup instanceof Map ? reasonLookup.get(lowerField) : null;
-                    if (reasonSet instanceof Set) {
-                      const reasons = Array.from(reasonSet)
-                        .map((code) => (code === undefined || code === null ? '' : String(code)))
-                        .map((code) => code.trim())
-                        .filter((code) => allowedReasons.has(code));
-                      if (reasons.length === 0 && reasonSet.size > 0) {
-                        return;
-                      }
-                      if (reasons.length > 0) {
-                        disabledFieldReasons[canonical] = reasons;
-                      }
-                    }
-                    disabledLower.add(normalizedLower);
-                    disabled.push(canonical);
+                if (reasonMap instanceof Map) {
+                  reasonMap.forEach((codes, field) => {
+                    disabledFieldReasons[field] = Array.from(codes);
                   });
                 }
                 const posStyle = {
