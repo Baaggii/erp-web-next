@@ -177,6 +177,34 @@ function stringifyDiagnosticValue(value) {
   return String(value);
 }
 
+function normalizeSqlDiagnosticValue(value) {
+  const normalized = stringifyDiagnosticValue(value);
+  if (typeof normalized !== 'string') return null;
+  const trimmed = normalized.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+function resolveWorkplaceFetchToastToggle(config) {
+  if (!config || typeof config !== 'object') return undefined;
+  const generalConfig = config.general;
+  if (
+    generalConfig &&
+    typeof generalConfig === 'object' &&
+    Object.prototype.hasOwnProperty.call(
+      generalConfig,
+      'workplaceFetchToastEnabled',
+    )
+  ) {
+    return generalConfig.workplaceFetchToastEnabled;
+  }
+  if (
+    Object.prototype.hasOwnProperty.call(config, 'workplaceFetchToastEnabled')
+  ) {
+    return config.workplaceFetchToastEnabled;
+  }
+  return undefined;
+}
+
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
@@ -217,8 +245,12 @@ export default function Reports() {
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
+  const workplaceFetchToastToggle = useMemo(
+    () => resolveWorkplaceFetchToastToggle(generalConfig),
+    [generalConfig],
+  );
   const workplaceFetchDiagnosticsEnabled = normalizeBoolean(
-    generalConfig?.general?.workplaceFetchToastEnabled,
+    workplaceFetchToastToggle,
     true,
   );
   const usingBaseAssignments = !Array.isArray(workplaceAssignmentsForPeriod);
@@ -676,7 +708,7 @@ export default function Reports() {
             ];
         let formattedSql = null;
         for (const candidate of sqlCandidates) {
-          const normalized = stringifyDiagnosticValue(candidate);
+          const normalized = normalizeSqlDiagnosticValue(candidate);
           if (normalized) {
             formattedSql = normalized;
             break;
@@ -783,15 +815,15 @@ export default function Reports() {
             if (queryString) {
               details.push(`Query: ${queryUrl}`);
             }
-            const formattedSqlForToast = (() => {
-              if (typeof formattedSql === 'string' && formattedSql.length) {
-                return formattedSql;
-              }
-              const fallback = diagnostics?.formattedSql || diagnostics?.sql;
-              return stringifyDiagnosticValue(fallback);
-            })();
+            const formattedSqlForToast = normalizeSqlDiagnosticValue(
+              formattedSql ?? diagnostics?.formattedSql ?? diagnostics?.sql,
+            );
             if (formattedSqlForToast) {
               details.push(`SQL: ${formattedSqlForToast}`);
+            } else if (diagnostics && typeof diagnostics === 'object') {
+              details.push(
+                '(No SQL available: diagnostics did not include a query string)',
+              );
             }
             if (diagnosticCounts.length) {
               details.push(`Counts: ${diagnosticCounts.join(', ')}`);
@@ -827,6 +859,7 @@ export default function Reports() {
               'effectiveDate',
               'selectedWorkplaceId',
               'selectedWorkplaceSessionId',
+              'sqlUnavailableReason',
             ]);
             if (
               Array.isArray(diagnostics?.params) &&
