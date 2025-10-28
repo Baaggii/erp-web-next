@@ -121,6 +121,41 @@ function summarizeForToast(payload) {
   }
 }
 
+function stringifyDiagnosticValue(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    const flattened = value
+      .map((item) => stringifyDiagnosticValue(item))
+      .filter((item) => typeof item === 'string' && item.length > 0);
+    return flattened.length ? flattened.join('\n') : null;
+  }
+  if (value && typeof value === 'object') {
+    if (typeof value.text === 'string' && value.text.length) {
+      return value.text;
+    }
+    if (Array.isArray(value.lines)) {
+      const lines = value.lines
+        .map((line) => stringifyDiagnosticValue(line))
+        .filter((line) => typeof line === 'string' && line.length > 0);
+      if (lines.length) return lines.join('\n');
+    }
+    try {
+      const json = JSON.stringify(value);
+      return json && json.length ? json : null;
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
@@ -214,12 +249,17 @@ export default function Reports() {
           : null;
       if (valueSource == null) return;
 
-      const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
-      if (seenComposite.has(compositeKey)) return;
-      if (
-        (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) ||
-        (normalizedSessionId != null && seenSessionIds.has(normalizedSessionId))
-      ) {
+      const hasWorkplaceId = normalizedWorkplaceId != null;
+      const hasSessionId = normalizedSessionId != null;
+      const compositeKey =
+        hasWorkplaceId && hasSessionId
+          ? `${normalizedWorkplaceId}|${normalizedSessionId}`
+          : null;
+      if (compositeKey && seenComposite.has(compositeKey)) return;
+      if (!hasSessionId && hasWorkplaceId && seenWorkplaceIds.has(normalizedWorkplaceId)) {
+        return;
+      }
+      if (!hasWorkplaceId && hasSessionId && seenSessionIds.has(normalizedSessionId)) {
         return;
       }
 
@@ -257,11 +297,13 @@ export default function Reports() {
         workplaceSessionId: normalizedSessionId ?? normalizedWorkplaceId,
       });
 
-      seenComposite.add(compositeKey);
-      if (normalizedWorkplaceId != null) {
+      if (compositeKey) {
+        seenComposite.add(compositeKey);
+      }
+      if (hasWorkplaceId) {
         seenWorkplaceIds.add(normalizedWorkplaceId);
       }
-      if (normalizedSessionId != null) {
+      if (hasSessionId) {
         seenSessionIds.add(normalizedSessionId);
       }
     });
@@ -281,12 +323,24 @@ export default function Reports() {
           ? fallbackWorkplaceId
           : null;
       if (valueSource != null) {
-        const compositeKey = `${fallbackWorkplaceId ?? ''}|${fallbackSessionId ?? ''}`;
+        const hasFallbackWorkplace = fallbackWorkplaceId != null;
+        const hasFallbackSession = fallbackSessionId != null;
+        const compositeKey =
+          hasFallbackWorkplace && hasFallbackSession
+            ? `${fallbackWorkplaceId}|${fallbackSessionId}`
+            : null;
+        const duplicateByComposite = compositeKey
+          ? seenComposite.has(compositeKey)
+          : false;
         const duplicateByWorkplace =
-          fallbackWorkplaceId != null && seenWorkplaceIds.has(fallbackWorkplaceId);
+          !hasFallbackSession &&
+          hasFallbackWorkplace &&
+          seenWorkplaceIds.has(fallbackWorkplaceId);
         const duplicateBySession =
-          fallbackSessionId != null && seenSessionIds.has(fallbackSessionId);
-        if (!seenComposite.has(compositeKey) && !duplicateByWorkplace && !duplicateBySession) {
+          !hasFallbackWorkplace &&
+          hasFallbackSession &&
+          seenSessionIds.has(fallbackSessionId);
+        if (!duplicateByComposite && !duplicateByWorkplace && !duplicateBySession) {
           const value = String(valueSource);
           const idParts = [];
           if (fallbackWorkplaceId != null) {
@@ -320,11 +374,13 @@ export default function Reports() {
             workplaceSessionId: fallbackSessionId ?? fallbackWorkplaceId ?? null,
           });
 
-          seenComposite.add(compositeKey);
-          if (fallbackWorkplaceId != null) {
+          if (compositeKey) {
+            seenComposite.add(compositeKey);
+          }
+          if (hasFallbackWorkplace) {
             seenWorkplaceIds.add(fallbackWorkplaceId);
           }
-          if (fallbackSessionId != null) {
+          if (hasFallbackSession) {
             seenSessionIds.add(fallbackSessionId);
           }
         }
@@ -551,8 +607,14 @@ export default function Reports() {
         const data = await res.json().catch(() => ({}));
         const diagnostics =
           data && typeof data === 'object' ? data.diagnostics ?? null : null;
-        const formattedSql =
-          diagnostics?.formattedSql || diagnostics?.sql || null;
+        let diagnosticSql =
+          stringifyDiagnosticValue(diagnostics?.formattedSql) ?? null;
+        if (
+          !diagnosticSql ||
+          (typeof diagnosticSql === 'string' && diagnosticSql.trim().length === 0)
+        ) {
+          diagnosticSql = stringifyDiagnosticValue(diagnostics?.sql) ?? null;
+        }
         const diagnosticCounts = [];
         const normalizeCount = (value) =>
           typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -654,8 +716,11 @@ export default function Reports() {
             if (queryString) {
               details.push(`Query: ${queryUrl}`);
             }
-            if (formattedSql) {
-              details.push(`SQL: ${formattedSql}`);
+            if (
+              typeof diagnosticSql === 'string' &&
+              diagnosticSql.trim().length > 0
+            ) {
+              details.push(`SQL: ${diagnosticSql}`);
             }
             if (diagnosticCounts.length) {
               details.push(`Counts: ${diagnosticCounts.join(', ')}`);
@@ -697,18 +762,17 @@ export default function Reports() {
               diagnostics.params.length
             ) {
               consumedDiagnosticKeys.add('params');
-              details.push(`Params: ${JSON.stringify(diagnostics.params)}`);
+              const paramsString = stringifyDiagnosticValue(diagnostics.params);
+              if (paramsString) {
+                details.push(`Params: ${paramsString}`);
+              }
             }
             if (diagnostics && typeof diagnostics === 'object') {
               Object.entries(diagnostics).forEach(([key, value]) => {
                 if (consumedDiagnosticKeys.has(key)) return;
                 if (value === undefined || value === null) return;
-                const valueString =
-                  typeof value === 'string'
-                    ? value
-                    : typeof value === 'number' || typeof value === 'boolean'
-                    ? String(value)
-                    : JSON.stringify(value);
+                const valueString = stringifyDiagnosticValue(value);
+                if (!valueString) return;
                 details.push(`${key}: ${valueString}`);
               });
             }
