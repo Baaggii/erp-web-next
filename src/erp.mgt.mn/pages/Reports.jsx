@@ -787,8 +787,9 @@ export default function Reports() {
               if (typeof formattedSql === 'string' && formattedSql.length) {
                 return formattedSql;
               }
-              const fallback = diagnostics?.formattedSql || diagnostics?.sql;
-              return stringifyDiagnosticValue(fallback);
+              return stringifyDiagnosticValue(
+                diagnostics?.formattedSql || diagnostics?.sql,
+              );
             })();
             if (formattedSqlForToast) {
               details.push(`SQL: ${formattedSqlForToast}`);
