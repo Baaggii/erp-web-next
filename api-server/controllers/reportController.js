@@ -121,6 +121,23 @@ export async function listReportWorkplaces(req, res, next) {
         ? sessions.__diagnostics
         : null;
 
+    const baseDiagnostics =
+      diagnostics && typeof diagnostics === 'object' ? diagnostics : {};
+    let formattedSqlForResponse =
+      typeof baseDiagnostics.formattedSql === 'string'
+        ? baseDiagnostics.formattedSql
+        : null;
+    if (
+      !formattedSqlForResponse ||
+      (
+        typeof formattedSqlForResponse === 'string' &&
+        formattedSqlForResponse.trim().length === 0
+      )
+    ) {
+      formattedSqlForResponse =
+        typeof baseDiagnostics.sql === 'string' ? baseDiagnostics.sql : null;
+    }
+
     const filtered =
       normalizedCompanyId !== null
         ? sessionList.filter((session) => {
@@ -181,7 +198,8 @@ export async function listReportWorkplaces(req, res, next) {
       : [];
 
     const diagnosticsPayload = {
-      ...(diagnostics ?? {}),
+      ...baseDiagnostics,
+      formattedSql: formattedSqlForResponse,
       effectiveDate:
         effectiveDate instanceof Date && !Number.isNaN(effectiveDate.getTime())
           ? effectiveDate.toISOString()
