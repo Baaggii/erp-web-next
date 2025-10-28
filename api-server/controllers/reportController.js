@@ -121,7 +121,7 @@ export async function listReportWorkplaces(req, res, next) {
       includeDiagnostics: true,
     });
 
-    const sessionArray = Array.isArray(sessions) ? sessions : [];
+    const sessionList = Array.isArray(sessions) ? sessions : [];
 
     const diagnostics =
       sessions && typeof sessions === 'object' && '__diagnostics' in sessions
@@ -130,13 +130,13 @@ export async function listReportWorkplaces(req, res, next) {
 
     const filtered =
       normalizedCompanyId !== null
-        ? sessionArray.filter((session) => {
+        ? sessionList.filter((session) => {
             const sessionCompanyId = normalizeNumericId(
               session?.company_id ?? session?.companyId,
             );
             return sessionCompanyId === normalizedCompanyId;
           })
-        : sessionArray;
+        : sessionList;
 
     const rawAssignments = filtered
       .filter((session) => session && session.workplace_session_id != null)
