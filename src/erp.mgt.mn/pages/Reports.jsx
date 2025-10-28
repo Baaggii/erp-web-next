@@ -177,6 +177,13 @@ function stringifyDiagnosticValue(value) {
   return String(value);
 }
 
+function normalizeSqlDiagnosticValue(value) {
+  const normalized = stringifyDiagnosticValue(value);
+  if (typeof normalized !== 'string') return null;
+  const trimmed = normalized.trim();
+  return trimmed.length ? trimmed : null;
+}
+
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
@@ -676,7 +683,7 @@ export default function Reports() {
             ];
         let formattedSql = null;
         for (const candidate of sqlCandidates) {
-          const normalized = stringifyDiagnosticValue(candidate);
+          const normalized = normalizeSqlDiagnosticValue(candidate);
           if (normalized) {
             formattedSql = normalized;
             break;
@@ -787,11 +794,16 @@ export default function Reports() {
               if (typeof formattedSql === 'string' && formattedSql.length) {
                 return formattedSql;
               }
-              const fallback = diagnostics?.formattedSql || diagnostics?.sql;
-              return stringifyDiagnosticValue(fallback);
+              return normalizeSqlDiagnosticValue(
+                diagnostics?.formattedSql || diagnostics?.sql,
+              );
             })();
             if (formattedSqlForToast) {
               details.push(`SQL: ${formattedSqlForToast}`);
+            } else if (diagnostics && typeof diagnostics === 'object') {
+              details.push(
+                '(No SQL available: diagnostics did not include a query string)',
+              );
             }
             if (diagnosticCounts.length) {
               details.push(`Counts: ${diagnosticCounts.join(', ')}`);
@@ -827,6 +839,7 @@ export default function Reports() {
               'effectiveDate',
               'selectedWorkplaceId',
               'selectedWorkplaceSessionId',
+              'sqlUnavailableReason',
             ]);
             if (
               Array.isArray(diagnostics?.params) &&
