@@ -161,9 +161,8 @@ export default function Reports() {
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
-  const workplaceFetchDiagnosticsEnabled = Boolean(
-    generalConfig?.general?.workplaceFetchToastEnabled,
-  );
+  const workplaceFetchDiagnosticsEnabled =
+    generalConfig?.general?.workplaceFetchToastEnabled !== false;
   const usingBaseAssignments = !Array.isArray(workplaceAssignmentsForPeriod);
   const expandedTransactionDetailsRef = useRef(expandedTransactionDetails);
   const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
