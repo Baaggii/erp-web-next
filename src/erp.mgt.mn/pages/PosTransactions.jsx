@@ -308,6 +308,103 @@ function normalizeIdentifier(value) {
   return null;
 }
 
+const DEFAULT_EDITABLE_NESTED_KEYS = [
+  'fields',
+  'fieldList',
+  'fieldSet',
+  'list',
+  'values',
+  'columns',
+  'items',
+  'editableFields',
+  'editableDefaultFields',
+  'allowedFields',
+  'permittedFields',
+];
+
+function walkEditableFieldValues(source, callback, options = {}) {
+  if (typeof callback !== 'function') return;
+
+  const skipKeys = new Set([
+    'hasExplicitConfig',
+    '__proto__',
+    ...(Array.isArray(options.skipKeys) ? options.skipKeys : []),
+  ]);
+  const nestedKeySet = new Set(
+    Array.isArray(options.nestedKeys)
+      ? options.nestedKeys
+      : DEFAULT_EDITABLE_NESTED_KEYS,
+  );
+  const visited = new Set();
+
+  const visit = (value) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string' || typeof value === 'number') {
+      const raw = String(value).trim();
+      if (!raw) return;
+      callback(raw);
+      return;
+    }
+    if (value instanceof Set) {
+      value.forEach(visit);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (value instanceof Map) {
+      value.forEach((enabled, key) => {
+        if (!enabled) return;
+        visit(key);
+      });
+      return;
+    }
+    if (!isPlainRecord(value)) return;
+    if (visited.has(value)) return;
+    visited.add(value);
+
+    nestedKeySet.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        visit(value[key]);
+      }
+    });
+
+    Object.entries(value).forEach(([key, val]) => {
+      if (skipKeys.has(key) || nestedKeySet.has(key)) return;
+      if (val === undefined || val === null) return;
+      if (typeof val === 'boolean') {
+        if (val) visit(key);
+        return;
+      }
+      if (typeof val === 'number' || typeof val === 'string') {
+        visit(key);
+        return;
+      }
+      if (val instanceof Set || Array.isArray(val) || val instanceof Map) {
+        visit(val);
+        return;
+      }
+      if (isPlainRecord(val)) {
+        const flag =
+          Object.prototype.hasOwnProperty.call(val, 'editable')
+            ? val.editable
+            : Object.prototype.hasOwnProperty.call(val, 'enabled')
+            ? val.enabled
+            : Object.prototype.hasOwnProperty.call(val, 'allow')
+            ? val.allow
+            : Object.prototype.hasOwnProperty.call(val, 'allowed')
+            ? val.allowed
+            : null;
+        if (flag) visit(key);
+        visit(val);
+      }
+    });
+  };
+
+  visit(source);
+}
+
 const LOCK_TRUE_VALUES = new Set([
   'true',
   '1',
@@ -1937,31 +2034,48 @@ export default function PosTransactionsPage() {
   const editableFieldLookup = useMemo(() => {
     const lookup = {};
 
-    const normalizeList = (list, caseMap = {}) => {
-      if (!Array.isArray(list)) return [];
+    const normalizeList = (source, caseMap = {}) => {
       const seen = new Set();
-      list.forEach((field) => {
-        if (field == null) return;
-        const raw = String(field).trim();
-        if (!raw) return;
-        const lower = raw.toLowerCase();
-        const canonical = caseMap[lower] || raw;
-        const canonicalLower = canonical.toLowerCase();
-        if (!seen.has(canonicalLower)) {
-          seen.add(canonicalLower);
-        }
-      });
-      return Array.from(seen);
+      const result = [];
+      walkEditableFieldValues(
+        source,
+        (field) => {
+          if (field == null) return;
+          const raw = String(field).trim();
+          if (!raw) return;
+          const lower = raw.toLowerCase();
+          const canonical = caseMap[lower] || raw;
+          const canonicalLower = canonical.toLowerCase();
+          if (!seen.has(canonicalLower)) {
+            seen.add(canonicalLower);
+            result.push(canonical);
+          }
+        },
+        { skipKeys: ['hasExplicitConfig'] },
+      );
+      return result;
     };
 
     Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
       if (!fc) return;
       const caseMap = memoColumnCaseMap[tbl] || {};
-      const provided = normalizeList(fc.editableFields, caseMap);
-      const defaults = normalizeList(fc.editableDefaultFields, caseMap);
-      const combined = new Set([...defaults, ...provided]);
-      if (combined.size > 0) {
-        lookup[tbl] = combined;
+      const sources = [
+        { value: fc.editableDefaultFields, explicit: fc.editableDefaultFields !== undefined },
+        { value: fc.editableFields, explicit: fc.editableFields !== undefined },
+        { value: fc.inlineEditableFields, explicit: fc.inlineEditableFields !== undefined },
+        { value: fc.editableFieldMap, explicit: fc.editableFieldMap !== undefined },
+      ];
+      const combined = new Set();
+      let hasExplicitConfig = false;
+      sources.forEach(({ value, explicit }) => {
+        if (explicit) hasExplicitConfig = true;
+        normalizeList(value, caseMap).forEach((field) => combined.add(field));
+      });
+      if (combined.size > 0 || hasExplicitConfig) {
+        lookup[tbl] = {
+          fields: combined,
+          hasExplicitConfig,
+        };
       }
     });
 
@@ -2855,20 +2969,23 @@ export default function PosTransactionsPage() {
                   labels[c.name || c] = c.label || c.name || c;
                 });
                 const caseMap = memoColumnCaseMap[t.table] || {};
-                const canonicalizeFields = (list) => {
-                  if (!Array.isArray(list)) return [];
+                const canonicalizeFields = (source) => {
                   const seen = new Set();
                   const result = [];
-                  list.forEach((field) => {
-                    if (field == null) return;
-                    const raw = String(field).trim();
-                    if (!raw) return;
-                    const mapped = caseMap[raw.toLowerCase()] || raw;
-                    if (!seen.has(mapped)) {
-                      seen.add(mapped);
-                      result.push(mapped);
-                    }
-                  });
+                  walkEditableFieldValues(
+                    source,
+                    (field) => {
+                      if (field == null) return;
+                      const raw = String(field).trim();
+                      if (!raw) return;
+                      const mapped = caseMap[raw.toLowerCase()] || raw;
+                      if (!seen.has(mapped)) {
+                        seen.add(mapped);
+                        result.push(mapped);
+                      }
+                    },
+                    { skipKeys: ['hasExplicitConfig'] },
+                  );
                   return result;
                 };
                 const visible = canonicalizeFields(fc.visibleFields);
