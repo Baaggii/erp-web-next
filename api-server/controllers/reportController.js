@@ -201,8 +201,8 @@ export async function listReportWorkplaces(req, res, next) {
     };
 
     res.json({
-      assignments: safeAssignments,
-      diagnostics: diagnosticsPayload,
+      assignments: sessionPayload?.workplace_assignments ?? [],
+      diagnostics,
     });
   } catch (err) {
     next(err);
