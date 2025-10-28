@@ -21,7 +21,10 @@ export async function login(req, res, next) {
     }
 
     const effectiveDate = new Date();
-    const sessions = await getEmploymentSessions(empid, { effectiveDate });
+    const sessions = await getEmploymentSessions(empid, {
+      effectiveDate,
+      includeDiagnostics: true,
+    });
     if (!Array.isArray(sessions) || sessions.length === 0) {
       return res
         .status(403)
@@ -215,7 +218,10 @@ export async function getProfile(req, res) {
   const effectiveDate = new Date();
   const [session, sessions] = await Promise.all([
     getEmploymentSession(req.user.empid, req.user.companyId, { effectiveDate }),
-    getEmploymentSessions(req.user.empid, { effectiveDate }),
+    getEmploymentSessions(req.user.empid, {
+      effectiveDate,
+      includeDiagnostics: true,
+    }),
   ]);
 
   const workplaceAssignments = session
@@ -316,7 +322,10 @@ export async function refresh(req, res) {
     const effectiveDate = new Date();
     const [session, sessions] = await Promise.all([
       getEmploymentSession(user.empid, payload.companyId, { effectiveDate }),
-      getEmploymentSessions(user.empid, { effectiveDate }),
+      getEmploymentSessions(user.empid, {
+        effectiveDate,
+        includeDiagnostics: true,
+      }),
     ]);
 
     const workplaceAssignments = session

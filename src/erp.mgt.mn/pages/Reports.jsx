@@ -783,8 +783,22 @@ export default function Reports() {
             if (queryString) {
               details.push(`Query: ${queryUrl}`);
             }
-            if (typeof formattedSql === 'string' && formattedSql.length) {
-              details.push(`SQL: ${formattedSql}`);
+            const formattedSqlForToast = (() => {
+              if (typeof formattedSql === 'string' && formattedSql.length) {
+                return formattedSql;
+              }
+              const fallback = diagnostics?.formattedSql ?? diagnostics?.sql;
+              const stringified = stringifyDiagnosticValue(fallback);
+              if (
+                typeof stringified === 'string' &&
+                stringified.trim().length > 0
+              ) {
+                return stringified;
+              }
+              return null;
+            })();
+            if (formattedSqlForToast) {
+              details.push(`SQL: ${formattedSqlForToast}`);
             }
             if (diagnosticCounts.length) {
               details.push(`Counts: ${diagnosticCounts.join(', ')}`);
