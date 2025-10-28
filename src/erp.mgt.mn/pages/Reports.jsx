@@ -249,12 +249,17 @@ export default function Reports() {
           : null;
       if (valueSource == null) return;
 
-      const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
-      if (seenComposite.has(compositeKey)) return;
-      if (
-        (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) ||
-        (normalizedSessionId != null && seenSessionIds.has(normalizedSessionId))
-      ) {
+      const hasWorkplaceId = normalizedWorkplaceId != null;
+      const hasSessionId = normalizedSessionId != null;
+      const compositeKey =
+        hasWorkplaceId && hasSessionId
+          ? `${normalizedWorkplaceId}|${normalizedSessionId}`
+          : null;
+      if (compositeKey && seenComposite.has(compositeKey)) return;
+      if (!hasSessionId && hasWorkplaceId && seenWorkplaceIds.has(normalizedWorkplaceId)) {
+        return;
+      }
+      if (!hasWorkplaceId && hasSessionId && seenSessionIds.has(normalizedSessionId)) {
         return;
       }
 
@@ -292,11 +297,13 @@ export default function Reports() {
         workplaceSessionId: normalizedSessionId ?? normalizedWorkplaceId,
       });
 
-      seenComposite.add(compositeKey);
-      if (normalizedWorkplaceId != null) {
+      if (compositeKey) {
+        seenComposite.add(compositeKey);
+      }
+      if (hasWorkplaceId) {
         seenWorkplaceIds.add(normalizedWorkplaceId);
       }
-      if (normalizedSessionId != null) {
+      if (hasSessionId) {
         seenSessionIds.add(normalizedSessionId);
       }
     });
@@ -316,12 +323,24 @@ export default function Reports() {
           ? fallbackWorkplaceId
           : null;
       if (valueSource != null) {
-        const compositeKey = `${fallbackWorkplaceId ?? ''}|${fallbackSessionId ?? ''}`;
+        const hasFallbackWorkplace = fallbackWorkplaceId != null;
+        const hasFallbackSession = fallbackSessionId != null;
+        const compositeKey =
+          hasFallbackWorkplace && hasFallbackSession
+            ? `${fallbackWorkplaceId}|${fallbackSessionId}`
+            : null;
+        const duplicateByComposite = compositeKey
+          ? seenComposite.has(compositeKey)
+          : false;
         const duplicateByWorkplace =
-          fallbackWorkplaceId != null && seenWorkplaceIds.has(fallbackWorkplaceId);
+          !hasFallbackSession &&
+          hasFallbackWorkplace &&
+          seenWorkplaceIds.has(fallbackWorkplaceId);
         const duplicateBySession =
-          fallbackSessionId != null && seenSessionIds.has(fallbackSessionId);
-        if (!seenComposite.has(compositeKey) && !duplicateByWorkplace && !duplicateBySession) {
+          !hasFallbackWorkplace &&
+          hasFallbackSession &&
+          seenSessionIds.has(fallbackSessionId);
+        if (!duplicateByComposite && !duplicateByWorkplace && !duplicateBySession) {
           const value = String(valueSource);
           const idParts = [];
           if (fallbackWorkplaceId != null) {
@@ -355,11 +374,13 @@ export default function Reports() {
             workplaceSessionId: fallbackSessionId ?? fallbackWorkplaceId ?? null,
           });
 
-          seenComposite.add(compositeKey);
-          if (fallbackWorkplaceId != null) {
+          if (compositeKey) {
+            seenComposite.add(compositeKey);
+          }
+          if (hasFallbackWorkplace) {
             seenWorkplaceIds.add(fallbackWorkplaceId);
           }
-          if (fallbackSessionId != null) {
+          if (hasFallbackSession) {
             seenSessionIds.add(fallbackSessionId);
           }
         }
