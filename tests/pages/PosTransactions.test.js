@@ -736,6 +736,9 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
   );
 
   const computedFieldMap = { transactions: new Set(['totalamount']) };
+  const editableFieldMap = {
+    transactions: { fields: new Set(), hasExplicitConfig: true },
+  };
   const desiredRow = { TotalAmount: 42, Note: 'manual entry' };
   const changes = { TotalAmount: 42, Note: 'manual entry' };
   const recalculatedValues = {
@@ -746,6 +749,7 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
     table: 'transactions',
     changes,
     computedFieldMap,
+    editableFieldMap,
     desiredRow,
     recalculatedValues,
   });
@@ -758,6 +762,7 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
     table: 'transactions',
     changes,
     computedFieldMap,
+    editableFieldMap,
     desiredRow,
     recalculatedValues: merged,
   });
