@@ -622,6 +622,10 @@ const RowFormModal = function RowFormModal({
   const inputRefs = useRef({});
   const readonlyRefs = useRef({});
   const [errors, setErrors] = useState({});
+  const errorsRef = useRef(errors);
+  useEffect(() => {
+    errorsRef.current = errors;
+  }, [errors]);
   const [submitLocked, setSubmitLocked] = useState(false);
   const tableRef = useRef(null);
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
@@ -902,7 +906,9 @@ const RowFormModal = function RowFormModal({
       vals[c] = v;
     });
     inputRefs.current = {};
-    setErrors({});
+    if (errorsRef.current && Object.keys(errorsRef.current).length > 0) {
+      setErrors({});
+    }
     setFormValuesWithGenerated(() => vals, { notify: false });
   }, [
     row,
