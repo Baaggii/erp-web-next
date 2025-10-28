@@ -183,14 +183,6 @@ const RowFormModal = function RowFormModal({
               ),
             );
             break;
-          case 'cellLock':
-            messages.push(
-              t(
-                'pos_guard_reason_cell_lock',
-                'Field is locked by POS transaction metadata',
-              ),
-            );
-            break;
           case 'calcField':
             messages.push(
               t(

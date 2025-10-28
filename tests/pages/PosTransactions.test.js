@@ -455,60 +455,6 @@ if (typeof mock.import !== 'function') {
     assert.equal(totalDisabledReasons.has('posFormula'), true);
   });
 
-  test('cell lock metadata disables only non-editable fields', async () => {
-    const { buildCellLockFieldSet, collectDisabledFieldsAndReasons } = await mock.import(
-      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
-      {},
-    );
-
-    const formConfig = {
-      cellLocks: [
-        { table: 'transactions', field: 'LockedField', lockType: 'NON_EDITABLE', reason: 'calcLock' },
-        { table: 'transactions', field: 'UiField', lockType: 'UI', reason: 'uiLock' },
-        { field: 'ImplicitLock', lockType: 'non_editable' },
-      ],
-    };
-
-    const cellLocks = buildCellLockFieldSet({
-      table: 'transactions',
-      sources: [formConfig],
-    });
-
-    assert.ok(cellLocks instanceof Set);
-    assert.equal(cellLocks.has('lockedfield'), true);
-    assert.equal(cellLocks.has('implicitlock'), true);
-    assert.equal(cellLocks.has('uifield'), false);
-
-    const lockedReasons = cellLocks.reasonMap?.get('lockedfield');
-    assert.ok(lockedReasons instanceof Set);
-    assert.equal(lockedReasons.has('calcLock'), true);
-
-    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-      allFields: ['LockedField', 'UiField', 'ImplicitLock'],
-      editSet: null,
-      caseMap: {
-        lockedfield: 'LockedField',
-        uifield: 'UiField',
-        implicitlock: 'ImplicitLock',
-      },
-      sessionFields: [],
-      cellLocks,
-    });
-
-    assert.deepEqual(disabled.sort(), ['ImplicitLock', 'LockedField']);
-
-    const disabledLockedReasons = reasonMap.get('LockedField');
-    assert.ok(disabledLockedReasons instanceof Set);
-    assert.equal(disabledLockedReasons.has('calcLock'), true);
-    assert.equal(disabledLockedReasons.has('cellLock'), true);
-
-    const implicitReasons = reasonMap.get('ImplicitLock');
-    assert.ok(implicitReasons instanceof Set);
-    assert.equal(implicitReasons.has('cellLock'), true);
-
-    assert.equal(reasonMap.has('UiField'), false);
-  });
-
   test('buildComputedFieldMap tracks reason codes for multi-field formulas', async () => {
     const { buildComputedFieldMap } = await mock.import(
       '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
