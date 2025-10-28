@@ -161,9 +161,8 @@ export default function Reports() {
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
   const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
     useState(null);
-  const workplaceFetchDiagnosticsEnabled = Boolean(
-    generalConfig?.general?.workplaceFetchToastEnabled,
-  );
+  const workplaceFetchDiagnosticsEnabled =
+    generalConfig?.general?.workplaceFetchToastEnabled !== false;
   const usingBaseAssignments = !Array.isArray(workplaceAssignmentsForPeriod);
   const expandedTransactionDetailsRef = useRef(expandedTransactionDetails);
   const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
@@ -554,6 +553,53 @@ export default function Reports() {
           data && typeof data === 'object' ? data.diagnostics ?? null : null;
         const formattedSql =
           diagnostics?.formattedSql || diagnostics?.sql || null;
+        const diagnosticCounts = [];
+        const normalizeCount = (value) => {
+          if (typeof value === 'number') {
+            return Number.isFinite(value) ? value : null;
+          }
+          if (typeof value === 'string') {
+            const trimmed = value.trim();
+            if (!trimmed) {
+              return null;
+            }
+            const parsed = Number(trimmed);
+            return Number.isFinite(parsed) ? parsed : null;
+          }
+          return null;
+        };
+        const rowCount = normalizeCount(diagnostics?.rowCount);
+        const queryRowCount = normalizeCount(diagnostics?.queryRowCount);
+        const filteredCount = normalizeCount(diagnostics?.filteredCount);
+        const assignmentCount = normalizeCount(diagnostics?.assignmentCount);
+        const normalizedAssignmentCount = normalizeCount(
+          diagnostics?.normalizedAssignmentCount,
+        );
+        const sessionRowCount = normalizeCount(diagnostics?.sessionRowCount);
+        if (rowCount !== null) {
+          diagnosticCounts.push(`query rows: ${rowCount}`);
+        }
+        if (sessionRowCount !== null && sessionRowCount !== rowCount) {
+          diagnosticCounts.push(`session rows: ${sessionRowCount}`);
+        }
+        if (
+          queryRowCount !== null &&
+          queryRowCount !== rowCount &&
+          queryRowCount !== sessionRowCount
+        ) {
+          diagnosticCounts.push(`diagnostic rows: ${queryRowCount}`);
+        }
+        if (filteredCount !== null) {
+          diagnosticCounts.push(`filtered: ${filteredCount}`);
+        }
+        if (assignmentCount !== null) {
+          diagnosticCounts.push(`assignments: ${assignmentCount}`);
+        }
+        if (normalizedAssignmentCount !== null) {
+          diagnosticCounts.push(
+            `normalized: ${normalizedAssignmentCount}`,
+          );
+        }
         const assignments = Array.isArray(data.assignments)
           ? data.assignments
           : [];
@@ -634,6 +680,63 @@ export default function Reports() {
             }
             if (formattedSql) {
               details.push(`SQL: ${formattedSql}`);
+            }
+            if (diagnosticCounts.length) {
+              details.push(`Counts: ${diagnosticCounts.join(', ')}`);
+            }
+            if (diagnostics?.effectiveDate) {
+              details.push(`Effective date: ${diagnostics.effectiveDate}`);
+            }
+            if (
+              diagnostics?.selectedWorkplaceId != null ||
+              diagnostics?.selectedWorkplaceSessionId != null
+            ) {
+              const selectedParts = [];
+              if (diagnostics?.selectedWorkplaceId != null) {
+                selectedParts.push(`workplace #${diagnostics.selectedWorkplaceId}`);
+              }
+              if (diagnostics?.selectedWorkplaceSessionId != null) {
+                selectedParts.push(
+                  `session ${diagnostics.selectedWorkplaceSessionId}`,
+                );
+              }
+              if (selectedParts.length) {
+                details.push(`Selected: ${selectedParts.join(', ')}`);
+              }
+            }
+            const consumedDiagnosticKeys = new Set([
+              'sql',
+              'formattedSql',
+              'params',
+              'rowCount',
+              'queryRowCount',
+              'sessionRowCount',
+              'filteredCount',
+              'assignmentCount',
+              'normalizedAssignmentCount',
+              'effectiveDate',
+              'selectedWorkplaceId',
+              'selectedWorkplaceSessionId',
+            ]);
+            if (
+              Array.isArray(diagnostics?.params) &&
+              diagnostics.params.length
+            ) {
+              consumedDiagnosticKeys.add('params');
+              details.push(`Params: ${JSON.stringify(diagnostics.params)}`);
+            }
+            if (diagnostics && typeof diagnostics === 'object') {
+              Object.entries(diagnostics).forEach(([key, value]) => {
+                if (consumedDiagnosticKeys.has(key)) return;
+                if (value === undefined || value === null) return;
+                const valueString =
+                  typeof value === 'string'
+                    ? value
+                    : typeof value === 'number' || typeof value === 'boolean'
+                    ? String(value)
+                    : JSON.stringify(value);
+                details.push(`${key}: ${valueString}`);
+              });
             }
             if (details.length) {
               toastMessage += `\n${details.join('\n')}`;
