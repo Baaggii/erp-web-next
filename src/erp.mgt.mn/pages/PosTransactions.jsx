@@ -2994,31 +2994,9 @@ export default function PosTransactionsPage() {
                 const footerFields = canonicalizeFields(fc.footerFields);
                 const totalAmountFields = canonicalizeFields(fc.totalAmountFields);
                 const totalCurrencyFields = canonicalizeFields(fc.totalCurrencyFields);
-                const provided = canonicalizeFields(fc.editableFields);
-                const defaults = canonicalizeFields(fc.editableDefaultFields);
-                const editVals = Array.from(new Set([...defaults, ...provided]));
-                const editSet =
-                  editVals.length > 0
-                    ? new Set(editVals.map((f) => f.toLowerCase()))
-                    : null;
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const tableSessionFields = (sessionFields || [])
-                  .filter((sf) => sf?.table === t.table && typeof sf?.field === 'string')
-                  .map((sf) => sf.field);
-                const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-                  allFields,
-                  editSet,
-                  caseMap,
-                  sessionFields: tableSessionFields,
-                });
-                const disabledFieldReasons = {};
-                if (reasonMap instanceof Map) {
-                  reasonMap.forEach((codes, field) => {
-                    disabledFieldReasons[field] = Array.from(codes);
-                  });
-                }
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
@@ -3059,8 +3037,6 @@ export default function PosTransactionsPage() {
                       inline
                       visible
                       columns={allFields}
-                      disabledFields={disabled}
-                      disabledFieldReasons={disabledFieldReasons}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
                       row={values[t.table]}
