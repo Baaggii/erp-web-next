@@ -365,7 +365,7 @@ export async function listReportWorkplaces(req, res, next) {
     };
 
     res.json({
-      assignments: assignmentsForResponse,
+      assignments: sessionPayload?.workplace_assignments ?? [],
       diagnostics: diagnosticsPayload,
     });
   } catch (err) {
