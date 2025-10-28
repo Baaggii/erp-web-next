@@ -443,16 +443,11 @@ if (typeof mock.import !== 'function') {
     const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
       allFields: visible,
       editSet,
-      computedEntry: computedSet,
       caseMap: columnCaseMap.transactions,
     });
 
-    assert.deepEqual(disabled, ['Total']);
-    assert.equal(disabled.includes('Amount'), false);
-
-    const totalDisabledReasons = reasonMap.get('Total');
-    assert.ok(totalDisabledReasons instanceof Set);
-    assert.equal(totalDisabledReasons.has('posFormula'), true);
+    assert.deepEqual(disabled, []);
+    assert.equal(reasonMap.size, 0);
   });
 
   test('buildComputedFieldMap tracks reason codes for multi-field formulas', async () => {
@@ -735,12 +730,15 @@ if (typeof mock.import !== 'function') {
 
 }
 
-test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
+test('preserveManualChangesAfterRecalc preserves manual overrides even for computed fields', async () => {
   const { preserveManualChangesAfterRecalc } = await import(
     '../../src/erp.mgt.mn/utils/preserveManualChanges.js',
   );
 
   const computedFieldMap = { transactions: new Set(['totalamount']) };
+  const editableFieldMap = {
+    transactions: { fields: new Set(), hasExplicitConfig: true },
+  };
   const desiredRow = { TotalAmount: 42, Note: 'manual entry' };
   const changes = { TotalAmount: 42, Note: 'manual entry' };
   const recalculatedValues = {
@@ -751,18 +749,20 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
     table: 'transactions',
     changes,
     computedFieldMap,
+    editableFieldMap,
     desiredRow,
     recalculatedValues,
   });
 
   assert.notStrictEqual(merged, recalculatedValues);
-  assert.equal(merged.transactions.TotalAmount, 100);
+  assert.equal(merged.transactions.TotalAmount, 42);
   assert.equal(merged.transactions.Note, 'manual entry');
 
   const stable = preserveManualChangesAfterRecalc({
     table: 'transactions',
     changes,
     computedFieldMap,
+    editableFieldMap,
     desiredRow,
     recalculatedValues: merged,
   });
