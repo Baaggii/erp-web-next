@@ -672,10 +672,30 @@ export function buildComputedFieldMap(
   (calcFields || []).forEach((map = {}) => {
     const cells = getCalcFieldCells(map);
     if (!cells.length) return;
-    const computedIndexes = Array.isArray(map.__computedCellIndexes)
+
+    const normalizedIndexes = Array.isArray(map.__computedCellIndexes)
       ? map.__computedCellIndexes
+          .map((idx) => (Number.isInteger(idx) ? idx : null))
+          .filter((idx) => idx !== null && idx >= 0 && idx < cells.length)
       : [];
-    computedIndexes.forEach((idx) => {
+
+    if (normalizedIndexes.length === 0) return;
+
+    const hasAggregator = cells.some((cell = {}) => {
+      if (typeof cell.__aggKey === 'string' && cell.__aggKey) return true;
+      if (typeof cell.agg === 'string') {
+        const normalized = cell.agg.trim();
+        if (normalized) return true;
+      }
+      return false;
+    });
+
+    const fallsBackToFirstCell =
+      !hasAggregator && normalizedIndexes.length === 1 && normalizedIndexes[0] === 0;
+
+    if (fallsBackToFirstCell) return;
+
+    normalizedIndexes.forEach((idx) => {
       const cell = cells[idx];
       if (!cell || !cell.table || !cell.field) return;
       addReason(cell.table, cell.field, 'calcField');
