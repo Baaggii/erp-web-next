@@ -108,19 +108,20 @@ export async function listReportWorkplaces(req, res, next) {
         return res.status(400).json({ message: 'Invalid month value' });
       }
 
-      const firstOfMonth = new Date(Date.UTC(parsedYear, parsedMonth - 1, 1));
-      const endOfMonth = new Date(Date.UTC(parsedYear, parsedMonth, 0));
-      effectiveDate = endOfMonth >= firstOfMonth ? endOfMonth : firstOfMonth;
+      const midOfMonth = new Date(Date.UTC(parsedYear, parsedMonth - 1, 15));
+      effectiveDate = midOfMonth;
     }
 
     if (!(effectiveDate instanceof Date) || Number.isNaN(effectiveDate.getTime())) {
       return res.status(400).json({ message: 'Invalid date parameters' });
     }
 
-    const sessionResult = await getEmploymentSessionsImpl(req.user.empid, {
+    const sessions = await getEmploymentSessionsImpl(req.user.empid, {
       effectiveDate,
       includeDiagnostics: true,
     });
+
+    const sessionArray = Array.isArray(sessions) ? sessions : [];
 
     const diagnostics =
       sessions && typeof sessions === 'object' && '__diagnostics' in sessions
@@ -129,13 +130,13 @@ export async function listReportWorkplaces(req, res, next) {
 
     const filtered =
       normalizedCompanyId !== null
-        ? sessions.filter((session) => {
+        ? sessionArray.filter((session) => {
             const sessionCompanyId = normalizeNumericId(
               session?.company_id ?? session?.companyId,
             );
             return sessionCompanyId === normalizedCompanyId;
           })
-        : sessions;
+        : sessionArray;
 
     const rawAssignments = filtered
       .filter((session) => session && session.workplace_session_id != null)
@@ -186,7 +187,7 @@ export async function listReportWorkplaces(req, res, next) {
 
     const { assignments } = normalizeWorkplaceAssignments(rawAssignments);
 
-    res.json({ assignments, diagnostics: responseDiagnostics });
+    res.json({ assignments, diagnostics });
   } catch (err) {
     next(err);
   }
