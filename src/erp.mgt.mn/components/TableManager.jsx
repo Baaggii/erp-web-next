@@ -34,6 +34,7 @@ import {
   createGeneratedColumnEvaluator,
   valuesEqual,
 } from '../utils/generatedColumns.js';
+import { isPlainRecord } from '../utils/transactionValues.js';
 
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
@@ -154,6 +155,86 @@ function stripTemporaryLabelValue(value) {
     result[key] = next;
   }
   return changed ? result : value;
+}
+
+const DEFAULT_EDITABLE_NESTED_KEYS = [
+  'fields',
+  'fieldList',
+  'fieldSet',
+  'list',
+  'values',
+  'columns',
+  'items',
+  'editableFields',
+  'editableDefaultFields',
+  'allowedFields',
+  'permittedFields',
+];
+
+function walkEditableFieldValues(source, callback, options = {}) {
+  if (typeof callback !== 'function') return;
+
+  const skipKeys = new Set([
+    'hasExplicitConfig',
+    '__proto__',
+    ...(Array.isArray(options.skipKeys) ? options.skipKeys : []),
+  ]);
+  const nestedKeySet = new Set(
+    Array.isArray(options.nestedKeys)
+      ? options.nestedKeys
+      : DEFAULT_EDITABLE_NESTED_KEYS,
+  );
+  const visited = new Set();
+
+  const visit = (value) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string' || typeof value === 'number') {
+      const raw = String(value).trim();
+      if (!raw) return;
+      callback(raw);
+      return;
+    }
+    if (value instanceof Set) {
+      value.forEach(visit);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (value instanceof Map) {
+      value.forEach((enabled, key) => {
+        if (!enabled) return;
+        visit(key);
+      });
+      return;
+    }
+    if (!isPlainRecord(value)) return;
+    if (visited.has(value)) return;
+    visited.add(value);
+
+    nestedKeySet.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        visit(value[key]);
+      }
+    });
+
+    Object.entries(value).forEach(([key, val]) => {
+      if (skipKeys.has(key) || nestedKeySet.has(key)) return;
+      if (val === undefined || val === null) return;
+      if (typeof val === 'boolean') {
+        if (val) visit(key);
+        return;
+      }
+      if (typeof val === 'number' || typeof val === 'string') {
+        visit(val);
+        return;
+      }
+      visit(val);
+    });
+  };
+
+  visit(source);
 }
 
 function getTemporaryId(entry) {
@@ -4201,7 +4282,7 @@ const TableManager = forwardRef(function TableManager({
       (fields) => {
         const seen = new Set();
         const canonical = [];
-        (fields || []).forEach((field) => {
+        walkEditableFieldValues(fields, (field) => {
           const resolved = resolveCanonicalKey(field);
           if (!resolved || seen.has(resolved)) return;
           seen.add(resolved);
