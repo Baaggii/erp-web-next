@@ -5,6 +5,7 @@ export function preserveManualChangesAfterRecalc({
   table,
   changes,
   computedFieldMap = {},
+  editableFieldMap = {},
   desiredRow,
   recalculatedValues,
   equals = valuesEqual,
@@ -43,13 +44,51 @@ export function preserveManualChangesAfterRecalc({
     computedSet = new Set();
   }
 
+  const rawEditable = editableFieldMap?.[table];
+  let editableSet = null;
+  let hasExplicitEditableConfig = false;
+
+  const normalizeEditable = (value) => {
+    if (!value) return null;
+    if (value instanceof Set) return value;
+    if (Array.isArray(value)) {
+      return new Set(
+        value
+          .filter((field) => typeof field === 'string')
+          .map((field) => field.toLowerCase()),
+      );
+    }
+    return null;
+  };
+
+  if (rawEditable instanceof Set) {
+    editableSet = rawEditable;
+    hasExplicitEditableConfig = true;
+  } else if (Array.isArray(rawEditable)) {
+    editableSet = normalizeEditable(rawEditable);
+    hasExplicitEditableConfig = true;
+  } else if (rawEditable && typeof rawEditable === 'object') {
+    const candidate = rawEditable.fields || rawEditable.set || rawEditable.list;
+    editableSet = normalizeEditable(candidate);
+    if (typeof rawEditable.hasExplicitConfig === 'boolean') {
+      hasExplicitEditableConfig = rawEditable.hasExplicitConfig;
+    } else if (editableSet) {
+      hasExplicitEditableConfig = true;
+    }
+  }
+
   let nextContainer = currentContainer;
   let mutated = false;
 
   changedFields.forEach((field) => {
     if (typeof field !== 'string' || field.length === 0) return;
     const lower = field.toLowerCase();
-    if (computedSet.has(lower)) return;
+    if (
+      computedSet.has(lower) &&
+      hasExplicitEditableConfig &&
+      !(editableSet && editableSet.has(lower))
+    )
+      return;
     if (!Object.prototype.hasOwnProperty.call(desiredRow, field)) return;
     const desiredValue = desiredRow[field];
     if (equals(nextContainer[field], desiredValue)) return;
