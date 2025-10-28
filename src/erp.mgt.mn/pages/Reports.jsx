@@ -76,6 +76,34 @@ function normalizeNumericId(value) {
   return null;
 }
 
+function resolveSessionParam(candidates, options = {}) {
+  const { coerceNumberToString = false } = options;
+  for (const candidate of candidates) {
+    if (candidate === undefined || candidate === null) continue;
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (!trimmed) continue;
+      return { queryValue: trimmed, summaryValue: trimmed };
+    }
+    if (typeof candidate === 'number') {
+      if (!Number.isFinite(candidate)) continue;
+      const stringified = String(candidate);
+      return {
+        queryValue: stringified,
+        summaryValue: coerceNumberToString ? stringified : candidate,
+      };
+    }
+    if (typeof candidate === 'bigint') {
+      const stringified = candidate.toString();
+      return {
+        queryValue: stringified,
+        summaryValue: coerceNumberToString ? stringified : candidate,
+      };
+    }
+  }
+  return null;
+}
+
 function extractNumericTokens(value) {
   if (typeof value !== 'string') return [];
   const matches = value.match(/\d+/g);
@@ -557,52 +585,27 @@ export default function Reports() {
         paramsObject[key] = valueStr;
       }
     });
-    const companyIdForQuery =
-      normalizeNumericId(session?.company_id) ?? normalizeNumericId(company);
-    if (companyIdForQuery != null) {
-      const companyIdValue = String(companyIdForQuery);
-      params.set('companyId', companyIdValue);
-      paramsObject.companyId = companyIdValue;
+    const companyParam = resolveSessionParam([
+      session?.company_id,
+      session?.companyId,
+    ]);
+    if (companyParam) {
+      params.set('companyId', companyParam.queryValue);
+      paramsObject.companyId = companyParam.summaryValue;
     }
 
-    const branchIdForQuery =
-      normalizeNumericId(session?.branch_id) ?? normalizeNumericId(branch);
-    if (branchIdForQuery != null) {
-      const branchIdValue = String(branchIdForQuery);
-      params.set('branchId', branchIdValue);
-      paramsObject.branchId = branchIdValue;
-    }
-
-    const departmentIdForQuery =
-      normalizeNumericId(session?.department_id) ?? normalizeNumericId(department);
-    if (departmentIdForQuery != null) {
-      const departmentIdValue = String(departmentIdForQuery);
-      params.set('departmentId', departmentIdValue);
-      paramsObject.departmentId = departmentIdValue;
-    }
-
-    const positionIdForQuery =
-      normalizeNumericId(session?.position_id) ?? normalizeNumericId(position);
-    if (positionIdForQuery != null) {
-      const positionIdValue = String(positionIdForQuery);
-      params.set('positionId', positionIdValue);
-      paramsObject.positionId = positionIdValue;
-    }
-
-    const userIdForQuery = (() => {
-      const raw =
-        user?.empid ??
-        session?.empid ??
-        session?.employee_id ??
-        session?.employeeId ??
-        null;
-      if (raw === undefined || raw === null) return null;
-      const str = String(raw).trim();
-      return str.length ? str : null;
-    })();
-    if (userIdForQuery !== null) {
-      params.set('userId', userIdForQuery);
-      paramsObject.userId = userIdForQuery;
+    const userIdParam = resolveSessionParam(
+      [
+        session?.empid,
+        session?.employee_id,
+        session?.employeeId,
+        user?.empid,
+      ],
+      { coerceNumberToString: true },
+    );
+    if (userIdParam) {
+      params.set('userId', userIdParam.queryValue);
+      paramsObject.userId = userIdParam.summaryValue;
     }
 
     const controller = new AbortController();
@@ -634,10 +637,26 @@ export default function Reports() {
         const data = await res.json().catch(() => ({}));
         const diagnostics =
           data && typeof data === 'object' ? data.diagnostics ?? null : null;
-        const formattedSql =
-          stringifyDiagnosticValue(diagnostics?.formattedSql) ??
-          stringifyDiagnosticValue(diagnostics?.sql) ??
-          null;
+        const sqlCandidates = Array.isArray(diagnostics?.sqlCandidates)
+          ? diagnostics.sqlCandidates
+          : [
+              diagnostics?.formattedSql,
+              diagnostics?.formatted_sql,
+              diagnostics?.formattedSQL,
+              diagnostics?.query,
+              diagnostics?.queryText,
+              diagnostics?.statement,
+              diagnostics?.sql,
+              diagnostics?.SQL,
+            ];
+        let formattedSql = null;
+        for (const candidate of sqlCandidates) {
+          const normalized = stringifyDiagnosticValue(candidate);
+          if (normalized) {
+            formattedSql = normalized;
+            break;
+          }
+        }
         const diagnosticCounts = [];
         const normalizeCount = (value) =>
           typeof value === 'number' && Number.isFinite(value) ? value : null;
