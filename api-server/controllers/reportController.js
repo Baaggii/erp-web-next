@@ -63,19 +63,7 @@ export async function listReportWorkplaces(req, res, next) {
     }
 
     const companyInput = req.query.companyId ?? req.user.companyId;
-    let normalizedCompanyId = null;
-    if (companyInput !== undefined && companyInput !== null) {
-      const raw =
-        typeof companyInput === 'string'
-          ? companyInput.trim()
-          : companyInput;
-      if (raw !== '' && raw !== null) {
-        const numeric = Number(raw);
-        if (Number.isFinite(numeric)) {
-          normalizedCompanyId = numeric;
-        }
-      }
-    }
+    const normalizedCompanyId = normalizeNumericId(companyInput);
 
     const explicitDate = parseDateOnly(req.query.date);
     const startDate = parseDateOnly(req.query.startDate);
@@ -111,9 +99,7 @@ export async function listReportWorkplaces(req, res, next) {
       const currentUtcMonth = now.getUTCMonth() + 1;
 
       if (parsedYear === currentUtcYear && parsedMonth === currentUtcMonth) {
-        effectiveDate = new Date(
-          Date.UTC(parsedYear, parsedMonth - 1, now.getUTCDate()),
-        );
+        effectiveDate = new Date();
       } else {
         effectiveDate = new Date(Date.UTC(parsedYear, parsedMonth, 0));
       }
@@ -181,13 +167,68 @@ export async function listReportWorkplaces(req, res, next) {
 
     const defaultSession = pickDefaultSession(filtered);
 
-    const normalizedSession = defaultSession
+    const sessionPayload = defaultSession
       ? normalizeEmploymentSession(defaultSession, workplaceAssignments)
       : null;
 
+    const assignmentsForResponse = Array.isArray(
+      sessionPayload?.workplace_assignments,
+    )
+      ? sessionPayload.workplace_assignments
+      : workplaceAssignments;
+    const safeAssignments = Array.isArray(assignmentsForResponse)
+      ? assignmentsForResponse
+      : [];
+
+    const rawDiagnostics = (diagnostics && { ...diagnostics }) || {};
+    const parsedQueryRowCount = (() => {
+      const rawValue = rawDiagnostics.rowCount;
+      if (rawValue === undefined || rawValue === null) {
+        return null;
+      }
+      if (typeof rawValue === 'number') {
+        return Number.isFinite(rawValue) ? rawValue : null;
+      }
+      if (typeof rawValue === 'string') {
+        const trimmed = rawValue.trim();
+        if (!trimmed) {
+          return null;
+        }
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    })();
+
+    const diagnosticsPayload = {
+      ...rawDiagnostics,
+      effectiveDate:
+        effectiveDate instanceof Date && !Number.isNaN(effectiveDate.getTime())
+          ? effectiveDate.toISOString()
+          : null,
+      rowCount:
+        parsedQueryRowCount !== null ? parsedQueryRowCount : sessionList.length,
+      queryRowCount:
+        parsedQueryRowCount !== null
+          ? parsedQueryRowCount
+          : rawDiagnostics.rowCount ?? null,
+      sessionRowCount: sessionList.length,
+      filteredCount: filtered.length,
+      assignmentCount: workplaceAssignments.length,
+      normalizedAssignmentCount: Array.isArray(safeAssignments)
+        ? safeAssignments.length
+        : 0,
+      selectedWorkplaceId:
+        sessionPayload?.workplace_id ?? sessionPayload?.workplaceId ?? null,
+      selectedWorkplaceSessionId:
+        sessionPayload?.workplace_session_id ??
+        sessionPayload?.workplaceSessionId ??
+        null,
+    };
+
     res.json({
-      assignments: normalizedSession?.workplace_assignments ?? [],
-      diagnostics,
+      assignments: safeAssignments,
+      diagnostics: diagnosticsPayload,
     });
   } catch (err) {
     next(err);
