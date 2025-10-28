@@ -697,7 +697,9 @@ if (typeof mock.import !== 'function') {
       (call) =>
         call.message.includes('Fetching workplaces with params') &&
         call.message.includes('"year":"2025"') &&
-        call.message.includes('"month":"10"'),
+        call.message.includes('"month":"10"') &&
+        call.message.includes('"companyId":99') &&
+        call.message.includes('"userId":"321"'),
     );
     assert.ok(startToast, 'Fetch start toast not emitted');
     assert.equal(startToast.type, 'info');
