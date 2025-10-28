@@ -531,6 +531,55 @@ if (typeof mock.import !== 'function') {
     assert.equal(reasonMap.has('fee'), false);
   });
 
+  test('buildComputedFieldMap skips guard reasons for editable POS fields', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Total' },
+          { table: 'transactions', field: 'Subtotal', agg: '=' },
+        ],
+        locks: [
+          { table: 'transactions', field: 'Total', nonEditable: true, reasons: ['workflowLock'] },
+          { table: 'transactions', field: 'Discount', nonEditable: true, reasons: ['discountHold'] },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: {
+        total: 'Total',
+        subtotal: 'Subtotal',
+        discount: 'Discount',
+      },
+    };
+
+    const editableFieldMap = { transactions: new Set(['total']) };
+
+    const map = buildComputedFieldMap(
+      [],
+      posFields,
+      columnCaseMap,
+      ['transactions'],
+      editableFieldMap,
+    );
+
+    assert.ok(map.transactions instanceof Set);
+    assert.equal(map.transactions.has('total'), true);
+
+    const reasonMap = map.transactions.reasonMap;
+    assert.ok(reasonMap instanceof Map);
+    assert.equal(reasonMap.has('total'), false);
+
+    const discountReasons = reasonMap.get('discount');
+    assert.ok(discountReasons instanceof Set);
+    assert.equal(discountReasons.has('discountHold'), true);
+  });
+
 
   test('generated column configs support lowercase generation_expression metadata', async () => {
     const actualTransactionValues = await import(
@@ -730,7 +779,7 @@ if (typeof mock.import !== 'function') {
 
 }
 
-test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
+test('preserveManualChangesAfterRecalc preserves manual overrides even for computed fields', async () => {
   const { preserveManualChangesAfterRecalc } = await import(
     '../../src/erp.mgt.mn/utils/preserveManualChanges.js',
   );
@@ -755,7 +804,7 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
   });
 
   assert.notStrictEqual(merged, recalculatedValues);
-  assert.equal(merged.transactions.TotalAmount, 100);
+  assert.equal(merged.transactions.TotalAmount, 42);
   assert.equal(merged.transactions.Note, 'manual entry');
 
   const stable = preserveManualChangesAfterRecalc({

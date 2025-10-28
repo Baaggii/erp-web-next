@@ -554,40 +554,16 @@ export default function Reports() {
         const formattedSql =
           diagnostics?.formattedSql || diagnostics?.sql || null;
         const diagnosticCounts = [];
-        const normalizeCount = (value) => {
-          if (typeof value === 'number') {
-            return Number.isFinite(value) ? value : null;
-          }
-          if (typeof value === 'string') {
-            const trimmed = value.trim();
-            if (!trimmed) {
-              return null;
-            }
-            const parsed = Number(trimmed);
-            return Number.isFinite(parsed) ? parsed : null;
-          }
-          return null;
-        };
+        const normalizeCount = (value) =>
+          typeof value === 'number' && Number.isFinite(value) ? value : null;
         const rowCount = normalizeCount(diagnostics?.rowCount);
-        const queryRowCount = normalizeCount(diagnostics?.queryRowCount);
         const filteredCount = normalizeCount(diagnostics?.filteredCount);
         const assignmentCount = normalizeCount(diagnostics?.assignmentCount);
         const normalizedAssignmentCount = normalizeCount(
           diagnostics?.normalizedAssignmentCount,
         );
-        const sessionRowCount = normalizeCount(diagnostics?.sessionRowCount);
         if (rowCount !== null) {
-          diagnosticCounts.push(`query rows: ${rowCount}`);
-        }
-        if (sessionRowCount !== null && sessionRowCount !== rowCount) {
-          diagnosticCounts.push(`session rows: ${sessionRowCount}`);
-        }
-        if (
-          queryRowCount !== null &&
-          queryRowCount !== rowCount &&
-          queryRowCount !== sessionRowCount
-        ) {
-          diagnosticCounts.push(`diagnostic rows: ${queryRowCount}`);
+          diagnosticCounts.push(`rows: ${rowCount}`);
         }
         if (filteredCount !== null) {
           diagnosticCounts.push(`filtered: ${filteredCount}`);
@@ -709,8 +685,6 @@ export default function Reports() {
               'formattedSql',
               'params',
               'rowCount',
-              'queryRowCount',
-              'sessionRowCount',
               'filteredCount',
               'assignmentCount',
               'normalizedAssignmentCount',
