@@ -565,6 +565,30 @@ export default function Reports() {
       paramsObject.companyId = companyIdValue;
     }
 
+    const branchIdForQuery =
+      normalizeNumericId(session?.branch_id) ?? normalizeNumericId(branch);
+    if (branchIdForQuery != null) {
+      const branchIdValue = String(branchIdForQuery);
+      params.set('branchId', branchIdValue);
+      paramsObject.branchId = branchIdValue;
+    }
+
+    const departmentIdForQuery =
+      normalizeNumericId(session?.department_id) ?? normalizeNumericId(department);
+    if (departmentIdForQuery != null) {
+      const departmentIdValue = String(departmentIdForQuery);
+      params.set('departmentId', departmentIdValue);
+      paramsObject.departmentId = departmentIdValue;
+    }
+
+    const positionIdForQuery =
+      normalizeNumericId(session?.position_id) ?? normalizeNumericId(position);
+    if (positionIdForQuery != null) {
+      const positionIdValue = String(positionIdForQuery);
+      params.set('positionId', positionIdValue);
+      paramsObject.positionId = positionIdValue;
+    }
+
     const userIdForQuery = (() => {
       const raw =
         user?.empid ??
@@ -807,11 +831,17 @@ export default function Reports() {
     hasWorkplaceParam,
     workplaceDateQuery,
     session?.company_id,
+    session?.branch_id,
+    session?.department_id,
+    session?.position_id,
     session?.empid,
     session?.employee_id,
     session?.employeeId,
     user?.empid,
     company,
+    branch,
+    department,
+    position,
     addToast,
     workplaceFetchDiagnosticsEnabled,
   ]);
