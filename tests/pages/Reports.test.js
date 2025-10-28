@@ -559,12 +559,14 @@ if (typeof mock.import !== 'function') {
       company: 99,
       branch: 77,
       department: 8,
+      position: 6,
       workplace: 11,
       user: { empid: 321 },
       session: {
         company_id: 99,
         branch_id: 77,
         department_id: 8,
+        position_id: 6,
         workplace_id: 1,
         workplace_session_id: 11,
         workplace_name: 'Base workplace',
@@ -677,6 +679,18 @@ if (typeof mock.import !== 'function') {
     assert.ok(
       /userId=321/.test(workplaceCall.url),
       'User parameter missing from workplace fetch',
+    );
+    assert.ok(
+      /branchId=77/.test(workplaceCall.url),
+      'Branch parameter missing from workplace fetch',
+    );
+    assert.ok(
+      /departmentId=8/.test(workplaceCall.url),
+      'Department parameter missing from workplace fetch',
+    );
+    assert.ok(
+      /positionId=6/.test(workplaceCall.url),
+      'Position parameter missing from workplace fetch',
     );
 
     const startToast = addToastCalls.find(
