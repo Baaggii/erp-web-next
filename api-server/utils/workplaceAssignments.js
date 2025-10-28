@@ -3,6 +3,10 @@ export function normalizeNumericId(value) {
   if (typeof value === 'number') {
     return Number.isFinite(value) ? value : null;
   }
+  if (typeof value === 'bigint') {
+    const asNumber = Number(value);
+    return Number.isSafeInteger(asNumber) ? asNumber : null;
+  }
   if (typeof value === 'string') {
     const trimmed = value.trim();
     if (!trimmed) return null;
