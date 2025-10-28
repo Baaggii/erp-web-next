@@ -619,10 +619,10 @@ export default function Reports() {
 
     const userIdForQuery = (() => {
       const raw =
-        user?.empid ??
         session?.empid ??
         session?.employee_id ??
         session?.employeeId ??
+        user?.empid ??
         null;
       if (raw === undefined || raw === null) return null;
       const str = String(raw).trim();
