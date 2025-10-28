@@ -902,12 +902,7 @@ const RowFormModal = function RowFormModal({
       vals[c] = v;
     });
     inputRefs.current = {};
-    setErrors((prev) => {
-      if (!prev || Object.keys(prev).length === 0) {
-        return prev;
-      }
-      return {};
-    });
+    setErrors({});
     setFormValuesWithGenerated(() => vals, { notify: false });
   }, [
     row,
