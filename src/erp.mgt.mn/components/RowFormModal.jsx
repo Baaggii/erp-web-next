@@ -207,6 +207,14 @@ const RowFormModal = function RowFormModal({
               ),
             );
             break;
+          case 'sessionFieldAutoReset':
+            messages.push(
+              t(
+                'pos_guard_reason_session_auto_reset',
+                'Value resets automatically to match the active POS session',
+              ),
+            );
+            break;
           case 'computed':
             messages.push(
               t('pos_guard_reason_computed', 'Value is automatically computed'),
@@ -1625,6 +1633,64 @@ const RowFormModal = function RowFormModal({
       loadView(view);
     }
   }
+
+  const notifyAutoResetGuardOnEdit = useCallback(
+    (field) => {
+      if (!guardToastEnabled || !field) return;
+
+      try {
+        const fieldName = String(field);
+        const lower = fieldName.toLowerCase();
+        const codes = Array.isArray(disabledReasonLookup[lower])
+          ? disabledReasonLookup[lower]
+          : [];
+
+        if (!codes.includes('sessionFieldAutoReset')) return;
+
+        const reasons = describeGuardReasons(codes);
+        const normalizedFallback = t(
+          'pos_guard_reason_session_auto_reset',
+          'Value resets automatically to match the active POS session',
+        );
+        const reasonsText = (reasons.length > 0 ? reasons : codes.map((code) => String(code))).join(
+          '; ',
+        );
+        const message = t(
+          'pos_guard_toast_message_edit_auto_reset',
+          '{{field}} edit resets automatically: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText || normalizedFallback,
+          },
+        );
+
+        const now = Date.now();
+        const last = lastGuardToastRef.current;
+        if (last.field === lower && now - last.ts <= 400) return;
+
+        if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+          const detail = { message, type: 'info' };
+          let evt = null;
+          if (typeof window.CustomEvent === 'function') {
+            evt = new window.CustomEvent('toast', { detail });
+          } else if (typeof document !== 'undefined' && document.createEvent) {
+            evt = document.createEvent('CustomEvent');
+            if (evt && evt.initCustomEvent) {
+              evt.initCustomEvent('toast', false, false, detail);
+            }
+          }
+          if (evt) {
+            window.dispatchEvent(evt);
+          }
+        }
+
+        lastGuardToastRef.current = { field: lower, ts: now };
+      } catch (err) {
+        console.error('RowFormModal guard toast error', err);
+      }
+    },
+    [guardToastEnabled, disabledReasonLookup, describeGuardReasons, t],
+  );
 
   async function handleTemporarySave() {
     if (!allowTemporarySave || !onSaveTemporary) return;

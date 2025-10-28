@@ -673,11 +673,9 @@ export function buildComputedFieldMap(
   posFields = [],
   columnCaseMap = {},
   tables = [],
-  editableFieldMap = {},
 ) {
   const tableCaseMap = {};
   const columnCaseLookup = {};
-  const editableTableLookup = {};
 
   const registerTableName = (name) => {
     const normalized = normalizeIdentifier(name);
@@ -714,55 +712,6 @@ export function buildComputedFieldMap(
 
   Object.entries(columnCaseMap || {}).forEach(([tableName, map]) => {
     registerColumnCaseMap(tableName, map);
-  });
-
-  const registerEditableFields = (tableName, fields) => {
-    const canonicalTable = registerTableName(tableName);
-    if (!canonicalTable) return;
-    const lowerTable = canonicalTable.toLowerCase();
-    let fieldSet = editableTableLookup[lowerTable];
-    if (!fieldSet) {
-      fieldSet = new Set();
-      editableTableLookup[lowerTable] = fieldSet;
-    }
-
-    const addField = (value) => {
-      if (value === undefined || value === null) return;
-      const raw = String(value).trim();
-      if (!raw) return;
-      fieldSet.add(raw.toLowerCase());
-    };
-
-    if (fields instanceof Set || fields instanceof Map) {
-      fields.forEach((value, key) => {
-        if (fields instanceof Map) {
-          if (!value) return;
-          addField(key);
-        } else {
-          addField(value);
-        }
-      });
-      return;
-    }
-
-    if (Array.isArray(fields)) {
-      fields.forEach(addField);
-      return;
-    }
-
-    if (fields && typeof fields === 'object') {
-      Object.entries(fields).forEach(([key, value]) => {
-        if (!value) return;
-        addField(key);
-      });
-      return;
-    }
-
-    addField(fields);
-  };
-
-  Object.entries(editableFieldMap || {}).forEach(([tableName, fields]) => {
-    registerEditableFields(tableName, fields);
   });
 
   const result = {};
@@ -806,18 +755,10 @@ export function buildComputedFieldMap(
     return { entry, canonical };
   };
 
-  const shouldSkipReason = (canonical) => {
-    if (!canonical) return false;
-    const editableSet = editableTableLookup[canonical.table.toLowerCase()];
-    if (!(editableSet instanceof Set) || editableSet.size === 0) return false;
-    return editableSet.has(canonical.lower);
-  };
-
   const addReason = (tableName, fieldName, reason) => {
     const info = ensureFieldEntry(tableName, fieldName);
     if (!info) return;
     const { entry, canonical } = info;
-    if (shouldSkipReason(canonical)) return;
     if (!reason && reason !== 0) return;
     let reasonMap = entry.reasonMap;
     if (!(reasonMap instanceof Map)) {
@@ -884,20 +825,6 @@ export function buildComputedFieldMap(
 
     addReason(targetTable, targetField, 'posFormula');
 
-    const lockDescriptors = extractLockDescriptors(entry);
-    lockDescriptors.forEach((lock) => {
-      if (!lock?.table || !lock?.field) return;
-      if (!lock.nonEditable) return;
-      addReason(lock.table, lock.field, 'posLock');
-      if (Array.isArray(lock.reasons)) {
-        lock.reasons.forEach((code) => {
-          if (code === undefined || code === null) return;
-          const str = String(code).trim();
-          if (!str) return;
-          addReason(lock.table, lock.field, str);
-        });
-      }
-    });
   });
 
   return result;
@@ -2089,14 +2016,12 @@ export default function PosTransactionsPage() {
         config?.posFields || [],
         memoColumnCaseMap,
         tableList,
-        editableFieldLookup,
       ),
     [
       normalizedCalcFields,
       config?.posFields,
       memoColumnCaseMap,
       tableList,
-      editableFieldLookup,
     ],
   );
 
@@ -2994,29 +2919,50 @@ export default function PosTransactionsPage() {
                 const footerFields = canonicalizeFields(fc.footerFields);
                 const totalAmountFields = canonicalizeFields(fc.totalAmountFields);
                 const totalCurrencyFields = canonicalizeFields(fc.totalCurrencyFields);
-                const provided = canonicalizeFields(fc.editableFields);
-                const defaults = canonicalizeFields(fc.editableDefaultFields);
-                const editVals = Array.from(new Set([...defaults, ...provided]));
-                const editSet =
-                  editVals.length > 0
-                    ? new Set(editVals.map((f) => f.toLowerCase()))
-                    : null;
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const tableSessionFields = (sessionFields || [])
-                  .filter((sf) => sf?.table === t.table && typeof sf?.field === 'string')
-                  .map((sf) => sf.field);
-                const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
-                  allFields,
-                  editSet,
-                  caseMap,
-                  sessionFields: tableSessionFields,
-                });
+                const canonicalizeField = (lowerField) => {
+                  if (typeof lowerField !== 'string' || !lowerField) return null;
+                  const fromCaseMap = caseMap[lowerField];
+                  if (typeof fromCaseMap === 'string' && fromCaseMap) {
+                    return fromCaseMap;
+                  }
+                  const match = allFields.find(
+                    (field) => typeof field === 'string' && field.toLowerCase() === lowerField,
+                  );
+                  if (match) return match;
+                  return lowerField;
+                };
+                const computedEntry = computedFieldMap?.[t.table];
+                const disabled = [];
+                const disabledLower = new Set();
                 const disabledFieldReasons = {};
-                if (reasonMap instanceof Map) {
-                  reasonMap.forEach((codes, field) => {
-                    disabledFieldReasons[field] = Array.from(codes);
+                if (computedEntry instanceof Set) {
+                  const reasonLookup = computedEntry.reasonMap;
+                  const allowedReasons = new Set(['calcField', 'posFormula']);
+                  computedEntry.forEach((lowerField) => {
+                    if (typeof lowerField !== 'string' || !lowerField) return;
+                    const canonical = canonicalizeField(lowerField);
+                    if (!canonical) return;
+                    const normalizedLower = canonical.toLowerCase();
+                    if (disabledLower.has(normalizedLower)) return;
+                    const reasonSet =
+                      reasonLookup instanceof Map ? reasonLookup.get(lowerField) : null;
+                    if (reasonSet instanceof Set) {
+                      const reasons = Array.from(reasonSet)
+                        .map((code) => (code === undefined || code === null ? '' : String(code)))
+                        .map((code) => code.trim())
+                        .filter((code) => allowedReasons.has(code));
+                      if (reasons.length === 0 && reasonSet.size > 0) {
+                        return;
+                      }
+                      if (reasons.length > 0) {
+                        disabledFieldReasons[canonical] = reasons;
+                      }
+                    }
+                    disabledLower.add(normalizedLower);
+                    disabled.push(canonical);
                   });
                 }
                 const posStyle = {
