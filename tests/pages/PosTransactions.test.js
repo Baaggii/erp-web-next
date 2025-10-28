@@ -443,16 +443,11 @@ if (typeof mock.import !== 'function') {
     const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
       allFields: visible,
       editSet,
-      computedEntry: computedSet,
       caseMap: columnCaseMap.transactions,
     });
 
-    assert.deepEqual(disabled, ['Total']);
-    assert.equal(disabled.includes('Amount'), false);
-
-    const totalDisabledReasons = reasonMap.get('Total');
-    assert.ok(totalDisabledReasons instanceof Set);
-    assert.equal(totalDisabledReasons.has('posFormula'), true);
+    assert.deepEqual(disabled, []);
+    assert.equal(reasonMap.size, 0);
   });
 
   test('buildComputedFieldMap tracks reason codes for multi-field formulas', async () => {
@@ -741,6 +736,9 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
   );
 
   const computedFieldMap = { transactions: new Set(['totalamount']) };
+  const editableFieldMap = {
+    transactions: { fields: new Set(), hasExplicitConfig: true },
+  };
   const desiredRow = { TotalAmount: 42, Note: 'manual entry' };
   const changes = { TotalAmount: 42, Note: 'manual entry' };
   const recalculatedValues = {
@@ -751,6 +749,7 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
     table: 'transactions',
     changes,
     computedFieldMap,
+    editableFieldMap,
     desiredRow,
     recalculatedValues,
   });
@@ -763,11 +762,40 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
     table: 'transactions',
     changes,
     computedFieldMap,
+    editableFieldMap,
     desiredRow,
     recalculatedValues: merged,
   });
 
   assert.strictEqual(stable, merged);
+});
+
+test('preserveManualChangesAfterRecalc allows edits on editable computed fields', async () => {
+  const { preserveManualChangesAfterRecalc } = await import(
+    '../../src/erp.mgt.mn/utils/preserveManualChanges.js',
+  );
+
+  const computedFieldMap = { transactions: new Set(['totalamount']) };
+  const editableFieldMap = {
+    transactions: { fields: new Set(['totalamount']), hasExplicitConfig: true },
+  };
+  const changes = { TotalAmount: 42 };
+  const desiredRow = { TotalAmount: 42 };
+  const recalculatedValues = {
+    transactions: { TotalAmount: 100 },
+  };
+
+  const merged = preserveManualChangesAfterRecalc({
+    table: 'transactions',
+    changes,
+    computedFieldMap,
+    editableFieldMap,
+    desiredRow,
+    recalculatedValues,
+  });
+
+  assert.notStrictEqual(merged, recalculatedValues);
+  assert.equal(merged.transactions.TotalAmount, 42);
 });
 
 test('fetchTriggersForTables caches trigger metadata for hidden tables', async () => {
