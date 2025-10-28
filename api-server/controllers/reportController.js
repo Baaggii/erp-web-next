@@ -1,8 +1,6 @@
 import * as db from '../../db/index.js';
-import {
-  normalizeNumericId,
-  normalizeWorkplaceAssignments,
-} from '../utils/workplaceAssignments.js';
+import { normalizeEmploymentSession } from '../utils/employmentSession.js';
+import { normalizeNumericId } from '../utils/workplaceAssignments.js';
 
 let getEmploymentSessionsImpl = db.getEmploymentSessions;
 
@@ -147,56 +145,46 @@ export async function listReportWorkplaces(req, res, next) {
           })
         : sessionList;
 
-    const rawAssignments = filtered
-      .filter((session) => session && session.workplace_session_id != null)
-      .map((session) => ({
-        company_id: session.company_id ?? null,
-        companyId: session.company_id ?? null,
-        company_name:
-          typeof session.company_name === 'string'
-            ? session.company_name.trim() || null
-            : session.company_name ?? null,
-        companyName:
-          typeof session.company_name === 'string'
-            ? session.company_name.trim() || null
-            : session.company_name ?? null,
-        branch_id: session.branch_id ?? null,
-        branchId: session.branch_id ?? null,
-        branch_name:
-          typeof session.branch_name === 'string'
-            ? session.branch_name.trim() || null
-            : session.branch_name ?? null,
-        branchName:
-          typeof session.branch_name === 'string'
-            ? session.branch_name.trim() || null
-            : session.branch_name ?? null,
-        department_id: session.department_id ?? null,
-        departmentId: session.department_id ?? null,
-        department_name:
-          typeof session.department_name === 'string'
-            ? session.department_name.trim() || null
-            : session.department_name ?? null,
-        departmentName:
-          typeof session.department_name === 'string'
-            ? session.department_name.trim() || null
-            : session.department_name ?? null,
-        workplace_id: session.workplace_id ?? null,
-        workplaceId: session.workplace_id ?? null,
-        workplace_name:
-          typeof session.workplace_name === 'string'
-            ? session.workplace_name.trim() || null
-            : session.workplace_name ?? null,
-        workplaceName:
-          typeof session.workplace_name === 'string'
-            ? session.workplace_name.trim() || null
-            : session.workplace_name ?? null,
-        workplace_session_id: session.workplace_session_id ?? null,
-        workplaceSessionId: session.workplace_session_id ?? null,
-      }));
+    const workplaceAssignments = filtered
+      .filter((s) => s && s.workplace_session_id != null)
+      .map(
+        ({
+          branch_id,
+          branch_name,
+          department_id,
+          department_name,
+          workplace_id,
+          workplace_name,
+          workplace_session_id,
+        }) => ({
+          branch_id: branch_id ?? null,
+          branch_name: branch_name ?? null,
+          department_id: department_id ?? null,
+          department_name: department_name ?? null,
+          workplace_id: workplace_id ?? null,
+          workplace_name: workplace_name ?? null,
+          workplace_session_id: workplace_session_id ?? null,
+        }),
+      );
 
-    const { assignments } = normalizeWorkplaceAssignments(rawAssignments);
+    const pickDefaultSession = (items = []) => {
+      if (!Array.isArray(items) || items.length === 0) return null;
+      const withWorkplace = items.find(
+        (item) => item?.workplace_session_id != null,
+      );
+      return withWorkplace ?? items[0];
+    };
 
-    res.json({ assignments, diagnostics });
+    const defaultSession = pickDefaultSession(filtered);
+
+    const normalizedSession = defaultSession
+      ? normalizeEmploymentSession(defaultSession, workplaceAssignments)
+      : null;
+
+    res.json({
+      assignments: normalizedSession?.workplace_assignments ?? [],
+      diagnostics,
+    });
   } catch (err) {
     next(err);
   }
