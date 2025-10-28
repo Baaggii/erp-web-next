@@ -448,131 +448,12 @@ function normalizeLockDescriptor(raw, fallbackTable, fallbackField) {
   };
 }
 
-function extractConfiguredNonEditableLockKeys(entry = {}) {
-  const formConfigsRaw = entry?.formConfigurations;
-  const formConfigList = Array.isArray(formConfigsRaw)
-    ? formConfigsRaw
-    : formConfigsRaw && typeof formConfigsRaw === 'object'
-      ? Object.values(formConfigsRaw)
-      : [];
-
-  if (formConfigList.length === 0) return null;
-
-  const allowed = new Set();
-
-  const register = (raw, fallbackTable, fallbackField) => {
-    const normalized = normalizeLockDescriptor(raw, fallbackTable, fallbackField);
-    if (!normalized?.table || !normalized?.field) return;
-    if (!normalized.nonEditable) return;
-    const key = `${normalized.table.toLowerCase()}::${normalized.field.toLowerCase()}`;
-    allowed.add(key);
-  };
-
-  const visit = (value, fallbackTable, fallbackField) => {
-    if (!value) return;
-    if (Array.isArray(value)) {
-      value.forEach((item) => visit(item, fallbackTable, fallbackField));
-      return;
-    }
-    if (typeof value === 'object') {
-      const nestedTable =
-        normalizeIdentifier(value.table) ||
-        normalizeIdentifier(value.table_name) ||
-        normalizeIdentifier(value.tableName) ||
-        normalizeIdentifier(value.tbl) ||
-        normalizeIdentifier(value.target?.table) ||
-        normalizeIdentifier(value.cell?.table) ||
-        fallbackTable;
-      const nestedField =
-        normalizeIdentifier(value.field) ||
-        normalizeIdentifier(value.field_name) ||
-        normalizeIdentifier(value.fieldName) ||
-        normalizeIdentifier(value.column) ||
-        normalizeIdentifier(value.column_name) ||
-        normalizeIdentifier(value.columnName) ||
-        normalizeIdentifier(value.target?.field) ||
-        normalizeIdentifier(value.cell?.field) ||
-        fallbackField;
-
-      const hasEditFlag =
-        Object.prototype.hasOwnProperty.call(value, 'editable') ||
-        Object.prototype.hasOwnProperty.call(value, 'nonEditable') ||
-        Object.prototype.hasOwnProperty.call(value, 'locked') ||
-        Object.prototype.hasOwnProperty.call(value, 'isLocked') ||
-        Object.prototype.hasOwnProperty.call(value, 'readOnly') ||
-        Object.prototype.hasOwnProperty.call(value, 'readonly') ||
-        Object.prototype.hasOwnProperty.call(value, 'disabled') ||
-        Object.prototype.hasOwnProperty.call(value, 'preventEdit') ||
-        Object.prototype.hasOwnProperty.call(value, 'prevent_edit') ||
-        Object.prototype.hasOwnProperty.call(value, 'mode') ||
-        Object.prototype.hasOwnProperty.call(value, 'lockMode') ||
-        Object.prototype.hasOwnProperty.call(value, 'accessMode') ||
-        Object.prototype.hasOwnProperty.call(value, 'permission') ||
-        Object.prototype.hasOwnProperty.call(value, 'status') ||
-        Object.prototype.hasOwnProperty.call(value, 'lockStatus') ||
-        Object.prototype.hasOwnProperty.call(value, 'state') ||
-        Object.prototype.hasOwnProperty.call(value, 'stage');
-
-      if (hasEditFlag) register(value, nestedTable, nestedField);
-
-      visit(value.locks, nestedTable, nestedField);
-      visit(value.lockCells, nestedTable, nestedField);
-      visit(value.cellLocks, nestedTable, nestedField);
-      visit(value.lockEntries, nestedTable, nestedField);
-      visit(value.lockList, nestedTable, nestedField);
-      visit(value.lockMetadata, nestedTable, nestedField);
-      visit(value.lockInfo, nestedTable, nestedField);
-      visit(value.lockData, nestedTable, nestedField);
-      visit(value.cells, nestedTable, nestedField);
-      visit(value.parts, nestedTable, nestedField);
-      visit(value.entries, nestedTable, nestedField);
-      visit(value.items, nestedTable, nestedField);
-      visit(value.rows, nestedTable, nestedField);
-      if (value.meta && typeof value.meta === 'object') {
-        visit(value.meta.locks, nestedTable, nestedField);
-      }
-      if (value.metadata && typeof value.metadata === 'object') {
-        visit(value.metadata.locks, nestedTable, nestedField);
-      }
-    }
-  };
-
-  formConfigList.forEach((cfg) => {
-    if (!cfg || typeof cfg !== 'object') return;
-    const fallbackTable =
-      normalizeIdentifier(cfg.table) ||
-      normalizeIdentifier(cfg.target?.table) ||
-      null;
-    const fallbackField =
-      normalizeIdentifier(cfg.field) ||
-      normalizeIdentifier(cfg.target?.field) ||
-      null;
-
-    visit(cfg, fallbackTable, fallbackField);
-  });
-
-  return allowed;
-}
-
-function extractLockDescriptors(entry = {}, allowedTargets = null) {
+function extractLockDescriptors(entry = {}) {
   const descriptorMap = new Map();
-
-  const allowSet =
-    allowedTargets instanceof Set && allowedTargets.size >= 0 ? allowedTargets : null;
-
-  const isAllowed = (table, field) => {
-    if (!allowSet) return true;
-    const tbl = normalizeIdentifier(table);
-    const fld = normalizeIdentifier(field);
-    if (!tbl || !fld) return false;
-    const key = `${tbl.toLowerCase()}::${fld.toLowerCase()}`;
-    return allowSet.has(key);
-  };
 
   const registerDescriptor = (raw, fallbackTable, fallbackField) => {
     const normalized = normalizeLockDescriptor(raw, fallbackTable, fallbackField);
     if (!normalized) return;
-    if (!isAllowed(normalized.table, normalized.field)) return;
     const tableKey = normalized.table.toLowerCase();
     const fieldKey = normalized.field.toLowerCase();
     const key = `${tableKey}::${fieldKey}`;
@@ -820,8 +701,7 @@ export function buildComputedFieldMap(
 
     addReason(targetTable, targetField, 'posFormula');
 
-    const allowedLockTargets = extractConfiguredNonEditableLockKeys(entry);
-    const lockDescriptors = extractLockDescriptors(entry, allowedLockTargets);
+    const lockDescriptors = extractLockDescriptors(entry);
     lockDescriptors.forEach((lock) => {
       if (!lock?.table || !lock?.field) return;
       if (!lock.nonEditable) return;
