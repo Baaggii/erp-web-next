@@ -580,10 +580,41 @@ export default function Reports() {
     const companyIdForQuery = resolveIdParam(
       session?.company_id,
       session?.companyId,
+      company,
     );
     if (companyIdForQuery !== null) {
       params.set('companyId', companyIdForQuery);
       paramsObject.companyId = companyIdForQuery;
+    }
+
+    const branchIdForQuery = resolveIdParam(
+      session?.branch_id,
+      session?.branchId,
+      branch,
+    );
+    if (branchIdForQuery !== null) {
+      params.set('branchId', branchIdForQuery);
+      paramsObject.branchId = branchIdForQuery;
+    }
+
+    const departmentIdForQuery = resolveIdParam(
+      session?.department_id,
+      session?.departmentId,
+      department,
+    );
+    if (departmentIdForQuery !== null) {
+      params.set('departmentId', departmentIdForQuery);
+      paramsObject.departmentId = departmentIdForQuery;
+    }
+
+    const positionIdForQuery = resolveIdParam(
+      session?.position_id,
+      session?.positionId,
+      position,
+    );
+    if (positionIdForQuery !== null) {
+      params.set('positionId', positionIdForQuery);
+      paramsObject.positionId = positionIdForQuery;
     }
 
     const userIdForQuery = (() => {
