@@ -778,6 +778,7 @@ export function collectDisabledFieldsAndReasons({
     if (typeof field !== 'string' || !field) return;
     const lower = field.toLowerCase();
     if (!allFieldLowerSet.has(lower)) return;
+    if (editSet instanceof Set && editSet.has(lower)) return;
     let canonicalField =
       caseMap[lower] ||
       normalizedFields.find((entry) => entry.toLowerCase() === lower) ||
