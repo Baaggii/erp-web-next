@@ -733,7 +733,32 @@ export function buildComputedFieldMap(
       fieldSet.add(raw.toLowerCase());
     };
 
-    walkEditableFieldValues(fields, addField);
+    if (fields instanceof Set || fields instanceof Map) {
+      fields.forEach((value, key) => {
+        if (fields instanceof Map) {
+          if (!value) return;
+          addField(key);
+        } else {
+          addField(value);
+        }
+      });
+      return;
+    }
+
+    if (Array.isArray(fields)) {
+      fields.forEach(addField);
+      return;
+    }
+
+    if (fields && typeof fields === 'object') {
+      Object.entries(fields).forEach(([key, value]) => {
+        if (!value) return;
+        addField(key);
+      });
+      return;
+    }
+
+    addField(fields);
   };
 
   Object.entries(editableFieldMap || {}).forEach(([tableName, fields]) => {
