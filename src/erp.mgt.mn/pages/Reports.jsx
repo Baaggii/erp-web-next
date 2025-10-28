@@ -177,13 +177,6 @@ function stringifyDiagnosticValue(value) {
   return String(value);
 }
 
-function normalizeSqlDiagnosticValue(value) {
-  const normalized = stringifyDiagnosticValue(value);
-  if (typeof normalized !== 'string') return null;
-  const trimmed = normalized.trim();
-  return trimmed.length ? trimmed : null;
-}
-
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
@@ -682,20 +675,13 @@ export default function Reports() {
               diagnostics?.SQL,
             ];
         let formattedSql = null;
-        let sawSqlCandidateValue = false;
         for (const candidate of sqlCandidates) {
-          if (candidate !== undefined && candidate !== null) {
-            sawSqlCandidateValue = true;
-          }
-          const normalized = normalizeSqlDiagnosticValue(candidate);
+          const normalized = stringifyDiagnosticValue(candidate);
           if (normalized) {
             formattedSql = normalized;
             break;
           }
         }
-        const sqlUnavailableReasonFromDiagnostics = normalizeSqlDiagnosticValue(
-          diagnostics?.sqlUnavailableReason,
-        );
         const diagnosticCounts = [];
         const normalizeCount = (value) =>
           typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -813,22 +799,6 @@ export default function Reports() {
             })();
             if (formattedSqlForToast) {
               details.push(`SQL: ${formattedSqlForToast}`);
-            } else {
-              const sqlMissingReason = (() => {
-                if (sqlUnavailableReasonFromDiagnostics) {
-                  return sqlUnavailableReasonFromDiagnostics;
-                }
-                if (!diagnostics || typeof diagnostics !== 'object') {
-                  return 'SQL unavailable: diagnostics missing from response.';
-                }
-                if (!sawSqlCandidateValue) {
-                  return 'SQL unavailable: diagnostics payload omitted SQL text.';
-                }
-                return 'SQL unavailable: diagnostics only contained blank SQL strings.';
-              })();
-              if (sqlMissingReason) {
-                details.push(sqlMissingReason);
-              }
             }
             if (diagnosticCounts.length) {
               details.push(`Counts: ${diagnosticCounts.join(', ')}`);
@@ -864,7 +834,6 @@ export default function Reports() {
               'effectiveDate',
               'selectedWorkplaceId',
               'selectedWorkplaceSessionId',
-              'sqlUnavailableReason',
             ]);
             if (
               Array.isArray(diagnostics?.params) &&
