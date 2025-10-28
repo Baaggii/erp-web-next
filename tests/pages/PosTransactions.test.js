@@ -509,7 +509,7 @@ if (typeof mock.import !== 'function') {
     const map = buildComputedFieldMap([], posFields, columnCaseMap, ['transactions']);
     assert.ok(map.transactions instanceof Set);
     assert.equal(map.transactions.has('total'), true);
-    assert.equal(map.transactions.has('discount'), true);
+    assert.equal(map.transactions.has('discount'), false);
     assert.equal(map.transactions.has('subtotal'), false);
     assert.equal(map.transactions.has('fee'), false);
 
@@ -519,19 +519,13 @@ if (typeof mock.import !== 'function') {
     const totalReasons = reasonMap.get('total');
     assert.ok(totalReasons instanceof Set);
     assert.equal(totalReasons.has('posFormula'), true);
-    assert.equal(totalReasons.has('posLock'), true);
-    assert.equal(totalReasons.has('workflowLock'), true);
-
-    const discountReasons = reasonMap.get('discount');
-    assert.ok(discountReasons instanceof Set);
-    assert.equal(discountReasons.has('posLock'), true);
-    assert.equal(discountReasons.has('discountHold'), true);
 
     assert.equal(reasonMap.has('subtotal'), false);
     assert.equal(reasonMap.has('fee'), false);
+    assert.equal(reasonMap.has('discount'), false);
   });
 
-  test('buildComputedFieldMap skips guard reasons for editable POS fields', async () => {
+  test('buildComputedFieldMap always records formula targets', async () => {
     const { buildComputedFieldMap } = await mock.import(
       '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
       {},
@@ -558,14 +552,11 @@ if (typeof mock.import !== 'function') {
       },
     };
 
-    const editableFieldMap = { transactions: new Set(['total']) };
-
     const map = buildComputedFieldMap(
       [],
       posFields,
       columnCaseMap,
       ['transactions'],
-      editableFieldMap,
     );
 
     assert.ok(map.transactions instanceof Set);
@@ -573,11 +564,11 @@ if (typeof mock.import !== 'function') {
 
     const reasonMap = map.transactions.reasonMap;
     assert.ok(reasonMap instanceof Map);
-    assert.equal(reasonMap.has('total'), false);
+    const totalReasons = reasonMap.get('total');
+    assert.ok(totalReasons instanceof Set);
+    assert.equal(totalReasons.has('posFormula'), true);
 
-    const discountReasons = reasonMap.get('discount');
-    assert.ok(discountReasons instanceof Set);
-    assert.equal(discountReasons.has('discountHold'), true);
+    assert.equal(reasonMap.has('discount'), false);
   });
 
 
