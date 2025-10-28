@@ -21,7 +21,7 @@
     "viewToastEnabled": false,
     "reportRowToastEnabled": false,
     "imageToastEnabled": false,
-    "workplaceFetchToastEnabled": false,
+    "workplaceFetchToastEnabled": true,
     "txnToastEnabled": false,
     "debugLoggingEnabled": false,
     "editLabelsEnabled": true,

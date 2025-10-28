@@ -5,6 +5,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
+import normalizeBoolean from '../utils/normalizeBoolean.js';
 
 export default function GeneralConfiguration() {
   const initial = useGeneralConfig();
@@ -472,7 +473,10 @@ export default function GeneralConfiguration() {
                 <input
                   name="workplaceFetchToastEnabled"
                   type="checkbox"
-                  checked={active.workplaceFetchToastEnabled ?? false}
+                  checked={normalizeBoolean(
+                    active.workplaceFetchToastEnabled,
+                    true,
+                  )}
                   onChange={handleChange}
                 />
               </label>

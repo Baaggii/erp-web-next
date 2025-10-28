@@ -1,6 +1,63 @@
 let mysql;
+
+function basicFormat(sql, params) {
+  if (!params) return sql;
+  let i = 0;
+  return sql.replace(/\?/g, () => {
+    const val = params[i++];
+    return typeof val === 'string' ? `'${val}'` : String(val);
+  });
+}
+
+function basicEscape(val) {
+  return typeof val === 'string' ? `'${val}'` : String(val);
+}
+
 try {
-  mysql = await import("mysql2/promise");
+  const mysqlPromiseMod = await import("mysql2/promise");
+  const mysqlPromise = mysqlPromiseMod?.default ?? mysqlPromiseMod;
+  const mysqlPrepared = {};
+  if (mysqlPromise && (typeof mysqlPromise === 'object' || typeof mysqlPromise === 'function')) {
+    for (const key of Object.getOwnPropertyNames(mysqlPromise)) {
+      mysqlPrepared[key] = mysqlPromise[key];
+    }
+  }
+  if (
+    typeof mysqlPrepared.createPool !== 'function' &&
+    typeof mysqlPromise?.createPool === 'function'
+  ) {
+    mysqlPrepared.createPool = mysqlPromise.createPool.bind(mysqlPromise);
+  }
+  if (
+    typeof mysqlPrepared.format !== 'function' ||
+    typeof mysqlPrepared.escape !== 'function'
+  ) {
+    try {
+      const mysqlCoreMod = await import("mysql2");
+      const mysqlCore = mysqlCoreMod?.default ?? mysqlCoreMod;
+      if (
+        typeof mysqlPrepared.format !== 'function' &&
+        typeof mysqlCore?.format === 'function'
+      ) {
+        mysqlPrepared.format = mysqlCore.format;
+      }
+      if (
+        typeof mysqlPrepared.escape !== 'function' &&
+        typeof mysqlCore?.escape === 'function'
+      ) {
+        mysqlPrepared.escape = mysqlCore.escape;
+      }
+    } catch {
+      // ignore optional mysql2 import failures; fall back to stubs below
+    }
+  }
+  if (typeof mysqlPrepared.format !== 'function') {
+    mysqlPrepared.format = basicFormat;
+  }
+  if (typeof mysqlPrepared.escape !== 'function') {
+    mysqlPrepared.escape = basicEscape;
+  }
+  mysql = mysqlPrepared;
 } catch {
   mysql = {
     createPool() {
@@ -11,17 +68,8 @@ try {
         end: async () => {},
       };
     },
-    format(sql, params) {
-      if (!params) return sql;
-      let i = 0;
-      return sql.replace(/\?/g, () => {
-        const val = params[i++];
-        return typeof val === 'string' ? `'${val}'` : String(val);
-      });
-    },
-    escape(val) {
-      return typeof val === 'string' ? `'${val}'` : String(val);
-    },
+    format: basicFormat,
+    escape: basicEscape,
   };
 }
 let dotenv;
@@ -1203,8 +1251,17 @@ export async function getEmploymentSessions(empid, options = {}) {
   const [rows] = await pool.query(sql, params);
   const sessions = rows.map(mapEmploymentRow);
   if (options?.includeDiagnostics) {
-    const formattedSql =
-      typeof mysql?.format === 'function' ? mysql.format(sql, params) : null;
+    let formattedSql = null;
+    if (typeof mysql?.format === 'function') {
+      try {
+        formattedSql = mysql.format(sql, params);
+      } catch {
+        formattedSql = null;
+      }
+    }
+    if (typeof formattedSql !== 'string' || formattedSql.length === 0) {
+      formattedSql = sql;
+    }
     Object.defineProperty(sessions, '__diagnostics', {
       value: {
         sql,
