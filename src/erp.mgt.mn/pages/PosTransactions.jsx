@@ -1847,6 +1847,40 @@ export default function PosTransactionsPage() {
     return map;
   }, [visibleTablesKey, configVersion, columnMeta]);
 
+  const editableFieldLookup = useMemo(() => {
+    const lookup = {};
+
+    const normalizeList = (list, caseMap = {}) => {
+      if (!Array.isArray(list)) return [];
+      const seen = new Set();
+      list.forEach((field) => {
+        if (field == null) return;
+        const raw = String(field).trim();
+        if (!raw) return;
+        const lower = raw.toLowerCase();
+        const canonical = caseMap[lower] || raw;
+        const canonicalLower = canonical.toLowerCase();
+        if (!seen.has(canonicalLower)) {
+          seen.add(canonicalLower);
+        }
+      });
+      return Array.from(seen);
+    };
+
+    Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
+      if (!fc) return;
+      const caseMap = memoColumnCaseMap[tbl] || {};
+      const provided = normalizeList(fc.editableFields, caseMap);
+      const defaults = normalizeList(fc.editableDefaultFields, caseMap);
+      const combined = new Set([...defaults, ...provided]);
+      if (combined.size > 0) {
+        lookup[tbl] = combined;
+      }
+    });
+
+    return lookup;
+  }, [memoFormConfigs, memoColumnCaseMap, visibleTablesKey, configVersion]);
+
   const computedFieldMap = useMemo(
     () =>
       buildComputedFieldMap(
@@ -2124,6 +2158,7 @@ export default function PosTransactionsPage() {
         table: tbl,
         changes,
         computedFieldMap,
+        editableFieldMap: editableFieldLookup,
         desiredRow,
         recalculatedValues: recalculated,
       });

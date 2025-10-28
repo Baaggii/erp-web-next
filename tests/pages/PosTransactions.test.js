@@ -765,6 +765,32 @@ test('preserveManualChangesAfterRecalc keeps non-computed edits', async () => {
   assert.strictEqual(stable, merged);
 });
 
+test('preserveManualChangesAfterRecalc allows edits on editable computed fields', async () => {
+  const { preserveManualChangesAfterRecalc } = await import(
+    '../../src/erp.mgt.mn/utils/preserveManualChanges.js',
+  );
+
+  const computedFieldMap = { transactions: new Set(['totalamount']) };
+  const editableFieldMap = { transactions: new Set(['totalamount']) };
+  const changes = { TotalAmount: 42 };
+  const desiredRow = { TotalAmount: 42 };
+  const recalculatedValues = {
+    transactions: { TotalAmount: 100 },
+  };
+
+  const merged = preserveManualChangesAfterRecalc({
+    table: 'transactions',
+    changes,
+    computedFieldMap,
+    editableFieldMap,
+    desiredRow,
+    recalculatedValues,
+  });
+
+  assert.notStrictEqual(merged, recalculatedValues);
+  assert.equal(merged.transactions.TotalAmount, 42);
+});
+
 test('fetchTriggersForTables caches trigger metadata for hidden tables', async () => {
   const fetchesRef = { current: new Map() };
   const loadedRef = { current: new Set() };
