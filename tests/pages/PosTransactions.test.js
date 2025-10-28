@@ -776,9 +776,7 @@ test('preserveManualChangesAfterRecalc allows edits on editable computed fields'
   );
 
   const computedFieldMap = { transactions: new Set(['totalamount']) };
-  const editableFieldMap = {
-    transactions: { fields: new Set(['totalamount']), hasExplicitConfig: true },
-  };
+  const editableFieldMap = { transactions: new Set(['totalamount']) };
   const changes = { TotalAmount: 42 };
   const desiredRow = { TotalAmount: 42 };
   const recalculatedValues = {

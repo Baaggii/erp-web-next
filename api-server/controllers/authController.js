@@ -107,6 +107,8 @@ export async function login(req, res, next) {
       .filter((s) => s && s.workplace_session_id != null)
       .map(
         ({
+          company_id,
+          company_name,
           branch_id,
           branch_name,
           department_id,
@@ -115,6 +117,8 @@ export async function login(req, res, next) {
           workplace_name,
           workplace_session_id,
         }) => ({
+          company_id: company_id ?? null,
+          company_name: company_name ?? null,
           branch_id: branch_id ?? null,
           branch_name: branch_name ?? null,
           department_id: department_id ?? null,
