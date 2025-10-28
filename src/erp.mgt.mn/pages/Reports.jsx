@@ -787,9 +787,15 @@ export default function Reports() {
               if (typeof formattedSql === 'string' && formattedSql.length) {
                 return formattedSql;
               }
-              return stringifyDiagnosticValue(
-                diagnostics?.formattedSql || diagnostics?.sql,
-              );
+              const diagnosticFormatted =
+                typeof diagnostics?.formattedSql === 'string'
+                  ? diagnostics.formattedSql
+                  : null;
+              const fallback =
+                diagnosticFormatted && diagnosticFormatted.trim().length > 0
+                  ? diagnosticFormatted
+                  : diagnostics?.sql;
+              return stringifyDiagnosticValue(fallback);
             })();
             if (formattedSqlForToast) {
               details.push(`SQL: ${formattedSqlForToast}`);
