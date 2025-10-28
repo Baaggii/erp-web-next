@@ -790,9 +790,20 @@ export default function Reports() {
             if (queryString) {
               details.push(`Query: ${queryUrl}`);
             }
-            const formattedSqlForToast = normalizeSqlDiagnosticValue(
-              formattedSql ?? diagnostics?.formattedSql ?? diagnostics?.sql,
-            );
+            const formattedSqlForToast = (() => {
+              if (typeof formattedSql === 'string' && formattedSql.length) {
+                return formattedSql;
+              }
+              const diagnosticFormatted =
+                typeof diagnostics?.formattedSql === 'string'
+                  ? diagnostics.formattedSql
+                  : null;
+              const fallback =
+                diagnosticFormatted && diagnosticFormatted.trim().length > 0
+                  ? diagnosticFormatted
+                  : diagnostics?.sql;
+              return stringifyDiagnosticValue(fallback);
+            })();
             if (formattedSqlForToast) {
               details.push(`SQL: ${formattedSqlForToast}`);
             } else if (diagnostics && typeof diagnostics === 'object') {
