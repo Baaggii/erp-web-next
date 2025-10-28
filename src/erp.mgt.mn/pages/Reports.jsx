@@ -121,6 +121,41 @@ function summarizeForToast(payload) {
   }
 }
 
+function stringifyDiagnosticValue(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    const flattened = value
+      .map((item) => stringifyDiagnosticValue(item))
+      .filter((item) => typeof item === 'string' && item.length > 0);
+    return flattened.length ? flattened.join('\n') : null;
+  }
+  if (value && typeof value === 'object') {
+    if (typeof value.text === 'string' && value.text.length) {
+      return value.text;
+    }
+    if (Array.isArray(value.lines)) {
+      const lines = value.lines
+        .map((line) => stringifyDiagnosticValue(line))
+        .filter((line) => typeof line === 'string' && line.length > 0);
+      if (lines.length) return lines.join('\n');
+    }
+    try {
+      const json = JSON.stringify(value);
+      return json && json.length ? json : null;
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
 const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
@@ -552,7 +587,9 @@ export default function Reports() {
         const diagnostics =
           data && typeof data === 'object' ? data.diagnostics ?? null : null;
         const formattedSql =
-          diagnostics?.formattedSql || diagnostics?.sql || null;
+          stringifyDiagnosticValue(diagnostics?.formattedSql) ??
+          stringifyDiagnosticValue(diagnostics?.sql) ??
+          null;
         const diagnosticCounts = [];
         const normalizeCount = (value) =>
           typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -654,7 +691,7 @@ export default function Reports() {
             if (queryString) {
               details.push(`Query: ${queryUrl}`);
             }
-            if (formattedSql) {
+            if (typeof formattedSql === 'string' && formattedSql.length) {
               details.push(`SQL: ${formattedSql}`);
             }
             if (diagnosticCounts.length) {
@@ -697,18 +734,17 @@ export default function Reports() {
               diagnostics.params.length
             ) {
               consumedDiagnosticKeys.add('params');
-              details.push(`Params: ${JSON.stringify(diagnostics.params)}`);
+              const paramsString = stringifyDiagnosticValue(diagnostics.params);
+              if (paramsString) {
+                details.push(`Params: ${paramsString}`);
+              }
             }
             if (diagnostics && typeof diagnostics === 'object') {
               Object.entries(diagnostics).forEach(([key, value]) => {
                 if (consumedDiagnosticKeys.has(key)) return;
                 if (value === undefined || value === null) return;
-                const valueString =
-                  typeof value === 'string'
-                    ? value
-                    : typeof value === 'number' || typeof value === 'boolean'
-                    ? String(value)
-                    : JSON.stringify(value);
+                const valueString = stringifyDiagnosticValue(value);
+                if (!valueString) return;
                 details.push(`${key}: ${valueString}`);
               });
             }

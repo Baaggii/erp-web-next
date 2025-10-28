@@ -528,7 +528,15 @@ if (typeof mock.import !== 'function') {
               },
             ],
             diagnostics: {
-              formattedSql: 'SELECT * FROM tbl_employment_schedule WHERE emp_id = ? AND company_id = ?;',
+              formattedSql: [
+                'SELECT * FROM tbl_employment_schedule WHERE emp_id = ?',
+                'AND company_id = ?;',
+              ],
+              params: [
+                { name: 'empid', value: 321 },
+                { name: 'companyId', value: 99 },
+              ],
+              meta: { lines: ['line 1', 'line 2'] },
             },
           }),
         };
@@ -694,8 +702,18 @@ if (typeof mock.import !== 'function') {
       'Success toast should summarize assignment counts',
     );
     assert.ok(
-      successToast.message.includes('SQL: SELECT * FROM tbl_employment_schedule WHERE emp_id = ? AND company_id = ?;'),
+      successToast.message.includes(
+        'SQL: SELECT * FROM tbl_employment_schedule WHERE emp_id = ?\nAND company_id = ?;',
+      ),
       'Success toast should include executed SQL when diagnostics are present',
+    );
+    assert.ok(
+      successToast.message.includes('Params: {"name":"empid","value":321}'),
+      'Success toast should include serialized params',
+    );
+    assert.ok(
+      successToast.message.includes('meta: line 1\nline 2'),
+      'Success toast should include additional diagnostic entries',
     );
     assert.match(
       successToast.message,
