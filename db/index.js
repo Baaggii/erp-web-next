@@ -1,16 +1,50 @@
 let mysql;
 
-function basicFormat(sql, params) {
-  if (!params) return sql;
-  let i = 0;
-  return sql.replace(/\?/g, () => {
-    const val = params[i++];
-    return typeof val === 'string' ? `'${val}'` : String(val);
-  });
+function basicEscape(value) {
+  if (value === undefined || value === null) {
+    return 'NULL';
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : 'NULL';
+  }
+
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  if (value instanceof Date) {
+    const normalized = Number.isNaN(value.getTime())
+      ? null
+      : formatDateForDb(value);
+    return normalized ? `'${normalized}'` : 'NULL';
+  }
+
+  if (Buffer.isBuffer(value)) {
+    return `X'${value.toString('hex')}'`;
+  }
+
+  const str = String(value);
+  const escaped = str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return `'${escaped}'`;
 }
 
-function basicEscape(val) {
-  return typeof val === 'string' ? `'${val}'` : String(val);
+function basicFormat(sql, params) {
+  if (typeof sql !== 'string' || !sql.includes('?')) {
+    return sql;
+  }
+  if (!Array.isArray(params) || params.length === 0) {
+    return sql;
+  }
+  const queue = [...params];
+  return sql.replace(/\?/g, () => {
+    const next = queue.length ? queue.shift() : undefined;
+    return basicEscape(next);
+  });
 }
 
 try {
@@ -39,22 +73,58 @@ try {
         typeof mysqlPrepared.format !== 'function' &&
         typeof mysqlCore?.format === 'function'
       ) {
-        mysqlPrepared.format = mysqlCore.format;
+        mysqlPrepared.format = mysqlCore.format.bind(mysqlCore);
       }
       if (
         typeof mysqlPrepared.escape !== 'function' &&
         typeof mysqlCore?.escape === 'function'
       ) {
-        mysqlPrepared.escape = mysqlCore.escape;
+        mysqlPrepared.escape = mysqlCore.escape.bind(mysqlCore);
       }
     } catch {
       // ignore optional mysql2 import failures; fall back to stubs below
     }
   }
-  if (typeof mysqlPrepared.format !== 'function') {
+  if (typeof mysqlPrepared.format === 'function') {
+    const originalFormat = mysqlPrepared.format;
+    mysqlPrepared.format = (sql, params) => {
+      try {
+        const formatted = originalFormat.call(mysqlPrepared, sql, params);
+        if (typeof formatted === 'string') {
+          return formatted;
+        }
+        if (formatted == null) {
+          return basicFormat(sql, params);
+        }
+        return typeof formatted === 'object'
+          ? basicFormat(sql, params)
+          : String(formatted);
+      } catch {
+        return basicFormat(sql, params);
+      }
+    };
+  } else {
     mysqlPrepared.format = basicFormat;
   }
-  if (typeof mysqlPrepared.escape !== 'function') {
+  if (typeof mysqlPrepared.escape === 'function') {
+    const originalEscape = mysqlPrepared.escape;
+    mysqlPrepared.escape = (value) => {
+      try {
+        const escaped = originalEscape.call(mysqlPrepared, value);
+        if (typeof escaped === 'string') {
+          return escaped;
+        }
+        if (escaped == null) {
+          return basicEscape(value);
+        }
+        return typeof escaped === 'object'
+          ? basicEscape(value)
+          : String(escaped);
+      } catch {
+        return basicEscape(value);
+      }
+    };
+  } else {
     mysqlPrepared.escape = basicEscape;
   }
   mysql = mysqlPrepared;
@@ -1251,6 +1321,8 @@ export async function getEmploymentSessions(empid, options = {}) {
   const [rows] = await pool.query(sql, params);
   const sessions = rows.map(mapEmploymentRow);
   if (options?.includeDiagnostics) {
+    const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
+    const diagnostics = { sql: sqlText, params };
     let formattedSql = null;
     if (typeof mysql?.format === 'function') {
       try {
@@ -1259,15 +1331,16 @@ export async function getEmploymentSessions(empid, options = {}) {
         formattedSql = null;
       }
     }
-    if (typeof formattedSql !== 'string' || formattedSql.length === 0) {
-      formattedSql = sql;
+    if (typeof formattedSql === 'string') {
+      const trimmed = formattedSql.trim();
+      formattedSql = trimmed.length ? trimmed : null;
+    } else {
+      formattedSql = null;
     }
+    diagnostics.formattedSql =
+      formattedSql && formattedSql.trim().length > 0 ? formattedSql : sqlText;
     Object.defineProperty(sessions, '__diagnostics', {
-      value: {
-        sql,
-        params,
-        formattedSql,
-      },
+      value: diagnostics,
       enumerable: false,
     });
   }

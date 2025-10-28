@@ -76,6 +76,26 @@ function normalizeNumericId(value) {
   return null;
 }
 
+function normalizeIdParamValue(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : null;
+  }
+  return null;
+}
+
+function resolveIdParam(...candidates) {
+  for (const candidate of candidates) {
+    const normalized = normalizeIdParamValue(candidate);
+    if (normalized !== null) return normalized;
+  }
+  return null;
+}
+
 function extractNumericTokens(value) {
   if (typeof value !== 'string') return [];
   const matches = value.match(/\d+/g);
@@ -155,6 +175,13 @@ function stringifyDiagnosticValue(value) {
     }
   }
   return String(value);
+}
+
+function normalizeSqlDiagnosticValue(value) {
+  const normalized = stringifyDiagnosticValue(value);
+  if (typeof normalized !== 'string') return null;
+  const trimmed = normalized.trim();
+  return trimmed.length ? trimmed : null;
 }
 
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
@@ -557,44 +584,52 @@ export default function Reports() {
         paramsObject[key] = valueStr;
       }
     });
-    const companyIdForQuery =
-      normalizeNumericId(session?.company_id) ?? normalizeNumericId(company);
-    if (companyIdForQuery != null) {
-      const companyIdValue = String(companyIdForQuery);
-      params.set('companyId', companyIdValue);
-      paramsObject.companyId = companyIdValue;
+    const companyIdForQuery = resolveIdParam(
+      session?.company_id,
+      session?.companyId,
+      company,
+    );
+    if (companyIdForQuery !== null) {
+      params.set('companyId', companyIdForQuery);
+      paramsObject.companyId = companyIdForQuery;
     }
 
-    const branchIdForQuery =
-      normalizeNumericId(session?.branch_id) ?? normalizeNumericId(branch);
-    if (branchIdForQuery != null) {
-      const branchIdValue = String(branchIdForQuery);
-      params.set('branchId', branchIdValue);
-      paramsObject.branchId = branchIdValue;
+    const branchIdForQuery = resolveIdParam(
+      session?.branch_id,
+      session?.branchId,
+      branch,
+    );
+    if (branchIdForQuery !== null) {
+      params.set('branchId', branchIdForQuery);
+      paramsObject.branchId = branchIdForQuery;
     }
 
-    const departmentIdForQuery =
-      normalizeNumericId(session?.department_id) ?? normalizeNumericId(department);
-    if (departmentIdForQuery != null) {
-      const departmentIdValue = String(departmentIdForQuery);
-      params.set('departmentId', departmentIdValue);
-      paramsObject.departmentId = departmentIdValue;
+    const departmentIdForQuery = resolveIdParam(
+      session?.department_id,
+      session?.departmentId,
+      department,
+    );
+    if (departmentIdForQuery !== null) {
+      params.set('departmentId', departmentIdForQuery);
+      paramsObject.departmentId = departmentIdForQuery;
     }
 
-    const positionIdForQuery =
-      normalizeNumericId(session?.position_id) ?? normalizeNumericId(position);
-    if (positionIdForQuery != null) {
-      const positionIdValue = String(positionIdForQuery);
-      params.set('positionId', positionIdValue);
-      paramsObject.positionId = positionIdValue;
+    const positionIdForQuery = resolveIdParam(
+      session?.position_id,
+      session?.positionId,
+      position,
+    );
+    if (positionIdForQuery !== null) {
+      params.set('positionId', positionIdForQuery);
+      paramsObject.positionId = positionIdForQuery;
     }
 
     const userIdForQuery = (() => {
       const raw =
-        user?.empid ??
         session?.empid ??
         session?.employee_id ??
         session?.employeeId ??
+        user?.empid ??
         null;
       if (raw === undefined || raw === null) return null;
       const str = String(raw).trim();
@@ -634,10 +669,26 @@ export default function Reports() {
         const data = await res.json().catch(() => ({}));
         const diagnostics =
           data && typeof data === 'object' ? data.diagnostics ?? null : null;
-        const formattedSql =
-          stringifyDiagnosticValue(diagnostics?.formattedSql) ??
-          stringifyDiagnosticValue(diagnostics?.sql) ??
-          null;
+        const sqlCandidates = Array.isArray(diagnostics?.sqlCandidates)
+          ? diagnostics.sqlCandidates
+          : [
+              diagnostics?.formattedSql,
+              diagnostics?.formatted_sql,
+              diagnostics?.formattedSQL,
+              diagnostics?.query,
+              diagnostics?.queryText,
+              diagnostics?.statement,
+              diagnostics?.sql,
+              diagnostics?.SQL,
+            ];
+        let formattedSql = null;
+        for (const candidate of sqlCandidates) {
+          const normalized = normalizeSqlDiagnosticValue(candidate);
+          if (normalized) {
+            formattedSql = normalized;
+            break;
+          }
+        }
         const diagnosticCounts = [];
         const normalizeCount = (value) =>
           typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -739,8 +790,26 @@ export default function Reports() {
             if (queryString) {
               details.push(`Query: ${queryUrl}`);
             }
-            if (typeof formattedSql === 'string' && formattedSql.length) {
-              details.push(`SQL: ${formattedSql}`);
+            const formattedSqlForToast = (() => {
+              if (typeof formattedSql === 'string' && formattedSql.length) {
+                return formattedSql;
+              }
+              const diagnosticFormatted =
+                typeof diagnostics?.formattedSql === 'string'
+                  ? diagnostics.formattedSql
+                  : null;
+              const fallback =
+                diagnosticFormatted && diagnosticFormatted.trim().length > 0
+                  ? diagnosticFormatted
+                  : diagnostics?.sql;
+              return stringifyDiagnosticValue(fallback);
+            })();
+            if (formattedSqlForToast) {
+              details.push(`SQL: ${formattedSqlForToast}`);
+            } else if (diagnostics && typeof diagnostics === 'object') {
+              details.push(
+                '(No SQL available: diagnostics did not include a query string)',
+              );
             }
             if (diagnosticCounts.length) {
               details.push(`Counts: ${diagnosticCounts.join(', ')}`);
@@ -776,6 +845,7 @@ export default function Reports() {
               'effectiveDate',
               'selectedWorkplaceId',
               'selectedWorkplaceSessionId',
+              'sqlUnavailableReason',
             ]);
             if (
               Array.isArray(diagnostics?.params) &&

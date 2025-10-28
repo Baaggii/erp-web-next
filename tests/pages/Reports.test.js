@@ -681,23 +681,25 @@ if (typeof mock.import !== 'function') {
       'User parameter missing from workplace fetch',
     );
     assert.ok(
-      /branchId=77/.test(workplaceCall.url),
-      'Branch parameter missing from workplace fetch',
+      !/branchId=/.test(workplaceCall.url),
+      'Branch parameter should not be included in workplace fetch',
     );
     assert.ok(
-      /departmentId=8/.test(workplaceCall.url),
-      'Department parameter missing from workplace fetch',
+      !/departmentId=/.test(workplaceCall.url),
+      'Department parameter should not be included in workplace fetch',
     );
     assert.ok(
-      /positionId=6/.test(workplaceCall.url),
-      'Position parameter missing from workplace fetch',
+      !/positionId=/.test(workplaceCall.url),
+      'Position parameter should not be included in workplace fetch',
     );
 
     const startToast = addToastCalls.find(
       (call) =>
         call.message.includes('Fetching workplaces with params') &&
         call.message.includes('"year":"2025"') &&
-        call.message.includes('"month":"10"'),
+        call.message.includes('"month":"10"') &&
+        call.message.includes('"companyId":99') &&
+        call.message.includes('"userId":"321"'),
     );
     assert.ok(startToast, 'Fetch start toast not emitted');
     assert.equal(startToast.type, 'info');
