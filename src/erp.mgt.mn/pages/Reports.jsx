@@ -610,14 +610,10 @@ export default function Reports() {
         const data = await res.json().catch(() => ({}));
         const diagnostics =
           data && typeof data === 'object' ? data.diagnostics ?? null : null;
-        let diagnosticSql =
-          stringifyDiagnosticValue(diagnostics?.formattedSql) ?? null;
-        if (
-          !diagnosticSql ||
-          (typeof diagnosticSql === 'string' && diagnosticSql.trim().length === 0)
-        ) {
-          diagnosticSql = stringifyDiagnosticValue(diagnostics?.sql) ?? null;
-        }
+        const formattedSql =
+          stringifyDiagnosticValue(diagnostics?.formattedSql) ??
+          stringifyDiagnosticValue(diagnostics?.sql) ??
+          null;
         const diagnosticCounts = [];
         const normalizeCount = (value) =>
           typeof value === 'number' && Number.isFinite(value) ? value : null;
@@ -719,11 +715,8 @@ export default function Reports() {
             if (queryString) {
               details.push(`Query: ${queryUrl}`);
             }
-            if (
-              typeof diagnosticSql === 'string' &&
-              diagnosticSql.trim().length > 0
-            ) {
-              details.push(`SQL: ${diagnosticSql}`);
+            if (typeof formattedSql === 'string' && formattedSql.length) {
+              details.push(`SQL: ${formattedSql}`);
             }
             if (diagnosticCounts.length) {
               details.push(`Counts: ${diagnosticCounts.join(', ')}`);
