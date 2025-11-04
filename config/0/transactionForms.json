@@ -1557,8 +1557,6 @@
         "sub_transaction_ids": "",
         "TransType": "10001"
       },
-      "posApiEnabled": false,
-      "posApiType": "B2C_RECEIPT",
       "editableDefaultFields": [
         "order_id",
         "cashback",
