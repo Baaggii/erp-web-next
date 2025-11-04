@@ -15,7 +15,7 @@ import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
-const PAGE_SIZE = 100;
+const PAGE_SIZE = 50;
 
 export default function AsyncSearchSelect({
   table,
