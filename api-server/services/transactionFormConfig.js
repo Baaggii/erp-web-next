@@ -27,83 +27,6 @@ function arrify(val) {
   return [String(val)];
 }
 
-function toFiniteNumber(value) {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : null;
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return null;
-    const num = Number(trimmed);
-    return Number.isFinite(num) ? num : null;
-  }
-  if (typeof value === 'bigint') {
-    const num = Number(value);
-    return Number.isFinite(num) ? num : null;
-  }
-  return null;
-}
-
-function parseDropdownIndex(raw = {}) {
-  if (!raw || typeof raw !== 'object') return null;
-  const candidates = [
-    'dropdownIndex',
-    'dropdown_index',
-    'index',
-    'idx',
-    'orderIndex',
-    'order_index',
-    'sortIndex',
-    'sort_index',
-    'sortOrder',
-    'sort_order',
-    'sequence',
-    'sequenceIndex',
-    'sequence_index',
-    'position',
-    'priority',
-    'displayIndex',
-    'display_index',
-    'listIndex',
-    'list_index',
-    'menuIndex',
-    'menu_index',
-  ];
-
-  for (const key of candidates) {
-    if (Object.prototype.hasOwnProperty.call(raw, key)) {
-      const num = toFiniteNumber(raw[key]);
-      if (num !== null) return num;
-    }
-    const lowerKey = key.toLowerCase();
-    for (const prop of Object.keys(raw)) {
-      if (prop === key) continue;
-      if (prop.toLowerCase() === lowerKey) {
-        const num = toFiniteNumber(raw[prop]);
-        if (num !== null) return num;
-      }
-    }
-  }
-
-  for (const [prop, value] of Object.entries(raw)) {
-    const lower = prop.toLowerCase();
-    if (
-      lower.endsWith('index') ||
-      lower.endsWith('order') ||
-      lower.endsWith('position') ||
-      lower.endsWith('priority') ||
-      lower.endsWith('sequence') ||
-      lower.endsWith('sort') ||
-      lower.endsWith('rank')
-    ) {
-      const num = toFiniteNumber(value);
-      if (num !== null) return num;
-    }
-  }
-
-  return null;
-}
-
 function parseEntry(raw = {}) {
   const temporaryFlag = Boolean(
     raw.supportsTemporarySubmission ??
@@ -184,7 +107,6 @@ function parseEntry(raw = {}) {
     procedures: arrify(raw.procedures || raw.procedure),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
-    dropdownIndex: parseDropdownIndex(raw),
   };
 }
 
@@ -345,7 +267,6 @@ export async function setFormConfig(
     procedures = [],
     supportsTemporarySubmission,
     allowTemporarySubmission,
-    dropdownIndex,
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -409,8 +330,6 @@ export async function setFormConfig(
     supportsTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),
-    dropdownIndex:
-      toFiniteNumber(dropdownIndex) ?? undefined,
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);

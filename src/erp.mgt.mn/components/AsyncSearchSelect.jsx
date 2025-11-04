@@ -11,7 +11,6 @@ import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { getTenantKeyList } from '../utils/tenantKeys.js';
 import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
-import { getSortIndex } from '../utils/getSortIndex.js';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -109,11 +108,6 @@ export default function AsyncSearchSelect({
   );
 
   const compareOptions = useCallback((a, b) => {
-    const idxA = getSortIndex(a);
-    const idxB = getSortIndex(b);
-    if (idxA !== null && idxB !== null && idxA !== idxB) return idxA - idxB;
-    if (idxA !== null && idxB === null) return -1;
-    if (idxB !== null && idxA === null) return 1;
     const aVal = a?.value;
     const bVal = b?.value;
     if (aVal == null && bVal == null) return 0;

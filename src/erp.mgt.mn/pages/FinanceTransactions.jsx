@@ -20,7 +20,6 @@ import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
 import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
-import { getSortIndex } from '../utils/getSortIndex.js';
 import {
   isModuleLicensed,
   isModulePermissionGranted,
@@ -656,22 +655,7 @@ useEffect(() => {
   }, [selectedProc, name]);
 
 
-  const transactionNames = useMemo(() => {
-    if (!configs || typeof configs !== 'object') return [];
-    const entries = Object.entries(configs).filter(([name]) => name !== 'isDefault');
-    entries.sort((a, b) => {
-      const idxA = getSortIndex(a[1]);
-      const idxB = getSortIndex(b[1]);
-      if (idxA !== null && idxB !== null && idxA !== idxB) return idxA - idxB;
-      if (idxA !== null && idxB === null) return -1;
-      if (idxB !== null && idxA === null) return 1;
-      return String(a[0]).localeCompare(String(b[0]), undefined, {
-        numeric: true,
-        sensitivity: 'base',
-      });
-    });
-    return entries.map(([name]) => name);
-  }, [configs]);
+  const transactionNames = useMemo(() => Object.keys(configs), [configs]);
   const dateParamInfo = useMemo(() => {
     const info = {
       hasStartDateParam: false,
