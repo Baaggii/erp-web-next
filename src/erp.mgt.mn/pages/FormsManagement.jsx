@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useContext, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useContext } from 'react';
 import { useModules, refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
@@ -8,37 +8,6 @@ import I18nContext from '../context/I18nContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
-
-function ensurePlainObject(value) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-}
-
-function toMappingString(value) {
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '';
-  }
-}
-
-function parsePosApiMappingValue(rawValue, fieldName) {
-  if (rawValue === undefined || rawValue === null) return null;
-  const trimmed = String(rawValue).trim();
-  if (!trimmed) return null;
-  const first = trimmed[0];
-  const last = trimmed[trimmed.length - 1];
-  if ((first === '{' && last === '}') || (first === '[' && last === ']')) {
-    try {
-      return JSON.parse(trimmed);
-    } catch (err) {
-      throw new Error(`Invalid JSON for POSAPI field "${fieldName}": ${err.message}`);
-    }
-  }
-  return trimmed;
-}
 
 function normalizeFormConfig(info = {}) {
   const toArray = (value) => (Array.isArray(value) ? [...value] : []);
@@ -54,17 +23,6 @@ function normalizeFormConfig(info = {}) {
 
   const allowedBranches = toArray(info.allowedBranches).map((v) => String(v));
   const allowedDepartments = toArray(info.allowedDepartments).map((v) => String(v));
-  const temporaryAllowedBranches = toArray(info.temporaryAllowedBranches).map((v) =>
-    String(v),
-  );
-  const temporaryAllowedDepartments = toArray(info.temporaryAllowedDepartments).map((v) =>
-    String(v),
-  );
-  const normalizedPosApiMapping = {};
-  Object.entries(ensurePlainObject(info.posApiMapping)).forEach(([key, value]) => {
-    if (!key) return;
-    normalizedPosApiMapping[key] = toMappingString(value);
-  });
 
   return {
     visibleFields: toArray(info.visibleFields),
@@ -96,14 +54,9 @@ function normalizeFormConfig(info = {}) {
     detectFields: toArray(info.detectFields),
     allowedBranches,
     allowedDepartments,
-    temporaryAllowedBranches,
-    temporaryAllowedDepartments,
     procedures: toArray(info.procedures),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
-    posApiEnabled: Boolean(info.posApiEnabled),
-    posApiType: toString(info.posApiType).trim(),
-    posApiMapping: normalizedPosApiMapping,
   };
 }
 
@@ -144,26 +97,6 @@ export default function FormsManagement() {
   }, []);
 
   const [config, setConfig] = useState(() => normalizeFormConfig());
-  const [newMappingKey, setNewMappingKey] = useState('');
-  const [newMappingValue, setNewMappingValue] = useState('');
-  const [posApiMappingError, setPosApiMappingError] = useState('');
-
-  const applyConfig = useCallback((nextConfig) => {
-    setConfig(nextConfig);
-    setNewMappingKey('');
-    setNewMappingValue('');
-    setPosApiMappingError('');
-  }, []);
-
-  const mappingEntries = useMemo(
-    () => Object.entries(ensurePlainObject(config.posApiMapping)),
-    [config.posApiMapping],
-  );
-
-  const posApiColumnListId = useMemo(
-    () => (table ? `posapi-columns-${table}` : 'posapi-columns-default'),
-    [table],
-  );
 
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
@@ -233,7 +166,7 @@ export default function FormsManagement() {
     setName(cfg.name);
     setModuleKey(cfg.moduleKey || '');
     const info = cfg.config || {};
-    applyConfig(normalizeFormConfig(info));
+    setConfig(normalizeFormConfig(info));
     setNames([cfg.name]);
     fetch(`/api/tables/${encodeURIComponent(cfg.table)}/columns`, {
       credentials: 'include',
@@ -330,17 +263,17 @@ export default function FormsManagement() {
         setNames(Object.keys(filtered));
         if (filtered[name]) {
           setModuleKey(filtered[name].moduleKey || '');
-          applyConfig(normalizeFormConfig(filtered[name]));
+          setConfig(normalizeFormConfig(filtered[name]));
         } else {
           setName('');
-          applyConfig(normalizeFormConfig());
+          setConfig(normalizeFormConfig());
         }
       })
       .catch(() => {
         setIsDefault(true);
         setNames([]);
         setName('');
-        applyConfig(normalizeFormConfig());
+        setConfig(normalizeFormConfig());
         setModuleKey('');
       });
   }, [table, moduleKey]);
@@ -352,11 +285,11 @@ export default function FormsManagement() {
       .then((cfg) => {
         setIsDefault(!!cfg.isDefault);
         setModuleKey(cfg.moduleKey || '');
-        applyConfig(normalizeFormConfig(cfg));
+        setConfig(normalizeFormConfig(cfg));
       })
       .catch(() => {
         setIsDefault(true);
-        applyConfig(normalizeFormConfig());
+        setConfig(normalizeFormConfig());
         setModuleKey('');
       });
   }, [table, name, names]);
@@ -408,96 +341,16 @@ export default function FormsManagement() {
     });
   }
 
-  function handleMappingKeyChange(oldKey, nextKey) {
-    const sanitized = nextKey === undefined || nextKey === null ? '' : String(nextKey);
-    let duplicateMessage = '';
-    setConfig((prev) => {
-      const mapping = { ...ensurePlainObject(prev.posApiMapping) };
-      if (!Object.prototype.hasOwnProperty.call(mapping, oldKey)) return prev;
-      const currentValue = mapping[oldKey];
-      delete mapping[oldKey];
-      if (sanitized && Object.prototype.hasOwnProperty.call(mapping, sanitized)) {
-        duplicateMessage = `POSAPI field "${sanitized}" already exists.`;
-        mapping[oldKey] = currentValue;
-        return { ...prev, posApiMapping: mapping };
-      }
-      mapping[sanitized] = currentValue;
-      return { ...prev, posApiMapping: mapping };
-    });
-    setPosApiMappingError(duplicateMessage);
-  }
-
-  function handleMappingValueChange(field, nextValue) {
-    setPosApiMappingError('');
-    const sanitizedValue =
-      nextValue === undefined || nextValue === null ? '' : String(nextValue);
-    setConfig((prev) => {
-      const mapping = { ...ensurePlainObject(prev.posApiMapping) };
-      mapping[field] = sanitizedValue;
-      return { ...prev, posApiMapping: mapping };
-    });
-  }
-
-  function handleRemoveMappingEntry(field) {
-    setPosApiMappingError('');
-    setConfig((prev) => {
-      const mapping = { ...ensurePlainObject(prev.posApiMapping) };
-      delete mapping[field];
-      return { ...prev, posApiMapping: mapping };
-    });
-  }
-
-  function handleAddMappingEntry() {
-    const trimmedKey = newMappingKey.trim();
-    const trimmedValue = newMappingValue.trim();
-    if (!trimmedKey) {
-      setPosApiMappingError('POSAPI field name is required.');
-      return;
-    }
-    let duplicate = false;
-    setConfig((prev) => {
-      const mapping = { ...ensurePlainObject(prev.posApiMapping) };
-      if (Object.prototype.hasOwnProperty.call(mapping, trimmedKey)) {
-        duplicate = true;
-        return prev;
-      }
-      mapping[trimmedKey] = trimmedValue;
-      return { ...prev, posApiMapping: mapping };
-    });
-    if (duplicate) {
-      setPosApiMappingError(`POSAPI field "${trimmedKey}" already exists.`);
-      return;
-    }
-    setNewMappingKey('');
-    setNewMappingValue('');
-    setPosApiMappingError('');
-  }
-
   async function handleSave() {
     if (!name) {
       alert('Please enter transaction name');
       return;
     }
-    if (newMappingKey.trim() || newMappingValue.trim()) {
-      setPosApiMappingError(
-        'Click "Add mapping" to include the new POSAPI field or clear the pending inputs.',
-      );
-      return;
-    }
-    setPosApiMappingError('');
     const cfg = {
       ...config,
       moduleKey,
-      allowedBranches: config.allowedBranches
-        .map((b) => Number(b))
-        .filter((b) => !Number.isNaN(b)),
+      allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
       allowedDepartments: config.allowedDepartments
-        .map((d) => Number(d))
-        .filter((d) => !Number.isNaN(d)),
-      temporaryAllowedBranches: config.temporaryAllowedBranches
-        .map((b) => Number(b))
-        .filter((b) => !Number.isNaN(b)),
-      temporaryAllowedDepartments: config.temporaryAllowedDepartments
         .map((d) => Number(d))
         .filter((d) => !Number.isNaN(d)),
       transactionTypeValue: config.transactionTypeValue
@@ -517,28 +370,6 @@ export default function FormsManagement() {
         [cfg.transactionTypeField]: cfg.transactionTypeValue,
       };
     }
-    const rawMapping = ensurePlainObject(config.posApiMapping);
-    const sanitizedMapping = {};
-    for (const [rawKey, rawValue] of Object.entries(rawMapping)) {
-      const key = String(rawKey || '').trim();
-      if (!key) continue;
-      if (Object.prototype.hasOwnProperty.call(sanitizedMapping, key)) {
-        setPosApiMappingError(`Duplicate POSAPI field "${key}" in mapping.`);
-        return;
-      }
-      let parsedValue;
-      try {
-        parsedValue = parsePosApiMappingValue(rawValue, key);
-      } catch (err) {
-        setPosApiMappingError(err.message);
-        return;
-      }
-      if (parsedValue === null) continue;
-      sanitizedMapping[key] = parsedValue;
-    }
-    cfg.posApiEnabled = Boolean(config.posApiEnabled);
-    cfg.posApiType = config.posApiType ? String(config.posApiType).trim() : '';
-    cfg.posApiMapping = sanitizedMapping;
     if (isDefault) {
       try {
         const resImport = await fetch(
@@ -591,7 +422,6 @@ export default function FormsManagement() {
       });
       setSelectedConfig(key);
       setIsDefault(false);
-      applyConfig(normalizeFormConfig(cfg));
     } else {
       addToast('Save failed', 'error');
     }
@@ -621,7 +451,7 @@ export default function FormsManagement() {
       list.filter((c) => !(c.table === table && c.name === name)),
     );
     setName('');
-    applyConfig(normalizeFormConfig());
+    setConfig(normalizeFormConfig());
     setModuleKey('');
     setSelectedConfig('');
   }
@@ -680,10 +510,10 @@ export default function FormsManagement() {
         const formNames = Object.keys(filtered);
         setNames(formNames);
         if (filtered[name]) {
-          applyConfig(normalizeFormConfig(filtered[name]));
+          setConfig(normalizeFormConfig(filtered[name]));
         } else {
           setName('');
-          applyConfig(normalizeFormConfig());
+          setConfig(normalizeFormConfig());
         }
       }
       addToast('Imported', 'success');
@@ -1061,124 +891,6 @@ export default function FormsManagement() {
               ))}
             </tbody>
           </table>
-          </div>
-          <div
-            style={{
-              marginTop: '1rem',
-              border: '1px solid #ccc',
-              borderRadius: '4px',
-              padding: '1rem',
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>POSAPI Receipt Settings</h3>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={Boolean(config.posApiEnabled)}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, posApiEnabled: e.target.checked }))
-                }
-              />
-              <span>Enable POSAPI receipt submission</span>
-            </label>
-            <div style={{ marginTop: '0.5rem' }}>
-              <label>
-                Receipt type:{' '}
-                <select
-                  value={config.posApiType}
-                  onChange={(e) =>
-                    setConfig((c) => ({ ...c, posApiType: e.target.value }))
-                  }
-                >
-                  <option value="">Use default from environment</option>
-                  <option value="B2C_RECEIPT">B2C_RECEIPT</option>
-                  <option value="B2C_INVOICE">B2C_INVOICE</option>
-                  <option value="B2B_INVOICE">B2B_INVOICE</option>
-                </select>
-              </label>
-            </div>
-            <div style={{ marginTop: '0.75rem' }}>
-              <strong>POSAPI field mapping</strong>
-              <p style={{ fontSize: '0.85rem', color: '#555', marginTop: '0.25rem' }}>
-                Map POSAPI payload fields (e.g. totalAmount, totalVAT) to the columns saved
-                with this transaction. Use JSON for complex values such as arrays or nested
-                objects.
-              </p>
-              <datalist id={posApiColumnListId}>
-                {columns.map((col) => (
-                  <option key={col} value={col} />
-                ))}
-              </datalist>
-              {mappingEntries.length === 0 && (
-                <p style={{ fontSize: '0.85rem', color: '#777', marginTop: '0.5rem' }}>
-                  No mappings defined yet.
-                </p>
-              )}
-              {mappingEntries.map(([field, value], idx) => (
-                <div
-                  key={`${field || 'blank'}-${idx}`}
-                  style={{
-                    display: 'flex',
-                    flexWrap: 'wrap',
-                    alignItems: 'center',
-                    gap: '0.5rem',
-                    marginTop: '0.5rem',
-                  }}
-                >
-                  <input
-                    type="text"
-                    value={field}
-                    onChange={(e) => handleMappingKeyChange(field, e.target.value)}
-                    placeholder="POSAPI field name"
-                    style={{ flex: '1 1 180px' }}
-                  />
-                  <input
-                    type="text"
-                    value={value ?? ''}
-                    onChange={(e) => handleMappingValueChange(field, e.target.value)}
-                    placeholder="Column or JSON value"
-                    list={posApiColumnListId}
-                    style={{ flex: '1 1 220px' }}
-                  />
-                  <button type="button" onClick={() => handleRemoveMappingEntry(field)}>
-                    Remove
-                  </button>
-                </div>
-              ))}
-              <div
-                style={{
-                  display: 'flex',
-                  flexWrap: 'wrap',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  marginTop: '0.75rem',
-                }}
-              >
-                <input
-                  type="text"
-                  value={newMappingKey}
-                  onChange={(e) => setNewMappingKey(e.target.value)}
-                  placeholder="Add POSAPI field"
-                  style={{ flex: '1 1 180px' }}
-                />
-                <input
-                  type="text"
-                  value={newMappingValue}
-                  onChange={(e) => setNewMappingValue(e.target.value)}
-                  placeholder="Column or JSON value"
-                  list={posApiColumnListId}
-                  style={{ flex: '1 1 220px' }}
-                />
-                <button type="button" onClick={handleAddMappingEntry}>
-                  Add mapping
-                </button>
-              </div>
-              {posApiMappingError && (
-                <div style={{ color: '#b30000', marginTop: '0.5rem', fontSize: '0.85rem' }}>
-                  {posApiMappingError}
-                </div>
-              )}
-            </div>
           </div>
           <div style={{ marginTop: '1rem', display: 'flex', alignItems: 'flex-start' }}>
             <label style={{ marginLeft: '1rem' }}>
