@@ -706,9 +706,7 @@
   "thickness": "thick",
   "tid": "Budget Item",
   "todays_income": "Today's Income",
-  "tooltip": {
-    "pos_api_enabled": "Send POSAPI receipts after saving transactions"
-  },
+  "tooltip": {},
   "transactions_contract": "Contract",
   "transtype": "transaction type",
   "trtype": "transactional alphabet code",
