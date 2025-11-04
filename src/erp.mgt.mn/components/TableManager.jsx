@@ -2844,9 +2844,11 @@ const TableManager = forwardRef(function TableManager({
     }
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (formName) headers['X-Transaction-Form'] = formName;
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify(cleaned),
       });
@@ -2933,6 +2935,10 @@ const TableManager = forwardRef(function TableManager({
       }
     } catch (err) {
       console.error('Save failed', err);
+      addToast(
+        t('save_failed', 'Failed to save transaction. Please try again.'),
+        'error',
+      );
       return false;
     }
   }
