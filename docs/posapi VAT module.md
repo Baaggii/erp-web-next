@@ -167,6 +167,19 @@ posApiEnabled (boolean): set to true to indicate that saving this transaction sh
 
 posApiType (string, optional): specify which type of receipt to emit (B2C_RECEIPT, B2C_INVOICE or B2B_INVOICE). If omitted, the default type from your environment settings is used.
 
+posApiMapping (object): defines how POSAPI fields map to columns in the form’s master table. Each key corresponds to a POSAPI field (such as totalAmount, totalVAT, totalCityTax, customerTin or consumerNo), and the value is the name of the column in your table from which to retrieve the data. For example:
+
+{
+  "totalAmount": "total_price",
+  "totalVAT": "vat_amount",
+  "totalCityTax": "city_tax",
+  "customerTin": "customer_tin",
+  "consumerNo": "consumer_id"
+}
+
+
+This mapping allows your integration code to extract values without hard‑coding field names.
+
 For example, a sales income form definition might look like this:
 
 {
@@ -174,7 +187,14 @@ For example, a sales income form definition might look like this:
     "masterTable": "transactions_pos",
     "tables": [ /* related tables */ ],
     "posApiEnabled": true,
-    "posApiType": "B2C_RECEIPT"
+    "posApiType": "B2C_RECEIPT",
+    "posApiMapping": {
+      "totalAmount": "total_price",
+      "totalVAT": "vat_amount",
+      "totalCityTax": "city_tax",
+      "customerTin": "customer_tin",
+      "consumerNo": "consumer_id"
+    }
   }
 }
 
@@ -182,6 +202,8 @@ For example, a sales income form definition might look like this:
 When a user posts a transaction using this form, the ERP reads the dynamic configuration. If posApiEnabled is true, the system builds a POSAPI payload from the saved record (as described above), obtains an OAuth token and calls /rest/receipt. The returned lottery number and QR data should be stored back into the transaction record so that the printed receipt matches the data sent to the tax authority.
 
 POS transactions themselves use the same dynamic transaction definitions. They derive their behaviour—fields, validation rules and now POSAPI integration—from the transactionForms.json configuration. This unified approach eliminates the need for a separate “POS transaction configuration” file and ensures that future transaction types can leverage the POSAPI integration simply by toggling posApiEnabled in their form definition.
+
+Note: POSAPI settings should only be defined in transactionForms.json. Do not use the legacy posTransactionConfig.json (or any POS‑transaction‑specific configuration) for POSAPI integration. That file is reserved solely for configuring data synchronisation between tables.
 
 Conclusion and next steps
 
