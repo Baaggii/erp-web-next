@@ -9,6 +9,12 @@ import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
 
+const POSAPI_RECEIPT_TYPES = [
+  { value: 'B2C_RECEIPT', label: 'B2C receipt' },
+  { value: 'B2C_INVOICE', label: 'B2C invoice' },
+  { value: 'B2B_INVOICE', label: 'B2B invoice' },
+];
+
 function normalizeFormConfig(info = {}) {
   const toArray = (value) => (Array.isArray(value) ? [...value] : []);
   const toObject = (value) =>
@@ -57,6 +63,11 @@ function normalizeFormConfig(info = {}) {
     procedures: toArray(info.procedures),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
+    posApiEnabled: Boolean(info.posApiEnabled),
+    posApiType:
+      typeof info.posApiType === 'string' && info.posApiType
+        ? info.posApiType
+        : 'B2C_RECEIPT',
   };
 }
 
@@ -364,6 +375,11 @@ export default function FormsManagement() {
     );
     cfg.allowTemporarySubmission = temporaryFlag;
     cfg.supportsTemporarySubmission = temporaryFlag;
+    cfg.posApiEnabled = Boolean(config.posApiEnabled);
+    cfg.posApiType =
+      typeof config.posApiType === 'string'
+        ? config.posApiType.trim().toUpperCase()
+        : '';
     if (cfg.transactionTypeField && cfg.transactionTypeValue) {
       cfg.defaultValues = {
         ...cfg.defaultValues,
@@ -636,6 +652,40 @@ export default function FormsManagement() {
                 </select>
               </label>
             )}
+
+            <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                checked={Boolean(config.posApiEnabled)}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    posApiEnabled: e.target.checked,
+                  }))
+                }
+              />
+              <span>Send receipts to POSAPI</span>
+            </label>
+
+            <label>
+              POSAPI receipt type:
+              <select
+                value={config.posApiType}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    posApiType: e.target.value,
+                  }))
+                }
+                disabled={!config.posApiEnabled}
+              >
+                {POSAPI_RECEIPT_TYPES.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
 
             <label>
               Image folder:
