@@ -2844,9 +2844,11 @@ const TableManager = forwardRef(function TableManager({
     }
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (formName) headers['X-Transaction-Form'] = formName;
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify(cleaned),
       });

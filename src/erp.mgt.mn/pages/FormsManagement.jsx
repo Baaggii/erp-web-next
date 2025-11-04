@@ -9,6 +9,16 @@ import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
 
+const POS_API_FIELDS = [
+  { key: 'totalAmount', label: 'Total amount' },
+  { key: 'totalVAT', label: 'Total VAT' },
+  { key: 'totalCityTax', label: 'Total city tax' },
+  { key: 'customerTin', label: 'Customer TIN' },
+  { key: 'consumerNo', label: 'Consumer number' },
+  { key: 'taxType', label: 'Tax type' },
+  { key: 'lotNo', label: 'Lot number (pharmacy)' },
+];
+
 function normalizeFormConfig(info = {}) {
   const toArray = (value) => (Array.isArray(value) ? [...value] : []);
   const toObject = (value) =>
@@ -57,6 +67,9 @@ function normalizeFormConfig(info = {}) {
     procedures: toArray(info.procedures),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
+    posApiEnabled: Boolean(info.posApiEnabled),
+    posApiType: toString(info.posApiType),
+    posApiMapping: toObject(info.posApiMapping),
   };
 }
 
@@ -338,6 +351,18 @@ export default function FormsManagement() {
       const set = new Set(c[key]);
       set.has(field) ? set.delete(field) : set.add(field);
       return { ...c, [key]: Array.from(set) };
+    });
+  }
+
+  function updatePosApiMapping(field, value) {
+    setConfig((c) => {
+      const next = { ...(c.posApiMapping || {}) };
+      if (!value) {
+        delete next[field];
+      } else {
+        next[field] = value;
+      }
+      return { ...c, posApiMapping: next };
     });
   }
 
@@ -675,6 +700,78 @@ export default function FormsManagement() {
                 'When enabled, users can save drafts that require senior confirmation before posting.',
               )}
             </small>
+
+            <fieldset
+              style={{
+                marginTop: '1rem',
+                border: '1px solid #ccc',
+                padding: '0.75rem 1rem',
+              }}
+            >
+              <legend>POSAPI</legend>
+              <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(config.posApiEnabled)}
+                  onChange={(e) =>
+                    setConfig((c) => ({ ...c, posApiEnabled: e.target.checked }))
+                  }
+                />
+                <span>Enable POSAPI submission</span>
+              </label>
+              <label style={{ display: 'block', marginTop: '0.75rem' }}>
+                Receipt type:
+                <select
+                  value={config.posApiType}
+                  disabled={!config.posApiEnabled}
+                  onChange={(e) =>
+                    setConfig((c) => ({ ...c, posApiType: e.target.value }))
+                  }
+                >
+                  <option value="">Use default from environment</option>
+                  <option value="B2C_RECEIPT">B2C_RECEIPT</option>
+                  <option value="B2C_INVOICE">B2C_INVOICE</option>
+                  <option value="B2B_INVOICE">B2B_INVOICE</option>
+                </select>
+              </label>
+              <div style={{ marginTop: '0.75rem' }}>
+                <strong>Field mapping</strong>
+                <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                  Map POSAPI fields to columns in the master transaction table. Leave
+                  blank to skip optional fields.
+                </p>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '0.75rem',
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  {POS_API_FIELDS.map((field) => {
+                    const listId = `posapi-${field.key}-columns`;
+                    return (
+                      <label key={field.key} style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span>{field.label}</span>
+                        <input
+                          type="text"
+                          list={listId}
+                          value={config.posApiMapping[field.key] || ''}
+                          onChange={(e) => updatePosApiMapping(field.key, e.target.value)}
+                          placeholder="Column name"
+                          disabled={!config.posApiEnabled}
+                        />
+                        <datalist id={listId}>
+                          {columns.map((col) => (
+                            <option key={col} value={col} />
+                          ))}
+                        </datalist>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </fieldset>
 
             {name && <button onClick={handleDelete}>Delete</button>}
           </div>
