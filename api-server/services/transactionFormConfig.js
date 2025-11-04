@@ -27,43 +27,6 @@ function arrify(val) {
   return [String(val)];
 }
 
-function normalizePosApiMapping(rawMapping) {
-  if (!rawMapping || typeof rawMapping !== 'object' || Array.isArray(rawMapping)) {
-    return {};
-  }
-  const normalized = {};
-  for (const [key, value] of Object.entries(rawMapping)) {
-    if (!key) continue;
-    if (value === undefined) continue;
-    if (Array.isArray(value)) {
-      normalized[key] = value.map((entry) => {
-        if (entry === undefined || entry === null) return entry;
-        if (typeof entry === 'string') return entry;
-        if (typeof entry === 'number' || typeof entry === 'boolean') {
-          return String(entry);
-        }
-        if (entry && typeof entry === 'object') {
-          return { ...entry };
-        }
-        return entry;
-      });
-      continue;
-    }
-    if (value && typeof value === 'object') {
-      normalized[key] = { ...value };
-      continue;
-    }
-    if (typeof value === 'string') {
-      normalized[key] = value;
-      continue;
-    }
-    if (typeof value === 'number' || typeof value === 'boolean') {
-      normalized[key] = String(value);
-    }
-  }
-  return normalized;
-}
-
 function parseEntry(raw = {}) {
   const temporaryFlag = Boolean(
     raw.supportsTemporarySubmission ??
@@ -144,10 +107,6 @@ function parseEntry(raw = {}) {
     procedures: arrify(raw.procedures || raw.procedure),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
-    posApiEnabled: Boolean(raw.posApiEnabled),
-    posApiType:
-      typeof raw.posApiType === 'string' ? raw.posApiType.trim() : '',
-    posApiMapping: normalizePosApiMapping(raw.posApiMapping),
   };
 }
 
@@ -308,9 +267,6 @@ export async function setFormConfig(
     procedures = [],
     supportsTemporarySubmission,
     allowTemporarySubmission,
-    posApiEnabled = false,
-    posApiType = '',
-    posApiMapping = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -333,8 +289,6 @@ export async function setFormConfig(
     : [];
   const { cfg } = await readConfig(companyId);
   if (!cfg[table]) cfg[table] = {};
-  const normalizedPosApiMapping = normalizePosApiMapping(posApiMapping);
-
   cfg[table][name] = {
     visibleFields: arrify(visibleFields),
     requiredFields: arrify(requiredFields),
@@ -376,9 +330,6 @@ export async function setFormConfig(
     supportsTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),
-    posApiEnabled: Boolean(posApiEnabled),
-    posApiType: typeof posApiType === 'string' ? posApiType : '',
-    posApiMapping: normalizedPosApiMapping,
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
