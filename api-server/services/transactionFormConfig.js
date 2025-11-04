@@ -313,10 +313,10 @@ export async function setFormConfig(
     procedures = [],
     supportsTemporarySubmission,
     allowTemporarySubmission,
-    posApiEnabled,
-    posApiType,
-    posApiMapping,
-  } = providedConfig;
+    posApiEnabled = false,
+    posApiType = '',
+    posApiMapping = {},
+  } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
     branchIdFields.length ? branchIdFields : branchIdField ? [branchIdField] : [],
@@ -336,34 +336,9 @@ export async function setFormConfig(
   const tad = Array.isArray(temporaryAllowedDepartments)
     ? temporaryAllowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
-  const hasPosApiEnabled = Object.prototype.hasOwnProperty.call(
-    providedConfig,
-    'posApiEnabled',
-  );
-  const hasPosApiType = Object.prototype.hasOwnProperty.call(
-    providedConfig,
-    'posApiType',
-  );
-  const hasPosApiMapping = Object.prototype.hasOwnProperty.call(
-    providedConfig,
-    'posApiMapping',
-  );
-
-  const normalizedPosApiMapping = hasPosApiMapping
-    ? normalizePosApiMapping(posApiMapping)
-    : normalizePosApiMapping(existingEntry.posApiMapping);
-
-  const resolvedPosApiType = hasPosApiType
-    ? typeof posApiType === 'string'
-      ? posApiType.trim()
-      : ''
-    : typeof existingEntry.posApiType === 'string'
-      ? existingEntry.posApiType.trim()
-      : '';
-
-  const resolvedPosApiEnabled = hasPosApiEnabled
-    ? Boolean(posApiEnabled)
-    : Boolean(existingEntry.posApiEnabled);
+  const { cfg } = await readConfig(companyId);
+  if (!cfg[table]) cfg[table] = {};
+  const normalizedPosApiMapping = normalizePosApiMapping(posApiMapping);
 
   cfg[table][name] = {
     visibleFields: arrify(visibleFields),
@@ -406,8 +381,8 @@ export async function setFormConfig(
     supportsTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),
-    posApiEnabled: resolvedPosApiEnabled,
-    posApiType: resolvedPosApiType,
+    posApiEnabled: Boolean(posApiEnabled),
+    posApiType: typeof posApiType === 'string' ? posApiType : '',
     posApiMapping: normalizedPosApiMapping,
   };
   if (editableFields !== undefined) {
