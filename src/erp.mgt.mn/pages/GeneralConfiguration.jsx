@@ -408,6 +408,27 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
+              title={t('pos_api_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Send POSAPI receipts after saving transactions',
+              })}
+            >
+              <label>
+                Enable POSAPI{' '}
+                <input
+                  name="posApiEnabled"
+                  type="checkbox"
+                  checked={normalizeBoolean(active.posApiEnabled, true)}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+            <div style={{ fontSize: '0.8rem' }}>
+              When disabled, no POSAPI calls will be attempted.
+            </div>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
               title={t('trigger_toast_enabled', {
                 ns: 'tooltip',
                 defaultValue: 'Display trigger messages as toasts',

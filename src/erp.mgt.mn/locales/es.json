@@ -700,6 +700,7 @@
   "tid": "Partida Presupuestaria",
   "todays_income": "Ingresos de hoy",
   "tooltip": {
+    "pos_api_enabled": "Enviar recibos POSAPI después de guardar transacciones",
     "form.t_d090d0b6d0bbd18bd0bd20d182d3a9d0": "Un documento o conjunto de actividades que establece las tareas a realizar y cómo se asignan dentro de un proyecto.",
     "form.t_d090d0b6d0bbd18bd0bd20d182d3a9d0.transactiontypefield": "Tipo de transacción en el sistema ERP",
     "form.t_d091d0b0d180d0b0d0b020d0bcd0b0d1": "Este término se refiere a los ingresos generados por la venta de productos o materiales utilizados en la operación de un negocio.",
