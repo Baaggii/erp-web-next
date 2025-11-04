@@ -1557,21 +1557,6 @@
         "sub_transaction_ids": "",
         "TransType": "10001"
       },
-      "posApiEnabled": true,
-      "posApiType": "B2C_RECEIPT",
-      "posApiMapping": {
-        "branchNo": "branch_id",
-        "posNo": "session_id",
-        "totalAmount": "payable_amount",
-        "totalVAT": "total_vat",
-        "totalCityTax": "total_city_tax",
-        "customerTin": "customer_tin",
-        "consumerNo": "consumer_no",
-        "taxType": "tax_type",
-        "receipts": "pos_receipts",
-        "lottery": "lottery_no",
-        "qrData": "qr_data"
-      },
       "editableDefaultFields": [
         "order_id",
         "cashback",

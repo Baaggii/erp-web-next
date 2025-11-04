@@ -27,11 +27,6 @@ import {
   removeCustomRelationAtIndex,
   removeCustomRelationMatching,
 } from '../services/tableRelationsConfig.js';
-import { getConfigsByTable, getFormConfig } from '../services/transactionFormConfig.js';
-import {
-  buildReceiptFromDynamicTransaction,
-  sendReceipt,
-} from '../services/posApiService.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -40,110 +35,6 @@ try {
   bcrypt = { hash: async (s) => s };
 }
 import { formatDateForDb } from '../utils/formatDate.js';
-
-function createColumnResolver(columns = []) {
-  const lowerMap = new Map();
-  columns.forEach((col) => {
-    if (!col) return;
-    const name = String(col);
-    lowerMap.set(name.toLowerCase(), name);
-  });
-  return (candidate) => {
-    if (!candidate && candidate !== 0) return null;
-    const key = String(candidate).trim();
-    if (!key) return null;
-    const match = lowerMap.get(key.toLowerCase());
-    return match || null;
-  };
-}
-
-function resolveResponseField(mappingEntry, resolveColumn) {
-  if (!mappingEntry) return null;
-  if (typeof mappingEntry === 'string') {
-    return resolveColumn(mappingEntry);
-  }
-  if (Array.isArray(mappingEntry)) {
-    for (const entry of mappingEntry) {
-      const resolved = resolveResponseField(entry, resolveColumn);
-      if (resolved) return resolved;
-    }
-    return null;
-  }
-  if (mappingEntry && typeof mappingEntry === 'object') {
-    const candidate =
-      mappingEntry.field ||
-      mappingEntry.column ||
-      mappingEntry.path ||
-      mappingEntry.name ||
-      mappingEntry.value;
-    if (candidate) {
-      const resolved = resolveColumn(candidate);
-      if (resolved) return resolved;
-    }
-  }
-  return null;
-}
-
-function getRowValueCaseInsensitive(row, field) {
-  if (!row || !field) return undefined;
-  if (Object.prototype.hasOwnProperty.call(row, field)) return row[field];
-  const lower = String(field).toLowerCase();
-  for (const key of Object.keys(row)) {
-    if (key.toLowerCase() === lower) return row[key];
-  }
-  return undefined;
-}
-
-async function resolvePosApiContext(table, row, companyId) {
-  if (!table || !table.startsWith('transactions_') || !row) return null;
-  const { config: configs } = await getConfigsByTable(table, companyId);
-  if (!configs || typeof configs !== 'object') return null;
-  const enabledEntries = Object.entries(configs).filter(([, cfg]) => cfg?.posApiEnabled);
-  if (!enabledEntries.length) return null;
-
-  const matchingNames = [];
-  enabledEntries.forEach(([name, cfg]) => {
-    if (!cfg) return;
-    if (cfg.transactionTypeField && cfg.transactionTypeValue) {
-      const rowValue = getRowValueCaseInsensitive(row, cfg.transactionTypeField);
-      if (
-        rowValue === undefined ||
-        rowValue === null ||
-        String(rowValue).trim() !== String(cfg.transactionTypeValue).trim()
-      ) {
-        return;
-      }
-    }
-    matchingNames.push(name);
-  });
-
-  let selectedName = null;
-  if (matchingNames.length === 1) {
-    selectedName = matchingNames[0];
-  } else if (matchingNames.length === 0 && enabledEntries.length === 1) {
-    selectedName = enabledEntries[0][0];
-  } else if (matchingNames.length > 1) {
-    const rowBranch = getRowValueCaseInsensitive(row, 'branch_id');
-    if (rowBranch !== undefined && rowBranch !== null) {
-      const normalizedBranch = Number(rowBranch);
-      const branchMatch = matchingNames.find((name) => {
-        const cfg = configs[name];
-        if (!cfg || !Array.isArray(cfg.allowedBranches) || !cfg.allowedBranches.length)
-          return false;
-        return cfg.allowedBranches.includes(normalizedBranch);
-      });
-      if (branchMatch) {
-        selectedName = branchMatch;
-      }
-    }
-    if (!selectedName) selectedName = matchingNames[0];
-  }
-
-  if (!selectedName) return null;
-  const { config } = await getFormConfig(table, selectedName, companyId);
-  if (!config || !config.posApiEnabled) return null;
-  return { name: selectedName, config, row };
-}
 
 export async function getTables(req, res, next) {
   try {
@@ -506,21 +397,17 @@ export async function updateRow(req, res, next) {
 
 export async function addRow(req, res, next) {
   try {
-    const tableName = req.params.table;
-    if (tableName === 'companies') {
+    if (req.params.table === 'companies') {
       return createCompanyHandler(req, res, next);
     }
-    const columns = await listTableColumns(tableName);
-    const resolveColumnName = createColumnResolver(columns);
+    const columns = await listTableColumns(req.params.table);
     const row = { ...req.body };
-    const companyId = req.user.companyId;
-    const changedBy = req.user?.empid ?? null;
-    if (columns.includes('created_by')) row.created_by = changedBy;
+    if (columns.includes('created_by')) row.created_by = req.user?.empid;
     if (columns.includes('created_at')) {
       row.created_at = formatDateForDb(new Date());
     }
     if (columns.includes('company_id')) {
-      row.company_id = companyId;
+      row.company_id = req.user.companyId;
     }
     if (req.params.table === 'users' && row.password) {
       row.password = await bcrypt.hash(row.password, 10);
@@ -529,89 +416,21 @@ export async function addRow(req, res, next) {
       row.g_burtgel_id = row.g_id ?? 0;
     }
     const result = await insertTableRow(
-      tableName,
+      req.params.table,
       row,
       undefined,
       undefined,
       false,
-      changedBy,
+      req.user?.empid ?? null,
       {
         mutationContext: {
-          changedBy,
-          companyId,
+          changedBy: req.user?.empid ?? null,
+          companyId: req.user.companyId,
         },
       },
     );
     res.locals.insertId = result?.id;
-    let posApiContext = null;
-    if (tableName.startsWith('transactions_') && result?.id != null) {
-      try {
-        const tenantFilters = {};
-        const companyColumn = resolveColumnName('company_id');
-        if (companyColumn) tenantFilters[companyColumn] = companyId;
-        const savedRow = await getTableRowById(tableName, result.id, {
-          tenantFilters,
-          defaultCompanyId: companyId,
-        });
-        if (savedRow) {
-          const context = await resolvePosApiContext(tableName, savedRow, companyId);
-          if (context) {
-            posApiContext = {
-              ...context,
-              recordId: result.id,
-              table: tableName,
-            };
-          }
-        }
-      } catch (err) {
-        console.error('Failed to prepare POSAPI payload', err);
-      }
-    }
-
     res.status(201).json(result);
-
-    if (posApiContext) {
-      const contextCopy = posApiContext;
-      (async () => {
-        try {
-          const payload = buildReceiptFromDynamicTransaction(
-            contextCopy.row,
-            contextCopy.config,
-          );
-          if (!payload) return;
-          const response = await sendReceipt(payload);
-          const mapping = contextCopy.config.posApiMapping || {};
-          const lotteryField =
-            resolveResponseField(mapping.lottery, resolveColumnName) ||
-            resolveResponseField(mapping.lotteryField, resolveColumnName);
-          const qrField =
-            resolveResponseField(mapping.qrData, resolveColumnName) ||
-            resolveResponseField(mapping.qr, resolveColumnName) ||
-            resolveResponseField(mapping.qrField, resolveColumnName);
-          const updates = {};
-          if (lotteryField && response?.lottery) {
-            updates[lotteryField] = response.lottery;
-          }
-          if (qrField && response?.qrData) {
-            updates[qrField] = response.qrData;
-          }
-          if (Object.keys(updates).length) {
-            await updateTableRow(
-              contextCopy.table,
-              contextCopy.recordId,
-              updates,
-              companyId,
-              undefined,
-              {
-                mutationContext: { changedBy, companyId },
-              },
-            );
-          }
-        } catch (err) {
-          console.error('POSAPI receipt submission failed', err);
-        }
-      })();
-    }
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
       return res.status(400).json({ message: err.message });
