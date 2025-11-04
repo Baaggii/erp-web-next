@@ -126,7 +126,7 @@ function parseEntry(raw = {}) {
     procedures: arrify(raw.procedures || raw.procedure),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
-    posApiEnabled: coerceBoolean(raw.posApiEnabled, false),
+    posApiEnabled: Boolean(raw.posApiEnabled),
     posApiType:
       typeof raw.posApiType === 'string' && raw.posApiType.trim()
         ? raw.posApiType.trim()
@@ -358,7 +358,7 @@ export async function setFormConfig(
     supportsTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),
-    posApiEnabled: coerceBoolean(posApiEnabled, false),
+    posApiEnabled: Boolean(posApiEnabled),
     posApiType:
       typeof posApiType === 'string' && posApiType.trim()
         ? posApiType.trim()
