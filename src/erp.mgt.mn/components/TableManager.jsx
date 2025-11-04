@@ -35,7 +35,6 @@ import {
   valuesEqual,
 } from '../utils/generatedColumns.js';
 import { isPlainRecord } from '../utils/transactionValues.js';
-import { getSortIndex } from '../utils/getSortIndex.js';
 
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
@@ -1087,35 +1086,14 @@ const TableManager = forwardRef(function TableManager({
       })
       .then((data) => {
         if (canceled) return;
-        const rows = Array.isArray(data.rows) ? data.rows : [];
-        const opts = rows.map((r) => {
-          const rawValue =
-            r?.UITransType ?? r?.TransType ?? r?.dropdownIndex ?? r?.index ?? '';
-          const value = rawValue != null ? String(rawValue) : '';
-          const name =
-            r?.UITransTypeName ?? r?.TransTypeName ?? r?.name ?? r?.label ?? '';
-          return {
-            value,
-            label:
-              value && name
-                ? `${value} - ${name}`
-                : name || value || '',
-            meta: r,
-          };
-        });
-        opts.sort((a, b) => {
-          const idxA = getSortIndex(a.meta ?? {});
-          const idxB = getSortIndex(b.meta ?? {});
-          if (idxA !== null && idxB !== null && idxA !== idxB) return idxA - idxB;
-          if (idxA !== null && idxB === null) return -1;
-          if (idxB !== null && idxA === null) return 1;
-          return String(a.label || a.value || '')
-            .localeCompare(String(b.label || b.value || ''), undefined, {
-              numeric: true,
-              sensitivity: 'base',
-            });
-        });
-        setTypeOptions(opts.map(({ meta, ...rest }) => rest));
+        const opts = (data.rows || []).map((r) => ({
+          value: r.UITransType?.toString() ?? '',
+          label:
+            r.UITransType !== undefined
+              ? `${r.UITransType} - ${r.UITransTypeName ?? ''}`
+              : r.UITransTypeName,
+        }));
+        setTypeOptions(opts);
       })
       .catch(() => {
         if (!canceled) {

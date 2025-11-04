@@ -15,7 +15,6 @@ import {
   normalizeSnapshotRecord,
   resolveSnapshotSource,
 } from '../utils/normalizeSnapshot.js';
-import { getSortIndex } from '../utils/getSortIndex.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -888,56 +887,15 @@ export default function RequestsPage() {
   const totalPages = Math.max(1, Math.ceil(total / perPage));
 
   const requesterOptions = useMemo(() => {
-    const indexMap = new Map();
-    incomingRequests.forEach((r) => {
-      const id = String(r?.emp_id ?? '').trim();
-      if (!id) return;
-      const idx = getSortIndex(r);
-      if (!indexMap.has(id) || (idx !== null && (indexMap.get(id) ?? Infinity) > idx)) {
-        indexMap.set(id, idx);
-      }
-    });
-    return Array.from(indexMap.entries())
-      .sort((a, b) => {
-        const idxA = a[1];
-        const idxB = b[1];
-        if (idxA !== null && idxB !== null && idxA !== idxB) return idxA - idxB;
-        if (idxA !== null && idxB === null) return -1;
-        if (idxB !== null && idxA === null) return 1;
-        return a[0].localeCompare(b[0], undefined, {
-          numeric: true,
-          sensitivity: 'base',
-        });
-      })
-      .map(([id]) => id);
+    const set = new Set();
+    incomingRequests.forEach((r) => set.add(String(r.emp_id).trim()));
+    return Array.from(set);
   }, [incomingRequests]);
 
   const tableOptions = useMemo(() => {
-    const indexMap = new Map();
-    requests.forEach((r) => {
-      const tableName = String(r?.table_name ?? '').trim();
-      if (!tableName) return;
-      const idx = getSortIndex(r);
-      if (
-        !indexMap.has(tableName) ||
-        (idx !== null && (indexMap.get(tableName) ?? Infinity) > idx)
-      ) {
-        indexMap.set(tableName, idx);
-      }
-    });
-    return Array.from(indexMap.entries())
-      .sort((a, b) => {
-        const idxA = a[1];
-        const idxB = b[1];
-        if (idxA !== null && idxB !== null && idxA !== idxB) return idxA - idxB;
-        if (idxA !== null && idxB === null) return -1;
-        if (idxB !== null && idxA === null) return 1;
-        return a[0].localeCompare(b[0], undefined, {
-          numeric: true,
-          sensitivity: 'base',
-        });
-      })
-      .map(([name]) => name);
+    const set = new Set();
+    requests.forEach((r) => set.add(r.table_name));
+    return Array.from(set);
   }, [requests]);
 
   const allFields = useMemo(() => {
