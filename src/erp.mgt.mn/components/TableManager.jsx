@@ -35,6 +35,7 @@ import {
   valuesEqual,
 } from '../utils/generatedColumns.js';
 import { isPlainRecord } from '../utils/transactionValues.js';
+import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
@@ -1086,7 +1087,8 @@ const TableManager = forwardRef(function TableManager({
       })
       .then((data) => {
         if (canceled) return;
-        const opts = (data.rows || []).map((r) => ({
+        const sortedTypeRows = sortRowsByIndex(data.rows || []);
+        const opts = sortedTypeRows.map((r) => ({
           value: r.UITransType?.toString() ?? '',
           label:
             r.UITransType !== undefined
@@ -1551,9 +1553,29 @@ const TableManager = forwardRef(function TableManager({
         idField: cfg?.idField ?? rel.column,
         displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
       };
+      if (typeof cfg?.indexField === 'string' && cfg.indexField.trim()) {
+        normalizedCfg.indexField = cfg.indexField.trim();
+      }
+      if (Array.isArray(cfg?.indexFields)) {
+        const deduped = Array.from(
+          new Set(
+            cfg.indexFields
+              .filter((field) => typeof field === 'string' && field.trim())
+              .map((field) => field.trim()),
+          ),
+        );
+        if (deduped.length > 0) {
+          normalizedCfg.indexFields = deduped;
+        }
+      }
 
       const rows = await fetchTableRows(rel.table, tenantInfo);
       if (canceled) return null;
+
+      const sortedRows = sortRowsByIndex(rows, {
+        indexField: normalizedCfg.indexField,
+        indexFields: normalizedCfg.indexFields,
+      });
 
       const nestedDisplayLookups = await loadNestedDisplayLookups(
         rel.table,
@@ -1562,13 +1584,17 @@ const TableManager = forwardRef(function TableManager({
       if (canceled) return null;
 
       const optionRows = {};
-      const options = rows.map((row) => {
+      const options = sortedRows.map((row) => {
         const keyMap = {};
         Object.keys(row || {}).forEach((k) => {
           keyMap[k.toLowerCase()] = k;
         });
         const valKey = keyMap[rel.column.toLowerCase()];
         const val = valKey ? row[valKey] : undefined;
+        const indexInfo = extractRowIndex(row, {
+          indexField: normalizedCfg.indexField,
+          indexFields: normalizedCfg.indexFields,
+        });
         const label = buildRelationLabel({
           row,
           keyMap,
@@ -1582,6 +1608,13 @@ const TableManager = forwardRef(function TableManager({
         return {
           value: val,
           label,
+          ...(indexInfo
+            ? {
+                __index: indexInfo.numeric
+                  ? indexInfo.sortValue
+                  : indexInfo.rawValue,
+              }
+            : {}),
         };
       });
 
@@ -1592,6 +1625,12 @@ const TableManager = forwardRef(function TableManager({
           column: rel.column,
           idField: normalizedCfg.idField,
           displayFields: normalizedCfg.displayFields,
+          ...(normalizedCfg.indexField
+            ? { indexField: normalizedCfg.indexField }
+            : {}),
+          ...(Array.isArray(normalizedCfg.indexFields)
+            ? { indexFields: normalizedCfg.indexFields }
+            : {}),
         },
         options,
         rows: optionRows,
