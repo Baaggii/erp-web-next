@@ -4024,7 +4024,8 @@ const TableManager = forwardRef(function TableManager({
 
   const relationOpts = {};
   ordered.forEach((c) => {
-    if (relations[c] && refData[c]) {
+    if (!refData[c]) return;
+    if (relations[c] || relationConfigs[c]) {
       relationOpts[c] = refData[c];
     }
   });
