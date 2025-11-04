@@ -2,55 +2,6 @@ import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
-const POSAPI_RECEIPT_TYPES = new Set([
-  'B2C_RECEIPT',
-  'B2C_INVOICE',
-  'B2B_INVOICE',
-]);
-
-const ENV_POSAPI_RECEIPT_TYPE =
-  process.env.POSAPI_RECEIPT_TYPE?.trim().toUpperCase() || '';
-
-const DEFAULT_POSAPI_RECEIPT_TYPE = POSAPI_RECEIPT_TYPES.has(
-  ENV_POSAPI_RECEIPT_TYPE,
-)
-  ? ENV_POSAPI_RECEIPT_TYPE
-  : 'B2C_RECEIPT';
-
-function normalizeBoolean(value, defaultValue = false) {
-  if (value === undefined || value === null) return defaultValue;
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') return value !== 0;
-  if (typeof value === 'string') {
-    const trimmed = value.trim().toLowerCase();
-    if (!trimmed) return defaultValue;
-    if (['true', '1', 'yes', 'y'].includes(trimmed)) return true;
-    if (['false', '0', 'no', 'n'].includes(trimmed)) return false;
-  }
-  return Boolean(value);
-}
-
-function sanitizeReceiptType(value) {
-  if (typeof value !== 'string') return '';
-  const upper = value.trim().toUpperCase();
-  if (!upper) return '';
-  return POSAPI_RECEIPT_TYPES.has(upper) ? upper : '';
-}
-
-function applyPosApiDefaults(config) {
-  if (!config || typeof config !== 'object') return config;
-  const result = { ...config };
-  result.posApiEnabled = normalizeBoolean(result.posApiEnabled, false);
-  const sanitized = sanitizeReceiptType(result.posApiType);
-  if (sanitized) {
-    result.posApiType = sanitized;
-  } else {
-    delete result.posApiType;
-    result.posApiType = DEFAULT_POSAPI_RECEIPT_TYPE;
-  }
-  return result;
-}
-
 async function readConfig(companyId = 0) {
   const { path: filePath, isDefault } = await getConfigPath(
     'posTransactionConfig.json',
@@ -189,28 +140,18 @@ async function writeConfig(cfg, companyId = 0) {
 
 export async function getConfig(name, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
-  const raw = cfg[name];
-  if (!raw || typeof raw !== 'object') {
-    return { config: null, isDefault };
-  }
-  return { config: applyPosApiDefaults(raw), isDefault };
+  return { config: cfg[name] || null, isDefault };
 }
 
 export async function getAllConfigs(companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
-  const normalized = {};
-  Object.entries(cfg || {}).forEach(([key, value]) => {
-    if (!value || typeof value !== 'object') return;
-    normalized[key] = applyPosApiDefaults(value);
-  });
-  return { config: normalized, isDefault };
+  return { config: cfg, isDefault };
 }
 
 export async function setConfig(name, config = {}, companyId = 0) {
   const { cfg } = await readConfig(companyId);
   const normalizedConfig = {
     ...config,
-    posApiEnabled: normalizeBoolean(config.posApiEnabled, false),
     allowedBranches: normalizeStoredAccessList(config.allowedBranches),
     allowedDepartments: normalizeStoredAccessList(config.allowedDepartments),
     temporaryAllowedBranches: normalizeStoredAccessList(
@@ -237,12 +178,6 @@ export async function setConfig(name, config = {}, companyId = 0) {
           .filter((proc) => proc)
       : [],
   };
-  const sanitizedType = sanitizeReceiptType(config.posApiType);
-  if (sanitizedType) {
-    normalizedConfig.posApiType = sanitizedType;
-  } else {
-    delete normalizedConfig.posApiType;
-  }
   cfg[name] = normalizedConfig;
   await writeConfig(cfg, companyId);
   return cfg[name];
