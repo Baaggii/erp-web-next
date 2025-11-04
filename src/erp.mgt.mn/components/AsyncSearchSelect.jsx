@@ -15,6 +15,8 @@ import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
+const PAGE_SIZE = 100;
+
 export default function AsyncSearchSelect({
   table,
   searchColumn,
@@ -80,7 +82,7 @@ export default function AsyncSearchSelect({
   }, [searchColumns, searchColumn, idField, labelFields]);
 
   const findBestOption = useCallback(
-    (query) => {
+    (query, { allowPartial = true } = {}) => {
       const normalized = String(query || '').trim().toLowerCase();
       if (normalized.length === 0) return null;
       let opt = options.find(
@@ -91,7 +93,7 @@ export default function AsyncSearchSelect({
           (o) => String(o.label ?? '').toLowerCase() === normalized,
         );
       }
-      if (opt == null) {
+      if (opt == null && allowPartial) {
         opt = options.find((o) => {
           const valueText = String(o.value ?? '').toLowerCase();
           const labelText = String(o.label ?? '').toLowerCase();
@@ -103,6 +105,51 @@ export default function AsyncSearchSelect({
       return opt || null;
     },
     [options],
+  );
+
+  const compareOptions = useCallback((a, b) => {
+    const aVal = a?.value;
+    const bVal = b?.value;
+    if (aVal == null && bVal == null) return 0;
+    if (aVal == null) return 1;
+    if (bVal == null) return -1;
+    const aNum = Number(aVal);
+    const bNum = Number(bVal);
+    if (Number.isFinite(aNum) && Number.isFinite(bNum)) {
+      return aNum - bNum;
+    }
+    return String(aVal).localeCompare(String(bVal), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  }, []);
+
+  const normalizeOptions = useCallback(
+    (list) => {
+      if (!Array.isArray(list)) return [];
+      const deduped = [];
+      const seen = new Map();
+      list.forEach((opt) => {
+        if (!opt) return;
+        const key =
+          opt.value != null
+            ? `v:${String(opt.value)}`
+            : `l:${JSON.stringify(opt.label ?? opt)}`;
+        if (!seen.has(key)) {
+          seen.set(key, opt);
+          deduped.push(opt);
+        } else {
+          const existing = seen.get(key);
+          if (!existing.label && opt.label) {
+            const idx = deduped.indexOf(existing);
+            if (idx >= 0) deduped[idx] = opt;
+            seen.set(key, opt);
+          }
+        }
+      });
+      return deduped.sort(compareOptions);
+    },
+    [compareOptions],
   );
 
   const updateMenuPosition = useCallback(() => {
@@ -151,7 +198,7 @@ export default function AsyncSearchSelect({
     if (!table || cols.length === 0) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: p, perPage: 50 });
+      const params = new URLSearchParams({ page: p, perPage: PAGE_SIZE });
       const isShared =
         tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
       const keys = getTenantKeyList(tenantMeta);
@@ -208,7 +255,13 @@ export default function AsyncSearchSelect({
       if (normalizedQuery) {
         opts = filterOptionsByQuery(opts, normalizedQuery);
       }
-      const more = rows.length >= 50 && p * 50 < (json.count || Infinity);
+      const totalCount = Number.isFinite(Number(json.count))
+        ? Number(json.count)
+        : null;
+      const more =
+        totalCount != null
+          ? p * PAGE_SIZE < totalCount
+          : rows.length >= PAGE_SIZE;
       setHasMore(more);
       if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
         const nextPage = p + 1;
@@ -218,18 +271,23 @@ export default function AsyncSearchSelect({
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
-          return [...base, ...opts];
+          return normalizeOptions([...base, ...opts]);
         }
-        if (normalizedQuery && opts.length === 0 && Array.isArray(prev) && prev.length > 0) {
+        if (
+          normalizedQuery &&
+          opts.length === 0 &&
+          Array.isArray(prev) &&
+          prev.length > 0
+        ) {
           const fallback = filterOptionsByQuery(prev, normalizedQuery);
           if (fallback.length > 0) {
-            return fallback;
+            return normalizeOptions(fallback);
           }
         }
-        return opts;
+        return normalizeOptions(opts);
       });
     } catch (err) {
-      if (err.name !== 'AbortError') setOptions(append ? [] : []);
+      if (err.name !== 'AbortError') setOptions([]);
     } finally {
       setLoading(false);
     }
@@ -246,8 +304,18 @@ export default function AsyncSearchSelect({
   }, [value]);
 
   useEffect(() => {
-    if (show && options.length > 0) setHighlight((h) => (h < 0 ? 0 : Math.min(h, options.length - 1)));
-  }, [options, show]);
+    if (!show || options.length === 0) {
+      setHighlight((h) => (h === -1 ? h : Math.min(h, options.length - 1)));
+      return;
+    }
+    setHighlight((h) => {
+      if (h >= 0 && h < options.length) return h;
+      const exactIndex = options.findIndex(
+        (opt) => String(opt.value ?? '') === String(input ?? ''),
+      );
+      return exactIndex >= 0 ? exactIndex : -1;
+    });
+  }, [options, show, input]);
 
   useEffect(() => {
     let canceled = false;
@@ -287,8 +355,9 @@ export default function AsyncSearchSelect({
 
   useEffect(() => {
     if (disabled || !show || tenantMeta === null) return;
-    const controller = new AbortController();
     const q = String(input || '').trim();
+    if (!q && options.length > 0) return;
+    const controller = new AbortController();
     setPage(1);
     fetchPage(1, q, false, controller.signal);
     return () => controller.abort();
@@ -302,6 +371,7 @@ export default function AsyncSearchSelect({
     effectiveCompanyId,
     branch,
     department,
+    options.length,
   ]);
 
   useEffect(() => {
@@ -317,7 +387,7 @@ export default function AsyncSearchSelect({
       pendingLookupRef.current = null;
       return;
     }
-    const opt = findBestOption(pending.query);
+    const opt = findBestOption(pending.query, { allowPartial: false });
     if (opt) {
       onChange(opt.value, opt.label);
       setInput(String(opt.value));
@@ -360,7 +430,7 @@ export default function AsyncSearchSelect({
     if (idx >= 0 && idx < options.length) {
       opt = options[idx];
     } else if (options.length > 0) {
-      opt = findBestOption(query);
+      opt = findBestOption(query, { allowPartial: false });
     }
 
     if (opt == null) {
