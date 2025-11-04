@@ -35,7 +35,7 @@ import {
   valuesEqual,
 } from '../utils/generatedColumns.js';
 import { isPlainRecord } from '../utils/transactionValues.js';
-import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
+import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
@@ -88,6 +88,91 @@ function buildColumnCaseMap(columns) {
     }
   });
   return map;
+}
+
+function extractErrorMessages(source) {
+  const seen = new Set();
+  const messages = [];
+  const push = (value, prefix = '') => {
+    if (value === undefined || value === null) return;
+    const str = String(value).trim();
+    if (!str) return;
+    messages.push(prefix ? `${prefix}${str}` : str);
+  };
+  const visit = (value, prefix = '') => {
+    if (value === undefined || value === null) return;
+    if (value instanceof Error) {
+      push(value.message, prefix);
+      if (value.cause) visit(value.cause, prefix);
+      return;
+    }
+    const type = typeof value;
+    if (type === 'string' || type === 'number' || type === 'bigint') {
+      push(value, prefix);
+      return;
+    }
+    if (type === 'boolean') {
+      if (value) push(value, prefix);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, prefix));
+      return;
+    }
+    if (type === 'object') {
+      if (seen.has(value)) return;
+      seen.add(value);
+      if (value.message !== undefined) visit(value.message, prefix);
+      if (value.error_description !== undefined)
+        visit(value.error_description, prefix);
+      if (value.error !== undefined) visit(value.error, prefix);
+      if (value.detail !== undefined) visit(value.detail, prefix);
+      if (value.details !== undefined) visit(value.details, prefix);
+      if (value.reason !== undefined) visit(value.reason, prefix);
+      if (value.cause !== undefined) visit(value.cause, prefix);
+      if (Array.isArray(value.errors)) {
+        value.errors.forEach((item) => {
+          if (!item) return;
+          if (typeof item === 'object' && !Array.isArray(item)) {
+            const fieldPrefix =
+              (typeof item.field === 'string' && item.field
+                ? `${item.field}: `
+                : typeof item.name === 'string' && item.name
+                ? `${item.name}: `
+                : typeof item.code === 'string' && item.code
+                ? `${item.code}: `
+                : prefix) || prefix;
+            if (
+              item.message !== undefined ||
+              item.error !== undefined ||
+              item.detail !== undefined ||
+              item.details !== undefined
+            ) {
+              visit(
+                item.message ?? item.error ?? item.detail ?? item.details,
+                fieldPrefix,
+              );
+            } else {
+              visit(item, fieldPrefix);
+            }
+          } else {
+            visit(item, prefix);
+          }
+        });
+      }
+    }
+  };
+  visit(source);
+  return Array.from(new Set(messages));
+}
+
+function combineErrorMessage(baseMessage, ...sources) {
+  const details = new Set();
+  sources.forEach((src) => {
+    extractErrorMessages(src).forEach((msg) => details.add(msg));
+  });
+  if (!details.size) return baseMessage;
+  return `${baseMessage}: ${Array.from(details).join('; ')}`;
 }
 
 function resolveWithMap(alias, map = {}) {
@@ -1087,7 +1172,8 @@ const TableManager = forwardRef(function TableManager({
       })
       .then((data) => {
         if (canceled) return;
-        const opts = (data.rows || []).map((r) => ({
+        const sortedTypeRows = sortRowsByIndex(data.rows || []);
+        const opts = sortedTypeRows.map((r) => ({
           value: r.UITransType?.toString() ?? '',
           label:
             r.UITransType !== undefined
@@ -1552,9 +1638,29 @@ const TableManager = forwardRef(function TableManager({
         idField: cfg?.idField ?? rel.column,
         displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
       };
+      if (typeof cfg?.indexField === 'string' && cfg.indexField.trim()) {
+        normalizedCfg.indexField = cfg.indexField.trim();
+      }
+      if (Array.isArray(cfg?.indexFields)) {
+        const deduped = Array.from(
+          new Set(
+            cfg.indexFields
+              .filter((field) => typeof field === 'string' && field.trim())
+              .map((field) => field.trim()),
+          ),
+        );
+        if (deduped.length > 0) {
+          normalizedCfg.indexFields = deduped;
+        }
+      }
 
       const rows = await fetchTableRows(rel.table, tenantInfo);
       if (canceled) return null;
+
+      const sortedRows = sortRowsByIndex(rows, {
+        indexField: normalizedCfg.indexField,
+        indexFields: normalizedCfg.indexFields,
+      });
 
       const nestedDisplayLookups = await loadNestedDisplayLookups(
         rel.table,
@@ -1563,13 +1669,17 @@ const TableManager = forwardRef(function TableManager({
       if (canceled) return null;
 
       const optionRows = {};
-      const options = rows.map((row) => {
+      const options = sortedRows.map((row) => {
         const keyMap = {};
         Object.keys(row || {}).forEach((k) => {
           keyMap[k.toLowerCase()] = k;
         });
         const valKey = keyMap[rel.column.toLowerCase()];
         const val = valKey ? row[valKey] : undefined;
+        const indexInfo = extractRowIndex(row, {
+          indexField: normalizedCfg.indexField,
+          indexFields: normalizedCfg.indexFields,
+        });
         const label = buildRelationLabel({
           row,
           keyMap,
@@ -1583,6 +1693,13 @@ const TableManager = forwardRef(function TableManager({
         return {
           value: val,
           label,
+          ...(indexInfo
+            ? {
+                __index: indexInfo.numeric
+                  ? indexInfo.sortValue
+                  : indexInfo.rawValue,
+              }
+            : {}),
         };
       });
 
@@ -1593,6 +1710,12 @@ const TableManager = forwardRef(function TableManager({
           column: rel.column,
           idField: normalizedCfg.idField,
           displayFields: normalizedCfg.displayFields,
+          ...(normalizedCfg.indexField
+            ? { indexField: normalizedCfg.indexField }
+            : {}),
+          ...(Array.isArray(normalizedCfg.indexFields)
+            ? { indexFields: normalizedCfg.indexFields }
+            : {}),
         },
         options,
         rows: optionRows,
@@ -2853,9 +2976,11 @@ const TableManager = forwardRef(function TableManager({
     }
 
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (formName) headers['X-Transaction-Form'] = formName;
       const res = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         credentials: 'include',
         body: JSON.stringify(cleaned),
       });
@@ -2930,18 +3055,38 @@ const TableManager = forwardRef(function TableManager({
         }
         return true;
       } else {
-        let message = 'Хадгалахад алдаа гарлаа';
+        const baseMessage = t(
+          'save_failed',
+          'Failed to save transaction. Please try again.',
+        );
+        const detailSources = [];
         try {
           const data = await res.json();
-          if (data && data.message) message += `: ${data.message}`;
+          if (data !== undefined) detailSources.push(data);
         } catch {
-          // ignore
+          try {
+            const text = await res.text();
+            if (text) detailSources.push(text);
+          } catch {
+            // ignore
+          }
         }
+        if (res.status) {
+          detailSources.push(`HTTP ${res.status}`);
+        }
+        if (res.statusText) {
+          detailSources.push(res.statusText);
+        }
+        const message = combineErrorMessage(baseMessage, detailSources);
         addToast(message, 'error');
         return false;
       }
     } catch (err) {
       console.error('Save failed', err);
+      addToast(
+        t('save_failed', 'Failed to save transaction. Please try again.'),
+        'error',
+      );
       return false;
     }
   }
@@ -3100,20 +3245,27 @@ const TableManager = forwardRef(function TableManager({
           body: JSON.stringify(body),
         });
         if (!res.ok) {
-          let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
+          const baseMessage = t(
+            'temporary_save_failed',
+            'Failed to save temporary draft',
+          );
+          const detailSources = [];
           try {
             const data = await res.json();
-            if (data?.message) {
-              errorMessage = `${errorMessage}: ${data.message}`;
-            }
+            if (data !== undefined) detailSources.push(data);
           } catch {
             try {
               const text = await res.text();
-              if (text) {
-                errorMessage = `${errorMessage}: ${text}`;
-              }
+              if (text) detailSources.push(text);
             } catch {}
           }
+          if (res.status) {
+            detailSources.push(`HTTP ${res.status}`);
+          }
+          if (res.statusText) {
+            detailSources.push(res.statusText);
+          }
+          let errorMessage = combineErrorMessage(baseMessage, detailSources);
           if (rowsToProcess.length > 1) {
             errorMessage = `${errorMessage} (row ${idx + 1})`;
           }
@@ -3124,13 +3276,15 @@ const TableManager = forwardRef(function TableManager({
         successCount += 1;
       } catch (err) {
         console.error('Temporary save failed', err);
-        const baseMessage = t('temporary_save_failed', 'Failed to save temporary draft');
-        addToast(
-          rowsToProcess.length > 1
-            ? `${baseMessage} (row ${idx + 1})`
-            : baseMessage,
-          'error',
+        const baseMessage = t(
+          'temporary_save_failed',
+          'Failed to save temporary draft',
         );
+        let message = combineErrorMessage(baseMessage, err);
+        if (rowsToProcess.length > 1) {
+          message = `${message} (row ${idx + 1})`;
+        }
+        addToast(message, 'error');
         failureCount += 1;
       }
     }
