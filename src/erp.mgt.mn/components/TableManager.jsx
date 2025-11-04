@@ -1809,53 +1809,6 @@ const TableManager = forwardRef(function TableManager({
           }
         });
 
-        const aliasEntries = [];
-        Object.entries(cfgMap).forEach(([column, config]) => {
-          const idFieldName =
-            typeof config?.idField === 'string' ? config.idField : null;
-          if (!idFieldName) return;
-          const canonicalColumn = resolveCanonicalKey(column);
-          const canonicalIdField = resolveCanonicalKey(idFieldName);
-          if (!canonicalIdField || canonicalIdField === canonicalColumn) return;
-          if (!validCols.has(canonicalIdField)) return;
-          aliasEntries.push({
-            alias: canonicalIdField,
-            source: column,
-            config,
-          });
-        });
-
-        aliasEntries.forEach(({ alias, source, config }) => {
-          if (!cfgMap[alias]) {
-            cfgMap[alias] = { ...config };
-          }
-          if (dataMap[source] && !dataMap[alias]) {
-            dataMap[alias] = dataMap[source];
-          }
-          if (rowMap[source] && !rowMap[alias]) {
-            const aliasRows = {};
-            Object.values(rowMap[source]).forEach((row) => {
-              if (!row || typeof row !== 'object') return;
-              const keyMap = {};
-              Object.keys(row).forEach((key) => {
-                keyMap[key.toLowerCase()] = key;
-              });
-              const idFieldName = config?.idField;
-              if (typeof idFieldName !== 'string' || idFieldName.length === 0) {
-                return;
-              }
-              const idKey = keyMap[idFieldName.toLowerCase()] || idFieldName;
-              const identifier = row[idKey];
-              if (identifier !== undefined && identifier !== null) {
-                aliasRows[identifier] = row;
-              }
-            });
-            if (Object.keys(aliasRows).length > 0) {
-              rowMap[alias] = aliasRows;
-            }
-          }
-        });
-
         setRefData(dataMap);
         setRefRows(rowMap);
         const remap = {};
@@ -1879,7 +1832,7 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [table, company, branch, department, resolveCanonicalKey, validCols]);
+  }, [table, company, branch, department, resolveCanonicalKey]);
 
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
@@ -4526,21 +4479,21 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
-  const {
-    disabledFields: computedDisabledFields,
-    bypassGuardDefaults: canBypassGuardDefaults,
-  } = resolveDisabledFieldState({
-    editSet,
-    formColumns,
-    requestType,
-    isAdding,
-    editing,
-    lockedDefaults,
-    canonicalizeFormFields,
-    buttonPerms,
-    getKeyFields,
-  });
-  const disabledFields = computedDisabledFields;
+  let disabledFields = editSet
+    ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
+    : [];
+  if (requestType === 'temporary-promote') {
+    disabledFields = Array.from(new Set([...formColumns]));
+  } else if (isAdding) {
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  } else if (editing) {
+    disabledFields = Array.from(
+      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
+    );
+  } else {
+    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+  }
+  disabledFields = canonicalizeFormFields(disabledFields) || [];
 
   const totals = useMemo(() => {
     const sums = {};
@@ -5779,7 +5732,6 @@ const TableManager = forwardRef(function TableManager({
         allowTemporarySave={canCreateTemporary}
         isAdding={isAdding}
         canPost={canPostTransactions}
-        forceEditable={canBypassGuardDefaults}
       />
       <CascadeDeleteModal
         visible={showCascade}
