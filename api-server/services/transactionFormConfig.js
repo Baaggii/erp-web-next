@@ -269,6 +269,11 @@ export async function setFormConfig(
   options = {},
   companyId = 0,
 ) {
+  const providedConfig = config || {};
+  const { cfg } = await readConfig(companyId);
+  if (!cfg[table]) cfg[table] = {};
+  const existingEntry = cfg[table][name] || {};
+
   const {
     visibleFields = [],
     requiredFields = [],
