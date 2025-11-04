@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useContext } from 'react';
+import React, { useEffect, useState, useMemo, useContext, useRef } from 'react';
 import { useModules, refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
@@ -8,6 +8,7 @@ import I18nContext from '../context/I18nContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
+import { getSortIndex, sortByIndexThenLabel } from '../utils/getSortIndex.js';
 
 function normalizeFormConfig(info = {}) {
   const toArray = (value) => (Array.isArray(value) ? [...value] : []);
@@ -78,6 +79,25 @@ export default function FormsManagement() {
   const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
   const [savedConfigs, setSavedConfigs] = useState([]);
+  const nameInfoRef = useRef({});
+
+  function computeSortedNames(map) {
+    if (!map || typeof map !== 'object') return [];
+    return Object.entries(map)
+      .filter(([n]) => n && n !== 'isDefault')
+      .sort((a, b) => {
+        const idxA = getSortIndex(a[1]);
+        const idxB = getSortIndex(b[1]);
+        if (idxA !== null && idxB !== null && idxA !== idxB) return idxA - idxB;
+        if (idxA !== null && idxB === null) return -1;
+        if (idxB !== null && idxA === null) return 1;
+        return String(a[0]).localeCompare(String(b[0]), undefined, {
+          numeric: true,
+          sensitivity: 'base',
+        });
+      })
+      .map(([n]) => n);
+  }
   const [selectedConfig, setSelectedConfig] = useState('');
   const generalConfig = useGeneralConfig();
   const modules = useModules();
@@ -167,7 +187,8 @@ export default function FormsManagement() {
     setModuleKey(cfg.moduleKey || '');
     const info = cfg.config || {};
     setConfig(normalizeFormConfig(info));
-    setNames([cfg.name]);
+    nameInfoRef.current = { [cfg.name]: info };
+    setNames(computeSortedNames(nameInfoRef.current));
     fetch(`/api/tables/${encodeURIComponent(cfg.table)}/columns`, {
       credentials: 'include',
     })
@@ -213,7 +234,15 @@ export default function FormsManagement() {
 
       fetch('/api/tables/code_transaction?perPage=500', { credentials: 'include' })
         .then((res) => (res.ok ? res.json() : { rows: [] }))
-        .then((data) => setTxnTypes(data.rows || []))
+        .then((data) => {
+          const rows = Array.isArray(data.rows)
+            ? sortByIndexThenLabel(data.rows, {
+                getLabel: (row) =>
+                  row?.UITransTypeName ?? row?.UITransType ?? row?.TransType ?? '',
+              })
+            : [];
+          setTxnTypes(rows);
+        })
         .catch(() => setTxnTypes([]));
 
       fetch('/api/display_fields?table=code_branches', { credentials: 'include' })
@@ -260,7 +289,8 @@ export default function FormsManagement() {
           if (n === 'isDefault' || !info || info.moduleKey !== moduleKey) return;
           filtered[n] = info;
         });
-        setNames(Object.keys(filtered));
+        nameInfoRef.current = filtered;
+        setNames(computeSortedNames(filtered));
         if (filtered[name]) {
           setModuleKey(filtered[name].moduleKey || '');
           setConfig(normalizeFormConfig(filtered[name]));
@@ -271,6 +301,7 @@ export default function FormsManagement() {
       })
       .catch(() => {
         setIsDefault(true);
+        nameInfoRef.current = {};
         setNames([]);
         setName('');
         setConfig(normalizeFormConfig());
@@ -402,7 +433,9 @@ export default function FormsManagement() {
       refreshTxnModules();
       refreshModules();
       addToast('Saved', 'success');
-      if (!names.includes(name)) setNames((n) => [...n, name]);
+      const infoForName = { ...cfg };
+      nameInfoRef.current = { ...nameInfoRef.current, [name]: infoForName };
+      setNames(computeSortedNames(nameInfoRef.current));
       const key = `${table}::${name}`;
       const info = {
         key,
@@ -446,7 +479,10 @@ export default function FormsManagement() {
     }
     refreshTxnModules();
     refreshModules();
-    setNames((n) => n.filter((x) => x !== name));
+    const nextInfo = { ...nameInfoRef.current };
+    delete nextInfo[name];
+    nameInfoRef.current = nextInfo;
+    setNames(computeSortedNames(nameInfoRef.current));
     setSavedConfigs((list) =>
       list.filter((c) => !(c.table === table && c.name === name)),
     );
@@ -507,8 +543,8 @@ export default function FormsManagement() {
           if (n === 'isDefault' || !info || info.moduleKey !== moduleKey) return;
           filtered[n] = info;
         });
-        const formNames = Object.keys(filtered);
-        setNames(formNames);
+        nameInfoRef.current = filtered;
+        setNames(computeSortedNames(filtered));
         if (filtered[name]) {
           setConfig(normalizeFormConfig(filtered[name]));
         } else {
