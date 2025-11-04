@@ -9,7 +9,6 @@ import {
   buildReceiptFromDynamicTransaction,
   sendReceipt,
 } from './posApiService.js';
-import { serializeError, summarizePosPayload } from '../utils/errorUtils.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
@@ -740,7 +739,7 @@ export async function promoteTemporarySubmission(
                 {
                   table: row.table_name,
                   id: insertedId,
-                  error: serializeError(selectErr),
+                  error: selectErr,
                 },
               );
             }
@@ -791,7 +790,7 @@ export async function promoteTemporarySubmission(
                     console.error('Failed to persist POSAPI response details', {
                       table: row.table_name,
                       id: insertedId,
-                      error: serializeError(updateErr),
+                      error: updateErr,
                     });
                   }
                 }
@@ -800,8 +799,7 @@ export async function promoteTemporarySubmission(
               console.error('POSAPI receipt submission failed', {
                 table: row.table_name,
                 recordId: insertedId,
-                payload: summarizePosPayload(payload),
-                error: serializeError(posErr),
+                error: posErr,
               });
             }
           }
@@ -810,7 +808,7 @@ export async function promoteTemporarySubmission(
         console.error('Failed to evaluate POSAPI configuration', {
           table: row.table_name,
           formName,
-          error: serializeError(cfgErr),
+          error: cfgErr,
         });
       }
     }
