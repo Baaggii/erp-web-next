@@ -90,6 +90,91 @@ function buildColumnCaseMap(columns) {
   return map;
 }
 
+function extractErrorMessages(source) {
+  const seen = new Set();
+  const messages = [];
+  const push = (value, prefix = '') => {
+    if (value === undefined || value === null) return;
+    const str = String(value).trim();
+    if (!str) return;
+    messages.push(prefix ? `${prefix}${str}` : str);
+  };
+  const visit = (value, prefix = '') => {
+    if (value === undefined || value === null) return;
+    if (value instanceof Error) {
+      push(value.message, prefix);
+      if (value.cause) visit(value.cause, prefix);
+      return;
+    }
+    const type = typeof value;
+    if (type === 'string' || type === 'number' || type === 'bigint') {
+      push(value, prefix);
+      return;
+    }
+    if (type === 'boolean') {
+      if (value) push(value, prefix);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, prefix));
+      return;
+    }
+    if (type === 'object') {
+      if (seen.has(value)) return;
+      seen.add(value);
+      if (value.message !== undefined) visit(value.message, prefix);
+      if (value.error_description !== undefined)
+        visit(value.error_description, prefix);
+      if (value.error !== undefined) visit(value.error, prefix);
+      if (value.detail !== undefined) visit(value.detail, prefix);
+      if (value.details !== undefined) visit(value.details, prefix);
+      if (value.reason !== undefined) visit(value.reason, prefix);
+      if (value.cause !== undefined) visit(value.cause, prefix);
+      if (Array.isArray(value.errors)) {
+        value.errors.forEach((item) => {
+          if (!item) return;
+          if (typeof item === 'object' && !Array.isArray(item)) {
+            const fieldPrefix =
+              (typeof item.field === 'string' && item.field
+                ? `${item.field}: `
+                : typeof item.name === 'string' && item.name
+                ? `${item.name}: `
+                : typeof item.code === 'string' && item.code
+                ? `${item.code}: `
+                : prefix) || prefix;
+            if (
+              item.message !== undefined ||
+              item.error !== undefined ||
+              item.detail !== undefined ||
+              item.details !== undefined
+            ) {
+              visit(
+                item.message ?? item.error ?? item.detail ?? item.details,
+                fieldPrefix,
+              );
+            } else {
+              visit(item, fieldPrefix);
+            }
+          } else {
+            visit(item, prefix);
+          }
+        });
+      }
+    }
+  };
+  visit(source);
+  return Array.from(new Set(messages));
+}
+
+function combineErrorMessage(baseMessage, ...sources) {
+  const details = new Set();
+  sources.forEach((src) => {
+    extractErrorMessages(src).forEach((msg) => details.add(msg));
+  });
+  if (!details.size) return baseMessage;
+  return `${baseMessage}: ${Array.from(details).join('; ')}`;
+}
+
 function resolveWithMap(alias, map = {}) {
   if (alias == null) return alias;
   const strAlias = typeof alias === 'string' ? alias : String(alias);
@@ -2923,13 +3008,29 @@ const TableManager = forwardRef(function TableManager({
         }
         return true;
       } else {
-        let message = 'Хадгалахад алдаа гарлаа';
+        const baseMessage = t(
+          'save_failed',
+          'Failed to save transaction. Please try again.',
+        );
+        const detailSources = [];
         try {
           const data = await res.json();
-          if (data && data.message) message += `: ${data.message}`;
+          if (data !== undefined) detailSources.push(data);
         } catch {
-          // ignore
+          try {
+            const text = await res.text();
+            if (text) detailSources.push(text);
+          } catch {
+            // ignore
+          }
         }
+        if (res.status) {
+          detailSources.push(`HTTP ${res.status}`);
+        }
+        if (res.statusText) {
+          detailSources.push(res.statusText);
+        }
+        const message = combineErrorMessage(baseMessage, detailSources);
         addToast(message, 'error');
         return false;
       }
@@ -3097,20 +3198,27 @@ const TableManager = forwardRef(function TableManager({
           body: JSON.stringify(body),
         });
         if (!res.ok) {
-          let errorMessage = t('temporary_save_failed', 'Failed to save temporary draft');
+          const baseMessage = t(
+            'temporary_save_failed',
+            'Failed to save temporary draft',
+          );
+          const detailSources = [];
           try {
             const data = await res.json();
-            if (data?.message) {
-              errorMessage = `${errorMessage}: ${data.message}`;
-            }
+            if (data !== undefined) detailSources.push(data);
           } catch {
             try {
               const text = await res.text();
-              if (text) {
-                errorMessage = `${errorMessage}: ${text}`;
-              }
+              if (text) detailSources.push(text);
             } catch {}
           }
+          if (res.status) {
+            detailSources.push(`HTTP ${res.status}`);
+          }
+          if (res.statusText) {
+            detailSources.push(res.statusText);
+          }
+          let errorMessage = combineErrorMessage(baseMessage, detailSources);
           if (rowsToProcess.length > 1) {
             errorMessage = `${errorMessage} (row ${idx + 1})`;
           }
@@ -3121,13 +3229,15 @@ const TableManager = forwardRef(function TableManager({
         successCount += 1;
       } catch (err) {
         console.error('Temporary save failed', err);
-        const baseMessage = t('temporary_save_failed', 'Failed to save temporary draft');
-        addToast(
-          rowsToProcess.length > 1
-            ? `${baseMessage} (row ${idx + 1})`
-            : baseMessage,
-          'error',
+        const baseMessage = t(
+          'temporary_save_failed',
+          'Failed to save temporary draft',
         );
+        let message = combineErrorMessage(baseMessage, err);
+        if (rowsToProcess.length > 1) {
+          message = `${message} (row ${idx + 1})`;
+        }
+        addToast(message, 'error');
         failureCount += 1;
       }
     }
