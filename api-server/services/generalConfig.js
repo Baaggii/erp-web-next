@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
+import { coerceBoolean } from '../utils/valueUtils.js';
 
 const defaults = {
   forms: {
@@ -20,6 +21,7 @@ const defaults = {
   general: {
     aiApiEnabled: Boolean(process.env.OPENAI_API_KEY),
     aiInventoryApiEnabled: false,
+    posApiEnabled: true,
     triggerToastEnabled: true,
     procToastEnabled: true,
     viewToastEnabled: true,
@@ -44,36 +46,6 @@ const defaults = {
     ignoreOnSearch: ['deleted_images'],
   },
 };
-
-function coerceBoolean(value, fallback = false) {
-  if (value === undefined || value === null) {
-    return fallback;
-  }
-  if (typeof value === 'boolean') {
-    return value;
-  }
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) {
-      return fallback;
-    }
-    return value !== 0;
-  }
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) return fallback;
-    if (['true', '1', 'yes', 'on'].includes(normalized)) {
-      return true;
-    }
-    if (['false', '0', 'no', 'off'].includes(normalized)) {
-      return false;
-    }
-    return fallback;
-  }
-  if (typeof value === 'bigint') {
-    return value !== 0n;
-  }
-  return fallback;
-}
 
 async function readConfig(companyId = 0) {
   const { path: filePath, isDefault } = await getConfigPath(
@@ -113,6 +85,10 @@ async function readConfig(companyId = 0) {
       result.general.workplaceFetchToastEnabled,
       defaults.general.workplaceFetchToastEnabled,
     );
+    result.general.posApiEnabled = coerceBoolean(
+      result.general.posApiEnabled,
+      defaults.general.posApiEnabled,
+    );
     return { config: result, isDefault };
   } catch {
     return { config: { ...defaults }, isDefault: true };
@@ -139,6 +115,10 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   cfg.general.workplaceFetchToastEnabled = coerceBoolean(
     cfg.general.workplaceFetchToastEnabled,
     defaults.general.workplaceFetchToastEnabled,
+  );
+  cfg.general.posApiEnabled = coerceBoolean(
+    cfg.general.posApiEnabled,
+    defaults.general.posApiEnabled,
   );
   if (!Object.prototype.hasOwnProperty.call(cfg.general, 'showTourButtons')) {
     cfg.general.showTourButtons = defaults.general.showTourButtons;

@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
+import { coerceBoolean } from '../utils/valueUtils.js';
 
   async function readConfig(companyId = 0) {
     const { path: filePath, isDefault } = await getConfigPath(
@@ -34,6 +35,24 @@ function parseEntry(raw = {}) {
       raw.supportsTemporary ??
       false,
   );
+  const mapping = {};
+  if (
+    raw &&
+    typeof raw.posApiMapping === 'object' &&
+    raw.posApiMapping !== null &&
+    !Array.isArray(raw.posApiMapping)
+  ) {
+    for (const [key, value] of Object.entries(raw.posApiMapping)) {
+      if (typeof key !== 'string') continue;
+      if (value === undefined || value === null) {
+        mapping[key] = '';
+      } else if (typeof value === 'string') {
+        mapping[key] = value;
+      } else {
+        mapping[key] = String(value);
+      }
+    }
+  }
   return {
     visibleFields: Array.isArray(raw.visibleFields)
       ? raw.visibleFields.map(String)
@@ -107,6 +126,12 @@ function parseEntry(raw = {}) {
     procedures: arrify(raw.procedures || raw.procedure),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
+    posApiEnabled: coerceBoolean(raw.posApiEnabled, false),
+    posApiType:
+      typeof raw.posApiType === 'string' && raw.posApiType.trim()
+        ? raw.posApiType.trim()
+        : '',
+    posApiMapping: mapping,
   };
 }
 
@@ -267,6 +292,9 @@ export async function setFormConfig(
     procedures = [],
     supportsTemporarySubmission,
     allowTemporarySubmission,
+    posApiEnabled = false,
+    posApiType = '',
+    posApiMapping = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -330,6 +358,28 @@ export async function setFormConfig(
     supportsTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),
+    posApiEnabled: coerceBoolean(posApiEnabled, false),
+    posApiType:
+      typeof posApiType === 'string' && posApiType.trim()
+        ? posApiType.trim()
+        : '',
+    posApiMapping:
+      posApiMapping &&
+      typeof posApiMapping === 'object' &&
+      posApiMapping !== null &&
+      !Array.isArray(posApiMapping)
+        ? Object.fromEntries(
+            Object.entries(posApiMapping).map(([key, value]) => {
+              if (value === undefined || value === null) {
+                return [key, ''];
+              }
+              if (typeof value === 'string') {
+                return [key, value];
+              }
+              return [key, String(value)];
+            }),
+          )
+        : {},
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
