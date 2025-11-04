@@ -35,6 +35,7 @@ import {
   valuesEqual,
 } from '../utils/generatedColumns.js';
 import { isPlainRecord } from '../utils/transactionValues.js';
+import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
@@ -4324,21 +4325,21 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
-  let disabledFields = editSet
-    ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
-    : [];
-  if (requestType === 'temporary-promote') {
-    disabledFields = Array.from(new Set([...formColumns]));
-  } else if (isAdding) {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
-  } else if (editing) {
-    disabledFields = Array.from(
-      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
-    );
-  } else {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
-  }
-  disabledFields = canonicalizeFormFields(disabledFields) || [];
+  const {
+    disabledFields: computedDisabledFields,
+    bypassGuardDefaults: canBypassGuardDefaults,
+  } = resolveDisabledFieldState({
+    editSet,
+    formColumns,
+    requestType,
+    isAdding,
+    editing,
+    lockedDefaults,
+    canonicalizeFormFields,
+    buttonPerms,
+    getKeyFields,
+  });
+  const disabledFields = computedDisabledFields;
 
   const totals = useMemo(() => {
     const sums = {};
@@ -5577,6 +5578,7 @@ const TableManager = forwardRef(function TableManager({
         allowTemporarySave={canCreateTemporary}
         isAdding={isAdding}
         canPost={canPostTransactions}
+        forceEditable={canBypassGuardDefaults}
       />
       <CascadeDeleteModal
         visible={showCascade}
