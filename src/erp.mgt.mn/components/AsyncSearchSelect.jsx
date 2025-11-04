@@ -355,8 +355,9 @@ export default function AsyncSearchSelect({
 
   useEffect(() => {
     if (disabled || !show || tenantMeta === null) return;
-    const controller = new AbortController();
     const q = String(input || '').trim();
+    if (!q && options.length > 0) return;
+    const controller = new AbortController();
     setPage(1);
     fetchPage(1, q, false, controller.signal);
     return () => controller.abort();
@@ -370,6 +371,7 @@ export default function AsyncSearchSelect({
     effectiveCompanyId,
     branch,
     department,
+    options.length,
   ]);
 
   useEffect(() => {
