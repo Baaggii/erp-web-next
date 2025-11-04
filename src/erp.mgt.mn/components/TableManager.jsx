@@ -3036,11 +3036,10 @@ const TableManager = forwardRef(function TableManager({
       }
     } catch (err) {
       console.error('Save failed', err);
-      const baseMessage = t(
-        'save_failed',
-        'Failed to save transaction. Please try again.',
+      addToast(
+        t('save_failed', 'Failed to save transaction. Please try again.'),
+        'error',
       );
-      addToast(combineErrorMessage(baseMessage, err), 'error');
       return false;
     }
   }
