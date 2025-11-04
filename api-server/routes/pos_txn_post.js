@@ -1,6 +1,11 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import { postPosTransaction } from '../services/postPosTransaction.js';
+import { getConfig } from '../services/posTransactionConfig.js';
+import {
+  buildReceiptFromPosTransaction,
+  sendReceipt,
+} from '../services/posApiService.js';
 
 const router = express.Router();
 
@@ -11,7 +16,38 @@ router.post('/', requireAuth, async (req, res, next) => {
     if (!data) return res.status(400).json({ message: 'invalid data' });
     const info = { ...(session || {}), userId: req.user.id };
     const id = await postPosTransaction(name, data, info, companyId);
-    res.json({ id });
+
+    let posApiResponse;
+    try {
+      const { config: layoutConfig } = await getConfig(name, companyId);
+      const enabled = Boolean(layoutConfig?.posApiEnabled);
+      if (enabled) {
+        const payload = buildReceiptFromPosTransaction(data, {
+          posApiType: layoutConfig?.posApiType,
+          layoutConfig,
+        });
+        if (payload) {
+          posApiResponse = await sendReceipt(payload);
+        } else {
+          console.error(
+            '[POSAPI] Skipping receipt submission due to incomplete payload',
+          );
+          posApiResponse = {
+            success: false,
+            error: 'POSAPI payload missing mandatory data',
+          };
+        }
+      }
+    } catch (err) {
+      console.error('[POSAPI] Failed to send receipt', err);
+    }
+
+    const responseBody = { id };
+    if (posApiResponse !== undefined) {
+      responseBody.posApiResponse = posApiResponse;
+    }
+
+    res.json(responseBody);
   } catch (err) {
     next(err);
   }
