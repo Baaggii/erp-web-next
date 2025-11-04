@@ -159,6 +159,30 @@ Pharmacy requirements – If your ERP sells medicines or medical devices, enable
 developer.itc.gov.mn
 .
 
+Integrating POSAPI with the dynamic transaction module
+
+Many ERP implementations no longer have a dedicated “POS transactions” module. Instead, all financial transactions—including sales receipts—are defined through a dynamic transaction module. Each transaction form is described in a configuration file (transactionForms.json) that specifies the master table, related tables and layout fields. To control when the POSAPI service should be invoked, extend the relevant form definitions in transactionForms.json with two properties:
+
+posApiEnabled (boolean): set to true to indicate that saving this transaction should trigger a call to the POSAPI /rest/receipt endpoint. Set to false (or omit the property) if the form does not produce an e‑receipt.
+
+posApiType (string, optional): specify which type of receipt to emit (B2C_RECEIPT, B2C_INVOICE or B2B_INVOICE). If omitted, the default type from your environment settings is used.
+
+For example, a sales income form definition might look like this:
+
+{
+  "sales_income_form": {
+    "masterTable": "transactions_pos",
+    "tables": [ /* related tables */ ],
+    "posApiEnabled": true,
+    "posApiType": "B2C_RECEIPT"
+  }
+}
+
+
+When a user posts a transaction using this form, the ERP reads the dynamic configuration. If posApiEnabled is true, the system builds a POSAPI payload from the saved record (as described above), obtains an OAuth token and calls /rest/receipt. The returned lottery number and QR data should be stored back into the transaction record so that the printed receipt matches the data sent to the tax authority.
+
+POS transactions themselves use the same dynamic transaction definitions. They derive their behaviour—fields, validation rules and now POSAPI integration—from the transactionForms.json configuration. This unified approach eliminates the need for a separate “POS transaction configuration” file and ensures that future transaction types can leverage the POSAPI integration simply by toggling posApiEnabled in their form definition.
+
 Conclusion and next steps
 
 POSAPI 3.0 provides a modern REST‑based interface for issuing electronic receipts in Mongolia. To integrate it into your ERP system:
