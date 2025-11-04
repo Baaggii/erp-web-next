@@ -27,6 +27,43 @@ function arrify(val) {
   return [String(val)];
 }
 
+function normalizePosApiMapping(rawMapping) {
+  if (!rawMapping || typeof rawMapping !== 'object' || Array.isArray(rawMapping)) {
+    return {};
+  }
+  const normalized = {};
+  for (const [key, value] of Object.entries(rawMapping)) {
+    if (!key) continue;
+    if (value === undefined) continue;
+    if (Array.isArray(value)) {
+      normalized[key] = value.map((entry) => {
+        if (entry === undefined || entry === null) return entry;
+        if (typeof entry === 'string') return entry;
+        if (typeof entry === 'number' || typeof entry === 'boolean') {
+          return String(entry);
+        }
+        if (entry && typeof entry === 'object') {
+          return { ...entry };
+        }
+        return entry;
+      });
+      continue;
+    }
+    if (value && typeof value === 'object') {
+      normalized[key] = { ...value };
+      continue;
+    }
+    if (typeof value === 'string') {
+      normalized[key] = value;
+      continue;
+    }
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      normalized[key] = String(value);
+    }
+  }
+  return normalized;
+}
+
 function parseEntry(raw = {}) {
   const temporaryFlag = Boolean(
     raw.supportsTemporarySubmission ??
@@ -107,6 +144,10 @@ function parseEntry(raw = {}) {
     procedures: arrify(raw.procedures || raw.procedure),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
+    posApiEnabled: Boolean(raw.posApiEnabled),
+    posApiType:
+      typeof raw.posApiType === 'string' ? raw.posApiType.trim() : '',
+    posApiMapping: normalizePosApiMapping(raw.posApiMapping),
   };
 }
 
@@ -228,6 +269,11 @@ export async function setFormConfig(
   options = {},
   companyId = 0,
 ) {
+  const providedConfig = config || {};
+  const { cfg } = await readConfig(companyId);
+  if (!cfg[table]) cfg[table] = {};
+  const existingEntry = cfg[table][name] || {};
+
   const {
     visibleFields = [],
     requiredFields = [],
@@ -267,7 +313,10 @@ export async function setFormConfig(
     procedures = [],
     supportsTemporarySubmission,
     allowTemporarySubmission,
-  } = config || {};
+    posApiEnabled,
+    posApiType,
+    posApiMapping,
+  } = providedConfig;
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
     branchIdFields.length ? branchIdFields : branchIdField ? [branchIdField] : [],
@@ -287,8 +336,35 @@ export async function setFormConfig(
   const tad = Array.isArray(temporaryAllowedDepartments)
     ? temporaryAllowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
-  const { cfg } = await readConfig(companyId);
-  if (!cfg[table]) cfg[table] = {};
+  const hasPosApiEnabled = Object.prototype.hasOwnProperty.call(
+    providedConfig,
+    'posApiEnabled',
+  );
+  const hasPosApiType = Object.prototype.hasOwnProperty.call(
+    providedConfig,
+    'posApiType',
+  );
+  const hasPosApiMapping = Object.prototype.hasOwnProperty.call(
+    providedConfig,
+    'posApiMapping',
+  );
+
+  const normalizedPosApiMapping = hasPosApiMapping
+    ? normalizePosApiMapping(posApiMapping)
+    : normalizePosApiMapping(existingEntry.posApiMapping);
+
+  const resolvedPosApiType = hasPosApiType
+    ? typeof posApiType === 'string'
+      ? posApiType.trim()
+      : ''
+    : typeof existingEntry.posApiType === 'string'
+      ? existingEntry.posApiType.trim()
+      : '';
+
+  const resolvedPosApiEnabled = hasPosApiEnabled
+    ? Boolean(posApiEnabled)
+    : Boolean(existingEntry.posApiEnabled);
+
   cfg[table][name] = {
     visibleFields: arrify(visibleFields),
     requiredFields: arrify(requiredFields),
@@ -330,6 +406,9 @@ export async function setFormConfig(
     supportsTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),
+    posApiEnabled: resolvedPosApiEnabled,
+    posApiType: resolvedPosApiType,
+    posApiMapping: normalizedPosApiMapping,
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
