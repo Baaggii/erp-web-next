@@ -167,7 +167,7 @@ posApiEnabled (boolean): set to true to indicate that saving this transaction sh
 
 posApiType (string, optional): specify which type of receipt to emit (B2C_RECEIPT, B2C_INVOICE or B2B_INVOICE). If omitted, the default type from your environment settings is used.
 
-posApiMapping (object): defines how POSAPI fields map to columns in the form’s master table. Each key corresponds to a POSAPI field (such as totalAmount, totalVAT, totalCityTax, customerTin or consumerNo), and the value is the name of the column in your table from which to retrieve the data. For example:
+posApiMapping (object): defines how POSAPI fields map to columns in the form’s table. Each key corresponds to a POSAPI field (such as totalAmount, totalVAT, totalCityTax, customerTin or consumerNo), and the value is the name of the column in your table from which to retrieve the data. For example:
 
 {
   "totalAmount": "total_price",
@@ -184,8 +184,6 @@ For example, a sales income form definition might look like this:
 
 {
   "sales_income_form": {
-    "masterTable": "transactions_pos",
-    "tables": [ /* related tables */ ],
     "posApiEnabled": true,
     "posApiType": "B2C_RECEIPT",
     "posApiMapping": {
@@ -225,3 +223,4 @@ developer.itc.gov.mn
 Implement API calls in your ERP: authenticate using OAuth, send receipts via POST /rest/receipt, handle reversals and pending transactions, and fetch reference data via the provided GET endpoints. Respect data and printing requirements, including classification codes and additional fields for special industries such as pharmacies.
 
 By following these steps, your ERP system will be able to seamlessly issue electronic receipts through POSAPI 3.0 and remain compliant with the Mongolian e‑Invoice regulations.
+
