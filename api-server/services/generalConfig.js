@@ -20,7 +20,6 @@ const defaults = {
   general: {
     aiApiEnabled: Boolean(process.env.OPENAI_API_KEY),
     aiInventoryApiEnabled: false,
-    posApiEnabled: true,
     triggerToastEnabled: true,
     procToastEnabled: true,
     viewToastEnabled: true,
@@ -114,10 +113,6 @@ async function readConfig(companyId = 0) {
       result.general.workplaceFetchToastEnabled,
       defaults.general.workplaceFetchToastEnabled,
     );
-    result.general.posApiEnabled = coerceBoolean(
-      result.general.posApiEnabled,
-      defaults.general.posApiEnabled,
-    );
     return { config: result, isDefault };
   } catch {
     return { config: { ...defaults }, isDefault: true };
@@ -144,10 +139,6 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   cfg.general.workplaceFetchToastEnabled = coerceBoolean(
     cfg.general.workplaceFetchToastEnabled,
     defaults.general.workplaceFetchToastEnabled,
-  );
-  cfg.general.posApiEnabled = coerceBoolean(
-    cfg.general.posApiEnabled,
-    defaults.general.posApiEnabled,
   );
   if (!Object.prototype.hasOwnProperty.call(cfg.general, 'showTourButtons')) {
     cfg.general.showTourButtons = defaults.general.showTourButtons;
