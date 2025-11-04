@@ -2935,6 +2935,10 @@ const TableManager = forwardRef(function TableManager({
       }
     } catch (err) {
       console.error('Save failed', err);
+      addToast(
+        t('save_failed', 'Failed to save transaction. Please try again.'),
+        'error',
+      );
       return false;
     }
   }
