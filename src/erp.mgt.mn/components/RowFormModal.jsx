@@ -72,7 +72,6 @@ const RowFormModal = function RowFormModal({
   allowTemporarySave = false,
   isAdding = false,
   canPost = true,
-  forceEditable = false,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -144,10 +143,10 @@ const RowFormModal = function RowFormModal({
     () => new Set((userIdFields || []).map((f) => f.toLowerCase())),
     [userIdFields],
   );
-  const disabledSet = React.useMemo(() => {
-    if (forceEditable) return new Set();
-    return new Set(disabledFields.map((f) => f.toLowerCase()));
-  }, [disabledFields, forceEditable]);
+  const disabledSet = React.useMemo(
+    () => new Set(disabledFields.map((f) => f.toLowerCase())),
+    [disabledFields],
+  );
   const disabledReasonLookup = React.useMemo(() => {
     const map = {};
     Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
@@ -163,7 +162,7 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [disabledFieldReasons]);
-  const guardToastEnabled = !forceEditable && !!general.posGuardToastEnabled;
+  const guardToastEnabled = !!general.posGuardToastEnabled;
   const lastGuardToastRef = useRef({ field: null, ts: 0 });
   const describeGuardReasons = React.useCallback(
     (codes = []) => {
