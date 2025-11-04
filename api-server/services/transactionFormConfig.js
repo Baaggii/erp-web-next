@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
-import { coerceBoolean } from '../utils/valueUtils.js';
 
   async function readConfig(companyId = 0) {
     const { path: filePath, isDefault } = await getConfigPath(
