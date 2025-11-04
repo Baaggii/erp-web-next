@@ -483,53 +483,51 @@ export async function addRow(req, res, next) {
             receiptType,
           );
           if (payload) {
-            (async () => {
-              try {
-                const posApiResponse = await sendReceipt(payload);
-                if (posApiResponse && recordId != null) {
-                  const updates = {};
-                  if (posApiResponse.lottery) {
-                    const lotteryCol =
-                      columnCaseMap.get('lottery') ||
-                      columnCaseMap.get('lottery_no') ||
-                      columnCaseMap.get('lottery_number') ||
-                      columnCaseMap.get('ddtd');
-                    if (lotteryCol) updates[lotteryCol] = posApiResponse.lottery;
-                  }
-                  if (posApiResponse.qrData) {
-                    const qrCol =
-                      columnCaseMap.get('qr_data') ||
-                      columnCaseMap.get('qrdata') ||
-                      columnCaseMap.get('qr_code');
-                    if (qrCol) updates[qrCol] = posApiResponse.qrData;
-                  }
-                  if (Object.keys(updates).length > 0) {
-                    const setClause = Object.keys(updates)
-                      .map((col) => `\`${col}\` = ?`)
-                      .join(', ');
-                    const params = [...Object.values(updates), recordId];
-                    try {
-                      await pool.query(
-                        `UPDATE \`${req.params.table}\` SET ${setClause} WHERE id = ?`,
-                        params,
-                      );
-                    } catch (updateErr) {
-                      console.error('Failed to persist POSAPI response details', {
-                        table: req.params.table,
-                        id: recordId,
-                        error: updateErr,
-                      });
-                    }
+            try {
+              const posApiResponse = await sendReceipt(payload);
+              if (posApiResponse && recordId != null) {
+                const updates = {};
+                if (posApiResponse.lottery) {
+                  const lotteryCol =
+                    columnCaseMap.get('lottery') ||
+                    columnCaseMap.get('lottery_no') ||
+                    columnCaseMap.get('lottery_number') ||
+                    columnCaseMap.get('ddtd');
+                  if (lotteryCol) updates[lotteryCol] = posApiResponse.lottery;
+                }
+                if (posApiResponse.qrData) {
+                  const qrCol =
+                    columnCaseMap.get('qr_data') ||
+                    columnCaseMap.get('qrdata') ||
+                    columnCaseMap.get('qr_code');
+                  if (qrCol) updates[qrCol] = posApiResponse.qrData;
+                }
+                if (Object.keys(updates).length > 0) {
+                  const setClause = Object.keys(updates)
+                    .map((col) => `\`${col}\` = ?`)
+                    .join(', ');
+                  const params = [...Object.values(updates), recordId];
+                  try {
+                    await pool.query(
+                      `UPDATE \`${req.params.table}\` SET ${setClause} WHERE id = ?`,
+                      params,
+                    );
+                  } catch (updateErr) {
+                    console.error('Failed to persist POSAPI response details', {
+                      table: req.params.table,
+                      id: recordId,
+                      error: updateErr,
+                    });
                   }
                 }
-              } catch (posErr) {
-                console.error('POSAPI receipt submission failed', {
-                  table: req.params.table,
-                  recordId,
-                  error: posErr,
-                });
               }
-            })();
+            } catch (posErr) {
+              console.error('POSAPI receipt submission failed', {
+                table: req.params.table,
+                recordId,
+                error: posErr,
+              });
+            }
           }
         }
       } catch (cfgErr) {
