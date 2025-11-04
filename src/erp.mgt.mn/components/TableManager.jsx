@@ -1549,9 +1549,27 @@ const TableManager = forwardRef(function TableManager({
       ]);
       if (canceled) return null;
 
+      const relationIdField =
+        typeof rel.idField === 'string' && rel.idField.trim()
+          ? rel.idField.trim()
+          : undefined;
+      const configIdField =
+        typeof cfg?.idField === 'string' && cfg.idField.trim()
+          ? cfg.idField.trim()
+          : undefined;
+      const relationDisplayFields = Array.isArray(rel.displayFields)
+        ? rel.displayFields
+            .filter((field) => typeof field === 'string' && field.trim())
+            .map((field) => field.trim())
+        : [];
       const normalizedCfg = {
-        idField: cfg?.idField ?? rel.column,
-        displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
+        idField: relationIdField || configIdField || rel.column,
+        displayFields:
+          relationDisplayFields.length > 0
+            ? relationDisplayFields
+            : Array.isArray(cfg?.displayFields)
+            ? cfg.displayFields
+            : [],
       };
       if (typeof cfg?.indexField === 'string' && cfg.indexField.trim()) {
         normalizedCfg.indexField = cfg.indexField.trim();
@@ -1589,8 +1607,31 @@ const TableManager = forwardRef(function TableManager({
         Object.keys(row || {}).forEach((k) => {
           keyMap[k.toLowerCase()] = k;
         });
-        const valKey = keyMap[rel.column.toLowerCase()];
-        const val = valKey ? row[valKey] : undefined;
+        const baseKey = keyMap[rel.column.toLowerCase()];
+        const idFieldKey =
+          typeof normalizedCfg.idField === 'string'
+            ? keyMap[normalizedCfg.idField.toLowerCase()]
+            : undefined;
+        const baseValue = baseKey ? row[baseKey] : undefined;
+        const idFieldValue = idFieldKey ? row[idFieldKey] : undefined;
+        let optionValue = baseValue;
+        if (
+          (optionValue === undefined || optionValue === null || optionValue === '') &&
+          idFieldValue !== undefined &&
+          idFieldValue !== null &&
+          idFieldValue !== ''
+        ) {
+          optionValue = idFieldValue;
+        }
+        const altValues = [];
+        if (
+          idFieldValue !== undefined &&
+          idFieldValue !== null &&
+          idFieldValue !== '' &&
+          idFieldValue !== optionValue
+        ) {
+          altValues.push(idFieldValue);
+        }
         const indexInfo = extractRowIndex(row, {
           indexField: normalizedCfg.indexField,
           indexFields: normalizedCfg.indexFields,
@@ -1602,11 +1643,15 @@ const TableManager = forwardRef(function TableManager({
           cfg: normalizedCfg,
           nestedLookups: nestedDisplayLookups,
         });
-        if (val !== undefined) {
+        const cacheKeys = new Set();
+        [optionValue, ...altValues].forEach((val) => {
+          if (val === undefined || val === null || val === '') return;
+          if (cacheKeys.has(val)) return;
+          cacheKeys.add(val);
           optionRows[val] = row;
-        }
+        });
         return {
-          value: val,
+          value: optionValue,
           label,
           ...(indexInfo
             ? {
@@ -1615,6 +1660,7 @@ const TableManager = forwardRef(function TableManager({
                   : indexInfo.rawValue,
               }
             : {}),
+          ...(altValues.length > 0 ? { __altValues: altValues } : {}),
         };
       });
 
@@ -1689,10 +1735,22 @@ const TableManager = forwardRef(function TableManager({
         const relationMap = {};
         rels.forEach((r) => {
           const key = resolveCanonicalKey(r.COLUMN_NAME);
-          relationMap[key] = {
+          const entry = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
           };
+          if (typeof r.idField === 'string' && r.idField.trim()) {
+            entry.idField = r.idField.trim();
+          }
+          if (Array.isArray(r.displayFields)) {
+            const sanitized = r.displayFields
+              .filter((field) => typeof field === 'string' && field.trim())
+              .map((field) => field.trim());
+            if (sanitized.length > 0) {
+              entry.displayFields = sanitized;
+            }
+          }
+          relationMap[key] = entry;
         });
         setRelations(relationMap);
 
@@ -3983,10 +4041,27 @@ const TableManager = forwardRef(function TableManager({
   });
   const labelMap = {};
   Object.entries(relationOpts).forEach(([col, opts]) => {
-    labelMap[col] = {};
+    const map = {};
     opts.forEach((o) => {
-      labelMap[col][o.value] = o.label;
+      if (!o) return;
+      const values = [];
+      if (o.value !== undefined && o.value !== null && o.value !== '') {
+        values.push(o.value);
+      }
+      if (Array.isArray(o.__altValues)) {
+        o.__altValues.forEach((alt) => {
+          if (alt !== undefined && alt !== null && alt !== '') {
+            values.push(alt);
+          }
+        });
+      }
+      values.forEach((val) => {
+        if (map[val] === undefined) {
+          map[val] = o.label;
+        }
+      });
     });
+    labelMap[col] = map;
   });
 
   const isPlainValueObject = useCallback(
