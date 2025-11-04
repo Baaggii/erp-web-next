@@ -7,8 +7,6 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 
 const emptyConfig = {
   label: '',
-  posApiEnabled: false,
-  posApiType: 'B2C_RECEIPT',
   masterTable: '',
   masterForm: '',
   masterType: 'single',
@@ -215,10 +213,6 @@ export default function PosTxnConfig() {
       const cfg = res.ok ? await res.json() : {};
       const { isDefault: def, ...rest } = cfg || {};
       const loaded = { ...emptyConfig, ...(rest || {}) };
-      loaded.posApiEnabled = !!loaded.posApiEnabled;
-      if (typeof loaded.posApiType !== 'string' || !loaded.posApiType.trim()) {
-        loaded.posApiType = emptyConfig.posApiType;
-      }
       if (Array.isArray(loaded.tables) && loaded.tables.length > 0) {
         const [master, ...rest] = loaded.tables;
         loaded.masterTable = master.table || '';
@@ -649,46 +643,6 @@ export default function PosTxnConfig() {
             onChange={(e) => setConfig((c) => ({ ...c, label: e.target.value }))}
             style={{ marginLeft: '0.25rem' }}
           />
-        </label>
-      </div>
-      <div
-        style={{
-          marginBottom: '1rem',
-          display: 'flex',
-          flexWrap: 'wrap',
-          gap: '1rem',
-          alignItems: 'center',
-        }}
-      >
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <input
-            type="checkbox"
-            checked={!!config.posApiEnabled}
-            onChange={(e) =>
-              setConfig((c) => ({
-                ...c,
-                posApiEnabled: e.target.checked,
-              }))
-            }
-          />
-          Send receipts to POSAPI
-        </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          Receipt type:
-          <select
-            value={config.posApiType || emptyConfig.posApiType}
-            onChange={(e) =>
-              setConfig((c) => ({
-                ...c,
-                posApiType: e.target.value || emptyConfig.posApiType,
-              }))
-            }
-            disabled={!config.posApiEnabled}
-          >
-            <option value="B2C_RECEIPT">B2C receipt</option>
-            <option value="B2C_INVOICE">B2C invoice</option>
-            <option value="B2B_INVOICE">B2B invoice</option>
-          </select>
         </label>
       </div>
       <div style={{ marginBottom: '1rem' }}>

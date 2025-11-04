@@ -1,8 +1,6 @@
 {
   "POS_Modmarket": {
     "label": "",
-    "posApiEnabled": false,
-    "posApiType": "B2C_RECEIPT",
     "labelFontSize": 10,
     "boxWidth": 80,
     "boxHeight": 20,
