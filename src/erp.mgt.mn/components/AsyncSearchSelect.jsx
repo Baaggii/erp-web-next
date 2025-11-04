@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { getTenantKeyList } from '../utils/tenantKeys.js';
 import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
+import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
@@ -108,6 +109,31 @@ export default function AsyncSearchSelect({
   );
 
   const compareOptions = useCallback((a, b) => {
+    const aIndex = a?.__index;
+    const bIndex = b?.__index;
+    const aHasIndex = aIndex !== undefined && aIndex !== null && aIndex !== '';
+    const bHasIndex = bIndex !== undefined && bIndex !== null && bIndex !== '';
+    if (aHasIndex && bHasIndex) {
+      const aNum = Number(aIndex);
+      const bNum = Number(bIndex);
+      const aIsNum = Number.isFinite(aNum);
+      const bIsNum = Number.isFinite(bNum);
+      if (aIsNum && bIsNum && aNum !== bNum) {
+        return aNum - bNum;
+      }
+      if (aIsNum && !bIsNum) return -1;
+      if (!aIsNum && bIsNum) return 1;
+      const cmp = String(aIndex).localeCompare(String(bIndex), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      if (cmp !== 0) return cmp;
+    } else if (aHasIndex) {
+      return -1;
+    } else if (bHasIndex) {
+      return 1;
+    }
+
     const aVal = a?.value;
     const bVal = b?.value;
     if (aVal == null && bVal == null) return 0;
@@ -141,6 +167,14 @@ export default function AsyncSearchSelect({
         } else {
           const existing = seen.get(key);
           if (!existing.label && opt.label) {
+            const idx = deduped.indexOf(existing);
+            if (idx >= 0) deduped[idx] = opt;
+            seen.set(key, opt);
+          } else if (
+            existing.__index == null &&
+            opt.__index != null &&
+            opt.__index !== ''
+          ) {
             const idx = deduped.indexOf(existing);
             if (idx >= 0) deduped[idx] = opt;
             seen.set(key, opt);
@@ -233,7 +267,8 @@ export default function AsyncSearchSelect({
           departmentId: department,
         });
       } catch {
-        opts = rows.map((r) => {
+        const sortedFallbackRows = sortRowsByIndex(rows);
+        opts = sortedFallbackRows.map((r) => {
           if (!r || typeof r !== 'object') return { value: undefined, label: '' };
           const val = r[idField || searchColumn];
           const parts = [];
@@ -248,7 +283,18 @@ export default function AsyncSearchSelect({
               if (r[f] !== undefined) parts.push(r[f]);
             });
           }
-          return { value: val, label: parts.join(' - ') };
+          const indexInfo = extractRowIndex(r);
+          return {
+            value: val,
+            label: parts.join(' - '),
+            ...(indexInfo
+              ? {
+                  __index: indexInfo.numeric
+                    ? indexInfo.sortValue
+                    : indexInfo.rawValue,
+                }
+              : {}),
+          };
         });
       }
       const normalizedQuery = String(q || '').trim().toLowerCase();

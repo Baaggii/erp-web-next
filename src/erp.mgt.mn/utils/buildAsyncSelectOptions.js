@@ -1,4 +1,5 @@
 import { getTenantKeyList } from './tenantKeys.js';
+import { extractRowIndex, sortRowsByIndex } from './sortRowsByIndex.js';
 
 const relationMapCache = new Map();
 const nestedLabelCache = new Map();
@@ -129,6 +130,21 @@ async function fetchDisplayConfig(table) {
       idField: typeof cfg?.idField === 'string' ? cfg.idField : undefined,
       displayFields: Array.isArray(cfg?.displayFields) ? cfg.displayFields : [],
     };
+    if (typeof cfg?.indexField === 'string' && cfg.indexField.trim()) {
+      normalized.indexField = cfg.indexField.trim();
+    }
+    if (Array.isArray(cfg?.indexFields)) {
+      const deduped = Array.from(
+        new Set(
+          cfg.indexFields
+            .filter((field) => typeof field === 'string' && field.trim())
+            .map((field) => field.trim()),
+        ),
+      );
+      if (deduped.length > 0) {
+        normalized.indexFields = deduped;
+      }
+    }
     displayConfigCache.set(cacheKey, normalized);
     return normalized;
   } catch {
@@ -292,7 +308,9 @@ export async function buildOptionsForRows({
     idField: idField || relationColumn,
     displayFields: Array.isArray(labelFields) ? labelFields : [],
   };
-  return rows.map((row) => {
+  const sortedRows = sortRowsByIndex(rows);
+
+  return sortedRows.map((row) => {
     if (!row || typeof row !== 'object') {
       return { value: undefined, label: '' };
     }
@@ -301,6 +319,7 @@ export async function buildOptionsForRows({
       ? keyMap[relationColumn.toLowerCase()] || relationColumn
       : relationColumn;
     const value = relationKey ? row[relationKey] : undefined;
+    const indexInfo = extractRowIndex(row);
     const label = buildRelationLabel({
       row,
       keyMap,
@@ -311,6 +330,11 @@ export async function buildOptionsForRows({
     return {
       value,
       label: label || (value !== undefined && value !== null ? String(value) : ''),
+      ...(indexInfo
+        ? {
+            __index: indexInfo.numeric ? indexInfo.sortValue : indexInfo.rawValue,
+          }
+        : {}),
     };
   });
 }

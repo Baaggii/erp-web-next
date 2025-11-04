@@ -1,9 +1,5 @@
+import fetch from 'node-fetch';
 import { parseLocalizedNumber } from '../../utils/parseLocalizedNumber.js';
-
-const fetchImpl =
-  typeof globalThis.fetch === 'function'
-    ? globalThis.fetch.bind(globalThis)
-    : (await import('node-fetch')).default;
 
 const AUTH_BASE_URL = (process.env.POSAPI_AUTH_URL || '').replace(/\/+$/, '');
 const AUTH_REALM = process.env.POSAPI_AUTH_REALM || '';
@@ -196,7 +192,7 @@ export async function getPosApiToken() {
       client_id: CLIENT_ID,
       client_secret: CLIENT_SECRET,
     });
-    const res = await fetchImpl(tokenUrl, {
+    const res = await fetch(tokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
@@ -327,7 +323,7 @@ async function authorizedRequest(path, { method = 'GET', body, headers } = {}) {
     }
 
     const url = joinUrl(POSAPI_BASE_URL, path);
-    const response = await fetchImpl(url, {
+    const response = await fetch(url, {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
