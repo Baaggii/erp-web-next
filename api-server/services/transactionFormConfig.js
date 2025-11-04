@@ -2,6 +2,21 @@ import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
 
+const POSAPI_RECEIPT_TYPES = new Set([
+  'B2C_RECEIPT',
+  'B2C_INVOICE',
+  'B2B_INVOICE',
+]);
+
+const ENV_POSAPI_RECEIPT_TYPE =
+  process.env.POSAPI_RECEIPT_TYPE?.trim().toUpperCase() || '';
+
+const DEFAULT_POSAPI_RECEIPT_TYPE = POSAPI_RECEIPT_TYPES.has(
+  ENV_POSAPI_RECEIPT_TYPE,
+)
+  ? ENV_POSAPI_RECEIPT_TYPE
+  : 'B2C_RECEIPT';
+
   async function readConfig(companyId = 0) {
     const { path: filePath, isDefault } = await getConfigPath(
       'transactionForms.json',
@@ -25,6 +40,26 @@ function arrify(val) {
   if (Array.isArray(val)) return val.map((v) => String(v));
   if (val === undefined || val === null) return [];
   return [String(val)];
+}
+
+function normalizeBoolean(value, defaultValue = false) {
+  if (value === undefined || value === null) return defaultValue;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  if (typeof value === 'string') {
+    const trimmed = value.trim().toLowerCase();
+    if (!trimmed) return defaultValue;
+    if (['true', '1', 'yes', 'y'].includes(trimmed)) return true;
+    if (['false', '0', 'no', 'n'].includes(trimmed)) return false;
+  }
+  return Boolean(value);
+}
+
+function sanitizeReceiptType(value) {
+  if (typeof value !== 'string') return '';
+  const upper = value.trim().toUpperCase();
+  if (!upper) return '';
+  return POSAPI_RECEIPT_TYPES.has(upper) ? upper : '';
 }
 
 function parseEntry(raw = {}) {
@@ -107,6 +142,9 @@ function parseEntry(raw = {}) {
     procedures: arrify(raw.procedures || raw.procedure),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
+    posApiEnabled: normalizeBoolean(raw.posApiEnabled, false),
+    posApiType:
+      sanitizeReceiptType(raw.posApiType) || DEFAULT_POSAPI_RECEIPT_TYPE,
   };
 }
 
@@ -330,10 +368,19 @@ export async function setFormConfig(
     supportsTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),
+    posApiEnabled: normalizeBoolean(config.posApiEnabled, false),
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
   }
+
+  const sanitizedPosApiType = sanitizeReceiptType(config.posApiType);
+  if (sanitizedPosApiType) {
+    cfg[table][name].posApiType = sanitizedPosApiType;
+  } else {
+    delete cfg[table][name].posApiType;
+  }
+
   await writeConfig(cfg, companyId);
   return cfg[table][name];
 }
