@@ -161,7 +161,7 @@ developer.itc.gov.mn
 
 Integrating POSAPI with the dynamic transaction module
 
-Many ERP implementations no longer have a dedicated “POS transactions” module. Instead, all financial transactions—including sales receipts—are defined through a dynamic transaction module. Each transaction form is described in a configuration file (transactionForms.json) that specifies the master table, related tables and layout fields. To control when the POSAPI service should be invoked, extend the relevant form definitions in transactionForms.json with two properties:
+Many ERP implementations no longer have a dedicated “POS transactions” module. Instead, all financial transactions—including sales receipts—are defined through a dynamic transaction module. Each transaction form is described in a configuration file (transactionForms.json) that specifies the table, related tables and layout fields. To control when the POSAPI service should be invoked, extend the relevant form definitions in transactionForms.json with two properties:
 
 posApiEnabled (boolean): set to true to indicate that saving this transaction should trigger a call to the POSAPI /rest/receipt endpoint. Set to false (or omit the property) if the form does not produce an e‑receipt.
 
@@ -223,4 +223,3 @@ developer.itc.gov.mn
 Implement API calls in your ERP: authenticate using OAuth, send receipts via POST /rest/receipt, handle reversals and pending transactions, and fetch reference data via the provided GET endpoints. Respect data and printing requirements, including classification codes and additional fields for special industries such as pharmacies.
 
 By following these steps, your ERP system will be able to seamlessly issue electronic receipts through POSAPI 3.0 and remain compliant with the Mongolian e‑Invoice regulations.
-
