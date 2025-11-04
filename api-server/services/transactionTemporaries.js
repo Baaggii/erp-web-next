@@ -5,10 +5,6 @@ import {
   listTableColumnsDetailed,
 } from '../../db/index.js';
 import { getFormConfig } from './transactionFormConfig.js';
-import {
-  buildReceiptFromPosTransaction,
-  sendReceipt,
-} from './posApiService.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
@@ -125,221 +121,6 @@ function extractPromotableValues(source) {
     current = current[nextKey];
   }
   return isPlainObject(current) ? current : null;
-}
-
-function collectPosApiTransactionData({
-  tableName,
-  sanitizedValues,
-  payloadJson,
-  insertedId,
-}) {
-  const txnData = {};
-
-  const mergeMulti = (record) => {
-    if (!isPlainObject(record)) return;
-    const target = isPlainObject(txnData.multi) ? txnData.multi : {};
-    Object.entries(record).forEach(([key, value]) => {
-      if (!Array.isArray(value)) return;
-      target[key] = value.map((item) =>
-        isPlainObject(item) ? stripLabelWrappers(item) : item,
-      );
-    });
-    if (Object.keys(target).length > 0) {
-      txnData.multi = target;
-    }
-  };
-
-  const mergeSingle = (record) => {
-    if (!isPlainObject(record)) return;
-    const target = isPlainObject(txnData.single) ? txnData.single : {};
-    Object.entries(record).forEach(([key, value]) => {
-      if (!key) return;
-      if (Array.isArray(value)) {
-        target[key] = value.map((item) =>
-          isPlainObject(item) ? stripLabelWrappers(item) : item,
-        );
-      } else if (isPlainObject(value)) {
-        const existing = isPlainObject(target[key]) ? target[key] : {};
-        target[key] = {
-          ...existing,
-          ...stripLabelWrappers(value),
-        };
-      } else {
-        target[key] = value;
-      }
-    });
-    if (Object.keys(target).length > 0) {
-      txnData.single = target;
-    }
-  };
-
-  const mergeRecord = (record) => {
-    if (!isPlainObject(record)) return;
-    const plain = stripLabelWrappers(record);
-    Object.entries(plain).forEach(([key, value]) => {
-      if (value === undefined || value === null) return;
-      if (key === 'single') {
-        mergeSingle(value);
-        return;
-      }
-      if (key === 'multi') {
-        mergeMulti(value);
-        return;
-      }
-      if (Array.isArray(value)) {
-        const targetArr = Array.isArray(txnData[key]) ? txnData[key] : [];
-        value.forEach((item) => {
-          if (Array.isArray(item)) {
-            targetArr.push(item.slice());
-          } else if (isPlainObject(item)) {
-            targetArr.push(stripLabelWrappers(item));
-          } else {
-            targetArr.push(item);
-          }
-        });
-        if (targetArr.length > 0) {
-          txnData[key] = targetArr;
-        }
-        return;
-      }
-      if (isPlainObject(value)) {
-        const existing = isPlainObject(txnData[key]) ? txnData[key] : {};
-        txnData[key] = {
-          ...existing,
-          ...stripLabelWrappers(value),
-        };
-        return;
-      }
-      if (!(key in txnData)) {
-        txnData[key] = value;
-      }
-    });
-  };
-
-  mergeRecord(sanitizedValues);
-
-  if (tableName && isPlainObject(sanitizedValues)) {
-    const sanitized = stripLabelWrappers(sanitizedValues);
-    const existing = isPlainObject(txnData[tableName]) ? txnData[tableName] : {};
-    txnData[tableName] = { ...existing, ...sanitized };
-    if (!isPlainObject(txnData.master)) {
-      txnData.master = { ...sanitized };
-    } else {
-      txnData.master = { ...txnData.master, ...sanitized };
-    }
-    mergeSingle({ [tableName]: sanitized });
-  }
-
-  const valuesContainer = payloadJson?.values;
-  mergeRecord(valuesContainer);
-  mergeSingle(valuesContainer?.single);
-  mergeMulti(valuesContainer?.multi);
-
-  const cleanedContainer = payloadJson?.cleanedValues;
-  mergeRecord(cleanedContainer);
-  mergeSingle(cleanedContainer?.single);
-  mergeMulti(cleanedContainer?.multi);
-
-  if (Array.isArray(payloadJson?.gridRows)) {
-    payloadJson.gridRows.forEach((row) => mergeRecord(row));
-  }
-  if (Array.isArray(payloadJson?.rawRows)) {
-    payloadJson.rawRows.forEach((row) => mergeRecord(row));
-  } else if (isPlainObject(payloadJson?.rawRows)) {
-    mergeRecord(payloadJson.rawRows);
-  }
-
-  if (tableName && isPlainObject(txnData[tableName])) {
-    const targetSingle = isPlainObject(txnData.single) ? txnData.single : {};
-    targetSingle[tableName] = {
-      ...(isPlainObject(targetSingle[tableName]) ? targetSingle[tableName] : {}),
-      ...txnData[tableName],
-    };
-    txnData.single = targetSingle;
-  }
-
-  if (insertedId) {
-    if (tableName && isPlainObject(txnData[tableName])) {
-      txnData[tableName] = { ...txnData[tableName], id: insertedId };
-      if (isPlainObject(txnData.master)) {
-        txnData.master = { ...txnData.master, id: insertedId };
-      }
-      if (isPlainObject(txnData.single?.[tableName])) {
-        txnData.single[tableName] = {
-          ...txnData.single[tableName],
-          id: insertedId,
-        };
-      }
-    } else if (isPlainObject(txnData)) {
-      txnData.id = insertedId;
-    }
-  }
-
-  return txnData;
-}
-
-async function maybeSendDynamicPosApiReceipt({
-  tableName,
-  formName,
-  companyId,
-  sanitizedValues,
-  payloadJson,
-  insertedId,
-}) {
-  if (!tableName || !formName) return undefined;
-
-  const normalizedCompanyId =
-    companyId === undefined || companyId === null || companyId === ''
-      ? 0
-      : Number(companyId) || 0;
-
-  let formConfig;
-  try {
-    const result = await getFormConfig(tableName, formName, normalizedCompanyId);
-    formConfig = result?.config || null;
-  } catch (error) {
-    console.error(
-      `[POSAPI] Failed to load dynamic form config for ${tableName}.${formName}`,
-      error,
-    );
-    return {
-      success: false,
-      error: 'Failed to load POSAPI configuration',
-    };
-  }
-
-  if (!formConfig?.posApiEnabled) return undefined;
-
-  const txnData = collectPosApiTransactionData({
-    tableName,
-    sanitizedValues,
-    payloadJson,
-    insertedId,
-  });
-
-  const payload = buildReceiptFromPosTransaction(txnData, {
-    posApiType: formConfig.posApiType,
-  });
-
-  if (!payload) {
-    console.error(
-      `[POSAPI] Skipping receipt submission for ${tableName}.${formName} due to incomplete payload`,
-    );
-    return {
-      success: false,
-      error: 'POSAPI payload missing mandatory data',
-    };
-  }
-
-  try {
-    return await sendReceipt(payload);
-  } catch (error) {
-    console.error(
-      `[POSAPI] Failed to submit receipt for ${tableName}.${formName}`,
-      error,
-    );
-    return { success: false, error: error.message };
-  }
 }
 
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
@@ -811,7 +592,6 @@ export async function promoteTemporarySubmission(
     throw err;
   }
   const conn = await pool.getConnection();
-  let connectionReleased = false;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
@@ -991,23 +771,6 @@ export async function promoteTemporarySubmission(
       type: 'response',
     });
     await conn.query('COMMIT');
-    conn.release();
-    connectionReleased = true;
-
-    let posApiResponse;
-    try {
-      posApiResponse = await maybeSendDynamicPosApiReceipt({
-        tableName: row.table_name,
-        formName: row.form_name || row.config_name || '',
-        companyId: row.company_id,
-        sanitizedValues,
-        payloadJson,
-        insertedId: promotedId,
-      });
-    } catch (error) {
-      console.error('[POSAPI] Failed to process dynamic receipt submission', error);
-    }
-
     if (io) {
       io.to(`user:${row.created_by}`).emit('temporaryReviewed', {
         id,
@@ -1022,20 +785,14 @@ export async function promoteTemporarySubmission(
         warnings: sanitationWarnings,
       });
     }
-    const result = { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
-    if (posApiResponse !== undefined && posApiResponse !== null) {
-      result.posApiResponse = posApiResponse;
-    }
-    return result;
+    return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
     } catch {}
     throw err;
   } finally {
-    if (!connectionReleased) {
-      conn.release();
-    }
+    conn.release();
   }
 }
 
