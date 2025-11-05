@@ -36,6 +36,25 @@ if (!haveReact) {
     assert.deepEqual(filtered, ['OtherField']);
   });
 
+  test('resolveDisabledFieldState omits relation idField aliases', () => {
+    const canonicalizeFormFields = (fields) =>
+      fields.filter((f) => typeof f === 'string').map((f) => f.toLowerCase());
+    const { disabledFields } = resolveDisabledFieldState({
+      editSet: null,
+      formColumns: ['GuardCode', 'OtherField'],
+      requestType: null,
+      isAdding: false,
+      editing: false,
+      lockedDefaults: ['GuardCode', 'OtherField'],
+      canonicalizeFormFields,
+      buttonPerms: {},
+      getKeyFields: () => [],
+      relationIdFields: new Set(['GuardCode']),
+    });
+
+    assert.deepEqual(disabledFields, ['otherfield']);
+  });
+
   test('TableManager unlocks locked defaults for new transactions', () => {
     const baseArgs = {
       editSet: null,
@@ -102,6 +121,25 @@ if (!haveReact) {
     });
 
     assert.deepEqual(filtered, ['OtherField']);
+  });
+
+  test('resolveDisabledFieldState omits relation idField aliases', () => {
+    const canonicalizeFormFields = (fields) =>
+      fields.filter((f) => typeof f === 'string').map((f) => f.toLowerCase());
+    const { disabledFields } = resolveDisabledFieldState({
+      editSet: null,
+      formColumns: ['GuardCode', 'OtherField'],
+      requestType: null,
+      isAdding: false,
+      editing: false,
+      lockedDefaults: ['GuardCode', 'OtherField'],
+      canonicalizeFormFields,
+      buttonPerms: {},
+      getKeyFields: () => [],
+      relationIdFields: new Set(['GuardCode']),
+    });
+
+    assert.deepEqual(disabledFields, ['otherfield']);
   });
 
   test('TableManager unlocks locked defaults for new transactions', async (t) => {

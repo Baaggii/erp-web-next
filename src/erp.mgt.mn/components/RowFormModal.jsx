@@ -1908,7 +1908,14 @@ const RowFormModal = function RowFormModal({
     const err = errors[c];
     const inputClass = `w-full border rounded ${err ? 'border-red-500' : 'border-gray-300'}`;
     const isColumn = columns.includes(c);
-    const disabled = disabledSet.has(c.toLowerCase()) || !isColumn;
+    const relationBacked =
+      Boolean(relationConfigMap[c]) ||
+      (Boolean(viewSourceMap[c]) && !Array.isArray(relations[c])) ||
+      Boolean(autoSelectConfigs[c]);
+    const treatAsColumn = isColumn || relationBacked;
+    const disabled =
+      !forceEditable &&
+      (disabledSet.has(c.toLowerCase()) || !treatAsColumn);
     const tip = t(c.toLowerCase(), { ns: 'tooltip', defaultValue: labels[c] || c });
     const formVisible =
       (inline && visible) || (typeof document !== 'undefined' && !document.hidden);
@@ -1922,7 +1929,7 @@ const RowFormModal = function RowFormModal({
     const isNumericField = fieldTypeMap[c] === 'number';
 
     if (disabled) {
-      const raw = isColumn ? formVals[c] : extraVals[c];
+      const raw = treatAsColumn ? formVals[c] : extraVals[c];
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
       if (
