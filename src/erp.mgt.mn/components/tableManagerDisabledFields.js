@@ -137,76 +137,42 @@ export function resolveDisabledFieldState({
 
 export function filterDisabledFieldsForIdFields({
   disabledFields,
-  requestType,
-  isAdding,
-  autoFillSession,
-  userIdFields = [],
-  branchIdFields = [],
-  departmentIdFields = [],
-  companyIdFields = [],
-  user,
-  branch,
-  department,
-  company,
+  relationConfigs,
+  resolveCanonicalKey,
+  validColumns,
 }) {
-  if (!Array.isArray(disabledFields) || disabledFields.length === 0)
-    return Array.isArray(disabledFields) ? disabledFields : [];
+  const list = Array.isArray(disabledFields) ? disabledFields : [];
+  if (list.length === 0) return list;
 
-  if (requestType === 'temporary-promote') return disabledFields;
+  const canonicalize =
+    typeof resolveCanonicalKey === 'function'
+      ? (field) => resolveCanonicalKey(field)
+      : (field) => field;
 
-  if (!isAdding) return disabledFields;
+  const unlockSet = new Set();
 
-  const state = buildNormalizedFieldState(disabledFields);
-
-  const hasUserValue = coerceHasValue(
-    user?.empid ?? user?.employeeId ?? user?.employee_id ?? user?.id ?? null,
-  );
-  const hasBranchValue = coerceHasValue(branch);
-  const hasDepartmentValue = coerceHasValue(department);
-  const hasCompanyValue = coerceHasValue(company);
-
-  const idPreferenceOrder = [
-    ...(userIdFields || []),
-    ...(branchIdFields || []),
-    ...(departmentIdFields || []),
-    ...(companyIdFields || []),
-  ];
-
-  if (autoFillSession) {
-    applyFieldPreference({
-      fields: userIdFields,
-      shouldDisable: hasUserValue,
-      state,
+  if (relationConfigs && typeof relationConfigs === 'object') {
+    Object.values(relationConfigs).forEach((config) => {
+      if (!config || typeof config.idField !== 'string') return;
+      const canonicalId = canonicalize(config.idField);
+      if (!canonicalId) return;
+      if (validColumns instanceof Set && !validColumns.has(canonicalId)) return;
+      const sourceKey =
+        typeof config.column === 'string'
+          ? canonicalize(config.column)
+          : canonicalize(config.idField);
+      if (sourceKey && sourceKey === canonicalId) return;
+      unlockSet.add(canonicalId);
     });
-    applyFieldPreference({
-      fields: branchIdFields,
-      shouldDisable: hasBranchValue,
-      state,
-    });
-    applyFieldPreference({
-      fields: departmentIdFields,
-      shouldDisable: hasDepartmentValue,
-      state,
-    });
-    applyFieldPreference({
-      fields: companyIdFields,
-      shouldDisable: hasCompanyValue,
-      state,
-    });
-  } else {
-    applyFieldPreference({ fields: userIdFields, shouldDisable: false, state });
-    applyFieldPreference({ fields: branchIdFields, shouldDisable: false, state });
-    applyFieldPreference({
-      fields: departmentIdFields,
-      shouldDisable: false,
-      state,
-    });
-    applyFieldPreference({ fields: companyIdFields, shouldDisable: false, state });
   }
 
-  return finalizeDisabledFields(state, disabledFields, idPreferenceOrder);
-}
+  if (unlockSet.size === 0) {
+    return list.slice();
+  }
 
-if (typeof window !== 'undefined') {
-  window.filterDisabledFieldsForIdFields = filterDisabledFieldsForIdFields;
+  return list.filter((field) => {
+    if (unlockSet.has(field)) return false;
+    const canonicalField = canonicalize(field);
+    return !unlockSet.has(canonicalField);
+  });
 }
