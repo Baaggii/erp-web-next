@@ -4415,6 +4415,20 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
+  const relationIdentifierSet = useMemo(() => {
+    const identifiers = new Set();
+    Object.values(relationConfigs || {}).forEach((config) => {
+      if (!config || typeof config.idField !== 'string') return;
+      const canonicalId = resolveCanonicalKey(config.idField);
+      if (!canonicalId) return;
+      const canonicalColumn =
+        typeof config.column === 'string' ? resolveCanonicalKey(config.column) : null;
+      if (canonicalColumn && canonicalColumn === canonicalId) return;
+      identifiers.add(canonicalId);
+    });
+    return identifiers;
+  }, [relationConfigs, resolveCanonicalKey]);
+
   const {
     disabledFields: computedDisabledFields,
     bypassGuardDefaults: canBypassGuardDefaults,
@@ -4428,6 +4442,7 @@ const TableManager = forwardRef(function TableManager({
     canonicalizeFormFields,
     buttonPerms,
     getKeyFields,
+    relationIdFields: relationIdentifierSet,
   });
   const disabledFields = useMemo(
     () =>
@@ -4436,12 +4451,14 @@ const TableManager = forwardRef(function TableManager({
         relationConfigs,
         resolveCanonicalKey,
         validColumns: validCols,
+        relationIdFieldSet: relationIdentifierSet,
       }),
     [
       computedDisabledFields,
       relationConfigs,
       resolveCanonicalKey,
       validCols,
+      relationIdentifierSet,
     ],
   );
 

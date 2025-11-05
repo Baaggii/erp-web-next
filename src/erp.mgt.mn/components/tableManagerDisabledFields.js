@@ -8,6 +8,7 @@ export function resolveDisabledFieldState({
   canonicalizeFormFields,
   buttonPerms,
   getKeyFields,
+  relationIdFields,
 }) {
   const bypassGuardDefaults = Boolean(buttonPerms?.['New transaction']) && !!isAdding;
 
@@ -15,6 +16,35 @@ export function resolveDisabledFieldState({
     typeof canonicalizeFormFields === 'function'
       ? canonicalizeFormFields
       : (fields) => fields;
+
+  const canonicalizeField = (field) => {
+    if (typeof field !== 'string' || field.length === 0) return null;
+    const canonical = canonicalizer([field]);
+    if (Array.isArray(canonical) && canonical.length > 0) {
+      return canonical[0];
+    }
+    return field;
+  };
+
+  const relationIdSet = new Set();
+  if (relationIdFields instanceof Set || Array.isArray(relationIdFields)) {
+    const list = relationIdFields instanceof Set ? relationIdFields.values() : relationIdFields;
+    for (const value of list) {
+      if (typeof value !== 'string') continue;
+      const canonical = canonicalizeField(value);
+      if (canonical) relationIdSet.add(canonical);
+    }
+  } else if (typeof relationIdFields === 'string') {
+    const canonical = canonicalizeField(relationIdFields);
+    if (canonical) relationIdSet.add(canonical);
+  }
+
+  const shouldUnlockField = (field) => {
+    if (relationIdSet.size === 0) return false;
+    const canonical = canonicalizeField(field);
+    if (!canonical) return false;
+    return relationIdSet.has(canonical);
+  };
 
   if (requestType === 'temporary-promote') {
     const canonicalized = canonicalizer(Array.from(new Set([...formColumns]))) || [];
@@ -40,9 +70,18 @@ export function resolveDisabledFieldState({
     }
   }
 
+  if (relationIdSet.size > 0 && disabledFields.length > 0) {
+    disabledFields = disabledFields.filter((field) => !shouldUnlockField(field));
+  }
+
   const canonicalized = canonicalizer(disabledFields) || [];
 
-  return { disabledFields: canonicalized, bypassGuardDefaults };
+  const filteredCanonicalized =
+    relationIdSet.size > 0
+      ? canonicalized.filter((field) => !shouldUnlockField(field))
+      : canonicalized;
+
+  return { disabledFields: filteredCanonicalized, bypassGuardDefaults };
 }
 
 export function filterDisabledFieldsForIdFields({
@@ -50,16 +89,39 @@ export function filterDisabledFieldsForIdFields({
   relationConfigs,
   resolveCanonicalKey,
   validColumns,
+  relationIdFieldSet,
 }) {
   const list = Array.isArray(disabledFields) ? disabledFields : [];
   if (list.length === 0) return list;
 
-  const canonicalize =
-    typeof resolveCanonicalKey === 'function'
-      ? (field) => resolveCanonicalKey(field)
-      : (field) => field;
+  const canonicalize = (field) => {
+    if (typeof resolveCanonicalKey === 'function') {
+      const resolved = resolveCanonicalKey(field);
+      if (resolved) return resolved;
+    }
+    return typeof field === 'string' ? field : null;
+  };
+
+  const registerIdField = (field) => {
+    const canonical = canonicalize(field);
+    if (canonical) {
+      unlockSet.add(canonical);
+    }
+  };
 
   const unlockSet = new Set();
+
+  if (relationIdFieldSet instanceof Set || Array.isArray(relationIdFieldSet)) {
+    const entries =
+      relationIdFieldSet instanceof Set
+        ? relationIdFieldSet.values()
+        : relationIdFieldSet;
+    for (const value of entries) {
+      registerIdField(value);
+    }
+  } else if (typeof relationIdFieldSet === 'string') {
+    registerIdField(relationIdFieldSet);
+  }
 
   if (relationConfigs && typeof relationConfigs === 'object') {
     Object.values(relationConfigs).forEach((config) => {
@@ -72,7 +134,7 @@ export function filterDisabledFieldsForIdFields({
           ? canonicalize(config.column)
           : canonicalize(config.idField);
       if (sourceKey && sourceKey === canonicalId) return;
-      unlockSet.add(canonicalId);
+      registerIdField(canonicalId);
     });
   }
 
@@ -81,8 +143,8 @@ export function filterDisabledFieldsForIdFields({
   }
 
   return list.filter((field) => {
-    if (unlockSet.has(field)) return false;
     const canonicalField = canonicalize(field);
+    if (!canonicalField) return true;
     return !unlockSet.has(canonicalField);
   });
 }
