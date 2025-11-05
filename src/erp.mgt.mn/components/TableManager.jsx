@@ -36,6 +36,10 @@ import {
 } from '../utils/generatedColumns.js';
 import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
+import {
+  resolveDisabledFieldState,
+  filterDisabledFieldsForIdFields,
+} from './tableManagerDisabledFields.js';
 
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
@@ -4424,7 +4428,20 @@ const TableManager = forwardRef(function TableManager({
     buttonPerms,
     getKeyFields,
   });
-  const disabledFields = computedDisabledFields;
+  const disabledFields = filterDisabledFieldsForIdFields({
+    disabledFields: computedDisabledFields,
+    requestType,
+    isAdding,
+    autoFillSession,
+    userIdFields,
+    branchIdFields,
+    departmentIdFields,
+    companyIdFields,
+    user,
+    branch,
+    department,
+    company,
+  });
 
   const totals = useMemo(() => {
     const sums = {};
