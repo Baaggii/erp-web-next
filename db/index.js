@@ -6942,6 +6942,12 @@ export async function getProcedureLockCandidates(
 
   const collectCandidateValue = (value, extras = {}) => {
     if (value === undefined || value === null) return;
+    if (Buffer.isBuffer(value)) {
+      const text = value.toString('utf8');
+      if (!text) return;
+      collectCandidateValue(text, extras);
+      return;
+    }
     if (typeof value === 'string') {
       parseCandidateString(value, extras);
       return;
