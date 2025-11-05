@@ -6767,7 +6767,12 @@ export async function getProcedureLockCandidates(
   aliases = [],
   options = {},
 ) {
-  const { companyId, tenantFilters } = options || {};
+  const {
+    companyId,
+    tenantFilters,
+    resolveSnapshotRow,
+    resolveAlternateSnapshotRow,
+  } = options || {};
   const conn = await pool.getConnection();
   const candidates = new Map();
 
@@ -6801,6 +6806,133 @@ export async function getProcedureLockCandidates(
       merged.context = extras.context;
     return merged;
   };
+
+  const toDisplayString = (value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? String(value) : null;
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
+    }
+    return null;
+  };
+
+  const findFieldValue = (row, tokens) => {
+    if (!row || typeof row !== 'object') return null;
+    const entries = Object.entries(row).map(([key, value]) => ({
+      key,
+      normalized: String(key || '').trim().toLowerCase(),
+      value: toDisplayString(value),
+    }));
+    const matches = [];
+    entries.forEach((entry) => {
+      if (!entry.value) return;
+      tokens.forEach((token, idx) => {
+        const normalizedToken = token.toLowerCase();
+        if (entry.normalized === normalizedToken) {
+          matches.push({ entry, tokenIdx: idx, score: 0 });
+        } else if (entry.normalized.endsWith(normalizedToken)) {
+          matches.push({ entry, tokenIdx: idx, score: 1 });
+        } else if (entry.normalized.includes(normalizedToken)) {
+          matches.push({ entry, tokenIdx: idx, score: 2 });
+        }
+      });
+    });
+    if (!matches.length) return null;
+    matches.sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      if (a.tokenIdx !== b.tokenIdx) return a.tokenIdx - b.tokenIdx;
+      return a.entry.normalized.length - b.entry.normalized.length;
+    });
+    return matches[0]?.entry?.value ?? null;
+  };
+
+  const deriveLabelMetadata = (row) => {
+    if (!row || typeof row !== 'object') {
+      return { label: null, description: null };
+    }
+    const primaryNameTokens = [
+      'label',
+      'name',
+      'full_name',
+      'fullname',
+      'ner',
+      'title',
+    ];
+    const secondaryNameTokens = [
+      'description',
+      'desc',
+      'note',
+      'notes',
+      'detail',
+      'details',
+      'info',
+      'information',
+      'remark',
+      'remarks',
+    ];
+    const codeTokens = [
+      'code',
+      'code_value',
+      'codevalue',
+      'registration',
+      'reg',
+      'serial',
+      'number',
+      'no',
+      'reference',
+      'ref',
+    ];
+
+    const nameValue = findFieldValue(row, primaryNameTokens);
+    const detailValue = findFieldValue(row, secondaryNameTokens);
+    const codeValue = findFieldValue(row, codeTokens);
+
+    let label = null;
+    if (nameValue && codeValue) {
+      label = `${codeValue} — ${nameValue}`;
+    } else if (nameValue) {
+      label = nameValue;
+    } else if (codeValue) {
+      label = codeValue;
+    }
+
+    let description = null;
+    if (detailValue && detailValue !== label) {
+      description = detailValue;
+    } else if (nameValue && label !== nameValue) {
+      description = nameValue;
+    } else if (detailValue) {
+      description = detailValue;
+    }
+
+    return { label, description };
+  };
+
+  const getSnapshotRow =
+    typeof resolveSnapshotRow === 'function'
+      ? resolveSnapshotRow
+      : (table, id, contextOptions = {}) =>
+          getTableRowById(table, id, {
+            defaultCompanyId: companyId,
+            includeDeleted: true,
+            ...contextOptions,
+          });
+
+  const getAlternateSnapshot =
+    typeof resolveAlternateSnapshotRow === 'function'
+      ? resolveAlternateSnapshotRow
+      : (table, id, extraOptions = {}) =>
+          fetchSnapshotRowByAlternateKey(table, id, {
+            companyId,
+            tenantFilters,
+            ...extraOptions,
+          });
 
   const upsertCandidate = (tableName, recordId, extras = {}) => {
     const table = sanitizeTableName(tableName);
@@ -7249,9 +7381,9 @@ export async function getProcedureLockCandidates(
 
         let snapshotRow = null;
         try {
-          snapshotRow = await getTableRowById(bucket.tableName, recordId, {
-            defaultCompanyId: companyId,
-            includeDeleted: true,
+          snapshotRow = await getSnapshotRow(bucket.tableName, recordId, {
+            companyId,
+            tenantFilters,
           });
         } catch (err) {
           if (err?.status !== 400 && err?.code !== 'ER_NO_SUCH_TABLE') {
@@ -7260,15 +7392,32 @@ export async function getProcedureLockCandidates(
         }
 
         if (!snapshotRow) {
-          snapshotRow = await fetchSnapshotRowByAlternateKey(bucket.tableName, recordId, {
-            companyId,
-            tenantFilters,
-          });
+          snapshotRow = await getAlternateSnapshot(
+            bucket.tableName,
+            recordId,
+            {
+              companyId,
+              tenantFilters,
+            },
+          );
         }
 
         if (snapshotRow && typeof snapshotRow === 'object') {
           candidate.snapshot = snapshotRow;
           candidate.snapshotColumns = Object.keys(snapshotRow);
+          const { label, description } = deriveLabelMetadata(snapshotRow);
+          if (!candidate.label && label) {
+            candidate.label = label;
+          }
+          if (!candidate.description && description) {
+            candidate.description = description;
+          }
+          if (!candidate.context || typeof candidate.context !== 'object') {
+            candidate.context = {};
+          }
+          if (!('snapshot' in candidate.context)) {
+            candidate.context.snapshot = snapshotRow;
+          }
         } else {
           candidate.snapshot = null;
           candidate.snapshotColumns = [];
