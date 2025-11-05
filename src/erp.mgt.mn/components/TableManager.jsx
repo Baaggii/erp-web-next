@@ -36,10 +36,7 @@ import {
 } from '../utils/generatedColumns.js';
 import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
-import {
-  resolveDisabledFieldState,
-  filterDisabledFieldsForIdFields,
-} from './tableManagerDisabledFields.js';
+import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
@@ -4028,8 +4025,7 @@ const TableManager = forwardRef(function TableManager({
 
   const relationOpts = {};
   ordered.forEach((c) => {
-    if (!refData[c]) return;
-    if (relations[c] || relationConfigs[c]) {
+    if (relations[c] && refData[c]) {
       relationOpts[c] = refData[c];
     }
   });
@@ -4429,21 +4425,7 @@ const TableManager = forwardRef(function TableManager({
     buttonPerms,
     getKeyFields,
   });
-  const disabledFields = useMemo(
-    () =>
-      filterDisabledFieldsForIdFields({
-        disabledFields: computedDisabledFields,
-        relationConfigs,
-        resolveCanonicalKey,
-        validColumns: validCols,
-      }),
-    [
-      computedDisabledFields,
-      relationConfigs,
-      resolveCanonicalKey,
-      validCols,
-    ],
-  );
+  const disabledFields = computedDisabledFields;
 
   const totals = useMemo(() => {
     const sums = {};
