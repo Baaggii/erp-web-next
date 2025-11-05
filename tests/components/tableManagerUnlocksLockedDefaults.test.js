@@ -1,9 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  resolveDisabledFieldState,
-  filterDisabledFieldsForIdFields,
-} from '../../src/erp.mgt.mn/components/tableManagerDisabledFields.js';
+import { resolveDisabledFieldState } from '../../src/erp.mgt.mn/components/tableManagerDisabledFields.js';
 
 let React;
 let act;
@@ -22,20 +19,6 @@ try {
 }
 
 if (!haveReact) {
-  test('filterDisabledFieldsForIdFields removes idField aliases from disabled list', () => {
-    const filtered = filterDisabledFieldsForIdFields({
-      disabledFields: ['GuardCode', 'OtherField'],
-      relationConfigs: {
-        GuardSelect: { idField: 'GuardCode', column: 'GuardSelect' },
-        GuardCode: { idField: 'GuardCode', column: 'GuardSelect' },
-      },
-      resolveCanonicalKey: (value) => value,
-      validColumns: new Set(['GuardSelect', 'GuardCode']),
-    });
-
-    assert.deepEqual(filtered, ['OtherField']);
-  });
-
   test('TableManager unlocks locked defaults for new transactions', () => {
     const baseArgs = {
       editSet: null,
@@ -90,20 +73,6 @@ if (!haveReact) {
     );
   });
 } else {
-  test('filterDisabledFieldsForIdFields removes idField aliases from disabled list', () => {
-    const filtered = filterDisabledFieldsForIdFields({
-      disabledFields: ['GuardCode', 'OtherField'],
-      relationConfigs: {
-        GuardSelect: { idField: 'GuardCode', column: 'GuardSelect' },
-        GuardCode: { idField: 'GuardCode', column: 'GuardSelect' },
-      },
-      resolveCanonicalKey: (value) => value,
-      validColumns: new Set(['GuardSelect', 'OtherField', 'GuardCode']),
-    });
-
-    assert.deepEqual(filtered, ['OtherField']);
-  });
-
   test('TableManager unlocks locked defaults for new transactions', async (t) => {
     if (typeof t.mock?.import !== 'function') {
       t.skip('mock.import not supported in this runtime');
@@ -304,11 +273,6 @@ if (!haveReact) {
       assert.ok(
         latestProps.relationData.GuardCode?.CODE-1,
         'GuardCode relation data should include rows keyed by the id field value',
-      );
-      assert.deepEqual(
-        latestProps.relations.GuardCode?.map((opt) => opt.value),
-        ['CODE-1', 'CODE-2'],
-        'GuardCode dropdown options should be keyed by the id field values',
       );
     } finally {
       root.unmount();

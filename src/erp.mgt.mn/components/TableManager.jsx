@@ -1742,78 +1742,33 @@ const TableManager = forwardRef(function TableManager({
         });
 
         aliasEntries.forEach(({ alias, source, config }) => {
-          const idFieldName =
-            typeof config?.idField === 'string' && config.idField.trim().length > 0
-              ? config.idField
-              : null;
-
           if (!cfgMap[alias]) {
-            cfgMap[alias] = {
-              ...config,
-              ...(idFieldName ? { column: idFieldName } : {}),
-            };
-          } else if (idFieldName && cfgMap[alias].column !== idFieldName) {
-            cfgMap[alias] = { ...cfgMap[alias], column: idFieldName };
+            cfgMap[alias] = { ...config };
           }
-
-          const sourceRows = rowMap[source];
-          const aliasRows = rowMap[alias] || {};
-          if (sourceRows && idFieldName) {
-            Object.values(sourceRows).forEach((row) => {
+          if (dataMap[source] && !dataMap[alias]) {
+            dataMap[alias] = dataMap[source];
+          }
+          if (rowMap[source] && !rowMap[alias]) {
+            const aliasRows = {};
+            Object.values(rowMap[source]).forEach((row) => {
               if (!row || typeof row !== 'object') return;
-              const lower = idFieldName.toLowerCase();
-              let identifier = row[idFieldName];
-              if (identifier === undefined) {
-                const matchKey = Object.keys(row).find(
-                  (key) => typeof key === 'string' && key.toLowerCase() === lower,
-                );
-                if (matchKey) {
-                  identifier = row[matchKey];
-                }
-              }
-              if (
-                identifier === undefined ||
-                identifier === null ||
-                identifier === ''
-              ) {
+              const keyMap = {};
+              Object.keys(row).forEach((key) => {
+                keyMap[key.toLowerCase()] = key;
+              });
+              const idFieldName = config?.idField;
+              if (typeof idFieldName !== 'string' || idFieldName.length === 0) {
                 return;
               }
-              aliasRows[identifier] = row;
-            });
-          }
-          if (Object.keys(aliasRows).length > 0) {
-            rowMap[alias] = aliasRows;
-          }
-
-          if (Array.isArray(dataMap[source]) && !dataMap[alias] && idFieldName) {
-            const rekeyed = [];
-            const lower = idFieldName.toLowerCase();
-            dataMap[source].forEach((opt) => {
-              if (!opt || opt.value === undefined || opt.value === null) return;
-              const baseRow = sourceRows ? sourceRows[opt.value] : null;
-              let identifier = null;
-              if (baseRow && typeof baseRow === 'object') {
-                identifier = baseRow[idFieldName];
-                if (identifier === undefined) {
-                  const matchKey = Object.keys(baseRow).find(
-                    (key) => typeof key === 'string' && key.toLowerCase() === lower,
-                  );
-                  if (matchKey) identifier = baseRow[matchKey];
-                }
+              const idKey = keyMap[idFieldName.toLowerCase()] || idFieldName;
+              const identifier = row[idKey];
+              if (identifier !== undefined && identifier !== null) {
+                aliasRows[identifier] = row;
               }
-              if (
-                identifier === undefined ||
-                identifier === null ||
-                identifier === ''
-              ) {
-                return;
-              }
-              rekeyed.push({ ...opt, value: identifier });
             });
-            dataMap[alias] = rekeyed;
-          }
-          if (!Array.isArray(dataMap[alias])) {
-            dataMap[alias] = dataMap[alias] || [];
+            if (Object.keys(aliasRows).length > 0) {
+              rowMap[alias] = aliasRows;
+            }
           }
         });
 
@@ -4070,8 +4025,7 @@ const TableManager = forwardRef(function TableManager({
 
   const relationOpts = {};
   ordered.forEach((c) => {
-    if (!refData[c]) return;
-    if (relations[c] || relationConfigs[c]) {
+    if (relations[c] && refData[c]) {
       relationOpts[c] = refData[c];
     }
   });
@@ -4471,21 +4425,7 @@ const TableManager = forwardRef(function TableManager({
     buttonPerms,
     getKeyFields,
   });
-  const disabledFields = useMemo(
-    () =>
-      filterDisabledFieldsForIdFields({
-        disabledFields: computedDisabledFields,
-        relationConfigs,
-        resolveCanonicalKey,
-        validColumns: validCols,
-      }),
-    [
-      computedDisabledFields,
-      relationConfigs,
-      resolveCanonicalKey,
-      validCols,
-    ],
-  );
+  const disabledFields = computedDisabledFields;
 
   const totals = useMemo(() => {
     const sums = {};
