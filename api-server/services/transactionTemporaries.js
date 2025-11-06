@@ -521,15 +521,29 @@ export async function listTemporarySubmissions({
   tableName,
   empId,
   companyId,
-  status = 'pending',
+  status,
 }) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
   const conditions = [];
   const params = [];
-  if (status) {
-    conditions.push('status = ?');
-    params.push(status);
+  const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+  if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
+    if (normalizedStatus === 'processed') {
+      conditions.push("status <> 'pending'");
+    } else {
+      const statusParts = normalizedStatus
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (statusParts.length === 1) {
+        conditions.push('status = ?');
+        params.push(statusParts[0]);
+      } else if (statusParts.length > 1) {
+        conditions.push(`status IN (${statusParts.map(() => '?').join(', ')})`);
+        params.push(...statusParts);
+      }
+    }
   }
   if (companyId != null) {
     conditions.push('(company_id = ? OR company_id IS NULL)');
@@ -548,7 +562,7 @@ export async function listTemporarySubmissions({
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY created_at DESC LIMIT 200`,
+    `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY updated_at DESC, created_at DESC LIMIT 200`,
     params,
   );
   const mapped = rows.map(mapTemporaryRow);
@@ -561,19 +575,25 @@ export async function getTemporarySummary(empId, companyId) {
   const [[created]] = await pool.query(
     `SELECT
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-        COUNT(*) AS total_cnt
+        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
+        COUNT(*) AS total_cnt,
+        MAX(updated_at) AS latest_update
        FROM \`${TEMP_TABLE}\`
       WHERE created_by = ?
-        AND (company_id = ? OR company_id IS NULL)`,
+        AND (company_id = ? OR company_id IS NULL)
+      LIMIT 1`,
     [normalizedEmp, companyId ?? null],
   );
   const [[review]] = await pool.query(
     `SELECT
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-        COUNT(*) AS total_cnt
+        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
+        COUNT(*) AS total_cnt,
+        MAX(updated_at) AS latest_update
        FROM \`${TEMP_TABLE}\`
       WHERE plan_senior_empid = ?
-        AND (company_id = ? OR company_id IS NULL)`,
+        AND (company_id = ? OR company_id IS NULL)
+      LIMIT 1`,
     [normalizedEmp, companyId ?? null],
   );
   const createdPending = Number(created?.pending_cnt) || 0;
@@ -581,6 +601,12 @@ export async function getTemporarySummary(empId, companyId) {
   return {
     createdPending,
     reviewPending,
+    createdReviewed: Number(created?.reviewed_cnt) || 0,
+    reviewReviewed: Number(review?.reviewed_cnt) || 0,
+    createdTotal: Number(created?.total_cnt) || 0,
+    reviewTotal: Number(review?.total_cnt) || 0,
+    createdLatestUpdate: created?.latest_update || null,
+    reviewLatestUpdate: review?.latest_update || null,
     isReviewer: (Number(review?.total_cnt) || 0) > 0,
   };
 }
