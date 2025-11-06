@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { usePendingRequests } from '../context/PendingRequestContext.jsx';
 import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
+import { useToast } from '../context/ToastContext.jsx';
+import { API_BASE } from '../utils/apiBase.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 
 const SECTION_LIMIT = 5;
@@ -31,6 +33,7 @@ export default function NotificationsPage() {
   const { user, session } = useAuth();
   const { t } = useContext(LangContext);
   const navigate = useNavigate();
+  const { addToast } = useToast();
   const [reportState, setReportState] = useState({
     incoming: [],
     outgoing: [],
@@ -51,6 +54,7 @@ export default function NotificationsPage() {
     review: [],
     created: [],
   });
+  const [temporaryActionLoading, setTemporaryActionLoading] = useState({});
 
   const hasSupervisor =
     Number(session?.senior_empid) > 0 || Number(session?.senior_plan_empid) > 0;
@@ -338,6 +342,42 @@ export default function NotificationsPage() {
     return list;
   }, []);
 
+  const setTemporaryActionState = useCallback((id, action) => {
+    setTemporaryActionLoading((prev) => {
+      const next = { ...prev };
+      if (action) {
+        next[id] = action;
+      } else {
+        delete next[id];
+      }
+      return next;
+    });
+  }, []);
+
+  const refreshTemporaryQueues = useCallback(async () => {
+    if (typeof temporaryFetchScopeEntries !== 'function') return;
+    try {
+      const [reviewEntries, createdEntries] = await Promise.all([
+        temporaryFetchScopeEntries('review', SECTION_LIMIT),
+        temporaryFetchScopeEntries('created', SECTION_LIMIT),
+      ]);
+      setTemporaryState((prev) => ({
+        ...prev,
+        loading: false,
+        error: '',
+        review: sortTemporaryEntries(reviewEntries, 'review'),
+        created: sortTemporaryEntries(createdEntries, 'created'),
+      }));
+    } catch (err) {
+      console.error(err);
+      setTemporaryState((prev) => ({
+        ...prev,
+        loading: false,
+        error: t('notifications_temporary_error', 'Failed to load temporary submissions'),
+      }));
+    }
+  }, [sortTemporaryEntries, t, temporaryFetchScopeEntries]);
+
   useEffect(() => {
     if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
     let cancelled = false;
@@ -345,16 +385,16 @@ export default function NotificationsPage() {
     const reviewPromise = temporaryFetchScopeEntries('review', SECTION_LIMIT);
     const createdPromise = temporaryFetchScopeEntries('created', SECTION_LIMIT);
     Promise.all([reviewPromise, createdPromise])
-        .then(([review, created]) => {
-          if (!cancelled) {
-            setTemporaryState({
-              loading: false,
-              error: '',
-              review: sortTemporaryEntries(review, 'review'),
-              created: sortTemporaryEntries(created, 'created'),
-            });
-          }
-        })
+      .then(([review, created]) => {
+        if (!cancelled) {
+          setTemporaryState({
+            loading: false,
+            error: '',
+            review: sortTemporaryEntries(review, 'review'),
+            created: sortTemporaryEntries(created, 'created'),
+          });
+        }
+      })
       .catch(() => {
         if (!cancelled)
           setTemporaryState({
@@ -637,7 +677,122 @@ export default function NotificationsPage() {
     [combineResponses, changeState.responses],
   );
 
-    const renderTemporaryItem = (entry, scope) => {
+  const handleTemporaryPromote = useCallback(
+    async (entry) => {
+      if (!entry || !entry.id) return;
+      const id = entry.id;
+      if (!window.confirm(t('temporary_promote_confirm', 'Promote temporary record?')))
+        return;
+      setTemporaryActionState(id, 'promote');
+      try {
+        const res = await fetch(
+          `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/promote`,
+          {
+            method: 'POST',
+            credentials: 'include',
+          },
+        );
+        let data = null;
+        try {
+          data = await res.json();
+        } catch (err) {
+          data = null;
+        }
+        if (!res.ok) {
+          const message =
+            data?.message ||
+            data?.error ||
+            t('temporary_promote_failed', 'Failed to promote temporary');
+          throw new Error(message);
+        }
+        addToast(t('temporary_promoted', 'Temporary promoted'), 'success');
+        if (Array.isArray(data?.warnings) && data.warnings.length > 0) {
+          const warningDetails = data.warnings
+            .map((warn) => {
+              if (!warn || !warn.column) return null;
+              if (
+                warn.type === 'maxLength' &&
+                warn.actualLength != null &&
+                warn.maxLength != null
+              ) {
+                return `${warn.column} (${warn.actualLength}→${warn.maxLength})`;
+              }
+              return warn.column;
+            })
+            .filter(Boolean)
+            .join(', ');
+          if (warningDetails) {
+            addToast(
+              t(
+                'temporary_promoted_with_warnings',
+                'Some fields were adjusted to fit length limits: {{details}}',
+                { details: warningDetails },
+              ),
+              'warning',
+            );
+          }
+        }
+        await refreshTemporaryQueues();
+      } catch (err) {
+        console.error(err);
+        addToast(
+          err?.message || t('temporary_promote_failed', 'Failed to promote temporary'),
+          'error',
+        );
+      } finally {
+        setTemporaryActionState(id, null);
+      }
+    },
+    [addToast, refreshTemporaryQueues, setTemporaryActionState, t],
+  );
+
+  const handleTemporaryReject = useCallback(
+    async (entry) => {
+      if (!entry || !entry.id) return;
+      const id = entry.id;
+      const notes = window.prompt(t('temporary_reject_reason', 'Enter rejection notes'));
+      if (notes == null) return;
+      if (!String(notes).trim()) return;
+      setTemporaryActionState(id, 'reject');
+      try {
+        const res = await fetch(
+          `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/reject`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ notes }),
+          },
+        );
+        let data = null;
+        try {
+          data = await res.json();
+        } catch (err) {
+          data = null;
+        }
+        if (!res.ok) {
+          const message =
+            data?.message ||
+            data?.error ||
+            t('temporary_reject_failed', 'Failed to reject temporary');
+          throw new Error(message);
+        }
+        addToast(t('temporary_rejected', 'Temporary rejected'), 'success');
+        await refreshTemporaryQueues();
+      } catch (err) {
+        console.error(err);
+        addToast(
+          err?.message || t('temporary_reject_failed', 'Failed to reject temporary'),
+          'error',
+        );
+      } finally {
+        setTemporaryActionState(id, null);
+      }
+    },
+    [addToast, refreshTemporaryQueues, setTemporaryActionState, t],
+  );
+
+  const renderTemporaryItem = (entry, scope) => {
       const statusRaw = entry?.status ? String(entry.status).trim().toLowerCase() : '';
       const isPending = statusRaw === 'pending' || statusRaw === '';
       const statusLabel = isPending
@@ -655,6 +810,11 @@ export default function NotificationsPage() {
       const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || entry?.updatedAt || entry?.updated_at;
       const reviewer = entry?.reviewedBy || entry?.reviewed_by || '';
+      const reviewerId = String(entry?.reviewerEmpId || entry?.planSeniorEmpId || '').trim();
+      const currentUserId = String(user?.empid ?? '').trim();
+      const canReviewEntry = isPending && reviewerId && currentUserId && reviewerId === currentUserId;
+      const actionState = temporaryActionLoading?.[entry.id];
+      const isActionLoading = Boolean(actionState);
       return (
         <li key={`${scope}-${entry.id}`} style={styles.listItem}>
           <div style={styles.listBody}>
@@ -695,9 +855,54 @@ export default function NotificationsPage() {
               </div>
             )}
           </div>
-          <button style={styles.listAction} onClick={() => openTemporary(scope, entry)}>
-            {t('notifications_open_form', 'Open forms')}
-          </button>
+          <div style={styles.listActions}>
+            {canReviewEntry && (
+              <>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.listAction,
+                    backgroundColor: '#15803d',
+                    opacity: isActionLoading ? 0.7 : 1,
+                    cursor: isActionLoading ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={() => handleTemporaryPromote(entry)}
+                  disabled={isActionLoading}
+                >
+                  {actionState === 'promote'
+                    ? t('temporary_promoting', 'Promoting…')
+                    : t('temporary_promote_action', 'Promote')}
+                </button>
+                <button
+                  type="button"
+                  style={{
+                    ...styles.listAction,
+                    backgroundColor: '#dc2626',
+                    opacity: isActionLoading ? 0.7 : 1,
+                    cursor: isActionLoading ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={() => handleTemporaryReject(entry)}
+                  disabled={isActionLoading}
+                >
+                  {actionState === 'reject'
+                    ? t('temporary_rejecting', 'Rejecting…')
+                    : t('temporary_reject_action', 'Reject')}
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              style={{
+                ...styles.listAction,
+                opacity: isActionLoading ? 0.7 : 1,
+                cursor: isActionLoading ? 'not-allowed' : 'pointer',
+              }}
+              onClick={() => openTemporary(scope, entry)}
+              disabled={isActionLoading}
+            >
+              {t('notifications_open_form', 'Open forms')}
+            </button>
+          </div>
         </li>
       );
     };
@@ -1035,6 +1240,12 @@ const styles = {
     color: '#1f2937',
     fontSize: '0.9rem',
     whiteSpace: 'pre-line',
+  },
+  listActions: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    alignItems: 'stretch',
   },
   listAction: {
     backgroundColor: '#2563eb',
