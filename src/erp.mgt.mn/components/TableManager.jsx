@@ -676,6 +676,11 @@ const TableManager = forwardRef(function TableManager({
     setQueuedTemporaryTrigger(externalTemporaryTrigger);
   }, [externalTemporaryTrigger]);
 
+  const clearTemporaryDraftContext = useCallback(() => {
+    setActiveTemporaryDraftId(null);
+    setIsReopenedTemporaryDraft(false);
+  }, []);
+
   const refreshTemporarySummary = useCallback(async () => {
     if (!formSupportsTemporary) {
       setTemporarySummary(null);
