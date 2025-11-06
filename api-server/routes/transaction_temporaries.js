@@ -6,6 +6,7 @@ import {
   getTemporarySummary,
   promoteTemporarySubmission,
   rejectTemporarySubmission,
+  deleteTemporarySubmission,
 } from '../services/transactionTemporaries.js';
 
 const router = express.Router();
@@ -102,6 +103,17 @@ router.post('/:id/reject', requireAuth, async (req, res, next) => {
       reviewerEmpId: req.user.empid,
       notes,
       io,
+    });
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id', requireAuth, async (req, res, next) => {
+  try {
+    const result = await deleteTemporarySubmission(req.params.id, {
+      requesterEmpId: req.user.empid,
     });
     res.json(result);
   } catch (err) {

@@ -1015,3 +1015,59 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
   }
 }
 
+export async function deleteTemporarySubmission(id, { requesterEmpId }) {
+  const normalizedRequester = normalizeEmpId(requesterEmpId);
+  if (!normalizedRequester) {
+    const err = new Error('requesterEmpId required');
+    err.status = 400;
+    throw err;
+  }
+  const conn = await pool.getConnection();
+  try {
+    await ensureTemporaryTable(conn);
+    await conn.query('BEGIN');
+    const [rows] = await conn.query(
+      `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? FOR UPDATE`,
+      [id],
+    );
+    const row = rows[0];
+    if (!row) {
+      const err = new Error('Temporary submission not found');
+      err.status = 404;
+      throw err;
+    }
+    const normalizedCreator = normalizeEmpId(row.created_by);
+    if (normalizedCreator !== normalizedRequester) {
+      const err = new Error('Forbidden');
+      err.status = 403;
+      throw err;
+    }
+    if (row.status !== 'rejected') {
+      const err = new Error('Only rejected temporary submissions can be removed');
+      err.status = 409;
+      throw err;
+    }
+    await conn.query(`DELETE FROM \`${TEMP_TABLE}\` WHERE id = ?`, [id]);
+    await logUserAction(
+      {
+        emp_id: normalizedRequester,
+        table_name: row.table_name,
+        record_id: id,
+        action: 'delete',
+        details: { formName: row.form_name ?? null, temporaryAction: 'delete' },
+        company_id: row.company_id ?? null,
+      },
+      conn,
+    );
+    await conn.query('COMMIT');
+    return { id, deleted: true };
+  } catch (err) {
+    try {
+      await conn.query('ROLLBACK');
+    } catch {}
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
