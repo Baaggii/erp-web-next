@@ -7,11 +7,7 @@ import TooltipWrapper from './TooltipWrapper.jsx';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
-import normalizeDateInput, {
-  formatDateDisplay,
-  isExistingDate,
-  replaceDateSeparators,
-} from '../utils/normalizeDateInput.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 import callProcedure from '../utils/callProcedure.js';
 import {
   applyGeneratedColumnEvaluators,
@@ -843,16 +839,17 @@ const RowFormModal = function RowFormModal({
 
   function isValidDate(value, format) {
     if (!value) return true;
-    if (format === 'HH:MM:SS') {
-      const normalized = normalizeDateInput(value, format);
-      if (!/^\d{2}:\d{2}:\d{2}$/.test(normalized)) return false;
-      const [hh, mm, ss] = normalized.split(':').map(Number);
-      return hh < 24 && mm < 60 && ss < 60;
-    }
-    if (format === 'YYYY-MM-DD') {
-      const normalized = normalizeDateInput(value, format);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return false;
-      return isExistingDate(normalized);
+    const normalized = normalizeDateInput(value, format);
+    const map = {
+      'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
+      'HH:MM:SS': /^\d{2}:\d{2}:\d{2}$/,
+    };
+    const re = map[format];
+    if (!re) return true;
+    if (!re.test(normalized)) return false;
+    if (format !== 'HH:MM:SS') {
+      const d = new Date(normalized.replace(' ', 'T'));
+      return !isNaN(d.getTime());
     }
     return true;
   }
@@ -1990,16 +1987,6 @@ const RowFormModal = function RowFormModal({
       if (isNumericField && display !== undefined && display !== null && display !== '') {
         display = formatNumericValue(c, display);
       }
-      if (
-        display !== null &&
-        display !== undefined &&
-        display !== '' &&
-        (placeholders[c] === 'YYYY-MM-DD' ||
-          fieldTypeMap[c] === 'date' ||
-          fieldTypeMap[c] === 'datetime')
-      ) {
-        display = formatDateDisplay(display);
-      }
       if (display === null || display === undefined) display = '';
       const content = (
         <div
@@ -2182,114 +2169,68 @@ const RowFormModal = function RowFormModal({
           </option>
         ))}
       </select>
-    ) : (() => {
-      const determineType = () => {
-        const typ = fieldTypeMap[c];
-        if (typ === 'date' || typ === 'datetime' || placeholders[c] === 'YYYY-MM-DD') return 'date';
-        if (typ === 'time' || placeholders[c] === 'HH:MM:SS') return 'time';
-        const lower = c.toLowerCase();
-        if (lower.includes('email')) return 'email';
-        if (/(amount|qty|count|price|total|number|qty|quantity)/i.test(lower)) return 'number';
-        if (lower.includes('phone')) return 'tel';
-        return 'text';
-      };
-      const determineInputMode = () => {
-        const lower = c.toLowerCase();
-        return /(amount|qty|count|price|total|number|qty|quantity)/i.test(lower)
-          ? 'decimal'
-          : undefined;
-      };
-      const inputType = determineType();
-      const isDateField = inputType === 'date';
-      const placeholder = placeholders[c] || '';
-      const currentValue = isDateField
-        ? normalizeDateInput(String(formVals[c] ?? ''), 'YYYY-MM-DD')
-        : formVals[c];
-
-      const handleInputChange = (e) => {
-        notifyAutoResetGuardOnEdit(c);
-        const rawValue = isDateField ? replaceDateSeparators(e.target.value) : e.target.value;
-        let normalizedValue = rawValue;
-        if (isDateField) {
-          normalizedValue = normalizeDateInput(rawValue, 'YYYY-MM-DD');
-          if (normalizedValue !== e.target.value) {
-            e.target.value = normalizedValue;
-          }
+    ) : (
+      <input
+        title={tip}
+        ref={(el) => (inputRefs.current[c] = el)}
+        type={(() => {
+          const typ = fieldTypeMap[c];
+          if (typ === 'date' || typ === 'datetime' || placeholders[c] === 'YYYY-MM-DD') return 'date';
+          if (typ === 'time' || placeholders[c] === 'HH:MM:SS') return 'time';
+          const lower = c.toLowerCase();
+          if (lower.includes('email')) return 'email';
+          if (/(amount|qty|count|price|total|number|qty|quantity)/i.test(lower))
+            return 'number';
+          if (lower.includes('phone')) return 'tel';
+          return 'text';
+        })()}
+        inputMode={(() => {
+          const lower = c.toLowerCase();
+          return /(amount|qty|count|price|total|number|qty|quantity)/i.test(lower)
+            ? 'decimal'
+            : undefined;
+        })()}
+        step={isNumericField && numericStep ? numericStep : undefined}
+        placeholder={placeholders[c] || ''}
+        value={
+          fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
+            ? normalizeDateInput(formVals[c], 'YYYY-MM-DD')
+            : formVals[c]
         }
-        setFormValuesWithGenerated((prev) => {
-          if (prev[c] === normalizedValue) return prev;
-          return { ...prev, [c]: normalizedValue };
-        });
-        setErrors((prev) => {
-          if (!isDateField) {
-            if (prev[c] === undefined) return prev;
-            const next = { ...prev };
-            next[c] = undefined;
-            return next;
-          }
-          if (/^\d{4}-\d{2}-\d{2}$/.test(normalizedValue)) {
-            if (!isValidDate(normalizedValue, 'YYYY-MM-DD')) {
-              if (prev[c] === 'Хугацааны формат буруу') return prev;
-              return { ...prev, [c]: 'Хугацааны формат буруу' };
-            }
-          }
-          if (prev[c] === undefined) return prev;
-          const next = { ...prev };
-          next[c] = undefined;
-          return next;
-        });
-      };
-
-      return (
-        <input
-          title={tip}
-          ref={(el) => (inputRefs.current[c] = el)}
-          type={inputType}
-          inputMode={determineInputMode()}
-          step={isNumericField && numericStep ? numericStep : undefined}
-          placeholder={placeholder}
-          value={currentValue}
-          onChange={handleInputChange}
-          onKeyDown={(e) => handleKeyDown(e, c)}
-          onFocus={(e) => {
-            e.target.select();
-            handleFocusField(c);
-          }}
-          onBlur={(e) => {
-            if (!isNumericField) return;
-            const formatted = formatNumericValue(c, e.target.value);
-            if (typeof formatted !== 'string' || formatted === e.target.value) return;
-            setFormValuesWithGenerated((prev) => {
-              if (prev[c] === formatted) return prev;
-              return { ...prev, [c]: formatted };
-            });
-            e.target.value = formatted;
-          }}
-          disabled={disabled}
-          className={inputClass}
-          style={inputStyle}
-          onInput={(e) => {
-            if (isDateField) {
-              const sanitized = replaceDateSeparators(e.target.value);
-              if (sanitized !== e.target.value) {
-                const { selectionStart, selectionEnd } = e.target;
-                e.target.value = sanitized;
-                if (
-                  typeof selectionStart === 'number' &&
-                  typeof selectionEnd === 'number' &&
-                  e.target.setSelectionRange
-                ) {
-                  e.target.setSelectionRange(selectionStart, selectionEnd);
-                }
-              }
-            }
-            e.target.style.width = 'auto';
-            const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-            e.target.style.width = `${Math.max(boxWidth, w)}px`;
-          }}
-        />
-      );
-    })();
+        onChange={(e) => {
+          notifyAutoResetGuardOnEdit(c);
+          const value = e.target.value;
+          setFormValuesWithGenerated((prev) => {
+            if (prev[c] === value) return prev;
+            return { ...prev, [c]: value };
+          });
+          setErrors((er) => ({ ...er, [c]: undefined }));
+        }}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+        }}
+        onBlur={(e) => {
+          if (!isNumericField) return;
+          const formatted = formatNumericValue(c, e.target.value);
+          if (typeof formatted !== 'string' || formatted === e.target.value) return;
+          setFormValuesWithGenerated((prev) => {
+            if (prev[c] === formatted) return prev;
+            return { ...prev, [c]: formatted };
+          });
+          e.target.value = formatted;
+        }}
+        disabled={disabled}
+        className={inputClass}
+        style={inputStyle}
+        onInput={(e) => {
+          e.target.style.width = 'auto';
+          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+          e.target.style.width = `${Math.max(boxWidth, w)}px`;
+        }}
+      />
+    );
 
     if (!withLabel) return <TooltipWrapper title={tip}>{control}</TooltipWrapper>;
 
