@@ -4637,6 +4637,8 @@ const TableManager = forwardRef(function TableManager({
   const showReviewActions = canReviewTemporary && temporaryScope === 'review';
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
 
+  let detailHeaderRendered = false;
+
   return (
     <div>
       <div
@@ -6053,6 +6055,11 @@ const TableManager = forwardRef(function TableManager({
                         : isActiveDraft
                         ? '#e0f2fe'
                         : 'transparent';
+                      const shouldRenderDetailHeader =
+                        !detailHeaderRendered && detailColumns.length > 0;
+                      if (shouldRenderDetailHeader) {
+                        detailHeaderRendered = true;
+                      }
                       return (
                         <tr
                           key={rowKey}
@@ -6178,23 +6185,25 @@ const TableManager = forwardRef(function TableManager({
                                     borderCollapse: 'collapse',
                                   }}
                                 >
-                                  <thead>
-                                    <tr>
-                                      {detailColumns.map((col) => (
-                                        <th
-                                          key={col}
-                                          style={{
-                                            borderBottom: '1px solid #e5e7eb',
-                                            padding: '0.25rem',
-                                            textAlign: 'left',
-                                            fontSize: '0.75rem',
-                                          }}
-                                        >
-                                          {labels[col] || col}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
+                                  {shouldRenderDetailHeader && (
+                                    <thead>
+                                      <tr>
+                                        {detailColumns.map((col) => (
+                                          <th
+                                            key={col}
+                                            style={{
+                                              borderBottom: '1px solid #e5e7eb',
+                                              padding: '0.25rem',
+                                              textAlign: 'left',
+                                              fontSize: '0.75rem',
+                                            }}
+                                          >
+                                            {labels[col] || col}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                  )}
                                   <tbody>
                                     <tr>
                                       {detailColumns.map((col) => (
