@@ -2,6 +2,7 @@ import React from 'react';
 import Modal from './Modal.jsx';
 import { useTranslation } from 'react-i18next';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import formatDateForDisplay from '../utils/formatDateForDisplay.js';
 
 export default function RowDetailModal({
   visible,
@@ -70,11 +71,17 @@ export default function RowDetailModal({
                     const str = String(raw ?? '');
                     let display;
                     if (placeholders[c]) {
-                      display = normalizeDateInput(str, placeholders[c]);
+                      const normalized = normalizeDateInput(str, placeholders[c]);
+                      display =
+                        placeholders[c] === 'YYYY-MM-DD'
+                          ? formatDateForDisplay(normalized)
+                          : normalized;
                     } else if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
-                      display = normalizeDateInput(str, 'YYYY-MM-DD');
+                      display = formatDateForDisplay(
+                        normalizeDateInput(str, 'YYYY-MM-DD'),
+                      );
                     } else {
-                      display = str;
+                      display = formatDateForDisplay(str);
                     }
                     return display;
                   })()}

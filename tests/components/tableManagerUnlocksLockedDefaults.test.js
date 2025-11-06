@@ -192,7 +192,7 @@ if (!haveReact) {
           default: ({ children }) => React.createElement(React.Fragment, null, children),
         },
         '../hooks/useGeneralConfig.js': { default: () => ({}) },
-        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/formatTimestamp.js': { default: () => '2024.01.01 00:00:00' },
         '../utils/buildImageName.js': { default: () => ({}) },
         '../utils/slugify.js': { default: () => '' },
         '../utils/apiBase.js': { API_BASE: '' },

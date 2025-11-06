@@ -16,12 +16,14 @@ import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import formatDateForDisplay from '../utils/formatDateForDisplay.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import {
   assignArrayMetadata,
   extractArrayMetadata,
   createGeneratedColumnPipeline,
 } from '../utils/transactionValues.js';
+import CustomDatePicker from './CustomDatePicker.jsx';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -537,7 +539,7 @@ function InlineTransactionTable(
       companyIdSet.forEach((f) => maybeSet(f, company));
     }
     if (dateField.length > 0) {
-      const now = formatTimestamp(new Date()).slice(0, 10);
+      const now = normalizeDateInput(formatTimestamp(new Date()), 'YYYY-MM-DD');
       dateField.forEach((f) => maybeSet(f, now));
     }
     return row;
@@ -1246,7 +1248,8 @@ function InlineTransactionTable(
           if (p === '$branchId') return branch;
           if (p === '$companyId') return company;
           if (p === '$employeeId') return user?.empid;
-          if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
+          if (p === '$date')
+            return normalizeDateInput(formatTimestamp(new Date()), 'YYYY-MM-DD');
           return getVal(p);
         };
 
@@ -2028,6 +2031,10 @@ function InlineTransactionTable(
     if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
+      const formatPart = (part) =>
+        typeof part === 'string' || typeof part === 'number'
+          ? formatDateForDisplay(part)
+          : part;
       if (
         relationConfigMap[f] &&
         rawVal !== undefined &&
@@ -2038,7 +2045,7 @@ function InlineTransactionTable(
         (relationConfigMap[f].displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
-        display = parts.join(' - ');
+        display = parts.map((part) => formatPart(part)).join(' - ');
       } else if (
         viewSourceMap[f] &&
         rawVal !== undefined &&
@@ -2050,7 +2057,7 @@ function InlineTransactionTable(
         (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
-        display = parts.join(' - ');
+        display = parts.map((part) => formatPart(part)).join(' - ');
       } else if (
         autoSelectConfigs[f] &&
         rawVal !== undefined &&
@@ -2062,7 +2069,10 @@ function InlineTransactionTable(
         (cfg.displayFields || []).forEach((df) => {
           if (row[df] !== undefined) parts.push(row[df]);
         });
-        display = parts.join(' - ');
+        display = parts.map((part) => formatPart(part)).join(' - ');
+      }
+      if (typeof display === 'string') {
+        display = formatDateForDisplay(display);
       }
       const readonlyStyle = {
         ...inputStyle,
@@ -2094,9 +2104,13 @@ function InlineTransactionTable(
         isoDatePattern.test(displayVal) &&
         !placeholders[f]
       ) {
-        return normalizeDateInput(displayVal, 'YYYY-MM-DD');
+        return formatDateForDisplay(
+          normalizeDateInput(displayVal, 'YYYY-MM-DD'),
+        );
       }
-      return displayVal;
+      return typeof displayVal === 'string'
+        ? formatDateForDisplay(displayVal)
+        : displayVal;
     }
     if (relationConfigMap[f]) {
       const conf = relationConfigMap[f];
@@ -2207,18 +2221,45 @@ function InlineTransactionTable(
         : numericScale <= 0
         ? '1'
         : (1 / 10 ** numericScale).toFixed(numericScale);
+    const cellRefKey = `${idx}-${colIdx}`;
+
     const commonProps = {
       className: `w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`,
       style: { ...inputStyle },
       value: normalizedVal,
       title: normalizedVal,
       onChange: (e) => handleChange(idx, f, e.target.value),
-      ref: (el) => (inputRefs.current[`${idx}-${colIdx}`] = el),
+      ref: (el) => (inputRefs.current[cellRefKey] = el),
       onKeyDown: (e) => handleKeyDown(e, idx, colIdx),
       onFocus: () => handleFocusField(f),
     };
     if (fieldType === 'date') {
-      return <input type="date" {...commonProps} />;
+      return (
+        <CustomDatePicker
+          className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
+          style={{ ...inputStyle }}
+          value={normalizedVal}
+          title={normalizedVal}
+          placeholder={
+            placeholders[f]
+              ? placeholders[f].replace(/(\d{4})-(\d{2})-(\d{2})/, '$1.$2.$3')
+              : ''
+          }
+          onChange={(val) => handleChange(idx, f, val)}
+          inputRef={(el) => (inputRefs.current[cellRefKey] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          onFocus={() => handleFocusField(f)}
+          onValidityChange={(isValid) => {
+            if (!isValid) {
+              setInvalidCell({ row: idx, field: f });
+              setErrorMsg((labels[f] || f) + ' талбарт буруу огноо байна');
+            } else if (invalidCell && invalidCell.row === idx && invalidCell.field === f) {
+              setInvalidCell(null);
+              setErrorMsg('');
+            }
+          }}
+        />
+      );
     }
     if (fieldType === 'time') {
       return <input type="time" {...commonProps} />;

@@ -5,6 +5,7 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import formatDateForDisplay from '../utils/formatDateForDisplay.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -42,12 +43,15 @@ function formatCellValue(val, placeholder) {
     str = String(val);
   }
   if (placeholder) {
-    return normalizeDateInput(str, placeholder);
+    const normalized = normalizeDateInput(str, placeholder);
+    return placeholder === 'YYYY-MM-DD'
+      ? formatDateForDisplay(normalized)
+      : normalized;
   }
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-    return normalizeDateInput(str, 'YYYY-MM-DD');
+    return formatDateForDisplay(normalizeDateInput(str, 'YYYY-MM-DD'));
   }
-  return str;
+  return formatDateForDisplay(str);
 }
 
 function isCountColumn(name) {
