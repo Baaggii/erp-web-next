@@ -71,6 +71,7 @@ const RowFormModal = function RowFormModal({
   onSaveTemporary = null,
   allowTemporarySave = false,
   isAdding = false,
+  isEditingTemporaryDraft = false,
   canPost = true,
   forceEditable = false,
 }) {
@@ -2588,7 +2589,7 @@ const RowFormModal = function RowFormModal({
           >
             {t('printCust', 'Print Cust')}
           </button>
-          {allowTemporarySave && isAdding && onSaveTemporary && (
+          {allowTemporarySave && onSaveTemporary && (isAdding || isEditingTemporaryDraft) && (
             <button
               type="button"
               onClick={handleTemporarySave}

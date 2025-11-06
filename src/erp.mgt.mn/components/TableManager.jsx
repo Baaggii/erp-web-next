@@ -5694,11 +5694,12 @@ const TableManager = forwardRef(function TableManager({
           setActiveTemporaryDraftId(null);
         }}
         onSubmit={handleSubmit}
-        onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
+        onSaveTemporary={canSaveTemporaryDraft ? handleSaveTemporary : null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
         rows={gridRows}
+        isEditingTemporaryDraft={isEditingTemporaryDraft}
         relations={relationOpts}
         relationConfigs={relationConfigs}
         relationData={refRows}
