@@ -469,6 +469,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
+  const [activeTemporaryDraftId, setActiveTemporaryDraftId] = useState(null);
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
   const handleRowsChange = useCallback((rs) => {
@@ -2166,6 +2167,7 @@ const TableManager = forwardRef(function TableManager({
     setRowDefaults(defaults);
     setEditing(baseRow);
     setGridRows(initialRows);
+    setActiveTemporaryDraftId(null);
     setIsAdding(true);
     setShowForm(true);
   }
@@ -2380,6 +2382,7 @@ const TableManager = forwardRef(function TableManager({
 
     setEditing(mergedRow);
     setGridRows([mergedRow]);
+    setActiveTemporaryDraftId(null);
     setIsAdding(false);
     setShowForm(true);
   }
@@ -2429,6 +2432,7 @@ const TableManager = forwardRef(function TableManager({
     }
     setEditing(rowForForm);
     setGridRows([rowForForm]);
+    setActiveTemporaryDraftId(null);
     setIsAdding(false);
     setRequestType('edit');
     if (txnToastEnabled) {
@@ -2834,6 +2838,7 @@ const TableManager = forwardRef(function TableManager({
           setEditing(null);
           setIsAdding(false);
           setGridRows([]);
+          setActiveTemporaryDraftId(null);
           setRequestType(null);
         } else if (res.status === 409) {
           addToast(
@@ -2876,6 +2881,7 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
+        setActiveTemporaryDraftId(null);
         setRequestType(null);
         setPendingTemporaryPromotion(null);
         if (nextEntry) {
@@ -2930,6 +2936,7 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
+        setActiveTemporaryDraftId(null);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
         if (isAdding && (formConfig?.imagenameField || []).length) {
           const inserted = rows.find(
@@ -3196,6 +3203,7 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
+        setActiveTemporaryDraftId(null);
       }
     }
 
@@ -5679,12 +5687,14 @@ const TableManager = forwardRef(function TableManager({
           setEditing(null);
           setIsAdding(false);
           setGridRows([]);
+          setActiveTemporaryDraftId(null);
           setRequestType(null);
           setPendingTemporaryPromotion(null);
           setTemporaryPromotionQueue([]);
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
+        temporaryDraftEditing={activeTemporaryDraftId != null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
