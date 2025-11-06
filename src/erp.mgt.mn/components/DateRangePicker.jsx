@@ -20,7 +20,7 @@ const PRESET_KEYS = [
 ];
 
 function getPresetRange(preset, customStart, customEnd) {
-  const fmt = (d) => formatTimestamp(d).slice(0, 10);
+  const fmt = (d) => normalizeDateInput(formatTimestamp(d), 'YYYY-MM-DD');
   const now = new Date();
   const y = now.getFullYear();
   const m = now.getMonth();
@@ -132,11 +132,13 @@ export default function DateRangePicker({ start, end, onChange, style }) {
           <CustomDatePicker
             value={customStart}
             onChange={(v) => setCustomStart(normalizeDateInput(v, 'YYYY-MM-DD'))}
+            placeholder="YYYY.MM.DD"
             style={{ marginRight: '0.25rem' }}
           />
           <CustomDatePicker
             value={customEnd}
             onChange={(v) => setCustomEnd(normalizeDateInput(v, 'YYYY-MM-DD'))}
+            placeholder="YYYY.MM.DD"
             style={{ marginRight: '0.5rem' }}
           />
         </>

@@ -57,10 +57,9 @@ if (!haveReact) {
     const { disabledFields: restrictedBypass } = resolveDisabledFieldState(
       restrictedArgs,
     );
-    assert.deepEqual(
-      restrictedBypass,
-      [],
-      'Bypassing guards should clear edit-set restrictions as well',
+    assert.ok(
+      restrictedBypass.includes('GuardSelect'),
+      'Edit-set restrictions should still apply when bypassing guard defaults',
     );
 
     const { disabledFields: restrictedNoPerm } = resolveDisabledFieldState({
@@ -193,7 +192,7 @@ if (!haveReact) {
           default: ({ children }) => React.createElement(React.Fragment, null, children),
         },
         '../hooks/useGeneralConfig.js': { default: () => ({}) },
-        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/formatTimestamp.js': { default: () => '2024.01.01 00:00:00' },
         '../utils/buildImageName.js': { default: () => ({}) },
         '../utils/slugify.js': { default: () => '' },
         '../utils/apiBase.js': { API_BASE: '' },

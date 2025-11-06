@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 import { translateToMn } from '../utils/translateToMn.js';
 import { useToast } from '../context/ToastContext.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 
 function cleanIdentifier(name) {
   return String(name).replace(/[^A-Za-z0-9_]+/g, '');
@@ -605,7 +606,8 @@ export default function CodingTablesPage() {
     if (type === 'DATE') {
       const d = parseExcelDate(val);
       if (!d) return 'NULL';
-      return `'${formatTimestamp(d).slice(0, 10)}'`;
+      const normalized = normalizeDateInput(formatTimestamp(d), 'YYYY-MM-DD');
+      return `'${normalized}'`;
     }
     val = normalizeNumeric(val, type);
     if (/INT|DECIMAL|NUMERIC|DOUBLE|FLOAT|LONG|BIGINT|NUMBER/.test(String(type).toUpperCase())) {
@@ -1203,7 +1205,7 @@ export default function CodingTablesPage() {
       if (type === 'DATE') {
         const d = parseExcelDate(val);
         if (!d) return null;
-        return formatTimestamp(d).slice(0, 10);
+        return normalizeDateInput(formatTimestamp(d), 'YYYY-MM-DD');
       }
       let normalized = normalizeNumeric(val, type);
       if (normalized === undefined || normalized === null || normalized === '') {

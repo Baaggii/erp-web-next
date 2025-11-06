@@ -3,6 +3,7 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import CustomDatePicker from './CustomDatePicker.jsx';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext.jsx';
@@ -495,7 +496,8 @@ const RowFormModal = function RowFormModal({
         val = String(sourceValue);
       }
       if (missing && (!val || val === '') && dateField.includes(c)) {
-        if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
+        if (placeholder === 'YYYY-MM-DD')
+          val = normalizeDateInput(formatTimestamp(now), 'YYYY-MM-DD');
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
         else val = formatTimestamp(now);
       }
@@ -874,7 +876,8 @@ const RowFormModal = function RowFormModal({
       }
       if (missing && (!v || v === '') && dateField.includes(c)) {
         const now = new Date();
-        if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
+        if (placeholders[c] === 'YYYY-MM-DD')
+          v = normalizeDateInput(formatTimestamp(now), 'YYYY-MM-DD');
         else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
         else v = formatTimestamp(now);
       }
@@ -1346,7 +1349,8 @@ const RowFormModal = function RowFormModal({
           if (p === '$branchId') return branch;
           if (p === '$companyId') return company;
           if (p === '$employeeId') return user?.empid;
-          if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
+          if (p === '$date')
+            return normalizeDateInput(formatTimestamp(new Date()), 'YYYY-MM-DD');
           return getVal(p);
         };
 
@@ -2016,6 +2020,11 @@ const RowFormModal = function RowFormModal({
       );
     }
 
+    const isDateInput =
+      fieldTypeMap[c] === 'date' ||
+      fieldTypeMap[c] === 'datetime' ||
+      placeholders[c] === 'YYYY-MM-DD';
+
     const control = relationConfigMap[c] ? (
       formVisible && (
         <AsyncSearchSelect
@@ -2168,13 +2177,58 @@ const RowFormModal = function RowFormModal({
           </option>
         ))}
       </select>
+    ) : isDateInput ? (
+      <CustomDatePicker
+        title={tip}
+        value={formVals[c]}
+        onChange={(val) => {
+          notifyAutoResetGuardOnEdit(c);
+          setFormValuesWithGenerated((prev) => {
+            if (prev[c] === val) return prev;
+            return { ...prev, [c]: val };
+          });
+          setErrors((er) => ({ ...er, [c]: undefined }));
+        }}
+        onValidityChange={(isValid, message) => {
+          setErrors((prev) => {
+            const next = { ...prev };
+            if (isValid) {
+              if (prev[c] === undefined) return prev;
+              next[c] = undefined;
+              return next;
+            }
+            const errorMessage = message || t('invalid_date', 'Invalid date');
+            if (prev[c] === errorMessage) return prev;
+            next[c] = errorMessage;
+            return next;
+          });
+        }}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+        disabled={disabled}
+        className={inputClass}
+        style={inputStyle}
+        placeholder={
+          placeholders[c]
+            ? placeholders[c].replace(/(\d{4})-(\d{2})-(\d{2})/, '$1.$2.$3')
+            : ''
+        }
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+        }}
+        onInput={(e) => {
+          e.target.style.width = 'auto';
+          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+          e.target.style.width = `${Math.max(boxWidth, w)}px`;
+        }}
+      />
     ) : (
       <input
         title={tip}
         ref={(el) => (inputRefs.current[c] = el)}
         type={(() => {
           const typ = fieldTypeMap[c];
-          if (typ === 'date' || typ === 'datetime' || placeholders[c] === 'YYYY-MM-DD') return 'date';
           if (typ === 'time' || placeholders[c] === 'HH:MM:SS') return 'time';
           const lower = c.toLowerCase();
           if (lower.includes('email')) return 'email';
@@ -2191,11 +2245,7 @@ const RowFormModal = function RowFormModal({
         })()}
         step={isNumericField && numericStep ? numericStep : undefined}
         placeholder={placeholders[c] || ''}
-        value={
-          fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
-            ? normalizeDateInput(formVals[c], 'YYYY-MM-DD')
-            : formVals[c]
-        }
+        value={formVals[c]}
         onChange={(e) => {
           notifyAutoResetGuardOnEdit(c);
           const value = e.target.value;

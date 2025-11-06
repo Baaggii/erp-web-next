@@ -7,6 +7,7 @@ import React, {
   useCallback,
 } from 'react';
 import formatTimestamp from '../utils/formatTimestamp.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 import RowFormModal from '../components/RowFormModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
@@ -2390,7 +2391,7 @@ export default function PosTransactionsPage() {
         }
       }
       if (fc.dateField && Array.isArray(fc.dateField)) {
-        const now = formatTimestamp(new Date()).slice(0, 10);
+        const now = normalizeDateInput(formatTimestamp(new Date()), 'YYYY-MM-DD');
         fc.dateField.forEach((f) => {
           if (next[tbl][f] === undefined || next[tbl][f] === '') {
             next[tbl][f] = now;
