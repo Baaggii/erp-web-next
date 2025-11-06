@@ -79,8 +79,7 @@ const RowFormModal = function RowFormModal({
   const renderCount = useRef(0);
   const warned = useRef(false);
   const procCache = useRef({});
-  const manualEditableFieldsRef = useRef(new Set());
-  const autoFilledValuesRef = useRef(new Map());
+  const autoResetGuardRef = useRef(new Map());
   const [tableDisplayFields, setTableDisplayFields] = useState({});
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
@@ -709,8 +708,7 @@ const RowFormModal = function RowFormModal({
   }, [row, columnLowerSet, placeholders]);
 
   useEffect(() => {
-    manualEditableFieldsRef.current = new Set();
-    autoFilledValuesRef.current = new Map();
+    autoResetGuardRef.current = new Map();
   }, [visible, rowKey, defaultValuesKey]);
 
   useEffect(() => {
@@ -1178,21 +1176,24 @@ const RowFormModal = function RowFormModal({
     return true;
   }
 
-  function markManualEditableField(field, nextValue) {
-    if (!field) return;
-    const lower = String(field).toLowerCase();
-    const manualSet = manualEditableFieldsRef.current;
-    const autoMap = autoFilledValuesRef.current;
-    const normalized =
-      nextValue && typeof nextValue === 'object' && 'value' in nextValue
-        ? nextValue.value
-        : nextValue;
-    if (autoMap.has(lower) && valuesEqual(autoMap.get(lower), normalized)) {
-      manualSet.delete(lower);
-    } else {
-      manualSet.add(lower);
-    }
-  }
+  const notifyAutoResetGuardOnEdit = useCallback(
+    (field, nextValue) => {
+      if (!field) return;
+      const lower = String(field).toLowerCase();
+      const guardMap = autoResetGuardRef.current;
+      const normalized =
+        nextValue && typeof nextValue === 'object' && 'value' in nextValue
+          ? nextValue.value
+          : nextValue;
+      const existing = guardMap.get(lower);
+      if (existing && existing.autoValue !== undefined && valuesEqual(existing.autoValue, normalized)) {
+        guardMap.set(lower, { manual: false, autoValue: existing.autoValue });
+      } else {
+        guardMap.set(lower, { manual: true, autoValue: existing?.autoValue });
+      }
+    },
+    [valuesEqual],
+  );
 
   function applyProcedureResultToForm(rowData, formState, extraState) {
     if (!rowData || typeof rowData !== 'object') {
@@ -1224,10 +1225,18 @@ const RowFormModal = function RowFormModal({
       if (columnMatch) {
         const prevValue = formState[columnMatch];
         const lowerTarget = columnMatch.toLowerCase();
+        const guardEntry = autoResetGuardRef.current.get(lowerTarget);
         const editable = !disabledSet.has(lowerTarget);
-        const manual = manualEditableFieldsRef.current.has(lowerTarget);
-        if (editable && manual && !valuesEqual(prevValue, value)) {
-          autoFilledValuesRef.current.set(lowerTarget, value);
+        if (
+          guardEntry &&
+          guardEntry.manual &&
+          editable &&
+          !valuesEqual(prevValue, value)
+        ) {
+          autoResetGuardRef.current.set(lowerTarget, {
+            manual: true,
+            autoValue: value,
+          });
           return;
         }
         if (!valuesEqual(prevValue, value)) {
@@ -1235,10 +1244,10 @@ const RowFormModal = function RowFormModal({
           changedValues[columnMatch] = value;
         }
         nextFormVals[columnMatch] = value;
-        autoFilledValuesRef.current.set(lowerTarget, value);
-        if (!editable) {
-          manualEditableFieldsRef.current.delete(lowerTarget);
-        }
+        autoResetGuardRef.current.set(lowerTarget, {
+          manual: false,
+          autoValue: value,
+        });
       } else {
         const prevExtra = extraState[targetKey];
         if (!valuesEqual(prevExtra, value)) {
@@ -2064,7 +2073,7 @@ const RowFormModal = function RowFormModal({
           labelFields={relationConfigMap[c].displayFields || []}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
-            markManualEditableField(c, val);
+            notifyAutoResetGuardOnEdit(c, val);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -2106,7 +2115,7 @@ const RowFormModal = function RowFormModal({
           idField={viewDisplays[viewSourceMap[c]]?.idField || c}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
-            markManualEditableField(c, val);
+            notifyAutoResetGuardOnEdit(c, val);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -2148,7 +2157,7 @@ const RowFormModal = function RowFormModal({
           idField={autoSelectConfigs[c].idField}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
-            markManualEditableField(c, val);
+            notifyAutoResetGuardOnEdit(c, val);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -2184,7 +2193,7 @@ const RowFormModal = function RowFormModal({
         onFocus={() => handleFocusField(c)}
         onChange={(e) => {
           const value = e.target.value;
-          markManualEditableField(c, value);
+          notifyAutoResetGuardOnEdit(c, value);
           setFormValuesWithGenerated((prev) => {
             if (prev[c] === value) return prev;
             return { ...prev, [c]: value };
@@ -2233,7 +2242,7 @@ const RowFormModal = function RowFormModal({
         }
         onChange={(e) => {
           const value = e.target.value;
-          markManualEditableField(c, value);
+          notifyAutoResetGuardOnEdit(c, value);
           setFormValuesWithGenerated((prev) => {
             if (prev[c] === value) return prev;
             return { ...prev, [c]: value };

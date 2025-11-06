@@ -2938,6 +2938,35 @@ export default function PosTransactionsPage() {
                 const disabled = [];
                 const disabledLower = new Set();
                 const disabledFieldReasons = {};
+                const addDisabledField = (fieldName, reasons = []) => {
+                  if (typeof fieldName !== 'string' || !fieldName) return;
+                  const normalizedLower = fieldName.toLowerCase();
+                  if (!disabledLower.has(normalizedLower)) {
+                    disabledLower.add(normalizedLower);
+                    disabled.push(fieldName);
+                  }
+                  if (!Array.isArray(reasons) || reasons.length === 0) return;
+                  const normalizedReasons = Array.from(
+                    new Set(
+                      reasons
+                        .map((code) => (code === undefined || code === null ? '' : String(code)))
+                        .map((code) => code.trim())
+                        .filter((code) => code),
+                    ),
+                  );
+                  if (normalizedReasons.length === 0) return;
+                  const existingKey = Object.keys(disabledFieldReasons).find(
+                    (key) => typeof key === 'string' && key.toLowerCase() === normalizedLower,
+                  );
+                  const targetKey = existingKey || fieldName;
+                  const existing = Array.isArray(disabledFieldReasons[targetKey])
+                    ? disabledFieldReasons[targetKey]
+                    : [];
+                  const merged = Array.from(new Set([...existing, ...normalizedReasons]));
+                  if (merged.length > 0) {
+                    disabledFieldReasons[targetKey] = merged;
+                  }
+                };
                 if (computedEntry instanceof Set) {
                   const reasonLookup = computedEntry.reasonMap;
                   const allowedReasons = new Set(['calcField', 'posFormula']);
@@ -2945,8 +2974,6 @@ export default function PosTransactionsPage() {
                     if (typeof lowerField !== 'string' || !lowerField) return;
                     const canonical = canonicalizeField(lowerField);
                     if (!canonical) return;
-                    const normalizedLower = canonical.toLowerCase();
-                    if (disabledLower.has(normalizedLower)) return;
                     const reasonSet =
                       reasonLookup instanceof Map ? reasonLookup.get(lowerField) : null;
                     if (reasonSet instanceof Set) {
@@ -2957,12 +2984,49 @@ export default function PosTransactionsPage() {
                       if (reasons.length === 0 && reasonSet.size > 0) {
                         return;
                       }
-                      if (reasons.length > 0) {
-                        disabledFieldReasons[canonical] = reasons;
-                      }
+                      addDisabledField(canonical, reasons);
+                      return;
                     }
-                    disabledLower.add(normalizedLower);
-                    disabled.push(canonical);
+                    addDisabledField(canonical);
+                  });
+                }
+                const editableEntry = editableFieldLookup?.[t.table];
+                if (editableEntry?.hasExplicitConfig) {
+                  const allowedLower = new Set();
+                  const collectAllowed = (field) => {
+                    if (typeof field !== 'string' || !field) return;
+                    const canonical = canonicalizeField(field.toLowerCase());
+                    if (!canonical) return;
+                    allowedLower.add(canonical.toLowerCase());
+                  };
+                  if (editableEntry.fields instanceof Set) {
+                    editableEntry.fields.forEach((field) => {
+                      collectAllowed(field);
+                    });
+                  } else if (Array.isArray(editableEntry.fields)) {
+                    editableEntry.fields.forEach((field) => {
+                      collectAllowed(field);
+                    });
+                  } else if (editableEntry.fields && typeof editableEntry.fields === 'object') {
+                    Object.values(editableEntry.fields).forEach((value) => {
+                      if (value instanceof Set) {
+                        value.forEach((field) => collectAllowed(field));
+                      } else if (Array.isArray(value)) {
+                        value.forEach((field) => collectAllowed(field));
+                      } else {
+                        collectAllowed(value);
+                      }
+                    });
+                  } else {
+                    collectAllowed(editableEntry.fields);
+                  }
+                  allFields.forEach((field) => {
+                    if (typeof field !== 'string' || !field) return;
+                    const canonical = canonicalizeField(field.toLowerCase());
+                    if (!canonical) return;
+                    const normalizedLower = canonical.toLowerCase();
+                    if (allowedLower.has(normalizedLower)) return;
+                    addDisabledField(canonical, ['missingEditableConfig']);
                   });
                 }
                 const posStyle = {
