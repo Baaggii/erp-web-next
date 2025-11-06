@@ -3026,8 +3026,6 @@ const TableManager = forwardRef(function TableManager({
       submission.rawRows && typeof submission.rawRows === 'object'
         ? stripTemporaryLabelValue(submission.rawRows)
         : null;
-    const reopenedTemporaryId =
-      activeTemporaryDraftId != null ? String(activeTemporaryDraftId) : null;
     const mergedSource = { ...(editing || {}) };
     Object.entries(normalizedValues).forEach(([k, v]) => {
       mergedSource[k] = v;
@@ -3200,16 +3198,6 @@ const TableManager = forwardRef(function TableManager({
       addToast(message, 'success');
       await refreshTemporarySummary();
       if (failureCount === 0) {
-        if (reopenedTemporaryId) {
-          setTemporaryList((prev) => {
-            if (!Array.isArray(prev) || prev.length === 0) return prev;
-            const filtered = prev.filter(
-              (entry) => getTemporaryId(entry) !== reopenedTemporaryId,
-            );
-            return filtered.length === prev.length ? prev : filtered;
-          });
-          fetchTemporaryList(temporaryScope);
-        }
         setShowForm(false);
         setEditing(null);
         setIsAdding(false);
