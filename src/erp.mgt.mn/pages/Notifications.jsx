@@ -369,13 +369,11 @@ export default function NotificationsPage() {
     };
   }, [
     t,
-    temporaryReviewCount,
-    temporaryCreatedCount,
-    temporaryReviewLatestUpdate,
-    temporaryCreatedLatestUpdate,
-    temporaryFetchScopeEntries,
-    sortTemporaryEntries,
-  ]);
+      temporaryReviewCount,
+      temporaryCreatedCount,
+      temporaryFetchScopeEntries,
+      sortTemporaryEntries,
+    ]);
 
   const reportPending = useMemo(() => {
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
