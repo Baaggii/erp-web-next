@@ -4,7 +4,7 @@ import useGeneralConfig, { updateCache } from '../hooks/useGeneralConfig.js';
 import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import Modal from './Modal.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
-import normalizeDateInput, { formatDateDisplay } from '../utils/normalizeDateInput.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 
 function ch(n) {
   return Math.round(n * 8);
@@ -41,14 +41,11 @@ function formatCellValue(val, placeholder) {
   } else {
     str = String(val);
   }
-  if (placeholder === 'HH:MM:SS') {
+  if (placeholder) {
     return normalizeDateInput(str, placeholder);
   }
-  if (placeholder === 'YYYY-MM-DD') {
-    return formatDateDisplay(str);
-  }
   if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
-    return formatDateDisplay(str);
+    return normalizeDateInput(str, 'YYYY-MM-DD');
   }
   return str;
 }

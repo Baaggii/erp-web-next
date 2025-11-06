@@ -27,7 +27,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
-import normalizeDateInput, { formatDateDisplay } from '../utils/normalizeDateInput.js';
+import normalizeDateInput from '../utils/normalizeDateInput.js';
 import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   applyGeneratedColumnEvaluators,
@@ -4347,23 +4347,16 @@ const TableManager = forwardRef(function TableManager({
 
       let str = typeof value === 'string' ? value : String(value);
       if (
-        fieldTypeMap[column] === 'time' ||
-        placeholders[column] === 'HH:MM:SS'
-      ) {
-        const normalized = normalizeDateInput(str, 'HH:MM:SS');
-        return normalized || str;
-      }
-      if (
         fieldTypeMap[column] === 'date' ||
         fieldTypeMap[column] === 'datetime' ||
-        placeholders[column] === 'YYYY-MM-DD'
+        fieldTypeMap[column] === 'time'
       ) {
-        const formatted = formatDateDisplay(str);
-        return formatted || str;
+        const normalized = normalizeDateInput(str, placeholders[column]);
+        return normalized || str;
       }
-      if (/^\d{4}-\d{2}-\d{2}T/.test(str)) {
-        const formatted = formatDateDisplay(str);
-        return formatted || str;
+      if (placeholders[column] === undefined && /^\d{4}-\d{2}-\d{2}T/.test(str)) {
+        const normalized = normalizeDateInput(str, 'YYYY-MM-DD');
+        return normalized || str;
       }
       return str;
     },
@@ -5303,18 +5296,16 @@ const TableManager = forwardRef(function TableManager({
                 if (c === 'TotalCur' || totalCurrencySet.has(c)) {
                   display = currencyFmt.format(Number(r[c] || 0));
                 } else if (
-                  fieldTypeMap[c] === 'time' ||
-                  placeholders[c] === 'HH:MM:SS'
-                ) {
-                  display = normalizeDateInput(raw, 'HH:MM:SS');
-                } else if (
                   fieldTypeMap[c] === 'date' ||
                   fieldTypeMap[c] === 'datetime' ||
-                  placeholders[c] === 'YYYY-MM-DD'
+                  fieldTypeMap[c] === 'time'
                 ) {
-                  display = formatDateDisplay(raw);
-                } else if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
-                  display = formatDateDisplay(raw);
+                  display = normalizeDateInput(raw, placeholders[c]);
+                } else if (
+                  placeholders[c] === undefined &&
+                  /^\d{4}-\d{2}-\d{2}T/.test(raw)
+                ) {
+                  display = normalizeDateInput(raw, 'YYYY-MM-DD');
                 }
                 const showFull = display.length > 20;
                 return (
