@@ -2936,7 +2936,11 @@ const TableManager = forwardRef(function TableManager({
         setIsAdding(false);
         setGridRows([]);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
-        setActiveTemporaryDraftId(null);
+        if (activeTemporaryDraftId) {
+          await cleanupActiveTemporaryDraft();
+        } else {
+          setActiveTemporaryDraftId(null);
+        }
         if (isAdding && (formConfig?.imagenameField || []).length) {
           const inserted = rows.find(
             (r) => String(getRowId(r)) === String(savedRow.id),
@@ -3197,6 +3201,9 @@ const TableManager = forwardRef(function TableManager({
           : t('temporary_saved', 'Saved as temporary draft');
       addToast(message, 'success');
       await refreshTemporarySummary();
+      if (activeTemporaryDraftId) {
+        await cleanupActiveTemporaryDraft();
+      }
       if (failureCount === 0) {
         setShowForm(false);
         setEditing(null);
@@ -3574,6 +3581,52 @@ const TableManager = forwardRef(function TableManager({
       temporarySummary,
     ],
   );
+
+  async function cleanupActiveTemporaryDraft({ refreshList = true } = {}) {
+    if (!activeTemporaryDraftId) return;
+    const targetId = activeTemporaryDraftId;
+    let shouldUpdateList = true;
+    try {
+      const res = await fetch(
+        `${API_BASE}/transaction_temporaries/${encodeURIComponent(targetId)}`,
+        { method: 'DELETE', credentials: 'include' },
+      );
+      if (!res.ok && res.status !== 404) {
+        if (res.status === 409) {
+          console.warn('Temporary submission was not rejected, skipping cleanup');
+          shouldUpdateList = false;
+        } else {
+          let errorText = '';
+          try {
+            errorText = await res.text();
+          } catch (readErr) {
+            console.error('Failed to read temporary cleanup response', readErr);
+          }
+          console.error('Failed to remove rejected temporary submission', errorText);
+          shouldUpdateList = false;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to remove rejected temporary submission', err);
+      shouldUpdateList = false;
+    }
+    if (shouldUpdateList) {
+      setTemporaryList((prev) => {
+        if (!Array.isArray(prev) || prev.length === 0) return prev;
+        const target = String(targetId);
+        const filtered = prev.filter((entry) => String(entry?.id ?? '') !== target);
+        return filtered.length === prev.length ? prev : filtered;
+      });
+      if (refreshList) {
+        try {
+          await fetchTemporaryList(temporaryScope);
+        } catch (err) {
+          console.error('Failed to refresh temporary list after cleanup', err);
+        }
+      }
+    }
+    setActiveTemporaryDraftId(null);
+  }
 
   useEffect(() => {
     if (!supportsTemporary || availableTemporaryScopes.length === 0) return;
