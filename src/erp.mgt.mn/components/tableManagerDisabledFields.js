@@ -21,26 +21,43 @@ export function resolveDisabledFieldState({
     return { disabledFields: canonicalized, bypassGuardDefaults };
   }
 
-  let disabledFields = [];
+  const disabledLower = new Set();
+  const disabledFields = [];
 
-  if (!bypassGuardDefaults && editSet) {
-    disabledFields = formColumns.filter((c) => !editSet.has(c.toLowerCase()));
+  const addDisabledField = (field) => {
+    if (!field && field !== 0) return;
+    const normalized = String(field);
+    const lower = normalized.toLowerCase();
+    if (disabledLower.has(lower)) return;
+    disabledLower.add(lower);
+    disabledFields.push(normalized);
+  };
+
+  if (editSet instanceof Set) {
+    (formColumns || []).forEach((column) => {
+      if (!column) return;
+      const lower = String(column).toLowerCase();
+      if (editSet.has(lower)) return;
+      addDisabledField(column);
+    });
   }
 
   if (!bypassGuardDefaults) {
+    const applyLocked = (fields) => {
+      (Array.isArray(fields) ? fields : []).forEach(addDisabledField);
+    };
     if (isAdding) {
-      disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+      applyLocked(lockedDefaults);
     } else if (editing) {
       const keyFields = typeof getKeyFields === 'function' ? getKeyFields() : [];
-      disabledFields = Array.from(
-        new Set([...disabledFields, ...keyFields, ...lockedDefaults]),
-      );
+      applyLocked(keyFields);
+      applyLocked(lockedDefaults);
     } else {
-      disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
+      applyLocked(lockedDefaults);
     }
   }
 
-  const canonicalized = canonicalizer(disabledFields) || [];
+  const canonicalized = canonicalizer(disabledFields) || disabledFields;
 
   return { disabledFields: canonicalized, bypassGuardDefaults };
 }

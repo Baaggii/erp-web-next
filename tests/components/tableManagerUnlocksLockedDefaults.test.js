@@ -59,8 +59,8 @@ if (!haveReact) {
     );
     assert.deepEqual(
       restrictedBypass,
-      [],
-      'Bypassing guards should clear edit-set restrictions as well',
+      ['GuardSelect'],
+      'Fields omitted from the editable set should remain disabled even when guard bypass is active',
     );
 
     const { disabledFields: restrictedNoPerm } = resolveDisabledFieldState({
@@ -241,7 +241,11 @@ if (!haveReact) {
 
       const latestProps = modalProps[modalProps.length - 1];
       assert.ok(latestProps, 'expected RowFormModal to receive props');
-      assert.equal(latestProps.forceEditable, true, 'expected guard overrides to be enabled');
+      assert.equal(
+        latestProps.forceEditable,
+        false,
+        'guard overrides should be inactive when non-editable fields are present',
+      );
       assert.equal(
         latestProps.canPost,
         false,
@@ -253,13 +257,8 @@ if (!haveReact) {
         'temporary-only forms should still allow temporary saves',
       );
       assert.ok(
-        !latestProps.disabledFields.includes('GuardSelect'),
-        'GuardSelect should not be disabled when guard overrides are active',
-      );
-      assert.equal(
-        latestProps.disabledFields.length,
-        0,
-        'No form fields should be disabled when guard overrides are active',
+        latestProps.disabledFields.includes('GuardSelect'),
+        'GuardSelect should remain disabled when marked as non-editable',
       );
       assert.ok(
         latestProps.relationConfigs.GuardCode,

@@ -4547,6 +4547,8 @@ const TableManager = forwardRef(function TableManager({
     getKeyFields,
   });
   const disabledFields = computedDisabledFields;
+  const guardOverridesActive =
+    canBypassGuardDefaults && (Array.isArray(disabledFields) ? disabledFields.length === 0 : true);
 
   const totals = useMemo(() => {
     const sums = {};
@@ -5788,7 +5790,7 @@ const TableManager = forwardRef(function TableManager({
         allowTemporarySave={canSaveTemporaryDraft}
         isAdding={isAdding}
         canPost={canPostTransactions}
-        forceEditable={canBypassGuardDefaults}
+        forceEditable={guardOverridesActive}
       />
       <CascadeDeleteModal
         visible={showCascade}
