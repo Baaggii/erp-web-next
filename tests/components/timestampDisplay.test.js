@@ -22,7 +22,7 @@ try {
 if (!haveReact) {
   test('timestamp fields render without react', { skip: true }, () => {});
 } else {
-  test('TableManager renders timestamp as YYYY.MM.DD', async (t) => {
+  test('TableManager renders timestamp as YYYY-MM-DD', async (t) => {
     const origFetch = global.fetch;
     global.fetch = async (url) => {
       if (url === '/api/tables/test/columns') {
@@ -66,7 +66,7 @@ if (!haveReact) {
         './Modal.jsx': { default: () => null },
         './CustomDatePicker.jsx': { default: () => null },
         '../hooks/useGeneralConfig.js': { default: () => ({}) },
-        '../utils/formatTimestamp.js': { default: () => '2024.05.01 12:34:56' },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
         '../utils/buildImageName.js': { default: () => ({}) },
         '../utils/slugify.js': { default: () => '' },
         '../utils/apiBase.js': { API_BASE: '' },
@@ -80,7 +80,7 @@ if (!haveReact) {
       root.render(React.createElement(TableManager, { table: 'test' }));
     });
     await new Promise((r) => setTimeout(r, 0));
-    assert.match(container.textContent, /2024\.05\.01/);
+    assert.match(container.textContent, /2024-05-01/);
     assert.doesNotMatch(container.textContent, /12:34:56/);
     root.unmount();
     global.fetch = origFetch;
@@ -156,7 +156,7 @@ if (!haveReact) {
         './Modal.jsx': { default: () => null },
         './CustomDatePicker.jsx': { default: () => null },
         '../hooks/useGeneralConfig.js': { default: () => ({}) },
-        '../utils/formatTimestamp.js': { default: () => '2024.05.01 12:34:56' },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
         '../utils/buildImageName.js': { default: () => ({}) },
         '../utils/slugify.js': { default: () => '' },
         '../utils/apiBase.js': { API_BASE: '' },
@@ -200,7 +200,7 @@ if (!haveReact) {
     }
   });
 
-  test('RowFormModal uses YYYY.MM.DD placeholder for date fields', async (t) => {
+  test('RowFormModal uses YYYY-MM-DD placeholder for date fields', async (t) => {
     const { default: RowFormModal } = await t.mock.import(
       '../../src/erp.mgt.mn/components/RowFormModal.jsx',
       {
@@ -213,7 +213,7 @@ if (!haveReact) {
           AuthContext: React.createContext({ user: {}, company: 1, branch: 1, department: 1, userSettings: {} }),
         },
         '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
-        '../utils/formatTimestamp.js': { default: () => '2024.05.01 12:34:56' },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
         '../utils/normalizeDateInput.js': { default: (v) => v },
         '../utils/apiBase.js': { API_BASE: '' },
         '../utils/callProcedure.js': { default: () => {} },
@@ -236,7 +236,7 @@ if (!haveReact) {
       );
     });
     const input = container.querySelector('input');
-    assert.equal(input?.getAttribute('placeholder'), 'YYYY.MM.DD');
+    assert.equal(input?.getAttribute('placeholder'), 'YYYY-MM-DD');
     root.unmount();
   });
 }

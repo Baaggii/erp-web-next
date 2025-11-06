@@ -28,7 +28,6 @@ import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
-import formatDateForDisplay from '../utils/formatDateForDisplay.js';
 import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   applyGeneratedColumnEvaluators,
@@ -1031,7 +1030,7 @@ const TableManager = forwardRef(function TableManager({
     if (!formConfig) return;
     const newFilters = {};
     if (formConfig.dateField && formConfig.dateField.length > 0) {
-      const today = normalizeDateInput(formatTimestamp(new Date()), 'YYYY-MM-DD');
+      const today = formatTimestamp(new Date()).slice(0, 10);
       setDateFilter(today);
       setCustomStartDate('');
       setCustomEndDate('');
@@ -2149,7 +2148,7 @@ const TableManager = forwardRef(function TableManager({
         if (typ === 'datetime') {
           defaults[name] = formatTimestamp(now);
         } else if (typ === 'date') {
-          defaults[name] = normalizeDateInput(formatTimestamp(now), 'YYYY-MM-DD');
+          defaults[name] = formatTimestamp(now).slice(0, 10);
         } else if (typ === 'time') {
           defaults[name] = formatTimestamp(now).slice(11, 19);
         }
@@ -4350,16 +4349,13 @@ const TableManager = forwardRef(function TableManager({
         fieldTypeMap[column] === 'time'
       ) {
         const normalized = normalizeDateInput(str, placeholders[column]);
-        if (placeholders[column] === 'YYYY-MM-DD') {
-          return formatDateForDisplay(normalized) || str;
-        }
         return normalized || str;
       }
       if (placeholders[column] === undefined && /^\d{4}-\d{2}-\d{2}T/.test(str)) {
         const normalized = normalizeDateInput(str, 'YYYY-MM-DD');
-        return formatDateForDisplay(normalized) || str;
+        return normalized || str;
       }
-      return formatDateForDisplay(str);
+      return str;
     },
     [
       fieldTypeMap,
@@ -4749,7 +4745,7 @@ const TableManager = forwardRef(function TableManager({
               const now = new Date();
               const y = now.getFullYear();
               const m = now.getMonth();
-              const fmt = (d) => normalizeDateInput(formatTimestamp(d), 'YYYY-MM-DD');
+              const fmt = (d) => formatTimestamp(d).slice(0, 10);
               if (val === 'custom') {
                 setCustomStartDate('');
                 setCustomEndDate('');
@@ -4810,7 +4806,6 @@ const TableManager = forwardRef(function TableManager({
             <>
               <CustomDatePicker
                 value={customStartDate}
-                placeholder="YYYY.MM.DD"
                 onChange={(v) =>
                   setCustomStartDate(normalizeDateInput(v, 'YYYY-MM-DD'))
                 }
@@ -4818,7 +4813,6 @@ const TableManager = forwardRef(function TableManager({
               />
               <CustomDatePicker
                 value={customEndDate}
-                placeholder="YYYY.MM.DD"
                 onChange={(v) =>
                   setCustomEndDate(normalizeDateInput(v, 'YYYY-MM-DD'))
                 }
@@ -5303,20 +5297,12 @@ const TableManager = forwardRef(function TableManager({
                   fieldTypeMap[c] === 'datetime' ||
                   fieldTypeMap[c] === 'time'
                 ) {
-                  const normalized = normalizeDateInput(raw, placeholders[c]);
-                  display =
-                    placeholders[c] === 'YYYY-MM-DD'
-                      ? formatDateForDisplay(normalized)
-                      : normalized;
+                  display = normalizeDateInput(raw, placeholders[c]);
                 } else if (
                   placeholders[c] === undefined &&
                   /^\d{4}-\d{2}-\d{2}T/.test(raw)
                 ) {
-                  display = formatDateForDisplay(
-                    normalizeDateInput(raw, 'YYYY-MM-DD'),
-                  );
-                } else if (typeof display === 'string') {
-                  display = formatDateForDisplay(display);
+                  display = normalizeDateInput(raw, 'YYYY-MM-DD');
                 }
                 const showFull = display.length > 20;
                 return (

@@ -766,7 +766,7 @@ useEffect(() => {
         return;
     }
     const fmt = (d) =>
-      d instanceof Date ? normalizeDateInput(formatTimestamp(d), 'YYYY-MM-DD') : '';
+      d instanceof Date ? formatTimestamp(d).slice(0, 10) : '';
     if (hasStartDateParam) {
       setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
     }
@@ -920,7 +920,6 @@ useEffect(() => {
                     {hasStartDateParam && (
                       <CustomDatePicker
                         value={startDate}
-                        placeholder="YYYY.MM.DD"
                         onChange={(v) => {
                           setStartDate(normalizeDateInput(v, 'YYYY-MM-DD'));
                           setDatePreset('custom');
@@ -932,7 +931,6 @@ useEffect(() => {
                     {hasEndDateParam && (
                       <CustomDatePicker
                         value={endDate}
-                        placeholder="YYYY.MM.DD"
                         onChange={(v) => {
                           setEndDate(normalizeDateInput(v, 'YYYY-MM-DD'));
                           setDatePreset('custom');
