@@ -541,12 +541,26 @@ const RowFormModal = function RowFormModal({
   });
   const formValsRef = useRef(formVals);
   const extraValsRef = useRef(extraVals);
+  const manualOverrideRef = useRef(new Map());
+  const pendingManualOverrideRef = useRef(new Set());
   useEffect(() => {
     formValsRef.current = formVals;
   }, [formVals]);
   useEffect(() => {
     extraValsRef.current = extraVals;
   }, [extraVals]);
+  useEffect(() => {
+    if (pendingManualOverrideRef.current.size === 0) return;
+    const pending = Array.from(pendingManualOverrideRef.current);
+    pendingManualOverrideRef.current.clear();
+    const overrides = manualOverrideRef.current;
+    pending.forEach((lower) => {
+      if (!lower) return;
+      const match = columns.find((c) => c.toLowerCase() === lower);
+      if (!match) return;
+      overrides.set(lower, formVals[match]);
+    });
+  }, [formVals, columnsKey]);
   const computeNextFormVals = useCallback((baseRow, prevRow) => {
     if (!baseRow || typeof baseRow !== 'object') {
       return { next: baseRow, diff: {} };
@@ -903,6 +917,8 @@ const RowFormModal = function RowFormModal({
     if (errorsRef.current && Object.keys(errorsRef.current).length > 0) {
       setErrors({});
     }
+    manualOverrideRef.current.clear();
+    pendingManualOverrideRef.current.clear();
     setFormValuesWithGenerated(() => vals, { notify: false });
   }, [
     row,
@@ -1015,6 +1031,22 @@ const RowFormModal = function RowFormModal({
     overflowX: 'hidden',
   };
 
+  function notifyAutoResetGuardOnEdit(col) {
+    if (!col && col !== 0) return;
+    const lower = String(col).toLowerCase();
+    pendingManualOverrideRef.current.add(lower);
+    if (typeof window !== 'undefined') {
+      const handler = window.notifyAutoResetGuardOnEdit;
+      if (typeof handler === 'function') {
+        try {
+          handler(col);
+        } catch (err) {
+          console.error('notifyAutoResetGuardOnEdit failed', err);
+        }
+      }
+    }
+  }
+
   async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
@@ -1040,6 +1072,7 @@ const RowFormModal = function RowFormModal({
     }
     const newVal = label ? { value: val, label } : val;
     let nextSnapshot = formValsRef.current;
+    notifyAutoResetGuardOnEdit(col);
     if (!valuesEqual(formVals[col], newVal)) {
       const result = setFormValuesWithGenerated((prev) => {
         if (valuesEqual(prev[col], newVal)) return prev;
@@ -1171,7 +1204,12 @@ const RowFormModal = function RowFormModal({
     return true;
   }
 
-  function applyProcedureResultToForm(rowData, formState, extraState) {
+  function applyProcedureResultToForm(
+    rowData,
+    formState,
+    extraState,
+    manualOverrides = manualOverrideRef.current,
+  ) {
     if (!rowData || typeof rowData !== 'object') {
       return {
         formVals: formState,
@@ -1199,6 +1237,15 @@ const RowFormModal = function RowFormModal({
       );
       const targetKey = columnMatch || key;
       if (columnMatch) {
+        const lower = columnMatch.toLowerCase();
+        if (manualOverrides && manualOverrides.has(lower)) {
+          const manualValue = manualOverrides.get(lower);
+          if (!valuesEqual(manualValue, value)) {
+            nextFormVals[columnMatch] = manualValue;
+            return;
+          }
+          manualOverrides.delete(lower);
+        }
         const prevValue = formState[columnMatch];
         if (!valuesEqual(prevValue, value)) {
           changedColumns.add(columnMatch);
@@ -1540,7 +1587,12 @@ const RowFormModal = function RowFormModal({
 
         if (!row || typeof row !== 'object') continue;
 
-        const result = applyProcedureResultToForm(row, workingFormVals, workingExtraVals);
+        const result = applyProcedureResultToForm(
+          row,
+          workingFormVals,
+          workingExtraVals,
+          manualOverrideRef.current,
+        );
         workingFormVals = result.formVals;
         workingExtraVals = result.extraVals;
         if (result.changedColumns.size > 0 || Object.keys(result.changedValues).length > 0) {
