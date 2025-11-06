@@ -470,7 +470,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
   const [activeTemporaryDraftId, setActiveTemporaryDraftId] = useState(null);
-  const [isReopenedTemporaryDraft, setIsReopenedTemporaryDraft] = useState(false);
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
   const handleRowsChange = useCallback((rs) => {
@@ -2173,7 +2172,7 @@ const TableManager = forwardRef(function TableManager({
     setRowDefaults(defaults);
     setEditing(baseRow);
     setGridRows(initialRows);
-    clearTemporaryDraftContext();
+    setActiveTemporaryDraftId(null);
     setIsAdding(true);
     setShowForm(true);
   }
@@ -2388,7 +2387,7 @@ const TableManager = forwardRef(function TableManager({
 
     setEditing(mergedRow);
     setGridRows([mergedRow]);
-    clearTemporaryDraftContext();
+    setActiveTemporaryDraftId(null);
     setIsAdding(false);
     setShowForm(true);
   }
@@ -2438,7 +2437,7 @@ const TableManager = forwardRef(function TableManager({
     }
     setEditing(rowForForm);
     setGridRows([rowForForm]);
-    clearTemporaryDraftContext();
+    setActiveTemporaryDraftId(null);
     setIsAdding(false);
     setRequestType('edit');
     if (txnToastEnabled) {
@@ -2844,7 +2843,7 @@ const TableManager = forwardRef(function TableManager({
           setEditing(null);
           setIsAdding(false);
           setGridRows([]);
-          clearTemporaryDraftContext();
+          setActiveTemporaryDraftId(null);
           setRequestType(null);
         } else if (res.status === 409) {
           addToast(
@@ -2887,7 +2886,7 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        clearTemporaryDraftContext();
+        setActiveTemporaryDraftId(null);
         setRequestType(null);
         setPendingTemporaryPromotion(null);
         if (nextEntry) {
@@ -2942,7 +2941,7 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        clearTemporaryDraftContext();
+        setActiveTemporaryDraftId(null);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
         if (isAdding && (formConfig?.imagenameField || []).length) {
           const inserted = rows.find(
@@ -3209,7 +3208,7 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        clearTemporaryDraftContext();
+        setActiveTemporaryDraftId(null);
       }
     }
 
@@ -3805,40 +3804,34 @@ const TableManager = forwardRef(function TableManager({
         setPendingTemporaryPromotion({ id: temporaryId, entry });
         setEditing(normalizedValues);
         setGridRows(sanitizedRows);
-        clearTemporaryDraftContext();
         setIsAdding(true);
-        setRequestType('temporary-promote');
-        setShowTemporaryModal(false);
+      setRequestType('temporary-promote');
+      setShowTemporaryModal(false);
         setShowForm(true);
       },
       [
         buildTemporaryFormState,
         ensureColumnMeta,
-        clearTemporaryDraftContext,
         setEditing,
         setGridRows,
         setIsAdding,
         setRequestType,
         setShowTemporaryModal,
-        setShowForm,
-        setTemporaryPromotionQueue,
-      ],
+      setShowForm,
+      setTemporaryPromotionQueue,
+    ],
     );
 
     const openTemporaryDraft = useCallback(
       async (entry) => {
         if (!entry || !canCreateTemporary) return;
         await ensureColumnMeta();
-        const { values: normalizedValues, rows: sanitizedRows } =
-          buildTemporaryFormState(entry);
+        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
 
         setPendingTemporaryPromotion(null);
         setTemporaryPromotionQueue([]);
         setEditing(normalizedValues);
         setGridRows(sanitizedRows);
-        const temporaryId = getTemporaryId(entry);
-        setActiveTemporaryDraftId(temporaryId ?? null);
-        setIsReopenedTemporaryDraft(true);
         setIsAdding(false);
         setRequestType(null);
         setShowTemporaryModal(false);
@@ -3848,8 +3841,6 @@ const TableManager = forwardRef(function TableManager({
         buildTemporaryFormState,
         canCreateTemporary,
         ensureColumnMeta,
-        setActiveTemporaryDraftId,
-        setIsReopenedTemporaryDraft,
         setEditing,
         setGridRows,
         setIsAdding,
@@ -5701,14 +5692,14 @@ const TableManager = forwardRef(function TableManager({
           setEditing(null);
           setIsAdding(false);
           setGridRows([]);
-          clearTemporaryDraftContext();
+          setActiveTemporaryDraftId(null);
           setRequestType(null);
           setPendingTemporaryPromotion(null);
           setTemporaryPromotionQueue([]);
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
-        temporaryDraftEditing={isReopenedTemporaryDraft || activeTemporaryDraftId != null}
+        temporaryDraftEditing={activeTemporaryDraftId != null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
