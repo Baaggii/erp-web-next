@@ -3799,38 +3799,34 @@ const TableManager = forwardRef(function TableManager({
         setPendingTemporaryPromotion({ id: temporaryId, entry });
         setEditing(normalizedValues);
         setGridRows(sanitizedRows);
-        setActiveTemporaryDraftId(null);
         setIsAdding(true);
-        setRequestType('temporary-promote');
-        setShowTemporaryModal(false);
+      setRequestType('temporary-promote');
+      setShowTemporaryModal(false);
         setShowForm(true);
       },
       [
         buildTemporaryFormState,
         ensureColumnMeta,
-        setActiveTemporaryDraftId,
         setEditing,
         setGridRows,
         setIsAdding,
         setRequestType,
         setShowTemporaryModal,
-        setShowForm,
-        setTemporaryPromotionQueue,
-      ],
+      setShowForm,
+      setTemporaryPromotionQueue,
+    ],
     );
 
     const openTemporaryDraft = useCallback(
       async (entry) => {
         if (!entry || !canCreateTemporary) return;
         await ensureColumnMeta();
-        const { values: normalizedValues, rows: sanitizedRows } =
-          buildTemporaryFormState(entry);
+        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
 
         setPendingTemporaryPromotion(null);
         setTemporaryPromotionQueue([]);
         setEditing(normalizedValues);
         setGridRows(sanitizedRows);
-        setActiveTemporaryDraftId(getTemporaryId(entry) ?? null);
         setIsAdding(false);
         setRequestType(null);
         setShowTemporaryModal(false);
@@ -3840,7 +3836,6 @@ const TableManager = forwardRef(function TableManager({
         buildTemporaryFormState,
         canCreateTemporary,
         ensureColumnMeta,
-        setActiveTemporaryDraftId,
         setEditing,
         setGridRows,
         setIsAdding,
