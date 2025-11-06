@@ -22,6 +22,7 @@ import {
   extractArrayMetadata,
   createGeneratedColumnPipeline,
 } from '../utils/transactionValues.js';
+import CustomDatePicker from './CustomDatePicker.jsx';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -2207,18 +2208,40 @@ function InlineTransactionTable(
         : numericScale <= 0
         ? '1'
         : (1 / 10 ** numericScale).toFixed(numericScale);
+    const cellRefKey = `${idx}-${colIdx}`;
+
     const commonProps = {
       className: `w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`,
       style: { ...inputStyle },
       value: normalizedVal,
       title: normalizedVal,
       onChange: (e) => handleChange(idx, f, e.target.value),
-      ref: (el) => (inputRefs.current[`${idx}-${colIdx}`] = el),
+      ref: (el) => (inputRefs.current[cellRefKey] = el),
       onKeyDown: (e) => handleKeyDown(e, idx, colIdx),
       onFocus: () => handleFocusField(f),
     };
     if (fieldType === 'date') {
-      return <input type="date" {...commonProps} />;
+      return (
+        <CustomDatePicker
+          className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
+          style={{ ...inputStyle }}
+          value={normalizedVal}
+          title={normalizedVal}
+          onChange={(val) => handleChange(idx, f, val)}
+          inputRef={(el) => (inputRefs.current[cellRefKey] = el)}
+          onKeyDown={(e) => handleKeyDown(e, idx, colIdx)}
+          onFocus={() => handleFocusField(f)}
+          onValidityChange={(isValid) => {
+            if (!isValid) {
+              setInvalidCell({ row: idx, field: f });
+              setErrorMsg((labels[f] || f) + ' талбарт буруу огноо байна');
+            } else if (invalidCell && invalidCell.row === idx && invalidCell.field === f) {
+              setInvalidCell(null);
+              setErrorMsg('');
+            }
+          }}
+        />
+      );
     }
     if (fieldType === 'time') {
       return <input type="time" {...commonProps} />;

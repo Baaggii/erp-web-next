@@ -3,6 +3,7 @@ import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import Modal from './Modal.jsx';
 import InlineTransactionTable from './InlineTransactionTable.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
+import CustomDatePicker from './CustomDatePicker.jsx';
 import TooltipWrapper from './TooltipWrapper.jsx';
 import { useTranslation } from 'react-i18next';
 import { AuthContext } from '../context/AuthContext.jsx';
@@ -2016,6 +2017,11 @@ const RowFormModal = function RowFormModal({
       );
     }
 
+    const isDateInput =
+      fieldTypeMap[c] === 'date' ||
+      fieldTypeMap[c] === 'datetime' ||
+      placeholders[c] === 'YYYY-MM-DD';
+
     const control = relationConfigMap[c] ? (
       formVisible && (
         <AsyncSearchSelect
@@ -2168,13 +2174,54 @@ const RowFormModal = function RowFormModal({
           </option>
         ))}
       </select>
+    ) : isDateInput ? (
+      <CustomDatePicker
+        title={tip}
+        value={formVals[c]}
+        onChange={(val) => {
+          notifyAutoResetGuardOnEdit(c);
+          setFormValuesWithGenerated((prev) => {
+            if (prev[c] === val) return prev;
+            return { ...prev, [c]: val };
+          });
+          setErrors((er) => ({ ...er, [c]: undefined }));
+        }}
+        onValidityChange={(isValid, message) => {
+          setErrors((prev) => {
+            const next = { ...prev };
+            if (isValid) {
+              if (prev[c] === undefined) return prev;
+              next[c] = undefined;
+              return next;
+            }
+            const errorMessage = message || t('invalid_date', 'Invalid date');
+            if (prev[c] === errorMessage) return prev;
+            next[c] = errorMessage;
+            return next;
+          });
+        }}
+        inputRef={(el) => (inputRefs.current[c] = el)}
+        disabled={disabled}
+        className={inputClass}
+        style={inputStyle}
+        placeholder={placeholders[c] || ''}
+        onKeyDown={(e) => handleKeyDown(e, c)}
+        onFocus={(e) => {
+          e.target.select();
+          handleFocusField(c);
+        }}
+        onInput={(e) => {
+          e.target.style.width = 'auto';
+          const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+          e.target.style.width = `${Math.max(boxWidth, w)}px`;
+        }}
+      />
     ) : (
       <input
         title={tip}
         ref={(el) => (inputRefs.current[c] = el)}
         type={(() => {
           const typ = fieldTypeMap[c];
-          if (typ === 'date' || typ === 'datetime' || placeholders[c] === 'YYYY-MM-DD') return 'date';
           if (typ === 'time' || placeholders[c] === 'HH:MM:SS') return 'time';
           const lower = c.toLowerCase();
           if (lower.includes('email')) return 'email';
@@ -2191,11 +2238,7 @@ const RowFormModal = function RowFormModal({
         })()}
         step={isNumericField && numericStep ? numericStep : undefined}
         placeholder={placeholders[c] || ''}
-        value={
-          fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
-            ? normalizeDateInput(formVals[c], 'YYYY-MM-DD')
-            : formVals[c]
-        }
+        value={formVals[c]}
         onChange={(e) => {
           notifyAutoResetGuardOnEdit(c);
           const value = e.target.value;
