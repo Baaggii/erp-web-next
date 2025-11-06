@@ -28,6 +28,8 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 2,
 });
 
+const ROW_OVERRIDE_ID = Symbol('transactionRowOverrideId');
+
 function normalizeNumberInput(value) {
   if (typeof value !== 'string') return value;
   return value.replace(',', '.');
@@ -86,6 +88,15 @@ function InlineTransactionTable(
 ) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
+  const overrideIdCounterRef = useRef(1);
+  const manualCellOverridesRef = useRef(new Map());
+  function getOrAssignRowOverrideId(row) {
+    if (!row || typeof row !== 'object') return null;
+    if (!row[ROW_OVERRIDE_ID]) {
+      row[ROW_OVERRIDE_ID] = `row-${overrideIdCounterRef.current++}`;
+    }
+    return row[ROW_OVERRIDE_ID];
+  }
   const [tableDisplayFields, setTableDisplayFields] = useState({});
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
@@ -540,6 +551,7 @@ function InlineTransactionTable(
       const now = formatTimestamp(new Date()).slice(0, 10);
       dateField.forEach((f) => maybeSet(f, now));
     }
+    getOrAssignRowOverrideId(row);
     return row;
   }
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
@@ -570,6 +582,19 @@ function InlineTransactionTable(
   const contextDefaultsRef = useRef({ branch, company });
   useEffect(() => {
     rowsRef.current = rows;
+  }, [rows]);
+  useEffect(() => {
+    const activeIds = new Set();
+    rows.forEach((row) => {
+      const id = getOrAssignRowOverrideId(row);
+      if (id) activeIds.add(id);
+    });
+    const overrides = manualCellOverridesRef.current;
+    overrides.forEach((value, key) => {
+      if (!activeIds.has(key)) {
+        overrides.delete(key);
+      }
+    });
   }, [rows]);
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -689,6 +714,11 @@ function InlineTransactionTable(
         const base = updater(prevRows);
         if (!Array.isArray(base)) return base;
         const nextRows = base === prevRows ? prevRows.slice() : base.slice();
+        nextRows.forEach((row) => {
+          if (row && typeof row === 'object') {
+            getOrAssignRowOverrideId(row);
+          }
+        });
         const source = metadataSource ?? prevRows;
         assignArrayMetadata(nextRows, source);
         const { changed, metadata } = applyGeneratedColumns(nextRows, indices);
@@ -1048,6 +1078,8 @@ function InlineTransactionTable(
       Object.keys(baseRow).forEach((key) => {
         keyLookup[key.toLowerCase()] = key;
       });
+      const rowId = getOrAssignRowOverrideId(baseRow);
+      const manualRowMap = rowId ? manualCellOverridesRef.current.get(rowId) : null;
       Object.entries(rowData).forEach(([rawKey, rawValue]) => {
         if (!rawKey && rawKey !== 0) return;
         const mappedKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
@@ -1057,6 +1089,23 @@ function InlineTransactionTable(
         const shouldWrite = writableColumns.has(mappedKey) || existingKey;
         if (!shouldWrite) return;
         const targetKey = existingKey || mappedKey;
+        if (manualRowMap && manualRowMap.has(lower)) {
+          const manualValue = manualRowMap.get(lower);
+          if (!valuesEqual(manualValue, rawValue)) {
+            if (existingKey) {
+              updated[existingKey] = manualValue;
+            } else {
+              updated[mappedKey] = manualValue;
+              keyLookup[lower] = mappedKey;
+            }
+            arrayUpdates.set(mappedKey, manualValue);
+            return;
+          }
+          manualRowMap.delete(lower);
+          if (manualRowMap.size === 0) {
+            manualCellOverridesRef.current.delete(rowId);
+          }
+        }
         const previousValue = existingKey ? updated[existingKey] : undefined;
         if (existingKey) {
           updated[existingKey] = rawValue;
@@ -1086,6 +1135,9 @@ function InlineTransactionTable(
       baseRows.map((row) => (row && typeof row === 'object' ? { ...row } : row)),
       baseRows,
     );
+    workingRows.forEach((row) => {
+      if (row && typeof row === 'object') getOrAssignRowOverrideId(row);
+    });
 
     if (
       rowOverride &&
@@ -1672,6 +1724,18 @@ function InlineTransactionTable(
     }
     if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
       return;
+    }
+    if (rowIdx != null && rowIdx >= 0 && rowIdx < rows.length) {
+      const row = rows[rowIdx];
+      const rowId = getOrAssignRowOverrideId(row);
+      if (rowId) {
+        const lower = typeof field === 'string' ? field.toLowerCase() : String(field || '');
+        if (lower) {
+          const existing = manualCellOverridesRef.current.get(rowId) || new Map();
+          existing.set(lower, value);
+          manualCellOverridesRef.current.set(rowId, existing);
+        }
+      }
     }
     commitRowsUpdate(
       (r) =>
