@@ -22,12 +22,20 @@ router.get('/summary', requireAuth, async (req, res, next) => {
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { scope = 'created', table, status } = req.query;
+    const scopeParam = typeof scope === 'string' ? scope.trim().toLowerCase() : '';
+    const normalizedScope = scopeParam === 'review' ? 'review' : 'created';
+    const statusParam = typeof status === 'string' ? status.trim().toLowerCase() : '';
+    const normalizedStatus = statusParam
+      ? statusParam
+      : normalizedScope === 'review'
+      ? 'pending'
+      : null;
     const list = await listTemporarySubmissions({
-      scope: scope === 'review' ? 'review' : 'created',
+      scope: normalizedScope,
       tableName: table || null,
       empId: req.user.empid,
       companyId: req.user.companyId,
-      status: status || 'pending',
+      status: normalizedStatus,
     });
     res.json({ rows: list });
   } catch (err) {
@@ -47,6 +55,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       cleanedValues,
       tenant = {},
     } = req.body || {};
+    const io = req.app.get('io');
     const result = await createTemporarySubmission({
       tableName,
       formName,
@@ -60,6 +69,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       departmentId: tenant.department_id ?? null,
       createdBy: req.user.empid,
       tenant,
+      io,
     });
     res.status(201).json(result);
   } catch (err) {

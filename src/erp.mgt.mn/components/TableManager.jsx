@@ -681,17 +681,24 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/transaction_temporaries/summary`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('failed');
-      const data = await res.json();
-      setTemporarySummary(data);
-      const reviewPending = Number(data?.reviewPending) || 0;
-      const preferredScope =
-        availableTemporaryScopes.includes('review') && reviewPending > 0
-          ? 'review'
-          : defaultTemporaryScope;
+        const res = await fetch(`${API_BASE}/transaction_temporaries/summary`, {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('failed');
+        const data = await res.json();
+        setTemporarySummary(data);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('transaction-temporary-refresh', {
+              detail: { source: 'forms', table },
+            }),
+          );
+        }
+        const reviewPending = Number(data?.reviewPending) || 0;
+        const preferredScope =
+          availableTemporaryScopes.includes('review') && reviewPending > 0
+            ? 'review'
+            : defaultTemporaryScope;
       setTemporaryScope((prev) => {
         if (!availableTemporaryScopes.includes(prev)) return preferredScope;
         if (
@@ -711,11 +718,12 @@ const TableManager = forwardRef(function TableManager({
           : defaultTemporaryScope,
       );
     }
-  }, [
-    formSupportsTemporary,
-    availableTemporaryScopes,
-    defaultTemporaryScope,
-  ]);
+    }, [
+      formSupportsTemporary,
+      availableTemporaryScopes,
+      defaultTemporaryScope,
+      table,
+    ]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
@@ -3468,11 +3476,19 @@ const TableManager = forwardRef(function TableManager({
       const params = new URLSearchParams();
       params.set('scope', targetScope);
 
-      const requestedStatus =
-        options?.status !== undefined ? options.status : 'pending';
-      if (requestedStatus) {
-        params.set('status', requestedStatus);
-      }
+        const requestedStatus =
+          options?.status !== undefined
+            ? options.status
+            : targetScope === 'review'
+            ? 'pending'
+            : null;
+        const statusValue =
+          requestedStatus === null || requestedStatus === undefined
+            ? ''
+            : String(requestedStatus).trim();
+        if (statusValue) {
+          params.set('status', statusValue);
+        }
 
       const shouldFilterByTable = (() => {
         if (options?.table !== undefined) {
@@ -3717,68 +3733,111 @@ const TableManager = forwardRef(function TableManager({
     }
   }
 
-  const openTemporaryPromotion = useCallback(
-    async (entry, { resetQueue = true } = {}) => {
-      if (!entry) return;
-      const temporaryId = getTemporaryId(entry);
-      if (!temporaryId) return;
-      if (resetQueue) {
-        setTemporaryPromotionQueue([]);
-      }
-      await ensureColumnMeta();
+    const buildTemporaryFormState = useCallback(
+      (entry) => {
+        if (!entry) {
+          return { values: {}, rows: [] };
+        }
 
-      const valueSources = [
-        entry?.cleanedValues,
-        entry?.payload?.cleanedValues,
-        entry?.payload?.values,
-        entry?.values,
-        entry?.rawValues,
-      ];
-      const baseValues = valueSources.find(
-        (candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate),
-      );
-      const normalizedValues = normalizeToCanonical(
-        stripTemporaryLabelValue(baseValues || {}),
-      );
+        const valueSources = [
+          entry?.cleanedValues,
+          entry?.payload?.cleanedValues,
+          entry?.payload?.values,
+          entry?.values,
+          entry?.rawValues,
+        ];
+        const baseValues = valueSources.find(
+          (candidate) =>
+            candidate && typeof candidate === 'object' && !Array.isArray(candidate),
+        );
+        const normalizedValues = normalizeToCanonical(
+          stripTemporaryLabelValue(baseValues || {}),
+        );
 
-      const rowSources = [
-        entry?.payload?.gridRows,
-        entry?.payload?.values?.rows,
-        entry?.cleanedValues?.rows,
-        entry?.values?.rows,
-        entry?.rawValues?.rows,
-      ];
-      const baseRows = rowSources.find((rows) => Array.isArray(rows));
-      const sanitizedRows = Array.isArray(baseRows)
-        ? baseRows.map((row) => {
-            const stripped = stripTemporaryLabelValue(row);
-            if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
-              return normalizeToCanonical(stripped);
-            }
-            return stripped ?? {};
-          })
-        : [];
+        const rowSources = [
+          entry?.payload?.gridRows,
+          entry?.payload?.values?.rows,
+          entry?.cleanedValues?.rows,
+          entry?.values?.rows,
+          entry?.rawValues?.rows,
+        ];
+        const baseRows = rowSources.find((rows) => Array.isArray(rows));
+        const sanitizedRows = Array.isArray(baseRows)
+          ? baseRows.map((row) => {
+              const stripped = stripTemporaryLabelValue(row);
+              if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
+                return normalizeToCanonical(stripped);
+              }
+              return stripped ?? {};
+            })
+          : [];
 
-      setPendingTemporaryPromotion({ id: temporaryId, entry });
-      setEditing(normalizedValues);
-      setGridRows(sanitizedRows);
-      setIsAdding(true);
+        return { values: normalizedValues, rows: sanitizedRows };
+      },
+      [normalizeToCanonical],
+    );
+
+    const openTemporaryPromotion = useCallback(
+      async (entry, { resetQueue = true } = {}) => {
+        if (!entry) return;
+        const temporaryId = getTemporaryId(entry);
+        if (!temporaryId) return;
+        if (resetQueue) {
+          setTemporaryPromotionQueue([]);
+        }
+        await ensureColumnMeta();
+        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
+
+        setPendingTemporaryPromotion({ id: temporaryId, entry });
+        setEditing(normalizedValues);
+        setGridRows(sanitizedRows);
+        setIsAdding(true);
       setRequestType('temporary-promote');
       setShowTemporaryModal(false);
-      setShowForm(true);
-    },
-    [
-      ensureColumnMeta,
-      normalizeToCanonical,
-      setEditing,
-      setGridRows,
-      setIsAdding,
-      setRequestType,
-      setShowTemporaryModal,
+        setShowForm(true);
+      },
+      [
+        buildTemporaryFormState,
+        ensureColumnMeta,
+        setEditing,
+        setGridRows,
+        setIsAdding,
+        setRequestType,
+        setShowTemporaryModal,
       setShowForm,
       setTemporaryPromotionQueue,
     ],
-  );
+    );
+
+    const openTemporaryDraft = useCallback(
+      async (entry) => {
+        if (!entry || !canCreateTemporary) return;
+        await ensureColumnMeta();
+        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
+
+        setPendingTemporaryPromotion(null);
+        setTemporaryPromotionQueue([]);
+        setEditing(normalizedValues);
+        setGridRows(sanitizedRows);
+        setIsAdding(false);
+        setRequestType(null);
+        setShowTemporaryModal(false);
+        setShowForm(true);
+      },
+      [
+        buildTemporaryFormState,
+        canCreateTemporary,
+        ensureColumnMeta,
+        setEditing,
+        setGridRows,
+        setIsAdding,
+        setRequestType,
+        setShowForm,
+        setPendingTemporaryPromotion,
+        setTemporaryPromotionQueue,
+        setShowTemporaryModal,
+      ],
+    );
 
   async function rejectTemporary(id) {
     if (!canReviewTemporary) return;
@@ -4512,6 +4571,7 @@ const TableManager = forwardRef(function TableManager({
   );
 
   const showReviewActions = canReviewTemporary && temporaryScope === 'review';
+  const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
 
   return (
     <div>
@@ -5849,14 +5909,25 @@ const TableManager = forwardRef(function TableManager({
                       <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>
                         {t('created_at', 'Created at')}
                       </th>
-                      <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>
-                        {t('details', 'Details')}
-                      </th>
-                      {showReviewActions && (
-                        <th
-                          style={{
-                            borderBottom: '1px solid #d1d5db',
-                            textAlign: 'right',
+                        <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>
+                          {t('details', 'Details')}
+                        </th>
+                        {showCreatorActions && (
+                          <th
+                            style={{
+                              borderBottom: '1px solid #d1d5db',
+                              textAlign: 'right',
+                              padding: '0.25rem',
+                            }}
+                          >
+                            {t('actions', 'Actions')}
+                          </th>
+                        )}
+                        {showReviewActions && (
+                          <th
+                            style={{
+                              borderBottom: '1px solid #d1d5db',
+                              textAlign: 'right',
                             padding: '0.25rem',
                           }}
                         >
@@ -5867,14 +5938,33 @@ const TableManager = forwardRef(function TableManager({
                   </thead>
                   <tbody>
                     {temporaryList.map((entry, index) => {
-                      const entryId = getTemporaryId(entry);
-                      const rowKey = entryId ?? `row-${index}`;
-                      const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
-                      const valueSources = [
-                        entry?.values,
-                        entry?.cleanedValues,
-                        entry?.payload?.values,
-                        entry?.rawValues,
+                        const entryId = getTemporaryId(entry);
+                        const rowKey = entryId ?? `row-${index}`;
+                        const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
+                        const statusRaw = entry?.status
+                          ? String(entry.status).trim().toLowerCase()
+                          : '';
+                        const isPendingStatus = statusRaw === 'pending' || statusRaw === '';
+                        const statusLabel = isPendingStatus
+                          ? t('temporary_pending_status', 'Pending')
+                          : statusRaw === 'promoted'
+                          ? t('temporary_promoted_short', 'Promoted')
+                          : statusRaw === 'rejected'
+                          ? t('temporary_rejected_short', 'Rejected')
+                          : entry?.status || '-';
+                        const statusColor = statusRaw === 'rejected'
+                          ? '#b91c1c'
+                          : statusRaw === 'promoted'
+                          ? '#15803d'
+                          : '#1f2937';
+                        const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
+                        const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
+                        const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
+                        const valueSources = [
+                          entry?.values,
+                          entry?.cleanedValues,
+                          entry?.payload?.values,
+                          entry?.rawValues,
                       ];
                       const firstStructured = valueSources.find(
                         (candidate) =>
@@ -5935,19 +6025,55 @@ const TableManager = forwardRef(function TableManager({
                           <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                             {entry?.createdBy}
                           </td>
-                          <td
-                            style={{
-                              borderBottom: '1px solid #f3f4f6',
-                              padding: '0.25rem',
-                              textTransform: 'capitalize',
-                            }}
-                          >
-                            {entry?.status}
-                          </td>
-                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
-                            {formatTimestamp(entry?.createdAt)}
-                          </td>
-                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            <td
+                              style={{
+                                borderBottom: '1px solid #f3f4f6',
+                                padding: '0.25rem',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontWeight: 600,
+                                  color: statusColor,
+                                  textTransform: 'capitalize',
+                                }}
+                              >
+                                {statusLabel}
+                              </div>
+                              {!isPendingStatus && reviewedAt && (
+                                <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>
+                                  {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
+                                </div>
+                              )}
+                              {!isPendingStatus && reviewedBy && (
+                                <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>
+                                  {t('temporary_reviewed_by', 'Reviewed by')}: {reviewedBy}
+                                </div>
+                              )}
+                              {!isPendingStatus && reviewNotes && (
+                                <div
+                                  style={{
+                                    marginTop: '0.35rem',
+                                    padding: '0.35rem',
+                                    backgroundColor:
+                                      statusRaw === 'rejected' ? '#fee2e2' : '#ecfdf5',
+                                    borderRadius: '0.5rem',
+                                    fontSize: '0.75rem',
+                                    color: '#1f2937',
+                                    whiteSpace: 'pre-wrap',
+                                  }}
+                                >
+                                  <strong style={{ display: 'block', marginBottom: '0.2rem' }}>
+                                    {t('temporary_review_notes', 'Review notes')}
+                                  </strong>
+                                  {reviewNotes}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                              {formatTimestamp(entry?.createdAt)}
+                            </td>
+                            <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                             {detailColumns.length === 0 ? (
                               <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
                                 {t(
@@ -5998,13 +6124,42 @@ const TableManager = forwardRef(function TableManager({
                                   </tbody>
                                 </table>
                               </div>
+                              )}
+                            </td>
+                            {showCreatorActions && (
+                              <td
+                                style={{
+                                  borderBottom: '1px solid #f3f4f6',
+                                  padding: '0.25rem',
+                                  textAlign: 'right',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {statusRaw === 'rejected' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openTemporaryDraft(entry)}
+                                    style={{
+                                      padding: '0.25rem 0.5rem',
+                                      backgroundColor: '#2563eb',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {t('temporary_edit_rejected', 'Edit & resubmit')}
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>—</span>
+                                )}
+                              </td>
                             )}
-                          </td>
-                          {showReviewActions && (
-                            <td
-                              style={{
-                                borderBottom: '1px solid #f3f4f6',
-                                padding: '0.25rem',
+                            {showReviewActions && (
+                              <td
+                                style={{
+                                  borderBottom: '1px solid #f3f4f6',
+                                  padding: '0.25rem',
                                 textAlign: 'right',
                                 whiteSpace: 'nowrap',
                               }}

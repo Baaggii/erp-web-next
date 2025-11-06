@@ -292,6 +292,7 @@ export async function createTemporarySubmission({
   departmentId,
   createdBy,
   tenant = {},
+  io,
 }) {
   if (!tableName) {
     const err = new Error('tableName required');
@@ -392,6 +393,33 @@ export async function createTemporarySubmission({
       });
     }
     await conn.query('COMMIT');
+    if (io) {
+      const payload = {
+        id: temporaryId,
+        tableName,
+        formName: formName ?? null,
+        configName: configName ?? null,
+        moduleKey: moduleKey ?? null,
+        status: 'pending',
+        createdBy: normalizedCreator,
+        reviewerEmpId: reviewerEmpId ?? null,
+        companyId: companyId ?? null,
+      };
+      try {
+        io.to(`user:${normalizedCreator}`).emit('temporaryCreated', {
+          ...payload,
+          scope: 'created',
+        });
+        if (reviewerEmpId) {
+          io.to(`user:${reviewerEmpId}`).emit('temporaryCreated', {
+            ...payload,
+            scope: 'review',
+          });
+        }
+      } catch (socketErr) {
+        console.error('Failed to emit temporaryCreated event', socketErr);
+      }
+    }
     return { id: temporaryId, reviewerEmpId, planSenior: reviewerEmpId };
   } catch (err) {
     try {
@@ -521,15 +549,29 @@ export async function listTemporarySubmissions({
   tableName,
   empId,
   companyId,
-  status = 'pending',
+  status,
 }) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
   const conditions = [];
   const params = [];
-  if (status) {
-    conditions.push('status = ?');
-    params.push(status);
+  const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+  if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
+    if (normalizedStatus === 'processed') {
+      conditions.push("status <> 'pending'");
+    } else {
+      const statusParts = normalizedStatus
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (statusParts.length === 1) {
+        conditions.push('status = ?');
+        params.push(statusParts[0]);
+      } else if (statusParts.length > 1) {
+        conditions.push(`status IN (${statusParts.map(() => '?').join(', ')})`);
+        params.push(...statusParts);
+      }
+    }
   }
   if (companyId != null) {
     conditions.push('(company_id = ? OR company_id IS NULL)');
@@ -548,7 +590,7 @@ export async function listTemporarySubmissions({
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY created_at DESC LIMIT 200`,
+    `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY updated_at DESC, created_at DESC LIMIT 200`,
     params,
   );
   const mapped = rows.map(mapTemporaryRow);
@@ -561,19 +603,25 @@ export async function getTemporarySummary(empId, companyId) {
   const [[created]] = await pool.query(
     `SELECT
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-        COUNT(*) AS total_cnt
+        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
+        COUNT(*) AS total_cnt,
+        MAX(updated_at) AS latest_update
        FROM \`${TEMP_TABLE}\`
       WHERE created_by = ?
-        AND (company_id = ? OR company_id IS NULL)`,
+        AND (company_id = ? OR company_id IS NULL)
+      LIMIT 1`,
     [normalizedEmp, companyId ?? null],
   );
   const [[review]] = await pool.query(
     `SELECT
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-        COUNT(*) AS total_cnt
+        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
+        COUNT(*) AS total_cnt,
+        MAX(updated_at) AS latest_update
        FROM \`${TEMP_TABLE}\`
       WHERE plan_senior_empid = ?
-        AND (company_id = ? OR company_id IS NULL)`,
+        AND (company_id = ? OR company_id IS NULL)
+      LIMIT 1`,
     [normalizedEmp, companyId ?? null],
   );
   const createdPending = Number(created?.pending_cnt) || 0;
@@ -581,6 +629,12 @@ export async function getTemporarySummary(empId, companyId) {
   return {
     createdPending,
     reviewPending,
+    createdReviewed: Number(created?.reviewed_cnt) || 0,
+    reviewReviewed: Number(review?.reviewed_cnt) || 0,
+    createdTotal: Number(created?.total_cnt) || 0,
+    reviewTotal: Number(review?.total_cnt) || 0,
+    createdLatestUpdate: created?.latest_update || null,
+    reviewLatestUpdate: review?.latest_update || null,
     isReviewer: (Number(review?.total_cnt) || 0) > 0,
   };
 }
@@ -875,21 +929,32 @@ export async function promoteTemporarySubmission(
       type: 'response',
     });
     await conn.query('COMMIT');
+    const reviewedAtIso = new Date().toISOString();
     if (io) {
-      io.to(`user:${row.created_by}`).emit('temporaryReviewed', {
+      const eventPayload = {
         id,
         status: 'promoted',
         promotedRecordId: promotedId,
         warnings: sanitationWarnings,
-      });
-      io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', {
-        id,
-        status: 'promoted',
-        promotedRecordId: promotedId,
-        warnings: sanitationWarnings,
-      });
+        notes: reviewNotesValue ?? null,
+        reviewedBy: normalizedReviewer,
+        reviewedAt: reviewedAtIso,
+        tableName: row.table_name,
+      };
+      try {
+        io.to(`user:${row.created_by}`).emit('temporaryReviewed', eventPayload);
+        io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', eventPayload);
+      } catch (socketErr) {
+        console.error('Failed to emit temporaryReviewed event', socketErr);
+      }
     }
-    return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
+    return {
+      id,
+      promotedRecordId: promotedId,
+      warnings: sanitationWarnings,
+      reviewNotes: reviewNotesValue ?? null,
+      reviewedAt: reviewedAtIso,
+    };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
@@ -934,11 +999,13 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       err.status = 409;
       throw err;
     }
+    const trimmedNotes =
+      typeof notes === 'string' && notes.trim() ? notes.trim() : '';
     await conn.query(
       `UPDATE \`${TEMP_TABLE}\`
        SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?
        WHERE id = ?`,
-      [normalizedReviewer, notes ?? null, id],
+      [normalizedReviewer, trimmedNotes || null, id],
     );
     await logUserAction(
       {
@@ -968,17 +1035,24 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       type: 'response',
     });
     await conn.query('COMMIT');
+    const reviewedAtIso = new Date().toISOString();
     if (io) {
-      io.to(`user:${row.created_by}`).emit('temporaryReviewed', {
+      const eventPayload = {
         id,
         status: 'rejected',
-      });
-      io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', {
-        id,
-        status: 'rejected',
-      });
+        notes: trimmedNotes || null,
+        reviewedBy: normalizedReviewer,
+        reviewedAt: reviewedAtIso,
+        tableName: row.table_name,
+      };
+      try {
+        io.to(`user:${row.created_by}`).emit('temporaryReviewed', eventPayload);
+        io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', eventPayload);
+      } catch (socketErr) {
+        console.error('Failed to emit temporaryReviewed event', socketErr);
+      }
     }
-    return { id, status: 'rejected' };
+    return { id, status: 'rejected', notes: trimmedNotes || null, reviewedAt: reviewedAtIso };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
