@@ -625,6 +625,8 @@ const TableManager = forwardRef(function TableManager({
   const supportsTemporary =
     formSupportsTemporary &&
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
+  const isEditingTemporaryDraft = activeTemporaryDraftId != null;
+  const canSaveTemporaryDraft = canCreateTemporary || isEditingTemporaryDraft;
   const canPostTransactions =
     accessEvaluation.canPost === undefined
       ? true
@@ -3006,7 +3008,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSaveTemporary(submission) {
-    if (!canCreateTemporary) return false;
+    if (!canSaveTemporaryDraft) return false;
     if (!submission || typeof submission !== 'object') return false;
     const valueSource =
       submission.values && typeof submission.values === 'object'
@@ -3828,6 +3830,8 @@ const TableManager = forwardRef(function TableManager({
         await ensureColumnMeta();
         const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
 
+        const temporaryId = getTemporaryId(entry);
+        setActiveTemporaryDraftId(temporaryId);
         setPendingTemporaryPromotion(null);
         setTemporaryPromotionQueue([]);
         setEditing(normalizedValues);
@@ -3841,6 +3845,7 @@ const TableManager = forwardRef(function TableManager({
         buildTemporaryFormState,
         canCreateTemporary,
         ensureColumnMeta,
+        setActiveTemporaryDraftId,
         setEditing,
         setGridRows,
         setIsAdding,
@@ -5698,8 +5703,8 @@ const TableManager = forwardRef(function TableManager({
           setTemporaryPromotionQueue([]);
         }}
         onSubmit={handleSubmit}
-        onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
-        temporaryDraftEditing={activeTemporaryDraftId != null}
+        onSaveTemporary={canSaveTemporaryDraft ? handleSaveTemporary : null}
+        temporaryDraftEditing={isEditingTemporaryDraft}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
@@ -5736,7 +5741,7 @@ const TableManager = forwardRef(function TableManager({
         onRowsChange={handleRowsChange}
         autoFillSession={autoFillSession}
         scope="forms"
-        allowTemporarySave={canCreateTemporary}
+        allowTemporarySave={canSaveTemporaryDraft}
         isAdding={isAdding}
         canPost={canPostTransactions}
         forceEditable={canBypassGuardDefaults}
