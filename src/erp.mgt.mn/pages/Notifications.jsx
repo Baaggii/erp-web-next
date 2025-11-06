@@ -306,8 +306,6 @@ export default function NotificationsPage() {
 
   const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
   const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
-  const temporaryReviewLatestUpdate = temporary?.counts?.review?.latestUpdate || '';
-  const temporaryCreatedLatestUpdate = temporary?.counts?.created?.latestUpdate || '';
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
   const sortTemporaryEntries = useCallback((entries, scope) => {
     if (!Array.isArray(entries)) return [];
