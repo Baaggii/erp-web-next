@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import useGeneralConfig from './useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
-import { connectSocket, disconnectSocket } from '../utils/socket.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
 const SCOPES = ['created', 'review'];
@@ -127,46 +126,24 @@ export default function useTemporaryNotificationCounts(empid) {
 
   useEffect(() => {
     let cancelled = false;
-    let socket;
-    const handler = () => {
-      if (cancelled) return;
-      try {
-        const result = refresh();
-        if (result && typeof result.then === 'function') {
-          result.catch(() => {});
-        }
-      } catch {
-        // ignore refresh errors, interval/socket will retry later
-      }
-    };
-
     const run = async () => {
       if (!cancelled) await refresh();
     };
     run();
 
+    const handler = () => {
+      refresh();
+    };
+
     window.addEventListener('transaction-temporary-refresh', handler);
     const timer = setInterval(() => {
-      handler();
+      refresh();
     }, intervalSeconds * 1000);
-
-    try {
-      socket = connectSocket();
-      socket.on('temporaryCreated', handler);
-      socket.on('temporaryReviewed', handler);
-    } catch {
-      // ignore socket connection failures; polling will continue
-    }
 
     return () => {
       cancelled = true;
       window.removeEventListener('transaction-temporary-refresh', handler);
       clearInterval(timer);
-      if (socket) {
-        socket.off('temporaryCreated', handler);
-        socket.off('temporaryReviewed', handler);
-        disconnectSocket();
-      }
     };
   }, [intervalSeconds, refresh]);
 
