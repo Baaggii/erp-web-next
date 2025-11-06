@@ -1646,7 +1646,7 @@ export default function Reports() {
         return;
     }
     const fmt = (d) =>
-      d instanceof Date ? normalizeDateInput(formatTimestamp(d), 'YYYY-MM-DD') : '';
+      d instanceof Date ? formatTimestamp(d).slice(0, 10) : '';
     if (hasStartParam) {
       setStartDate(normalizeDateInput(fmt(start), 'YYYY-MM-DD'));
     }
@@ -3304,7 +3304,6 @@ export default function Reports() {
             {hasStartParam && (
               <CustomDatePicker
                 value={startDate}
-                placeholder="YYYY.MM.DD"
                 onChange={(v) => {
                   setStartDate(normalizeDateInput(v, 'YYYY-MM-DD'));
                   setDatePreset('custom');
@@ -3316,7 +3315,6 @@ export default function Reports() {
             {hasEndParam && (
               <CustomDatePicker
                 value={endDate}
-                placeholder="YYYY.MM.DD"
                 onChange={(v) => {
                   setEndDate(normalizeDateInput(v, 'YYYY-MM-DD'));
                   setDatePreset('custom');

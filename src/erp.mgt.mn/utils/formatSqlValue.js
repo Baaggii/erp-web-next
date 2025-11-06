@@ -1,16 +1,13 @@
 import formatTimestamp from './formatTimestamp.js';
-import normalizeDateInput from './normalizeDateInput.js';
 
 export default function formatSqlValue(val, type = '') {
   const t = (type || '').toLowerCase();
   if (t === 'date') {
     const d = val instanceof Date ? val : new Date(val);
     if (!Number.isNaN(d.getTime())) {
-      const normalized = normalizeDateInput(formatTimestamp(d), 'YYYY-MM-DD');
-      return `'${normalized}'`;
+      return `'${formatTimestamp(d).slice(0, 10)}'`;
     }
-    const normalized = normalizeDateInput(String(val), 'YYYY-MM-DD');
-    return `'${normalized.slice(0, 10).replace(/'/g, "''")}'`;
+    return `'${String(val).slice(0, 10).replace(/'/g, "''")}'`;
   }
   const stringTypes = [
     'char',

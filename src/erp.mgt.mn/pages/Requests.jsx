@@ -11,7 +11,6 @@ import { useSearchParams } from 'react-router-dom';
 import DateRangePicker from '../components/DateRangePicker.jsx';
 import ReportSnapshotViewer from '../components/ReportSnapshotViewer.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
-import normalizeDateInput from '../utils/normalizeDateInput.js';
 import {
   normalizeSnapshotRecord,
   resolveSnapshotSource,
@@ -927,7 +926,7 @@ export default function RequestsPage() {
     const queryDateFrom = (searchParams.get('date_from') || '').trim();
     const queryDateTo = (searchParams.get('date_to') || '').trim();
     if (!queryDateFrom && !queryDateTo && !dateFrom && !dateTo) {
-      const today = normalizeDateInput(formatTimestamp(new Date()), 'YYYY-MM-DD');
+      const today = formatTimestamp(new Date()).slice(0, 10);
       setDateFrom(today);
       setDateTo(today);
     }

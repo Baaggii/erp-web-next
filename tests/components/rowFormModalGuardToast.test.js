@@ -51,7 +51,7 @@ if (!haveReact) {
         '../context/AuthContext.jsx': {
           AuthContext: React.createContext({ user: {}, company: 1, branch: 1, department: 1, userSettings: {} }),
         },
-        '../utils/formatTimestamp.js': { default: () => '2024.05.01 12:34:56' },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
         '../utils/normalizeDateInput.js': { default: (v) => v },
         '../utils/callProcedure.js': { default: () => {} },
       },
