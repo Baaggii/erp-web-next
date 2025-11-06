@@ -442,6 +442,7 @@ const TableManager = forwardRef(function TableManager({
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
   const [temporaryPromotionQueue, setTemporaryPromotionQueue] = useState([]);
+  const [activeTemporaryDraftId, setActiveTemporaryDraftId] = useState(null);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
@@ -469,7 +470,6 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryFocusId, setTemporaryFocusId] = useState(null);
   const [temporarySelection, setTemporarySelection] = useState(() => new Set());
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
-  const [activeTemporaryDraftId, setActiveTemporaryDraftId] = useState(null);
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
   const handleRowsChange = useCallback((rs) => {
@@ -677,11 +677,6 @@ const TableManager = forwardRef(function TableManager({
     if (!externalTemporaryTrigger) return;
     setQueuedTemporaryTrigger(externalTemporaryTrigger);
   }, [externalTemporaryTrigger]);
-
-  const clearTemporaryDraftContext = useCallback(() => {
-    setActiveTemporaryDraftId(null);
-    setIsReopenedTemporaryDraft(false);
-  }, []);
 
   const refreshTemporarySummary = useCallback(async () => {
     if (!formSupportsTemporary) {
@@ -2174,7 +2169,6 @@ const TableManager = forwardRef(function TableManager({
     setRowDefaults(defaults);
     setEditing(baseRow);
     setGridRows(initialRows);
-    setActiveTemporaryDraftId(null);
     setIsAdding(true);
     setShowForm(true);
   }
@@ -2389,7 +2383,6 @@ const TableManager = forwardRef(function TableManager({
 
     setEditing(mergedRow);
     setGridRows([mergedRow]);
-    setActiveTemporaryDraftId(null);
     setIsAdding(false);
     setShowForm(true);
   }
@@ -2439,7 +2432,6 @@ const TableManager = forwardRef(function TableManager({
     }
     setEditing(rowForForm);
     setGridRows([rowForForm]);
-    setActiveTemporaryDraftId(null);
     setIsAdding(false);
     setRequestType('edit');
     if (txnToastEnabled) {
@@ -2845,8 +2837,8 @@ const TableManager = forwardRef(function TableManager({
           setEditing(null);
           setIsAdding(false);
           setGridRows([]);
-          setActiveTemporaryDraftId(null);
           setRequestType(null);
+          setActiveTemporaryDraftId(null);
         } else if (res.status === 409) {
           addToast(
             t('similar_request_pending', 'A similar request is already pending'),
@@ -2888,9 +2880,9 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        setActiveTemporaryDraftId(null);
         setRequestType(null);
         setPendingTemporaryPromotion(null);
+        setActiveTemporaryDraftId(null);
         if (nextEntry) {
           setTimeout(() => {
             openTemporaryPromotion(nextEntry, { resetQueue: false });
@@ -2943,8 +2935,8 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        setActiveTemporaryDraftId(null);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
+        setActiveTemporaryDraftId(null);
         if (isAdding && (formConfig?.imagenameField || []).length) {
           const inserted = rows.find(
             (r) => String(getRowId(r)) === String(savedRow.id),
@@ -3222,7 +3214,6 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        setActiveTemporaryDraftId(null);
       }
     }
 
@@ -5709,18 +5700,18 @@ const TableManager = forwardRef(function TableManager({
           setEditing(null);
           setIsAdding(false);
           setGridRows([]);
-          setActiveTemporaryDraftId(null);
           setRequestType(null);
           setPendingTemporaryPromotion(null);
           setTemporaryPromotionQueue([]);
+          setActiveTemporaryDraftId(null);
         }}
         onSubmit={handleSubmit}
         onSaveTemporary={canSaveTemporaryDraft ? handleSaveTemporary : null}
-        temporaryDraftEditing={isEditingTemporaryDraft}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
         rows={gridRows}
+        isEditingTemporaryDraft={isEditingTemporaryDraft}
         relations={relationOpts}
         relationConfigs={relationConfigs}
         relationData={refRows}
@@ -5970,33 +5961,37 @@ const TableManager = forwardRef(function TableManager({
                   </thead>
                   <tbody>
                     {temporaryList.map((entry, index) => {
-                        const entryId = getTemporaryId(entry);
-                        const rowKey = entryId ?? `row-${index}`;
-                        const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
-                        const statusRaw = entry?.status
-                          ? String(entry.status).trim().toLowerCase()
-                          : '';
-                        const isPendingStatus = statusRaw === 'pending' || statusRaw === '';
-                        const statusLabel = isPendingStatus
-                          ? t('temporary_pending_status', 'Pending')
-                          : statusRaw === 'promoted'
-                          ? t('temporary_promoted_short', 'Promoted')
-                          : statusRaw === 'rejected'
-                          ? t('temporary_rejected_short', 'Rejected')
-                          : entry?.status || '-';
-                        const statusColor = statusRaw === 'rejected'
-                          ? '#b91c1c'
-                          : statusRaw === 'promoted'
-                          ? '#15803d'
-                          : '#1f2937';
-                        const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
-                        const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
-                        const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
-                        const valueSources = [
-                          entry?.values,
-                          entry?.cleanedValues,
-                          entry?.payload?.values,
-                          entry?.rawValues,
+                      const entryId = getTemporaryId(entry);
+                      const rowKey = entryId ?? `row-${index}`;
+                      const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
+                      const isActiveDraft =
+                        activeTemporaryDraftId &&
+                        entryId != null &&
+                        String(entryId) === String(activeTemporaryDraftId);
+                      const statusRaw = entry?.status
+                        ? String(entry.status).trim().toLowerCase()
+                        : '';
+                      const isPendingStatus = statusRaw === 'pending' || statusRaw === '';
+                      const statusLabel = isPendingStatus
+                        ? t('temporary_pending_status', 'Pending')
+                        : statusRaw === 'promoted'
+                        ? t('temporary_promoted_short', 'Promoted')
+                        : statusRaw === 'rejected'
+                        ? t('temporary_rejected_short', 'Rejected')
+                        : entry?.status || '-';
+                      const statusColor = statusRaw === 'rejected'
+                        ? '#b91c1c'
+                        : statusRaw === 'promoted'
+                        ? '#15803d'
+                        : '#1f2937';
+                      const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
+                      const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
+                      const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
+                      const valueSources = [
+                        entry?.values,
+                        entry?.cleanedValues,
+                        entry?.payload?.values,
+                        entry?.rawValues,
                       ];
                       const firstStructured = valueSources.find(
                         (candidate) =>
@@ -6010,21 +6005,40 @@ const TableManager = forwardRef(function TableManager({
                       const detailColumns = Array.from(
                         new Set((detailColumnsSource || []).filter(Boolean)),
                       );
+                      const rowBackgroundColor = isFocused
+                        ? '#fef9c3'
+                        : isActiveDraft
+                        ? '#e0f2fe'
+                        : 'transparent';
                       return (
                         <tr
                           key={rowKey}
                           ref={(node) => setTemporaryRowRef(rowKey, node)}
                           style={{
-                            backgroundColor: isFocused ? '#fef9c3' : 'transparent',
+                            backgroundColor: rowBackgroundColor,
                             transition: 'background-color 0.2s ease-in-out',
+                            borderLeft: isActiveDraft ? '4px solid #2563eb' : '4px solid transparent',
                           }}
                         >
                           <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                              {isFocused && (
+                              {(isFocused || isActiveDraft) && (
                                 <span
-                                  style={{ color: '#b45309', fontSize: '0.9rem' }}
-                                  title={t('temporary_highlight', 'Recently opened from notifications')}
+                                  style={{
+                                    color: isFocused ? '#b45309' : '#2563eb',
+                                    fontSize: '0.9rem',
+                                  }}
+                                  title={
+                                    isFocused
+                                      ? t(
+                                          'temporary_highlight',
+                                          'Recently opened from notifications',
+                                        )
+                                      : t(
+                                          'temporary_active_draft',
+                                          'Currently editing this temporary draft',
+                                        )
+                                  }
                                 >
                                   ★
                                 </span>

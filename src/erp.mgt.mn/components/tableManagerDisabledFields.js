@@ -23,7 +23,7 @@ export function resolveDisabledFieldState({
 
   let disabledFields = [];
 
-  if (editSet) {
+  if (!bypassGuardDefaults && editSet) {
     disabledFields = formColumns.filter((c) => !editSet.has(c.toLowerCase()));
   }
 

@@ -57,9 +57,10 @@ if (!haveReact) {
     const { disabledFields: restrictedBypass } = resolveDisabledFieldState(
       restrictedArgs,
     );
-    assert.ok(
-      restrictedBypass.includes('GuardSelect'),
-      'Edit-set restrictions should still apply when bypassing guard defaults',
+    assert.deepEqual(
+      restrictedBypass,
+      [],
+      'Bypassing guards should clear edit-set restrictions as well',
     );
 
     const { disabledFields: restrictedNoPerm } = resolveDisabledFieldState({
