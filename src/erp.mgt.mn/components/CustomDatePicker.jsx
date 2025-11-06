@@ -1,5 +1,7 @@
 import React, { forwardRef } from 'react';
-import normalizeDateInput from '../utils/normalizeDateInput.js';
+import normalizeDateInput, {
+  replaceDateSeparators,
+} from '../utils/normalizeDateInput.js';
 
 /**
  * Simple wrapper around the native date input so we can swap in a
@@ -7,7 +9,20 @@ import normalizeDateInput from '../utils/normalizeDateInput.js';
  */
 function CustomDatePicker({ value, onChange, inputRef, style, ...rest }, forwardedRef) {
   const handleChange = (e) => {
-    const v = normalizeDateInput(e.target.value, 'YYYY-MM-DD');
+    const sanitized = replaceDateSeparators(e.target.value);
+    if (sanitized !== e.target.value) {
+      const { selectionStart, selectionEnd } = e.target;
+      e.target.value = sanitized;
+      if (
+        typeof selectionStart === 'number' &&
+        typeof selectionEnd === 'number' &&
+        e.target.setSelectionRange
+      ) {
+        e.target.setSelectionRange(selectionStart, selectionEnd);
+      }
+    }
+    const v = normalizeDateInput(sanitized, 'YYYY-MM-DD');
+    if (v !== sanitized) e.target.value = v;
     onChange(v);
   };
 
@@ -30,6 +45,20 @@ function CustomDatePicker({ value, onChange, inputRef, style, ...rest }, forward
       type="date"
       value={normalizeDateInput(value, 'YYYY-MM-DD')}
       onChange={handleChange}
+      onInput={(e) => {
+        const sanitized = replaceDateSeparators(e.target.value);
+        if (sanitized !== e.target.value) {
+          const { selectionStart, selectionEnd } = e.target;
+          e.target.value = sanitized;
+          if (
+            typeof selectionStart === 'number' &&
+            typeof selectionEnd === 'number' &&
+            e.target.setSelectionRange
+          ) {
+            e.target.setSelectionRange(selectionStart, selectionEnd);
+          }
+        }
+      }}
       style={{ padding: '0.25em', ...(style || {}) }}
       ref={handleRef}
       {...rest}

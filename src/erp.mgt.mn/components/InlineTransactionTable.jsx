@@ -15,7 +15,11 @@ import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import callProcedure from '../utils/callProcedure.js';
-import normalizeDateInput from '../utils/normalizeDateInput.js';
+import normalizeDateInput, {
+  formatDateDisplay,
+  isExistingDate,
+  replaceDateSeparators,
+} from '../utils/normalizeDateInput.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
 import {
   assignArrayMetadata,
@@ -881,29 +885,16 @@ function InlineTransactionTable(
 
   function isValidDate(value, format) {
     if (!value) return true;
-    const isoRe = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
-    let v = normalizeDateInput(String(value), format);
-    if (isoRe.test(v)) {
-      const d = new Date(v);
-      const yyyy = d.getFullYear();
-      const mm = String(d.getMonth() + 1).padStart(2, '0');
-      const dd = String(d.getDate()).padStart(2, '0');
-      const hh = String(d.getHours()).padStart(2, '0');
-      const mi = String(d.getMinutes()).padStart(2, '0');
-      const ss = String(d.getSeconds()).padStart(2, '0');
-      if (format === 'YYYY-MM-DD') v = `${yyyy}-${mm}-${dd}`;
-      else if (format === 'HH:MM:SS') v = `${hh}:${mi}:${ss}`;
+    if (format === 'HH:MM:SS') {
+      const normalized = normalizeDateInput(String(value), format);
+      if (!/^\d{2}:\d{2}:\d{2}$/.test(normalized)) return false;
+      const [hh, mm, ss] = normalized.split(':').map(Number);
+      return hh < 24 && mm < 60 && ss < 60;
     }
-    const map = {
-      'YYYY-MM-DD': /^\d{4}-\d{2}-\d{2}$/,
-      'HH:MM:SS': /^\d{2}:\d{2}:\d{2}$/,
-    };
-    const re = map[format];
-    if (!re) return true;
-    if (!re.test(v)) return false;
-    if (format !== 'HH:MM:SS') {
-      const d = new Date(v.replace(' ', 'T'));
-      return !isNaN(d.getTime());
+    if (format === 'YYYY-MM-DD') {
+      const normalized = normalizeDateInput(String(value), format);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return false;
+      return isExistingDate(normalized);
     }
     return true;
   }
@@ -1673,13 +1664,22 @@ function InlineTransactionTable(
     if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
       return;
     }
+    const placeholder = placeholders[field];
+    const isDateField = placeholder === 'YYYY-MM-DD';
+    let processedValue = value;
+    if (
+      isDateField &&
+      (typeof value === 'string' || typeof value === 'number')
+    ) {
+      processedValue = normalizeDateInput(String(value ?? ''), 'YYYY-MM-DD');
+    }
     commitRowsUpdate(
       (r) =>
         r.map((row, i) => {
           if (i !== rowIdx) return row;
-          const updated = { ...row, [field]: value };
+          const updated = { ...row, [field]: processedValue };
           const conf = relationConfigMap[field];
-          let val = value;
+          let val = processedValue;
           if (val && typeof val === 'object' && 'value' in val) {
             val = val.value;
           }
@@ -1696,13 +1696,23 @@ function InlineTransactionTable(
         }),
       { indices: [rowIdx] },
     );
-    if (invalidCell && invalidCell.row === rowIdx && invalidCell.field === field) {
+    const normalizedForValidation =
+      isDateField && typeof processedValue === 'string'
+        ? normalizeDateInput(processedValue, 'YYYY-MM-DD')
+        : null;
+    const hasCompleteDate =
+      typeof normalizedForValidation === 'string' &&
+      /^\d{4}-\d{2}-\d{2}$/.test(normalizedForValidation);
+    if (isDateField && hasCompleteDate && !isValidDate(normalizedForValidation, 'YYYY-MM-DD')) {
+      setInvalidCell({ row: rowIdx, field });
+      setErrorMsg((labels[field] || field) + ' талбарт буруу огноо байна');
+    } else if (invalidCell && invalidCell.row === rowIdx && invalidCell.field === field) {
       setInvalidCell(null);
       setErrorMsg('');
     }
 
     const view = combinedViewSource[field];
-    if (view && value !== '') {
+    if (view && processedValue !== '') {
       const params = new URLSearchParams({ perPage: 1, debug: 1 });
       let hasFilter = false;
       const cols = (viewColumns[view] || []).map((c) =>
@@ -1711,7 +1721,7 @@ function InlineTransactionTable(
       Object.entries(combinedViewSource).forEach(([f, v]) => {
         if (v !== view) return;
         if (!cols.includes(f)) return;
-        let pv = f === field ? value : rows[rowIdx]?.[f];
+        let pv = f === field ? processedValue : rows[rowIdx]?.[f];
         if (pv === undefined || pv === '') return;
         if (typeof pv === 'object' && 'value' in pv) pv = pv.value;
         params.set(f, pv);
@@ -2070,6 +2080,16 @@ function InlineTransactionTable(
         minWidth: `${boxWidth}px`,
         maxWidth: `${boxMaxWidth}px`,
       };
+      if (
+        display !== null &&
+        display !== undefined &&
+        display !== '' &&
+        (placeholders[f] === 'YYYY-MM-DD' ||
+          fieldTypeMap[f] === 'date' ||
+          fieldTypeMap[f] === 'datetime')
+      ) {
+        display = formatDateDisplay(display);
+      }
       return (
         <div className="flex items-center" title={display}>
           <div
@@ -2091,10 +2111,12 @@ function InlineTransactionTable(
       const displayVal = typeof val === 'object' ? val.label ?? val.value : val;
       if (
         typeof displayVal === 'string' &&
-        isoDatePattern.test(displayVal) &&
-        !placeholders[f]
+        (placeholders[f] === 'YYYY-MM-DD' ||
+          fieldTypeMap[f] === 'date' ||
+          fieldTypeMap[f] === 'datetime' ||
+          isoDatePattern.test(displayVal))
       ) {
-        return normalizeDateInput(displayVal, 'YYYY-MM-DD');
+        return formatDateDisplay(displayVal);
       }
       return displayVal;
     }
@@ -2212,13 +2234,47 @@ function InlineTransactionTable(
       style: { ...inputStyle },
       value: normalizedVal,
       title: normalizedVal,
-      onChange: (e) => handleChange(idx, f, e.target.value),
+      onChange: (e) => {
+        const rawValue =
+          fieldType === 'date' ? replaceDateSeparators(e.target.value) : e.target.value;
+        if (fieldType === 'date' && rawValue !== e.target.value) {
+          const { selectionStart, selectionEnd } = e.target;
+          e.target.value = rawValue;
+          if (
+            typeof selectionStart === 'number' &&
+            typeof selectionEnd === 'number' &&
+            e.target.setSelectionRange
+          ) {
+            e.target.setSelectionRange(selectionStart, selectionEnd);
+          }
+        }
+        handleChange(idx, f, rawValue);
+      },
       ref: (el) => (inputRefs.current[`${idx}-${colIdx}`] = el),
       onKeyDown: (e) => handleKeyDown(e, idx, colIdx),
       onFocus: () => handleFocusField(f),
     };
     if (fieldType === 'date') {
-      return <input type="date" {...commonProps} />;
+      return (
+        <input
+          type="date"
+          {...commonProps}
+          onInput={(e) => {
+            const sanitized = replaceDateSeparators(e.target.value);
+            if (sanitized !== e.target.value) {
+              const { selectionStart, selectionEnd } = e.target;
+              e.target.value = sanitized;
+              if (
+                typeof selectionStart === 'number' &&
+                typeof selectionEnd === 'number' &&
+                e.target.setSelectionRange
+              ) {
+                e.target.setSelectionRange(selectionStart, selectionEnd);
+              }
+            }
+          }}
+        />
+      );
     }
     if (fieldType === 'time') {
       return <input type="time" {...commonProps} />;
