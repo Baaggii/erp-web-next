@@ -1030,7 +1030,12 @@ function InlineTransactionTable(
     }
   }
 
-  function applyProcedureResult(rowIdx, rowData, baseRows = rowsRef.current) {
+  function applyProcedureResult(
+    rowIdx,
+    rowData,
+    baseRows = rowsRef.current,
+    { protectedFields = null } = {},
+  ) {
     if (!rowData || typeof rowData !== 'object') {
       return {
         rows: Array.isArray(baseRows) ? [...baseRows] : baseRows,
@@ -1040,6 +1045,13 @@ function InlineTransactionTable(
     const sourceRows = Array.isArray(baseRows) ? baseRows : [];
     const arrayUpdates = new Map();
     const changedColumns = new Set();
+    const protectedLower = new Set();
+    if (protectedFields && typeof protectedFields.forEach === 'function') {
+      protectedFields.forEach((field) => {
+        if (!field && field !== 0) return;
+        protectedLower.add(String(field).toLowerCase());
+      });
+    }
     const next = sourceRows.map((row, i) => {
       if (i !== rowIdx) return row;
       const baseRow = row && typeof row === 'object' ? row : {};
@@ -1057,6 +1069,10 @@ function InlineTransactionTable(
         const shouldWrite = writableColumns.has(mappedKey) || existingKey;
         if (!shouldWrite) return;
         const targetKey = existingKey || mappedKey;
+        const lowerKey = targetKey.toLowerCase();
+        if (protectedLower.has(lowerKey)) {
+          return;
+        }
         const previousValue = existingKey ? updated[existingKey] : undefined;
         if (existingKey) {
           updated[existingKey] = rawValue;
@@ -1086,6 +1102,7 @@ function InlineTransactionTable(
       baseRows.map((row) => (row && typeof row === 'object' ? { ...row } : row)),
       baseRows,
     );
+    const manualOverrideByRow = new Map();
 
     if (
       rowOverride &&
@@ -1098,6 +1115,7 @@ function InlineTransactionTable(
       const originalRow = workingRows[rowIdx];
       const updatedRow = { ...originalRow };
       const keyLookup = {};
+      const manualOverrides = new Set();
       Object.keys(originalRow).forEach((key) => {
         keyLookup[key.toLowerCase()] = key;
       });
@@ -1107,6 +1125,11 @@ function InlineTransactionTable(
         if (typeof mappedKey !== 'string') return;
         const lower = mappedKey.toLowerCase();
         const existingKey = keyLookup[lower];
+        const targetKey = existingKey || mappedKey;
+        const prevValue = existingKey ? originalRow[existingKey] : undefined;
+        if (!valuesEqual(prevValue, rawValue)) {
+          manualOverrides.add(lower);
+        }
         if (existingKey) {
           updatedRow[existingKey] = rawValue;
         } else {
@@ -1116,6 +1139,9 @@ function InlineTransactionTable(
       });
       workingRows = workingRows.map((row, idx) => (idx === rowIdx ? updatedRow : row));
       workingRows = assignArrayMetadata(workingRows, baseRows);
+      if (manualOverrides.size > 0) {
+        manualOverrideByRow.set(rowIdx, manualOverrides);
+      }
     }
 
     const updates = [];
@@ -1427,6 +1453,7 @@ function InlineTransactionTable(
           rowIdx,
           rowData,
           workingRows,
+          { protectedFields: manualOverrideByRow.get(rowIdx) },
         );
         workingRows = updatedRows;
         if (changedColumns.size > 0) {
@@ -1452,7 +1479,9 @@ function InlineTransactionTable(
         (currentRows) => {
           let next = currentRows;
           updates.forEach(({ rowIdx: idx, rowData }) => {
-            const result = applyProcedureResult(idx, rowData, next);
+            const result = applyProcedureResult(idx, rowData, next, {
+              protectedFields: manualOverrideByRow.get(idx),
+            });
             next = result.rows;
           });
           return next;
