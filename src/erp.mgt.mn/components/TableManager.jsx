@@ -3828,6 +3828,8 @@ const TableManager = forwardRef(function TableManager({
         await ensureColumnMeta();
         const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
 
+        const temporaryId = getTemporaryId(entry);
+        setActiveTemporaryDraftId(temporaryId);
         setPendingTemporaryPromotion(null);
         setTemporaryPromotionQueue([]);
         setEditing(normalizedValues);
@@ -3841,6 +3843,7 @@ const TableManager = forwardRef(function TableManager({
         buildTemporaryFormState,
         canCreateTemporary,
         ensureColumnMeta,
+        setActiveTemporaryDraftId,
         setEditing,
         setGridRows,
         setIsAdding,
