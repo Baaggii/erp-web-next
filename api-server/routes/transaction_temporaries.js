@@ -55,6 +55,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       cleanedValues,
       tenant = {},
     } = req.body || {};
+    const io = req.app.get('io');
     const result = await createTemporarySubmission({
       tableName,
       formName,
@@ -68,6 +69,7 @@ router.post('/', requireAuth, async (req, res, next) => {
       departmentId: tenant.department_id ?? null,
       createdBy: req.user.empid,
       tenant,
+      io,
     });
     res.status(201).json(result);
   } catch (err) {
