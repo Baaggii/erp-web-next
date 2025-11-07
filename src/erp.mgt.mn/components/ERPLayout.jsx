@@ -3999,64 +3999,18 @@ function MainWindow({ title }) {
     });
   }, [canManageTours, hasTour, location.pathname, openTourBuilder, tourInfo]);
 
-  const handleViewTour = useCallback(async () => {
-    if (!hasTour || !tourInfo?.pageKey) return;
-
-    const resolvedPath = tourInfo.path || location.pathname;
-    let entry = tourInfo;
-
-    if ((!Array.isArray(entry.steps) || !entry.steps.length) && ensureTourDefinition) {
-      try {
-        const refreshed = await ensureTourDefinition({
-          pageKey: tourInfo.pageKey,
-          path: resolvedPath,
-          forceReload: true,
-        });
-        if (refreshed?.steps?.length) {
-          entry = refreshed;
-        }
-      } catch (err) {
-        console.error('Failed to refresh tour before viewing', err);
-      }
-    }
-
-    const steps = Array.isArray(entry?.steps) ? entry.steps : [];
-    if (!steps.length) {
-      addToast(
-        t('tour_missing_steps', 'This tour does not have any available steps to show.'),
-        'error',
-      );
-      return;
-    }
-
-    const started = startTour(entry.pageKey, steps, {
-      force: true,
-      path: entry.path || resolvedPath,
-    });
-
-    if (!started) {
-      addToast(
-        t('tour_start_failed', 'Unable to start the tour right now. Please try again.'),
-        'error',
-      );
-      return;
-    }
-
+  const handleViewTour = useCallback(() => {
+    if (!hasTour || !tourInfo) return;
     openTourViewer?.({
-      pageKey: entry.pageKey,
-      path: entry.path || resolvedPath,
-      steps,
+      pageKey: tourInfo.pageKey,
+      path: tourInfo.path || location.pathname,
+      steps: tourInfo.steps,
     });
-  }, [
-    addToast,
-    ensureTourDefinition,
-    hasTour,
-    location.pathname,
-    openTourViewer,
-    startTour,
-    t,
-    tourInfo,
-  ]);
+    startTour(tourInfo.pageKey, tourInfo.steps, {
+      force: true,
+      path: tourInfo.path || location.pathname,
+    });
+  }, [hasTour, location.pathname, openTourViewer, startTour, tourInfo]);
 
   return (
     <div style={styles.windowContainer}>
