@@ -3573,6 +3573,9 @@ export default function ERPLayout() {
             disableKeyboardNavigation={false}
             floaterProps={{ offset: joyrideScrollOffset }}
             styles={{
+              options: {
+                zIndex: 12000,
+              },
               overlay: {
                 backgroundColor: joyrideOverlayColor,
                 pointerEvents: isTourGuideMode ? 'none' : 'auto',

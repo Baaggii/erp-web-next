@@ -169,6 +169,12 @@ select[multiple] {
   box-shadow: 0 18px 48px rgba(15, 23, 42, 0.12);
   border: 1px solid rgba(148, 163, 184, 0.35);
   max-width: min(360px, 90vw);
+  z-index: 12020;
+}
+
+.react-joyride__spotlight,
+.react-joyride__overlay {
+  z-index: 12000;
 }
 
 .react-joyride__tooltip-header {
