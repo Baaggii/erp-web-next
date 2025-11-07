@@ -19,6 +19,7 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // Ensures cookie is stored
       body: JSON.stringify({ empid, password, companyId }),
+      skipErrorToast: true,
     });
   } catch (err) {
     // Network errors (e.g. server unreachable)
