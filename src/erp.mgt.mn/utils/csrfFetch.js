@@ -91,16 +91,40 @@ window.fetch = async (url, options = {}, _retry) => {
     return res;
   }
   if (!res.ok && !skipErrorToast) {
-    let errorMsg = res.statusText;
+    const status = res.status;
+    const contentType = res.headers.get('content-type') || '';
+    let errorMsg = res.statusText || `HTTP ${status}`;
+
     try {
-      const data = await res.clone().json();
-      if (data && data.message) errorMsg = data.message;
-    } catch {
-      try {
+      if (contentType.includes('application/json')) {
+        const data = await res.clone().json();
+        if (data && data.message) errorMsg = data.message;
+      } else {
         const text = await res.clone().text();
-        errorMsg = text.slice(0, 200);
-      } catch {}
+        const trimmed = text.trim();
+        if (
+          status === 503 ||
+          status === 502 ||
+          status === 504 ||
+          contentType.includes('text/html') ||
+          /^<!DOCTYPE html>/i.test(trimmed) ||
+          /<html[>\s]/i.test(trimmed)
+        ) {
+          errorMsg = 'Service unavailable';
+        } else if (trimmed) {
+          errorMsg = trimmed.slice(0, 200);
+        }
+      }
+    } catch {
+      if (status === 503 || status === 502 || status === 504) {
+        errorMsg = 'Service unavailable';
+      }
     }
+
+    if (status === 503 || status === 502 || status === 504) {
+      errorMsg = 'Service unavailable';
+    }
+
     if (import.meta.env.DEV) {
       console.error('API Error:', method, url, errorMsg);
     }
