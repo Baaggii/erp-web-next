@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useMemo } from 'react';
 import FinanceTransactionsPage from './FinanceTransactions.jsx';
 import { useModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
@@ -18,12 +18,28 @@ import {
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
   const modules = useModules();
-  const { company, branch, department, permissions: perms } = useContext(AuthContext);
+  const { company, branch, department, permissions: perms, session } = useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const { t } = useContext(I18nContext);
   const { t: tTip } = useTranslation('tooltip');
+
+  const userRights = useMemo(() => {
+    const source =
+      perms?.permissions && typeof perms.permissions === 'object'
+        ? perms.permissions
+        : session?.permissions && typeof session.permissions === 'object'
+        ? session.permissions
+        : {};
+    return Object.entries(source)
+      .filter(([, allowed]) => Boolean(allowed))
+      .map(([key]) => key);
+  }, [perms, session]);
+
+  const workplaceId = session?.workplace_id ?? session?.workplaceId ?? null;
+  const workplaceSessionId =
+    session?.workplace_session_id ?? session?.workplaceSessionId ?? null;
 
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
   const moduleMap = {};
@@ -67,6 +83,9 @@ export default function FormsIndex() {
           if (
             !hasTransactionFormAccess(info, branchId, departmentId, {
               allowTemporaryAnyScope: true,
+              userRights,
+              workplaceId,
+              workplaceSessionId,
             })
           )
             return;
@@ -80,7 +99,18 @@ export default function FormsIndex() {
         setTransactions(grouped);
       })
       .catch((err) => console.error('Error fetching forms:', err));
-  }, [company, perms, licensed, txnModules, modules, branch, department]);
+  }, [
+    company,
+    perms,
+    licensed,
+    txnModules,
+    modules,
+    branch,
+    department,
+    userRights,
+    workplaceId,
+    workplaceSessionId,
+  ]);
 
   const groups = Object.entries(transactions);
 

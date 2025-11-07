@@ -131,7 +131,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const [externalTemporaryTrigger, setExternalTemporaryTrigger] = useState(null);
-  const { company, branch, department, user, permissions: perms } = useContext(AuthContext);
+  const { company, branch, department, user, permissions: perms, session } = useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
@@ -424,6 +424,9 @@ useEffect(() => {
           if (
             !hasTransactionFormAccess(info, branchId, departmentId, {
               allowTemporaryAnyScope: true,
+              userRights,
+              workplaceId,
+              workplaceSessionId,
             })
           )
             return;
@@ -443,7 +446,17 @@ useEffect(() => {
         addToast('Failed to load transaction forms', 'error');
         setConfigs({});
       });
-  }, [moduleKey, company, branch, department, perms, licensed]);
+  }, [
+    moduleKey,
+    company,
+    branch,
+    department,
+    perms,
+    licensed,
+    userRights,
+    workplaceId,
+    workplaceSessionId,
+  ]);
 
   useEffect(() => {
     console.log('FinanceTransactions table sync effect');
@@ -1022,3 +1035,18 @@ useEffect(() => {
     </div>
   );
 }
+  const userRights = useMemo(() => {
+    const source =
+      perms?.permissions && typeof perms.permissions === 'object'
+        ? perms.permissions
+        : session?.permissions && typeof session.permissions === 'object'
+        ? session.permissions
+        : {};
+    return Object.entries(source)
+      .filter(([, allowed]) => Boolean(allowed))
+      .map(([key]) => key);
+  }, [perms, session]);
+
+  const workplaceId = session?.workplace_id ?? session?.workplaceId ?? null;
+  const workplaceSessionId =
+    session?.workplace_session_id ?? session?.workplaceSessionId ?? null;

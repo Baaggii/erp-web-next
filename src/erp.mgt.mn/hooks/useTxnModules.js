@@ -1,4 +1,4 @@
-import { useEffect, useState, useContext } from 'react';
+import { useEffect, useState, useContext, useMemo } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import { useCompanyModules } from './useCompanyModules.js';
@@ -14,7 +14,16 @@ const cache = {
 };
 const emitter = new EventTarget();
 
-function deriveTxnModuleState(data, branch, department, perms, licensed) {
+function deriveTxnModuleState(
+  data,
+  branch,
+  department,
+  perms,
+  licensed,
+  userRights,
+  workplaceId,
+  workplaceSessionId,
+) {
   const branchId = branch != null ? String(branch) : null;
   const departmentId = department != null ? String(department) : null;
   const keys = new Set();
@@ -29,6 +38,9 @@ function deriveTxnModuleState(data, branch, department, perms, licensed) {
       if (
         !hasTransactionFormAccess(info, branchId, departmentId, {
           allowTemporaryAnyScope: true,
+          userRights,
+          workplaceId,
+          workplaceSessionId,
         })
       )
         return;
@@ -88,12 +100,38 @@ export function refreshTxnModules() {
 }
 
 export function useTxnModules() {
-  const { branch, department, company, permissions: perms } = useContext(AuthContext);
+  const { branch, department, company, permissions: perms, session } = useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const [state, setState] = useState(() => createEmptyState());
 
+  const userRights = useMemo(() => {
+    const source =
+      perms?.permissions && typeof perms.permissions === 'object'
+        ? perms.permissions
+        : session?.permissions && typeof session.permissions === 'object'
+        ? session.permissions
+        : {};
+    return Object.entries(source)
+      .filter(([, allowed]) => Boolean(allowed))
+      .map(([key]) => key);
+  }, [perms, session]);
+
+  const workplaceId =
+    session?.workplace_id ?? session?.workplaceId ?? null;
+  const workplaceSessionId =
+    session?.workplace_session_id ?? session?.workplaceSessionId ?? null;
+
   function applyDerivedState(data) {
-    const derived = deriveTxnModuleState(data, branch, department, perms, licensed);
+    const derived = deriveTxnModuleState(
+      data,
+      branch,
+      department,
+      perms,
+      licensed,
+      userRights,
+      workplaceId,
+      workplaceSessionId,
+    );
     setState((prev) => (statesEqual(prev, derived) ? prev : derived));
   }
 
@@ -155,7 +193,16 @@ export function useTxnModules() {
     } else {
       applyDerivedState(cache.forms);
     }
-  }, [branch, department, company, perms, licensed]);
+  }, [
+    branch,
+    department,
+    company,
+    perms,
+    licensed,
+    userRights,
+    workplaceId,
+    workplaceSessionId,
+  ]);
 
   useEffect(() => {
     debugLog('useTxnModules effect: refresh listener');
