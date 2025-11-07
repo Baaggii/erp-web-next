@@ -69,35 +69,8 @@ test('login maps 503 HTML responses to the service unavailable error', { concurr
           : null;
       },
     },
-    clone() { return this; },
     json: async () => { throw new Error('not json'); },
     text: async () => '<!DOCTYPE html><html></html>',
-  }));
-
-  await assert.rejects(
-    login({ empid: '123', password: 'secret' }),
-    (err) => err instanceof Error && /Service unavailable/i.test(err.message),
-  );
-});
-
-test('login treats unexpected HTML responses as service unavailability', { concurrency: 1 }, async (t) => {
-  t.after(resetEnv);
-  installLocalStorageMock();
-
-  global.fetch = mock.fn(async () => ({
-    ok: false,
-    status: 500,
-    statusText: '',
-    headers: {
-      get(name) {
-        return name.toLowerCase() === 'content-type'
-          ? 'text/html'
-          : null;
-      },
-    },
-    clone() { return this; },
-    json: async () => { throw new Error('not json'); },
-    text: async () => '<html><body>Error</body></html>',
   }));
 
   await assert.rejects(

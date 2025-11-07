@@ -1,7 +1,5 @@
 import { API_BASE } from './apiBase.js';
 
-const isDevEnv = Boolean(typeof import.meta !== 'undefined' && import.meta?.env?.DEV);
-
 const originalFetch = window.fetch.bind(window);
 let tokenPromise;
 const controllers = new Set();
@@ -139,32 +137,17 @@ window.fetch = async (url, options = {}, _retry) => {
       return res;
     }
     if (!res.ok && !skipErrorToast) {
-      const contentType = (res.headers && typeof res.headers.get === 'function')
-        ? res.headers.get('content-type') || ''
-        : '';
       let errorMsg = res.statusText;
-      let fallbackText;
       try {
         const data = await res.clone().json();
         if (data && data.message) errorMsg = data.message;
       } catch {
         try {
-          fallbackText = await res.clone().text();
-          if (fallbackText) {
-            errorMsg = fallbackText.slice(0, 200);
-          }
+          const text = await res.clone().text();
+          errorMsg = text.slice(0, 200);
         } catch {}
       }
-      const trimmedText = typeof fallbackText === 'string' ? fallbackText.trim() : '';
-      const looksHtml = /text\/html/i.test(contentType)
-        || /^<!doctype/i.test(trimmedText)
-        || /^<html/i.test(trimmedText)
-        || /^<!doctype/i.test((errorMsg || '').trim())
-        || /^<html/i.test((errorMsg || '').trim());
-      if (res.status === 503 || looksHtml) {
-        errorMsg = 'Service unavailable';
-      }
-      if (isDevEnv) {
+      if (import.meta.env.DEV) {
         console.error('API Error:', method, url, errorMsg);
       }
       window.dispatchEvent(

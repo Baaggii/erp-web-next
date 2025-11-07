@@ -35,22 +35,10 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
     if (contentType.includes('application/json')) {
       const data = await res.json().catch(() => ({}));
       if (data && data.message) message = data.message;
+    } else if (res.status === 503) {
+      message = t('serviceUnavailable', 'Service unavailable');
     } else {
-      let fallbackText = '';
-      try {
-        fallbackText = await res.clone().text();
-      } catch {}
-      const trimmedText = fallbackText.trim();
-      const looksHtml = /text\/html/i.test(contentType)
-        || /^<!doctype/i.test(trimmedText)
-        || /^<html/i.test(trimmedText);
-      if (res.status === 503 || looksHtml) {
-        message = t('serviceUnavailable', 'Service unavailable');
-      } else if (fallbackText) {
-        message = fallbackText.slice(0, 200);
-      } else {
-        message = res.statusText || message;
-      }
+      message = res.statusText || message;
     }
     throw new Error(message);
   }
