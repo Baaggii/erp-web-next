@@ -915,7 +915,12 @@ export async function promoteTemporarySubmission(
         warnings: sanitationWarnings,
       });
     }
-    return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
+    return {
+      id,
+      promotedRecordId: promotedId,
+      warnings: sanitationWarnings,
+      posApi: resultPosApiDetails,
+    };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
