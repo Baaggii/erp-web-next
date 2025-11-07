@@ -426,44 +426,6 @@ function sanitizeTourStepsForRestart(steps) {
     });
 }
 
-function cloneTourStepForStorage(step) {
-  if (!step || typeof step !== "object") return null;
-
-  const clone = { ...step };
-
-  if (Array.isArray(step.selectors)) {
-    clone.selectors = step.selectors.slice();
-  }
-  if (Array.isArray(step.highlightSelectors)) {
-    clone.highlightSelectors = step.highlightSelectors.slice();
-  }
-  if (Array.isArray(step.missingTargetOriginalSelectors)) {
-    clone.missingTargetOriginalSelectors =
-      step.missingTargetOriginalSelectors.slice();
-  }
-  if (Array.isArray(step.missingTargetPauseWatchSelectors)) {
-    clone.missingTargetPauseWatchSelectors =
-      step.missingTargetPauseWatchSelectors.slice();
-  }
-
-  if (step.locale && typeof step.locale === "object") {
-    clone.locale = { ...step.locale };
-  }
-  if (step.styles && typeof step.styles === "object") {
-    clone.styles = { ...step.styles };
-  }
-  if (step.floaterProps && typeof step.floaterProps === "object") {
-    clone.floaterProps = { ...step.floaterProps };
-  }
-
-  return clone;
-}
-
-function cloneTourStepsForStorage(steps) {
-  if (!Array.isArray(steps)) return [];
-  return steps.map((step) => cloneTourStepForStorage(step)).filter(Boolean);
-}
-
 function JoyrideTooltip({
   index = 0,
   size = 0,
@@ -1146,14 +1108,6 @@ export default function ERPLayout() {
         activeTourRunIdRef.current = nextRunId;
         setActiveTourRunId(nextRunId);
 
-        activeTourOriginalEntryRef.current = entry
-          ? {
-              pageKey: entry.pageKey,
-              path: entry.path,
-              steps: cloneTourStepsForStorage(entry.steps),
-            }
-          : null;
-
         const joyrideSteps = runnableSteps.map((step) => ({
           ...step,
           target: step.target || step.selector || step.id,
@@ -1172,7 +1126,6 @@ export default function ERPLayout() {
       return false;
     },
     [
-      activeTourOriginalEntryRef,
       location.pathname,
       normalizePath,
       registerTourEntry,
