@@ -225,12 +225,37 @@ function coerceSelectorValue(value) {
   return String(value);
 }
 
+function coerceSelectorArray(value) {
+  if (Array.isArray(value)) return value;
+  if (value && typeof value === "object" && Array.isArray(value.selectors)) {
+    return value.selectors;
+  }
+  if (typeof value !== "string") return [];
+
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+
+  if ((trimmed.startsWith("[") && trimmed.endsWith("]")) || trimmed.includes("\"")) {
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    } catch (err) {
+      // Ignore JSON parse failures and fall back to delimiter splitting below.
+    }
+  }
+
+  return trimmed
+    .split(/[;,\n\r]+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function normalizeSelectorList(selectors, fallback) {
-  const list = Array.isArray(selectors)
-    ? selectors
-        .map((value) => coerceSelectorValue(value).trim())
-        .filter(Boolean)
-    : [];
+  const list = coerceSelectorArray(selectors)
+    .map((value) => coerceSelectorValue(value).trim())
+    .filter(Boolean);
   const seen = new Set();
   const normalized = [];
   list.forEach((value) => {
@@ -245,6 +270,191 @@ function normalizeSelectorList(selectors, fallback) {
   return normalized;
 }
 
+function isElementVisibleInViewport(element) {
+  if (!element || typeof element.getBoundingClientRect !== "function") {
+    return false;
+  }
+
+  const rect = element.getBoundingClientRect();
+  if (!rect || rect.width <= 0 || rect.height <= 0) {
+    return false;
+  }
+
+  if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+    let current = element;
+    while (current && current instanceof HTMLElement) {
+      const style = window.getComputedStyle(current);
+      if (!style) break;
+      if (style.visibility === "hidden" || style.display === "none") {
+        return false;
+      }
+      const opacity = Number.parseFloat(style.opacity ?? "1");
+      if (Number.isFinite(opacity) && opacity <= 0) {
+        return false;
+      }
+      if (current === current.ownerDocument?.body) {
+        break;
+      }
+      current = current.parentElement;
+    }
+  }
+
+  if (typeof window !== "undefined") {
+    const viewportWidth = window.innerWidth || element.ownerDocument?.documentElement?.clientWidth || 0;
+    const viewportHeight = window.innerHeight || element.ownerDocument?.documentElement?.clientHeight || 0;
+    if (viewportWidth && (rect.right < 0 || rect.left > viewportWidth)) {
+      return false;
+    }
+    if (viewportHeight && (rect.bottom < 0 || rect.top > viewportHeight)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function getTourStepSelectorCandidates(step) {
+  if (!step || typeof step !== "object") return [];
+  const selectors = [];
+  const seen = new Set();
+  const pushSelector = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed || seen.has(trimmed)) return;
+    seen.add(trimmed);
+    selectors.push(trimmed);
+  };
+
+  pushSelector(step.target);
+  pushSelector(step.selector);
+  coerceSelectorArray(step.selectors).forEach(pushSelector);
+  coerceSelectorArray(step.highlightSelectors).forEach(pushSelector);
+
+  return selectors;
+}
+
+function isTourStepTargetVisible(step) {
+  if (!step || step.missingTargetPauseStep) {
+    return true;
+  }
+  if (typeof document === "undefined" || typeof document.querySelectorAll !== "function") {
+    return true;
+  }
+
+  const selectors = getTourStepSelectorCandidates(step);
+  if (!selectors.length) {
+    return true;
+  }
+
+  for (const selector of selectors) {
+    try {
+      const nodes = document.querySelectorAll(selector);
+      if (!nodes || nodes.length === 0) {
+        continue;
+      }
+      for (const node of nodes) {
+        if (!(node instanceof HTMLElement)) continue;
+        if (isElementVisibleInViewport(node)) {
+          return true;
+        }
+      }
+    } catch (err) {
+      // ignore invalid selectors
+    }
+  }
+
+  return false;
+}
+
+function getViewportSignature() {
+  if (typeof window === "undefined") return "ssr";
+  const width = Math.round(
+    window.innerWidth || document?.documentElement?.clientWidth || 0,
+  );
+  const height = Math.round(
+    window.innerHeight || document?.documentElement?.clientHeight || 0,
+  );
+  const ratio =
+    typeof window.devicePixelRatio === "number"
+      ? window.devicePixelRatio.toFixed(2)
+      : "1";
+  return `${width}x${height}@${ratio}`;
+}
+
+function elementIsProbablyFixed(element) {
+  if (
+    typeof window === "undefined" ||
+    !element ||
+    typeof element !== "object"
+  ) {
+    return false;
+  }
+
+  const root = element.ownerDocument?.documentElement || document.documentElement;
+  let current = element;
+  while (current && current !== document.body && current.nodeType === 1) {
+    const style =
+      typeof window.getComputedStyle === "function"
+        ? window.getComputedStyle(current)
+        : null;
+    const position = style?.position?.toLowerCase() || "";
+    if (position === "fixed") {
+      return true;
+    }
+
+    if (position === "sticky") {
+      const rect =
+        typeof current.getBoundingClientRect === "function"
+          ? current.getBoundingClientRect()
+          : null;
+      const viewportHeight = window.innerHeight || root?.clientHeight || 0;
+      const top = Number.parseFloat(style?.top ?? "");
+      const bottom = Number.parseFloat(style?.bottom ?? "");
+      const stuckToTop =
+        Number.isFinite(top) && rect ? Math.abs(rect.top - top) <= 1 : false;
+      const stuckToBottom = Number.isFinite(bottom)
+        ? rect && Math.abs(viewportHeight - rect.bottom - bottom) <= 1
+        : false;
+
+      if (stuckToTop || stuckToBottom) {
+        return true;
+      }
+    }
+
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function findStepTargetElement(step) {
+  if (typeof document === "undefined") return null;
+  if (!step || typeof step !== "object") return null;
+
+  const selectors = new Set();
+  const addSelector = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    selectors.add(trimmed);
+  };
+
+  coerceSelectorArray(step.selectors).forEach(addSelector);
+  coerceSelectorArray(step.highlightSelectors).forEach(addSelector);
+  addSelector(step.selector);
+  addSelector(step.target);
+
+  for (const selector of selectors) {
+    try {
+      const element = document.querySelector(selector);
+      if (element) return element;
+    } catch (err) {
+      // Ignore invalid selectors.
+    }
+  }
+
+  return null;
+}
+
 function normalizeClientStep(step, index = 0) {
   if (!step || typeof step !== 'object') return null;
   const selectorRaw =
@@ -253,8 +463,16 @@ function normalizeClientStep(step, index = 0) {
       : typeof step.target === 'string' && step.target.trim()
         ? step.target.trim()
         : '';
-  const selectors = normalizeSelectorList(step.selectors, selectorRaw);
+  const selectorCandidates = [
+    ...coerceSelectorArray(step.selectors),
+    ...coerceSelectorArray(step.highlightSelectors),
+  ];
+  const selectors = normalizeSelectorList(selectorCandidates, selectorRaw);
   const selector = selectors[0] || '';
+  const highlightSelectors = normalizeSelectorList(
+    coerceSelectorArray(step.highlightSelectors),
+    selector || selectorRaw,
+  );
   const content =
     typeof step.content === 'string' || typeof step.content === 'number'
       ? String(step.content)
@@ -282,16 +500,16 @@ function normalizeClientStep(step, index = 0) {
       typeof step.id === 'string' && step.id.trim() ? step.id.trim() : createClientStepId(),
     selectors,
     selector,
-    target: selector || '',
+    target: selector || (highlightSelectors[0] || ''),
     content,
     placement,
     order,
+    disableBeacon: true,
   };
 
   if (title !== undefined && title !== '') normalized.title = title;
   if (offset !== undefined) normalized.offset = offset;
   if (spotlightPadding !== undefined) normalized.spotlightPadding = spotlightPadding;
-  if (step.disableBeacon !== undefined) normalized.disableBeacon = Boolean(step.disableBeacon);
   if (step.isFixed !== undefined) normalized.isFixed = Boolean(step.isFixed);
   if (step.locale) normalized.locale = step.locale;
   if (step.tooltip) normalized.tooltip = step.tooltip;
@@ -300,8 +518,8 @@ function normalizeClientStep(step, index = 0) {
     normalized.floaterProps = step.floaterProps;
   }
 
-  if (selectors.length) {
-    normalized.highlightSelectors = selectors;
+  if (highlightSelectors.length) {
+    normalized.highlightSelectors = highlightSelectors;
   }
 
   return normalized;
@@ -313,14 +531,15 @@ function computeStepSignature(steps) {
     steps.map((step) => ({
       id: step.id,
       selector: step.selector,
-      selectors: Array.isArray(step.selectors) ? step.selectors : [],
+      selectors: coerceSelectorArray(step.selectors),
+      highlightSelectors: coerceSelectorArray(step.highlightSelectors),
       content: step.content,
       placement: step.placement,
       order: step.order,
       title: step.title ?? '',
       offset: step.offset ?? null,
       spotlightPadding: step.spotlightPadding ?? null,
-      disableBeacon: step.disableBeacon ?? false,
+      disableBeacon: step.disableBeacon ?? true,
       isFixed: step.isFixed ?? false,
     })),
   );
@@ -341,12 +560,9 @@ function sanitizeTourStepsForRestart(steps) {
           ? step.missingTargetOriginalTarget.trim()
           : "";
 
-      const originalSelectorsRaw = Array.isArray(
+      const originalSelectors = coerceSelectorArray(
         step.missingTargetOriginalSelectors,
       )
-        ? step.missingTargetOriginalSelectors
-        : [];
-      const originalSelectors = originalSelectorsRaw
         .map((value) => (typeof value === "string" ? value.trim() : ""))
         .filter(Boolean);
 
@@ -358,11 +574,9 @@ function sanitizeTourStepsForRestart(steps) {
       const normalizedSelectors = normalizeSelectorList(
         originalSelectors.length
           ? originalSelectors
-          : Array.isArray(step.selectors)
-            ? step.selectors
-                .map((value) => (typeof value === "string" ? value.trim() : ""))
-                .filter(Boolean)
-            : [],
+          : coerceSelectorArray(step.selectors)
+              .map((value) => (typeof value === "string" ? value.trim() : ""))
+              .filter(Boolean),
         fallbackSelector,
       );
 
@@ -401,11 +615,19 @@ function sanitizeTourStepsForRestart(steps) {
         sanitized.selector = sanitized.selector.trim();
       }
 
+      sanitized.disableBeacon = true;
+
       if ("__runId" in sanitized) {
         delete sanitized.__runId;
       }
       if ("runId" in sanitized) {
         delete sanitized.runId;
+      }
+      if ("__autoFixed" in sanitized) {
+        delete sanitized.__autoFixed;
+      }
+      if ("__viewportSignature" in sanitized) {
+        delete sanitized.__viewportSignature;
       }
 
       delete sanitized.missingTarget;
@@ -611,7 +833,14 @@ function JoyrideTooltip({
 
 function stripStepForSave(step) {
   if (!step || typeof step !== 'object') return step;
-  const { target, highlightSelectors, __runId, ...rest } = step;
+  const {
+    target,
+    highlightSelectors,
+    __runId,
+    __autoFixed,
+    __viewportSignature,
+    ...rest
+  } = step;
   return rest;
 }
 
@@ -1010,6 +1239,116 @@ export default function ERPLayout() {
     return () => window.removeEventListener('resize', handler);
   }, []);
 
+  const adjustStepsForViewport = useCallback((steps) => {
+    if (!Array.isArray(steps) || !steps.length) return steps;
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return steps;
+    }
+
+    const signature = getViewportSignature();
+    let changed = false;
+
+    const adjusted = steps.map((step) => {
+      if (!step || typeof step !== "object") return step;
+
+      const element = findStepTargetElement(step);
+      const hasElement = !!element;
+      const shouldBeFixed = hasElement ? elementIsProbablyFixed(element) : false;
+      const hadAutoFixed = step.__autoFixed === true;
+      const hasManualFixed = !hadAutoFixed && step.isFixed === true;
+      const needsSignatureUpdate = step.__viewportSignature !== signature;
+
+      const shouldApplyAutoFix = hasElement && shouldBeFixed && !hasManualFixed;
+      const shouldRemoveAutoFix = hasElement && hadAutoFixed && !shouldBeFixed;
+      const maintainAutoFlag = hadAutoFixed && !shouldRemoveAutoFix;
+
+      if (
+        !shouldApplyAutoFix &&
+        !shouldRemoveAutoFix &&
+        !needsSignatureUpdate &&
+        !maintainAutoFlag
+      ) {
+        return step;
+      }
+
+      const nextStep = { ...step };
+      let mutated = false;
+
+      if (shouldApplyAutoFix) {
+        if (!nextStep.isFixed) {
+          nextStep.isFixed = true;
+          mutated = true;
+        }
+        if (nextStep.__autoFixed !== true) {
+          nextStep.__autoFixed = true;
+          mutated = true;
+        }
+      } else if (shouldRemoveAutoFix) {
+        if ("isFixed" in nextStep) {
+          delete nextStep.isFixed;
+          mutated = true;
+        }
+        if ("__autoFixed" in nextStep) {
+          delete nextStep.__autoFixed;
+          mutated = true;
+        }
+      } else if (maintainAutoFlag && nextStep.__autoFixed !== true) {
+        nextStep.__autoFixed = true;
+        mutated = true;
+      }
+
+      if (needsSignatureUpdate) {
+        nextStep.__viewportSignature = signature;
+        mutated = true;
+      }
+
+      if (mutated) {
+        changed = true;
+        return nextStep;
+      }
+
+      return step;
+    });
+
+    return changed ? adjusted : steps;
+  }, []);
+
+  const applyViewportAdjustments = useCallback(() => {
+    setTourSteps((prev) => {
+      if (!Array.isArray(prev) || !prev.length) return prev;
+      const adjusted = adjustStepsForViewport(prev);
+      if (adjusted === prev) return prev;
+      return adjusted;
+    });
+  }, [adjustStepsForViewport]);
+
+  useEffect(() => {
+    if (!runTour) return undefined;
+    if (typeof window === "undefined") return undefined;
+
+    let frameId = null;
+    const handleResize = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        applyViewportAdjustments();
+      });
+    };
+
+    handleResize();
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
+  }, [applyViewportAdjustments, runTour]);
+
   const registerTourEntry = useCallback(
     (pageKey, stepsInput = [], pathValue) => {
       if (!pageKey) return null;
@@ -1022,7 +1361,11 @@ export default function ERPLayout() {
       normalizedSteps.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
       normalizedSteps.forEach((step, index) => {
         step.order = index;
-        step.target = step.selector || step.target || '';
+        const highlightCandidates = coerceSelectorArray(step.highlightSelectors);
+        const highlightFallback = highlightCandidates.length
+          ? highlightCandidates[0]
+          : '';
+        step.target = step.selector || highlightFallback || step.target || '';
       });
       const signature = computeStepSignature(normalizedSteps);
       const existingEntry = toursByPageRef.current[pageKey];
@@ -1108,7 +1451,8 @@ export default function ERPLayout() {
         activeTourRunIdRef.current = nextRunId;
         setActiveTourRunId(nextRunId);
 
-        const joyrideSteps = runnableSteps.map((step) => ({
+        const responsiveSteps = adjustStepsForViewport(runnableSteps);
+        const joyrideSteps = responsiveSteps.map((step) => ({
           ...step,
           target: step.target || step.selector || step.id,
           __runId: nextRunId,
@@ -1126,6 +1470,7 @@ export default function ERPLayout() {
       return false;
     },
     [
+      adjustStepsForViewport,
       location.pathname,
       normalizePath,
       registerTourEntry,
@@ -1358,7 +1703,20 @@ export default function ERPLayout() {
     paths.add('/notifications');
     return paths;
   }, [modules, moduleMap]);
-  const { addToast } = useToast();
+  const toastApi = useToast();
+  const addToast = useCallback(
+    (message, type) => {
+      if (toastApi && typeof toastApi.addToast === "function") {
+        toastApi.addToast(message, type);
+        return;
+      }
+      if (typeof console !== "undefined" && typeof console.warn === "function") {
+        const typeLabel = type ? `[${type}] ` : "";
+        console.warn(`${typeLabel}${message}`);
+      }
+    },
+    [toastApi],
+  );
 
   function titleForPath(path) {
     if (titleMap[path]) return titleMap[path];
@@ -1451,6 +1809,7 @@ export default function ERPLayout() {
                         ...restStep
                       } = targetStep;
                       const restoredStep = { ...restStep };
+                      restoredStep.disableBeacon = true;
                       if (missingTargetOriginalSelectors) {
                         restoredStep.selectors = missingTargetOriginalSelectors;
                         restoredStep.selector = missingTargetOriginalSelectors[0];
@@ -1475,7 +1834,21 @@ export default function ERPLayout() {
               stopMissingTargetWatcher();
             }
             const delta = action === ACTIONS.PREV ? -1 : 1;
+            const currentClampedIndex = clampIndex(index);
             const nextIndex = clampIndex(index + delta);
+            if (delta > 0 && nextIndex !== currentClampedIndex) {
+              const nextStep = tourSteps[nextIndex];
+              if (nextStep && !isTourStepTargetVisible(nextStep)) {
+                const message = t(
+                  "tour_next_step_hidden",
+                  "Reveal the next control before continuing the tour.",
+                );
+                addToast(message, "warning");
+                setTourStepIndex(currentClampedIndex);
+                updateViewerIndex(currentClampedIndex);
+                return;
+              }
+            }
             setTourStepIndex(nextIndex);
             updateViewerIndex(nextIndex);
           } else if (type === EVENTS.TARGET_NOT_FOUND && isCurrentRun) {
@@ -1549,17 +1922,15 @@ export default function ERPLayout() {
                   : "";
 
               const combinedSelectorsSet = new Set();
-              const selectorsFromStep = Array.isArray(currentStep.selectors)
-                ? currentStep.selectors
-                    .map((value) => (typeof value === "string" ? value.trim() : ""))
-                    .filter(Boolean)
-                : [];
+              const selectorsFromStep = coerceSelectorArray(currentStep.selectors)
+                .map((value) => (typeof value === "string" ? value.trim() : ""))
+                .filter(Boolean);
               selectorsFromStep.forEach((value) => combinedSelectorsSet.add(value));
-              const highlightSelectors = Array.isArray(currentStep.highlightSelectors)
-                ? currentStep.highlightSelectors
-                    .map((value) => (typeof value === "string" ? value.trim() : ""))
-                    .filter(Boolean)
-                : [];
+              const highlightSelectors = coerceSelectorArray(
+                currentStep.highlightSelectors,
+              )
+                .map((value) => (typeof value === "string" ? value.trim() : ""))
+                .filter(Boolean);
               highlightSelectors.forEach((value) => combinedSelectorsSet.add(value));
               if (trimmedTarget && trimmedTarget !== fallbackSelector) {
                 combinedSelectorsSet.add(trimmedTarget);
@@ -1652,12 +2023,12 @@ export default function ERPLayout() {
                       } else {
                         pushTargetSelector(trimmedTarget);
                         pushTargetSelector(trimmedSelector);
-                        if (Array.isArray(currentStep.selectors)) {
-                          currentStep.selectors.forEach((value) => pushTargetSelector(value));
-                        }
-                        if (Array.isArray(currentStep.highlightSelectors)) {
-                          currentStep.highlightSelectors.forEach((value) => pushTargetSelector(value));
-                        }
+                        coerceSelectorArray(currentStep.selectors).forEach((value) =>
+                          pushTargetSelector(value),
+                        );
+                        coerceSelectorArray(currentStep.highlightSelectors).forEach(
+                          (value) => pushTargetSelector(value),
+                        );
                       }
 
                       const targetRects = [];
@@ -1810,24 +2181,20 @@ export default function ERPLayout() {
                       updatedPauseStep.missingTargetPauseWatchSelectors = normalizedWatch;
                       mutated = true;
                     }
-                    const normalizedPauseSelectors = Array.isArray(
+                    const normalizedPauseSelectors = coerceSelectorArray(
                       updatedPauseStep.selectors,
                     )
-                      ? updatedPauseStep.selectors
-                          .map((value) =>
-                            typeof value === "string" ? value.trim() : "",
-                          )
-                          .filter(Boolean)
-                      : [];
-                    const normalizedPauseHighlights = Array.isArray(
+                      .map((value) =>
+                        typeof value === "string" ? value.trim() : "",
+                      )
+                      .filter(Boolean);
+                    const normalizedPauseHighlights = coerceSelectorArray(
                       updatedPauseStep.highlightSelectors,
                     )
-                      ? updatedPauseStep.highlightSelectors
-                          .map((value) =>
-                            typeof value === "string" ? value.trim() : "",
-                          )
-                          .filter(Boolean)
-                      : [];
+                      .map((value) =>
+                        typeof value === "string" ? value.trim() : "",
+                      )
+                      .filter(Boolean);
                     const selectorsChanged =
                       normalizedPauseSelectors.length !==
                         fallbackHighlightSelectors.length ||
@@ -1980,6 +2347,7 @@ export default function ERPLayout() {
                 missingTargetOriginalSelectors: normalizedOriginalSelectors,
                 missingTargetPauseStepId: pauseStepId,
               };
+              updatedCurrentStep.disableBeacon = true;
               if (normalizedOriginalSelectors.length) {
                 updatedCurrentStep.selectors = normalizedOriginalSelectors;
                 updatedCurrentStep.highlightSelectors = normalizedOriginalSelectors;
@@ -2001,6 +2369,7 @@ export default function ERPLayout() {
                 missingTargetPauseWatchSelectors: watchSelectors,
                 missingTargetPauseTooltipMessage: tooltipMessage,
               };
+              placeholder.disableBeacon = true;
               delete placeholder.missingTargetPauseHasArrow;
               delete placeholder.missingTargetPauseArrowSelector;
               delete placeholder.missingTargetPauseArrowMessage;
@@ -2097,6 +2466,7 @@ export default function ERPLayout() {
       });
     },
     [
+      addToast,
       currentTourPage,
       endTour,
       startMissingTargetWatcher,
@@ -2143,12 +2513,10 @@ export default function ERPLayout() {
 
     pushSelector(primarySelectorRaw);
 
-    if (Array.isArray(step.highlightSelectors)) {
-      step.highlightSelectors.forEach((value) => pushSelector(value));
-    }
-    if (Array.isArray(step.selectors)) {
-      step.selectors.forEach((value) => pushSelector(value));
-    }
+    coerceSelectorArray(step.highlightSelectors).forEach((value) =>
+      pushSelector(value),
+    );
+    coerceSelectorArray(step.selectors).forEach((value) => pushSelector(value));
 
     const trimmedSelectors = selectors.filter(Boolean);
     const primaryElement =
@@ -2445,12 +2813,8 @@ export default function ERPLayout() {
     };
 
     addSelector(step.missingTargetPauseArrowSelector);
-    if (Array.isArray(step.highlightSelectors)) {
-      step.highlightSelectors.forEach(addSelector);
-    }
-    if (Array.isArray(step.selectors)) {
-      step.selectors.forEach(addSelector);
-    }
+    coerceSelectorArray(step.highlightSelectors).forEach(addSelector);
+    coerceSelectorArray(step.selectors).forEach(addSelector);
 
     const selectors = Array.from(selectorsSet);
 
@@ -3802,18 +4166,71 @@ function MainWindow({ title }) {
     });
   }, [canManageTours, hasTour, location.pathname, openTourBuilder, tourInfo]);
 
-  const handleViewTour = useCallback(() => {
-    if (!hasTour || !tourInfo) return;
-    openTourViewer?.({
-      pageKey: tourInfo.pageKey,
-      path: tourInfo.path || location.pathname,
-      steps: tourInfo.steps,
-    });
-    startTour(tourInfo.pageKey, tourInfo.steps, {
+  const handleViewTour = useCallback(async () => {
+    if (!hasTour || !tourInfo?.pageKey) return;
+
+    const resolvedPath = tourInfo.path || location.pathname;
+    let entry = tourInfo;
+
+    if (ensureTourDefinition) {
+      try {
+        const refreshed = await ensureTourDefinition({
+          pageKey: tourInfo.pageKey,
+          path: resolvedPath,
+          forceReload: true,
+        });
+        if (refreshed) {
+          entry = refreshed;
+        }
+      } catch (err) {
+        console.error('Failed to refresh tour before viewing', err);
+        addToast(
+          t(
+            'tour_refresh_failed',
+            'Unable to refresh this tour right now. Showing the last saved version.',
+          ),
+          'warning',
+        );
+      }
+    }
+
+    const steps = Array.isArray(entry?.steps) ? entry.steps : [];
+    if (!steps.length) {
+      addToast(
+        t('tour_missing_steps', 'This tour does not have any available steps to show.'),
+        'error',
+      );
+      return;
+    }
+
+    const started = startTour(entry.pageKey, steps, {
       force: true,
-      path: tourInfo.path || location.pathname,
+      path: entry.path || resolvedPath,
     });
-  }, [hasTour, location.pathname, openTourViewer, startTour, tourInfo]);
+
+    if (!started) {
+      addToast(
+        t('tour_start_failed', 'Unable to start the tour right now. Please try again.'),
+        'error',
+      );
+      return;
+    }
+
+    openTourViewer?.({
+      pageKey: entry.pageKey,
+      path: entry.path || resolvedPath,
+      steps,
+    });
+  }, [
+    addToast,
+    ensureTourDefinition,
+    hasTour,
+    location.pathname,
+    openTourViewer,
+    startTour,
+    t,
+    tourInfo,
+  ]);
 
   return (
     <div style={styles.windowContainer}>
