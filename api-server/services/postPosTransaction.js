@@ -148,7 +148,7 @@ function assignArrayMetadata(target, source) {
   return target;
 }
 
-export async function persistPosApiResponse(table, id, response) {
+async function persistPosApiResponse(table, id, response) {
   if (!table || id === undefined || id === null) return;
   if (!response || typeof response !== 'object') return;
   const columnMap = await getTableColumnNameMap(table);
@@ -1239,13 +1239,6 @@ export async function postPosTransactionWithEbarimt(
   const layoutName = typeof name === 'string' ? name.trim() : '';
   if (!layoutName) {
     const err = new Error('POS transaction layout name is required');
-    err.status = 400;
-    throw err;
-  }
-
-  const { config: generalCfg } = await getGeneralConfig(companyId);
-  if (!generalCfg?.general?.ebarimtPosApiEnabled) {
-    const err = new Error('POSAPI Ebarimt submissions are disabled');
     err.status = 400;
     throw err;
   }

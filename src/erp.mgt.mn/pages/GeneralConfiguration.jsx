@@ -480,24 +480,6 @@ export default function GeneralConfiguration() {
           </div>
           <div style={{ marginBottom: '0.5rem' }}>
             <TooltipWrapper
-              title={t('ebarimt_posapi_enabled', {
-                ns: 'tooltip',
-                defaultValue: 'Allow issuing Ebarimt receipts via POSAPI',
-              })}
-            >
-              <label>
-                Enable POSAPI Ebarimt{' '}
-                <input
-                  name="ebarimtPosApiEnabled"
-                  type="checkbox"
-                  checked={active.ebarimtPosApiEnabled ?? false}
-                  onChange={handleChange}
-                />
-              </label>
-            </TooltipWrapper>
-          </div>
-          <div style={{ marginBottom: '0.5rem' }}>
-            <TooltipWrapper
               title={t('workplace_toast_enabled', {
                 ns: 'tooltip',
                 defaultValue:
