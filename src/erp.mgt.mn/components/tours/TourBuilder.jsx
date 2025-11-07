@@ -361,10 +361,12 @@ export default function TourBuilder({ state, onClose }) {
       current.element.style.boxShadow = current.boxShadow;
     }
     if (element && element instanceof HTMLElement) {
+      const outline = current.element === element ? current.outline : element.style.outline;
+      const boxShadow = current.element === element ? current.boxShadow : element.style.boxShadow;
       highlightRef.current = {
         element,
-        outline: element.style.outline,
-        boxShadow: element.style.boxShadow,
+        outline,
+        boxShadow,
       };
       element.style.outline = '3px solid #f97316';
       element.style.boxShadow = '0 0 0 4px rgba(249, 115, 22, 0.35)';
