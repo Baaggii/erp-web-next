@@ -41,11 +41,42 @@ router.get('/', requireAuth, async (req, res, next) => {
       req.session?.department_id ??
       req.session?.departmentId;
 
+    const sessionWorkplace =
+      session?.workplace_id ??
+      session?.workplaceId ??
+      req.session?.workplace_id ??
+      req.session?.workplaceId;
+    const sessionWorkplaceSession =
+      session?.workplace_session_id ??
+      session?.workplaceSessionId ??
+      req.session?.workplace_session_id ??
+      req.session?.workplaceSessionId;
+
     const branchId = pickScopeValue(req.query.branchId, sessionBranch);
     const departmentId = pickScopeValue(
       req.query.departmentId,
       sessionDepartment,
     );
+    const workplaceId = pickScopeValue(
+      req.query.workplaceId ?? req.query.workplace_id,
+      sessionWorkplace,
+    );
+    const workplaceSessionId = pickScopeValue(
+      req.query.workplaceSessionId ?? req.query.workplace_session_id,
+      sessionWorkplaceSession,
+    );
+
+    const rightsSource =
+      actions?.permissions && typeof actions.permissions === 'object'
+        ? actions.permissions
+        : session?.permissions && typeof session.permissions === 'object'
+        ? session.permissions
+        : req.session?.permissions && typeof req.session.permissions === 'object'
+        ? req.session.permissions
+        : {};
+    const userRights = Object.entries(rightsSource)
+      .filter(([, allowed]) => Boolean(allowed))
+      .map(([key]) => key);
 
     if (name) {
       const { config, isDefault } = await getConfig(name, companyId);
@@ -53,14 +84,24 @@ router.get('/', requireAuth, async (req, res, next) => {
         res.status(404).json({ message: 'POS config not found', isDefault });
         return;
       }
-      if (!hasPosTransactionAccess(config, branchId, departmentId)) {
+      if (
+        !hasPosTransactionAccess(config, branchId, departmentId, {
+          userRights,
+          workplaceId,
+          workplaceSessionId,
+        })
+      ) {
         res.status(403).json({ message: 'Access denied', isDefault });
         return;
       }
       res.json({ ...config, isDefault });
     } else {
       const { config, isDefault } = await getAllConfigs(companyId);
-      const filtered = filterPosConfigsByAccess(config, branchId, departmentId);
+      const filtered = filterPosConfigsByAccess(config, branchId, departmentId, {
+        userRights,
+        workplaceId,
+        workplaceSessionId,
+      });
       res.json({ ...filtered, isDefault });
     }
   } catch (err) {
