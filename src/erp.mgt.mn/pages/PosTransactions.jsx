@@ -20,10 +20,7 @@ import { syncCalcFields, normalizeCalcFieldConfig } from '../utils/syncCalcField
 import { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
-import {
-  filterPosConfigsByAccess,
-  hasPosTransactionAccess,
-} from '../utils/posTransactionAccess.js';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
   isModuleLicensed,
   isModulePermissionGranted,
@@ -1132,7 +1129,6 @@ export default function PosTransactionsPage() {
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
   const [rawConfigs, setRawConfigs] = useState({});
-  const [name, setName] = useState('');
   const configs = useMemo(() => {
     if (!rawConfigs || typeof rawConfigs !== 'object') return {};
     if (
@@ -1174,10 +1170,9 @@ export default function PosTransactionsPage() {
           workplaceId,
         })
       ) {
-        return { [name]: rawConfigs[name] };
+        filtered[cfgName] = cfgValue;
       }
-    }
-
+    });
     return filtered;
   }, [rawConfigs, branch, department, perms, licensed, session, user, workplace]);
   const [name, setName] = useState('');
