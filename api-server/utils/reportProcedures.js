@@ -9,7 +9,6 @@ async function getUserContext(user, companyId) {
     branchId: session?.branch_id,
     departmentId: session?.department_id,
     userLevelId: session?.user_level,
-    workplaceId: session?.workplace_id,
   };
 }
 
@@ -19,12 +18,7 @@ export async function listPermittedProcedures(
   user,
 ) {
   const { names: forms, isDefault: formsDefault } = await listTransactionNames(
-    {
-      branchId,
-      departmentId,
-      userRightId: userCtx.userLevelId,
-      workplaceId: userCtx.workplaceId,
-    },
+    { branchId, departmentId },
     companyId,
   );
   const { config: allowedCfg, isDefault: accessDefault } =

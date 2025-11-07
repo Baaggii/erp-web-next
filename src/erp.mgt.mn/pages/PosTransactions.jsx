@@ -1123,25 +1123,10 @@ export default function PosTransactionsPage() {
     branch,
     department,
     permissions: perms,
-    session,
-    workplace,
   } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
   const [rawConfigs, setRawConfigs] = useState({});
-  const userRightScope =
-    session?.user_level ??
-    session?.userlevel_id ??
-    session?.userLevel ??
-    session?.userlevelId ??
-    null;
-  const workplaceScope =
-    workplace ??
-    session?.workplace_id ??
-    session?.workplaceId ??
-    session?.workplace ??
-    null;
-
   const configs = useMemo(() => {
     if (!rawConfigs || typeof rawConfigs !== 'object') return {};
     if (
@@ -1166,23 +1151,13 @@ export default function PosTransactionsPage() {
       if (
         hasTransactionFormAccess(cfgValue, branch, department, {
           allowTemporaryAnyScope: true,
-          userRightId: userRightScope,
-          workplaceId: workplaceScope,
         })
       ) {
         filtered[cfgName] = cfgValue;
       }
     });
     return filtered;
-  }, [
-    rawConfigs,
-    branch,
-    department,
-    perms,
-    licensed,
-    userRightScope,
-    workplaceScope,
-  ]);
+  }, [rawConfigs, branch, department, perms, licensed]);
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});

@@ -131,8 +131,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const [externalTemporaryTrigger, setExternalTemporaryTrigger] = useState(null);
-  const { company, branch, department, user, permissions: perms, session, workplace } =
-    useContext(AuthContext);
+  const { company, branch, department, user, permissions: perms } = useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
@@ -425,8 +424,6 @@ useEffect(() => {
           if (
             !hasTransactionFormAccess(info, branchId, departmentId, {
               allowTemporaryAnyScope: true,
-              userRightId: userRightScope,
-              workplaceId: workplaceScope,
             })
           )
             return;
@@ -446,7 +443,7 @@ useEffect(() => {
         addToast('Failed to load transaction forms', 'error');
         setConfigs({});
       });
-  }, [moduleKey, company, branch, department, perms, licensed, userRightScope, workplaceScope]);
+  }, [moduleKey, company, branch, department, perms, licensed]);
 
   useEffect(() => {
     console.log('FinanceTransactions table sync effect');
@@ -1025,16 +1022,3 @@ useEffect(() => {
     </div>
   );
 }
-  const userRightScope =
-    session?.user_level ??
-    session?.userlevel_id ??
-    session?.userLevel ??
-    session?.userlevelId ??
-    null;
-  const workplaceScope =
-    workplace ??
-    session?.workplace_id ??
-    session?.workplaceId ??
-    session?.workplace ??
-    null;
-

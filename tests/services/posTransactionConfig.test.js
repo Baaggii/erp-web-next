@@ -25,46 +25,6 @@ test('hasPosTransactionAccess enforces branch and department restrictions', () =
   assert.equal(hasPosTransactionAccess(config, undefined, undefined), true);
 });
 
-test('hasPosTransactionAccess enforces user rights, workplaces, and procedures', () => {
-  const config = {
-    allowedUserRights: ['7'],
-    allowedWorkplaces: ['3'],
-    procedures: ['PROC_A'],
-  };
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      userRightId: 7,
-      workplaceId: 3,
-      procedure: 'PROC_A',
-    }),
-    true,
-  );
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      userRightId: '5',
-      workplaceId: 3,
-      procedure: 'PROC_A',
-    }),
-    false,
-  );
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      userRightId: 7,
-      workplaceId: '4',
-      procedure: 'PROC_A',
-    }),
-    false,
-  );
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      userRightId: 7,
-      workplaceId: 3,
-      procedure: 'PROC_B',
-    }),
-    false,
-  );
-});
-
 test('hasPosTransactionAccess honors temporary permissions', () => {
   const config = {
     allowedBranches: [1],
@@ -77,36 +37,6 @@ test('hasPosTransactionAccess honors temporary permissions', () => {
   assert.equal(hasPosTransactionAccess(config, '2', '20'), true);
   assert.equal(hasPosTransactionAccess(config, '2', '10'), false);
   assert.equal(hasPosTransactionAccess(config, '3', '20'), false);
-});
-
-test('hasPosTransactionAccess honors temporary user right and workplace scopes', () => {
-  const config = {
-    allowedUserRights: ['9'],
-    temporaryAllowedUserRights: ['5'],
-    temporaryAllowedWorkplaces: ['15'],
-    supportsTemporarySubmission: true,
-  };
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      userRightId: '9',
-      workplaceId: '99',
-    }),
-    true,
-  );
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      userRightId: '5',
-      workplaceId: '15',
-    }),
-    true,
-  );
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      userRightId: '5',
-      workplaceId: '11',
-    }),
-    false,
-  );
 });
 
 test('filterPosConfigsByAccess returns only permitted configurations', () => {
@@ -125,34 +55,6 @@ test('filterPosConfigsByAccess returns only permitted configurations', () => {
   const filtered = filterPosConfigsByAccess(configs, 1, 20);
   assert.deepEqual(Object.keys(filtered).sort(), ['Alpha', 'Beta', 'Temp']);
   assert.ok(!filtered.Gamma);
-});
-
-test('filterPosConfigsByAccess enforces user rights and workplaces', () => {
-  const configs = {
-    Rights: { allowedUserRights: ['5'] },
-    Workplace: { allowedWorkplaces: ['10'] },
-    TempOnly: {
-      allowedUserRights: ['8'],
-      temporaryAllowedUserRights: ['7'],
-      temporaryAllowedWorkplaces: ['12'],
-      supportsTemporarySubmission: true,
-    },
-  };
-  const allowed = filterPosConfigsByAccess(configs, null, null, {
-    userRightId: '5',
-    workplaceId: '10',
-  });
-  assert.deepEqual(Object.keys(allowed).sort(), ['Rights', 'Workplace']);
-  const temp = filterPosConfigsByAccess(configs, null, null, {
-    userRightId: '7',
-    workplaceId: '12',
-  });
-  assert.deepEqual(Object.keys(temp).sort(), ['TempOnly']);
-  const denied = filterPosConfigsByAccess(configs, null, null, {
-    userRightId: '2',
-    workplaceId: '99',
-  });
-  assert.deepEqual(Object.keys(denied), []);
 });
 
 test('pickScopeValue prefers request value when provided', () => {

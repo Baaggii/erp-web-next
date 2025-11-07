@@ -21,13 +21,6 @@ const emptyConfig = {
   allowedUserRights: [],
   allowedWorkplaces: [],
   procedures: [],
-  allowTemporarySubmission: false,
-  supportsTemporarySubmission: false,
-  temporaryAllowedBranches: [],
-  temporaryAllowedDepartments: [],
-  temporaryAllowedUserRights: [],
-  temporaryAllowedWorkplaces: [],
-  temporaryProcedures: [],
 };
 
 export default function PosTxnConfig() {
@@ -418,15 +411,6 @@ export default function PosTxnConfig() {
             ),
           )
         : [];
-      loaded.temporaryProcedures = Array.isArray(loaded.temporaryProcedures)
-        ? Array.from(
-            new Set(
-              loaded.temporaryProcedures
-                .map((p) => (typeof p === 'string' ? p.trim() : ''))
-                .filter((p) => p),
-            ),
-          )
-        : [];
       setIsDefault(!!def);
       setName(n);
       setConfig(loaded);
@@ -546,31 +530,13 @@ export default function PosTxnConfig() {
           ),
         )
       : [];
-    const normalizedTemporaryProcedures = Array.isArray(config.temporaryProcedures)
-      ? Array.from(
-          new Set(
-            config.temporaryProcedures
-              .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
-              .filter((proc) => proc),
-          ),
-        )
-      : [];
-    const allowTemporary = Boolean(
-      config.supportsTemporarySubmission ??
-        config.allowTemporarySubmission ??
-        config.supportsTemporary ??
-        false,
-    );
     const saveCfg = {
       ...config,
-      allowTemporarySubmission: allowTemporary,
-      supportsTemporarySubmission: allowTemporary,
       allowedBranches: normalizeAccessForSave(config.allowedBranches),
       allowedDepartments: normalizeAccessForSave(config.allowedDepartments),
       allowedUserRights: normalizeAccessForSave(config.allowedUserRights),
       allowedWorkplaces: normalizeAccessForSave(config.allowedWorkplaces),
       procedures: normalizedProcedures,
-      temporaryProcedures: normalizedTemporaryProcedures,
       tables: [
         {
           table: config.masterTable,
