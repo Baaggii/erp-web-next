@@ -408,12 +408,12 @@ function normalizeClientStep(step, index = 0) {
     content,
     placement,
     order,
+    disableBeacon: true,
   };
 
   if (title !== undefined && title !== '') normalized.title = title;
   if (offset !== undefined) normalized.offset = offset;
   if (spotlightPadding !== undefined) normalized.spotlightPadding = spotlightPadding;
-  if (step.disableBeacon !== undefined) normalized.disableBeacon = Boolean(step.disableBeacon);
   if (step.isFixed !== undefined) normalized.isFixed = Boolean(step.isFixed);
   if (step.locale) normalized.locale = step.locale;
   if (step.tooltip) normalized.tooltip = step.tooltip;
@@ -443,7 +443,7 @@ function computeStepSignature(steps) {
       title: step.title ?? '',
       offset: step.offset ?? null,
       spotlightPadding: step.spotlightPadding ?? null,
-      disableBeacon: step.disableBeacon ?? false,
+      disableBeacon: step.disableBeacon ?? true,
       isFixed: step.isFixed ?? false,
     })),
   );
@@ -518,6 +518,8 @@ function sanitizeTourStepsForRestart(steps) {
       if (typeof sanitized.selector === "string") {
         sanitized.selector = sanitized.selector.trim();
       }
+
+      sanitized.disableBeacon = true;
 
       if ("__runId" in sanitized) {
         delete sanitized.__runId;
@@ -1711,6 +1713,7 @@ export default function ERPLayout() {
                         ...restStep
                       } = targetStep;
                       const restoredStep = { ...restStep };
+                      restoredStep.disableBeacon = true;
                       if (missingTargetOriginalSelectors) {
                         restoredStep.selectors = missingTargetOriginalSelectors;
                         restoredStep.selector = missingTargetOriginalSelectors[0];
@@ -2248,6 +2251,7 @@ export default function ERPLayout() {
                 missingTargetOriginalSelectors: normalizedOriginalSelectors,
                 missingTargetPauseStepId: pauseStepId,
               };
+              updatedCurrentStep.disableBeacon = true;
               if (normalizedOriginalSelectors.length) {
                 updatedCurrentStep.selectors = normalizedOriginalSelectors;
                 updatedCurrentStep.highlightSelectors = normalizedOriginalSelectors;
@@ -2269,6 +2273,7 @@ export default function ERPLayout() {
                 missingTargetPauseWatchSelectors: watchSelectors,
                 missingTargetPauseTooltipMessage: tooltipMessage,
               };
+              placeholder.disableBeacon = true;
               delete placeholder.missingTargetPauseHasArrow;
               delete placeholder.missingTargetPauseArrowSelector;
               delete placeholder.missingTargetPauseArrowMessage;
