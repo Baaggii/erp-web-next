@@ -410,18 +410,14 @@ useEffect(() => {
       session?.userlevel_id ??
       session?.userlevelId ??
       null;
-    if (userRightId != null && String(userRightId).trim() !== '') {
-      params.set('userRightId', userRightId);
-    }
     const workplaceId =
       workplace ??
       session?.workplace_id ??
       session?.workplaceId ??
       null;
-    if (workplaceId != null && String(workplaceId).trim() !== '') {
-      params.set('workplaceId', workplaceId);
-    }
-    fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
+    const query = params.toString();
+    const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
+    fetch(url, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
           addToast('Failed to load transaction forms', 'error');

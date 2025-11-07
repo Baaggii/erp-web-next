@@ -149,12 +149,6 @@ export function useTxnModules() {
       ) {
         params.set('departmentId', currentDepartment);
       }
-      if (currentUserRight != null && `${currentUserRight}`.trim() !== '') {
-        params.set('userRightId', currentUserRight);
-      }
-      if (currentWorkplace != null && `${currentWorkplace}`.trim() !== '') {
-        params.set('workplaceId', currentWorkplace);
-      }
       const res = await fetch(
         `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
         { credentials: 'include' },
