@@ -2,11 +2,13 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'fs/promises';
 import { pool } from '../../db/index.js';
-import {
+import * as postPosService from '../../api-server/services/postPosTransaction.js';
+
+const {
   postPosTransaction,
   propagateCalcFields,
   validateConfiguredFields,
-} from '../../api-server/services/postPosTransaction.js';
+} = postPosService;
 
 if (typeof pool.getConnection !== 'function') {
   pool.getConnection = async () => {
@@ -149,6 +151,7 @@ const SIMPLE_POS_CONFIG = JSON.stringify({
   POS_Modmarket: { masterTable: 'transactions_pos' },
   ONLINE_POS: { masterTable: 'transactions_pos_online' },
 });
+
 
 function createMockConnection(expectedMasterTable, insertId, queries) {
   return {
@@ -518,3 +521,4 @@ test('postPosTransaction normalizes session info before persisting', async (t) =
   assert.ok(!insertSql.includes('ignoredField'), 'drops unknown session keys');
   assert.ok(!insertSql.includes('employeeId'), 'does not use camelCase key');
 });
+
