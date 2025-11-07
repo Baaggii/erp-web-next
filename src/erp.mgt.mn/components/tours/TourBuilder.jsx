@@ -14,6 +14,8 @@ import derivePageKey from '../../utils/derivePageKey.js';
 const placements = ['auto', 'top', 'bottom', 'left', 'right'];
 const cryptoSource = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
 const MODAL_MARGIN = 32;
+const PICKER_CURSOR_STYLE =
+  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'><path fill='%23f97316' d='M4 2l10 26 3-8 8-3z'/><path fill='%23ffffff' d='M7.5 7l5.4 13.5 1.6-4.2 4.2-1.6z'/></svg>\") 0 0, auto";
 
 function coerceSelectorValue(value) {
   if (typeof value === 'string') return value;
@@ -221,6 +223,7 @@ export default function TourBuilder({ state, onClose }) {
   const [dragging, setDragging] = useState(false);
   const builderRef = useRef(null);
   const highlightRef = useRef({ element: null, outline: '', boxShadow: '' });
+  const previousCursorRef = useRef('');
   const hasChangesRef = useRef(false);
   const pageKeyTouchedRef = useRef(Boolean(initialExplicitPageKey));
   const dragStateRef = useRef({ active: false, offsetX: 0, offsetY: 0 });
@@ -363,8 +366,8 @@ export default function TourBuilder({ state, onClose }) {
         outline: element.style.outline,
         boxShadow: element.style.boxShadow,
       };
-      element.style.outline = '2px solid #2563eb';
-      element.style.boxShadow = '0 0 0 2px rgba(37, 99, 235, 0.25)';
+      element.style.outline = '3px solid #f97316';
+      element.style.boxShadow = '0 0 0 4px rgba(249, 115, 22, 0.35)';
     } else {
       highlightRef.current = { element: null, outline: '', boxShadow: '' };
     }
@@ -399,10 +402,12 @@ export default function TourBuilder({ state, onClose }) {
   );
 
   useEffect(() => {
-    if (!picking || typeof document === 'undefined') {
-      if (typeof document !== 'undefined') {
-        document.body.style.cursor = '';
-      }
+    if (typeof document === 'undefined') {
+      return undefined;
+    }
+
+    if (!picking) {
+      document.body.style.cursor = previousCursorRef.current || '';
       highlightElement(null);
       return undefined;
     }
@@ -485,13 +490,14 @@ export default function TourBuilder({ state, onClose }) {
     document.addEventListener('mousemove', handleMouseMove, true);
     document.addEventListener('click', handleClick, true);
     document.addEventListener('keydown', handleKeyDown, true);
-    document.body.style.cursor = 'crosshair';
+    previousCursorRef.current = document.body.style.cursor;
+    document.body.style.cursor = PICKER_CURSOR_STYLE;
 
     return () => {
       document.removeEventListener('mousemove', handleMouseMove, true);
       document.removeEventListener('click', handleClick, true);
       document.removeEventListener('keydown', handleKeyDown, true);
-      document.body.style.cursor = '';
+      document.body.style.cursor = previousCursorRef.current || '';
       highlightElement(null);
     };
   }, [highlightElement, picking, selectedId, setPendingSelectorFocus, setStepSelectors]);
