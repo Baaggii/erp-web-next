@@ -361,10 +361,12 @@ export default function TourBuilder({ state, onClose }) {
       current.element.style.boxShadow = current.boxShadow;
     }
     if (element && element instanceof HTMLElement) {
+      const outline = current.element === element ? current.outline : element.style.outline;
+      const boxShadow = current.element === element ? current.boxShadow : element.style.boxShadow;
       highlightRef.current = {
         element,
-        outline: element.style.outline,
-        boxShadow: element.style.boxShadow,
+        outline,
+        boxShadow,
       };
       element.style.outline = '3px solid #f97316';
       element.style.boxShadow = '0 0 0 4px rgba(249, 115, 22, 0.35)';
@@ -697,6 +699,10 @@ export default function TourBuilder({ state, onClose }) {
     highlightElement(null);
     onClose?.();
   }, [highlightElement, onClose]);
+
+  useEffect(() => () => {
+    highlightElement(null);
+  }, [highlightElement]);
 
   const saveDisabled =
     saving ||
@@ -1097,7 +1103,7 @@ const styles = {
     position: 'fixed',
     inset: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    zIndex: 1000,
+    zIndex: 12000,
     padding: '2rem',
   },
   overlayPicking: {
