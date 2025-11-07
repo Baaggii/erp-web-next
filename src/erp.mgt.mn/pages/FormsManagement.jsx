@@ -69,6 +69,7 @@ function normalizeFormConfig(info = {}) {
     allowedUserRights,
     allowedWorkplaces,
     procedures: toArray(info.procedures),
+    temporaryProcedures: toArray(info.temporaryProcedures),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
     posApiEnabled: Boolean(info.posApiEnabled),
@@ -474,6 +475,36 @@ export default function FormsManagement() {
       alert('Please enter transaction name');
       return;
     }
+    const normalizeIdList = (list) =>
+      Array.isArray(list)
+        ? Array.from(
+            new Set(
+              list
+                .map((value) => {
+                  if (value === undefined || value === null) return null;
+                  const num = Number(value);
+                  if (!Number.isNaN(num)) return num;
+                  const str = String(value).trim();
+                  return str ? str : null;
+                })
+                .filter((val) => val !== null),
+            ),
+          )
+        : [];
+    const normalizeProcedureList = (list) =>
+      Array.isArray(list)
+        ? Array.from(
+            new Set(
+              list
+                .map((value) => {
+                  if (typeof value === 'string') return value.trim();
+                  if (value === undefined || value === null) return '';
+                  return String(value).trim();
+                })
+                .filter((val) => val),
+            ),
+          )
+        : [];
     const cfg = {
       ...config,
       moduleKey,

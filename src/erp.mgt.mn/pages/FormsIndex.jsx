@@ -18,7 +18,8 @@ import {
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
   const modules = useModules();
-  const { company, branch, department, permissions: perms } = useContext(AuthContext);
+  const { company, branch, department, permissions: perms, session, workplace } =
+    useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
@@ -67,6 +68,8 @@ export default function FormsIndex() {
           if (
             !hasTransactionFormAccess(info, branchId, departmentId, {
               allowTemporaryAnyScope: true,
+              userRightId: userRightScope,
+              workplaceId: workplaceScope,
             })
           )
             return;
@@ -80,7 +83,17 @@ export default function FormsIndex() {
         setTransactions(grouped);
       })
       .catch((err) => console.error('Error fetching forms:', err));
-  }, [company, perms, licensed, txnModules, modules, branch, department]);
+  }, [
+    company,
+    perms,
+    licensed,
+    txnModules,
+    modules,
+    branch,
+    department,
+    userRightScope,
+    workplaceScope,
+  ]);
 
   const groups = Object.entries(transactions);
 
@@ -111,3 +124,16 @@ export default function FormsIndex() {
     </div>
   );
 }
+  const userRightScope =
+    session?.user_level ??
+    session?.userlevel_id ??
+    session?.userLevel ??
+    session?.userlevelId ??
+    null;
+  const workplaceScope =
+    workplace ??
+    session?.workplace_id ??
+    session?.workplaceId ??
+    session?.workplace ??
+    null;
+

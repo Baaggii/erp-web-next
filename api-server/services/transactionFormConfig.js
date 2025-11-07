@@ -111,6 +111,12 @@ function parseEntry(raw = {}) {
     allowedDepartments: Array.isArray(raw.allowedDepartments)
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    allowedUserRights: Array.isArray(raw.allowedUserRights)
+      ? raw.allowedUserRights.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+      : [],
+    allowedWorkplaces: Array.isArray(raw.allowedWorkplaces)
+      ? raw.allowedWorkplaces.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+      : [],
     temporaryAllowedBranches: Array.isArray(raw.temporaryAllowedBranches)
       ? raw.temporaryAllowedBranches
           .map((v) => Number(v))
@@ -121,8 +127,19 @@ function parseEntry(raw = {}) {
           .map((v) => Number(v))
           .filter((v) => !Number.isNaN(v))
       : [],
+    temporaryAllowedUserRights: Array.isArray(raw.temporaryAllowedUserRights)
+      ? raw.temporaryAllowedUserRights
+          .map((v) => Number(v))
+          .filter((v) => !Number.isNaN(v))
+      : [],
+    temporaryAllowedWorkplaces: Array.isArray(raw.temporaryAllowedWorkplaces)
+      ? raw.temporaryAllowedWorkplaces
+          .map((v) => Number(v))
+          .filter((v) => !Number.isNaN(v))
+      : [],
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
     procedures: arrify(raw.procedures || raw.procedure),
+    temporaryProcedures: arrify(raw.temporaryProcedures || raw.temporaryProcedure),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
     posApiEnabled: Boolean(raw.posApiEnabled),
@@ -181,13 +198,21 @@ export async function findTableByProcedure(proc, companyId = 0) {
 }
 
 export async function listTransactionNames(
-  { moduleKey, branchId, departmentId } = {},
+  { moduleKey, branchId, departmentId, userRightId, workplaceId, procedure } = {},
   companyId = 0,
 ) {
   const { cfg, isDefault } = await readConfig(companyId);
   const result = {};
   const bId = branchId ? Number(branchId) : null;
   const dId = departmentId ? Number(departmentId) : null;
+  const uIdRaw = userRightId != null ? Number(userRightId) : null;
+  const uId = Number.isNaN(uIdRaw) ? null : uIdRaw;
+  const wIdRaw = workplaceId != null ? Number(workplaceId) : null;
+  const wId = Number.isNaN(wIdRaw) ? null : wIdRaw;
+  const procName =
+    typeof procedure === 'string' && procedure.trim()
+      ? procedure.trim()
+      : null;
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
@@ -200,11 +225,29 @@ export async function listTransactionNames(
       const allowedDepartments = Array.isArray(parsed.allowedDepartments)
         ? parsed.allowedDepartments
         : [];
+      const allowedUserRights = Array.isArray(parsed.allowedUserRights)
+        ? parsed.allowedUserRights
+        : [];
+      const allowedWorkplaces = Array.isArray(parsed.allowedWorkplaces)
+        ? parsed.allowedWorkplaces
+        : [];
+      const allowedProcedures = Array.isArray(parsed.procedures)
+        ? parsed.procedures
+        : [];
       const tempBranches = Array.isArray(parsed.temporaryAllowedBranches)
         ? parsed.temporaryAllowedBranches
         : [];
       const tempDepartments = Array.isArray(parsed.temporaryAllowedDepartments)
         ? parsed.temporaryAllowedDepartments
+        : [];
+      const tempUserRights = Array.isArray(parsed.temporaryAllowedUserRights)
+        ? parsed.temporaryAllowedUserRights
+        : [];
+      const tempWorkplaces = Array.isArray(parsed.temporaryAllowedWorkplaces)
+        ? parsed.temporaryAllowedWorkplaces
+        : [];
+      const tempProcedures = Array.isArray(parsed.temporaryProcedures)
+        ? parsed.temporaryProcedures
         : [];
 
       const branchAllowed =
@@ -215,8 +258,25 @@ export async function listTransactionNames(
         allowedDepartments.length === 0 ||
         dId == null ||
         allowedDepartments.includes(dId);
+      const userRightAllowed =
+        allowedUserRights.length === 0 ||
+        uId == null ||
+        allowedUserRights.includes(uId);
+      const workplaceAllowed =
+        allowedWorkplaces.length === 0 ||
+        wId == null ||
+        allowedWorkplaces.includes(wId);
+      const procedureAllowed =
+        allowedProcedures.length === 0 ||
+        procName === null ||
+        allowedProcedures.includes(procName);
 
-      let permitted = branchAllowed && departmentAllowed;
+      let permitted =
+        branchAllowed &&
+        departmentAllowed &&
+        userRightAllowed &&
+        workplaceAllowed &&
+        procedureAllowed;
 
       if (!permitted) {
         const tempEnabled = Boolean(
@@ -233,7 +293,24 @@ export async function listTransactionNames(
             tempDepartments.length === 0 ||
             dId == null ||
             tempDepartments.includes(dId);
-          permitted = tempBranchAllowed && tempDepartmentAllowed;
+          const tempUserRightAllowed =
+            tempUserRights.length === 0 ||
+            uId == null ||
+            tempUserRights.includes(uId);
+          const tempWorkplaceAllowed =
+            tempWorkplaces.length === 0 ||
+            wId == null ||
+            tempWorkplaces.includes(wId);
+          const tempProcedureAllowed =
+            tempProcedures.length === 0 ||
+            procName === null ||
+            tempProcedures.includes(procName);
+          permitted =
+            tempBranchAllowed &&
+            tempDepartmentAllowed &&
+            tempUserRightAllowed &&
+            tempWorkplaceAllowed &&
+            tempProcedureAllowed;
         }
       }
 
@@ -263,8 +340,12 @@ export async function setFormConfig(
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
+    allowedUserRights = [],
+    allowedWorkplaces = [],
     temporaryAllowedBranches = [],
     temporaryAllowedDepartments = [],
+    temporaryAllowedUserRights = [],
+    temporaryAllowedWorkplaces = [],
     moduleKey: parentModuleKey = '',
     moduleLabel,
     userIdField,
@@ -289,6 +370,7 @@ export async function setFormConfig(
     detectFields = [],
     detectField = '',
     procedures = [],
+    temporaryProcedures = [],
     supportsTemporarySubmission,
     allowTemporarySubmission,
     posApiEnabled = false,
@@ -308,11 +390,45 @@ export async function setFormConfig(
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
+  const aur = Array.isArray(allowedUserRights)
+    ? allowedUserRights.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+    : [];
+  const aw = Array.isArray(allowedWorkplaces)
+    ? allowedWorkplaces.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+    : [];
   const tab = Array.isArray(temporaryAllowedBranches)
     ? temporaryAllowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
   const tad = Array.isArray(temporaryAllowedDepartments)
     ? temporaryAllowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+    : [];
+  const taur = Array.isArray(temporaryAllowedUserRights)
+    ? temporaryAllowedUserRights
+        .map((v) => Number(v))
+        .filter((v) => !Number.isNaN(v))
+    : [];
+  const taw = Array.isArray(temporaryAllowedWorkplaces)
+    ? temporaryAllowedWorkplaces
+        .map((v) => Number(v))
+        .filter((v) => !Number.isNaN(v))
+    : [];
+  const procList = Array.isArray(procedures)
+    ? procedures
+        .map((p) => {
+          if (typeof p === 'string') return p.trim();
+          return String(p);
+        })
+        .map((p) => p.trim())
+        .filter((p) => p)
+    : [];
+  const tempProcList = Array.isArray(temporaryProcedures)
+    ? temporaryProcedures
+        .map((p) => {
+          if (typeof p === 'string') return p.trim();
+          return String(p);
+        })
+        .map((p) => p.trim())
+        .filter((p) => p)
     : [];
   const { cfg } = await readConfig(companyId);
   if (!cfg[table]) cfg[table] = {};
@@ -348,9 +464,14 @@ export async function setFormConfig(
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
+    allowedUserRights: aur,
+    allowedWorkplaces: aw,
     temporaryAllowedBranches: tab,
     temporaryAllowedDepartments: tad,
-    procedures: arrify(procedures),
+    temporaryAllowedUserRights: taur,
+    temporaryAllowedWorkplaces: taw,
+    procedures: procList,
+    temporaryProcedures: tempProcList,
     allowTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),

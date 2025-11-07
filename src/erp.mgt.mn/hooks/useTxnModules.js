@@ -11,12 +11,26 @@ const cache = {
   branchId: undefined,
   departmentId: undefined,
   companyId: undefined,
+  userRightId: undefined,
+  workplaceId: undefined,
 };
 const emitter = new EventTarget();
 
-function deriveTxnModuleState(data, branch, department, perms, licensed) {
+function deriveTxnModuleState(
+  data,
+  branch,
+  department,
+  perms,
+  licensed,
+  userRight,
+  workplace,
+) {
   const branchId = branch != null ? String(branch) : null;
   const departmentId = department != null ? String(department) : null;
+  const userRightId =
+    userRight !== undefined && userRight !== null ? String(userRight) : null;
+  const workplaceId =
+    workplace !== undefined && workplace !== null ? String(workplace) : null;
   const keys = new Set();
   const labels = {};
 
@@ -29,6 +43,8 @@ function deriveTxnModuleState(data, branch, department, perms, licensed) {
       if (
         !hasTransactionFormAccess(info, branchId, departmentId, {
           allowTemporaryAnyScope: true,
+          userRightId,
+          workplaceId,
         })
       )
         return;
@@ -84,16 +100,40 @@ export function refreshTxnModules() {
   cache.branchId = undefined;
   cache.departmentId = undefined;
   cache.companyId = undefined;
+  cache.userRightId = undefined;
+  cache.workplaceId = undefined;
   emitter.dispatchEvent(new Event('refresh'));
 }
 
 export function useTxnModules() {
-  const { branch, department, company, permissions: perms } = useContext(AuthContext);
+  const { branch, department, company, permissions: perms, session, workplace } =
+    useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const [state, setState] = useState(() => createEmptyState());
 
+  const userRight =
+    session?.user_level ??
+    session?.userlevel_id ??
+    session?.userLevel ??
+    session?.userlevelId ??
+    null;
+  const workplaceId =
+    workplace ??
+    session?.workplace_id ??
+    session?.workplaceId ??
+    session?.workplace ??
+    null;
+
   function applyDerivedState(data) {
-    const derived = deriveTxnModuleState(data, branch, department, perms, licensed);
+    const derived = deriveTxnModuleState(
+      data,
+      branch,
+      department,
+      perms,
+      licensed,
+      userRight,
+      workplaceId,
+    );
     setState((prev) => (statesEqual(prev, derived) ? prev : derived));
   }
 
@@ -101,6 +141,8 @@ export function useTxnModules() {
     const currentBranch = branch;
     const currentDepartment = department;
     const currentCompany = company;
+    const currentUserRight = userRight;
+    const currentWorkplace = workplaceId;
 
     try {
       const params = new URLSearchParams();
@@ -114,6 +156,20 @@ export function useTxnModules() {
       ) {
         params.set('departmentId', currentDepartment);
       }
+      if (
+        currentUserRight !== undefined &&
+        currentUserRight !== null &&
+        `${currentUserRight}`.trim() !== ''
+      ) {
+        params.set('userRightId', currentUserRight);
+      }
+      if (
+        currentWorkplace !== undefined &&
+        currentWorkplace !== null &&
+        `${currentWorkplace}`.trim() !== ''
+      ) {
+        params.set('workplaceId', currentWorkplace);
+      }
       const res = await fetch(
         `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`,
         { credentials: 'include' },
@@ -122,7 +178,9 @@ export function useTxnModules() {
       if (
         branch !== currentBranch ||
         department !== currentDepartment ||
-        company !== currentCompany
+        company !== currentCompany ||
+        userRight !== currentUserRight ||
+        workplaceId !== currentWorkplace
       ) {
         // Scope changed while request was in-flight; ignore this response.
         return;
@@ -131,6 +189,8 @@ export function useTxnModules() {
       cache.branchId = currentBranch;
       cache.departmentId = currentDepartment;
       cache.companyId = currentCompany;
+      cache.userRightId = currentUserRight;
+      cache.workplaceId = currentWorkplace;
       applyDerivedState(data);
     } catch (err) {
       console.error('Failed to load transaction modules', err);
@@ -138,6 +198,8 @@ export function useTxnModules() {
       cache.branchId = currentBranch;
       cache.departmentId = currentDepartment;
       cache.companyId = currentCompany;
+      cache.userRightId = currentUserRight;
+      cache.workplaceId = currentWorkplace;
       applyDerivedState({});
     }
   }
@@ -148,14 +210,24 @@ export function useTxnModules() {
       !cache.forms ||
       cache.branchId !== branch ||
       cache.departmentId !== department ||
-      cache.companyId !== company
+      cache.companyId !== company ||
+      cache.userRightId !== userRight ||
+      cache.workplaceId !== workplaceId
     ) {
       setState((prev) => (prev.keys.size === 0 && Object.keys(prev.labels).length === 0 ? prev : createEmptyState()));
       fetchForms();
     } else {
       applyDerivedState(cache.forms);
     }
-  }, [branch, department, company, perms, licensed]);
+  }, [
+    branch,
+    department,
+    company,
+    perms,
+    licensed,
+    userRight,
+    workplaceId,
+  ]);
 
   useEffect(() => {
     debugLog('useTxnModules effect: refresh listener');
