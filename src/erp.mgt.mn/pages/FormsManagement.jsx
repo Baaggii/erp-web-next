@@ -35,18 +35,6 @@ function normalizeFormConfig(info = {}) {
   const allowedDepartments = toArray(info.allowedDepartments).map((v) => String(v));
   const allowedUserRights = toArray(info.allowedUserRights).map((v) => String(v));
   const allowedWorkplaces = toArray(info.allowedWorkplaces).map((v) => String(v));
-  const temporaryAllowedBranches = toArray(info.temporaryAllowedBranches).map((v) =>
-    String(v),
-  );
-  const temporaryAllowedDepartments = toArray(info.temporaryAllowedDepartments).map((v) =>
-    String(v),
-  );
-  const temporaryAllowedUserRights = toArray(info.temporaryAllowedUserRights).map((v) =>
-    String(v),
-  );
-  const temporaryAllowedWorkplaces = toArray(info.temporaryAllowedWorkplaces).map((v) =>
-    String(v),
-  );
 
   return {
     visibleFields: toArray(info.visibleFields),
@@ -80,10 +68,6 @@ function normalizeFormConfig(info = {}) {
     allowedDepartments,
     allowedUserRights,
     allowedWorkplaces,
-    temporaryAllowedBranches,
-    temporaryAllowedDepartments,
-    temporaryAllowedUserRights,
-    temporaryAllowedWorkplaces,
     procedures: toArray(info.procedures),
     temporaryProcedures: toArray(info.temporaryProcedures),
     supportsTemporarySubmission: temporaryFlag,
@@ -244,15 +228,6 @@ export default function FormsManagement() {
     () => ({
       margin: '0 0 0.5rem',
       fontSize: '1.1rem',
-      fontWeight: 600,
-    }),
-    [],
-  );
-
-  const subsectionTitleStyle = useMemo(
-    () => ({
-      margin: '0 0 0.25rem',
-      fontSize: '1rem',
       fontWeight: 600,
     }),
     [],
@@ -533,16 +508,16 @@ export default function FormsManagement() {
     const cfg = {
       ...config,
       moduleKey,
-      allowedBranches: normalizeIdList(config.allowedBranches),
-      allowedDepartments: normalizeIdList(config.allowedDepartments),
-      allowedUserRights: normalizeIdList(config.allowedUserRights),
-      allowedWorkplaces: normalizeIdList(config.allowedWorkplaces),
-      temporaryAllowedBranches: normalizeIdList(config.temporaryAllowedBranches),
-      temporaryAllowedDepartments: normalizeIdList(config.temporaryAllowedDepartments),
-      temporaryAllowedUserRights: normalizeIdList(config.temporaryAllowedUserRights),
-      temporaryAllowedWorkplaces: normalizeIdList(config.temporaryAllowedWorkplaces),
-      procedures: normalizeProcedureList(config.procedures),
-      temporaryProcedures: normalizeProcedureList(config.temporaryProcedures),
+      allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
+      allowedDepartments: config.allowedDepartments
+        .map((d) => Number(d))
+        .filter((d) => !Number.isNaN(d)),
+      allowedUserRights: config.allowedUserRights
+        .map((r) => Number(r))
+        .filter((r) => !Number.isNaN(r)),
+      allowedWorkplaces: config.allowedWorkplaces
+        .map((w) => Number(w))
+        .filter((w) => !Number.isNaN(w)),
       transactionTypeValue: config.transactionTypeValue
         ? String(config.transactionTypeValue)
         : '',
@@ -1146,20 +1121,191 @@ export default function FormsManagement() {
 
             <section style={sectionStyle}>
               <h3 style={sectionTitleStyle}>Access Control</h3>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                <div>
-                  <h4 style={subsectionTitleStyle}>Regular access</h4>
-                  <div style={controlGroupStyle}>
+              <div style={controlGroupStyle}>
+                <div style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Allowed branches</span>
+                  <select
+                    multiple
+                    size={8}
+                    value={config.allowedBranches}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        allowedBranches: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {branchOptions.map((b) => (
+                      <option key={b.value} value={b.value}>
+                        {b.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((c) => ({
+                          ...c,
+                          allowedBranches: branchOptions.map((b) => b.value),
+                        }))
+                      }
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
+                    >
+                      None
+                    </button>
+                  </div>
+                </div>
+
+                <div style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Allowed departments</span>
+                  <select
+                    multiple
+                    size={8}
+                    value={config.allowedDepartments}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        allowedDepartments: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {deptOptions.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((c) => ({
+                          ...c,
+                          allowedDepartments: deptOptions.map((d) => d.value),
+                        }))
+                      }
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
+                    >
+                      None
+                    </button>
+                  </div>
+                </div>
+
+                <div style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Allowed user rights</span>
+                  <select
+                    multiple
+                    size={8}
+                    value={config.allowedUserRights}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        allowedUserRights: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {userRightOptions.map((right) => (
+                      <option key={right.value} value={right.value}>
+                        {right.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((c) => ({
+                          ...c,
+                          allowedUserRights: userRightOptions.map((r) => r.value),
+                        }))
+                      }
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfig((c) => ({ ...c, allowedUserRights: [] }))}
+                    >
+                      None
+                    </button>
+                  </div>
+                </div>
+
+                <div style={fieldColumnStyle}>
+                  <span style={{ fontWeight: 600 }}>Allowed workplaces</span>
+                  <select
+                    multiple
+                    size={8}
+                    value={config.allowedWorkplaces}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        allowedWorkplaces: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {workplaceOptions.map((workplace) => (
+                      <option key={workplace.value} value={workplace.value}>
+                        {workplace.label}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setConfig((c) => ({
+                          ...c,
+                          allowedWorkplaces: workplaceOptions.map((w) => w.value),
+                        }))
+                      }
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setConfig((c) => ({ ...c, allowedWorkplaces: [] }))}
+                    >
+                      None
+                    </button>
+                  </div>
+                </div>
+
+                {config.allowTemporarySubmission && (
+                  <>
                     <div style={fieldColumnStyle}>
-                      <span style={{ fontWeight: 600 }}>Allowed branches</span>
+                      <span style={{ fontWeight: 600 }}>Temporary allowed branches</span>
                       <select
                         multiple
                         size={8}
-                        value={config.allowedBranches}
+                        value={config.temporaryAllowedBranches}
                         onChange={(e) =>
                           setConfig((c) => ({
                             ...c,
-                            allowedBranches: Array.from(
+                            temporaryAllowedBranches: Array.from(
                               e.target.selectedOptions,
                               (o) => o.value,
                             ),
@@ -1178,7 +1324,7 @@ export default function FormsManagement() {
                           onClick={() =>
                             setConfig((c) => ({
                               ...c,
-                              allowedBranches: branchOptions.map((b) => b.value),
+                              temporaryAllowedBranches: branchOptions.map((b) => b.value),
                             }))
                           }
                         >
@@ -1186,7 +1332,9 @@ export default function FormsManagement() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
+                          onClick={() =>
+                            setConfig((c) => ({ ...c, temporaryAllowedBranches: [] }))
+                          }
                         >
                           None
                         </button>
@@ -1194,15 +1342,15 @@ export default function FormsManagement() {
                     </div>
 
                     <div style={fieldColumnStyle}>
-                      <span style={{ fontWeight: 600 }}>Allowed departments</span>
+                      <span style={{ fontWeight: 600 }}>Temporary allowed departments</span>
                       <select
                         multiple
                         size={8}
-                        value={config.allowedDepartments}
+                        value={config.temporaryAllowedDepartments}
                         onChange={(e) =>
                           setConfig((c) => ({
                             ...c,
-                            allowedDepartments: Array.from(
+                            temporaryAllowedDepartments: Array.from(
                               e.target.selectedOptions,
                               (o) => o.value,
                             ),
@@ -1221,7 +1369,7 @@ export default function FormsManagement() {
                           onClick={() =>
                             setConfig((c) => ({
                               ...c,
-                              allowedDepartments: deptOptions.map((d) => d.value),
+                              temporaryAllowedDepartments: deptOptions.map((d) => d.value),
                             }))
                           }
                         >
@@ -1230,342 +1378,39 @@ export default function FormsManagement() {
                         <button
                           type="button"
                           onClick={() =>
-                            setConfig((c) => ({ ...c, allowedDepartments: [] }))
+                            setConfig((c) => ({ ...c, temporaryAllowedDepartments: [] }))
                           }
                         >
                           None
                         </button>
                       </div>
                     </div>
+                  </>
+                )}
 
-                    <div style={fieldColumnStyle}>
-                      <span style={{ fontWeight: 600 }}>Allowed user rights</span>
-                      <select
-                        multiple
-                        size={8}
-                        value={config.allowedUserRights}
-                        onChange={(e) =>
-                          setConfig((c) => ({
-                            ...c,
-                            allowedUserRights: Array.from(
-                              e.target.selectedOptions,
-                              (o) => o.value,
-                            ),
-                          }))
-                        }
-                      >
-                        {userRightOptions.map((right) => (
-                          <option key={right.value} value={right.value}>
-                            {right.label}
-                          </option>
-                        ))}
-                      </select>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfig((c) => ({
-                              ...c,
-                              allowedUserRights: userRightOptions.map((r) => r.value),
-                            }))
-                          }
-                        >
-                          All
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfig((c) => ({ ...c, allowedUserRights: [] }))
-                          }
-                        >
-                          None
-                        </button>
-                      </div>
-                    </div>
-
-                    <div style={fieldColumnStyle}>
-                      <span style={{ fontWeight: 600 }}>Allowed workplaces</span>
-                      <select
-                        multiple
-                        size={8}
-                        value={config.allowedWorkplaces}
-                        onChange={(e) =>
-                          setConfig((c) => ({
-                            ...c,
-                            allowedWorkplaces: Array.from(
-                              e.target.selectedOptions,
-                              (o) => o.value,
-                            ),
-                          }))
-                        }
-                      >
-                        {workplaceOptions.map((workplace) => (
-                          <option key={workplace.value} value={workplace.value}>
-                            {workplace.label}
-                          </option>
-                        ))}
-                      </select>
-                      <div style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setConfig((c) => ({
-                              ...c,
-                              allowedWorkplaces: workplaceOptions.map((w) => w.value),
-                            }))
-                          }
-                        >
-                          All
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setConfig((c) => ({ ...c, allowedWorkplaces: [] }))}
-                        >
-                          None
-                        </button>
-                      </div>
-                    </div>
-
-                    {procedureOptions.length > 0 && (
-                      <div style={fieldColumnStyle}>
-                        <span style={{ fontWeight: 600 }}>Allowed procedures</span>
-                        <select
-                          multiple
-                          size={8}
-                          value={config.procedures}
-                          onChange={(e) =>
-                            setConfig((c) => ({
-                              ...c,
-                              procedures: Array.from(
-                                e.target.selectedOptions,
-                                (o) => o.value,
-                              ),
-                            }))
-                          }
-                        >
-                          {procedureOptions.map((p) => (
-                            <option key={p} value={p}>
-                              {getProcLabel(p)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {config.allowTemporarySubmission && (
-                  <div>
-                    <h4 style={subsectionTitleStyle}>Temporary access</h4>
-                    <div style={controlGroupStyle}>
-                      <div style={fieldColumnStyle}>
-                        <span style={{ fontWeight: 600 }}>Temporary allowed branches</span>
-                        <select
-                          multiple
-                          size={8}
-                          value={config.temporaryAllowedBranches}
-                          onChange={(e) =>
-                            setConfig((c) => ({
-                              ...c,
-                              temporaryAllowedBranches: Array.from(
-                                e.target.selectedOptions,
-                                (o) => o.value,
-                              ),
-                            }))
-                          }
-                        >
-                          {branchOptions.map((b) => (
-                            <option key={b.value} value={b.value}>
-                              {b.label}
-                            </option>
-                          ))}
-                        </select>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfig((c) => ({
-                                ...c,
-                                temporaryAllowedBranches: branchOptions.map((b) => b.value),
-                              }))
-                            }
-                          >
-                            All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfig((c) => ({ ...c, temporaryAllowedBranches: [] }))
-                            }
-                          >
-                            None
-                          </button>
-                        </div>
-                      </div>
-
-                      <div style={fieldColumnStyle}>
-                        <span style={{ fontWeight: 600 }}>Temporary allowed departments</span>
-                        <select
-                          multiple
-                          size={8}
-                          value={config.temporaryAllowedDepartments}
-                          onChange={(e) =>
-                            setConfig((c) => ({
-                              ...c,
-                              temporaryAllowedDepartments: Array.from(
-                                e.target.selectedOptions,
-                                (o) => o.value,
-                              ),
-                            }))
-                          }
-                        >
-                          {deptOptions.map((d) => (
-                            <option key={d.value} value={d.value}>
-                              {d.label}
-                            </option>
-                          ))}
-                        </select>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfig((c) => ({
-                                ...c,
-                                temporaryAllowedDepartments: deptOptions.map((d) => d.value),
-                              }))
-                            }
-                          >
-                            All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfig((c) => ({ ...c, temporaryAllowedDepartments: [] }))
-                            }
-                          >
-                            None
-                          </button>
-                        </div>
-                      </div>
-
-                      <div style={fieldColumnStyle}>
-                        <span style={{ fontWeight: 600 }}>Temporary allowed user rights</span>
-                        <select
-                          multiple
-                          size={8}
-                          value={config.temporaryAllowedUserRights}
-                          onChange={(e) =>
-                            setConfig((c) => ({
-                              ...c,
-                              temporaryAllowedUserRights: Array.from(
-                                e.target.selectedOptions,
-                                (o) => o.value,
-                              ),
-                            }))
-                          }
-                        >
-                          {userRightOptions.map((right) => (
-                            <option key={right.value} value={right.value}>
-                              {right.label}
-                            </option>
-                          ))}
-                        </select>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfig((c) => ({
-                                ...c,
-                                temporaryAllowedUserRights: userRightOptions.map((r) => r.value),
-                              }))
-                            }
-                          >
-                            All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfig((c) => ({ ...c, temporaryAllowedUserRights: [] }))
-                            }
-                          >
-                            None
-                          </button>
-                        </div>
-                      </div>
-
-                      <div style={fieldColumnStyle}>
-                        <span style={{ fontWeight: 600 }}>Temporary allowed workplaces</span>
-                        <select
-                          multiple
-                          size={8}
-                          value={config.temporaryAllowedWorkplaces}
-                          onChange={(e) =>
-                            setConfig((c) => ({
-                              ...c,
-                              temporaryAllowedWorkplaces: Array.from(
-                                e.target.selectedOptions,
-                                (o) => o.value,
-                              ),
-                            }))
-                          }
-                        >
-                          {workplaceOptions.map((workplace) => (
-                            <option key={workplace.value} value={workplace.value}>
-                              {workplace.label}
-                            </option>
-                          ))}
-                        </select>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfig((c) => ({
-                                ...c,
-                                temporaryAllowedWorkplaces: workplaceOptions.map((w) => w.value),
-                              }))
-                            }
-                          >
-                            All
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setConfig((c) => ({ ...c, temporaryAllowedWorkplaces: [] }))
-                            }
-                          >
-                            None
-                          </button>
-                        </div>
-                      </div>
-
-                      {procedureOptions.length > 0 && (
-                        <div style={fieldColumnStyle}>
-                          <span style={{ fontWeight: 600 }}>
-                            Temporary allowed procedures
-                          </span>
-                          <select
-                            multiple
-                            size={8}
-                            value={config.temporaryProcedures}
-                            onChange={(e) =>
-                              setConfig((c) => ({
-                                ...c,
-                                temporaryProcedures: Array.from(
-                                  e.target.selectedOptions,
-                                  (o) => o.value,
-                                ),
-                              }))
-                            }
-                          >
-                            {procedureOptions.map((p) => (
-                              <option key={p} value={p}>
-                                {getProcLabel(p)}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-                    </div>
+                {procedureOptions.length > 0 && (
+                  <div style={fieldColumnStyle}>
+                    <span style={{ fontWeight: 600 }}>Procedures</span>
+                    <select
+                      multiple
+                      size={8}
+                      value={config.procedures}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          procedures: Array.from(
+                            e.target.selectedOptions,
+                            (o) => o.value,
+                          ),
+                        }))
+                      }
+                    >
+                      {procedureOptions.map((p) => (
+                        <option key={p} value={p}>
+                          {getProcLabel(p)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </div>

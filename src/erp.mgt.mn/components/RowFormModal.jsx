@@ -16,23 +16,6 @@ import {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
-function normalizeBooleanFlag(value, fallback = false) {
-  if (value === undefined || value === null) return fallback;
-  if (typeof value === 'boolean') return value;
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value)) return fallback;
-    return value !== 0;
-  }
-  if (typeof value === 'string') {
-    const normalized = value.trim().toLowerCase();
-    if (!normalized) return fallback;
-    if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
-    if (['false', '0', 'no', 'off'].includes(normalized)) return false;
-    return fallback;
-  }
-  return fallback;
-}
-
 const RowFormModal = function RowFormModal({
   visible,
   onCancel,
@@ -106,11 +89,6 @@ const RowFormModal = function RowFormModal({
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
-  const globalPosEnabled = normalizeBooleanFlag(general.posApiEnabled, true);
-  const formPosEnabled = normalizeBooleanFlag(formConfig?.posApiEnabled, false);
-  const canIssuePosReceipt = Boolean(
-    isAdding && canPost && globalPosEnabled && formPosEnabled,
-  );
   const { t } = useTranslation(['translation', 'tooltip']);
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
@@ -1820,9 +1798,7 @@ const RowFormModal = function RowFormModal({
     }
   }
 
-  async function submitForm(options = {}) {
-    const { issuePosReceipt = false } =
-      options && typeof options === 'object' ? options : {};
+  async function submitForm() {
     if (!canPost) {
       alert(
         t(
@@ -1913,9 +1889,7 @@ const RowFormModal = function RowFormModal({
             extra.seedRecords = filtered;
           }
           try {
-            const res = await Promise.resolve(
-              onSubmit({ ...extra, ...r }, { issuePosReceipt }),
-            );
+            const res = await Promise.resolve(onSubmit({ ...extra, ...r }));
             if (res === false) {
               failedRows.push(rows[rowIndices[i]]);
             } else {
@@ -1968,9 +1942,7 @@ const RowFormModal = function RowFormModal({
         normalized[k] = val;
       });
       try {
-        const res = await Promise.resolve(
-          onSubmit(normalized, { issuePosReceipt }),
-        );
+        const res = await Promise.resolve(onSubmit(normalized));
         if (res === false) {
           setSubmitLocked(false);
           return;
@@ -2685,21 +2657,10 @@ const RowFormModal = function RowFormModal({
           >
             {t('cancel', 'Cancel')}
           </button>
-          {canPost && canIssuePosReceipt && (
-            <button
-              type="button"
-              onClick={() => submitForm({ issuePosReceipt: true })}
-              className="px-3 py-1 bg-green-600 text-white rounded"
-              disabled={submitLocked}
-            >
-              {t('ebarimt_post', 'Ebarimt Post')}
-            </button>
-          )}
           {canPost && (
             <button
               type="submit"
               className="px-3 py-1 bg-blue-600 text-white rounded"
-              disabled={submitLocked}
             >
               {t('post', 'Post')}
             </button>

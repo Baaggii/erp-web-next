@@ -4,14 +4,6 @@ import { pool } from '../../db/index.js';
 import { getConfigPath } from '../utils/configPaths.js';
 import { hasPosTransactionAccess } from './posTransactionConfig.js';
 import { parseLocalizedNumber } from '../../utils/parseLocalizedNumber.js';
-import { getFormConfig } from './transactionFormConfig.js';
-import {
-  buildReceiptFromDynamicTransaction,
-  sendReceipt,
-} from './posApiService.js';
-import { serializeError, summarizePosPayload } from '../utils/errorUtils.js';
-import { coerceBoolean } from '../utils/valueUtils.js';
-import { getGeneralConfig } from './generalConfig.js';
 
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
@@ -956,8 +948,6 @@ export async function postPosTransaction(
   }
 
   const masterTable = cfg.masterTable || 'transactions_pos';
-  const masterTableLower =
-    typeof masterTable === 'string' ? masterTable.toLowerCase() : '';
   const masterType = cfg.masterType === 'multi' ? 'multi' : 'single';
   const tableTypeMap = new Map();
   if (masterTable) tableTypeMap.set(masterTable, masterType);
@@ -969,28 +959,6 @@ export async function postPosTransaction(
       tableTypeMap.set(tableName, 'multi');
     } else if (!tableTypeMap.has(tableName)) {
       tableTypeMap.set(tableName, 'single');
-    }
-  }
-
-  const masterFormRaw =
-    typeof cfg.masterForm === 'string' ? cfg.masterForm.trim() : '';
-  let resolvedMasterForm = masterFormRaw;
-  if (!resolvedMasterForm) {
-    for (const entry of Array.isArray(cfg.tables) ? cfg.tables : []) {
-      const entryTable =
-        typeof entry?.table === 'string' ? entry.table.trim() : '';
-      if (
-        entryTable &&
-        masterTable &&
-        entryTable.toLowerCase() === masterTableLower &&
-        typeof entry?.form === 'string'
-      ) {
-        const trimmed = entry.form.trim();
-        if (trimmed) {
-          resolvedMasterForm = trimmed;
-          break;
-        }
-      }
     }
   }
 
@@ -1082,14 +1050,6 @@ export async function postPosTransaction(
   evalPosFormulas(cfg, mergedData);
 
   const masterColumns = await getMasterTableColumnSet(masterTable);
-  const masterColumnCaseMap = {};
-  if (masterColumns instanceof Set) {
-    for (const col of masterColumns) {
-      if (typeof col === 'string') {
-        masterColumnCaseMap[col.toLowerCase()] = col;
-      }
-    }
-  }
   const normalizedSession = normalizeSessionInfo(sessionInfo, posData, masterColumns);
   Object.assign(posData, normalizedSession);
 
@@ -1114,9 +1074,6 @@ export async function postPosTransaction(
   const statusRowsForPosted = [];
   let shouldUpdateMasterToPosted = false;
   let committed = false;
-  let masterIdValue = null;
-  let finalMasterId = null;
-  let posApiCandidateRecord = null;
   try {
     await conn.beginTransaction();
     const fkMap = await getMasterForeignKeyMap(conn, masterTable);
@@ -1127,18 +1084,9 @@ export async function postPosTransaction(
       posData[statusField] = statusCreated;
     }
 
-    const upsertedMasterId = await upsertRow(conn, masterTable, posData);
-    if (upsertedMasterId !== null && upsertedMasterId !== undefined) {
-      posData.id = upsertedMasterId;
-    }
-    if (posData.id !== undefined && posData.id !== null) {
-      masterIdValue = posData.id;
-    } else if (
-      upsertedMasterId !== null &&
-      upsertedMasterId !== undefined &&
-      upsertedMasterId !== 0
-    ) {
-      masterIdValue = upsertedMasterId;
+    const masterId = await upsertRow(conn, masterTable, posData);
+    if (masterId !== null && masterId !== undefined) {
+      posData.id = masterId;
     }
 
     if (useStatusTable) {
@@ -1187,15 +1135,10 @@ export async function postPosTransaction(
           statusRowsForPosted.push(rowForPosted);
         }
       }
-    } else if (
-      statusField &&
-      statusBeforePost !== null &&
-      masterIdValue !== null &&
-      masterIdValue !== undefined
-    ) {
+    } else if (statusField && statusBeforePost !== null && masterId !== null && masterId !== undefined) {
       await conn.query(
         `UPDATE ${masterTable} SET ${statusField}=? WHERE id=?`,
-        [statusBeforePost, masterIdValue],
+        [statusBeforePost, masterId],
       );
       shouldUpdateMasterToPosted = statusPosted !== null;
     } else if (statusField && statusPosted !== null) {
@@ -1222,13 +1165,6 @@ export async function postPosTransaction(
 
     await conn.commit();
     committed = true;
-    finalMasterId =
-      posData.id !== undefined && posData.id !== null
-        ? posData.id
-        : masterIdValue;
-    if (isPlainObject(posData)) {
-      posApiCandidateRecord = { ...posData };
-    }
 
     if (useStatusTable && statusRowsForPosted.length) {
       for (const row of statusRowsForPosted) {
@@ -1247,6 +1183,8 @@ export async function postPosTransaction(
         [statusPosted, posData.id],
       );
     }
+
+    return masterId;
   } catch (err) {
     if (!committed) {
       await conn.rollback();
@@ -1255,118 +1193,6 @@ export async function postPosTransaction(
   } finally {
     conn.release();
   }
-
-  if (
-    masterTable &&
-    resolvedMasterForm &&
-    finalMasterId !== null &&
-    finalMasterId !== undefined
-  ) {
-    try {
-      const [formCfgResult, generalCfgResult] = await Promise.all([
-        getFormConfig(masterTable, resolvedMasterForm, companyId),
-        getGeneralConfig(companyId ?? 0),
-      ]);
-      const formCfg = formCfgResult?.config;
-      const generalCfg = generalCfgResult?.config;
-      const posGloballyEnabled = coerceBoolean(
-        generalCfg?.general?.posApiEnabled,
-        true,
-      );
-      const posLocallyEnabled = coerceBoolean(formCfg?.posApiEnabled, false);
-      if (posGloballyEnabled && posLocallyEnabled) {
-        const mapping = formCfg.posApiMapping || {};
-        let masterRecord =
-          posApiCandidateRecord && isPlainObject(posApiCandidateRecord)
-            ? { ...posApiCandidateRecord }
-            : {};
-        try {
-          const [rows] = await pool.query(
-            `SELECT * FROM \`${masterTable}\` WHERE id = ? LIMIT 1`,
-            [finalMasterId],
-          );
-          if (Array.isArray(rows) && rows[0]) {
-            masterRecord = rows[0];
-          }
-        } catch (selectErr) {
-          console.error('Failed to load persisted POS transaction for POSAPI', {
-            table: masterTable,
-            id: finalMasterId,
-            error: serializeError(selectErr),
-          });
-        }
-        const receiptType =
-          formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-        const payload = buildReceiptFromDynamicTransaction(
-          masterRecord,
-          mapping,
-          receiptType,
-        );
-        if (payload) {
-          (async () => {
-            try {
-              const posApiResponse = await sendReceipt(payload);
-              if (posApiResponse) {
-                const updates = {};
-                if (posApiResponse.lottery) {
-                  const lotteryCol =
-                    masterColumnCaseMap.lottery ||
-                    masterColumnCaseMap.lottery_no ||
-                    masterColumnCaseMap.lottery_number ||
-                    masterColumnCaseMap.ddtd;
-                  if (lotteryCol) {
-                    updates[lotteryCol] = posApiResponse.lottery;
-                  }
-                }
-                if (posApiResponse.qrData) {
-                  const qrCol =
-                    masterColumnCaseMap.qr_data ||
-                    masterColumnCaseMap.qrdata ||
-                    masterColumnCaseMap.qr_code;
-                  if (qrCol) {
-                    updates[qrCol] = posApiResponse.qrData;
-                  }
-                }
-                if (Object.keys(updates).length > 0) {
-                  const setClause = Object.keys(updates)
-                    .map((col) => `\`${col}\` = ?`)
-                    .join(', ');
-                  const params = [...Object.values(updates), finalMasterId];
-                  try {
-                    await pool.query(
-                      `UPDATE \`${masterTable}\` SET ${setClause} WHERE id = ?`,
-                      params,
-                    );
-                  } catch (updateErr) {
-                    console.error('Failed to persist POSAPI response details', {
-                      table: masterTable,
-                      id: finalMasterId,
-                      error: serializeError(updateErr),
-                    });
-                  }
-                }
-              }
-            } catch (posErr) {
-              console.error('POSAPI receipt submission failed', {
-                table: masterTable,
-                recordId: finalMasterId,
-                payload: summarizePosPayload(payload),
-                error: serializeError(posErr),
-              });
-            }
-          })();
-        }
-      }
-    } catch (cfgErr) {
-      console.error('Failed to evaluate POSAPI configuration', {
-        table: masterTable,
-        formName: resolvedMasterForm,
-        error: serializeError(cfgErr),
-      });
-    }
-  }
-
-  return finalMasterId;
 }
 
 export default postPosTransaction;
