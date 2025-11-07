@@ -9,6 +9,80 @@ import { useNavigate } from 'react-router-dom';
 import I18nContext from '../context/I18nContext.jsx';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 
+const containerStyle = {
+  width: '100%',
+  maxWidth: '360px',
+  background: '#ffffff',
+  borderRadius: '18px',
+  boxShadow: '0 45px 80px rgba(15, 23, 42, 0.18)',
+  border: '1px solid rgba(148, 163, 184, 0.25)',
+  padding: '2.5rem 2rem',
+  backdropFilter: 'blur(4px)',
+};
+
+const headerStyle = {
+  marginBottom: '1.25rem',
+  color: '#0f172a',
+  textAlign: 'center',
+  fontSize: '1.65rem',
+  fontWeight: 700,
+  letterSpacing: '-0.025em',
+};
+
+const subtitleStyle = {
+  marginBottom: '1.75rem',
+  color: '#475569',
+  textAlign: 'center',
+  fontSize: '0.95rem',
+  lineHeight: 1.5,
+};
+
+const formStyle = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '1rem',
+};
+
+const labelStyle = {
+  display: 'block',
+  marginBottom: '0.35rem',
+  fontSize: '0.95rem',
+  fontWeight: 600,
+  color: '#1e293b',
+};
+
+const inputStyle = {
+  width: '100%',
+  padding: '0.75rem 0.9rem',
+  borderRadius: '12px',
+  border: '1px solid rgba(148, 163, 184, 0.45)',
+  backgroundColor: '#f8fafc',
+  color: '#0f172a',
+  fontSize: '0.95rem',
+  outline: 'none',
+  transition: 'border-color 150ms ease, box-shadow 150ms ease',
+  boxShadow: '0 1px 1px rgba(15, 23, 42, 0.04)',
+};
+
+const buttonStyle = {
+  background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+  color: '#fff',
+  padding: '0.85rem 1rem',
+  border: 'none',
+  borderRadius: '12px',
+  cursor: 'pointer',
+  fontWeight: 600,
+  fontSize: '1rem',
+  letterSpacing: '0.01em',
+  boxShadow: '0 18px 35px rgba(37, 99, 235, 0.35)',
+};
+
+const errorStyle = {
+  color: '#dc2626',
+  fontSize: '0.9rem',
+  textAlign: 'center',
+};
+
 export default function LoginForm() {
   // login using employee ID only
   const [empid, setEmpid] = useState('');
@@ -120,11 +194,14 @@ export default function LoginForm() {
 
   if (isCompanyStep) {
     return (
-      <div style={{ maxWidth: '320px' }}>
-        <h1>{t('selectCompany', 'Компани сонгох')}</h1>
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <label htmlFor="company" style={{ display: 'block', marginBottom: '0.25rem' }}>
+      <section style={containerStyle}>
+        <h1 style={headerStyle}>{t('selectCompany', 'Компани сонгох')}</h1>
+        <p style={subtitleStyle}>
+          {t('selectCompanySubtitle', 'Ажиллах компанийг сонгоно уу')}
+        </p>
+        <form onSubmit={handleSubmit} style={formStyle}>
+          <div>
+            <label htmlFor="company" style={labelStyle}>
               {t('company', 'Компани')}
             </label>
             <select
@@ -132,7 +209,14 @@ export default function LoginForm() {
               value={companyId}
               onChange={(ev) => setCompanyId(ev.target.value)}
               required
-              style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
+              style={{
+                ...inputStyle,
+                appearance: 'none',
+                cursor: 'pointer',
+                backgroundImage: 'url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIiIGhlaWdodD0iOCIgdmlld0JveD0iMCAwIDEyIDgiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PHBvbHlnb24gcG9pbnRzPSIxIDEgNiA3IDExIDEiIHN0eWxlPSJmaWxsOiM2N2E4YmQiIC8+PC9zdmc+)',
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'calc(100% - 12px) center',
+              }}
             >
               <option value="">{t('selectCompany', 'Компани сонгох')}</option>
               {companyOptions.map((c) => (
@@ -143,78 +227,59 @@ export default function LoginForm() {
             </select>
           </div>
 
-          {error && (
-            <p style={{ color: 'red', marginBottom: '0.75rem' }}>{error}</p>
-          )}
+          {error && <p style={errorStyle}>{error}</p>}
 
-          <button
-            type="submit"
-            style={{
-              backgroundColor: '#2563eb',
-              color: '#fff',
-              padding: '0.5rem 1rem',
-              border: '1px solid #2563eb',
-              borderRadius: '3px',
-              cursor: 'pointer',
-            }}
-          >
+          <button type="submit" style={buttonStyle}>
             {t('choose', 'Сонгох')}
           </button>
         </form>
-      </div>
+      </section>
     );
   }
 
   return (
-      <div style={{ maxWidth: '320px' }}>
-        <h1>{t('login', 'Нэвтрэх')}</h1>
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '0.75rem' }}>
-            <label htmlFor="empid" style={{ display: 'block', marginBottom: '0.25rem' }}>
-              {t('employeeId', 'Ажилтны ID')}
-            </label>
+    <section style={containerStyle}>
+      <h1 style={headerStyle}>{t('login', 'Нэвтрэх')}</h1>
+      <p style={subtitleStyle}>
+        {t('loginSubtitle', 'Нэвтрэхдээ ажилтны ID болон нууц үгээ ашиглана уу')}
+      </p>
+      <form onSubmit={handleSubmit} style={formStyle}>
+        <div>
+          <label htmlFor="empid" style={labelStyle}>
+            {t('employeeId', 'Ажилтны ID')}
+          </label>
           <input
             id="empid"
             type="text"
             value={empid}
             onChange={(ev) => setEmpid(ev.target.value)}
             required
-            style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
+            autoComplete="username"
+            style={inputStyle}
           />
         </div>
 
-          <div style={{ marginBottom: '0.75rem' }}>
-            <label htmlFor="password" style={{ display: 'block', marginBottom: '0.25rem' }}>
-              {t('password', 'Нууц үг')}
-            </label>
+        <div>
+          <label htmlFor="password" style={labelStyle}>
+            {t('password', 'Нууц үг')}
+          </label>
           <input
             id="password"
             type="password"
             value={password}
             onChange={(ev) => setPassword(ev.target.value)}
             required
-            style={{ width: '100%', padding: '0.5rem', borderRadius: '3px', border: '1px solid #ccc' }}
+            autoComplete="current-password"
+            style={inputStyle}
           />
         </div>
 
-        {error && (
-          <p style={{ color: 'red', marginBottom: '0.75rem' }}>{error}</p>
-        )}
+        {error && <p style={errorStyle}>{error}</p>}
 
-          <button
-            type="submit"
-            style={{
-              backgroundColor: '#2563eb',
-            color: '#fff',
-            padding: '0.5rem 1rem',
-            border: '1px solid #2563eb',
-            borderRadius: '3px',
-            cursor: 'pointer',
-          }}
-          >
-            {t('login', 'Нэвтрэх')}
-          </button>
-        </form>
-      </div>
+        <button type="submit" style={buttonStyle}>
+          {t('login', 'Нэвтрэх')}
+        </button>
+      </form>
+    </section>
   );
 }
