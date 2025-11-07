@@ -39,20 +39,73 @@ test('hasPosTransactionAccess honors temporary permissions', () => {
   assert.equal(hasPosTransactionAccess(config, '3', '20'), false);
 });
 
+test('hasPosTransactionAccess enforces user rights, workplaces, and procedures', () => {
+  const config = {
+    allowedBranches: [],
+    allowedDepartments: [],
+    allowedUserRights: ['100'],
+    allowedWorkplaces: [5],
+    procedures: ['sp_pos_submit'],
+    temporaryAllowedUserRights: ['200'],
+    temporaryAllowedWorkplaces: ['9'],
+    temporaryProcedures: ['sp_pos_temp'],
+    supportsTemporarySubmission: true,
+  };
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      userRightId: '100',
+      workplaceId: 5,
+      procedure: 'sp_pos_submit',
+    }),
+    true,
+  );
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      userRightId: '101',
+      workplaceId: 5,
+      procedure: 'sp_pos_submit',
+    }),
+    false,
+  );
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      userRightId: '200',
+      workplaceId: '9',
+      procedure: 'sp_pos_temp',
+    }),
+    true,
+  );
+  assert.equal(
+    hasPosTransactionAccess(config, null, null, {
+      userRightId: '200',
+      workplaceId: '9',
+      procedure: 'sp_pos_submit',
+    }),
+    false,
+  );
+});
+
 test('filterPosConfigsByAccess returns only permitted configurations', () => {
   const configs = {
-    Alpha: { allowedBranches: [1], allowedDepartments: [] },
-    Beta: { allowedBranches: [], allowedDepartments: ['20'] },
-    Gamma: { allowedBranches: [3], allowedDepartments: ['30'] },
+    Alpha: { allowedBranches: [1], allowedDepartments: [], allowedUserRights: ['10'] },
+    Beta: { allowedBranches: [], allowedDepartments: ['20'], allowedWorkplaces: ['5'] },
+    Gamma: { allowedBranches: [3], allowedDepartments: ['30'], allowedUserRights: ['99'] },
     Temp: {
       allowedBranches: [9],
       allowedDepartments: ['90'],
       temporaryAllowedBranches: ['1'],
       temporaryAllowedDepartments: ['20'],
+      temporaryAllowedUserRights: ['10'],
+      temporaryAllowedWorkplaces: ['5'],
       supportsTemporarySubmission: true,
     },
   };
-  const filtered = filterPosConfigsByAccess(configs, 1, 20);
+  const filtered = filterPosConfigsByAccess(
+    configs,
+    1,
+    20,
+    { userRightId: '10', workplaceId: '5' },
+  );
   assert.deepEqual(Object.keys(filtered).sort(), ['Alpha', 'Beta', 'Temp']);
   assert.ok(!filtered.Gamma);
 });
