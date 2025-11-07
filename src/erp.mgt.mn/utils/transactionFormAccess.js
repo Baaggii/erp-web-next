@@ -29,15 +29,37 @@ export function hasTransactionFormAccess(
   if (!info || typeof info !== 'object') return true;
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
+  const workplaceValue = normalizeAccessValue(
+    options.workplaceId ?? options.workplaceSessionId ?? options.workplace,
+  );
+  const rightsList = Array.isArray(options.userRights)
+    ? options.userRights
+        .map((right) => normalizeAccessValue(right))
+        .filter((right) => right !== null)
+    : [];
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
+  const allowedWorkplaces = normalizeAccessList(info.allowedWorkplaces);
+  const allowedUserRights = normalizeAccessList(info.allowedUserRights);
+
+  const workplaceAllowed =
+    allowedWorkplaces.length === 0 ||
+    workplaceValue === null ||
+    allowedWorkplaces.includes(workplaceValue);
+  const rightsAllowed =
+    allowedUserRights.length === 0 ||
+    rightsList.some((right) => allowedUserRights.includes(right));
 
   const generalAllowed =
     matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue);
+    matchesScope(allowedDepartments, departmentValue) &&
+    workplaceAllowed &&
+    rightsAllowed;
 
   if (generalAllowed) return true;
+
+  if (!workplaceAllowed || !rightsAllowed) return false;
 
   const temporaryEnabled = Boolean(
     info.supportsTemporarySubmission ??
@@ -76,13 +98,33 @@ export function evaluateTransactionFormAccess(
 
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
+  const workplaceValue = normalizeAccessValue(
+    options.workplaceId ?? options.workplaceSessionId ?? options.workplace,
+  );
+  const rightsList = Array.isArray(options.userRights)
+    ? options.userRights
+        .map((right) => normalizeAccessValue(right))
+        .filter((right) => right !== null)
+    : [];
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
+  const allowedWorkplaces = normalizeAccessList(info.allowedWorkplaces);
+  const allowedUserRights = normalizeAccessList(info.allowedUserRights);
+
+  const workplaceAllowed =
+    allowedWorkplaces.length === 0 ||
+    workplaceValue === null ||
+    allowedWorkplaces.includes(workplaceValue);
+  const rightsAllowed =
+    allowedUserRights.length === 0 ||
+    rightsList.some((right) => allowedUserRights.includes(right));
 
   const canPost =
     matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue);
+    matchesScope(allowedDepartments, departmentValue) &&
+    workplaceAllowed &&
+    rightsAllowed;
 
   const temporaryEnabled = Boolean(
     info.supportsTemporarySubmission ??
@@ -93,7 +135,9 @@ export function evaluateTransactionFormAccess(
 
   let allowTemporary = false;
   if (temporaryEnabled) {
-    if (options && options.allowTemporaryAnyScope) {
+    if (!workplaceAllowed || !rightsAllowed) {
+      allowTemporary = false;
+    } else if (options && options.allowTemporaryAnyScope) {
       allowTemporary = true;
     } else {
       const temporaryBranches = normalizeAccessList(info.temporaryAllowedBranches);
