@@ -1,8 +1,8 @@
-// src/erp.mgt.mn/hooks/useAuth.jsx
+// src/erp.mgt.mn/hooks/useAuth.js
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 
-// src/erp.mgt.mn/hooks/useAuth.jsx
+// src/erp.mgt.mn/hooks/useAuth.js
 
 /**
  * Performs a login request and sets an HttpOnly cookie on success.
@@ -19,8 +19,12 @@ export async function login({ empid, password, companyId }, t = (key, fallback) 
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include', // Ensures cookie is stored
       body: JSON.stringify({ empid, password, companyId }),
+      skipErrorToast: true,
     });
   } catch (err) {
+    if (err && typeof err === 'object' && err.code === 'CSRF_TOKEN_UNAVAILABLE') {
+      throw new Error(t('serviceUnavailable', 'Service unavailable'));
+    }
     // Network errors (e.g. server unreachable)
     throw new Error(t('loginRequestFailed', 'Login request failed'));
   }

@@ -2,7 +2,7 @@
 import React, { useContext, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
-import { logout } from '../hooks/useAuth.jsx';
+import { logout } from '../hooks/useAuth.js';
 import { I18nContext } from '../context/I18nContext.jsx';
 
 /**
