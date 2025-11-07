@@ -5,6 +5,7 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
+import normalizeBoolean from '../utils/normalizeBoolean.js';
 
 export default function GeneralConfiguration() {
   const initial = useGeneralConfig();
@@ -436,6 +437,46 @@ export default function GeneralConfiguration() {
                   name="txnToastEnabled"
                   type="checkbox"
                   checked={active.txnToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('pos_guard_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue: 'Display reasons when POS fields are read-only',
+              })}
+            >
+              <label>
+                Show POS Guard Toasts{' '}
+                <input
+                  name="posGuardToastEnabled"
+                  type="checkbox"
+                  checked={active.posGuardToastEnabled ?? false}
+                  onChange={handleChange}
+                />
+              </label>
+            </TooltipWrapper>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <TooltipWrapper
+              title={t('workplace_toast_enabled', {
+                ns: 'tooltip',
+                defaultValue:
+                  'Display workplace fetch diagnostics in Reports, including parameters, SQL, and counts',
+              })}
+            >
+              <label>
+                Show Workplace Fetch Toasts{' '}
+                <input
+                  name="workplaceFetchToastEnabled"
+                  type="checkbox"
+                  checked={normalizeBoolean(
+                    active.workplaceFetchToastEnabled,
+                    true,
+                  )}
                   onChange={handleChange}
                 />
               </label>

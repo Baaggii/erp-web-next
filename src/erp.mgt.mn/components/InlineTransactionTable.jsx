@@ -4,7 +4,9 @@ import React, {
   useImperativeHandle,
   useRef,
   useEffect,
+  useCallback,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import RowDetailModal from './RowDetailModal.jsx';
@@ -25,6 +27,8 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
+
+const ROW_OVERRIDE_ID = Symbol('transactionRowOverrideId');
 
 function normalizeNumberInput(value) {
   if (typeof value !== 'string') return value;
@@ -77,11 +81,22 @@ function InlineTransactionTable(
     imageIdField = '',
     configHash: _configHash,
     tableColumns = [],
+    numericScaleMap = {},
+    disabledFieldReasons = {},
   },
   ref,
 ) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
+  const overrideIdCounterRef = useRef(1);
+  const manualCellOverridesRef = useRef(new Map());
+  function getOrAssignRowOverrideId(row) {
+    if (!row || typeof row !== 'object') return null;
+    if (!row[ROW_OVERRIDE_ID]) {
+      row[ROW_OVERRIDE_ID] = `row-${overrideIdCounterRef.current++}`;
+    }
+    return row[ROW_OVERRIDE_ID];
+  }
   const [tableDisplayFields, setTableDisplayFields] = useState({});
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
@@ -92,6 +107,7 @@ function InlineTransactionTable(
   const generalConfig = useGeneralConfig();
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
+  const { t } = useTranslation(['translation']);
   const userIdSet = new Set(userIdFields);
   const branchIdSet = new Set(branchIdFields);
   const departmentIdSet = new Set(departmentIdFields);
@@ -120,10 +136,171 @@ function InlineTransactionTable(
     () => new Set(disabledFields.map((f) => f.toLowerCase())),
     [disabledFields],
   );
+  const guardReasonLookup = React.useMemo(() => {
+    const map = {};
+    Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
+      if (!key) return;
+      const lower = String(key).toLowerCase();
+      const list = Array.isArray(value) ? value : [value];
+      const unique = map[lower] ? new Set(map[lower]) : new Set();
+      list.forEach((entry) => {
+        if (!entry && entry !== 0) return;
+        unique.add(String(entry));
+      });
+      map[lower] = Array.from(unique);
+    });
+    return map;
+  }, [disabledFieldReasons]);
+  const guardToastEnabled = !!general.posGuardToastEnabled;
+  const lastGuardToastRef = useRef({ field: null, ts: 0, message: null, context: null });
+  const describeGuardReasons = useCallback(
+    (codes = []) => {
+      if (!Array.isArray(codes) || codes.length === 0) return [];
+      const seen = new Set();
+      const messages = [];
+      codes.forEach((code) => {
+        if (!code && code !== 0) return;
+        const normalized = String(code);
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        switch (normalized) {
+          case 'missingEditableConfig':
+            messages.push(
+              t(
+                'pos_guard_reason_missing_editable',
+                'Field is not configured as editable in the POS layout',
+              ),
+            );
+            break;
+          case 'posLock':
+            messages.push(
+              t(
+                'pos_guard_reason_pos_lock',
+                'Field is locked and cannot be edited',
+              ),
+            );
+            break;
+          case 'calcField':
+            messages.push(
+              t(
+                'pos_guard_reason_calc_field',
+                'Value is derived from a calc field mapping; preserveManualChangesAfterRecalc keeps the calculated result.',
+              ),
+            );
+            break;
+          case 'posFormula':
+            messages.push(
+              t(
+                'pos_guard_reason_pos_formula',
+                'Value is calculated by a POS formula; preserveManualChangesAfterRecalc keeps the calculated result.',
+              ),
+            );
+            break;
+          case 'sessionFieldAutoReset':
+            messages.push(
+              t(
+                'pos_guard_reason_session_auto_reset',
+                'Value resets automatically to match the active POS session',
+              ),
+            );
+            break;
+          case 'computed':
+            messages.push(
+              t(
+                'pos_guard_reason_computed',
+                'Value is automatically computed and preserved by preserveManualChangesAfterRecalc.',
+              ),
+            );
+            break;
+          default:
+            messages.push(normalized);
+        }
+      });
+      return messages;
+    },
+    [t],
+  );
+  const notifyGuardToastOnEdit = useCallback(
+    (field) => {
+      if (!guardToastEnabled || !field) return;
+      const fieldName = String(field);
+      const lower = fieldName.toLowerCase();
+      const codes = Array.isArray(guardReasonLookup[lower]) ? guardReasonLookup[lower] : [];
+      const reasons = describeGuardReasons(codes);
+      const reasonsText = (reasons.length > 0 ? reasons : codes.map((code) => String(code))).join('; ');
+      const hasAutoReset = codes.includes('sessionFieldAutoReset');
+      const hasComputed = codes.some((code) =>
+        ['calcField', 'posFormula', 'computed', 'posLock'].includes(String(code)),
+      );
+      let message;
+      if (hasAutoReset && hasComputed) {
+        message = t(
+          'pos_guard_toast_message_edit_auto_reset_and_computed',
+          '{{field}} edit resets automatically and calculated or locked values prevail: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else if (hasAutoReset) {
+        message = t(
+          'pos_guard_toast_message_edit_auto_reset',
+          '{{field}} edit resets automatically: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else if (hasComputed) {
+        message = t(
+          'pos_guard_toast_message_edit_computed',
+          '{{field}} edit cannot override calculated or locked values: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else if (reasons.length > 0) {
+        message = t(
+          'pos_guard_toast_message_edit_guarded',
+          '{{field}} edit guard info: {{reasons}}',
+          {
+            field: fieldName,
+            reasons: reasonsText,
+          },
+        );
+      } else {
+        message = t('pos_guard_toast_message_edit_success', '{{field}} edit saved.', {
+          field: fieldName,
+        });
+      }
+      const now = Date.now();
+      const last = lastGuardToastRef.current;
+      if (
+        last.field === lower &&
+        last.message === message &&
+        last.context === 'edit' &&
+        now - last.ts <= 2000
+      ) {
+        return;
+      }
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: { message, type: 'info' },
+        }),
+      );
+      lastGuardToastRef.current = { field: lower, ts: now, message, context: 'edit' };
+    },
+    [guardToastEnabled, guardReasonLookup, describeGuardReasons, t],
+  );
 
   const columnCaseMapKey = React.useMemo(
     () => JSON.stringify(columnCaseMap || {}),
     [columnCaseMap],
+  );
+  const numericScaleMapKey = React.useMemo(
+    () => JSON.stringify(numericScaleMap || {}),
+    [numericScaleMap],
   );
   const viewSourceKey = React.useMemo(() => JSON.stringify(viewSource || {}), [viewSource]);
   const relationConfigsKey = React.useMemo(
@@ -133,6 +310,63 @@ function InlineTransactionTable(
   const tableDisplayFieldsKey = React.useMemo(
     () => JSON.stringify(tableDisplayFields || {}),
     [tableDisplayFields],
+  );
+
+  const numericScaleLookup = React.useMemo(() => {
+    const map = {};
+    Object.entries(numericScaleMap || {}).forEach(([key, value]) => {
+      if (!key) return;
+      const lower = String(key).toLowerCase();
+      const scale = Number(value);
+      if (!Number.isNaN(scale)) map[lower] = scale;
+    });
+    return map;
+  }, [numericScaleMapKey]);
+
+  const getNumericScale = React.useCallback(
+    (field) => {
+      if (!field) return null;
+      const lower = String(field).toLowerCase();
+      return numericScaleLookup[lower] ?? null;
+    },
+    [numericScaleLookup],
+  );
+
+  const formatNumericValue = React.useCallback(
+    (field, value) => {
+      if (value === null || value === undefined || value === '') return value === 0 ? '0' : '';
+      if (typeof value === 'object') {
+        if ('value' in value) return formatNumericValue(field, value.value);
+        return value;
+      }
+      const scale = getNumericScale(field);
+      if (scale === null) return String(value);
+      const num =
+        typeof value === 'number' ? value : Number(normalizeNumberInput(String(value)));
+      if (!Number.isFinite(num)) return String(value);
+      return num.toFixed(scale);
+    },
+    [getNumericScale],
+  );
+
+  const applyNumericFormattingToRow = React.useCallback(
+    (row) => {
+      if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+      const map = fieldTypeMap || {};
+      let changed = false;
+      const next = { ...row };
+      Object.entries(next).forEach(([key, value]) => {
+        if (map[key] !== 'number') return;
+        const formatted = formatNumericValue(key, value);
+        if (typeof formatted !== 'string') return;
+        if (formatted !== value) {
+          next[key] = formatted;
+          changed = true;
+        }
+      });
+      return changed ? next : row;
+    },
+    [fieldTypeMap, formatNumericValue],
   );
 
   const viewSourceMap = React.useMemo(() => {
@@ -317,6 +551,7 @@ function InlineTransactionTable(
       const now = formatTimestamp(new Date()).slice(0, 10);
       dateField.forEach((f) => maybeSet(f, now));
     }
+    getOrAssignRowOverrideId(row);
     return row;
   }
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
@@ -347,6 +582,19 @@ function InlineTransactionTable(
   const contextDefaultsRef = useRef({ branch, company });
   useEffect(() => {
     rowsRef.current = rows;
+  }, [rows]);
+  useEffect(() => {
+    const activeIds = new Set();
+    rows.forEach((row) => {
+      const id = getOrAssignRowOverrideId(row);
+      if (id) activeIds.add(id);
+    });
+    const overrides = manualCellOverridesRef.current;
+    overrides.forEach((value, key) => {
+      if (!activeIds.has(key)) {
+        overrides.delete(key);
+      }
+    });
   }, [rows]);
 
   const totalAmountSet = new Set(totalAmountFields);
@@ -466,6 +714,11 @@ function InlineTransactionTable(
         const base = updater(prevRows);
         if (!Array.isArray(base)) return base;
         const nextRows = base === prevRows ? prevRows.slice() : base.slice();
+        nextRows.forEach((row) => {
+          if (row && typeof row === 'object') {
+            getOrAssignRowOverrideId(row);
+          }
+        });
         const source = metadataSource ?? prevRows;
         assignArrayMetadata(nextRows, source);
         const { changed, metadata } = applyGeneratedColumns(nextRows, indices);
@@ -553,6 +806,11 @@ function InlineTransactionTable(
       Object.entries(updated).forEach(([k, v]) => {
         if (placeholders[k]) {
           updated[k] = normalizeDateInput(String(v ?? ''), placeholders[k]);
+        } else if (fieldTypeMap[k] === 'number') {
+          const formatted = formatNumericValue(k, v);
+          if (typeof formatted === 'string') {
+            updated[k] = formatted;
+          }
         }
       });
       return updated;
@@ -564,7 +822,7 @@ function InlineTransactionTable(
     if (metadataChanged || JSON.stringify(withMetadata) !== JSON.stringify(rows)) {
       commitRowsUpdate(() => withMetadata, { notify: false, metadataSource: initRows });
     }
-  }, [initRows, minRows, defaultValues, placeholders]);
+  }, [initRows, minRows, defaultValues, placeholders, fieldTypeMap, formatNumericValue]);
 
   useEffect(() => {
     const prev = contextDefaultsRef.current;
@@ -604,11 +862,15 @@ function InlineTransactionTable(
           }
         });
 
+        if (Array.isArray(nextRows)) {
+          nextRows = nextRows.map((row) => applyNumericFormattingToRow(row));
+        }
+
         return changed ? nextRows : currentRows;
       },
       { notify: false },
     );
-  }, [branch, company, fillSessionDefaults]);
+  }, [branch, company, fillSessionDefaults, applyNumericFormattingToRow]);
   const inputRefs = useRef({});
   const focusRow = useRef(0);
   const addBtnRef = useRef(null);
@@ -637,7 +899,15 @@ function InlineTransactionTable(
     maxWidth: `${boxMaxWidth}px`,
     wordBreak: 'break-word',
   };
-  const enabledFields = fields.filter((f) => !disabledSet.has(f.toLowerCase()));
+  const isFieldDisabled = useCallback(
+    (field) => {
+      if (!field) return false;
+      return disabledSet.has(String(field).toLowerCase());
+    },
+    [disabledSet],
+  );
+
+  const enabledFields = fields.filter((f) => !isFieldDisabled(f));
 
   function isValidDate(value, format) {
     if (!value) return true;
@@ -808,6 +1078,8 @@ function InlineTransactionTable(
       Object.keys(baseRow).forEach((key) => {
         keyLookup[key.toLowerCase()] = key;
       });
+      const rowId = getOrAssignRowOverrideId(baseRow);
+      const manualRowMap = rowId ? manualCellOverridesRef.current.get(rowId) : null;
       Object.entries(rowData).forEach(([rawKey, rawValue]) => {
         if (!rawKey && rawKey !== 0) return;
         const mappedKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
@@ -817,6 +1089,23 @@ function InlineTransactionTable(
         const shouldWrite = writableColumns.has(mappedKey) || existingKey;
         if (!shouldWrite) return;
         const targetKey = existingKey || mappedKey;
+        if (manualRowMap && manualRowMap.has(lower)) {
+          const manualValue = manualRowMap.get(lower);
+          if (!valuesEqual(manualValue, rawValue)) {
+            if (existingKey) {
+              updated[existingKey] = manualValue;
+            } else {
+              updated[mappedKey] = manualValue;
+              keyLookup[lower] = mappedKey;
+            }
+            arrayUpdates.set(mappedKey, manualValue);
+            return;
+          }
+          manualRowMap.delete(lower);
+          if (manualRowMap.size === 0) {
+            manualCellOverridesRef.current.delete(rowId);
+          }
+        }
         const previousValue = existingKey ? updated[existingKey] : undefined;
         if (existingKey) {
           updated[existingKey] = rawValue;
@@ -846,6 +1135,9 @@ function InlineTransactionTable(
       baseRows.map((row) => (row && typeof row === 'object' ? { ...row } : row)),
       baseRows,
     );
+    workingRows.forEach((row) => {
+      if (row && typeof row === 'object') getOrAssignRowOverrideId(row);
+    });
 
     if (
       rowOverride &&
@@ -1252,6 +1544,58 @@ function InlineTransactionTable(
 
   function handleFocusField(col) {
     showTriggerInfo(col);
+    if (guardToastEnabled && col) {
+      const fieldName = String(col);
+      const lower = fieldName.toLowerCase();
+      const codes = Array.isArray(guardReasonLookup[lower]) ? guardReasonLookup[lower] : [];
+      const reasons = describeGuardReasons(codes);
+      const isDisabled = disabledSet.has(lower);
+      if (isDisabled || reasons.length > 0) {
+        let message;
+        if (isDisabled) {
+          message =
+            reasons.length > 0
+              ? t(
+                  'pos_guard_toast_message_with_reasons',
+                  '{{field}} is read-only: {{reasons}}',
+                  {
+                    field: fieldName,
+                    reasons: reasons.join('; '),
+                  },
+                )
+              : t('pos_guard_toast_message', '{{field}} is read-only.', { field: fieldName });
+        } else {
+          message =
+            reasons.length > 0
+              ? t(
+                  'pos_guard_toast_message_guarded_with_reasons',
+                  '{{field}} guard info: {{reasons}}',
+                  {
+                    field: fieldName,
+                    reasons: reasons.join('; '),
+                  },
+                )
+              : t('pos_guard_toast_message_guarded', '{{field}} has guard information.', {
+                  field: fieldName,
+                });
+        }
+        const now = Date.now();
+        const last = lastGuardToastRef.current;
+        if (
+          last.field !== lower ||
+          now - last.ts > 400 ||
+          last.message !== message ||
+          last.context !== 'focus'
+        ) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message, type: 'info' },
+            }),
+          );
+          lastGuardToastRef.current = { field: lower, ts: now, message, context: 'focus' };
+        }
+      }
+    }
     const view = viewSourceMap[col];
     if (view && !alreadyRequestedRef.current.has(view)) {
       alreadyRequestedRef.current.add(view);
@@ -1375,6 +1719,24 @@ function InlineTransactionTable(
 
 
   function handleChange(rowIdx, field, value) {
+    if (field && !String(field || '').startsWith('_')) {
+      notifyGuardToastOnEdit(field);
+    }
+    if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
+      return;
+    }
+    if (rowIdx != null && rowIdx >= 0 && rowIdx < rows.length) {
+      const row = rows[rowIdx];
+      const rowId = getOrAssignRowOverrideId(row);
+      if (rowId) {
+        const lower = typeof field === 'string' ? field.toLowerCase() : String(field || '');
+        if (lower) {
+          const existing = manualCellOverridesRef.current.get(rowId) || new Map();
+          existing.set(lower, value);
+          manualCellOverridesRef.current.set(rowId, existing);
+        }
+      }
+    }
     commitRowsUpdate(
       (r) =>
         r.map((row, i) => {
@@ -1622,6 +1984,10 @@ function InlineTransactionTable(
     if (!isEnter && !isForwardTab) return;
     e.preventDefault();
     const field = fields[colIdx];
+    if (isFieldDisabled(field) && !String(field || '').startsWith('_')) {
+      notifyGuardToastOnEdit(field);
+      return;
+    }
     const isLookupField =
       !!relationConfigMap[field] ||
       !!viewSourceMap[field] ||
@@ -1721,8 +2087,9 @@ function InlineTransactionTable(
 
   function renderCell(idx, f, colIdx) {
     const val = rows[idx]?.[f] ?? '';
+    const fieldDisabled = isFieldDisabled(f);
     const invalid = invalidCell && invalidCell.row === idx && invalidCell.field === f;
-    if (disabledSet.has(f.toLowerCase())) {
+    if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
       if (
@@ -1773,6 +2140,10 @@ function InlineTransactionTable(
             className="px-1 border rounded bg-gray-100"
             style={readonlyStyle}
             ref={(el) => (inputRefs.current[`ro-${idx}-${f}`] = el)}
+            tabIndex={0}
+            role="textbox"
+            aria-readonly="true"
+            onFocus={() => handleFocusField(f)}
           >
             {display}
           </div>
@@ -1893,6 +2264,13 @@ function InlineTransactionTable(
       fieldType === 'date'
         ? normalizeDateInput(String(rawVal ?? ''), 'YYYY-MM-DD')
         : rawVal;
+    const numericScale = getNumericScale(f);
+    const numericStep =
+      numericScale === null
+        ? undefined
+        : numericScale <= 0
+        ? '1'
+        : (1 / 10 ** numericScale).toFixed(numericScale);
     const commonProps = {
       className: `w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`,
       style: { ...inputStyle },
@@ -1916,7 +2294,20 @@ function InlineTransactionTable(
       return <input type="tel" inputMode="tel" {...commonProps} />;
     }
     if (fieldType === 'number') {
-      return <input type="number" inputMode="decimal" {...commonProps} />;
+      return (
+        <input
+          type="number"
+          inputMode="decimal"
+          step={numericStep}
+          {...commonProps}
+          onBlur={(e) => {
+            if (!e.target) return;
+            const formatted = formatNumericValue(f, e.target.value);
+            if (typeof formatted !== 'string' || formatted === e.target.value) return;
+            handleChange(idx, f, formatted);
+          }}
+        />
+      );
     }
     return (
       <textarea

@@ -1,13 +1,89 @@
-import { pool, insertTableRow, getEmploymentSession } from '../../db/index.js';
+import {
+  pool,
+  insertTableRow,
+  getEmploymentSession,
+  listTableColumnsDetailed,
+} from '../../db/index.js';
+import { getFormConfig } from './transactionFormConfig.js';
+import {
+  buildReceiptFromDynamicTransaction,
+  sendReceipt,
+} from './posApiService.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
 
+const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
+const STRING_COLUMN_TYPES = new Set([
+  'char',
+  'varchar',
+  'tinytext',
+  'text',
+  'mediumtext',
+  'longtext',
+  'enum',
+  'set',
+]);
+
+const LABEL_WRAPPER_KEYS = new Set([
+  'value',
+  'label',
+  'name',
+  'title',
+  'text',
+  'display',
+  'displayName',
+  'code',
+]);
+
+function stripLabelWrappers(value) {
+  if (value === undefined || value === null) return value;
+  if (Array.isArray(value)) {
+    let changed = false;
+    const mapped = value.map((item) => {
+      const next = stripLabelWrappers(item);
+      if (next !== item) changed = true;
+      return next;
+    });
+    return changed ? mapped : value;
+  }
+  if (value instanceof Date || (typeof Buffer !== 'undefined' && Buffer.isBuffer(value))) {
+    return value;
+  }
+  if (typeof value !== 'object') return value;
+  if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+    const keys = Object.keys(value);
+    const onlyKnownKeys = keys.every((key) => LABEL_WRAPPER_KEYS.has(key));
+    if (onlyKnownKeys) {
+      return stripLabelWrappers(value.value);
+    }
+  }
+  let changed = false;
+  const result = {};
+  for (const [key, val] of Object.entries(value)) {
+    const next = stripLabelWrappers(val);
+    if (next !== val) changed = true;
+    result[key] = next;
+  }
+  return changed ? result : value;
+}
+
 function normalizeEmpId(empid) {
   if (!empid) return null;
   const trimmed = String(empid).trim();
   return trimmed ? trimmed.toUpperCase() : null;
+}
+
+function normalizeScopePreference(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    return trimmed;
+  }
+  return value;
 }
 
 function safeJsonStringify(value) {
@@ -25,6 +101,121 @@ function safeJsonParse(value, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+function isPlainObject(value) {
+  return Boolean(
+    value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Object.getPrototypeOf(value) === Object.prototype,
+  );
+}
+
+function extractPromotableValues(source) {
+  if (!isPlainObject(source)) return null;
+  const seen = new Set();
+  let current = source;
+  while (isPlainObject(current) && !seen.has(current)) {
+    seen.add(current);
+    const nextKey = ['values', 'cleanedValues', 'data', 'record'].find((key) =>
+      isPlainObject(current[key]),
+    );
+    if (!nextKey) break;
+    current = current[nextKey];
+  }
+  return isPlainObject(current) ? current : null;
+}
+
+export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
+  if (!tableName || !values) return { values: {}, warnings: [] };
+  if (!isPlainObject(values)) return { values: {}, warnings: [] };
+  const entries = Object.entries(values);
+  if (entries.length === 0) return { values: {}, warnings: [] };
+
+  let resolvedColumns = columns;
+  if (!Array.isArray(resolvedColumns)) {
+    resolvedColumns = await listTableColumnsDetailed(tableName);
+  }
+  if (!Array.isArray(resolvedColumns) || resolvedColumns.length === 0) {
+    return { values: {}, warnings: [] };
+  }
+
+  const lookup = new Map();
+  resolvedColumns.forEach((col) => {
+    if (!col) return;
+    if (typeof col === 'string') {
+      const key = col.trim().toLowerCase();
+      if (key) {
+        lookup.set(key, {
+          name: col,
+          type: null,
+          maxLength: null,
+        });
+      }
+      return;
+    }
+    if (typeof col === 'object' && typeof col.name === 'string') {
+      const key = col.name.trim().toLowerCase();
+      if (!key) return;
+      lookup.set(key, {
+        name: col.name,
+        type: col.type ? String(col.type).toLowerCase() : null,
+        maxLength: col.maxLength != null ? Number(col.maxLength) : null,
+      });
+    }
+  });
+
+  if (lookup.size === 0) {
+    return { values: {}, warnings: [] };
+  }
+
+  const sanitized = {};
+  const warnings = [];
+  for (const [rawKey, rawValue] of entries) {
+    if (rawValue === undefined) continue;
+    const key = typeof rawKey === 'string' ? rawKey.trim() : String(rawKey || '');
+    if (!key) continue;
+    const lower = key.toLowerCase();
+    if (RESERVED_TEMPORARY_COLUMNS.has(lower)) continue;
+    const columnInfo = lookup.get(lower);
+    if (!columnInfo) continue;
+    let normalizedValue = rawValue;
+    if (Array.isArray(normalizedValue)) {
+      normalizedValue = JSON.stringify(normalizedValue);
+    } else if (
+      normalizedValue &&
+      typeof normalizedValue === 'object' &&
+      !(normalizedValue instanceof Date) &&
+      !(normalizedValue instanceof Buffer)
+    ) {
+      normalizedValue = JSON.stringify(normalizedValue);
+    } else if (typeof normalizedValue === 'bigint') {
+      normalizedValue = normalizedValue.toString();
+    }
+    if (typeof normalizedValue === 'string') {
+      normalizedValue = normalizedValue.trim();
+      const { type, maxLength } = columnInfo;
+      if (
+        typeof maxLength === 'number' &&
+        maxLength > 0 &&
+        STRING_COLUMN_TYPES.has(type)
+      ) {
+        const stringLength = normalizedValue.length;
+        if (stringLength > maxLength) {
+          warnings.push({
+            column: columnInfo.name,
+            maxLength,
+            actualLength: stringLength,
+            type: 'maxLength',
+          });
+          normalizedValue = normalizedValue.slice(0, maxLength);
+        }
+      }
+    }
+    sanitized[columnInfo.name] = normalizedValue;
+  }
+  return { values: sanitized, warnings };
 }
 
 async function ensureTemporaryTable(conn = pool) {
@@ -70,14 +261,21 @@ async function ensureTemporaryTable(conn = pool) {
 
 async function insertNotification(
   conn,
-  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'transaction_temporary' },
+  { companyId, recipientEmpId, message, createdBy, relatedId, type = 'request' },
 ) {
   const recipient = normalizeEmpId(recipientEmpId);
   if (!recipient) return;
   await conn.query(
     `INSERT INTO notifications (company_id, recipient_empid, type, related_id, message, created_by)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [companyId ?? null, recipient, type, relatedId ?? null, message ?? '', createdBy ?? null],
+    [
+      companyId ?? null,
+      recipient,
+      type ?? 'request',
+      relatedId ?? null,
+      message ?? '',
+      createdBy ?? null,
+    ],
   );
 }
 
@@ -93,6 +291,7 @@ export async function createTemporarySubmission({
   branchId,
   departmentId,
   createdBy,
+  tenant = {},
 }) {
   if (!tableName) {
     const err = new Error('tableName required');
@@ -105,12 +304,46 @@ export async function createTemporarySubmission({
     err.status = 400;
     throw err;
   }
+  const branchPrefSpecified = Object.prototype.hasOwnProperty.call(
+    tenant,
+    'branch_id',
+  );
+  const departmentPrefSpecified = Object.prototype.hasOwnProperty.call(
+    tenant,
+    'department_id',
+  );
+  const rawBranchPref = branchPrefSpecified ? tenant.branch_id : branchId;
+  const rawDepartmentPref = departmentPrefSpecified
+    ? tenant.department_id
+    : departmentId;
+  const normalizedBranchPref = branchPrefSpecified
+    ? normalizeScopePreference(rawBranchPref)
+    : undefined;
+  const normalizedDepartmentPref = departmentPrefSpecified
+    ? normalizeScopePreference(rawDepartmentPref)
+    : undefined;
+
   const conn = await pool.getConnection();
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
-    const session = await getEmploymentSession(normalizedCreator, companyId);
-    const planSenior = normalizeEmpId(session?.senior_plan_empid);
+    const session = await getEmploymentSession(normalizedCreator, companyId, {
+      ...(branchPrefSpecified ? { branchId: normalizedBranchPref } : {}),
+      ...(departmentPrefSpecified
+        ? { departmentId: normalizedDepartmentPref }
+        : {}),
+    });
+    const reviewerEmpId =
+      normalizeEmpId(session?.senior_empid) ||
+      normalizeEmpId(session?.senior_plan_empid);
+    const fallbackBranch = normalizeScopePreference(branchId);
+    const fallbackDepartment = normalizeScopePreference(departmentId);
+    const insertBranchId = branchPrefSpecified
+      ? normalizedBranchPref ?? null
+      : fallbackBranch ?? null;
+    const insertDepartmentId = departmentPrefSpecified
+      ? normalizedDepartmentPref ?? null
+      : fallbackDepartment ?? null;
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -127,9 +360,9 @@ export async function createTemporarySubmission({
         safeJsonStringify(rawValues),
         safeJsonStringify(cleanedValues),
         normalizedCreator,
-        planSenior,
-        branchId ?? null,
-        departmentId ?? null,
+        reviewerEmpId,
+        insertBranchId,
+        insertDepartmentId,
       ],
     );
     const temporaryId = result.insertId;
@@ -138,26 +371,28 @@ export async function createTemporarySubmission({
         emp_id: normalizedCreator,
         table_name: tableName,
         record_id: temporaryId,
-        action: 'temporary_save',
+        action: 'create',
         details: {
           formName: formName ?? null,
           configName: configName ?? null,
+          temporarySubmission: true,
         },
         company_id: companyId ?? null,
       },
       conn,
     );
-    if (planSenior) {
+    if (reviewerEmpId) {
       await insertNotification(conn, {
         companyId,
-        recipientEmpId: planSenior,
+        recipientEmpId: reviewerEmpId,
         createdBy: normalizedCreator,
         relatedId: temporaryId,
         message: `Temporary submission pending review for ${tableName}`,
+        type: 'request',
       });
     }
     await conn.query('COMMIT');
-    return { id: temporaryId, planSenior };
+    return { id: temporaryId, reviewerEmpId, planSenior: reviewerEmpId };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
@@ -170,6 +405,18 @@ export async function createTemporarySubmission({
 
 function mapTemporaryRow(row) {
   if (!row) return null;
+  const payload = safeJsonParse(row.payload_json, {});
+  const cleanedContainer = safeJsonParse(row.cleaned_values_json, {});
+  const rawContainer = safeJsonParse(row.raw_values_json, {});
+  const cleanedValues =
+    extractPromotableValues(cleanedContainer) ??
+    (isPlainObject(cleanedContainer) ? cleanedContainer : {});
+  const promotableValues =
+    extractPromotableValues(cleanedContainer) ??
+    extractPromotableValues(payload?.cleanedValues) ??
+    extractPromotableValues(payload?.values) ??
+    extractPromotableValues(rawContainer) ??
+    {};
   return {
     id: row.id,
     companyId: row.company_id,
@@ -177,11 +424,13 @@ function mapTemporaryRow(row) {
     formName: row.form_name,
     configName: row.config_name,
     moduleKey: row.module_key,
-    payload: safeJsonParse(row.payload_json, {}),
-    rawValues: safeJsonParse(row.raw_values_json, {}),
-    cleanedValues: safeJsonParse(row.cleaned_values_json, {}),
+    payload,
+    rawValues: rawContainer,
+    cleanedValues,
+    values: promotableValues,
     createdBy: row.created_by,
     planSeniorEmpId: row.plan_senior_empid,
+    reviewerEmpId: row.plan_senior_empid,
     branchId: row.branch_id,
     departmentId: row.department_id,
     status: row.status,
@@ -194,20 +443,107 @@ function mapTemporaryRow(row) {
   };
 }
 
+function buildModuleSlug(key) {
+  if (!key) return '';
+  return String(key)
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/--+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+async function enrichTemporaryMetadata(rows, companyId) {
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+  const cache = new Map();
+
+  const loadConfig = async (tableName, formName) => {
+    const cacheKey = `${companyId ?? 0}::${tableName ?? ''}::${formName ?? ''}`;
+    if (cache.has(cacheKey)) return cache.get(cacheKey);
+    let meta = {};
+    if (tableName && formName) {
+      try {
+        const { config } = await getFormConfig(tableName, formName, companyId);
+        if (config) {
+          meta = {
+            moduleKey: config.moduleKey || '',
+            moduleLabel: config.moduleLabel || '',
+            formLabel: config.moduleLabel || formName,
+          };
+        }
+      } catch {
+        meta = {};
+      }
+    }
+    cache.set(cacheKey, meta);
+    return meta;
+  };
+
+  return Promise.all(
+    rows.map(async (row) => {
+      if (!row) return row;
+      let next = { ...row };
+      const needsModuleKey = !next.moduleKey || !next.moduleKey.trim();
+      const needsFormLabel = !next.formLabel || !String(next.formLabel).trim();
+      const needsModuleLabel = !next.moduleLabel || !String(next.moduleLabel).trim();
+      let meta;
+      if (
+        (needsModuleKey || needsFormLabel || needsModuleLabel) &&
+        next.tableName &&
+        (next.formName || next.configName)
+      ) {
+        meta = await loadConfig(next.tableName, next.formName || next.configName);
+      }
+      if (meta?.moduleKey && needsModuleKey) {
+        next = { ...next, moduleKey: meta.moduleKey };
+      }
+      if (meta?.formLabel && needsFormLabel) {
+        next = { ...next, formLabel: meta.formLabel };
+      }
+      if (meta?.moduleLabel && needsModuleLabel) {
+        next = { ...next, moduleLabel: meta.moduleLabel };
+      }
+      if ((!next.formLabel || !String(next.formLabel).trim()) && next.formName) {
+        next = { ...next, formLabel: next.formName };
+      }
+      if (next.moduleKey && !next.moduleSlug) {
+        next = { ...next, moduleSlug: buildModuleSlug(next.moduleKey) };
+      } else if (!next.moduleSlug) {
+        next = { ...next, moduleSlug: '' };
+      }
+      return next;
+    }),
+  );
+}
+
 export async function listTemporarySubmissions({
   scope,
   tableName,
   empId,
   companyId,
-  status = 'pending',
+  status,
 }) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
   const conditions = [];
   const params = [];
-  if (status) {
-    conditions.push('status = ?');
-    params.push(status);
+  const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+  if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
+    if (normalizedStatus === 'processed') {
+      conditions.push("status <> 'pending'");
+    } else {
+      const statusParts = normalizedStatus
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (statusParts.length === 1) {
+        conditions.push('status = ?');
+        params.push(statusParts[0]);
+      } else if (statusParts.length > 1) {
+        conditions.push(`status IN (${statusParts.map(() => '?').join(', ')})`);
+        params.push(...statusParts);
+      }
+    }
   }
   if (companyId != null) {
     conditions.push('(company_id = ? OR company_id IS NULL)');
@@ -226,33 +562,59 @@ export async function listTemporarySubmissions({
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY created_at DESC LIMIT 200`,
+    `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY updated_at DESC, created_at DESC LIMIT 200`,
     params,
   );
-  return rows.map(mapTemporaryRow);
+  const mapped = rows.map(mapTemporaryRow);
+  return enrichTemporaryMetadata(mapped, companyId);
 }
 
 export async function getTemporarySummary(empId, companyId) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
   const [[created]] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
-     WHERE created_by = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
+    `SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
+        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
+        COUNT(*) AS total_cnt,
+        MAX(updated_at) AS latest_update
+       FROM \`${TEMP_TABLE}\`
+      WHERE created_by = ?
+        AND (company_id = ? OR company_id IS NULL)
+      LIMIT 1`,
     [normalizedEmp, companyId ?? null],
   );
   const [[review]] = await pool.query(
-    `SELECT COUNT(*) AS cnt FROM \`${TEMP_TABLE}\`
-     WHERE plan_senior_empid = ? AND status = 'pending' AND (company_id = ? OR company_id IS NULL)`,
+    `SELECT
+        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
+        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
+        COUNT(*) AS total_cnt,
+        MAX(updated_at) AS latest_update
+       FROM \`${TEMP_TABLE}\`
+      WHERE plan_senior_empid = ?
+        AND (company_id = ? OR company_id IS NULL)
+      LIMIT 1`,
     [normalizedEmp, companyId ?? null],
   );
+  const createdPending = Number(created?.pending_cnt) || 0;
+  const reviewPending = Number(review?.pending_cnt) || 0;
   return {
-    createdPending: created?.cnt ?? 0,
-    reviewPending: review?.cnt ?? 0,
-    isReviewer: (review?.cnt ?? 0) > 0,
+    createdPending,
+    reviewPending,
+    createdReviewed: Number(created?.reviewed_cnt) || 0,
+    reviewReviewed: Number(review?.reviewed_cnt) || 0,
+    createdTotal: Number(created?.total_cnt) || 0,
+    reviewTotal: Number(review?.total_cnt) || 0,
+    createdLatestUpdate: created?.latest_update || null,
+    reviewLatestUpdate: review?.latest_update || null,
+    isReviewer: (Number(review?.total_cnt) || 0) > 0,
   };
 }
 
-export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io }) {
+export async function promoteTemporarySubmission(
+  id,
+  { reviewerEmpId, notes, io, cleanedValues: cleanedOverride },
+) {
   const normalizedReviewer = normalizeEmpId(reviewerEmpId);
   if (!normalizedReviewer) {
     const err = new Error('reviewerEmpId required');
@@ -286,39 +648,237 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       err.status = 409;
       throw err;
     }
-    const cleaned =
-      safeJsonParse(row.cleaned_values_json) ??
-      safeJsonParse(row.payload_json)?.cleanedValues ??
-      safeJsonParse(row.payload_json) ?? {};
+    const columns = await listTableColumnsDetailed(row.table_name);
+    const payloadJson = safeJsonParse(row.payload_json, {});
+    const candidateSources = [];
+    const pushCandidate = (source) => {
+      if (!source) return;
+      const maybePlain = isPlainObject(source)
+        ? source
+        : extractPromotableValues(source);
+      if (!isPlainObject(maybePlain)) return;
+      const stripped = stripLabelWrappers(maybePlain);
+      if (isPlainObject(stripped)) {
+        candidateSources.push(stripped);
+      }
+    };
+    pushCandidate(cleanedOverride);
+    pushCandidate(safeJsonParse(row.cleaned_values_json));
+    pushCandidate(payloadJson?.cleanedValues);
+    pushCandidate(payloadJson?.values);
+    pushCandidate(payloadJson);
+    pushCandidate(safeJsonParse(row.raw_values_json));
+
+    let sanitizedCleaned = { values: {}, warnings: [] };
+    for (const source of candidateSources) {
+      // sanitizeCleanedValuesForInsert performs its own plain-object guard.
+      // eslint-disable-next-line no-await-in-loop
+      const next = await sanitizeCleanedValuesForInsert(
+        row.table_name,
+        source,
+        columns,
+      );
+      const nextValues = next?.values || {};
+      if (Object.keys(nextValues).length > 0) {
+        sanitizedCleaned = next;
+        break;
+      }
+    }
+
+    const sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
+    const sanitationWarnings = Array.isArray(sanitizedCleaned?.warnings)
+      ? sanitizedCleaned.warnings
+      : [];
+
+    if (Object.keys(sanitizedValues).length === 0) {
+      const err = new Error('Temporary submission is missing promotable values');
+      err.status = 422;
+      throw err;
+    }
+
+    const fallbackCreator = normalizeEmpId(row.created_by);
+    if (fallbackCreator) {
+      const hasCreatedByColumn = Array.isArray(columns)
+        ? columns.some(
+            (col) =>
+              col &&
+              typeof col.name === 'string' &&
+              col.name.trim().toLowerCase() === 'created_by',
+          )
+        : false;
+      if (hasCreatedByColumn) {
+        const hasSanitizedCreator = Object.prototype.hasOwnProperty.call(
+          sanitizedValues,
+          'created_by',
+        );
+        const sanitizedCreator = hasSanitizedCreator
+          ? sanitizedValues.created_by
+          : undefined;
+        if (
+          sanitizedCreator === undefined ||
+          sanitizedCreator === null ||
+          (typeof sanitizedCreator === 'string' && !sanitizedCreator.trim())
+        ) {
+          sanitizedValues.created_by = fallbackCreator;
+        }
+      }
+    }
+
     const mutationContext = {
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
     };
     const inserted = await insertTableRow(
       row.table_name,
-      cleaned,
+      sanitizedValues,
       undefined,
       undefined,
       false,
       normalizedReviewer,
       { conn, mutationContext },
     );
-    const promotedId = inserted?.id ? String(inserted.id) : null;
+    const insertedId = inserted?.id ?? null;
+    const promotedId = insertedId ? String(insertedId) : null;
+    const formName = row.form_name || row.config_name || null;
+    if (formName) {
+      try {
+        const { config: formCfg } = await getFormConfig(
+          row.table_name,
+          formName,
+          row.company_id,
+        );
+        if (formCfg?.posApiEnabled) {
+          const mapping = formCfg.posApiMapping || {};
+          let masterRecord = { ...sanitizedValues };
+          if (insertedId) {
+            try {
+              const [masterRows] = await conn.query(
+                `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+                [insertedId],
+              );
+              if (Array.isArray(masterRows) && masterRows[0]) {
+                masterRecord = masterRows[0];
+              }
+            } catch (selectErr) {
+              console.error(
+                'Failed to load persisted transaction for POSAPI submission',
+                {
+                  table: row.table_name,
+                  id: insertedId,
+                  error: selectErr,
+                },
+              );
+            }
+          }
+          const receiptType =
+            formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
+          const payload = buildReceiptFromDynamicTransaction(
+            masterRecord,
+            mapping,
+            receiptType,
+          );
+          if (payload) {
+            try {
+              const posApiResponse = await sendReceipt(payload);
+              if (posApiResponse && insertedId) {
+                const updates = {};
+                const nameMap = new Map();
+                for (const col of Array.isArray(columns) ? columns : []) {
+                  if (!col || !col.name) continue;
+                  nameMap.set(col.name.toLowerCase(), col.name);
+                }
+                if (posApiResponse.lottery) {
+                  const lotteryCol =
+                    nameMap.get('lottery') ||
+                    nameMap.get('lottery_no') ||
+                    nameMap.get('lottery_number') ||
+                    nameMap.get('ddtd');
+                  if (lotteryCol) updates[lotteryCol] = posApiResponse.lottery;
+                }
+                if (posApiResponse.qrData) {
+                  const qrCol =
+                    nameMap.get('qr_data') ||
+                    nameMap.get('qrdata') ||
+                    nameMap.get('qr_code');
+                  if (qrCol) updates[qrCol] = posApiResponse.qrData;
+                }
+                if (Object.keys(updates).length > 0) {
+                  const setClause = Object.keys(updates)
+                    .map((col) => `\`${col}\` = ?`)
+                    .join(', ');
+                  const params = [...Object.values(updates), insertedId];
+                  try {
+                    await conn.query(
+                      `UPDATE \`${row.table_name}\` SET ${setClause} WHERE id = ?`,
+                      params,
+                    );
+                  } catch (updateErr) {
+                    console.error('Failed to persist POSAPI response details', {
+                      table: row.table_name,
+                      id: insertedId,
+                      error: updateErr,
+                    });
+                  }
+                }
+              }
+            } catch (posErr) {
+              console.error('POSAPI receipt submission failed', {
+                table: row.table_name,
+                recordId: insertedId,
+                error: posErr,
+              });
+            }
+          }
+        }
+      } catch (cfgErr) {
+        console.error('Failed to evaluate POSAPI configuration', {
+          table: row.table_name,
+          formName,
+          error: cfgErr,
+        });
+      }
+    }
+    const trimmedNotes =
+      typeof notes === 'string' && notes.trim() ? notes.trim() : '';
+    let reviewNotesValue = trimmedNotes ? trimmedNotes : null;
+    if (sanitationWarnings.length > 0) {
+      const warningSummary = sanitationWarnings
+        .map((warn) => {
+          if (!warn || !warn.column) return null;
+          if (
+            warn.type === 'maxLength' &&
+            warn.maxLength != null &&
+            warn.actualLength != null
+          ) {
+            return `${warn.column} (trimmed from ${warn.actualLength} to ${warn.maxLength})`;
+          }
+          return warn.column;
+        })
+        .filter(Boolean)
+        .join(', ');
+      if (warningSummary) {
+        const autoNote = `Auto-adjusted fields: ${warningSummary}`;
+        reviewNotesValue = reviewNotesValue
+          ? `${reviewNotesValue}\n\n${autoNote}`
+          : autoNote;
+      }
+    }
     await conn.query(
       `UPDATE \`${TEMP_TABLE}\`
        SET status = 'promoted', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, promoted_record_id = ?
        WHERE id = ?`,
-      [normalizedReviewer, notes ?? null, promotedId, id],
+      [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
     await logUserAction(
       {
         emp_id: normalizedReviewer,
         table_name: row.table_name,
         record_id: id,
-        action: 'temporary_promote',
+        action: 'approve',
         details: {
           promotedRecordId: promotedId,
           formName: row.form_name ?? null,
+          temporaryAction: 'promote',
         },
         company_id: row.company_id ?? null,
       },
@@ -330,6 +890,7 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `Temporary submission for ${row.table_name} approved`,
+      type: 'response',
     });
     await insertNotification(conn, {
       companyId: row.company_id,
@@ -337,6 +898,7 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `You approved temporary submission #${id} for ${row.table_name}`,
+      type: 'response',
     });
     await conn.query('COMMIT');
     if (io) {
@@ -344,14 +906,16 @@ export async function promoteTemporarySubmission(id, { reviewerEmpId, notes, io 
         id,
         status: 'promoted',
         promotedRecordId: promotedId,
+        warnings: sanitationWarnings,
       });
       io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', {
         id,
         status: 'promoted',
         promotedRecordId: promotedId,
+        warnings: sanitationWarnings,
       });
     }
-    return { id, promotedRecordId: promotedId };
+    return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
@@ -407,8 +971,8 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
         emp_id: normalizedReviewer,
         table_name: row.table_name,
         record_id: id,
-        action: 'temporary_reject',
-        details: { formName: row.form_name ?? null },
+        action: 'decline',
+        details: { formName: row.form_name ?? null, temporaryAction: 'reject' },
         company_id: row.company_id ?? null,
       },
       conn,
@@ -419,6 +983,7 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `Temporary submission for ${row.table_name} rejected`,
+      type: 'response',
     });
     await insertNotification(conn, {
       companyId: row.company_id,
@@ -426,6 +991,7 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `You rejected temporary submission #${id} for ${row.table_name}`,
+      type: 'response',
     });
     await conn.query('COMMIT');
     if (io) {
@@ -439,6 +1005,62 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       });
     }
     return { id, status: 'rejected' };
+  } catch (err) {
+    try {
+      await conn.query('ROLLBACK');
+    } catch {}
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function deleteTemporarySubmission(id, { requesterEmpId }) {
+  const normalizedRequester = normalizeEmpId(requesterEmpId);
+  if (!normalizedRequester) {
+    const err = new Error('requesterEmpId required');
+    err.status = 400;
+    throw err;
+  }
+  const conn = await pool.getConnection();
+  try {
+    await ensureTemporaryTable(conn);
+    await conn.query('BEGIN');
+    const [rows] = await conn.query(
+      `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? FOR UPDATE`,
+      [id],
+    );
+    const row = rows[0];
+    if (!row) {
+      const err = new Error('Temporary submission not found');
+      err.status = 404;
+      throw err;
+    }
+    const normalizedCreator = normalizeEmpId(row.created_by);
+    if (normalizedCreator !== normalizedRequester) {
+      const err = new Error('Forbidden');
+      err.status = 403;
+      throw err;
+    }
+    if (row.status !== 'rejected') {
+      const err = new Error('Only rejected temporary submissions can be removed');
+      err.status = 409;
+      throw err;
+    }
+    await conn.query(`DELETE FROM \`${TEMP_TABLE}\` WHERE id = ?`, [id]);
+    await logUserAction(
+      {
+        emp_id: normalizedRequester,
+        table_name: row.table_name,
+        record_id: id,
+        action: 'delete',
+        details: { formName: row.form_name ?? null, temporaryAction: 'delete' },
+        company_id: row.company_id ?? null,
+      },
+      conn,
+    );
+    await conn.query('COMMIT');
+    return { id, deleted: true };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');

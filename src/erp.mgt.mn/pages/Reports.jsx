@@ -17,8 +17,13 @@ import useHeaderMappings from '../hooks/useHeaderMappings.js';
 import CustomDatePicker from '../components/CustomDatePicker.jsx';
 import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
+import normalizeBoolean from '../utils/normalizeBoolean.js';
 import Modal from '../components/Modal.jsx';
 import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
+import {
+  normalizeSnapshotRecord,
+  resolveSnapshotSource,
+} from '../utils/normalizeSnapshot.js';
 
 const DATE_PARAM_ALLOWLIST = new Set([
   'startdt',
@@ -57,10 +62,134 @@ function isEndDateParam(name) {
   return normalized.includes('end') || normalized.includes('to');
 }
 
+function normalizeNumericId(value) {
+  if (value == null) return null;
+  if (typeof value === 'number') {
+    return Number.isNaN(value) ? null : value;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+function normalizeIdParamValue(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed.length ? trimmed : null;
+  }
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : null;
+  }
+  return null;
+}
+
+function resolveIdParam(...candidates) {
+  for (const candidate of candidates) {
+    const normalized = normalizeIdParamValue(candidate);
+    if (normalized !== null) return normalized;
+  }
+  return null;
+}
+
+function extractNumericTokens(value) {
+  if (typeof value !== 'string') return [];
+  const matches = value.match(/\d+/g);
+  if (!matches) return [];
+  return matches
+    .map((token) => {
+      const parsed = Number.parseInt(token, 10);
+      return Number.isFinite(parsed) ? parsed : null;
+    })
+    .filter((num) => num !== null);
+}
+
+function normalizeWorkplaceAssignment(assignment) {
+  if (!assignment || typeof assignment !== 'object') return null;
+  const workplaceId = normalizeNumericId(
+    assignment.workplace_id ?? assignment.workplaceId,
+  );
+  const workplaceSessionId = normalizeNumericId(
+    assignment.workplace_session_id ??
+      assignment.workplaceSessionId ??
+      assignment.workplace_id ??
+      assignment.workplaceId,
+  );
+
+  const finalSessionId =
+    workplaceSessionId ?? workplaceId ?? normalizeNumericId(assignment.value);
+  const finalWorkplaceId = workplaceId ?? finalSessionId ?? null;
+
+  return {
+    ...assignment,
+    workplace_id: finalWorkplaceId,
+    workplace_session_id: finalSessionId,
+  };
+}
+
+function summarizeForToast(payload) {
+  try {
+    const json = JSON.stringify(payload);
+    if (!json) return '{}';
+    if (json.length <= 140) return json;
+    return `${json.slice(0, 137)}…`;
+  } catch {
+    return '[unserializable]';
+  }
+}
+
+function stringifyDiagnosticValue(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  if (Array.isArray(value)) {
+    const flattened = value
+      .map((item) => stringifyDiagnosticValue(item))
+      .filter((item) => typeof item === 'string' && item.length > 0);
+    return flattened.length ? flattened.join('\n') : null;
+  }
+  if (value && typeof value === 'object') {
+    if (typeof value.text === 'string' && value.text.length) {
+      return value.text;
+    }
+    if (Array.isArray(value.lines)) {
+      const lines = value.lines
+        .map((line) => stringifyDiagnosticValue(line))
+        .filter((line) => typeof line === 'string' && line.length > 0);
+      if (lines.length) return lines.join('\n');
+    }
+    try {
+      const json = JSON.stringify(value);
+      return json && json.length ? json : null;
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value);
+}
+
+function normalizeSqlDiagnosticValue(value) {
+  const normalized = stringifyDiagnosticValue(value);
+  if (typeof normalized !== 'string') return null;
+  const trimmed = normalized.trim();
+  return trimmed.length ? trimmed : null;
+}
+
 const REPORT_REQUEST_TABLE = 'report_transaction_locks';
+const ALL_WORKPLACE_OPTION = '__ALL_WORKPLACE_SESSIONS__';
 
 export default function Reports() {
-  const { company, branch, department, user, session } = useContext(AuthContext);
+  const { company, branch, department, position, workplace, user, session } =
+    useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const { addToast } = useToast();
   const generalConfig = useGeneralConfig();
@@ -70,6 +199,9 @@ export default function Reports() {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [datePreset, setDatePreset] = useState('custom');
+  const [workplaceSelection, setWorkplaceSelection] = useState(
+    ALL_WORKPLACE_OPTION,
+  );
   const [result, setResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const [snapshot, setSnapshot] = useState(null);
@@ -79,6 +211,7 @@ export default function Reports() {
   const [pendingExclusion, setPendingExclusion] = useState(null);
   const [lockFetchPending, setLockFetchPending] = useState(false);
   const [lockFetchError, setLockFetchError] = useState('');
+  const [populateLockCandidates, setPopulateLockCandidates] = useState(true);
   const [lockAcknowledged, setLockAcknowledged] = useState(false);
   const [approvalReason, setApprovalReason] = useState('');
   const [requestingApproval, setRequestingApproval] = useState(false);
@@ -89,14 +222,787 @@ export default function Reports() {
   const [approvalData, setApprovalData] = useState({ incoming: [], outgoing: [] });
   const [respondingRequestId, setRespondingRequestId] = useState(null);
   const [expandedTransactionDetails, setExpandedTransactionDetails] = useState({});
+  const [workplaceAssignmentsForPeriod, setWorkplaceAssignmentsForPeriod] =
+    useState(null);
+  const workplaceFetchDiagnosticsEnabled = normalizeBoolean(
+    generalConfig?.general?.workplaceFetchToastEnabled,
+    true,
+  );
+  const usingBaseAssignments = !Array.isArray(workplaceAssignmentsForPeriod);
   const expandedTransactionDetailsRef = useRef(expandedTransactionDetails);
   const [requestLockDetailsState, setRequestLockDetailsState] = useState({});
   const requestLockDetailsRef = useRef(requestLockDetailsState);
   const presetSelectRef = useRef(null);
   const startDateRef = useRef(null);
   const endDateRef = useRef(null);
+  const workplaceSelectRef = useRef(null);
+  const workplaceSelectionTouchedRef = useRef(false);
   const manualInputRefs = useRef({});
   const runButtonRef = useRef(null);
+  const baseWorkplaceAssignments = useMemo(
+    () =>
+      Array.isArray(session?.workplace_assignments)
+        ? session.workplace_assignments
+        : [],
+    [session],
+  );
+  const workplaceAssignments = useMemo(() => {
+    if (Array.isArray(workplaceAssignmentsForPeriod)) {
+      return workplaceAssignmentsForPeriod;
+    }
+    return baseWorkplaceAssignments;
+  }, [workplaceAssignmentsForPeriod, baseWorkplaceAssignments]);
+
+  const workplaceSelectOptions = useMemo(() => {
+    const assignments = Array.isArray(workplaceAssignments)
+      ? workplaceAssignments
+      : [];
+    const normalizedAssignments = assignments.reduce((list, assignment) => {
+      const normalized = normalizeWorkplaceAssignment(assignment);
+      if (normalized) list.push(normalized);
+      return list;
+    }, []);
+
+    const options = [];
+    const seenComposite = new Set();
+    const seenWorkplaceIds = new Set();
+    const seenSessionIds = new Set();
+
+    normalizedAssignments.forEach((assignment) => {
+      const normalizedWorkplaceId = assignment.workplace_id;
+      const normalizedSessionId = assignment.workplace_session_id;
+      const valueSource =
+        normalizedSessionId != null
+          ? normalizedSessionId
+          : normalizedWorkplaceId != null
+          ? normalizedWorkplaceId
+          : null;
+      if (valueSource == null) return;
+
+      const hasWorkplaceId = normalizedWorkplaceId != null;
+      const hasSessionId = normalizedSessionId != null;
+      const compositeKey =
+        hasWorkplaceId && hasSessionId
+          ? `${normalizedWorkplaceId}|${normalizedSessionId}`
+          : null;
+      if (compositeKey && seenComposite.has(compositeKey)) return;
+      if (!hasSessionId && hasWorkplaceId && seenWorkplaceIds.has(normalizedWorkplaceId)) {
+        return;
+      }
+      if (!hasWorkplaceId && hasSessionId && seenSessionIds.has(normalizedSessionId)) {
+        return;
+      }
+
+      const value = String(valueSource);
+      const idParts = [];
+      if (normalizedWorkplaceId != null) {
+        idParts.push(`#${normalizedWorkplaceId}`);
+      }
+      if (
+        normalizedSessionId != null &&
+        normalizedSessionId !== normalizedWorkplaceId
+      ) {
+        idParts.push(`session ${normalizedSessionId}`);
+      }
+      const idLabel = idParts.join(' · ');
+      const baseName = assignment.workplace_name
+        ? String(assignment.workplace_name).trim()
+        : '';
+      const contextParts = [];
+      if (assignment.department_name) {
+        contextParts.push(String(assignment.department_name).trim());
+      }
+      if (assignment.branch_name) {
+        contextParts.push(String(assignment.branch_name).trim());
+      }
+      const context = contextParts.filter(Boolean).join(' / ');
+      const labelParts = [idLabel, baseName, context].filter(
+        (part) => part && part.length,
+      );
+
+      options.push({
+        value,
+        label: labelParts.length ? labelParts.join(' – ') : `Session ${value}`,
+        workplaceId: normalizedWorkplaceId,
+        workplaceSessionId: normalizedSessionId ?? normalizedWorkplaceId,
+      });
+
+      if (compositeKey) {
+        seenComposite.add(compositeKey);
+      }
+      if (hasWorkplaceId) {
+        seenWorkplaceIds.add(normalizedWorkplaceId);
+      }
+      if (hasSessionId) {
+        seenSessionIds.add(normalizedSessionId);
+      }
+    });
+
+    const fallbackWorkplaceId = normalizeNumericId(
+      session?.workplace_id ?? normalizeNumericId(workplace),
+    );
+    const fallbackSessionId = normalizeNumericId(
+      session?.workplace_session_id ?? session?.workplace_id ?? normalizeNumericId(workplace),
+    );
+
+    if (usingBaseAssignments) {
+      const valueSource =
+        fallbackSessionId != null
+          ? fallbackSessionId
+          : fallbackWorkplaceId != null
+          ? fallbackWorkplaceId
+          : null;
+      if (valueSource != null) {
+        const hasFallbackWorkplace = fallbackWorkplaceId != null;
+        const hasFallbackSession = fallbackSessionId != null;
+        const compositeKey =
+          hasFallbackWorkplace && hasFallbackSession
+            ? `${fallbackWorkplaceId}|${fallbackSessionId}`
+            : null;
+        const duplicateByComposite = compositeKey
+          ? seenComposite.has(compositeKey)
+          : false;
+        const duplicateByWorkplace =
+          !hasFallbackSession &&
+          hasFallbackWorkplace &&
+          seenWorkplaceIds.has(fallbackWorkplaceId);
+        const duplicateBySession =
+          !hasFallbackWorkplace &&
+          hasFallbackSession &&
+          seenSessionIds.has(fallbackSessionId);
+        if (!duplicateByComposite && !duplicateByWorkplace && !duplicateBySession) {
+          const value = String(valueSource);
+          const idParts = [];
+          if (fallbackWorkplaceId != null) {
+            idParts.push(`#${fallbackWorkplaceId}`);
+          }
+          if (
+            fallbackSessionId != null &&
+            fallbackSessionId !== fallbackWorkplaceId
+          ) {
+            idParts.push(`session ${fallbackSessionId}`);
+          }
+          const idLabel = idParts.join(' · ');
+          const baseName = session?.workplace_name
+            ? String(session.workplace_name).trim()
+            : '';
+          const contextParts = [];
+          if (session?.department_name) {
+            contextParts.push(String(session.department_name).trim());
+          }
+          if (session?.branch_name) {
+            contextParts.push(String(session.branch_name).trim());
+          }
+          const context = contextParts.filter(Boolean).join(' / ');
+          const labelParts = [idLabel, baseName, context].filter(
+            (part) => part && part.length,
+          );
+          options.push({
+            value,
+            label: labelParts.length ? labelParts.join(' – ') : `Session ${value}`,
+            workplaceId: fallbackWorkplaceId ?? fallbackSessionId ?? null,
+            workplaceSessionId: fallbackSessionId ?? fallbackWorkplaceId ?? null,
+          });
+
+          if (compositeKey) {
+            seenComposite.add(compositeKey);
+          }
+          if (hasFallbackWorkplace) {
+            seenWorkplaceIds.add(fallbackWorkplaceId);
+          }
+          if (hasFallbackSession) {
+            seenSessionIds.add(fallbackSessionId);
+          }
+        }
+      }
+    }
+
+    options.sort((a, b) => a.label.localeCompare(b.label));
+
+    if (options.length > 1) {
+      return [
+        {
+          value: ALL_WORKPLACE_OPTION,
+          label: 'All workplaces',
+          workplaceId: null,
+          workplaceSessionId: null,
+        },
+        ...options,
+      ];
+    }
+
+    return options;
+  }, [session, workplace, workplaceAssignments, usingBaseAssignments]);
+
+  const normalizedProcParams = useMemo(() => {
+    return procParams.map((param) => ({
+      original: param,
+      normalized: typeof param === 'string' ? normalizeParamName(param) : '',
+    }));
+  }, [procParams]);
+
+  const hasWorkplaceParam = useMemo(
+    () =>
+      normalizedProcParams.some(({ normalized }) => {
+        if (!normalized) return false;
+        return normalized.includes('workplace') || normalized.includes('workloc');
+      }),
+    [normalizedProcParams],
+  );
+
+  const yearParamNames = useMemo(
+    () =>
+      normalizedProcParams
+        .filter(({ normalized }) => normalized && normalized.includes('year'))
+        .map(({ original }) => original),
+    [normalizedProcParams],
+  );
+
+  const monthParamNames = useMemo(
+    () =>
+      normalizedProcParams
+        .filter(({ normalized }) => normalized && normalized.includes('month'))
+        .map(({ original }) => original),
+    [normalizedProcParams],
+  );
+
+  const requiresYearMonthParams = useMemo(
+    () => yearParamNames.length > 0 && monthParamNames.length > 0,
+    [yearParamNames, monthParamNames],
+  );
+
+  const yearMonthValuesProvided = useMemo(() => {
+    if (!requiresYearMonthParams) return true;
+    const hasValue = (name) => {
+      const rawValue = manualParams[name];
+      if (rawValue === null || rawValue === undefined) return false;
+      if (typeof rawValue === 'string') return rawValue.trim().length > 0;
+      return true;
+    };
+    return (
+      yearParamNames.every(hasValue) && monthParamNames.every(hasValue)
+    );
+  }, [requiresYearMonthParams, manualParams, yearParamNames, monthParamNames]);
+
+  const selectedYearMonth = useMemo(() => {
+    if (!hasWorkplaceParam || !yearMonthValuesProvided) return null;
+    const resolveValue = (names) => {
+      for (const name of names) {
+        const raw = manualParams[name];
+        if (raw === undefined || raw === null) continue;
+        const str = String(raw).trim();
+        if (str) return str;
+      }
+      return null;
+    };
+    const rawYear = resolveValue(yearParamNames);
+    const rawMonth = resolveValue(monthParamNames);
+    if (!rawYear || !rawMonth) return null;
+
+    let year = Number.parseInt(rawYear, 10);
+    if (!Number.isFinite(year)) {
+      const yearMatch = rawYear.match(/(\d{4})/);
+      year = yearMatch ? Number.parseInt(yearMatch[1], 10) : NaN;
+    }
+    if (!Number.isFinite(year)) return null;
+
+    const monthTokens = rawMonth.split(/[^0-9]/).filter(Boolean);
+    const monthSource = monthTokens.length
+      ? monthTokens[monthTokens.length - 1]
+      : rawMonth;
+    const month = Number.parseInt(monthSource, 10);
+    if (!Number.isFinite(month) || month < 1 || month > 12) return null;
+
+    return { year, month };
+  }, [
+    hasWorkplaceParam,
+    yearMonthValuesProvided,
+    manualParams,
+    yearParamNames,
+    monthParamNames,
+  ]);
+
+  const showWorkplaceSelector = hasWorkplaceParam;
+
+  const workplaceDateQuery = useMemo(() => {
+    if (!hasWorkplaceParam) {
+      return { status: 'disabled', params: null };
+    }
+    if (requiresYearMonthParams) {
+      if (!selectedYearMonth) {
+        return { status: 'waiting', params: null };
+      }
+      return {
+        status: 'ready',
+        params: {
+          year: String(selectedYearMonth.year),
+          month: String(selectedYearMonth.month),
+        },
+      };
+    }
+    const normalizedStart = startDate ? String(startDate).trim() : '';
+    const normalizedEnd = endDate ? String(endDate).trim() : '';
+    const effective = normalizedStart || normalizedEnd;
+    if (!effective) {
+      return { status: 'waiting', params: null };
+    }
+    const params = { date: effective };
+    if (normalizedStart) params.startDate = normalizedStart;
+    if (normalizedEnd) params.endDate = normalizedEnd;
+    return { status: 'ready', params };
+  }, [
+    hasWorkplaceParam,
+    requiresYearMonthParams,
+    selectedYearMonth,
+    startDate,
+    endDate,
+  ]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!hasWorkplaceParam) {
+      setWorkplaceAssignmentsForPeriod(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (workplaceDateQuery.status !== 'ready' || !workplaceDateQuery.params) {
+      workplaceSelectionTouchedRef.current = false;
+      setWorkplaceAssignmentsForPeriod(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const params = new URLSearchParams();
+    const paramsObject = {};
+    Object.entries(workplaceDateQuery.params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value).length) {
+        const valueStr = String(value);
+        params.set(key, valueStr);
+        paramsObject[key] = valueStr;
+      }
+    });
+    const companyIdForQuery = resolveIdParam(
+      session?.company_id,
+      session?.companyId,
+      company,
+    );
+    if (companyIdForQuery !== null) {
+      params.set('companyId', companyIdForQuery);
+      paramsObject.companyId = companyIdForQuery;
+    }
+
+    const branchIdForQuery = resolveIdParam(
+      session?.branch_id,
+      session?.branchId,
+      branch,
+    );
+    if (branchIdForQuery !== null) {
+      params.set('branchId', branchIdForQuery);
+      paramsObject.branchId = branchIdForQuery;
+    }
+
+    const departmentIdForQuery = resolveIdParam(
+      session?.department_id,
+      session?.departmentId,
+      department,
+    );
+    if (departmentIdForQuery !== null) {
+      params.set('departmentId', departmentIdForQuery);
+      paramsObject.departmentId = departmentIdForQuery;
+    }
+
+    const positionIdForQuery = resolveIdParam(
+      session?.position_id,
+      session?.positionId,
+      position,
+    );
+    if (positionIdForQuery !== null) {
+      params.set('positionId', positionIdForQuery);
+      paramsObject.positionId = positionIdForQuery;
+    }
+
+    const userIdForQuery = (() => {
+      const raw =
+        session?.empid ??
+        session?.employee_id ??
+        session?.employeeId ??
+        user?.empid ??
+        null;
+      if (raw === undefined || raw === null) return null;
+      const str = String(raw).trim();
+      return str.length ? str : null;
+    })();
+    if (userIdForQuery !== null) {
+      params.set('userId', userIdForQuery);
+      paramsObject.userId = userIdForQuery;
+    }
+
+    const controller = new AbortController();
+    workplaceSelectionTouchedRef.current = false;
+    setWorkplaceAssignmentsForPeriod(null);
+
+    const queryString = params.toString();
+    const queryUrl = queryString
+      ? `/api/reports/workplaces?${queryString}`
+      : '/api/reports/workplaces';
+    const paramsSummary = summarizeForToast(paramsObject);
+
+    async function loadWorkplaceAssignments() {
+      if (workplaceFetchDiagnosticsEnabled) {
+        let startMessage = `Fetching workplaces with params ${paramsSummary}`;
+        if (queryString) {
+          startMessage += `\nQuery: ${queryUrl}`;
+        }
+        addToast(startMessage, 'info');
+      }
+      try {
+        const res = await fetch(queryUrl, {
+          credentials: 'include',
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          throw new Error('Failed to load workplaces for selected period');
+        }
+        const data = await res.json().catch(() => ({}));
+        const diagnostics =
+          data && typeof data === 'object' ? data.diagnostics ?? null : null;
+        const sqlCandidates = Array.isArray(diagnostics?.sqlCandidates)
+          ? diagnostics.sqlCandidates
+          : [
+              diagnostics?.formattedSql,
+              diagnostics?.formatted_sql,
+              diagnostics?.formattedSQL,
+              diagnostics?.query,
+              diagnostics?.queryText,
+              diagnostics?.statement,
+              diagnostics?.sql,
+              diagnostics?.SQL,
+            ];
+        let formattedSql = null;
+        for (const candidate of sqlCandidates) {
+          const normalized = normalizeSqlDiagnosticValue(candidate);
+          if (normalized) {
+            formattedSql = normalized;
+            break;
+          }
+        }
+        const diagnosticCounts = [];
+        const normalizeCount = (value) =>
+          typeof value === 'number' && Number.isFinite(value) ? value : null;
+        const rowCount = normalizeCount(diagnostics?.rowCount);
+        const filteredCount = normalizeCount(diagnostics?.filteredCount);
+        const assignmentCount = normalizeCount(diagnostics?.assignmentCount);
+        const normalizedAssignmentCount = normalizeCount(
+          diagnostics?.normalizedAssignmentCount,
+        );
+        if (rowCount !== null) {
+          diagnosticCounts.push(`rows: ${rowCount}`);
+        }
+        if (filteredCount !== null) {
+          diagnosticCounts.push(`filtered: ${filteredCount}`);
+        }
+        if (assignmentCount !== null) {
+          diagnosticCounts.push(`assignments: ${assignmentCount}`);
+        }
+        if (normalizedAssignmentCount !== null) {
+          diagnosticCounts.push(
+            `normalized: ${normalizedAssignmentCount}`,
+          );
+        }
+        const assignments = Array.isArray(data.assignments)
+          ? data.assignments
+          : [];
+        const normalizedAssignments = [];
+        const validAssignments = [];
+        assignments.forEach((assignment) => {
+          const normalized = normalizeWorkplaceAssignment(assignment);
+          if (!normalized) return;
+          const workplaceId = normalizeNumericId(
+            normalized.workplace_id ??
+              normalized.workplace_session_id ??
+              normalized.workplaceId ??
+              normalized.workplaceSessionId,
+          );
+          const sessionId = normalizeNumericId(
+            normalized.workplace_session_id ??
+              normalized.workplace_id ??
+              normalized.workplaceSessionId ??
+              normalized.workplaceId,
+          );
+          if (workplaceId != null || sessionId != null) {
+            const enriched = {
+              ...normalized,
+              workplace_id: workplaceId ?? sessionId ?? null,
+              workplace_session_id: sessionId ?? workplaceId ?? null,
+            };
+            normalizedAssignments.push(enriched);
+            if (
+              normalizeNumericId(enriched.workplace_id) !== null &&
+              normalizeNumericId(enriched.workplace_session_id) !== null
+            ) {
+              validAssignments.push(enriched);
+            }
+          }
+        });
+        const validCount = validAssignments.length;
+        if (!cancelled) {
+          workplaceSelectionTouchedRef.current = false;
+          if (validCount > 0) {
+            setWorkplaceAssignmentsForPeriod(validAssignments);
+          } else if (normalizedAssignments.length > 0) {
+            setWorkplaceAssignmentsForPeriod(normalizedAssignments);
+          } else {
+            setWorkplaceAssignmentsForPeriod(null);
+          }
+          if (workplaceFetchDiagnosticsEnabled) {
+            let sampleText = '';
+            if (validCount > 0) {
+              const hasSample = validAssignments.some((assignment) => {
+                const workplaceId = normalizeNumericId(
+                  assignment.workplace_id ?? assignment.workplaceId,
+                );
+                const sessionId = normalizeNumericId(
+                  assignment.workplace_session_id ??
+                    assignment.workplaceSessionId ??
+                    assignment.workplace_id ??
+                    assignment.workplaceId,
+                );
+                if (workplaceId === null || sessionId === null) return false;
+                sampleText = ` (first #${workplaceId}${
+                  sessionId !== workplaceId ? ` session ${sessionId}` : ''
+                })`;
+                return true;
+              });
+              if (!hasSample) sampleText = '';
+            }
+            const baseMessage = `Workplace fetch params ${paramsSummary} → ${validCount}/${assignments.length} valid assignments`;
+            const suffix =
+              validCount > 0
+                ? sampleText
+                : normalizedAssignments.length > 0
+                ? ' (no valid IDs returned; showing raw results)'
+                : ' (using base assignments)';
+            let toastMessage = `${baseMessage}${suffix}`;
+            const details = [];
+            if (queryString) {
+              details.push(`Query: ${queryUrl}`);
+            }
+            const formattedSqlForToast = (() => {
+              if (typeof formattedSql === 'string' && formattedSql.length) {
+                return formattedSql;
+              }
+              const diagnosticFormatted =
+                typeof diagnostics?.formattedSql === 'string'
+                  ? diagnostics.formattedSql
+                  : null;
+              const fallback =
+                diagnosticFormatted && diagnosticFormatted.trim().length > 0
+                  ? diagnosticFormatted
+                  : diagnostics?.sql;
+              return stringifyDiagnosticValue(fallback);
+            })();
+            if (formattedSqlForToast) {
+              details.push(`SQL: ${formattedSqlForToast}`);
+            } else if (diagnostics && typeof diagnostics === 'object') {
+              details.push(
+                '(No SQL available: diagnostics did not include a query string)',
+              );
+            }
+            if (diagnosticCounts.length) {
+              details.push(`Counts: ${diagnosticCounts.join(', ')}`);
+            }
+            if (diagnostics?.effectiveDate) {
+              details.push(`Effective date: ${diagnostics.effectiveDate}`);
+            }
+            if (
+              diagnostics?.selectedWorkplaceId != null ||
+              diagnostics?.selectedWorkplaceSessionId != null
+            ) {
+              const selectedParts = [];
+              if (diagnostics?.selectedWorkplaceId != null) {
+                selectedParts.push(`workplace #${diagnostics.selectedWorkplaceId}`);
+              }
+              if (diagnostics?.selectedWorkplaceSessionId != null) {
+                selectedParts.push(
+                  `session ${diagnostics.selectedWorkplaceSessionId}`,
+                );
+              }
+              if (selectedParts.length) {
+                details.push(`Selected: ${selectedParts.join(', ')}`);
+              }
+            }
+            const consumedDiagnosticKeys = new Set([
+              'sql',
+              'formattedSql',
+              'params',
+              'rowCount',
+              'filteredCount',
+              'assignmentCount',
+              'normalizedAssignmentCount',
+              'effectiveDate',
+              'selectedWorkplaceId',
+              'selectedWorkplaceSessionId',
+              'sqlUnavailableReason',
+            ]);
+            if (
+              Array.isArray(diagnostics?.params) &&
+              diagnostics.params.length
+            ) {
+              consumedDiagnosticKeys.add('params');
+              const paramsString = stringifyDiagnosticValue(diagnostics.params);
+              if (paramsString) {
+                details.push(`Params: ${paramsString}`);
+              }
+            }
+            if (diagnostics && typeof diagnostics === 'object') {
+              Object.entries(diagnostics).forEach(([key, value]) => {
+                if (consumedDiagnosticKeys.has(key)) return;
+                if (value === undefined || value === null) return;
+                const valueString = stringifyDiagnosticValue(value);
+                if (!valueString) return;
+                details.push(`${key}: ${valueString}`);
+              });
+            }
+            if (details.length) {
+              toastMessage += `\n${details.join('\n')}`;
+            }
+            addToast(toastMessage, validCount > 0 ? 'success' : 'info');
+          }
+        }
+      } catch (err) {
+        if (cancelled || err?.name === 'AbortError') return;
+        workplaceSelectionTouchedRef.current = false;
+        setWorkplaceAssignmentsForPeriod(null);
+        if (workplaceFetchDiagnosticsEnabled) {
+          const detailedMessage = err?.message || 'Unknown error';
+          let errorMessage = `Workplace fetch params ${paramsSummary} failed: ${detailedMessage}`;
+          if (queryString) {
+            errorMessage += `\nQuery: ${queryUrl}`;
+          }
+          addToast(errorMessage, 'error');
+        }
+        addToast(
+          'Failed to load workplaces for the selected period',
+          'error',
+        );
+      }
+    }
+
+    loadWorkplaceAssignments();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [
+    hasWorkplaceParam,
+    workplaceDateQuery,
+    session?.company_id,
+    session?.branch_id,
+    session?.department_id,
+    session?.position_id,
+    session?.empid,
+    session?.employee_id,
+    session?.employeeId,
+    user?.empid,
+    company,
+    branch,
+    department,
+    position,
+    addToast,
+    workplaceFetchDiagnosticsEnabled,
+  ]);
+
+  useEffect(() => {
+    if (!showWorkplaceSelector || !workplaceSelectOptions.length) {
+      if (workplaceSelection !== ALL_WORKPLACE_OPTION) {
+        workplaceSelectionTouchedRef.current = false;
+        setWorkplaceSelection(ALL_WORKPLACE_OPTION);
+      }
+      return;
+    }
+
+    const values = new Set(workplaceSelectOptions.map((option) => option.value));
+    const normalizedSessionId = normalizeNumericId(
+      session?.workplace_session_id ??
+        session?.workplace_id ??
+        workplace,
+    );
+    const preferredOption =
+      normalizedSessionId != null
+        ? workplaceSelectOptions.find((option) => {
+            if (option.workplaceSessionId != null) {
+              return option.workplaceSessionId === normalizedSessionId;
+            }
+            const numericValue = normalizeNumericId(option.value);
+            return numericValue === normalizedSessionId;
+          }) || null
+        : null;
+    const fallbackOption =
+      workplaceSelectOptions.find(
+        (option) => option.value !== ALL_WORKPLACE_OPTION,
+      ) || workplaceSelectOptions[0] || null;
+
+    if (!workplaceSelectionTouchedRef.current && preferredOption) {
+      if (workplaceSelection !== preferredOption.value) {
+        setWorkplaceSelection(preferredOption.value);
+      }
+      return;
+    }
+
+    if (!values.has(workplaceSelection)) {
+      const nextOption = preferredOption ?? fallbackOption;
+      if (nextOption && workplaceSelection !== nextOption.value) {
+        setWorkplaceSelection(nextOption.value);
+      }
+    }
+  }, [
+    showWorkplaceSelector,
+    workplaceSelectOptions,
+    workplaceSelection,
+    session?.workplace_session_id,
+    session?.workplace_id,
+    workplace,
+  ]);
+
+  const selectedWorkplaceOption = useMemo(() => {
+    if (!showWorkplaceSelector || !workplaceSelectOptions.length) return null;
+    return (
+      workplaceSelectOptions.find((option) => option.value === workplaceSelection) ||
+      workplaceSelectOptions[0] ||
+      null
+    );
+  }, [showWorkplaceSelector, workplaceSelectOptions, workplaceSelection]);
+
+  const selectedWorkplaceIds = useMemo(() => {
+    if (!showWorkplaceSelector || !selectedWorkplaceOption) {
+      return { workplaceId: null, workplaceSessionId: null };
+    }
+    if (selectedWorkplaceOption.value === ALL_WORKPLACE_OPTION) {
+      return { workplaceId: null, workplaceSessionId: null };
+    }
+    const workplaceSessionId = normalizeNumericId(
+      selectedWorkplaceOption.workplaceSessionId ??
+        selectedWorkplaceOption.workplaceId ??
+        selectedWorkplaceOption.value,
+    );
+    const workplaceId = normalizeNumericId(
+      selectedWorkplaceOption.workplaceId ??
+        selectedWorkplaceOption.workplaceSessionId ??
+        selectedWorkplaceOption.value,
+    );
+    return {
+      workplaceId: workplaceId ?? null,
+      workplaceSessionId: workplaceSessionId ?? workplaceId ?? null,
+    };
+  }, [showWorkplaceSelector, selectedWorkplaceOption]);
+
+  const { workplaceId: selectedWorkplaceId, workplaceSessionId: selectedWorkplaceSessionId } =
+    selectedWorkplaceIds;
+
   const procNames = useMemo(() => procedures.map((p) => p.name), [procedures]);
   const procMap = useHeaderMappings(procNames);
   useEffect(() => {
@@ -114,20 +1020,41 @@ export default function Reports() {
     }
   }, [result]);
 
-  const getCandidateKey = useCallback((candidate) => {
+  const getCandidateTable = useCallback((candidate) => {
     if (!candidate || typeof candidate !== 'object') return '';
-    if (candidate.key) return String(candidate.key);
-    const table = candidate.tableName ?? candidate.table;
-    const recordId =
-      candidate.recordId ??
-      candidate.record_id ??
-      candidate.id ??
-      candidate.recordID;
-    if (table === undefined || table === null) return '';
-    const normalizedTable = String(table);
-    if (recordId === undefined || recordId === null) return `${normalizedTable}#`;
-    return `${normalizedTable}#${recordId}`;
+    const tableSources = [
+      candidate.tableName,
+      candidate.table,
+      candidate.table_name,
+      candidate.lockTable,
+      candidate.lock_table,
+      candidate.lockTableName,
+      candidate.lock_table_name,
+    ];
+    for (const source of tableSources) {
+      if (source === undefined || source === null) continue;
+      const str = String(source).trim();
+      if (str) return str;
+    }
+    return '';
   }, []);
+
+  const getCandidateKey = useCallback(
+    (candidate) => {
+      if (!candidate || typeof candidate !== 'object') return '';
+      if (candidate.key) return String(candidate.key);
+      const table = getCandidateTable(candidate);
+      if (!table) return '';
+      const recordId =
+        candidate.recordId ??
+        candidate.record_id ??
+        candidate.id ??
+        candidate.recordID;
+      if (recordId === undefined || recordId === null) return `${table}#`;
+      return `${table}#${recordId}`;
+    },
+    [getCandidateTable],
+  );
 
   const handleSnapshotReady = useCallback((data) => {
     setSnapshot(data || null);
@@ -146,6 +1073,40 @@ export default function Reports() {
     return (
       generalConfig.general?.procLabels?.[name] || procMap[name] || name
     );
+  }
+
+  function formatProcedureLabel(name) {
+    const label = getLabel(name);
+    if (label && name && label !== name) {
+      return `${label} (${name})`;
+    }
+    return label || name || 'procedure';
+  }
+
+  async function extractErrorMessage(response) {
+    if (!response) return '';
+    try {
+      const body = await response.text();
+      if (!body) {
+        return response.statusText || '';
+      }
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed) {
+          if (typeof parsed.message === 'string' && parsed.message.trim()) {
+            return parsed.message.trim();
+          }
+          if (typeof parsed.error === 'string' && parsed.error.trim()) {
+            return parsed.error.trim();
+          }
+        }
+      } catch (parseError) {
+        // Ignore JSON parse errors and fall back to plain text below.
+      }
+      return body.trim();
+    } catch (err) {
+      return response.statusText || '';
+    }
   }
 
   useEffect(() => {
@@ -199,6 +1160,7 @@ export default function Reports() {
     setManualParams({});
     setApprovalReason('');
     setSnapshot(null);
+    setPopulateLockCandidates(true);
     setLockCandidates([]);
     setLockSelections({});
     setLockExclusions({});
@@ -211,7 +1173,7 @@ export default function Reports() {
   useEffect(() => {
     let cancelled = false;
     setLockAcknowledged(false);
-    if (!result || !result.name) {
+    if (!result || !result.name || !populateLockCandidates) {
       setLockCandidates([]);
       setLockSelections({});
       setLockExclusions({});
@@ -225,6 +1187,10 @@ export default function Reports() {
     async function fetchLockCandidates() {
       setLockFetchPending(true);
       setLockFetchError('');
+      setLockCandidates([]);
+      setLockSelections({});
+      setLockExclusions({});
+      setPendingExclusion(null);
       const params = new URLSearchParams();
       if (branch) params.set('branchId', branch);
       if (department) params.set('departmentId', department);
@@ -255,12 +1221,7 @@ export default function Reports() {
         const normalized = list
           .map((candidate) => {
             if (!candidate || typeof candidate !== 'object') return null;
-            const tableName =
-              typeof candidate.tableName === 'string'
-                ? candidate.tableName
-                : typeof candidate.table === 'string'
-                ? candidate.table
-                : null;
+            const tableName = getCandidateTable(candidate);
             const rawId =
               candidate.recordId ??
               candidate.record_id ??
@@ -271,7 +1232,47 @@ export default function Reports() {
             }
             const recordId = String(rawId);
             const key = candidate.key ?? `${tableName}#${recordId}`;
-            const next = { ...candidate, tableName, recordId, key };
+            const rawSnapshot =
+              resolveSnapshotSource(candidate) ||
+              (candidate.snapshot &&
+              typeof candidate.snapshot === 'object' &&
+              !Array.isArray(candidate.snapshot)
+                ? candidate.snapshot
+                : null);
+            const {
+              row: normalizedSnapshot,
+              columns: derivedColumns,
+              fieldTypeMap,
+            } = normalizeSnapshotRecord(rawSnapshot || {});
+            let snapshotColumns = Array.isArray(candidate.snapshotColumns)
+              ? candidate.snapshotColumns
+              : Array.isArray(candidate.snapshot_columns)
+              ? candidate.snapshot_columns
+              : Array.isArray(candidate.columns)
+              ? candidate.columns
+              : [];
+            snapshotColumns = snapshotColumns
+              .map((col) => (col === null || col === undefined ? '' : String(col)))
+              .filter(Boolean);
+            if (!snapshotColumns.length) {
+              snapshotColumns = derivedColumns;
+            }
+            const snapshotFieldTypeMap =
+              candidate.snapshotFieldTypeMap ||
+              candidate.snapshot_field_type_map ||
+              candidate.fieldTypeMap ||
+              candidate.field_type_map ||
+              fieldTypeMap ||
+              {};
+            const next = {
+              ...candidate,
+              tableName,
+              recordId,
+              key,
+              snapshot: normalizedSnapshot,
+              snapshotColumns,
+              snapshotFieldTypeMap,
+            };
             if (candidate.table === undefined) next.table = tableName;
             return next;
           })
@@ -313,6 +1314,8 @@ export default function Reports() {
     branch,
     department,
     getCandidateKey,
+    getCandidateTable,
+    populateLockCandidates,
   ]);
 
   const dateParamInfo = useMemo(() => {
@@ -343,15 +1346,98 @@ export default function Reports() {
     dateParamInfo;
   const hasDateParams = hasStartParam || hasEndParam;
 
+  const sessionDefaults = useMemo(() => {
+    const branchId = session?.branch_id ?? normalizeNumericId(branch);
+    const companyId = session?.company_id ?? normalizeNumericId(company);
+    const departmentId = session?.department_id ?? normalizeNumericId(department);
+    const positionId =
+      session?.position_id ?? normalizeNumericId(position);
+    const normalizedContextWorkplace = normalizeNumericId(workplace);
+    const baseWorkplaceId = normalizeNumericId(
+      session?.workplace_id ?? session?.workplaceId ?? normalizedContextWorkplace,
+    );
+    const baseWorkplaceSessionId = normalizeNumericId(
+      session?.workplace_session_id ??
+        session?.workplaceSessionId ??
+        session?.workplace_id ??
+        session?.workplaceId ??
+        normalizedContextWorkplace,
+    );
+    const userEmpId =
+      user?.empid ?? session?.empid ?? session?.employee_id ?? null;
+    const userId = user?.id ?? session?.user_id ?? null;
+    const seniorEmpId = session?.senior_empid ?? null;
+    const seniorPlanEmpId = session?.senior_plan_empid ?? null;
+    const userLevel = session?.user_level ?? null;
+
+    const effectiveWorkplaceId =
+      selectedWorkplaceId ??
+      baseWorkplaceId ??
+      selectedWorkplaceSessionId ??
+      baseWorkplaceSessionId ??
+      null;
+    const effectiveWorkplaceSessionId =
+      selectedWorkplaceSessionId ??
+      baseWorkplaceSessionId ??
+      selectedWorkplaceId ??
+      baseWorkplaceId ??
+      null;
+
+    return {
+      branchId: branchId ?? null,
+      companyId: companyId ?? null,
+      departmentId: departmentId ?? null,
+      positionId: positionId ?? null,
+      workplaceId: effectiveWorkplaceId ?? null,
+      workplaceSessionId: effectiveWorkplaceSessionId ?? null,
+      userEmpId: userEmpId ?? null,
+      userId: userId ?? null,
+      seniorEmpId,
+      seniorPlanEmpId,
+      userLevel,
+    };
+  }, [
+    branch,
+    company,
+    department,
+    position,
+    session,
+    user,
+    workplace,
+    selectedWorkplaceId,
+    selectedWorkplaceSessionId,
+  ]);
+
   const autoParams = useMemo(() => {
     return procParams.map((p, index) => {
       if (startIndices.has(index)) return startDate || null;
       if (endIndices.has(index)) return endDate || null;
-      const name = typeof p === 'string' ? p.toLowerCase() : '';
-      if (name.includes('branch')) return branch ?? null;
-      if (name.includes('department')) return department ?? null;
-      if (name.includes('company')) return company ?? null;
-      if (name.includes('user') || name.includes('emp')) return user?.empid ?? null;
+      const name =
+        typeof p === 'string' ? normalizeParamName(p) : '';
+      if (!name) return null;
+      if (
+        name.includes('sessionworkplace') ||
+        name.includes('workplacesession')
+      ) {
+        return (
+          sessionDefaults.workplaceId ?? sessionDefaults.workplaceSessionId
+        );
+      }
+      if (name.includes('company')) return sessionDefaults.companyId;
+      if (name.includes('branch')) return sessionDefaults.branchId;
+      if (name.includes('department') || name.includes('dept'))
+        return sessionDefaults.departmentId;
+      if (name.includes('position')) return sessionDefaults.positionId;
+      if (name.includes('workplace') || name.includes('workloc'))
+        return sessionDefaults.workplaceId;
+      if (name.includes('seniorplan') || name.includes('plansenior'))
+        return sessionDefaults.seniorPlanEmpId;
+      if (name.includes('senior')) return sessionDefaults.seniorEmpId;
+      if (name.includes('userlevel')) return sessionDefaults.userLevel;
+      if (name.includes('userid'))
+        return sessionDefaults.userId ?? sessionDefaults.userEmpId;
+      if (name.includes('user') || name.includes('emp'))
+        return sessionDefaults.userEmpId;
       return null;
     });
   }, [
@@ -360,10 +1446,7 @@ export default function Reports() {
     endIndices,
     startDate,
     endDate,
-    company,
-    branch,
-    department,
-    user,
+    sessionDefaults,
   ]);
 
   const manualParamNames = useMemo(() => {
@@ -380,6 +1463,7 @@ export default function Reports() {
     if (hasDateParams) refs.push(presetSelectRef);
     if (hasStartParam) refs.push(startDateRef);
     if (hasEndParam) refs.push(endDateRef);
+    if (showWorkplaceSelector) refs.push(workplaceSelectRef);
 
     const manualRefNames = new Set(manualParamNames);
     Object.keys(manualInputRefs.current).forEach((name) => {
@@ -395,7 +1479,13 @@ export default function Reports() {
 
     refs.push(runButtonRef);
     return refs;
-  }, [hasDateParams, hasStartParam, hasEndParam, manualParamNames]);
+  }, [
+    hasDateParams,
+    hasStartParam,
+    hasEndParam,
+    manualParamNames,
+    showWorkplaceSelector,
+  ]);
 
   useEffect(() => {
     if (!selectedProc) return;
@@ -405,19 +1495,102 @@ export default function Reports() {
     }
   }, [selectedProc, activeControlRefs]);
 
+  const handleManualParamChange = useCallback(
+    (name, value) => {
+      setManualParams((prev) => ({ ...prev, [name]: value }));
+    },
+    [],
+  );
+
   const finalParams = useMemo(() => {
     return procParams.map((p, i) => {
       const auto = autoParams[i];
-      return auto ?? manualParams[p] ?? null;
+      const rawValue = auto ?? manualParams[p] ?? null;
+      if (rawValue === null || rawValue === undefined) {
+        return rawValue;
+      }
+      if (typeof p !== 'string') {
+        return rawValue;
+      }
+      const normalizedName = normalizeParamName(p);
+      if (!normalizedName) {
+        return rawValue;
+      }
+      if (
+        (normalizedName.includes('workplace') || normalizedName.includes('workloc')) &&
+        !normalizedName.includes('name')
+      ) {
+        const numericValue = normalizeNumericId(rawValue);
+        if (numericValue !== null) {
+          return numericValue;
+        }
+        const tokenCandidates = extractNumericTokens(String(rawValue));
+        if (tokenCandidates.length > 0) {
+          const normalizedPreferences = [
+            selectedWorkplaceId,
+            sessionDefaults.workplaceId,
+            selectedWorkplaceSessionId,
+            sessionDefaults.workplaceSessionId,
+          ]
+            .map((value) => normalizeNumericId(value))
+            .filter((value) => value !== null);
+          const preferredToken = normalizedPreferences.find((preferred) =>
+            tokenCandidates.includes(preferred),
+          );
+          const candidate = preferredToken ?? tokenCandidates[0];
+          if (Number.isFinite(candidate)) {
+            return candidate;
+          }
+        }
+        if (normalizedName.includes('session')) {
+          const fallbackWorkplaceId = normalizeNumericId(
+            selectedWorkplaceId ??
+              sessionDefaults.workplaceId ??
+              selectedWorkplaceSessionId ??
+              sessionDefaults.workplaceSessionId,
+          );
+          if (fallbackWorkplaceId !== null) {
+            return fallbackWorkplaceId;
+          }
+          const fallbackSessionId = normalizeNumericId(
+            selectedWorkplaceSessionId ??
+              sessionDefaults.workplaceSessionId ??
+              selectedWorkplaceId ??
+              sessionDefaults.workplaceId,
+          );
+          if (fallbackSessionId !== null) {
+            return fallbackSessionId;
+          }
+        } else {
+          const fallbackWorkplaceId = normalizeNumericId(
+            selectedWorkplaceId ??
+              sessionDefaults.workplaceId ??
+              selectedWorkplaceSessionId ??
+              sessionDefaults.workplaceSessionId,
+          );
+          if (fallbackWorkplaceId !== null) {
+            return fallbackWorkplaceId;
+          }
+        }
+        return null;
+      }
+      return rawValue;
     });
-  }, [procParams, autoParams, manualParams]);
+  }, [
+    procParams,
+    autoParams,
+    manualParams,
+    selectedWorkplaceId,
+    selectedWorkplaceSessionId,
+    sessionDefaults,
+  ]);
 
   const allParamsProvided = useMemo(
     () => finalParams.every((v) => v !== null && v !== ''),
     [finalParams],
   );
 
-  function handleParameterKeyDown(event, currentRef) {
+  function handleParameterKeyDown(event, currentRef, paramName) {
     if (event.key !== 'Enter') return;
     const currentIndex = activeControlRefs.findIndex((ref) => ref === currentRef);
     if (currentIndex === -1) return;
@@ -493,7 +1666,9 @@ export default function Reports() {
       return acc;
     }, {});
     const label = getLabel(selectedProc);
-    addToast(`Calling ${label}`, 'info');
+    const errorLabel = formatProcedureLabel(selectedProc);
+    const paramSummary = summarizeForToast(paramMap);
+    addToast(`Calling ${label} with params ${paramSummary}`, 'info');
     try {
       const q = new URLSearchParams();
       if (branch) q.set('branchId', branch);
@@ -511,7 +1686,9 @@ export default function Reports() {
         const data = await res.json().catch(() => ({ row: [] }));
         const rows = Array.isArray(data.row) ? data.row : [];
         addToast(
-          `${label} returned ${rows.length} row${rows.length === 1 ? '' : 's'}`,
+          `${label} params ${paramSummary} → ${rows.length} row${
+            rows.length === 1 ? '' : 's'
+          }`,
           'success',
         );
         setApprovalReason('');
@@ -531,10 +1708,21 @@ export default function Reports() {
           orderedParams: finalParams,
         });
       } else {
-        addToast('Failed to run procedure', 'error');
+        const detailedMessage =
+          (await extractErrorMessage(res)) || 'Failed to run procedure';
+        addToast(
+          `Failed to run ${errorLabel} with params ${paramSummary}: ${detailedMessage}`,
+          'error',
+        );
       }
-    } catch {
-      addToast('Failed to run procedure', 'error');
+    } catch (err) {
+      const fallbackMessage =
+        (typeof err?.message === 'string' && err.message.trim()) ||
+        'Failed to run procedure';
+      addToast(
+        `Failed to run ${errorLabel} with params ${paramSummary}: ${fallbackMessage}`,
+        'error',
+      );
     }
   }
 
@@ -642,7 +1830,7 @@ export default function Reports() {
     }
     const bucketMap = new Map();
     lockCandidates.forEach((candidate) => {
-      const tableName = candidate?.tableName ?? candidate?.table;
+      const tableName = candidate?.tableName || getCandidateTable(candidate);
       if (!tableName) return;
       if (!bucketMap.has(tableName)) {
         bucketMap.set(tableName, { tableName, candidates: [] });
@@ -678,7 +1866,7 @@ export default function Reports() {
         columns: Array.from(columnSet),
       };
     });
-  }, [lockCandidates]);
+  }, [lockCandidates, getCandidateTable]);
 
   const lockCandidateMap = useMemo(() => {
     const map = new Map();
@@ -998,50 +2186,45 @@ export default function Reports() {
             }
             const recordId = String(rawId);
             const key = `${tableName}#${recordId}`;
+            const rawSnapshot =
+              resolveSnapshotSource(lock) ||
+              (lock.snapshot &&
+              typeof lock.snapshot === 'object' &&
+              !Array.isArray(lock.snapshot)
+                ? lock.snapshot
+                : null);
+            const {
+              row: normalizedSnapshot,
+              columns: derivedColumns,
+              fieldTypeMap,
+            } = normalizeSnapshotRecord(rawSnapshot || {});
             let snapshotColumns = Array.isArray(lock.snapshotColumns)
-              ? lock.snapshotColumns.filter(Boolean)
+              ? lock.snapshotColumns
+              : Array.isArray(lock.snapshot_columns)
+              ? lock.snapshot_columns
               : Array.isArray(lock.columns)
-              ? lock.columns.filter(Boolean)
+              ? lock.columns
               : [];
-            let fieldTypeMap =
-              lock.snapshotFieldTypeMap || lock.fieldTypeMap || {};
-            let snapshot = null;
-            if (lock.snapshot && typeof lock.snapshot === 'object') {
-              if (Array.isArray(lock.snapshot.rows)) {
-                const row = lock.snapshot.rows[0];
-                if (row && typeof row === 'object') {
-                  snapshot = row;
-                  if (!snapshotColumns.length) {
-                    if (
-                      Array.isArray(lock.snapshot.columns) &&
-                      lock.snapshot.columns.length
-                    ) {
-                      snapshotColumns = lock.snapshot.columns.filter(Boolean);
-                    } else {
-                      snapshotColumns = Object.keys(row);
-                    }
-                  }
-                  if (!fieldTypeMap || Object.keys(fieldTypeMap).length === 0) {
-                    fieldTypeMap = lock.snapshot.fieldTypeMap || {};
-                  }
-                }
-              } else {
-                snapshot = lock.snapshot;
-              }
-            } else if (
-              lock.row &&
-              typeof lock.row === 'object' &&
-              !Array.isArray(lock.row)
-            ) {
-              snapshot = lock.row;
+            snapshotColumns = snapshotColumns
+              .map((col) => (col === null || col === undefined ? '' : String(col)))
+              .filter(Boolean);
+            if (!snapshotColumns.length) {
+              snapshotColumns = derivedColumns;
             }
+            const snapshotFieldTypeMap =
+              lock.snapshotFieldTypeMap ||
+              lock.snapshot_field_type_map ||
+              lock.fieldTypeMap ||
+              lock.field_type_map ||
+              fieldTypeMap ||
+              {};
             return {
               key,
               tableName,
               recordId,
-              snapshot,
+              snapshot: normalizedSnapshot,
               snapshotColumns,
-              snapshotFieldTypeMap: fieldTypeMap || {},
+              snapshotFieldTypeMap,
             };
           })
           .filter(Boolean);
@@ -1096,17 +2279,191 @@ export default function Reports() {
     if (!meta) {
       return <p>No report metadata available.</p>;
     }
+    const collectTransactionsFromSource = (source) => {
+      if (!source) return [];
+      const results = [];
+      const visited = new WeakSet();
+      const ignoredKeys = new Set([
+        'parameters',
+        'snapshot',
+        'snapshotColumns',
+        'snapshot_columns',
+        'snapshotFieldTypeMap',
+        'snapshot_field_type_map',
+        'fieldTypeMap',
+        'field_type_map',
+        'archive',
+        'snapshotArchive',
+        'snapshot_archive',
+        'requestId',
+        'request_id',
+        'lockRequestId',
+        'lock_request_id',
+        'metadata',
+        'report_metadata',
+        'proposed_data',
+        'excludedTransactions',
+        'excluded_transactions',
+        'lockCandidates',
+        'lock_candidates',
+        'lockBundle',
+        'lock_bundle',
+        'rows',
+        'columns',
+        'fieldTypes',
+        'field_types',
+        'rowCount',
+        'row_count',
+        'count',
+        'total',
+      ]);
+      const visit = (value, fallbackTable) => {
+        if (value === null || value === undefined) return;
+        if (Array.isArray(value)) {
+          value.forEach((item) => visit(item, fallbackTable));
+          return;
+        }
+        if (typeof value !== 'object') {
+          if (
+            fallbackTable &&
+            value !== null &&
+            value !== undefined &&
+            (typeof value === 'string' || typeof value === 'number')
+          ) {
+            results.push({ table: fallbackTable, recordId: value });
+          }
+          return;
+        }
+        if (visited.has(value)) return;
+        visited.add(value);
+        const tableCandidate =
+          value.table ||
+          value.tableName ||
+          value.table_name ||
+          value.lock_table ||
+          value.lockTable ||
+          fallbackTable ||
+          '';
+        const rawId =
+          value.recordId ??
+          value.record_id ??
+          value.id ??
+          value.recordID ??
+          value.RecordId ??
+          value.lock_record_id ??
+          value.lockRecordId;
+        if (
+          tableCandidate &&
+          rawId !== undefined &&
+          rawId !== null &&
+          (typeof rawId === 'string' || typeof rawId === 'number')
+        ) {
+          results.push({ ...value, table: tableCandidate, recordId: rawId });
+          return;
+        }
+        const idList =
+          value.recordIds ||
+          value.record_ids ||
+          value.recordIDs ||
+          value.ids ||
+          value.items ||
+          value.records ||
+          value.lock_record_ids ||
+          value.lockRecordIds;
+        if (tableCandidate && Array.isArray(idList) && idList.length) {
+          idList.forEach((item) => {
+            if (item && typeof item === 'object') {
+              visit({ ...item, table: tableCandidate }, tableCandidate);
+            } else if (item !== undefined && item !== null) {
+              visit(item, tableCandidate);
+            }
+          });
+          return;
+        }
+        Object.keys(value).forEach((key) => {
+          if (['table', 'tableName', 'table_name'].includes(key)) return;
+          if (
+            [
+              'recordId',
+              'record_id',
+              'recordIds',
+              'record_ids',
+              'recordIDs',
+              'recordID',
+              'ids',
+              'items',
+              'records',
+            ].includes(key)
+          ) {
+            return;
+          }
+          if (ignoredKeys.has(key)) return;
+          const child = value[key];
+          const nextFallback =
+            tableCandidate ||
+            fallbackTable ||
+            (Array.isArray(child) || (child && typeof child === 'object') ? key : '');
+          visit(child, nextFallback);
+        });
+      };
+      visit(source, '');
+      const seen = new Set();
+      const unique = [];
+      results.forEach((item) => {
+        if (!item || typeof item !== 'object') return;
+        const tableName = item.table || item.tableName || item.table_name || '';
+        const rawId =
+          item.recordId ??
+          item.record_id ??
+          item.id ??
+          item.recordID ??
+          item.RecordId ??
+          '';
+        const key = `${tableName}#${rawId}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        unique.push(item);
+      });
+      return unique;
+    };
+
     const paramEntries = Object.entries(meta.parameters || {});
-    const transactions = Array.isArray(meta.transactions)
-      ? meta.transactions
-      : Array.isArray(meta.transaction_list)
-      ? meta.transaction_list
-      : [];
-    const excludedTransactions = Array.isArray(meta.excludedTransactions)
-      ? meta.excludedTransactions
-      : Array.isArray(meta.excluded_transactions)
-      ? meta.excluded_transactions
-      : [];
+    const transactionSources = [
+      meta.transactions,
+      meta.transaction_list,
+      meta.transactionList,
+      meta.transaction_map,
+      meta.transactionMap,
+      meta.lockCandidates,
+      meta.lock_candidates,
+      meta.lockBundle,
+      meta.lock_bundle,
+      meta.lockBundle?.locks,
+      meta.lock_bundle?.locks,
+      meta.lockBundle?.records,
+      meta.lock_bundle?.records,
+      meta.lockBundle?.items,
+      meta.lock_bundle?.items,
+    ];
+    const transactions = transactionSources.reduce((list, source) => {
+      collectTransactionsFromSource(source).forEach((item) => list.push(item));
+      return list;
+    }, []);
+    const excludedTransactionSources = [
+      meta.excludedTransactions,
+      meta.excluded_transactions,
+      meta.excludedTransactionList,
+      meta.excluded_transaction_list,
+      meta.excludedLockBundle,
+      meta.excluded_lock_bundle,
+    ];
+    const excludedTransactions = excludedTransactionSources.reduce(
+      (list, source) => {
+        collectTransactionsFromSource(source).forEach((item) => list.push(item));
+        return list;
+      },
+      [],
+    );
     const rowCount =
       typeof meta.snapshot?.rowCount === 'number'
         ? meta.snapshot.rowCount
@@ -1144,24 +2501,64 @@ export default function Reports() {
     function normalizeTransaction(tx) {
       if (!tx || typeof tx !== 'object') return null;
       const tableName =
-        tx.table || tx.tableName || tx.table_name || '—';
+        tx.table ||
+        tx.tableName ||
+        tx.table_name ||
+        tx.lock_table ||
+        tx.lockTable ||
+        '—';
       const rawId =
-        tx.recordId ?? tx.record_id ?? tx.id ?? tx.recordID ?? tx.RecordId;
+        tx.recordId ??
+        tx.record_id ??
+        tx.id ??
+        tx.recordID ??
+        tx.RecordId ??
+        tx.lock_record_id ??
+        tx.lockRecordId;
       if (!tableName || rawId === undefined || rawId === null) return null;
       const recordId = String(rawId);
       const key = `${tableName}#${recordId}`;
       const label = tx.label || tx.description || tx.note || '';
       const reason =
-        tx.reason || tx.justification || tx.explanation || tx.exclude_reason || '';
-      const snapshot =
-        tx.snapshot && typeof tx.snapshot === 'object' ? tx.snapshot : null;
-      const snapshotColumns = Array.isArray(tx.snapshotColumns)
-        ? tx.snapshotColumns.filter(Boolean)
+        tx.reason ||
+        tx.justification ||
+        tx.explanation ||
+        tx.exclude_reason ||
+        tx.lock_reason ||
+        tx.lockReason ||
+        '';
+      const rawSnapshot =
+        resolveSnapshotSource(tx) ||
+        (tx.snapshot &&
+        typeof tx.snapshot === 'object' &&
+        !Array.isArray(tx.snapshot)
+          ? tx.snapshot
+          : null);
+      const {
+        row: snapshot,
+        columns: derivedColumns,
+        fieldTypeMap,
+      } = normalizeSnapshotRecord(rawSnapshot || {});
+      let snapshotColumns = Array.isArray(tx.snapshotColumns)
+        ? tx.snapshotColumns
+        : Array.isArray(tx.snapshot_columns)
+        ? tx.snapshot_columns
         : Array.isArray(tx.columns)
-        ? tx.columns.filter(Boolean)
+        ? tx.columns
         : [];
+      snapshotColumns = snapshotColumns
+        .map((col) => (col === null || col === undefined ? '' : String(col)))
+        .filter(Boolean);
+      if (!snapshotColumns.length) {
+        snapshotColumns = derivedColumns;
+      }
       const snapshotFieldTypeMap =
-        tx.snapshotFieldTypeMap || tx.fieldTypeMap || {};
+        tx.snapshotFieldTypeMap ||
+        tx.snapshot_field_type_map ||
+        tx.fieldTypeMap ||
+        tx.field_type_map ||
+        fieldTypeMap ||
+        {};
       return {
         key,
         tableName,
@@ -1195,14 +2592,26 @@ export default function Reports() {
         .sort((a, b) => String(a.tableName).localeCompare(String(b.tableName)));
     }
 
-    const normalizedTransactions = transactions
-      .map((tx) => normalizeTransaction(tx))
-      .filter(Boolean);
-    const normalizedExcluded = excludedTransactions
-      .map((tx) => normalizeTransaction(tx))
-      .filter(Boolean);
+    const normalizeUnique = (list) => {
+      const map = new Map();
+      list.forEach((tx) => {
+        const normalized = normalizeTransaction(tx);
+        if (!normalized) return;
+        map.set(normalized.key, normalized);
+      });
+      return Array.from(map.values());
+    };
+
+    const normalizedTransactions = normalizeUnique(transactions);
+    const normalizedExcluded = normalizeUnique(excludedTransactions);
     const transactionBuckets = buildBuckets(normalizedTransactions);
     const excludedBuckets = buildBuckets(normalizedExcluded);
+    const hasSelectedDetails = transactionBuckets.some((bucket) =>
+      bucket.records.some((record) => record?.label),
+    );
+    const hasExcludedDetails = excludedBuckets.some((bucket) =>
+      bucket.records.some((record) => record?.label),
+    );
 
     const renderExpandedContent = (record) => {
       if (record.snapshot && typeof record.snapshot === 'object') {
@@ -1254,7 +2663,7 @@ export default function Reports() {
       );
     };
 
-    const renderBucket = (bucket, listType) => {
+    const renderBucket = (bucket, listType, showDetailsColumn) => {
       const count = bucket.records.length;
       const summary = `${bucket.tableName} — ${count} transaction${
         count === 1 ? '' : 's'
@@ -1272,48 +2681,181 @@ export default function Reports() {
           <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>
             {summary}
           </summary>
-          <ul style={{ margin: '0.25rem 0 0 1.25rem' }}>
-            {bucket.records.map((record) => {
-              const detailKey = `${requestId ?? 'meta'}|${listType}|${record.key}`;
-              const isExpanded = Boolean(expandedTransactionDetails[detailKey]);
-              const hasSnapshot = Boolean(record.snapshot);
-              const hasRequestContext =
-                requestId !== null && requestId !== undefined;
-              const canToggle = hasSnapshot || hasRequestContext;
-              return (
-                <li key={detailKey} style={{ margin: '0.5rem 0' }}>
-                  <div>
-                    <span style={{ fontWeight: 'bold' }}>#{record.recordId}</span>
-                    {record.label && ` — ${record.label}`}
-                  </div>
-                  {record.reason && (
-                    <div style={{ marginTop: '0.25rem' }}>
-                      {listType === 'excluded' ? 'Reason: ' : ''}
-                      {record.reason}
-                    </div>
+          <div style={{ margin: '0.25rem 0 0', overflowX: 'auto' }}>
+            <table
+              style={{
+                borderCollapse: 'collapse',
+                width: '100%',
+                minWidth: showDetailsColumn ? '40rem' : '32rem',
+              }}
+            >
+              <thead style={{ background: '#e5e7eb' }}>
+                <tr>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      width: '4rem',
+                    }}
+                  >
+                    Lock
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    Record ID
+                  </th>
+                  {showDetailsColumn && (
+                    <th
+                      style={{
+                        textAlign: 'left',
+                        padding: '0.25rem',
+                        border: '1px solid #d1d5db',
+                      }}
+                    >
+                      Details
+                    </th>
                   )}
-                  {canToggle && (
-                    <div style={{ marginTop: '0.25rem' }}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleTransactionDetailsToggle(
-                            detailKey,
-                            hasRequestContext ? requestId : null,
-                            !hasSnapshot,
-                          )
-                        }
-                        style={{ fontSize: '0.85rem' }}
-                      >
-                        {isExpanded ? 'Hide details' : 'View details'}
-                      </button>
-                    </div>
-                  )}
-                  {isExpanded && renderExpandedContent(record)}
-                </li>
-              );
-            })}
-          </ul>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      minWidth: '12rem',
+                    }}
+                  >
+                    Status
+                  </th>
+                  <th
+                    style={{
+                      textAlign: 'left',
+                      padding: '0.25rem',
+                      border: '1px solid #d1d5db',
+                      minWidth: '12rem',
+                    }}
+                  >
+                    Snapshot
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {bucket.records.map((record, idx) => {
+                  const detailKey = `${requestId ?? 'meta'}|${listType}|${record.key}`;
+                  const isExpanded = Boolean(expandedTransactionDetails[detailKey]);
+                  const hasSnapshot = Boolean(record.snapshot);
+                  const hasRequestContext =
+                    requestId !== null && requestId !== undefined;
+                  const canToggle = hasSnapshot || hasRequestContext;
+                  const statusColor =
+                    listType === 'excluded' ? '#b91c1c' : '#047857';
+                  const statusText = listType === 'excluded' ? 'Excluded' : 'Included';
+                  const statusDetails =
+                    listType === 'excluded'
+                      ? record.reason
+                        ? `Reason: ${record.reason}`
+                        : 'Reason not provided.'
+                      : record.reason || 'Submitted for locking.';
+                  return (
+                    <React.Fragment key={detailKey}>
+                      <tr>
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          {idx + 1}
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          {record.recordId}
+                        </td>
+                        {showDetailsColumn && (
+                          <td
+                            style={{
+                              padding: '0.25rem',
+                              border: '1px solid #d1d5db',
+                            }}
+                          >
+                            {record.label || '—'}
+                          </td>
+                        )}
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          <div
+                            style={{
+                              color: statusColor,
+                              fontWeight: 'bold',
+                            }}
+                          >
+                            {statusText}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: '0.125rem',
+                              fontSize: '0.875rem',
+                            }}
+                          >
+                            {statusDetails}
+                          </div>
+                        </td>
+                        <td
+                          style={{
+                            padding: '0.25rem',
+                            border: '1px solid #d1d5db',
+                          }}
+                        >
+                          {canToggle ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleTransactionDetailsToggle(
+                                    detailKey,
+                                    hasRequestContext ? requestId : null,
+                                    !hasSnapshot,
+                                  )
+                                }
+                                style={{ fontSize: '0.85rem' }}
+                              >
+                                {isExpanded
+                                  ? 'Hide details'
+                                  : hasSnapshot
+                                  ? 'View snapshot'
+                                  : 'View details'}
+                              </button>
+                              {isExpanded && (
+                                <div style={{ marginTop: '0.25rem' }}>
+                                  {renderExpandedContent(record)}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </details>
       );
     };
@@ -1352,7 +2894,7 @@ export default function Reports() {
           {transactionBuckets.length ? (
             <div style={{ margin: '0.25rem 0 0' }}>
               {transactionBuckets.map((bucket) =>
-                renderBucket(bucket, 'selected'),
+                renderBucket(bucket, 'selected', hasSelectedDetails),
               )}
             </div>
           ) : (
@@ -1384,7 +2926,9 @@ export default function Reports() {
           <strong>Excluded transactions</strong>
           {excludedBuckets.length ? (
             <div style={{ margin: '0.25rem 0 0' }}>
-              {excludedBuckets.map((bucket) => renderBucket(bucket, 'excluded'))}
+              {excludedBuckets.map((bucket) =>
+                renderBucket(bucket, 'excluded', hasExcludedDetails),
+              )}
             </div>
           ) : (
             <p style={{ margin: '0.25rem 0 0' }}>No transactions excluded.</p>
@@ -1435,18 +2979,135 @@ export default function Reports() {
       addToast('Unable to capture report snapshot', 'error');
       return;
     }
+    const serializeCandidateForRequest = (candidate, overrides = {}) => {
+      if (!candidate || typeof candidate !== 'object') return null;
+      const tableName = candidate.tableName || getCandidateTable(candidate);
+      if (!tableName) return null;
+      const rawId =
+        candidate.recordId ??
+        candidate.record_id ??
+        candidate.lock_record_id ??
+        candidate.id;
+      if (rawId === undefined || rawId === null || rawId === '') {
+        return null;
+      }
+      const payload = {
+        table: tableName,
+        recordId: String(rawId),
+      };
+
+      const labelCandidate =
+        candidate.label || candidate.description || candidate.note || '';
+      const normalizedLabel = String(labelCandidate || '').trim();
+      if (normalizedLabel) {
+        payload.label = normalizedLabel;
+      }
+
+      const reasonCandidate =
+        candidate.reason ||
+        candidate.justification ||
+        candidate.explanation ||
+        candidate.exclude_reason ||
+        candidate.lock_reason ||
+        candidate.lockReason ||
+        '';
+      const normalizedReason = String(reasonCandidate || '').trim();
+      if (normalizedReason) {
+        payload.reason = normalizedReason;
+      }
+
+      const lockStatusCandidate =
+        candidate.lockStatus || candidate.status || candidate.lock_status || '';
+      const normalizedStatus = String(lockStatusCandidate || '').trim();
+      if (normalizedStatus) {
+        payload.lockStatus = normalizedStatus;
+      }
+
+      const lockedByCandidate =
+        candidate.lockedBy || candidate.locked_by || candidate.locked_by_emp;
+      const normalizedLockedBy = String(lockedByCandidate || '').trim();
+      if (normalizedLockedBy) {
+        payload.lockedBy = normalizedLockedBy;
+      }
+
+      const lockedAtCandidate =
+        candidate.lockedAt || candidate.locked_at || candidate.locked_date;
+      const normalizedLockedAt = String(lockedAtCandidate || '').trim();
+      if (normalizedLockedAt) {
+        payload.lockedAt = normalizedLockedAt;
+      }
+
+      if (candidate.locked || candidate.is_locked || candidate.isLocked) {
+        payload.locked = true;
+      }
+
+      const rawSnapshot =
+        resolveSnapshotSource(candidate) ||
+        (candidate.snapshot &&
+        typeof candidate.snapshot === 'object' &&
+        !Array.isArray(candidate.snapshot)
+          ? candidate.snapshot
+          : null);
+      const {
+        row: normalizedSnapshot,
+        columns: derivedColumns,
+        fieldTypeMap,
+      } = normalizeSnapshotRecord(rawSnapshot || {});
+      if (normalizedSnapshot) {
+        payload.snapshot = normalizedSnapshot;
+        let snapshotColumns = [];
+        if (Array.isArray(candidate.snapshotColumns)) {
+          snapshotColumns = candidate.snapshotColumns;
+        } else if (Array.isArray(candidate.snapshot_columns)) {
+          snapshotColumns = candidate.snapshot_columns;
+        } else if (Array.isArray(candidate.columns)) {
+          snapshotColumns = candidate.columns;
+        }
+        snapshotColumns = snapshotColumns
+          .map((col) => (col === null || col === undefined ? '' : String(col)))
+          .filter(Boolean);
+        if (!snapshotColumns.length && Array.isArray(derivedColumns)) {
+          snapshotColumns = derivedColumns;
+        }
+        if (snapshotColumns.length) {
+          payload.snapshotColumns = snapshotColumns;
+        }
+        const snapshotFieldTypeMap =
+          candidate.snapshotFieldTypeMap ||
+          candidate.snapshot_field_type_map ||
+          candidate.fieldTypeMap ||
+          candidate.field_type_map ||
+          fieldTypeMap ||
+          {};
+        if (
+          snapshotFieldTypeMap &&
+          typeof snapshotFieldTypeMap === 'object' &&
+          Object.keys(snapshotFieldTypeMap).length
+        ) {
+          payload.snapshotFieldTypeMap = snapshotFieldTypeMap;
+        }
+      }
+
+      return {
+        ...payload,
+        ...Object.fromEntries(
+          Object.entries(overrides || {}).filter(
+            ([, value]) => value !== undefined && value !== null,
+          ),
+        ),
+      };
+    };
+
     const excludedTransactions = lockCandidates
       .filter((candidate) => !candidate?.locked)
       .filter((candidate) => !lockSelections[getCandidateKey(candidate)])
       .map((candidate) => {
         const key = getCandidateKey(candidate);
         const info = lockExclusions[key];
-        return {
-          table: candidate.tableName,
-          recordId: String(candidate.recordId),
-          reason: info?.reason?.trim() || '',
-        };
-      });
+        const reason = (info?.reason || '').trim();
+        return serializeCandidateForRequest(candidate, { reason });
+      })
+      .filter(Boolean);
     if (excludedTransactions.some((tx) => !tx.reason)) {
       addToast('Provide a reason for each excluded transaction', 'error');
       return;
@@ -1456,10 +3117,8 @@ export default function Reports() {
       parameters: snapshot?.params || result.params,
       transactions: lockCandidates
         .filter((candidate) => lockSelections[getCandidateKey(candidate)])
-        .map((candidate) => ({
-          table: candidate.tableName,
-          recordId: String(candidate.recordId),
-        })),
+        .map((candidate) => serializeCandidateForRequest(candidate))
+        .filter(Boolean),
       excludedTransactions,
       snapshot: {
         columns: snapshot?.columns || [],
@@ -1665,6 +3324,31 @@ export default function Reports() {
                 onKeyDown={(event) => handleParameterKeyDown(event, endDateRef)}
               />
             )}
+            {showWorkplaceSelector && (
+              <>
+                <label style={{ marginLeft: '0.5rem' }}>
+                  Workplace
+                  <select
+                    value={workplaceSelection}
+                    onChange={(e) => {
+                      workplaceSelectionTouchedRef.current = true;
+                      setWorkplaceSelection(e.target.value);
+                    }}
+                    style={{ marginLeft: '0.25rem' }}
+                    ref={workplaceSelectRef}
+                    onKeyDown={(event) =>
+                      handleParameterKeyDown(event, workplaceSelectRef)
+                    }
+                  >
+                    {workplaceSelectOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </>
+            )}
             {procParams.map((p, i) => {
               if (managedIndices.has(i)) return null;
               if (autoParams[i] !== null) return null;
@@ -1677,14 +3361,33 @@ export default function Reports() {
                   placeholder={p}
                   value={val}
                   onChange={(e) =>
-                    setManualParams((m) => ({ ...m, [p]: e.target.value }))
+                    handleManualParamChange(p, e.target.value)
                   }
                   style={{ marginLeft: '0.5rem' }}
                   ref={inputRef}
-                  onKeyDown={(event) => handleParameterKeyDown(event, inputRef)}
+                  onKeyDown={(event) =>
+                    handleParameterKeyDown(event, inputRef, p)
+                  }
                 />
               );
             })}
+            <label
+              style={{
+                marginLeft: '0.5rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '0.25rem',
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={populateLockCandidates}
+                onChange={(event) =>
+                  setPopulateLockCandidates(event.target.checked)
+                }
+              />
+              <span>Populate lock candidates after running</span>
+            </label>
             <button
               onClick={runReport}
               style={{ marginLeft: '0.5rem' }}

@@ -12,12 +12,19 @@ import Modal from '../components/Modal.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import { useCompanyModules } from '../hooks/useCompanyModules.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
 import { debugLog } from '../utils/debug.js';
-import { syncCalcFields } from '../utils/syncCalcFields.js';
+import { syncCalcFields, normalizeCalcFieldConfig } from '../utils/syncCalcFields.js';
+import { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
 import { fetchTriggersForTables } from '../utils/fetchTriggersForTables.js';
 import { valuesEqual } from '../utils/generatedColumns.js';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
 import {
   isPlainRecord,
   assignArrayMetadata,
@@ -31,6 +38,7 @@ import {
 } from '../utils/transactionValues.js';
 
 export { syncCalcFields };
+export { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
 
 function normalizeValueForComparison(value) {
   if (value === undefined) return undefined;
@@ -110,40 +118,113 @@ function compareCellValues(actualContainer, expectedContainer, field) {
   return null;
 }
 
-export function findCalcFieldMismatch(data, calcFields) {
-  if (!Array.isArray(calcFields) || calcFields.length === 0) return null;
+function getCalcFieldCells(map) {
+  if (!map || typeof map !== 'object') return [];
+  if (Array.isArray(map.__normalizedCalcCells)) {
+    return map.__normalizedCalcCells;
+  }
+  const rawCells = Array.isArray(map?.cells) ? map.cells : [];
+  return rawCells.filter(
+    (cell) =>
+      cell &&
+      typeof cell.table === 'string' &&
+      cell.table &&
+      typeof cell.field === 'string' &&
+      cell.field,
+  );
+}
+
+export function findCalcFieldMismatch(data, calcFields, options = {}) {
+  const hasCalc = Array.isArray(calcFields) && calcFields.length > 0;
+  const posFieldList = Array.isArray(options?.posFields)
+    ? options.posFields.filter((entry) => Array.isArray(entry?.parts) && entry.parts.length >= 2)
+    : [];
+
+  if (!hasCalc && posFieldList.length === 0) return null;
+
+  const tablesFilter = Array.isArray(options?.tables)
+    ? new Set(
+        options.tables
+          .map((table) => (typeof table === 'string' ? table.trim() : ''))
+          .filter(Boolean),
+      )
+    : null;
 
   const base = data && typeof data === 'object' ? data : {};
   const expected = syncCalcFields(base, calcFields);
 
   for (const map of calcFields) {
-    const cells = Array.isArray(map?.cells)
-      ? map.cells.filter(
-          (cell) =>
-            cell &&
-            typeof cell.table === 'string' &&
-            cell.table &&
-            typeof cell.field === 'string' &&
-            cell.field,
-        )
-      : [];
+    const cells = getCalcFieldCells(map);
 
     if (cells.length < 2) continue;
 
     for (const cell of cells) {
+      if (tablesFilter && !tablesFilter.has(cell.table)) continue;
       const actualContainer = base[cell.table];
       const expectedContainer = expected[cell.table];
       const mismatch = compareCellValues(actualContainer, expectedContainer, cell.field);
 
       if (mismatch) {
+        const location = [cell.table, cell.field].filter(Boolean).join('.');
+        const rowHint =
+          typeof mismatch.rowIndex === 'number' ? ` (row ${mismatch.rowIndex + 1})` : '';
+        const messageParts = [];
+        if (map?.name) {
+          messageParts.push(`Map ${map.name}`);
+        }
+        messageParts.push(`Mismatch for ${location}${rowHint}`);
+        if (mismatch.expected !== undefined && mismatch.expected !== null) {
+          messageParts.push(`expected ${mismatch.expected}`);
+        }
+        if (mismatch.actual !== undefined && mismatch.actual !== null) {
+          messageParts.push(`found ${mismatch.actual}`);
+        }
         return {
           map,
           table: cell.table,
           field: cell.field,
+          message: messageParts.join(': '),
           ...mismatch,
         };
       }
     }
+  }
+
+  for (const entry of posFieldList) {
+    const parts = Array.isArray(entry?.parts) ? entry.parts : [];
+    if (parts.length < 2) continue;
+    const target = parts[0];
+    if (!target?.table || !target?.field) continue;
+    if (tablesFilter && !tablesFilter.has(target.table)) continue;
+
+    const actualContainer = base[target.table];
+    const expectedContainer = expectedValues[target.table];
+    const mismatch = compareCellValues(actualContainer, expectedContainer, target.field);
+
+    if (!mismatch) continue;
+
+    const location = [target.table, target.field].filter(Boolean).join('.');
+    const rowHint =
+      typeof mismatch.rowIndex === 'number' ? ` (row ${mismatch.rowIndex + 1})` : '';
+    const messageParts = [];
+    if (entry?.name) {
+      messageParts.push(`POS ${entry.name}`);
+    }
+    messageParts.push(`Mismatch for ${location}${rowHint}`);
+    if (mismatch.expected !== undefined && mismatch.expected !== null) {
+      messageParts.push(`expected ${mismatch.expected}`);
+    }
+    if (mismatch.actual !== undefined && mismatch.actual !== null) {
+      messageParts.push(`found ${mismatch.actual}`);
+    }
+
+    return {
+      map: entry,
+      table: target.table,
+      field: target.field,
+      message: messageParts.join(': '),
+      ...mismatch,
+    };
   }
 
   return null;
@@ -216,6 +297,590 @@ export function extractSessionFieldsFromConfig(config) {
     return tableA.localeCompare(tableB);
   });
   return fields;
+}
+
+function normalizeIdentifier(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  return null;
+}
+
+const DEFAULT_EDITABLE_NESTED_KEYS = [
+  'fields',
+  'fieldList',
+  'fieldSet',
+  'list',
+  'values',
+  'columns',
+  'items',
+  'editableFields',
+  'editableDefaultFields',
+  'allowedFields',
+  'permittedFields',
+];
+
+function walkEditableFieldValues(source, callback, options = {}) {
+  if (typeof callback !== 'function') return;
+
+  const skipKeys = new Set([
+    'hasExplicitConfig',
+    '__proto__',
+    ...(Array.isArray(options.skipKeys) ? options.skipKeys : []),
+  ]);
+  const nestedKeySet = new Set(
+    Array.isArray(options.nestedKeys)
+      ? options.nestedKeys
+      : DEFAULT_EDITABLE_NESTED_KEYS,
+  );
+  const visited = new Set();
+
+  const visit = (value) => {
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string' || typeof value === 'number') {
+      const raw = String(value).trim();
+      if (!raw) return;
+      callback(raw);
+      return;
+    }
+    if (value instanceof Set) {
+      value.forEach(visit);
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+    if (value instanceof Map) {
+      value.forEach((enabled, key) => {
+        if (!enabled) return;
+        visit(key);
+      });
+      return;
+    }
+    if (!isPlainRecord(value)) return;
+    if (visited.has(value)) return;
+    visited.add(value);
+
+    nestedKeySet.forEach((key) => {
+      if (Object.prototype.hasOwnProperty.call(value, key)) {
+        visit(value[key]);
+      }
+    });
+
+    Object.entries(value).forEach(([key, val]) => {
+      if (skipKeys.has(key) || nestedKeySet.has(key)) return;
+      if (val === undefined || val === null) return;
+      if (typeof val === 'boolean') {
+        if (val) visit(key);
+        return;
+      }
+      if (typeof val === 'number' || typeof val === 'string') {
+        visit(key);
+        return;
+      }
+      if (val instanceof Set || Array.isArray(val) || val instanceof Map) {
+        visit(val);
+        return;
+      }
+      if (isPlainRecord(val)) {
+        const flag =
+          Object.prototype.hasOwnProperty.call(val, 'editable')
+            ? val.editable
+            : Object.prototype.hasOwnProperty.call(val, 'enabled')
+            ? val.enabled
+            : Object.prototype.hasOwnProperty.call(val, 'allow')
+            ? val.allow
+            : Object.prototype.hasOwnProperty.call(val, 'allowed')
+            ? val.allowed
+            : null;
+        if (flag) visit(key);
+        visit(val);
+      }
+    });
+  };
+
+  visit(source);
+}
+
+const LOCK_TRUE_VALUES = new Set([
+  'true',
+  '1',
+  'yes',
+  'y',
+  'locked',
+  'readonly',
+  'read-only',
+  'noneditable',
+  'non-editable',
+  'disabled',
+  'blocked',
+  'forbidden',
+  'prevent_edit',
+  'prevent-edit',
+  'noedit',
+]);
+
+const LOCK_FALSE_VALUES = new Set([
+  'false',
+  '0',
+  'no',
+  'n',
+  'editable',
+  'unlocked',
+  'allow',
+  'allowed',
+  'enabled',
+  'enable',
+  'write',
+  'writable',
+  'edit',
+]);
+
+function coerceLockBoolean(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const normalized = normalizeIdentifier(String(value));
+  if (!normalized) return null;
+  const token = normalized.toLowerCase();
+  if (LOCK_TRUE_VALUES.has(token)) return true;
+  if (LOCK_FALSE_VALUES.has(token)) return false;
+  return null;
+}
+
+function normalizeLockDescriptor(raw, fallbackTable, fallbackField) {
+  if (!raw || typeof raw !== 'object') return null;
+
+  let table =
+    normalizeIdentifier(raw.table) ||
+    normalizeIdentifier(raw.table_name) ||
+    normalizeIdentifier(raw.tableName) ||
+    normalizeIdentifier(raw.tbl) ||
+    normalizeIdentifier(raw.target?.table) ||
+    normalizeIdentifier(raw.cell?.table);
+  let field =
+    normalizeIdentifier(raw.field) ||
+    normalizeIdentifier(raw.field_name) ||
+    normalizeIdentifier(raw.fieldName) ||
+    normalizeIdentifier(raw.column) ||
+    normalizeIdentifier(raw.column_name) ||
+    normalizeIdentifier(raw.columnName) ||
+    normalizeIdentifier(raw.target?.field) ||
+    normalizeIdentifier(raw.cell?.field);
+
+  if (!table && normalizeIdentifier(fallbackTable)) table = normalizeIdentifier(fallbackTable);
+  if (!field && normalizeIdentifier(fallbackField)) field = normalizeIdentifier(fallbackField);
+  if (!table || !field) return null;
+
+  const explicitNonEditable = coerceLockBoolean(
+    raw.nonEditable ??
+      raw.locked ??
+      raw.isLocked ??
+      raw.readOnly ??
+      raw.readonly ??
+      raw.disabled ??
+      raw.preventEdit ??
+      raw['prevent_edit'],
+  );
+  const explicitEditable = coerceLockBoolean(
+    raw.editable ?? raw.canEdit ?? raw.allowEdit ?? raw.isEditable ?? raw.enabled,
+  );
+
+  let nonEditable = explicitNonEditable;
+  if (nonEditable === null && explicitEditable !== null) {
+    nonEditable = !explicitEditable;
+  }
+  if (nonEditable === null) {
+    const mode = coerceLockBoolean(raw.mode ?? raw.lockMode ?? raw.accessMode ?? raw.permission);
+    if (mode !== null) nonEditable = mode;
+  }
+  if (nonEditable === null) {
+    const status = coerceLockBoolean(
+      raw.status ?? raw.lockStatus ?? raw.state ?? raw.stage,
+    );
+    if (status !== null) nonEditable = status;
+  }
+  if (nonEditable === null) nonEditable = false;
+
+  const reasons = new Set();
+  const addReason = (value) => {
+    if (value === undefined || value === null) return;
+    const str = String(value).trim();
+    if (!str) return;
+    reasons.add(str);
+  };
+
+  const candidates = [
+    raw.reasonCodes,
+    raw.reasonCode,
+    raw.reasons,
+    raw.reason,
+    raw.codes,
+    raw.code,
+    raw.tags,
+    raw.tag,
+    raw.messages,
+    raw.message,
+    raw.lockReason,
+    raw.lockReasons,
+    raw.lock_code,
+    raw.lockCode,
+  ];
+  candidates.forEach((candidate) => {
+    if (Array.isArray(candidate)) {
+      candidate.forEach(addReason);
+    } else {
+      addReason(candidate);
+    }
+  });
+
+  return {
+    table,
+    field,
+    nonEditable: Boolean(nonEditable),
+    reasons: Array.from(reasons),
+  };
+}
+
+function extractLockDescriptors(entry = {}) {
+  const descriptorMap = new Map();
+
+  const registerDescriptor = (raw, fallbackTable, fallbackField) => {
+    const normalized = normalizeLockDescriptor(raw, fallbackTable, fallbackField);
+    if (!normalized) return;
+    const tableKey = normalized.table.toLowerCase();
+    const fieldKey = normalized.field.toLowerCase();
+    const key = `${tableKey}::${fieldKey}`;
+    let existing = descriptorMap.get(key);
+    if (!existing) {
+      existing = {
+        table: normalized.table,
+        field: normalized.field,
+        nonEditable: Boolean(normalized.nonEditable),
+        reasons: new Set(normalized.reasons.map(String)),
+      };
+      descriptorMap.set(key, existing);
+    } else {
+      existing.nonEditable = existing.nonEditable || Boolean(normalized.nonEditable);
+      normalized.reasons.forEach((code) => {
+        if (code === undefined || code === null) return;
+        const str = String(code).trim();
+        if (!str) return;
+        existing.reasons.add(str);
+      });
+    }
+  };
+
+  const addSource = (source, fallbackTable, fallbackField) => {
+    if (!source) return;
+    if (Array.isArray(source)) {
+      source.forEach((item) => addSource(item, fallbackTable, fallbackField));
+      return;
+    }
+    if (typeof source === 'object') {
+      const nestedTable =
+        normalizeIdentifier(source.table) ||
+        normalizeIdentifier(source.table_name) ||
+        normalizeIdentifier(source.tableName) ||
+        normalizeIdentifier(source.tbl) ||
+        fallbackTable;
+      const nestedField =
+        normalizeIdentifier(source.field) ||
+        normalizeIdentifier(source.field_name) ||
+        normalizeIdentifier(source.fieldName) ||
+        normalizeIdentifier(source.column) ||
+        normalizeIdentifier(source.column_name) ||
+        normalizeIdentifier(source.columnName) ||
+        fallbackField;
+      if (Array.isArray(source.locks)) {
+        addSource(source.locks, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.lockCells)) {
+        addSource(source.lockCells, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.cellLocks)) {
+        addSource(source.cellLocks, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.lockEntries)) {
+        addSource(source.lockEntries, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.entries)) {
+        addSource(source.entries, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.items)) {
+        addSource(source.items, nestedTable, nestedField);
+      }
+      if (Array.isArray(source.rows)) {
+        addSource(source.rows, nestedTable, nestedField);
+      }
+      if (source.meta && typeof source.meta === 'object') {
+        addSource(source.meta.locks, nestedTable, nestedField);
+      }
+      if (source.metadata && typeof source.metadata === 'object') {
+        addSource(source.metadata.locks, nestedTable, nestedField);
+      }
+    }
+    registerDescriptor(source, fallbackTable, fallbackField);
+  };
+
+  const primaryPart =
+    Array.isArray(entry.parts) && entry.parts.length > 0 ? entry.parts[0] : null;
+  const entryFallbackTable = normalizeIdentifier(primaryPart?.table);
+  const entryFallbackField = normalizeIdentifier(primaryPart?.field);
+
+  addSource(entry.locks, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockCells, entryFallbackTable, entryFallbackField);
+  addSource(entry.cellLocks, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockEntries, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockList, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockMetadata, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockInfo, entryFallbackTable, entryFallbackField);
+  addSource(entry.lockData, entryFallbackTable, entryFallbackField);
+  if (entry.meta && typeof entry.meta === 'object') {
+    addSource(entry.meta.locks, entryFallbackTable, entryFallbackField);
+  }
+  if (entry.metadata && typeof entry.metadata === 'object') {
+    addSource(entry.metadata.locks, entryFallbackTable, entryFallbackField);
+  }
+
+  if (Array.isArray(entry.parts)) {
+    entry.parts.forEach((part) => {
+      if (!part || typeof part !== 'object') return;
+      const partTable = normalizeIdentifier(part.table);
+      const partField = normalizeIdentifier(part.field);
+      addSource(part.locks, partTable, partField);
+      addSource(part.lockCells, partTable, partField);
+      addSource(part.lockMetadata, partTable, partField);
+      if (part.metadata && typeof part.metadata === 'object') {
+        addSource(part.metadata.locks, partTable, partField);
+      }
+    });
+  }
+
+  return Array.from(descriptorMap.values()).map((entry) => ({
+    table: entry.table,
+    field: entry.field,
+    nonEditable: entry.nonEditable,
+    reasons: Array.from(entry.reasons),
+  }));
+}
+
+export function buildComputedFieldMap(
+  calcFields = [],
+  posFields = [],
+  columnCaseMap = {},
+  tables = [],
+) {
+  const tableCaseMap = {};
+  const columnCaseLookup = {};
+
+  const registerTableName = (name) => {
+    const normalized = normalizeIdentifier(name);
+    if (!normalized) return null;
+    const lower = normalized.toLowerCase();
+    if (!tableCaseMap[lower]) {
+      tableCaseMap[lower] = normalized;
+    }
+    return tableCaseMap[lower];
+  };
+
+  const registerColumnCaseMap = (tableName, map) => {
+    const canonicalTable = registerTableName(tableName);
+    if (!canonicalTable) return;
+    const lowerTable = canonicalTable.toLowerCase();
+    const fieldMap = {};
+    if (map && typeof map === 'object') {
+      Object.entries(map).forEach(([key, value]) => {
+        if (typeof key !== 'string') return;
+        const lowerKey = key.toLowerCase();
+        if (typeof value === 'string' && value) {
+          fieldMap[lowerKey] = value;
+        }
+      });
+    }
+    columnCaseLookup[lowerTable] = fieldMap;
+  };
+
+  (Array.isArray(tables) ? tables : []).forEach((entry) => {
+    if (!entry) return;
+    const name = typeof entry === 'string' ? entry : entry.table;
+    registerTableName(name);
+  });
+
+  Object.entries(columnCaseMap || {}).forEach(([tableName, map]) => {
+    registerColumnCaseMap(tableName, map);
+  });
+
+  const result = {};
+
+  const ensureTableEntry = (tableName) => {
+    const canonicalTable = registerTableName(tableName);
+    if (!canonicalTable) return null;
+    let entry = result[canonicalTable];
+    if (!entry) {
+      entry = new Set();
+      entry.reasonMap = new Map();
+      result[canonicalTable] = entry;
+    } else if (!(entry.reasonMap instanceof Map)) {
+      entry.reasonMap = new Map();
+    }
+    return entry;
+  };
+
+  const canonicalizeField = (tableName, fieldName) => {
+    const canonicalTable = registerTableName(tableName);
+    if (!canonicalTable) return null;
+    const normalizedField = normalizeIdentifier(fieldName);
+    if (!normalizedField) return null;
+    const lowerTable = canonicalTable.toLowerCase();
+    const caseMap = columnCaseLookup[lowerTable] || {};
+    const lowerField = normalizedField.toLowerCase();
+    const canonicalField = caseMap[lowerField] || normalizedField;
+    return {
+      table: canonicalTable,
+      field: canonicalField,
+      lower: canonicalField.toLowerCase(),
+    };
+  };
+
+  const ensureFieldEntry = (tableName, fieldName) => {
+    const canonical = canonicalizeField(tableName, fieldName);
+    if (!canonical) return null;
+    const entry = ensureTableEntry(canonical.table);
+    if (!entry) return;
+    entry.add(canonical.lower);
+    return { entry, canonical };
+  };
+
+  const addReason = (tableName, fieldName, reason) => {
+    const info = ensureFieldEntry(tableName, fieldName);
+    if (!info) return;
+    const { entry, canonical } = info;
+    if (!reason && reason !== 0) return;
+    let reasonMap = entry.reasonMap;
+    if (!(reasonMap instanceof Map)) {
+      reasonMap = new Map();
+      entry.reasonMap = reasonMap;
+    }
+    let reasonSet = reasonMap.get(canonical.lower);
+    if (!reasonSet) {
+      reasonSet = new Set();
+      reasonMap.set(canonical.lower, reasonSet);
+    }
+    reasonSet.add(String(reason));
+  };
+
+  (calcFields || []).forEach((map = {}) => {
+    const cells = getCalcFieldCells(map);
+    if (!cells.length) return;
+
+    const normalizedIndexes = Array.isArray(map.__computedCellIndexes)
+      ? map.__computedCellIndexes
+          .map((idx) => (Number.isInteger(idx) ? idx : null))
+          .filter((idx) => idx !== null && idx >= 0 && idx < cells.length)
+      : [];
+
+    if (normalizedIndexes.length === 0) return;
+
+    const hasAggregator = cells.some((cell = {}) => {
+      if (typeof cell.__aggKey === 'string' && cell.__aggKey) return true;
+      if (typeof cell.agg === 'string') {
+        const normalized = cell.agg.trim();
+        if (normalized) return true;
+      }
+      return false;
+    });
+
+    const fallsBackToFirstCell =
+      !hasAggregator && normalizedIndexes.length === 1 && normalizedIndexes[0] === 0;
+
+    if (fallsBackToFirstCell) return;
+
+    normalizedIndexes.forEach((idx) => {
+      const cell = cells[idx];
+      if (!cell || !cell.table || !cell.field) return;
+      addReason(cell.table, cell.field, 'calcField');
+    });
+  });
+
+  (posFields || []).forEach((entry = {}) => {
+    const parts = Array.isArray(entry.parts) ? entry.parts : [];
+    if (parts.length < 2) return;
+    const [target, ...calcParts] = parts;
+    const targetTable = normalizeIdentifier(target?.table);
+    const targetField = normalizeIdentifier(target?.field);
+    if (!targetTable || !targetField) return;
+
+    const uniqueSources = new Set();
+    calcParts.forEach((cell = {}) => {
+      const tbl = normalizeIdentifier(cell.table);
+      const fld = normalizeIdentifier(cell.field);
+      if (!tbl || !fld) return;
+      uniqueSources.add(`${tbl.toLowerCase()}::${fld.toLowerCase()}`);
+    });
+    if (uniqueSources.size === 0) return;
+
+    addReason(targetTable, targetField, 'posFormula');
+
+  });
+
+  return result;
+}
+
+export function collectDisabledFieldsAndReasons({
+  allFields = [],
+  editSet = null,
+  caseMap = {},
+  sessionFields = [],
+}) {
+  const normalizedFields = Array.isArray(allFields)
+    ? allFields.filter((field) => typeof field === 'string' && field)
+    : [];
+  const allFieldLowerSet = new Set(normalizedFields.map((field) => field.toLowerCase()));
+  const disabledLower = new Set();
+  const disabled = [];
+  const reasonMap = new Map();
+
+  const addReason = (field, code) => {
+    if (!field || !code) return;
+    const canonical = String(field);
+    if (!reasonMap.has(canonical)) {
+      reasonMap.set(canonical, new Set());
+    }
+    reasonMap.get(canonical).add(String(code));
+  };
+
+  if (editSet instanceof Set && editSet.size > 0) {
+    normalizedFields.forEach((field) => {
+      const lower = field.toLowerCase();
+      if (editSet.has(lower)) return;
+      if (disabledLower.has(lower)) return;
+      disabledLower.add(lower);
+      disabled.push(field);
+      addReason(field, 'missingEditableConfig');
+    });
+  }
+
+  (Array.isArray(sessionFields) ? sessionFields : []).forEach((field) => {
+    if (typeof field !== 'string' || !field) return;
+    const lower = field.toLowerCase();
+    if (!allFieldLowerSet.has(lower)) return;
+    if (editSet instanceof Set && editSet.has(lower)) return;
+    let canonicalField =
+      caseMap[lower] ||
+      normalizedFields.find((entry) => entry.toLowerCase() === lower) ||
+      field;
+    if (typeof canonicalField !== 'string') canonicalField = String(canonicalField);
+    addReason(canonicalField, 'sessionFieldAutoReset');
+  });
+
+  return {
+    disabled,
+    reasonMap,
+  };
 }
 
 function parseErrorField(msg) {
@@ -452,9 +1117,47 @@ async function putRow(addToast, table, id, row) {
 
 export default function PosTransactionsPage() {
   const { addToast } = useToast();
-  const { user, company, branch } = useContext(AuthContext);
+  const {
+    user,
+    company,
+    branch,
+    department,
+    permissions: perms,
+  } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
-  const [configs, setConfigs] = useState({});
+  const licensed = useCompanyModules(company);
+  const [rawConfigs, setRawConfigs] = useState({});
+  const configs = useMemo(() => {
+    if (!rawConfigs || typeof rawConfigs !== 'object') return {};
+    if (
+      perms &&
+      Object.prototype.hasOwnProperty.call(perms, 'pos_transactions') &&
+      !perms.pos_transactions
+    ) {
+      return {};
+    }
+    if (
+      licensed &&
+      Object.prototype.hasOwnProperty.call(licensed, 'pos_transactions') &&
+      !licensed.pos_transactions
+    ) {
+      return {};
+    }
+    const entries = Object.entries(rawConfigs).filter(([key]) => key !== 'isDefault');
+    if (entries.length === 0) return {};
+    const filtered = {};
+    entries.forEach(([cfgName, cfgValue]) => {
+      if (!cfgValue || typeof cfgValue !== 'object') return;
+      if (
+        hasTransactionFormAccess(cfgValue, branch, department, {
+          allowTemporaryAnyScope: true,
+        })
+      ) {
+        filtered[cfgName] = cfgValue;
+      }
+    });
+    return filtered;
+  }, [rawConfigs, branch, department, perms, licensed]);
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
@@ -574,6 +1277,23 @@ export default function PosTransactionsPage() {
       procTriggerLoadedRef.current.clear();
     };
   }, [name]);
+
+  useEffect(() => {
+    relationCacheRef.current.clear();
+    viewCacheRef.current.clear();
+    viewFetchesRef.current.clear();
+    viewLoadedRef.current.clear();
+    procTriggerFetchesRef.current.clear();
+    procTriggerLoadedRef.current.clear();
+    setFormConfigs({});
+    setColumnMeta({});
+    setRelationsMap({});
+    setRelationConfigs({});
+    setRelationData({});
+    setViewDisplaysMap({});
+    setViewColumnsMap({});
+    setProcTriggersMap({});
+  }, [branch, department]);
 
   useEffect(() => {
     const prev = contextReadyRef.current;
@@ -893,11 +1613,23 @@ export default function PosTransactionsPage() {
   }
 
   useEffect(() => {
-    fetch('/api/pos_txn_config', { credentials: 'include' })
+    const params = new URLSearchParams();
+    if (branch !== undefined && branch !== null && String(branch).trim() !== '') {
+      params.set('branchId', branch);
+    }
+    if (
+      department !== undefined &&
+      department !== null &&
+      String(department).trim() !== ''
+    ) {
+      params.set('departmentId', department);
+    }
+    const qs = params.toString();
+    fetch(`/api/pos_txn_config${qs ? `?${qs}` : ''}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => setConfigs(data))
-      .catch(() => setConfigs({}));
-  }, []);
+      .then((data) => setRawConfigs(data))
+      .catch(() => setRawConfigs({}));
+  }, [branch, department]);
 
   const initRef = useRef('');
 
@@ -909,9 +1641,27 @@ export default function PosTransactionsPage() {
       setCurrentSessionId(null);
       return;
     }
+    if (!configs[name]) {
+      setConfig(null);
+      setLayout({});
+      setSessionFields(null);
+      setCurrentSessionId(null);
+      return;
+    }
     setSessionFields(null);
     setCurrentSessionId(null);
-    fetch(`/api/pos_txn_config?name=${encodeURIComponent(name)}`, { credentials: 'include' })
+    const params = new URLSearchParams({ name });
+    if (branch !== undefined && branch !== null && String(branch).trim() !== '') {
+      params.set('branchId', branch);
+    }
+    if (
+      department !== undefined &&
+      department !== null &&
+      String(department).trim() !== ''
+    ) {
+      params.set('departmentId', department);
+    }
+    fetch(`/api/pos_txn_config?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((cfg) => {
         if (cfg && Array.isArray(cfg.tables) && cfg.tables.length > 0 && !cfg.masterTable) {
@@ -930,7 +1680,7 @@ export default function PosTransactionsPage() {
       .then(res => res.ok ? res.json() : {})
       .then(data => setLayout(data || {}))
       .catch(() => setLayout({}));
-  }, [name]);
+  }, [name, configs, branch, department]);
 
   const { formList, visibleTables } = React.useMemo(() => {
     if (!config) return { formList: [], visibleTables: new Set() };
@@ -969,6 +1719,16 @@ export default function PosTransactionsPage() {
     };
   }, [config]);
 
+  const tableList = useMemo(
+    () => formList.map((t) => t.table).filter(Boolean),
+    [formList],
+  );
+
+  const normalizedCalcFields = useMemo(
+    () => normalizeCalcFieldConfig(config?.calcFields),
+    [config],
+  );
+
   const multiTableSet = React.useMemo(() => {
     const set = new Set();
     formList.forEach((t) => {
@@ -1005,7 +1765,7 @@ export default function PosTransactionsPage() {
   useEffect(() => {
     loadedTablesRef.current.clear();
     loadingTablesRef.current.clear();
-  }, [visibleTablesKey, configVersion]);
+  }, [visibleTablesKey, configVersion, branch, department]);
 
   // Reload form configs and column metadata when either the visible table set
   // or the form identifiers change. Because configVersion ignores layout-only
@@ -1066,8 +1826,22 @@ export default function PosTransactionsPage() {
           let cfg = null;
           if (form) {
             try {
-              const res = await fetch(
-                `/api/transaction_forms?table=${encodeURIComponent(tbl)}&name=${encodeURIComponent(form)}`,
+              const params = new URLSearchParams({
+                table: tbl,
+                name: form,
+              });
+              if (branch !== undefined && branch !== null && `${branch}`.trim() !== '') {
+                params.set('branchId', branch);
+              }
+              if (
+                department !== undefined &&
+                department !== null &&
+                `${department}`.trim() !== ''
+              ) {
+                params.set('departmentId', department);
+              }
+              const res = await fetchWithAbort(
+                `/api/transaction_forms?${params.toString()}`,
                 { credentials: 'include' },
               );
               cfg = res.ok ? await res.json().catch(() => null) : null;
@@ -1139,7 +1913,7 @@ export default function PosTransactionsPage() {
     return () => {
       cancelled = true;
     };
-  }, [visibleTablesKey, configVersion]);
+  }, [visibleTablesKey, configVersion, branch, department]);
 
   const memoFieldTypeMap = useMemo(() => {
     const map = {};
@@ -1178,6 +1952,107 @@ export default function PosTransactionsPage() {
       const inner = {};
       cols.forEach((c) => {
         inner[c.name.toLowerCase()] = c.name;
+      });
+      map[tbl] = inner;
+    });
+    return map;
+  }, [visibleTablesKey, configVersion, columnMeta]);
+
+  const editableFieldLookup = useMemo(() => {
+    const lookup = {};
+
+    const normalizeList = (source, caseMap = {}) => {
+      const seen = new Set();
+      const result = [];
+      walkEditableFieldValues(
+        source,
+        (field) => {
+          if (field == null) return;
+          const raw = String(field).trim();
+          if (!raw) return;
+          const lower = raw.toLowerCase();
+          const canonical = caseMap[lower] || raw;
+          const canonicalLower = canonical.toLowerCase();
+          if (!seen.has(canonicalLower)) {
+            seen.add(canonicalLower);
+            result.push(canonical);
+          }
+        },
+        { skipKeys: ['hasExplicitConfig'] },
+      );
+      return result;
+    };
+
+    Object.entries(memoFormConfigs).forEach(([tbl, fc]) => {
+      if (!fc) return;
+      const caseMap = memoColumnCaseMap[tbl] || {};
+      const sources = [
+        { value: fc.editableDefaultFields, explicit: fc.editableDefaultFields !== undefined },
+        { value: fc.editableFields, explicit: fc.editableFields !== undefined },
+        { value: fc.inlineEditableFields, explicit: fc.inlineEditableFields !== undefined },
+        { value: fc.editableFieldMap, explicit: fc.editableFieldMap !== undefined },
+      ];
+      const combined = new Set();
+      let hasExplicitConfig = false;
+      sources.forEach(({ value, explicit }) => {
+        if (explicit) hasExplicitConfig = true;
+        normalizeList(value, caseMap).forEach((field) => combined.add(field));
+      });
+      if (combined.size > 0 || hasExplicitConfig) {
+        lookup[tbl] = {
+          fields: combined,
+          hasExplicitConfig,
+        };
+      }
+    });
+
+    return lookup;
+  }, [memoFormConfigs, memoColumnCaseMap, visibleTablesKey, configVersion]);
+
+  const computedFieldMap = useMemo(
+    () =>
+      buildComputedFieldMap(
+        normalizedCalcFields,
+        config?.posFields || [],
+        memoColumnCaseMap,
+        tableList,
+      ),
+    [
+      normalizedCalcFields,
+      config?.posFields,
+      memoColumnCaseMap,
+      tableList,
+    ],
+  );
+
+  const memoNumericScaleMap = useMemo(() => {
+    const map = {};
+    const parseScale = (col) => {
+      if (!col || typeof col !== 'object') return null;
+      const direct =
+        col.numericScale ?? col.NUMERIC_SCALE ?? col.scale ?? col.SCALE ?? null;
+      if (direct !== null && direct !== undefined) {
+        const num = Number(direct);
+        return Number.isNaN(num) ? null : num;
+      }
+      const typeSource = col.columnType || col.COLUMN_TYPE || col.type || '';
+      if (typeof typeSource === 'string') {
+        const match = typeSource.match(/\((\d+)\s*,\s*(\d+)\)/);
+        if (match) {
+          const scale = Number(match[2]);
+          return Number.isNaN(scale) ? null : scale;
+        }
+      }
+      return null;
+    };
+    Object.entries(columnMeta).forEach(([tbl, cols]) => {
+      if (!visibleTables.has(tbl)) return;
+      const inner = {};
+      cols.forEach((c) => {
+        const scale = parseScale(c);
+        if (scale !== null && scale !== undefined) {
+          inner[c.name] = scale;
+        }
       });
       map[tbl] = inner;
     });
@@ -1258,11 +2133,11 @@ export default function PosTransactionsPage() {
   const recalcTotals = useCallback(
     (vals) =>
       recalcPosTotals(vals, {
-        calcFields: config?.calcFields,
+        calcFields: normalizedCalcFields,
         pipelines: generatedColumnPipelines,
         posFields: config?.posFields,
       }),
-    [config, generatedColumnPipelines],
+    [normalizedCalcFields, generatedColumnPipelines, config?.posFields],
   );
 
   const memoRelationConfigs = useMemo(() => {
@@ -1401,8 +2276,20 @@ export default function PosTransactionsPage() {
 
   function handleChange(tbl, changes) {
     setValues((v) => {
-      const next = { ...v, [tbl]: { ...v[tbl], ...changes } };
-      return recalcTotals(next);
+      const prev = v?.[tbl];
+      const desiredRow = isPlainRecord(prev)
+        ? { ...prev, ...changes }
+        : { ...changes };
+      const merged = { ...v, [tbl]: desiredRow };
+      const recalculated = recalcTotals(merged);
+      return preserveManualChangesAfterRecalc({
+        table: tbl,
+        changes,
+        computedFieldMap,
+        editableFieldMap: editableFieldLookup,
+        desiredRow,
+        recalculatedValues: recalculated,
+      });
     });
   }
 
@@ -1586,6 +2473,7 @@ export default function PosTransactionsPage() {
       employeeId: user?.empid,
       companyId: company,
       branchId: branch,
+      departmentId: department,
       date: formatTimestamp(new Date()),
     };
     try {
@@ -1682,16 +2570,101 @@ export default function PosTransactionsPage() {
 
   async function handlePostAll() {
     if (!name) return;
-    // basic required field check
-    for (const t of [{ table: config.masterTable }, ...config.tables]) {
-      const fc = memoFormConfigs[t.table];
+    if (!config) return;
+
+    const isValueMissing = (val) => {
+      if (val === undefined || val === null) return true;
+      if (typeof val === 'string') return val.trim() === '';
+      return false;
+    };
+
+    const resolveFieldLabel = (table, field) => {
+      const cols = columnMeta[table];
+      if (Array.isArray(cols)) {
+        const lower = String(field).toLowerCase();
+        for (const col of cols) {
+          if (!col || typeof col !== 'object') continue;
+          const name =
+            col.name ||
+            col.columnName ||
+            col.column_name ||
+            col.COLUMN_NAME ||
+            col.COLUMNNAME ||
+            '';
+          if (typeof name === 'string' && name.toLowerCase() === lower) {
+            return (
+              col.label ||
+              col.LABEL ||
+              col.columnLabel ||
+              col.COLUMN_COMMENT ||
+              col.comment ||
+              name
+            );
+          }
+        }
+      }
+      return field;
+    };
+
+    const reportMissingField = (table, field, rowIndex) => {
+      const fieldLabel = resolveFieldLabel(table, field);
+      const tableLabel = memoFormConfigs[table]?.title || table;
+      const rowSuffix =
+        typeof rowIndex === 'number' ? ` (row ${rowIndex + 1})` : '';
+      addToast(
+        `Missing required field ${fieldLabel} in ${tableLabel}${rowSuffix}`,
+        'error',
+      );
+    };
+
+    for (const form of formList) {
+      const table = form?.table;
+      if (!table) continue;
+      const fc = memoFormConfigs[table];
       if (!fc) continue;
-      const req = fc.requiredFields || [];
-      const row = values[t.table] || {};
-      for (const f of req) {
-        if (row[f] === undefined || row[f] === '') {
-          addToast('Missing required fields', 'error');
-          return;
+      const required = Array.isArray(fc.requiredFields)
+        ? fc.requiredFields.filter(Boolean)
+        : [];
+      if (required.length === 0) continue;
+
+      const tableValues = values[table];
+      if (form?.type === 'multi') {
+        const rows = Array.isArray(tableValues) ? tableValues : [];
+
+        for (const field of required) {
+          if (
+            Array.isArray(rows) &&
+            Object.prototype.hasOwnProperty.call(rows, field) &&
+            isValueMissing(rows[field])
+          ) {
+            reportMissingField(table, field);
+            return;
+          }
+        }
+
+        for (let idx = 0; idx < rows.length; idx += 1) {
+          const row = rows[idx];
+          if (!isPlainRecord(row)) continue;
+          for (const field of required) {
+            if (
+              !Object.prototype.hasOwnProperty.call(row, field) ||
+              isValueMissing(row[field])
+            ) {
+              reportMissingField(table, field, idx);
+              return;
+            }
+          }
+        }
+      } else {
+        const row = isPlainRecord(tableValues) ? tableValues : {};
+        for (const field of required) {
+          if (
+            !Object.prototype.hasOwnProperty.call(row, field) ||
+            isValueMissing(row[field])
+          ) {
+            reportMissingField(table, field);
+            return;
+          }
         }
       }
     }
@@ -1706,7 +2679,7 @@ export default function PosTransactionsPage() {
         if (payload[tbl][k] === undefined) payload[tbl][k] = v;
       });
     });
-    const mismatch = findCalcFieldMismatch(payload, config.calcFields);
+    const mismatch = findCalcFieldMismatch(payload, normalizedCalcFields);
     if (mismatch) {
       addToast('Mapping mismatch', 'error');
       return;
@@ -1730,6 +2703,7 @@ export default function PosTransactionsPage() {
       employeeId: user?.empid,
       companyId: company,
       branchId: branch,
+      departmentId: department,
       date: formatTimestamp(new Date()),
     };
     try {
@@ -1919,44 +2893,142 @@ export default function PosTransactionsPage() {
                 meta.forEach((c) => {
                   labels[c.name || c] = c.label || c.name || c;
                 });
-                const visible = Array.isArray(fc.visibleFields)
-                  ? fc.visibleFields
-                  : [];
-                const headerFields =
-                  fc.headerFields && fc.headerFields.length > 0
-                    ? fc.headerFields
-                    : [];
-                const mainFields =
-                  fc.mainFields && fc.mainFields.length > 0
-                    ? fc.mainFields
-                    : [];
-                const footerFields =
-                  fc.footerFields && fc.footerFields.length > 0
-                    ? fc.footerFields
-                    : [];
-                const totalAmountFields = Array.isArray(fc.totalAmountFields)
-                  ? fc.totalAmountFields
-                  : [];
-                const totalCurrencyFields = Array.isArray(fc.totalCurrencyFields)
-                  ? fc.totalCurrencyFields
-                  : [];
-                const provided = Array.isArray(fc.editableFields)
-                  ? fc.editableFields
-                  : [];
-                const defaults = Array.isArray(fc.editableDefaultFields)
-                  ? fc.editableDefaultFields
-                  : [];
-                const editVals = Array.from(new Set([...defaults, ...provided]));
-                const editSet =
-                  editVals.length > 0
-                    ? new Set(editVals.map((f) => f.toLowerCase()))
-                    : null;
+                const caseMap = memoColumnCaseMap[t.table] || {};
+                const canonicalizeFields = (source) => {
+                  const seen = new Set();
+                  const result = [];
+                  walkEditableFieldValues(
+                    source,
+                    (field) => {
+                      if (field == null) return;
+                      const raw = String(field).trim();
+                      if (!raw) return;
+                      const mapped = caseMap[raw.toLowerCase()] || raw;
+                      if (!seen.has(mapped)) {
+                        seen.add(mapped);
+                        result.push(mapped);
+                      }
+                    },
+                    { skipKeys: ['hasExplicitConfig'] },
+                  );
+                  return result;
+                };
+                const visible = canonicalizeFields(fc.visibleFields);
+                const headerFields = canonicalizeFields(fc.headerFields);
+                const mainFields = canonicalizeFields(fc.mainFields);
+                const footerFields = canonicalizeFields(fc.footerFields);
+                const totalAmountFields = canonicalizeFields(fc.totalAmountFields);
+                const totalCurrencyFields = canonicalizeFields(fc.totalCurrencyFields);
                 const allFields = Array.from(
                   new Set([...visible, ...headerFields, ...mainFields, ...footerFields]),
                 );
-                const disabled = editSet
-                  ? allFields.filter((c) => !editSet.has(c.toLowerCase()))
-                  : [];
+                const canonicalizeField = (lowerField) => {
+                  if (typeof lowerField !== 'string' || !lowerField) return null;
+                  const fromCaseMap = caseMap[lowerField];
+                  if (typeof fromCaseMap === 'string' && fromCaseMap) {
+                    return fromCaseMap;
+                  }
+                  const match = allFields.find(
+                    (field) => typeof field === 'string' && field.toLowerCase() === lowerField,
+                  );
+                  if (match) return match;
+                  return lowerField;
+                };
+                const computedEntry = computedFieldMap?.[t.table];
+                const disabled = [];
+                const disabledLower = new Set();
+                const disabledFieldReasons = {};
+                const addDisabledField = (fieldName, reasons = []) => {
+                  if (typeof fieldName !== 'string' || !fieldName) return;
+                  const normalizedLower = fieldName.toLowerCase();
+                  if (!disabledLower.has(normalizedLower)) {
+                    disabledLower.add(normalizedLower);
+                    disabled.push(fieldName);
+                  }
+                  if (!Array.isArray(reasons) || reasons.length === 0) return;
+                  const normalizedReasons = Array.from(
+                    new Set(
+                      reasons
+                        .map((code) => (code === undefined || code === null ? '' : String(code)))
+                        .map((code) => code.trim())
+                        .filter((code) => code),
+                    ),
+                  );
+                  if (normalizedReasons.length === 0) return;
+                  const existingKey = Object.keys(disabledFieldReasons).find(
+                    (key) => typeof key === 'string' && key.toLowerCase() === normalizedLower,
+                  );
+                  const targetKey = existingKey || fieldName;
+                  const existing = Array.isArray(disabledFieldReasons[targetKey])
+                    ? disabledFieldReasons[targetKey]
+                    : [];
+                  const merged = Array.from(new Set([...existing, ...normalizedReasons]));
+                  if (merged.length > 0) {
+                    disabledFieldReasons[targetKey] = merged;
+                  }
+                };
+                if (computedEntry instanceof Set) {
+                  const reasonLookup = computedEntry.reasonMap;
+                  const allowedReasons = new Set(['calcField', 'posFormula']);
+                  computedEntry.forEach((lowerField) => {
+                    if (typeof lowerField !== 'string' || !lowerField) return;
+                    const canonical = canonicalizeField(lowerField);
+                    if (!canonical) return;
+                    const reasonSet =
+                      reasonLookup instanceof Map ? reasonLookup.get(lowerField) : null;
+                    if (reasonSet instanceof Set) {
+                      const reasons = Array.from(reasonSet)
+                        .map((code) => (code === undefined || code === null ? '' : String(code)))
+                        .map((code) => code.trim())
+                        .filter((code) => allowedReasons.has(code));
+                      if (reasons.length === 0 && reasonSet.size > 0) {
+                        return;
+                      }
+                      addDisabledField(canonical, reasons);
+                      return;
+                    }
+                    addDisabledField(canonical);
+                  });
+                }
+                const editableEntry = editableFieldLookup?.[t.table];
+                if (editableEntry?.hasExplicitConfig) {
+                  const allowedLower = new Set();
+                  const collectAllowed = (field) => {
+                    if (typeof field !== 'string' || !field) return;
+                    const canonical = canonicalizeField(field.toLowerCase());
+                    if (!canonical) return;
+                    allowedLower.add(canonical.toLowerCase());
+                  };
+                  if (editableEntry.fields instanceof Set) {
+                    editableEntry.fields.forEach((field) => {
+                      collectAllowed(field);
+                    });
+                  } else if (Array.isArray(editableEntry.fields)) {
+                    editableEntry.fields.forEach((field) => {
+                      collectAllowed(field);
+                    });
+                  } else if (editableEntry.fields && typeof editableEntry.fields === 'object') {
+                    Object.values(editableEntry.fields).forEach((value) => {
+                      if (value instanceof Set) {
+                        value.forEach((field) => collectAllowed(field));
+                      } else if (Array.isArray(value)) {
+                        value.forEach((field) => collectAllowed(field));
+                      } else {
+                        collectAllowed(value);
+                      }
+                    });
+                  } else {
+                    collectAllowed(editableEntry.fields);
+                  }
+                  allFields.forEach((field) => {
+                    if (typeof field !== 'string' || !field) return;
+                    const canonical = canonicalizeField(field.toLowerCase());
+                    if (!canonical) return;
+                    const normalizedLower = canonical.toLowerCase();
+                    if (allowedLower.has(normalizedLower)) return;
+                    addDisabledField(canonical, ['missingEditableConfig']);
+                  });
+                }
                 const posStyle = {
                   top_row: { gridColumn: '1 / span 3', gridRow: '1' },
                   upper_left: { gridColumn: '1', gridRow: '2' },
@@ -1998,6 +3070,7 @@ export default function PosTransactionsPage() {
                       visible
                       columns={allFields}
                       disabledFields={disabled}
+                      disabledFieldReasons={disabledFieldReasons}
                       requiredFields={fc.requiredFields || []}
                       labels={labels}
                       row={values[t.table]}
@@ -2008,6 +3081,7 @@ export default function PosTransactionsPage() {
                       defaultValues={fc.defaultValues || {}}
                       totalAmountFields={totalAmountFields}
                       totalCurrencyFields={totalCurrencyFields}
+                      numericScaleMap={memoNumericScaleMap[t.table] || {}}
                       table={t.table}
                       imagenameField={
                         memoFormConfigs[t.table]?.imagenameField || []

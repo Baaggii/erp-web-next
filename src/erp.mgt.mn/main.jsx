@@ -6,6 +6,14 @@ import './utils/debug.js';
 import { setupDebugHooks } from './utils/debugHooks.js';
 import './index.css';
 import './legacyModals.js';
+import './legacyPermissionGlobals.js';
+
+if (
+  typeof globalThis !== 'undefined' &&
+  typeof globalThis.temporaryFeatureEnabled === 'undefined'
+) {
+  globalThis.temporaryFeatureEnabled = false;
+}
 
 setupDebugHooks();
 

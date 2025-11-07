@@ -75,3 +75,24 @@ await test('getProcTriggers maps wrapped output variables', async () => {
     pool.query = origQuery;
   }
 });
+
+await test('getProcTriggers resolves local variable outputs in expressions', async () => {
+  pool.query = async () => [
+    [
+      {
+        Statement: `CALL fill_contract_from_latest_g_id(NEW.g_id, v_burtgel_id);\nSET NEW.g_burtgel_id = IFNULL(NEW.g_burtgel_id, v_burtgel_id);`,
+      },
+    ],
+  ];
+  try {
+    const trig = await getProcTriggers('transactions_contract');
+    assert.ok(trig.g_id?.length > 0, 'maps source column as trigger');
+    assert.ok(trig.g_burtgel_id?.length > 0, 'maps target column as trigger');
+    const cfg = trig.g_burtgel_id[0];
+    assert.equal(cfg.name, 'fill_contract_from_latest_g_id');
+    assert.deepEqual(cfg.params, ['g_id', 'v_burtgel_id']);
+    assert.deepEqual(cfg.outMap, { v_burtgel_id: 'g_burtgel_id' });
+  } finally {
+    pool.query = origQuery;
+  }
+});

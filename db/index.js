@@ -1,6 +1,133 @@
 let mysql;
+
+function basicEscape(value) {
+  if (value === undefined || value === null) {
+    return 'NULL';
+  }
+
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? String(value) : 'NULL';
+  }
+
+  if (typeof value === 'bigint') {
+    return value.toString();
+  }
+
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+
+  if (value instanceof Date) {
+    const normalized = Number.isNaN(value.getTime())
+      ? null
+      : formatDateForDb(value);
+    return normalized ? `'${normalized}'` : 'NULL';
+  }
+
+  if (Buffer.isBuffer(value)) {
+    return `X'${value.toString('hex')}'`;
+  }
+
+  const str = String(value);
+  const escaped = str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+  return `'${escaped}'`;
+}
+
+function basicFormat(sql, params) {
+  if (typeof sql !== 'string' || !sql.includes('?')) {
+    return sql;
+  }
+  if (!Array.isArray(params) || params.length === 0) {
+    return sql;
+  }
+  const queue = [...params];
+  return sql.replace(/\?/g, () => {
+    const next = queue.length ? queue.shift() : undefined;
+    return basicEscape(next);
+  });
+}
+
 try {
-  mysql = await import("mysql2/promise");
+  const mysqlPromiseMod = await import("mysql2/promise");
+  const mysqlPromise = mysqlPromiseMod?.default ?? mysqlPromiseMod;
+  const mysqlPrepared = {};
+  if (mysqlPromise && (typeof mysqlPromise === 'object' || typeof mysqlPromise === 'function')) {
+    for (const key of Object.getOwnPropertyNames(mysqlPromise)) {
+      mysqlPrepared[key] = mysqlPromise[key];
+    }
+  }
+  if (
+    typeof mysqlPrepared.createPool !== 'function' &&
+    typeof mysqlPromise?.createPool === 'function'
+  ) {
+    mysqlPrepared.createPool = mysqlPromise.createPool.bind(mysqlPromise);
+  }
+  if (
+    typeof mysqlPrepared.format !== 'function' ||
+    typeof mysqlPrepared.escape !== 'function'
+  ) {
+    try {
+      const mysqlCoreMod = await import("mysql2");
+      const mysqlCore = mysqlCoreMod?.default ?? mysqlCoreMod;
+      if (
+        typeof mysqlPrepared.format !== 'function' &&
+        typeof mysqlCore?.format === 'function'
+      ) {
+        mysqlPrepared.format = mysqlCore.format.bind(mysqlCore);
+      }
+      if (
+        typeof mysqlPrepared.escape !== 'function' &&
+        typeof mysqlCore?.escape === 'function'
+      ) {
+        mysqlPrepared.escape = mysqlCore.escape.bind(mysqlCore);
+      }
+    } catch {
+      // ignore optional mysql2 import failures; fall back to stubs below
+    }
+  }
+  if (typeof mysqlPrepared.format === 'function') {
+    const originalFormat = mysqlPrepared.format;
+    mysqlPrepared.format = (sql, params) => {
+      try {
+        const formatted = originalFormat.call(mysqlPrepared, sql, params);
+        if (typeof formatted === 'string') {
+          return formatted;
+        }
+        if (formatted == null) {
+          return basicFormat(sql, params);
+        }
+        return typeof formatted === 'object'
+          ? basicFormat(sql, params)
+          : String(formatted);
+      } catch {
+        return basicFormat(sql, params);
+      }
+    };
+  } else {
+    mysqlPrepared.format = basicFormat;
+  }
+  if (typeof mysqlPrepared.escape === 'function') {
+    const originalEscape = mysqlPrepared.escape;
+    mysqlPrepared.escape = (value) => {
+      try {
+        const escaped = originalEscape.call(mysqlPrepared, value);
+        if (typeof escaped === 'string') {
+          return escaped;
+        }
+        if (escaped == null) {
+          return basicEscape(value);
+        }
+        return typeof escaped === 'object'
+          ? basicEscape(value)
+          : String(escaped);
+      } catch {
+        return basicEscape(value);
+      }
+    };
+  } else {
+    mysqlPrepared.escape = basicEscape;
+  }
+  mysql = mysqlPrepared;
 } catch {
   mysql = {
     createPool() {
@@ -11,17 +138,8 @@ try {
         end: async () => {},
       };
     },
-    format(sql, params) {
-      if (!params) return sql;
-      let i = 0;
-      return sql.replace(/\?/g, () => {
-        const val = params[i++];
-        return typeof val === 'string' ? `'${val}'` : String(val);
-      });
-    },
-    escape(val) {
-      return typeof val === 'string' ? `'${val}'` : String(val);
-    },
+    format: basicFormat,
+    escape: basicEscape,
   };
 }
 let dotenv;
@@ -43,10 +161,92 @@ import fs from "fs/promises";
 import path from "path";
 import { tenantConfigPath, getConfigPath } from "../api-server/utils/configPaths.js";
 import { getDisplayFields as getDisplayCfg } from "../api-server/services/displayFieldConfig.js";
+import { listCustomRelations } from "../api-server/services/tableRelationsConfig.js";
 import { GLOBAL_COMPANY_ID } from "../config/0/constants.js";
 import { formatDateForDb } from "../api-server/utils/formatDate.js";
 
 const PROTECTED_PROCEDURE_PREFIXES = ["dynrep_"];
+
+function escapeForDiagnostics(value) {
+  if (value === undefined || value === null) {
+    return "NULL";
+  }
+
+  if (mysql && typeof mysql.escape === "function") {
+    try {
+      return mysql.escape(value);
+    } catch {
+      // fall through to manual escaping
+    }
+  }
+
+  if (value instanceof Date) {
+    return `'${formatDateForDb(value)}'`;
+  }
+
+  if (Buffer.isBuffer(value)) {
+    return `X'${value.toString("hex")}'`;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => escapeForDiagnostics(item)).join(", ");
+  }
+
+  if (typeof value === "number" || typeof value === "bigint") {
+    return Number.isFinite(Number(value)) ? String(value) : "NULL";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "TRUE" : "FALSE";
+  }
+
+  if (typeof value === "object") {
+    return escapeForDiagnostics(JSON.stringify(value));
+  }
+
+  const str = String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\u0008/g, "\\b")
+    .replace(/\u000c/g, "\\f")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t")
+    .replace(/\u0000/g, "\\0")
+    .replace(/\u001a/g, "\\Z")
+    .replace(/'/g, "\\'");
+  return `'${str}'`;
+}
+
+function formatSqlForDiagnostics(sql, params) {
+  if (!sql) return "";
+  if (!Array.isArray(params) || params.length === 0) {
+    return sql;
+  }
+
+  if (mysql && typeof mysql.format === "function") {
+    try {
+      return mysql.format(sql, params);
+    } catch {
+      // fall back to manual formatting below
+    }
+  }
+
+  let index = 0;
+  const formatted = sql.replace(/\?/g, () => {
+    if (index >= params.length) {
+      return "?";
+    }
+    const replacement = escapeForDiagnostics(params[index]);
+    index += 1;
+    return replacement;
+  });
+
+  if (index < params.length) {
+    return `${formatted} /* +${params.length - index} params */`;
+  }
+
+  return formatted;
+}
 
 async function isProtectedProcedure(name) {
   if (!name) return false;
@@ -101,6 +301,10 @@ const softDeleteConfigCache = new Map();
 
 const tenantTableKeyConfigCache = new Map();
 
+function normalizeColumnKey(value) {
+  return String(value ?? '').toLowerCase().replace(/_/g, '');
+}
+
 const DEFAULT_TENANT_KEY_ALIASES = [
   {
     key: "company_id",
@@ -123,8 +327,127 @@ const DEFAULT_TENANT_KEY_ALIASES = [
   },
 ];
 
+const tenantKeyAliasLookup = new Map();
+for (const { key, aliases } of DEFAULT_TENANT_KEY_ALIASES) {
+  const canonical = normalizeColumnKey(key);
+  if (!canonical) continue;
+  tenantKeyAliasLookup.set(canonical, canonical);
+  if (Array.isArray(aliases)) {
+    for (const alias of aliases) {
+      const normalized = normalizeColumnKey(alias);
+      if (!normalized) continue;
+      tenantKeyAliasLookup.set(normalized, canonical);
+    }
+  }
+}
+
 function escapeIdentifier(name) {
   return `\`${String(name).replace(/`/g, "``")}\``;
+}
+
+function aliasedColumn(alias, column) {
+  return `${alias}.${escapeIdentifier(column)}`;
+}
+
+function unwrapDisplayConfig(result) {
+  if (result && typeof result === "object" && !Array.isArray(result)) {
+    if (result.config && typeof result.config === "object") {
+      return result.config;
+    }
+  }
+  return result || {};
+}
+
+function getRelationEntry(config, column) {
+  if (!config || typeof config !== "object") return null;
+  const direct = config[column];
+  if (Array.isArray(direct) && direct.length > 0) {
+    return direct[0];
+  }
+  const lower = String(column || "").toLowerCase();
+  return (
+    Object.entries(config).find(
+      ([key, value]) =>
+        typeof key === "string" &&
+        key.toLowerCase() === lower &&
+        Array.isArray(value) &&
+        value.length > 0,
+    )?.[1]?.[0] ?? null
+  );
+}
+
+async function resolveEmploymentRelation({
+  baseColumn,
+  alias,
+  defaultTable,
+  defaultIdField,
+  defaultFallbackColumn,
+  defaultDisplayConfig = {},
+  defaultJoinExtras = [],
+  relationConfig,
+  companyId = GLOBAL_COMPANY_ID,
+}) {
+  const fallbackColumn = defaultFallbackColumn || defaultIdField;
+  const defaultNameExpr = buildDisplayExpr(
+    alias,
+    defaultDisplayConfig,
+    `${alias}.${escapeIdentifier(fallbackColumn)}`,
+  );
+  const defaultJoinConditions = [
+    `${aliasedColumn("e", baseColumn)} = ${alias}.${escapeIdentifier(
+      defaultIdField,
+    )}`,
+    ...defaultJoinExtras,
+  ];
+  const defaultJoin = `LEFT JOIN ${escapeIdentifier(defaultTable)} ${alias} ON ${defaultJoinConditions.join(
+    " AND ",
+  )}`;
+
+  const relation = getRelationEntry(relationConfig, baseColumn);
+  if (!relation || !relation.table || !relation.column) {
+    return { join: defaultJoin, nameExpr: defaultNameExpr };
+  }
+
+  const targetTable = relation.table;
+  const targetIdField = relation.idField || relation.column;
+  const displayCfg = unwrapDisplayConfig(await getDisplayCfg(targetTable, companyId));
+  const mergedDisplayCfg = {
+    idField: relation.idField || displayCfg.idField || targetIdField,
+    displayFields:
+      Array.isArray(relation.displayFields) && relation.displayFields.length > 0
+        ? relation.displayFields
+        : displayCfg.displayFields || [],
+  };
+  const nameExpr = buildDisplayExpr(
+    alias,
+    mergedDisplayCfg,
+    `${alias}.${escapeIdentifier(mergedDisplayCfg.idField || targetIdField)}`,
+  );
+
+  const joinConditions = [
+    `${aliasedColumn("e", baseColumn)} = ${alias}.${escapeIdentifier(
+      mergedDisplayCfg.idField || targetIdField,
+    )}`,
+  ];
+  const tenantInfo = await getTenantTable(targetTable, companyId);
+  const companyKey = Array.isArray(tenantInfo?.tenantKeys)
+    ? tenantInfo.tenantKeys.find(
+        (key) => String(key || "").toLowerCase() === "company_id",
+      )
+    : null;
+  if (companyKey) {
+    joinConditions.push(
+      `${alias}.${escapeIdentifier(companyKey)} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
+        "e",
+        "employment_company_id",
+      )})`,
+    );
+  }
+
+  const join = `LEFT JOIN ${escapeIdentifier(targetTable)} ${alias} ON ${joinConditions.join(
+    " AND ",
+  )}`;
+  return { join, nameExpr };
 }
 
 async function loadSoftDeleteConfig(companyId = GLOBAL_COMPANY_ID) {
@@ -161,6 +484,274 @@ async function loadTenantTableKeyConfig(companyId = GLOBAL_COMPANY_ID) {
     }
   }
   return tenantTableKeyConfigCache.get(companyId);
+}
+
+const uniqueIndexCache = new Map();
+
+async function listTableUniqueIndexes(tableName) {
+  if (!tableName) return [];
+  if (uniqueIndexCache.has(tableName)) {
+    return uniqueIndexCache.get(tableName);
+  }
+
+  let rows = [];
+  try {
+    [rows] = await pool.query(
+      `SELECT INDEX_NAME, COLUMN_NAME, SEQ_IN_INDEX
+         FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?
+          AND NON_UNIQUE = 0
+        ORDER BY INDEX_NAME, SEQ_IN_INDEX`,
+      [tableName],
+    );
+  } catch (err) {
+    if (err?.code === "ER_NO_SUCH_TABLE") {
+      uniqueIndexCache.set(tableName, []);
+      return [];
+    }
+    throw err;
+  }
+
+  const groups = new Map();
+  for (const row of rows || []) {
+    const indexName = row?.INDEX_NAME;
+    const columnName = row?.COLUMN_NAME;
+    const seq = Number(row?.SEQ_IN_INDEX);
+    if (!indexName || !columnName || !Number.isFinite(seq)) continue;
+    if (!groups.has(indexName)) {
+      groups.set(indexName, []);
+    }
+    const bucket = groups.get(indexName);
+    bucket[seq - 1] = columnName;
+  }
+
+  const indexes = [];
+  for (const [indexName, columns] of groups.entries()) {
+    const filtered = (columns || []).filter(Boolean);
+    if (!filtered.length) continue;
+    indexes.push({ indexName, columns: filtered });
+  }
+
+  indexes.sort((a, b) => {
+    if (a.columns.length !== b.columns.length) {
+      return a.columns.length - b.columns.length;
+    }
+    return String(a.indexName).localeCompare(String(b.indexName));
+  });
+
+  uniqueIndexCache.set(tableName, indexes);
+  return indexes;
+}
+
+async function fetchSnapshotRowByAlternateKey(
+  tableName,
+  recordId,
+  { companyId, tenantFilters } = {},
+) {
+  if (
+    recordId === undefined ||
+    recordId === null ||
+    (typeof recordId === "string" && !recordId.trim())
+  ) {
+    return null;
+  }
+
+  const normalizedRecordId =
+    typeof recordId === "string" ? recordId.trim() : recordId;
+  const uniqueIndexes = await listTableUniqueIndexes(tableName);
+  if (!uniqueIndexes.length) {
+    return null;
+  }
+
+  const pkColumns = await getPrimaryKeyColumns(tableName);
+  const pkSignature = pkColumns
+    .map((col) => normalizeColumnKey(col))
+    .join("|");
+
+  const knownValues = new Map();
+  const setKnownValue = (key, value) => {
+    if (value === undefined || value === null || value === "") return;
+    const normalized = normalizeColumnKey(key);
+    if (!normalized) return;
+    knownValues.set(normalized, value);
+    const canonical = tenantKeyAliasLookup.get(normalized);
+    if (canonical && canonical !== normalized) {
+      knownValues.set(canonical, value);
+    }
+  };
+
+  setKnownValue("company_id", companyId);
+  if (tenantFilters && typeof tenantFilters === "object") {
+    for (const [key, value] of Object.entries(tenantFilters)) {
+      setKnownValue(key, value);
+    }
+  }
+
+  const resolveKnownValue = (column) => {
+    const normalized = normalizeColumnKey(column);
+    if (!normalized) return undefined;
+    if (knownValues.has(normalized)) {
+      return knownValues.get(normalized);
+    }
+    const canonical = tenantKeyAliasLookup.get(normalized);
+    if (canonical && knownValues.has(canonical)) {
+      return knownValues.get(canonical);
+    }
+    return undefined;
+  };
+
+  const fallbackChecks = [];
+
+  for (const { columns } of uniqueIndexes) {
+    if (!Array.isArray(columns) || !columns.length) continue;
+    const signature = columns.map((col) => normalizeColumnKey(col)).join("|");
+    if (signature && signature === pkSignature) {
+      continue;
+    }
+
+    const knownAssignments = [];
+    const values = [];
+    let recordColumn = null;
+    let missingRequiredValue = false;
+
+    for (const column of columns) {
+      const knownValue = resolveKnownValue(column);
+      if (knownValue !== undefined && knownValue !== null && knownValue !== "") {
+        values.push(knownValue);
+        knownAssignments.push({ column, value: knownValue });
+        continue;
+      }
+      if (!recordColumn) {
+        recordColumn = column;
+        values.push(normalizedRecordId);
+        continue;
+      }
+      missingRequiredValue = true;
+    }
+
+    if (!recordColumn) {
+      continue;
+    }
+
+    fallbackChecks.push({ recordColumn, knownAssignments });
+
+    if (values.some((value) => value === undefined || value === null || value === "")) {
+      continue;
+    }
+
+    if (missingRequiredValue) {
+      continue;
+    }
+
+    const whereClause = columns
+      .map((column) => `${escapeIdentifier(column)} = ?`)
+      .join(" AND ");
+
+    try {
+      const [rows] = await pool.query(
+        `SELECT * FROM ?? WHERE ${whereClause} LIMIT 1`,
+        [tableName, ...values],
+      );
+      if (rows && rows[0]) {
+        return rows[0];
+      }
+    } catch (err) {
+      if (err?.code === "ER_NO_SUCH_TABLE") {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  if (!fallbackChecks.length) {
+    return null;
+  }
+
+  fallbackChecks.sort((a, b) => b.knownAssignments.length - a.knownAssignments.length);
+
+  const triedFallback = new Set();
+
+  for (const { recordColumn, knownAssignments } of fallbackChecks) {
+    const normalizedRecordKey = normalizeColumnKey(recordColumn);
+    if (!normalizedRecordKey) continue;
+    const signatureParts = [normalizedRecordKey];
+    const assignmentKeys = knownAssignments
+      .map(({ column }) => normalizeColumnKey(column))
+      .filter(Boolean)
+      .sort();
+    signatureParts.push(...assignmentKeys);
+    const signature = signatureParts.join("|");
+    if (triedFallback.has(signature)) {
+      continue;
+    }
+    triedFallback.add(signature);
+
+    const whereParts = [];
+    const params = [tableName];
+    const usedColumns = new Set();
+
+    for (const { column, value } of knownAssignments) {
+      if (value === undefined || value === null || value === "") continue;
+      const normalized = normalizeColumnKey(column);
+      if (!normalized) continue;
+      whereParts.push(`${escapeIdentifier(column)} = ?`);
+      params.push(value);
+      usedColumns.add(normalized);
+    }
+
+    if (!usedColumns.has(normalizedRecordKey)) {
+      whereParts.push(`${escapeIdentifier(recordColumn)} = ?`);
+      params.push(normalizedRecordId);
+      usedColumns.add(normalizedRecordKey);
+    }
+
+    if (tenantFilters && typeof tenantFilters === "object") {
+      for (const [column, value] of Object.entries(tenantFilters)) {
+        if (value === undefined || value === null || value === "") continue;
+        const normalized = normalizeColumnKey(column);
+        if (!normalized || usedColumns.has(normalized)) continue;
+        whereParts.push(`${escapeIdentifier(column)} = ?`);
+        params.push(value);
+        usedColumns.add(normalized);
+      }
+    }
+
+    const normalizedCompanyKey = normalizeColumnKey("company_id");
+    if (
+      companyId !== undefined &&
+      companyId !== null &&
+      companyId !== "" &&
+      !usedColumns.has(normalizedCompanyKey)
+    ) {
+      whereParts.push("`company_id` = ?");
+      params.push(companyId);
+      usedColumns.add(normalizedCompanyKey);
+    }
+
+    if (!whereParts.length) {
+      continue;
+    }
+
+    const whereClause = whereParts.join(" AND ");
+
+    try {
+      const [rows] = await pool.query(
+        `SELECT * FROM ?? WHERE ${whereClause} LIMIT 2`,
+        params,
+      );
+      if (Array.isArray(rows) && rows.length === 1) {
+        return rows[0];
+      }
+    } catch (err) {
+      if (err?.code === "ER_NO_SUCH_TABLE") {
+        return null;
+      }
+      throw err;
+    }
+  }
+
+  return null;
 }
 const SOFT_DELETE_CANDIDATES = [
   "is_deleted",
@@ -525,6 +1116,9 @@ function mapEmploymentRow(row) {
     position_id,
     senior_empid,
     senior_plan_empid,
+    workplace_id,
+    workplace_name,
+    workplace_session_id,
     permission_list,
     ...rest
   } = row;
@@ -557,6 +1151,9 @@ function mapEmploymentRow(row) {
     position_id,
     senior_empid,
     senior_plan_empid,
+    workplace_id,
+    workplace_name,
+    workplace_session_id,
     ...rest,
     permissions,
   };
@@ -565,91 +1162,96 @@ function mapEmploymentRow(row) {
 /**
  * List all employment sessions for an employee
  */
-export async function getEmploymentSessions(empid) {
-  const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
-    getDisplayCfg("companies"),
-    getDisplayCfg("code_branches"),
-    getDisplayCfg("code_department"),
-    getDisplayCfg("tbl_employee"),
+export async function getEmploymentSessions(empid, options = {}) {
+  const configCompanyId = GLOBAL_COMPANY_ID;
+  const scheduleDate = options?.effectiveDate
+    ? formatDateForDb(options.effectiveDate).slice(0, 10)
+    : null;
+  const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
+  const scheduleDateParams = scheduleDate
+    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
+    : [];
+  const [
+    companyCfgRaw,
+    branchCfgRaw,
+    deptCfgRaw,
+    empCfgRaw,
+    relationCfg,
+  ] = await Promise.all([
+    getDisplayCfg("companies", configCompanyId),
+    getDisplayCfg("code_branches", configCompanyId),
+    getDisplayCfg("code_department", configCompanyId),
+    getDisplayCfg("tbl_employee", configCompanyId),
+    listCustomRelations("tbl_employment", configCompanyId),
   ]);
 
-  const companyName = buildDisplayExpr("c", companyCfg, "c.name");
-  const branchName = buildDisplayExpr("b", branchCfg, "b.name");
-  const deptName = buildDisplayExpr("d", deptCfg, "d.name");
-  const deptIdCol = deptCfg?.idField || "id";
+  const companyCfg = unwrapDisplayConfig(companyCfgRaw);
+  const branchCfg = unwrapDisplayConfig(branchCfgRaw);
+  const deptCfg = unwrapDisplayConfig(deptCfgRaw);
+  const empCfg = unwrapDisplayConfig(empCfgRaw);
+  const relationConfig = relationCfg?.config || {};
+
+  const [companyRel, branchRel, deptRel] = await Promise.all([
+    resolveEmploymentRelation({
+      baseColumn: "employment_company_id",
+      alias: "c",
+      defaultTable: "companies",
+      defaultIdField: companyCfg?.idField || "id",
+      defaultFallbackColumn: "name",
+      defaultDisplayConfig: companyCfg,
+      relationConfig,
+      companyId: configCompanyId,
+    }),
+    resolveEmploymentRelation({
+      baseColumn: "employment_branch_id",
+      alias: "b",
+      defaultTable: "code_branches",
+      defaultIdField: branchCfg?.idField || "branch_id",
+      defaultFallbackColumn: "name",
+      defaultDisplayConfig: branchCfg,
+      defaultJoinExtras: [
+        `${aliasedColumn("b", "company_id")} = ${aliasedColumn(
+          "e",
+          "employment_company_id",
+        )}`,
+      ],
+      relationConfig,
+      companyId: configCompanyId,
+    }),
+    resolveEmploymentRelation({
+      baseColumn: "employment_department_id",
+      alias: "d",
+      defaultTable: "code_department",
+      defaultIdField: deptCfg?.idField || "id",
+      defaultFallbackColumn: "name",
+      defaultDisplayConfig: deptCfg,
+      defaultJoinExtras: [
+        `${aliasedColumn("d", "company_id")} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
+          "e",
+          "employment_company_id",
+        )})`,
+      ],
+      relationConfig,
+      companyId: configCompanyId,
+    }),
+  ]);
+
   const empName = buildDisplayExpr(
     "emp",
     empCfg,
     "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
   );
 
-  const [rows] = await pool.query(
-    `SELECT
-        e.employment_company_id AS company_id,
-        ${companyName} AS company_name,
-        e.employment_branch_id AS branch_id,
-        ${branchName} AS branch_name,
-        e.employment_department_id AS department_id,
-        ${deptName} AS department_name,
-        e.employment_position_id AS position_id,
-        e.employment_senior_empid AS senior_empid,
-        e.employment_senior_plan_empid AS senior_plan_empid,
-        ${empName} AS employee_name,
-        e.employment_user_level AS user_level,
-        ul.name AS user_level_name,
-        GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
-     FROM tbl_employment e
-     LEFT JOIN companies c ON e.employment_company_id = c.id
-     LEFT JOIN code_branches b ON e.employment_branch_id = b.branch_id AND b.company_id = e.employment_company_id
-    LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
-     LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
-     LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
-    LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
-     WHERE e.employment_emp_id = ?
-    GROUP BY e.employment_company_id, company_name,
-              e.employment_branch_id, branch_name,
-              e.employment_department_id, department_name,
-              e.employment_position_id,
-              e.employment_senior_empid,
-              e.employment_senior_plan_empid,
-              employee_name, e.employment_user_level, ul.name
-    ORDER BY company_name, department_name, branch_name, user_level_name`,
-    [empid],
-  );
-  return rows.map(mapEmploymentRow);
-}
-
-/**
- * Fetch employment session info and permission flags for an employee.
- * Optionally filter by company ID.
- */
-export async function getEmploymentSession(empid, companyId) {
-  if (companyId !== undefined && companyId !== null) {
-    const [companyCfg, branchCfg, deptCfg, empCfg] = await Promise.all([
-      getDisplayCfg("companies"),
-      getDisplayCfg("code_branches"),
-      getDisplayCfg("code_department"),
-      getDisplayCfg("tbl_employee"),
-    ]);
-
-    const companyName = buildDisplayExpr("c", companyCfg, "c.name");
-    const branchName = buildDisplayExpr("b", branchCfg, "b.name");
-    const deptName = buildDisplayExpr("d", deptCfg, "d.name");
-    const deptIdCol = deptCfg?.idField || "id";
-    const empName = buildDisplayExpr(
-      "emp",
-      empCfg,
-      "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
-    );
-
-    const [rows] = await pool.query(
-      `SELECT
+  const sql = `SELECT
           e.employment_company_id AS company_id,
-          ${companyName} AS company_name,
+          ${companyRel.nameExpr} AS company_name,
           e.employment_branch_id AS branch_id,
-          ${branchName} AS branch_name,
+          ${branchRel.nameExpr} AS branch_name,
           e.employment_department_id AS department_id,
-          ${deptName} AS department_name,
+          ${deptRel.nameExpr} AS department_name,
+          es.workplace_id AS workplace_id,
+          es.workplace_session_id AS workplace_session_id,
+          cw.workplace_name AS workplace_name,
           e.employment_position_id AS position_id,
           e.employment_senior_empid AS senior_empid,
           e.employment_senior_plan_empid AS senior_plan_empid,
@@ -658,24 +1260,289 @@ export async function getEmploymentSession(empid, companyId) {
           ul.name AS user_level_name,
           GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
        FROM tbl_employment e
-       LEFT JOIN companies c ON e.employment_company_id = c.id
-       LEFT JOIN code_branches b ON e.employment_branch_id = b.branch_id AND b.company_id = e.employment_company_id
-       LEFT JOIN code_department d ON e.employment_department_id = d.${deptIdCol} AND d.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
+       ${companyRel.join}
+       ${branchRel.join}
+       ${deptRel.join}
+       LEFT JOIN (
+         SELECT
+           es.company_id,
+           es.branch_id,
+           es.department_id,
+           es.emp_id,
+           es.workplace_id,
+           es.id AS workplace_session_id
+         FROM tbl_employment_schedule es
+         INNER JOIN (
+           SELECT
+             company_id,
+             branch_id,
+             department_id,
+             emp_id,
+             MAX(start_date) AS latest_start_date
+           FROM tbl_employment_schedule
+           WHERE start_date <= ${scheduleDateSql}
+             AND (end_date IS NULL OR end_date >= ${scheduleDateSql})
+             AND deleted_at IS NULL
+           GROUP BY company_id, branch_id, department_id, emp_id
+         ) latest
+           ON latest.company_id = es.company_id
+          AND latest.branch_id = es.branch_id
+          AND latest.department_id = es.department_id
+          AND latest.emp_id = es.emp_id
+          AND latest.latest_start_date = es.start_date
+         WHERE es.start_date <= ${scheduleDateSql}
+           AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
+           AND es.deleted_at IS NULL
+       ) es
+         ON es.emp_id = e.employment_emp_id
+        AND es.company_id = e.employment_company_id
+        AND es.branch_id = e.employment_branch_id
+        AND es.department_id = e.employment_department_id
+       LEFT JOIN tbl_workplace tw
+         ON tw.company_id = e.employment_company_id
+        AND tw.branch_id = e.employment_branch_id
+        AND tw.department_id = e.employment_department_id
+        AND tw.workplace_id = es.workplace_id
+       LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
        LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
        LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
-       LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
-       WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
-       GROUP BY e.employment_company_id, company_name,
+      LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
+       WHERE e.employment_emp_id = ?
+      GROUP BY e.employment_company_id, company_name,
                 e.employment_branch_id, branch_name,
                 e.employment_department_id, department_name,
+                es.workplace_id, cw.workplace_name, es.workplace_session_id,
                 e.employment_position_id,
                 e.employment_senior_empid,
                 e.employment_senior_plan_empid,
                 employee_name, e.employment_user_level, ul.name
-       ORDER BY company_name, department_name, branch_name, user_level_name
-       LIMIT 1`,
-      [empid, companyId],
+      ORDER BY company_name, department_name, branch_name, workplace_name, user_level_name`;
+  const params = [...scheduleDateParams, empid];
+  const [rows] = await pool.query(sql, params);
+  const sessions = rows.map(mapEmploymentRow);
+  if (options?.includeDiagnostics) {
+    const sqlText = typeof sql === 'string' ? sql : String(sql ?? '');
+    const diagnostics = { sql: sqlText, params };
+    let formattedSql = null;
+    if (typeof mysql?.format === 'function') {
+      try {
+        formattedSql = mysql.format(sql, params);
+      } catch {
+        formattedSql = null;
+      }
+    }
+    if (typeof formattedSql === 'string') {
+      const trimmed = formattedSql.trim();
+      formattedSql = trimmed.length ? trimmed : null;
+    } else {
+      formattedSql = null;
+    }
+    diagnostics.formattedSql =
+      formattedSql && formattedSql.trim().length > 0 ? formattedSql : sqlText;
+    Object.defineProperty(sessions, '__diagnostics', {
+      value: diagnostics,
+      enumerable: false,
+    });
+  }
+  return sessions;
+}
+
+/**
+ * Fetch employment session info and permission flags for an employee.
+ * Optionally filter by company ID.
+ */
+export async function getEmploymentSession(empid, companyId, options = {}) {
+  const hasBranchPref =
+    options && Object.prototype.hasOwnProperty.call(options, 'branchId');
+  const hasDepartmentPref =
+    options && Object.prototype.hasOwnProperty.call(options, 'departmentId');
+  const branchPreference = hasBranchPref ? options.branchId ?? null : undefined;
+  const departmentPreference = hasDepartmentPref
+    ? options.departmentId ?? null
+    : undefined;
+  const scheduleDate = options?.effectiveDate
+    ? formatDateForDb(options.effectiveDate).slice(0, 10)
+    : null;
+  const scheduleDateSql = scheduleDate ? '?' : 'CURRENT_DATE()';
+  const scheduleDateParams = scheduleDate
+    ? [scheduleDate, scheduleDate, scheduleDate, scheduleDate]
+    : [];
+
+  if (companyId !== undefined && companyId !== null) {
+    const configCompanyId = Number.isFinite(Number(companyId))
+      ? Number(companyId)
+      : GLOBAL_COMPANY_ID;
+    const [
+      companyCfgRaw,
+      branchCfgRaw,
+      deptCfgRaw,
+      empCfgRaw,
+      relationCfg,
+    ] = await Promise.all([
+      getDisplayCfg("companies", configCompanyId),
+      getDisplayCfg("code_branches", configCompanyId),
+      getDisplayCfg("code_department", configCompanyId),
+      getDisplayCfg("tbl_employee", configCompanyId),
+      listCustomRelations("tbl_employment", configCompanyId),
+    ]);
+
+    const companyCfg = unwrapDisplayConfig(companyCfgRaw);
+    const branchCfg = unwrapDisplayConfig(branchCfgRaw);
+    const deptCfg = unwrapDisplayConfig(deptCfgRaw);
+    const empCfg = unwrapDisplayConfig(empCfgRaw);
+    const relationConfig = relationCfg?.config || {};
+
+    const [companyRel, branchRel, deptRel] = await Promise.all([
+      resolveEmploymentRelation({
+        baseColumn: "employment_company_id",
+        alias: "c",
+        defaultTable: "companies",
+        defaultIdField: companyCfg?.idField || "id",
+        defaultFallbackColumn: "name",
+        defaultDisplayConfig: companyCfg,
+        relationConfig,
+        companyId: configCompanyId,
+      }),
+      resolveEmploymentRelation({
+        baseColumn: "employment_branch_id",
+        alias: "b",
+        defaultTable: "code_branches",
+        defaultIdField: branchCfg?.idField || "branch_id",
+        defaultFallbackColumn: "name",
+        defaultDisplayConfig: branchCfg,
+        defaultJoinExtras: [
+          `${aliasedColumn("b", "company_id")} = ${aliasedColumn(
+            "e",
+            "employment_company_id",
+          )}`,
+        ],
+        relationConfig,
+        companyId: configCompanyId,
+      }),
+      resolveEmploymentRelation({
+        baseColumn: "employment_department_id",
+        alias: "d",
+        defaultTable: "code_department",
+        defaultIdField: deptCfg?.idField || "id",
+        defaultFallbackColumn: "name",
+        defaultDisplayConfig: deptCfg,
+        defaultJoinExtras: [
+          `${aliasedColumn("d", "company_id")} IN (${GLOBAL_COMPANY_ID}, ${aliasedColumn(
+            "e",
+            "employment_company_id",
+          )})`,
+        ],
+        relationConfig,
+        companyId: configCompanyId,
+      }),
+    ]);
+
+    const empName = buildDisplayExpr(
+      "emp",
+      empCfg,
+      "CONCAT_WS(' ', emp.emp_fname, emp.emp_lname)",
     );
+
+    const orderPriority = [];
+    const params = [empid, companyId];
+    if (hasBranchPref) {
+      orderPriority.push('CASE WHEN e.employment_branch_id <=> ? THEN 0 ELSE 1 END');
+      params.push(branchPreference);
+    }
+    if (hasDepartmentPref) {
+      orderPriority.push(
+        'CASE WHEN e.employment_department_id <=> ? THEN 0 ELSE 1 END',
+      );
+      params.push(departmentPreference);
+    }
+    const orderParts = [
+      ...orderPriority,
+      'company_name',
+      'department_name',
+      'branch_name',
+      'workplace_name',
+      'user_level_name',
+    ];
+
+      const [rows] = await pool.query(
+        `SELECT
+            e.employment_company_id AS company_id,
+            ${companyRel.nameExpr} AS company_name,
+            e.employment_branch_id AS branch_id,
+            ${branchRel.nameExpr} AS branch_name,
+            e.employment_department_id AS department_id,
+            ${deptRel.nameExpr} AS department_name,
+            es.workplace_id AS workplace_id,
+            es.workplace_session_id AS workplace_session_id,
+            cw.workplace_name AS workplace_name,
+            e.employment_position_id AS position_id,
+            e.employment_senior_empid AS senior_empid,
+            e.employment_senior_plan_empid AS senior_plan_empid,
+            ${empName} AS employee_name,
+            e.employment_user_level AS user_level,
+            ul.name AS user_level_name,
+            GROUP_CONCAT(DISTINCT up.action_key) AS permission_list
+         FROM tbl_employment e
+         ${companyRel.join}
+         ${branchRel.join}
+         ${deptRel.join}
+         LEFT JOIN (
+           SELECT
+             es.company_id,
+             es.branch_id,
+             es.department_id,
+             es.emp_id,
+             es.workplace_id,
+             es.id AS workplace_session_id
+           FROM tbl_employment_schedule es
+           INNER JOIN (
+             SELECT
+               company_id,
+               branch_id,
+               department_id,
+               emp_id,
+               MAX(start_date) AS latest_start_date
+             FROM tbl_employment_schedule
+             WHERE start_date <= ${scheduleDateSql}
+               AND (end_date IS NULL OR end_date >= ${scheduleDateSql})
+               AND deleted_at IS NULL
+             GROUP BY company_id, branch_id, department_id, emp_id
+           ) latest
+             ON latest.company_id = es.company_id
+            AND latest.branch_id = es.branch_id
+            AND latest.department_id = es.department_id
+            AND latest.emp_id = es.emp_id
+            AND latest.latest_start_date = es.start_date
+           WHERE es.start_date <= ${scheduleDateSql}
+             AND (es.end_date IS NULL OR es.end_date >= ${scheduleDateSql})
+             AND es.deleted_at IS NULL
+         ) es
+           ON es.emp_id = e.employment_emp_id
+          AND es.company_id = e.employment_company_id
+          AND es.branch_id = e.employment_branch_id
+          AND es.department_id = e.employment_department_id
+         LEFT JOIN tbl_workplace tw
+           ON tw.company_id = e.employment_company_id
+          AND tw.branch_id = e.employment_branch_id
+          AND tw.department_id = e.employment_department_id
+          AND tw.workplace_id = es.workplace_id
+         LEFT JOIN code_workplace cw ON cw.workplace_id = es.workplace_id
+         LEFT JOIN tbl_employee emp ON e.employment_emp_id = emp.emp_id
+         LEFT JOIN user_levels ul ON e.employment_user_level = ul.userlevel_id
+         LEFT JOIN user_level_permissions up ON up.userlevel_id = ul.userlevel_id AND up.action = 'permission' AND up.company_id IN (${GLOBAL_COMPANY_ID}, e.employment_company_id)
+         WHERE e.employment_emp_id = ? AND e.employment_company_id = ?
+         GROUP BY e.employment_company_id, company_name,
+                  e.employment_branch_id, branch_name,
+                  e.employment_department_id, department_name,
+                  es.workplace_id, cw.workplace_name, es.workplace_session_id,
+                  e.employment_position_id,
+                  e.employment_senior_empid,
+                  e.employment_senior_plan_empid,
+                  employee_name, e.employment_user_level, ul.name
+         ORDER BY ${orderParts.join(', ')}
+         LIMIT 1`,
+        [...scheduleDateParams, ...params],
+      );
     if (rows.length === 0) return null;
     return mapEmploymentRow(rows[0]);
   }
@@ -1276,7 +2143,7 @@ export async function listTableColumns(tableName) {
 
 export async function listTableColumnsDetailed(tableName) {
   const [rows] = await pool.query(
-    `SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE
+    `SELECT COLUMN_NAME, COLUMN_TYPE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
        FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
         AND TABLE_NAME = ?
@@ -1286,6 +2153,14 @@ export async function listTableColumnsDetailed(tableName) {
   return rows.map((r) => ({
     name: r.COLUMN_NAME,
     type: r.DATA_TYPE,
+    columnType: r.COLUMN_TYPE,
+    maxLength:
+      r.CHARACTER_MAXIMUM_LENGTH != null
+        ? Number(r.CHARACTER_MAXIMUM_LENGTH)
+        : null,
+    numericPrecision:
+      r.NUMERIC_PRECISION != null ? Number(r.NUMERIC_PRECISION) : null,
+    numericScale: r.NUMERIC_SCALE != null ? Number(r.NUMERIC_SCALE) : null,
     enumValues: /^enum\(/i.test(r.COLUMN_TYPE)
       ? r.COLUMN_TYPE
           .slice(5, -1)
@@ -5892,7 +6767,12 @@ export async function getProcedureLockCandidates(
   aliases = [],
   options = {},
 ) {
-  const { companyId } = options || {};
+  const {
+    companyId,
+    tenantFilters,
+    resolveSnapshotRow,
+    resolveAlternateSnapshotRow,
+  } = options || {};
   const conn = await pool.getConnection();
   const candidates = new Map();
 
@@ -5926,6 +6806,133 @@ export async function getProcedureLockCandidates(
       merged.context = extras.context;
     return merged;
   };
+
+  const toDisplayString = (value) => {
+    if (value === undefined || value === null) return null;
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed.length ? trimmed : null;
+    }
+    if (typeof value === 'number') {
+      return Number.isFinite(value) ? String(value) : null;
+    }
+    if (typeof value === 'boolean') {
+      return value ? 'Yes' : 'No';
+    }
+    return null;
+  };
+
+  const findFieldValue = (row, tokens) => {
+    if (!row || typeof row !== 'object') return null;
+    const entries = Object.entries(row).map(([key, value]) => ({
+      key,
+      normalized: String(key || '').trim().toLowerCase(),
+      value: toDisplayString(value),
+    }));
+    const matches = [];
+    entries.forEach((entry) => {
+      if (!entry.value) return;
+      tokens.forEach((token, idx) => {
+        const normalizedToken = token.toLowerCase();
+        if (entry.normalized === normalizedToken) {
+          matches.push({ entry, tokenIdx: idx, score: 0 });
+        } else if (entry.normalized.endsWith(normalizedToken)) {
+          matches.push({ entry, tokenIdx: idx, score: 1 });
+        } else if (entry.normalized.includes(normalizedToken)) {
+          matches.push({ entry, tokenIdx: idx, score: 2 });
+        }
+      });
+    });
+    if (!matches.length) return null;
+    matches.sort((a, b) => {
+      if (a.score !== b.score) return a.score - b.score;
+      if (a.tokenIdx !== b.tokenIdx) return a.tokenIdx - b.tokenIdx;
+      return a.entry.normalized.length - b.entry.normalized.length;
+    });
+    return matches[0]?.entry?.value ?? null;
+  };
+
+  const deriveLabelMetadata = (row) => {
+    if (!row || typeof row !== 'object') {
+      return { label: null, description: null };
+    }
+    const primaryNameTokens = [
+      'label',
+      'name',
+      'full_name',
+      'fullname',
+      'ner',
+      'title',
+    ];
+    const secondaryNameTokens = [
+      'description',
+      'desc',
+      'note',
+      'notes',
+      'detail',
+      'details',
+      'info',
+      'information',
+      'remark',
+      'remarks',
+    ];
+    const codeTokens = [
+      'code',
+      'code_value',
+      'codevalue',
+      'registration',
+      'reg',
+      'serial',
+      'number',
+      'no',
+      'reference',
+      'ref',
+    ];
+
+    const nameValue = findFieldValue(row, primaryNameTokens);
+    const detailValue = findFieldValue(row, secondaryNameTokens);
+    const codeValue = findFieldValue(row, codeTokens);
+
+    let label = null;
+    if (nameValue && codeValue) {
+      label = `${codeValue} — ${nameValue}`;
+    } else if (nameValue) {
+      label = nameValue;
+    } else if (codeValue) {
+      label = codeValue;
+    }
+
+    let description = null;
+    if (detailValue && detailValue !== label) {
+      description = detailValue;
+    } else if (nameValue && label !== nameValue) {
+      description = nameValue;
+    } else if (detailValue) {
+      description = detailValue;
+    }
+
+    return { label, description };
+  };
+
+  const getSnapshotRow =
+    typeof resolveSnapshotRow === 'function'
+      ? resolveSnapshotRow
+      : (table, id, contextOptions = {}) =>
+          getTableRowById(table, id, {
+            defaultCompanyId: companyId,
+            includeDeleted: true,
+            ...contextOptions,
+          });
+
+  const getAlternateSnapshot =
+    typeof resolveAlternateSnapshotRow === 'function'
+      ? resolveAlternateSnapshotRow
+      : (table, id, extraOptions = {}) =>
+          fetchSnapshotRowByAlternateKey(table, id, {
+            companyId,
+            tenantFilters,
+            ...extraOptions,
+          });
 
   const upsertCandidate = (tableName, recordId, extras = {}) => {
     const table = sanitizeTableName(tableName);
@@ -6067,6 +7074,12 @@ export async function getProcedureLockCandidates(
 
   const collectCandidateValue = (value, extras = {}) => {
     if (value === undefined || value === null) return;
+    if (Buffer.isBuffer(value)) {
+      const text = value.toString('utf8');
+      if (!text) return;
+      collectCandidateValue(text, extras);
+      return;
+    }
     if (typeof value === 'string') {
       parseCandidateString(value, extras);
       return;
@@ -6366,24 +7379,48 @@ export async function getProcedureLockCandidates(
         candidate.lockedAt = lockedAt;
         candidate.lockMetadata = lockRow;
 
+        let snapshotRow = null;
         try {
-          const snapshotRow = await getTableRowById(bucket.tableName, recordId, {
-            defaultCompanyId: companyId,
-            includeDeleted: true,
+          snapshotRow = await getSnapshotRow(bucket.tableName, recordId, {
+            companyId,
+            tenantFilters,
           });
-          if (snapshotRow && typeof snapshotRow === 'object') {
-            candidate.snapshot = snapshotRow;
-            candidate.snapshotColumns = Object.keys(snapshotRow);
-          } else {
-            candidate.snapshot = null;
-            candidate.snapshotColumns = [];
-          }
         } catch (err) {
-          candidate.snapshot = null;
-          candidate.snapshotColumns = [];
-          if (err?.code && err.code !== 'ER_NO_SUCH_TABLE') {
+          if (err?.status !== 400 && err?.code !== 'ER_NO_SUCH_TABLE') {
             throw err;
           }
+        }
+
+        if (!snapshotRow) {
+          snapshotRow = await getAlternateSnapshot(
+            bucket.tableName,
+            recordId,
+            {
+              companyId,
+              tenantFilters,
+            },
+          );
+        }
+
+        if (snapshotRow && typeof snapshotRow === 'object') {
+          candidate.snapshot = snapshotRow;
+          candidate.snapshotColumns = Object.keys(snapshotRow);
+          const { label, description } = deriveLabelMetadata(snapshotRow);
+          if (!candidate.label && label) {
+            candidate.label = label;
+          }
+          if (!candidate.description && description) {
+            candidate.description = description;
+          }
+          if (!candidate.context || typeof candidate.context !== 'object') {
+            candidate.context = {};
+          }
+          if (!('snapshot' in candidate.context)) {
+            candidate.context.snapshot = snapshotRow;
+          }
+        } else {
+          candidate.snapshot = null;
+          candidate.snapshotColumns = [];
         }
       }
     }

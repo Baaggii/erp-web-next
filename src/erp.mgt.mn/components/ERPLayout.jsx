@@ -43,6 +43,9 @@ export const TourContext = React.createContext({
   ensureTourDefinition: () => Promise.resolve(null),
   saveTourDefinition: () => Promise.resolve(null),
   deleteTourDefinition: () => Promise.resolve(false),
+  isTourGuideMode: true,
+  setTourGuideMode: () => {},
+  toggleTourGuideMode: () => {},
 });
 export const useTour = (pageKey, options = {}) => {
   const { startTour, ensureTourDefinition } = useContext(TourContext);
@@ -693,7 +696,7 @@ export default function ERPLayout() {
   const [tourBuilderState, setTourBuilderState] = useState(null);
   const [tourViewerState, setTourViewerState] = useState(null);
   const [multiSpotlightActive, setMultiSpotlightActive] = useState(false);
-  const activeTourOriginalEntryRef = useRef(null);
+  const [isTourGuideMode, setIsTourGuideMode] = useState(true);
   useEffect(() => {
     tourStepsRef.current = tourSteps;
   }, [tourSteps]);
@@ -705,6 +708,10 @@ export default function ERPLayout() {
   useEffect(() => {
     currentTourPathRef.current = currentTourPath;
   }, [currentTourPath]);
+
+  const toggleTourGuideMode = useCallback(() => {
+    setIsTourGuideMode((prev) => !prev);
+  }, []);
 
   const updateViewerIndex = useCallback((nextIndex) => {
     setTourViewerState((prev) =>
@@ -1083,44 +1090,23 @@ export default function ERPLayout() {
   );
 
   const restoreCurrentTourDefinition = useCallback(() => {
-    const storedOriginal = activeTourOriginalEntryRef.current;
-    const fallbackPageKey = currentTourPageRef.current;
-    const resolvedPageKey = storedOriginal?.pageKey || fallbackPageKey;
-    if (!resolvedPageKey) {
-      activeTourOriginalEntryRef.current = null;
-      return;
-    }
-
-    const storedPath =
-      storedOriginal?.path || currentTourPathRef.current || undefined;
-
-    if (storedOriginal?.steps?.length) {
-      registerTourEntry(
-        resolvedPageKey,
-        cloneTourStepsForStorage(storedOriginal.steps),
-        storedPath,
-      );
-      activeTourOriginalEntryRef.current = null;
-      return;
-    }
+    const pageKey = currentTourPageRef.current;
+    if (!pageKey) return;
 
     const latestSteps = tourStepsRef.current;
     const sanitizedSteps = sanitizeTourStepsForRestart(latestSteps);
+    const storedEntry = toursByPageRef.current[pageKey];
+    const pathValue =
+      currentTourPathRef.current || storedEntry?.path || undefined;
+
     if (sanitizedSteps.length) {
-      registerTourEntry(resolvedPageKey, sanitizedSteps, storedPath);
-      activeTourOriginalEntryRef.current = null;
+      registerTourEntry(pageKey, sanitizedSteps, pathValue);
       return;
     }
 
-    const existingEntry = toursByPageRef.current[resolvedPageKey];
-    if (existingEntry) {
-      registerTourEntry(
-        existingEntry.pageKey,
-        existingEntry.steps,
-        existingEntry.path,
-      );
+    if (storedEntry) {
+      registerTourEntry(storedEntry.pageKey, storedEntry.steps, storedEntry.path);
     }
-    activeTourOriginalEntryRef.current = null;
   }, [registerTourEntry]);
 
   const startTour = useCallback(
@@ -1178,6 +1164,7 @@ export default function ERPLayout() {
         setTourSteps(joyrideSteps);
         setCurrentTourPage(pageKey);
         setCurrentTourPath(entry?.path || normalizePath(targetPath));
+        setIsTourGuideMode(true);
         setRunTour(true);
         return true;
       }
@@ -1199,6 +1186,7 @@ export default function ERPLayout() {
     restoreCurrentTourDefinition();
     removeExtraSpotlights();
     stopMissingTargetWatcher();
+    setIsTourGuideMode(true);
     setRunTour(false);
     setTourSteps([]);
     setTourStepIndex(0);
@@ -3181,6 +3169,9 @@ export default function ERPLayout() {
       ensureTourDefinition,
       saveTourDefinition,
       deleteTourDefinition,
+      isTourGuideMode,
+      setTourGuideMode: setIsTourGuideMode,
+      toggleTourGuideMode,
     }),
     [
       deleteTourDefinition,
@@ -3197,6 +3188,8 @@ export default function ERPLayout() {
       tourStepIndex,
       tourViewerState,
       activeTourRunId,
+      isTourGuideMode,
+      toggleTourGuideMode,
     ],
   );
 
@@ -3215,6 +3208,8 @@ export default function ERPLayout() {
           onClose={closeTourViewer}
           onEndTour={endTour}
           onSelectStep={handleTourStepJump}
+          guideMode={isTourGuideMode}
+          onToggleGuideMode={toggleTourGuideMode}
         />
       )}
       <PendingRequestContext.Provider value={pendingRequestValue}>
@@ -3237,6 +3232,7 @@ export default function ERPLayout() {
             styles={{
               overlay: {
                 backgroundColor: joyrideOverlayColor,
+                pointerEvents: isTourGuideMode ? 'none' : 'auto',
               },
               spotlight: {
                 borderRadius: 12,
@@ -3308,6 +3304,117 @@ export function Header({
     }
   };
 
+  const workplaceLabels = useMemo(() => {
+    if (!session) return [];
+    const assignments = Array.isArray(session.workplace_assignments)
+      ? session.workplace_assignments
+      : [];
+    const labels = [];
+    const seenComposite = new Set();
+    const seenWorkplaceIds = new Set();
+    const seenSessionIds = new Set();
+    const parseId = (value) => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    };
+
+    assignments.forEach((assignment) => {
+      if (!assignment || typeof assignment !== 'object') return;
+      const workplaceId =
+        assignment.workplace_id !== undefined
+          ? assignment.workplace_id
+          : assignment.workplaceId;
+      const sessionId =
+        assignment.workplace_session_id !== undefined
+          ? assignment.workplace_session_id
+          : assignment.workplaceSessionId;
+      const normalizedWorkplaceId = parseId(workplaceId);
+      const normalizedSessionId = parseId(sessionId);
+      const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
+      if (seenComposite.has(compositeKey)) return;
+      if (
+        (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) ||
+        (normalizedSessionId != null && seenSessionIds.has(normalizedSessionId))
+      ) {
+        return;
+      }
+      seenComposite.add(compositeKey);
+      if (normalizedWorkplaceId != null) {
+        seenWorkplaceIds.add(normalizedWorkplaceId);
+      }
+      if (normalizedSessionId != null) {
+        seenSessionIds.add(normalizedSessionId);
+      }
+      const idParts = [];
+      if (assignment.workplace_id != null) {
+        idParts.push(`#${assignment.workplace_id}`);
+      }
+      if (
+        assignment.workplace_session_id != null &&
+        assignment.workplace_session_id !== assignment.workplace_id
+      ) {
+        idParts.push(`session ${assignment.workplace_session_id}`);
+      }
+      const idLabel = idParts.join(' · ');
+      const baseName = assignment.workplace_name
+        ? String(assignment.workplace_name).trim()
+        : '';
+      const contextParts = [];
+      if (assignment.department_name) {
+        contextParts.push(String(assignment.department_name).trim());
+      }
+      if (assignment.branch_name) {
+        contextParts.push(String(assignment.branch_name).trim());
+      }
+      const context = contextParts.filter(Boolean).join(' / ');
+      const labelParts = [idLabel, baseName, context].filter(
+        (part) => part && part.length,
+      );
+      if (labelParts.length) {
+        labels.push(labelParts.join(' – '));
+      }
+    });
+    if (!labels.length) {
+      const idParts = [];
+      if (session.workplace_id != null) {
+        idParts.push(`#${session.workplace_id}`);
+      }
+      if (
+        session.workplace_session_id != null &&
+        session.workplace_session_id !== session.workplace_id
+      ) {
+        idParts.push(`session ${session.workplace_session_id}`);
+      }
+      const baseName = session.workplace_name
+        ? String(session.workplace_name).trim()
+        : '';
+      const contextParts = [];
+      if (session.department_name) {
+        contextParts.push(String(session.department_name).trim());
+      }
+      if (session.branch_name) {
+        contextParts.push(String(session.branch_name).trim());
+      }
+      const context = contextParts.filter(Boolean).join(' / ');
+      const fallbackParts = [idParts.join(' · '), baseName, context].filter(
+        (part) => part && part.length,
+      );
+      if (fallbackParts.length) {
+        labels.push(fallbackParts.join(' – '));
+      }
+    }
+    return labels;
+  }, [session]);
+
   return (
     <header className="sticky-header" style={styles.header(isMobile)}>
       {isMobile && (
@@ -3354,6 +3461,8 @@ export function Header({
       {session && (
         <span style={styles.locationInfo}>
           🏢 {session.company_name}
+          {workplaceLabels.length > 0 &&
+            ` | 🏭 ${workplaceLabels.filter(Boolean).join(', ')}`}
           {session.department_name && ` | 🏬 ${session.department_name}`}
           {session.branch_name && ` | 📍 ${session.branch_name}`}
           {session.user_level_name && ` | 👤 ${session.user_level_name}`}

@@ -118,6 +118,25 @@ const endActionButtonStyles = {
   boxShadow: "0 16px 32px rgba(239, 68, 68, 0.35)",
 };
 
+const guideModeButtonActiveStyles = {
+  backgroundColor: "#ecfeff",
+  borderColor: "#38bdf8",
+  color: "#0f172a",
+  boxShadow: "0 0 0 1px rgba(56, 189, 248, 0.35) inset",
+  fontWeight: 600,
+};
+
+const modeBannerBaseStyles = {
+  padding: "0.65rem 1.25rem",
+  borderBottom: "1px solid rgba(148, 163, 184, 0.35)",
+  fontSize: "0.75rem",
+  lineHeight: 1.4,
+};
+
+const modeBannerEmphasisStyles = {
+  fontWeight: 700,
+};
+
 const listStyles = {
   listStyle: "none",
   margin: 0,
@@ -200,7 +219,14 @@ function normalizeSteps(steps) {
   }));
 }
 
-export default function TourViewer({ state, onClose, onSelectStep, onEndTour }) {
+export default function TourViewer({
+  state,
+  onClose,
+  onSelectStep,
+  onEndTour,
+  guideMode = true,
+  onToggleGuideMode,
+}) {
   const steps = useMemo(() => normalizeSteps(state?.steps), [state?.steps]);
   const activeIndex = useMemo(() => {
     if (typeof state?.currentStepIndex !== "number") return null;
@@ -389,6 +415,11 @@ export default function TourViewer({ state, onClose, onSelectStep, onEndTour }) 
     onSelectStep(index);
   };
 
+  const handleToggleGuideMode = useCallback(() => {
+    if (typeof onToggleGuideMode !== "function") return;
+    onToggleGuideMode();
+  }, [onToggleGuideMode]);
+
   const wrapperStyles = {
     ...wrapperBaseStyles,
     top: `${position.top}px`,
@@ -435,6 +466,22 @@ export default function TourViewer({ state, onClose, onSelectStep, onEndTour }) 
                     End
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={handleToggleGuideMode}
+                  style={{
+                    ...actionButtonStyles,
+                    ...(guideMode ? guideModeButtonActiveStyles : null),
+                  }}
+                  aria-pressed={guideMode}
+                  title={
+                    guideMode
+                      ? "Guide mode is on. Click to switch to focus mode and keep the overlay blocking background interactions."
+                      : "Focus mode is on. Click to switch back to guide mode and allow interacting with the page while the tour stays open."
+                  }
+                >
+                  {guideMode ? "Guide mode: On" : "Guide mode: Off"}
+                </button>
                 <button type="button" onClick={toggleSide} style={actionButtonStyles}>
                   Dock {side === "right" ? "left" : "right"}
                 </button>
@@ -445,6 +492,20 @@ export default function TourViewer({ state, onClose, onSelectStep, onEndTour }) 
                   Close
                 </button>
               </div>
+            </div>
+            <div
+              style={{
+                ...modeBannerBaseStyles,
+                backgroundColor: guideMode ? "#ecfeff" : "#fef3c7",
+                color: "#1f2937",
+              }}
+            >
+              <span style={modeBannerEmphasisStyles}>
+                {guideMode ? "Guide mode" : "Focus mode"}
+              </span>{" "}
+              {guideMode
+                ? "is on. You can continue using the page while keeping this tour open as a guide."
+                : "is on. The overlay will block clicks outside the highlighted areas until you switch back."}
             </div>
             {steps.length ? (
               <ul style={listStyles}>

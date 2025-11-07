@@ -19,6 +19,20 @@ import CustomDatePicker from '../components/CustomDatePicker.jsx';
 import useButtonPerms from '../hooks/useButtonPerms.js';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import AutoSizingTextInput from '../components/AutoSizingTextInput.jsx';
+import { hasTransactionFormAccess } from '../utils/transactionFormAccess.js';
+import {
+  isModuleLicensed,
+  isModulePermissionGranted,
+} from '../utils/moduleAccess.js';
+
+if (typeof window !== 'undefined') {
+  window.showTemporaryRequesterUI =
+    window.showTemporaryRequesterUI || (() => {});
+  window.showTemporaryReviewerUI =
+    window.showTemporaryReviewerUI || (() => {});
+  window.showTemporaryTransactionsUI =
+    window.showTemporaryTransactionsUI || (() => {});
+}
 
 const DATE_PARAM_ALLOWLIST = new Set([
   'startdt',
@@ -116,6 +130,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [procParams, setProcParams] = useState([]);
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
+  const [externalTemporaryTrigger, setExternalTemporaryTrigger] = useState(null);
   const { company, branch, department, user, permissions: perms } = useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const generalConfig = useGeneralConfig();
@@ -129,6 +144,7 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const prevConfigRef = useRef(null);
   const controlRefs = useRef([]);
   const prevNameRef = useRef();
+  const temporaryProcessedRef = useRef(new Set());
 
   const reportProcPrefix = generalConfig?.general?.reportProcPrefix || '';
 
@@ -247,11 +263,144 @@ useEffect(() => {
   }, [name, paramKey]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const setParamPair = (params, camelKey, value) => {
+      const snakeKey = camelKey
+        .replace(/([A-Z])/g, (match) => `_${match.toLowerCase()}`)
+        .toLowerCase();
+      if (value) {
+        params.set(camelKey, value);
+        params.set(snakeKey, value);
+      } else {
+        params.delete(camelKey);
+        params.delete(snakeKey);
+      }
+    };
+
+    const buildTemporaryPayload = (scope, rawOptions = {}) => {
+      const opts = rawOptions && typeof rawOptions === 'object' ? rawOptions : {};
+      const normalizedScope = scope || opts.scope || 'created';
+      const normalizedModule = opts.module || opts.moduleKey || moduleKey || '';
+      const normalizedForm = opts.form || opts.formName || opts.config || '';
+      const normalizedConfig = opts.config || opts.configName || opts.form || '';
+      const normalizedTable =
+        opts.table ||
+        opts.tableName ||
+        opts.table_name ||
+        table ||
+        '';
+      const normalizedId =
+        opts.id ??
+        opts.recordId ??
+        opts.record_id ??
+        opts.submissionId ??
+        opts.submission_id ??
+        opts.temporaryId ??
+        opts.temporary_id ??
+        '';
+
+      const payload = {
+        open: true,
+        scope: normalizedScope,
+        module: normalizedModule,
+        form: normalizedForm,
+        config: normalizedConfig,
+        table: normalizedTable,
+        id: normalizedId ? String(normalizedId) : '',
+      };
+
+      const keySource =
+        opts.key ||
+        opts.signature ||
+        `${normalizedModule}:${normalizedForm}:${normalizedConfig}:${normalizedTable}:${payload.id}:${normalizedScope}`;
+      payload.key = `${keySource}:${Date.now()}`;
+
+      return payload;
+    };
+
+    const applyTemporaryTrigger = (scope, rawOptions = {}) => {
+      const payload = buildTemporaryPayload(scope, rawOptions);
+      setExternalTemporaryTrigger(payload);
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          setParamPair(next, 'temporaryOpen', '1');
+          setParamPair(next, 'temporaryScope', payload.scope || '');
+          setParamPair(next, 'temporaryModule', payload.module || '');
+          setParamPair(next, 'temporaryForm', payload.form || '');
+          setParamPair(next, 'temporaryConfig', payload.config || '');
+          setParamPair(next, 'temporaryTable', payload.table || '');
+          setParamPair(next, 'temporaryId', payload.id || '');
+          setParamPair(next, 'temporaryKey', payload.key || '');
+          return next;
+        },
+        { replace: true },
+      );
+    };
+
+    const showRequester = (options = {}) => applyTemporaryTrigger('created', options);
+    const showReviewer = (options = {}) => applyTemporaryTrigger('review', options);
+    const showTemporary = (options = {}) =>
+      applyTemporaryTrigger(options.scope || options.targetScope || 'created', options);
+
+    window.showTemporaryRequesterUI = showRequester;
+    window.showTemporaryReviewerUI = showReviewer;
+    window.showTemporaryTransactionsUI = showTemporary;
+
+    return () => {
+      if (window.showTemporaryRequesterUI === showRequester) {
+        window.showTemporaryRequesterUI = () => {};
+      }
+      if (window.showTemporaryReviewerUI === showReviewer) {
+        window.showTemporaryReviewerUI = () => {};
+      }
+      if (window.showTemporaryTransactionsUI === showTemporary) {
+        window.showTemporaryTransactionsUI = () => {};
+      }
+    };
+  }, [moduleKey, setExternalTemporaryTrigger, setSearchParams, table]);
+
+  const pendingTemporary = useMemo(() => {
+    const openValue =
+      searchParams.get('temporaryOpen') ?? searchParams.get('temporary_open');
+    if (!openValue) return null;
+    const scopeValue =
+      searchParams.get('temporaryScope') ?? searchParams.get('temporary_scope');
+    const moduleValue =
+      searchParams.get('temporaryModule') ?? searchParams.get('temporary_module');
+    const formValue =
+      searchParams.get('temporaryForm') ?? searchParams.get('temporary_form');
+    const configValue =
+      searchParams.get('temporaryConfig') ?? searchParams.get('temporary_config');
+    const tableValue =
+      searchParams.get('temporaryTable') ?? searchParams.get('temporary_table');
+    const idValue =
+      searchParams.get('temporaryId') ?? searchParams.get('temporary_id');
+    const keyValue =
+      searchParams.get('temporaryKey') ?? searchParams.get('temporary_key');
+    const normalizedOpen = String(openValue).toLowerCase();
+    const openFlag = !['0', 'false', 'no'].includes(normalizedOpen);
+    return {
+      open: openFlag,
+      scope: scopeValue || '',
+      module: moduleValue || '',
+      form: formValue || '',
+      config: configValue || '',
+      table: tableValue || '',
+      id: idValue || '',
+      key:
+        keyValue ||
+        `${moduleValue || ''}:${formValue || ''}:${configValue || ''}:${tableValue || ''}:${idValue || ''}:${normalizedOpen}`,
+    };
+  }, [searchParams]);
+
+  useEffect(() => {
     console.log('FinanceTransactions load forms effect');
     const params = new URLSearchParams();
     if (moduleKey) params.set('moduleKey', moduleKey);
-    if (branch) params.set('branchId', branch);
-    if (department) params.set('departmentId', department);
+    if (branch != null) params.set('branchId', branch);
+    if (department != null) params.set('departmentId', department);
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
@@ -265,26 +414,22 @@ useEffect(() => {
       })
       .then((data) => {
         const filtered = {};
+        const branchId = branch != null ? String(branch) : null;
+        const departmentId = department != null ? String(department) : null;
         Object.entries(data).forEach(([n, info]) => {
-          const allowedB = info.allowedBranches || [];
-          const allowedD = info.allowedDepartments || [];
+          if (n === 'isDefault') return;
+          if (!info || typeof info !== 'object') return;
           const mKey = info.moduleKey;
           if (mKey !== moduleKey) return;
-          if (allowedB.length > 0 && branch && !allowedB.includes(branch))
-            return;
-          if (allowedD.length > 0 && department && !allowedD.includes(department))
-            return;
           if (
-            perms &&
-            Object.prototype.hasOwnProperty.call(perms, mKey) &&
-            !perms[mKey]
+            !hasTransactionFormAccess(info, branchId, departmentId, {
+              allowTemporaryAnyScope: true,
+            })
           )
             return;
-          if (
-            licensed &&
-            Object.prototype.hasOwnProperty.call(licensed, mKey) &&
-            !licensed[mKey]
-          )
+          if (!isModulePermissionGranted(perms, mKey))
+            return;
+          if (!isModuleLicensed(licensed, mKey))
             return;
           filtered[n] = info;
         });
@@ -382,6 +527,99 @@ useEffect(() => {
       canceled = true;
     };
   }, [table, name, addToast, reportProcPrefix]);
+
+  useEffect(() => {
+    if (!pendingTemporary?.open) return;
+    if (pendingTemporary.module && pendingTemporary.module !== moduleKey) return;
+    const configEntries = Object.entries(configs);
+    if (configEntries.length === 0) return;
+
+    const processed = temporaryProcessedRef.current;
+    const signature = `${pendingTemporary.key}::${moduleKey}`;
+    if (processed.has(signature)) return;
+
+    const normalizedTable = pendingTemporary.table
+      ? String(pendingTemporary.table).toLowerCase()
+      : '';
+
+    let targetName = '';
+    const candidateNames = [pendingTemporary.form, pendingTemporary.config].filter(Boolean);
+    for (const candidate of candidateNames) {
+      if (configs[candidate]) {
+        targetName = candidate;
+        break;
+      }
+    }
+
+    if (!targetName && normalizedTable) {
+      const match = configEntries.find(([cfgName, cfgValue]) => {
+        const candidateTable =
+          (cfgValue && typeof cfgValue === 'object'
+            ? cfgValue.table ?? cfgValue.tableName ?? cfgValue.table_name
+            : cfgValue) || '';
+        if (!candidateTable) return false;
+        return String(candidateTable).toLowerCase() === normalizedTable;
+      });
+      if (match) targetName = match[0];
+    }
+
+    if (!targetName) {
+      if (name) {
+        targetName = name;
+      } else if (configEntries.length > 0) {
+        targetName = configEntries[0][0];
+      }
+    }
+
+    if (!targetName) return;
+
+    if (targetName !== name) {
+      setName(targetName);
+    }
+
+    setShowTable(true);
+    setExternalTemporaryTrigger({
+      key: signature,
+      scope: pendingTemporary.scope || 'review',
+      table: pendingTemporary.table || '',
+      id: pendingTemporary.id ? String(pendingTemporary.id) : undefined,
+      open: true,
+    });
+
+    processed.add(signature);
+
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev);
+        next.delete('temporaryOpen');
+        next.delete('temporary_open');
+        next.delete('temporaryScope');
+        next.delete('temporary_scope');
+        next.delete('temporaryModule');
+        next.delete('temporary_module');
+        next.delete('temporaryForm');
+        next.delete('temporary_form');
+        next.delete('temporaryConfig');
+        next.delete('temporary_config');
+        next.delete('temporaryTable');
+        next.delete('temporary_table');
+        next.delete('temporaryId');
+        next.delete('temporary_id');
+        next.delete('temporaryKey');
+        next.delete('temporary_key');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    configs,
+    moduleKey,
+    name,
+    pendingTemporary,
+    setSearchParams,
+    setShowTable,
+    setName,
+  ]);
 
   useEffect(() => {
     if (!selectedProc) {
@@ -579,14 +817,7 @@ useEffect(() => {
   }
 
   if (!perms || !licensed) return <p>Ачааллаж байна...</p>;
-  if (
-    (perms &&
-      Object.prototype.hasOwnProperty.call(perms, moduleKey) &&
-      !perms[moduleKey]) ||
-    (licensed &&
-      Object.prototype.hasOwnProperty.call(licensed, moduleKey) &&
-      !licensed[moduleKey])
-  )
+  if (!isModulePermissionGranted(perms, moduleKey) || !isModuleLicensed(licensed, moduleKey))
     return <p>Нэвтрэх эрхгүй.</p>;
 
   const caption = 'Гүйлгээ сонгоно уу';
@@ -772,6 +1003,7 @@ useEffect(() => {
             addLabel="Гүйлгээ нэмэх"
             showTable={showTable}
             buttonPerms={buttonPerms}
+            externalTemporaryTrigger={externalTemporaryTrigger}
           />
         </>
       )}

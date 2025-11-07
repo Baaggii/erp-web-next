@@ -28,6 +28,7 @@ const RowFormModal = function RowFormModal({
   relationData = {},
   fieldTypeMap = {},
   disabledFields = [],
+  disabledFieldReasons = {},
   labels = {},
   requiredFields = [],
   onChange = () => {},
@@ -59,6 +60,7 @@ const RowFormModal = function RowFormModal({
   boxMaxHeight,
   onNextForm = null,
   columnCaseMap = {},
+  numericScaleMap = {},
   viewSource = {},
   viewDisplays = {},
   viewColumns = {},
@@ -69,6 +71,9 @@ const RowFormModal = function RowFormModal({
   onSaveTemporary = null,
   allowTemporarySave = false,
   isAdding = false,
+  isEditingTemporaryDraft = false,
+  canPost = true,
+  forceEditable = false,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -140,14 +145,91 @@ const RowFormModal = function RowFormModal({
     () => new Set((userIdFields || []).map((f) => f.toLowerCase())),
     [userIdFields],
   );
-  const disabledSet = React.useMemo(
-    () => new Set(disabledFields.map((f) => f.toLowerCase())),
-    [disabledFields],
+  const disabledSet = React.useMemo(() => {
+    if (forceEditable) return new Set();
+    return new Set(disabledFields.map((f) => f.toLowerCase()));
+  }, [disabledFields, forceEditable]);
+  const disabledReasonLookup = React.useMemo(() => {
+    const map = {};
+    Object.entries(disabledFieldReasons || {}).forEach(([key, value]) => {
+      if (!key) return;
+      const lower = String(key).toLowerCase();
+      const list = Array.isArray(value) ? value : [value];
+      const unique = map[lower] ? new Set(map[lower]) : new Set();
+      list.forEach((entry) => {
+        if (!entry && entry !== 0) return;
+        unique.add(String(entry));
+      });
+      map[lower] = Array.from(unique);
+    });
+    return map;
+  }, [disabledFieldReasons]);
+  const guardToastEnabled = !forceEditable && !!general.posGuardToastEnabled;
+  const lastGuardToastRef = useRef({ field: null, ts: 0 });
+  const describeGuardReasons = React.useCallback(
+    (codes = []) => {
+      if (!Array.isArray(codes) || codes.length === 0) return [];
+      const seen = new Set();
+      const messages = [];
+      codes.forEach((code) => {
+        if (!code && code !== 0) return;
+        const normalized = String(code);
+        if (seen.has(normalized)) return;
+        seen.add(normalized);
+        switch (normalized) {
+          case 'missingEditableConfig':
+            messages.push(
+              t(
+                'pos_guard_reason_missing_editable',
+                'Field is not configured as editable in the POS layout',
+              ),
+            );
+            break;
+          case 'posLock':
+            messages.push(
+              t(
+                'pos_guard_reason_pos_lock',
+                'Field is locked and cannot be edited',
+              ),
+            );
+            break;
+          case 'calcField':
+            messages.push(
+              t(
+                'pos_guard_reason_calc_field',
+                'Value is derived from a calc field mapping',
+              ),
+            );
+            break;
+          case 'posFormula':
+            messages.push(
+              t(
+                'pos_guard_reason_pos_formula',
+                'Value is calculated by a POS formula',
+              ),
+            );
+            break;
+          case 'computed':
+            messages.push(
+              t('pos_guard_reason_computed', 'Value is automatically computed'),
+            );
+            break;
+          default:
+            messages.push(normalized);
+        }
+      });
+      return messages;
+    },
+    [t],
   );
   const { user, company, branch, department, userSettings } = useContext(AuthContext);
   const columnCaseMapKey = React.useMemo(
     () => JSON.stringify(columnCaseMap || {}),
     [columnCaseMap],
+  );
+  const numericScaleMapKey = React.useMemo(
+    () => JSON.stringify(numericScaleMap || {}),
+    [numericScaleMap],
   );
   const viewSourceKey = React.useMemo(() => JSON.stringify(viewSource || {}), [viewSource]);
   const relationConfigsKey = React.useMemo(
@@ -157,6 +239,45 @@ const RowFormModal = function RowFormModal({
   const tableDisplayFieldsKey = React.useMemo(
     () => JSON.stringify(tableDisplayFields || {}),
     [tableDisplayFields],
+  );
+
+  const numericScaleLookup = React.useMemo(() => {
+    const map = {};
+    Object.entries(numericScaleMap || {}).forEach(([key, value]) => {
+      if (key == null) return;
+      const lower = String(key).toLowerCase();
+      const scale = Number(value);
+      if (!Number.isNaN(scale)) {
+        map[lower] = scale;
+      }
+    });
+    return map;
+  }, [numericScaleMapKey]);
+
+  const getNumericScale = React.useCallback(
+    (col) => {
+      if (!col) return null;
+      const lower = String(col).toLowerCase();
+      return numericScaleLookup[lower] ?? null;
+    },
+    [numericScaleLookup],
+  );
+
+  const formatNumericValue = React.useCallback(
+    (col, value) => {
+      if (value === null || value === undefined || value === '') return value === 0 ? '0' : '';
+      if (typeof value === 'object') {
+        if ('value' in value) return formatNumericValue(col, value.value);
+        return value;
+      }
+      const scale = getNumericScale(col);
+      if (scale === null) return String(value);
+      const num =
+        typeof value === 'number' ? value : Number(normalizeNumberInput(String(value)));
+      if (!Number.isFinite(num)) return String(value);
+      return num.toFixed(scale);
+    },
+    [getNumericScale],
   );
 
   const viewSourceMap = React.useMemo(() => {
@@ -362,11 +483,19 @@ const RowFormModal = function RowFormModal({
       const rowValue = row ? getRowValueCaseInsensitive(row, c) : undefined;
       const sourceValue =
         rowValue !== undefined ? rowValue : defaultValues[c];
-      const raw = String(sourceValue ?? '');
-      let val = normalizeDateInput(raw, placeholder);
       const missing =
         !row || rowValue === undefined || rowValue === '';
-      if (missing && !val && dateField.includes(c)) {
+      let val;
+      if (placeholder) {
+        val = normalizeDateInput(String(sourceValue ?? ''), placeholder);
+      } else if (typ === 'number') {
+        val = formatNumericValue(c, sourceValue);
+      } else if (sourceValue === null || sourceValue === undefined) {
+        val = '';
+      } else {
+        val = String(sourceValue);
+      }
+      if (missing && (!val || val === '') && dateField.includes(c)) {
         if (placeholder === 'YYYY-MM-DD') val = formatTimestamp(now).slice(0, 10);
         else if (placeholder === 'HH:MM:SS') val = formatTimestamp(now).slice(11, 19);
         else val = formatTimestamp(now);
@@ -379,6 +508,15 @@ const RowFormModal = function RowFormModal({
           val = department;
         else if (companyIdSet.has(c) && company !== undefined)
           val = company;
+      }
+      if (typ === 'number') {
+        val = formatNumericValue(c, val);
+      } else if (placeholder) {
+        val = normalizeDateInput(String(val ?? ''), placeholder);
+      } else if (val === null || val === undefined) {
+        val = '';
+      } else {
+        val = String(val);
       }
       init[c] = val;
     });
@@ -403,12 +541,26 @@ const RowFormModal = function RowFormModal({
   });
   const formValsRef = useRef(formVals);
   const extraValsRef = useRef(extraVals);
+  const manualOverrideRef = useRef(new Map());
+  const pendingManualOverrideRef = useRef(new Set());
   useEffect(() => {
     formValsRef.current = formVals;
   }, [formVals]);
   useEffect(() => {
     extraValsRef.current = extraVals;
   }, [extraVals]);
+  useEffect(() => {
+    if (pendingManualOverrideRef.current.size === 0) return;
+    const pending = Array.from(pendingManualOverrideRef.current);
+    pendingManualOverrideRef.current.clear();
+    const overrides = manualOverrideRef.current;
+    pending.forEach((lower) => {
+      if (!lower) return;
+      const match = columns.find((c) => c.toLowerCase() === lower);
+      if (!match) return;
+      overrides.set(lower, formVals[match]);
+    });
+  }, [formVals, columnsKey]);
   const computeNextFormVals = useCallback((baseRow, prevRow) => {
     if (!baseRow || typeof baseRow !== 'object') {
       return { next: baseRow, diff: {} };
@@ -478,6 +630,10 @@ const RowFormModal = function RowFormModal({
   const inputRefs = useRef({});
   const readonlyRefs = useRef({});
   const [errors, setErrors] = useState({});
+  const errorsRef = useRef(errors);
+  useEffect(() => {
+    errorsRef.current = errors;
+  }, [errors]);
   const [submitLocked, setSubmitLocked] = useState(false);
   const tableRef = useRef(null);
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
@@ -719,11 +875,19 @@ const RowFormModal = function RowFormModal({
       const rowValue = row ? getRowValueCaseInsensitive(row, c) : undefined;
       const sourceValue =
         rowValue !== undefined ? rowValue : defaultValues[c];
-      const raw = String(sourceValue ?? '');
-      let v = normalizeDateInput(raw, placeholders[c]);
       const missing =
         !row || rowValue === undefined || rowValue === '';
-      if (missing && !v && dateField.includes(c)) {
+      let v;
+      if (placeholders[c]) {
+        v = normalizeDateInput(String(sourceValue ?? ''), placeholders[c]);
+      } else if (fieldTypeMap[c] === 'number') {
+        v = formatNumericValue(c, sourceValue);
+      } else if (sourceValue === null || sourceValue === undefined) {
+        v = '';
+      } else {
+        v = String(sourceValue);
+      }
+      if (missing && (!v || v === '') && dateField.includes(c)) {
         const now = new Date();
         if (placeholders[c] === 'YYYY-MM-DD') v = formatTimestamp(now).slice(0, 10);
         else if (placeholders[c] === 'HH:MM:SS') v = formatTimestamp(now).slice(11, 19);
@@ -738,10 +902,23 @@ const RowFormModal = function RowFormModal({
         else if (companyIdSet.has(c) && company !== undefined)
           v = company;
       }
+      if (fieldTypeMap[c] === 'number') {
+        v = formatNumericValue(c, v);
+      } else if (placeholders[c]) {
+        v = normalizeDateInput(String(v ?? ''), placeholders[c]);
+      } else if (v === null || v === undefined) {
+        v = '';
+      } else {
+        v = String(v);
+      }
       vals[c] = v;
     });
     inputRefs.current = {};
-    setErrors({});
+    if (errorsRef.current && Object.keys(errorsRef.current).length > 0) {
+      setErrors({});
+    }
+    manualOverrideRef.current.clear();
+    pendingManualOverrideRef.current.clear();
     setFormValuesWithGenerated(() => vals, { notify: false });
   }, [
     row,
@@ -759,6 +936,8 @@ const RowFormModal = function RowFormModal({
     departmentIdSet,
     companyIdSet,
     setFormValuesWithGenerated,
+    fieldTypeMap,
+    formatNumericValue,
   ]);
 
   function resizeInputs() {
@@ -825,18 +1004,48 @@ const RowFormModal = function RowFormModal({
     fontSize: `${inputFontSize}px`,
   };
   const labelStyle = { fontSize: `${labelFontSize}px` };
-  const inputStyle = {
+  const baseBoxStyle = {
     fontSize: `${inputFontSize}px`,
     padding: '0.25rem 0.5rem',
-    width: `${boxWidth}px`,
     minWidth: `${boxWidth}px`,
     maxWidth: `${boxMaxWidth}px`,
+    overflowWrap: 'anywhere',
+    wordBreak: 'break-word',
+    display: 'block',
+  };
+  const inputStyle = {
+    ...baseBoxStyle,
+    width: `${boxWidth}px`,
     height: isNarrow ? '44px' : `${boxHeight}px`,
     maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
-    overflow: 'hidden',
-    whiteSpace: 'nowrap',
-    textOverflow: 'ellipsis',
+    whiteSpace: 'normal',
   };
+  const readonlyBoxStyle = {
+    ...baseBoxStyle,
+    width: '100%',
+    height: 'auto',
+    minHeight: isNarrow ? 'auto' : `${boxHeight}px`,
+    maxHeight: isNarrow ? 'none' : `${boxMaxHeight}px`,
+    whiteSpace: 'pre-wrap',
+    overflowY: 'auto',
+    overflowX: 'hidden',
+  };
+
+  function notifyAutoResetGuardOnEdit(col) {
+    if (!col && col !== 0) return;
+    const lower = String(col).toLowerCase();
+    pendingManualOverrideRef.current.add(lower);
+    if (typeof window !== 'undefined') {
+      const handler = window.notifyAutoResetGuardOnEdit;
+      if (typeof handler === 'function') {
+        try {
+          handler(col);
+        } catch (err) {
+          console.error('notifyAutoResetGuardOnEdit failed', err);
+        }
+      }
+    }
+  }
 
   async function handleKeyDown(e, col) {
     if (e.key !== 'Enter') return;
@@ -863,6 +1072,7 @@ const RowFormModal = function RowFormModal({
     }
     const newVal = label ? { value: val, label } : val;
     let nextSnapshot = formValsRef.current;
+    notifyAutoResetGuardOnEdit(col);
     if (!valuesEqual(formVals[col], newVal)) {
       const result = setFormValuesWithGenerated((prev) => {
         if (valuesEqual(prev[col], newVal)) return prev;
@@ -904,8 +1114,10 @@ const RowFormModal = function RowFormModal({
       return;
     }
     if (!next) {
-      submitForm();
-      if (onNextForm) onNextForm();
+      if (canPost) {
+        submitForm();
+        if (onNextForm) onNextForm();
+      }
     }
   }
 
@@ -992,7 +1204,12 @@ const RowFormModal = function RowFormModal({
     return true;
   }
 
-  function applyProcedureResultToForm(rowData, formState, extraState) {
+  function applyProcedureResultToForm(
+    rowData,
+    formState,
+    extraState,
+    manualOverrides = manualOverrideRef.current,
+  ) {
     if (!rowData || typeof rowData !== 'object') {
       return {
         formVals: formState,
@@ -1020,6 +1237,15 @@ const RowFormModal = function RowFormModal({
       );
       const targetKey = columnMatch || key;
       if (columnMatch) {
+        const lower = columnMatch.toLowerCase();
+        if (manualOverrides && manualOverrides.has(lower)) {
+          const manualValue = manualOverrides.get(lower);
+          if (!valuesEqual(manualValue, value)) {
+            nextFormVals[columnMatch] = manualValue;
+            return;
+          }
+          manualOverrides.delete(lower);
+        }
         const prevValue = formState[columnMatch];
         if (!valuesEqual(prevValue, value)) {
           changedColumns.add(columnMatch);
@@ -1361,7 +1587,12 @@ const RowFormModal = function RowFormModal({
 
         if (!row || typeof row !== 'object') continue;
 
-        const result = applyProcedureResultToForm(row, workingFormVals, workingExtraVals);
+        const result = applyProcedureResultToForm(
+          row,
+          workingFormVals,
+          workingExtraVals,
+          manualOverrideRef.current,
+        );
         workingFormVals = result.formVals;
         workingExtraVals = result.extraVals;
         if (result.changedColumns.size > 0 || Object.keys(result.changedValues).length > 0) {
@@ -1425,6 +1656,29 @@ const RowFormModal = function RowFormModal({
 
   async function handleFocusField(col) {
     showTriggerInfo(col);
+    if (guardToastEnabled && col) {
+      const lower = String(col).toLowerCase();
+      if (disabledSet.has(lower)) {
+        const reasons = describeGuardReasons(disabledReasonLookup[lower] || []);
+        const message =
+          reasons.length > 0
+            ? t('pos_guard_toast_message_with_reasons', '{{field}} is read-only: {{reasons}}', {
+                field: col,
+                reasons: reasons.join('; '),
+              })
+            : t('pos_guard_toast_message', '{{field}} is read-only.', { field: col });
+        const now = Date.now();
+        const last = lastGuardToastRef.current;
+        if (last.field !== lower || now - last.ts > 400) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message, type: 'info' },
+            }),
+          );
+          lastGuardToastRef.current = { field: lower, ts: now };
+        }
+      }
+    }
     const view = viewSourceMap[col];
     if (view && !alreadyRequestedRef.current.has(view)) {
       alreadyRequestedRef.current.add(view);
@@ -1435,12 +1689,89 @@ const RowFormModal = function RowFormModal({
   async function handleTemporarySave() {
     if (!allowTemporarySave || !onSaveTemporary) return;
     if (useGrid && tableRef.current) {
-      alert(
-        t(
-          'temporary_save_grid_not_supported',
-          'Saving as temporary is not available for grid-based forms yet.',
-        ),
-      );
+      if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
+        alert('Тэмдэглэсэн талбаруудыг засна уу.');
+        return;
+      }
+      const rows = tableRef.current.getRows();
+      const cleanedRows = [];
+      const rawRows = [];
+      let hasMissing = false;
+      let hasInvalid = false;
+      rows.forEach((r) => {
+        const hasValue = Object.values(r).some((v) => {
+          if (v === null || v === undefined || v === '') return false;
+          if (typeof v === 'object' && 'value' in v) return v.value !== '';
+          return true;
+        });
+        if (!hasValue) return;
+        const normalized = {};
+        Object.entries(r).forEach(([k, v]) => {
+          const raw = typeof v === 'object' && v !== null && 'value' in v ? v.value : v;
+          let val = normalizeDateInput(raw, placeholders[k]);
+          if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+            val = normalizeNumberInput(val);
+          }
+          normalized[k] = val;
+        });
+        requiredFields.forEach((f) => {
+          if (
+            normalized[f] === '' ||
+            normalized[f] === null ||
+            normalized[f] === undefined
+          )
+            hasMissing = true;
+          if (
+            (totalAmountSet.has(f) || totalCurrencySet.has(f)) &&
+            normalized[f] !== '' &&
+            !/code/i.test(f) &&
+            isNaN(Number(normalizeNumberInput(normalized[f])))
+          )
+            hasInvalid = true;
+          const ph = placeholders[f];
+          if (ph && !isValidDate(normalized[f], ph)) hasInvalid = true;
+        });
+        cleanedRows.push(normalized);
+        rawRows.push(r);
+      });
+      if (hasMissing) {
+        alert('Шаардлагатай талбаруудыг бөглөнө үү.');
+        return;
+      }
+      if (hasInvalid) {
+        alert('Буруу утгуудыг засна уу.');
+        return;
+      }
+      if (cleanedRows.length === 0) {
+        return;
+      }
+      const mergedExtra = { ...extraVals };
+      if (mergedExtra.seedRecords && mergedExtra.seedTables) {
+        const set = new Set(mergedExtra.seedTables);
+        const filtered = {};
+        Object.entries(mergedExtra.seedRecords).forEach(([tbl, recs]) => {
+          if (set.has(tbl)) filtered[tbl] = recs;
+        });
+        mergedExtra.seedRecords = filtered;
+      }
+      const normalizedExtra = {};
+      Object.entries(mergedExtra).forEach(([k, v]) => {
+        let val = normalizeDateInput(v, placeholders[k]);
+        if (totalAmountSet.has(k) || totalCurrencySet.has(k)) {
+          val = normalizeNumberInput(val);
+        }
+        normalizedExtra[k] = val;
+      });
+      try {
+        await Promise.resolve(
+          onSaveTemporary({
+            values: { ...normalizedExtra, rows: cleanedRows },
+            rawRows,
+          }),
+        );
+      } catch (err) {
+        console.error('Temporary save failed', err);
+      }
       return;
     }
     const merged = { ...extraVals, ...formVals };
@@ -1468,6 +1799,15 @@ const RowFormModal = function RowFormModal({
   }
 
   async function submitForm() {
+    if (!canPost) {
+      alert(
+        t(
+          'temporary_post_not_allowed',
+          'You do not have permission to post this transaction.',
+        ),
+      );
+      return;
+    }
     if (submitLocked) return;
     setSubmitLocked(true);
     if (useGrid && tableRef.current) {
@@ -1625,6 +1965,14 @@ const RowFormModal = function RowFormModal({
     const tip = t(c.toLowerCase(), { ns: 'tooltip', defaultValue: labels[c] || c });
     const formVisible =
       (inline && visible) || (typeof document !== 'undefined' && !document.hidden);
+    const numericScale = getNumericScale(c);
+    const numericStep =
+      numericScale === null
+        ? undefined
+        : numericScale <= 0
+        ? '1'
+        : (1 / 10 ** numericScale).toFixed(numericScale);
+    const isNumericField = fieldTypeMap[c] === 'number';
 
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
@@ -1688,34 +2036,34 @@ const RowFormModal = function RowFormModal({
         });
         display = parts.join(' - ');
       }
-      const readonlyStyle = {
-        ...inputStyle,
-        width: 'fit-content',
-        minWidth: `${boxWidth}px`,
-        maxWidth: `${boxMaxWidth}px`,
-      };
+      if (isNumericField && display !== undefined && display !== null && display !== '') {
+        display = formatNumericValue(c, display);
+      }
+      if (display === null || display === undefined) display = '';
       const content = (
-        <div className="flex items-center space-x-1">
-          <div
-            className="border rounded bg-gray-100 px-2 py-1"
-            style={readonlyStyle}
-            ref={(el) => (readonlyRefs.current[c] = el)}
-          >
-            {display}
-          </div>
+        <div
+          className="border rounded bg-gray-100 px-2 py-1"
+          style={readonlyBoxStyle}
+          ref={(el) => (readonlyRefs.current[c] = el)}
+          tabIndex={0}
+          role="textbox"
+          aria-readonly="true"
+          onFocus={() => handleFocusField(c)}
+        >
+          {display}
         </div>
       );
-      const wrapped = <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
-      if (!withLabel) return wrapped;
+      if (!withLabel) return <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
       return (
         <TooltipWrapper key={c} title={tip}>
           <div className={fitted ? 'mb-1' : 'mb-3'}>
-            <div className="flex items-center space-x-1">
-              <label className="font-medium" style={labelStyle}>
-                {labels[c] || c}
-              </label>
-              {content}
-            </div>
+            <label className="block mb-1 font-medium" style={labelStyle}>
+              {labels[c] || c}
+              {requiredFields.includes(c) && (
+                <span className="text-red-500">*</span>
+              )}
+            </label>
+            {content}
           </div>
         </TooltipWrapper>
       );
@@ -1734,6 +2082,7 @@ const RowFormModal = function RowFormModal({
           labelFields={relationConfigMap[c].displayFields || []}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
+            notifyAutoResetGuardOnEdit(c);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -1775,6 +2124,7 @@ const RowFormModal = function RowFormModal({
           idField={viewDisplays[viewSourceMap[c]]?.idField || c}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
+            notifyAutoResetGuardOnEdit(c);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -1816,6 +2166,7 @@ const RowFormModal = function RowFormModal({
           idField={autoSelectConfigs[c].idField}
           value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
           onChange={(val) => {
+            notifyAutoResetGuardOnEdit(c);
             setFormValuesWithGenerated((prev) => {
               if (valuesEqual(prev[c], val)) return prev;
               return { ...prev, [c]: val };
@@ -1850,6 +2201,7 @@ const RowFormModal = function RowFormModal({
         value={formVals[c]}
         onFocus={() => handleFocusField(c)}
         onChange={(e) => {
+          notifyAutoResetGuardOnEdit(c);
           const value = e.target.value;
           setFormValuesWithGenerated((prev) => {
             if (prev[c] === value) return prev;
@@ -1890,6 +2242,7 @@ const RowFormModal = function RowFormModal({
             ? 'decimal'
             : undefined;
         })()}
+        step={isNumericField && numericStep ? numericStep : undefined}
         placeholder={placeholders[c] || ''}
         value={
           fieldTypeMap[c] === 'date' || fieldTypeMap[c] === 'datetime'
@@ -1897,6 +2250,7 @@ const RowFormModal = function RowFormModal({
             : formVals[c]
         }
         onChange={(e) => {
+          notifyAutoResetGuardOnEdit(c);
           const value = e.target.value;
           setFormValuesWithGenerated((prev) => {
             if (prev[c] === value) return prev;
@@ -1908,6 +2262,16 @@ const RowFormModal = function RowFormModal({
         onFocus={(e) => {
           e.target.select();
           handleFocusField(c);
+        }}
+        onBlur={(e) => {
+          if (!isNumericField) return;
+          const formatted = formatNumericValue(c, e.target.value);
+          if (typeof formatted !== 'string' || formatted === e.target.value) return;
+          setFormValuesWithGenerated((prev) => {
+            if (prev[c] === formatted) return prev;
+            return { ...prev, [c]: formatted };
+          });
+          e.target.value = formatted;
         }}
         disabled={disabled}
         className={inputClass}
@@ -1958,6 +2322,7 @@ const RowFormModal = function RowFormModal({
         viewDisplaysKey,
         viewColumnsKey,
         columnCaseMapKey,
+        numericScaleMapKey,
       ].join('|');
       return (
         <div className="mb-4">
@@ -1983,6 +2348,7 @@ const RowFormModal = function RowFormModal({
             branch={branch}
             department={department}
             columnCaseMap={columnCaseMap}
+            numericScaleMap={numericScaleMap}
             tableName={table}
             imagenameFields={imagenameField}
             imageIdField={imageIdField}
@@ -1996,6 +2362,7 @@ const RowFormModal = function RowFormModal({
             onRowsChange={handleGridRowsChange}
             requiredFields={requiredFields}
             disabledFields={disabledFields}
+            disabledFieldReasons={disabledFieldReasons}
             defaultValues={defaultValues}
             dateField={dateField}
             rows={gridRows}
@@ -2274,7 +2641,7 @@ const RowFormModal = function RowFormModal({
           >
             {t('printCust', 'Print Cust')}
           </button>
-          {allowTemporarySave && isAdding && onSaveTemporary && (
+          {allowTemporarySave && onSaveTemporary && (isAdding || isEditingTemporaryDraft) && (
             <button
               type="button"
               onClick={handleTemporarySave}
@@ -2290,13 +2657,23 @@ const RowFormModal = function RowFormModal({
           >
             {t('cancel', 'Cancel')}
           </button>
-          <button
-            type="submit"
-            className="px-3 py-1 bg-blue-600 text-white rounded"
-          >
-            {t('post', 'Post')}
-          </button>
+          {canPost && (
+            <button
+              type="submit"
+              className="px-3 py-1 bg-blue-600 text-white rounded"
+            >
+              {t('post', 'Post')}
+            </button>
+          )}
         </div>
+        {!canPost && allowTemporarySave && (
+          <div className="mt-2 text-sm text-gray-600">
+            {t(
+              'temporary_post_hint',
+              'This form currently only allows temporary submissions.',
+            )}
+          </div>
+        )}
         <div className="text-sm text-gray-600">
           Press <strong>Enter</strong> to move to next field. The field will be automatically selected. Use arrow keys to navigate selections.
         </div>

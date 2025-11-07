@@ -7,6 +7,7 @@ import { refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { useNavigate } from 'react-router-dom';
 import I18nContext from '../context/I18nContext.jsx';
+import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
 
 export default function LoginForm() {
   // login using employee ID only
@@ -24,6 +25,7 @@ export default function LoginForm() {
     setBranch,
     setDepartment,
     setPosition,
+    setWorkplace,
     setPermissions,
   } = useContext(AuthContext);
   const { t } = useContext(I18nContext);
@@ -44,19 +46,66 @@ export default function LoginForm() {
         setStoredCreds({ empid, password });
         setEmpid('');
         setPassword('');
-        setCompanyOptions(loggedIn.sessions || []);
+        const normalizedCompanies = [];
+        const seen = new Set();
+        if (Array.isArray(loggedIn.sessions)) {
+          loggedIn.sessions.forEach((sessionOption) => {
+            if (!sessionOption || typeof sessionOption !== 'object') return;
+            const rawId = sessionOption.company_id;
+            const normalizedId =
+              rawId === undefined || rawId === null
+                ? null
+                : Number.isFinite(Number(rawId))
+                  ? Number(rawId)
+                  : null;
+            if (normalizedId === null) return;
+            const key = `id:${normalizedId}`;
+            if (seen.has(key)) return;
+            seen.add(key);
+            const fallbackName =
+              sessionOption.company_name && String(sessionOption.company_name).trim().length
+                ? String(sessionOption.company_name).trim()
+                : `Company #${normalizedId}`;
+            normalizedCompanies.push({
+              company_id: normalizedId,
+              company_name: fallbackName,
+            });
+          });
+        }
+        normalizedCompanies.sort((a, b) => {
+          const nameA = (a.company_name || '').toLowerCase();
+          const nameB = (b.company_name || '').toLowerCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          return 0;
+        });
+        setCompanyOptions(normalizedCompanies);
         setCompanyId('');
         setIsCompanyStep(true);
         return;
       }
 
       // The login response already returns the user profile
-      setUser(loggedIn);
-      setSession(loggedIn.session || null);
-      setCompany(loggedIn.company ?? loggedIn.session?.company_id ?? null);
-      setBranch(loggedIn.branch ?? loggedIn.session?.branch_id ?? null);
-      setDepartment(loggedIn.department ?? loggedIn.session?.department_id ?? null);
-      setPosition(loggedIn.position ?? loggedIn.session?.position_id ?? null);
+      const normalizedSession = normalizeEmploymentSession(loggedIn.session);
+      const nextUser = normalizedSession
+        ? { ...loggedIn, session: normalizedSession }
+        : loggedIn;
+
+      setUser(nextUser);
+      setSession(normalizedSession);
+      setCompany(
+        loggedIn.company ?? normalizedSession?.company_id ?? null,
+      );
+      setBranch(loggedIn.branch ?? normalizedSession?.branch_id ?? null);
+      setDepartment(
+        loggedIn.department ?? normalizedSession?.department_id ?? null,
+      );
+      setPosition(
+        loggedIn.position ?? normalizedSession?.position_id ?? null,
+      );
+      setWorkplace(
+        loggedIn.workplace ?? normalizedSession?.workplace_id ?? null,
+      );
       setPermissions(loggedIn.permissions || null);
       refreshCompanyModules(loggedIn.company);
       refreshModules();

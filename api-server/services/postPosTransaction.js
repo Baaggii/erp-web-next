@@ -2,11 +2,14 @@ import fs from 'fs/promises';
 import path from 'path';
 import { pool } from '../../db/index.js';
 import { getConfigPath } from '../utils/configPaths.js';
+import { hasPosTransactionAccess } from './posTransactionConfig.js';
+import { parseLocalizedNumber } from '../../utils/parseLocalizedNumber.js';
 
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
 
 const arrayIndexPattern = /^(0|[1-9]\d*)$/;
+const SUPPORTED_CALC_AGGREGATORS = new Set(['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']);
 
 const SESSION_KEY_MAP = new Map([
   ['employee_id', 'emp_id'],
@@ -120,108 +123,393 @@ function assignArrayMetadata(target, source) {
   return target;
 }
 
-function sumCellValue(source, field) {
+function normalizeCalcFieldCell(cell) {
+  if (!cell || typeof cell !== 'object') return null;
+
+  const table = typeof cell.table === 'string' ? cell.table.trim() : '';
+  const field = typeof cell.field === 'string' ? cell.field.trim() : '';
+  if (!table || !field) return null;
+
+  const aggKey =
+    typeof cell.agg === 'string' ? cell.agg.trim().toUpperCase() : '';
+
+  return {
+    ...cell,
+    table,
+    field,
+    __aggKey: SUPPORTED_CALC_AGGREGATORS.has(aggKey) ? aggKey : '',
+  };
+}
+
+function getCalcFieldCells(map) {
+  if (!map || typeof map !== 'object') return [];
+  const raw = Array.isArray(map.cells) ? map.cells : [];
+  return raw.map(normalizeCalcFieldCell).filter(Boolean);
+}
+
+function determineComputedIndexes(cells) {
+  if (!Array.isArray(cells) || cells.length === 0) return [];
+  const hasAggregator = cells.some((cell) =>
+    SUPPORTED_CALC_AGGREGATORS.has(cell.__aggKey),
+  );
+  if (hasAggregator) {
+    const indexes = [];
+    let added = false;
+    cells.forEach((cell, idx) => {
+      if (!SUPPORTED_CALC_AGGREGATORS.has(cell.__aggKey)) {
+        indexes.push(idx);
+        added = true;
+      }
+    });
+    if (!added && cells.length > 0) {
+      indexes.push(0);
+    }
+    return indexes;
+  }
+  return [0];
+}
+
+function pickFirstDefinedFieldValue(source, field) {
+  if (!field) return undefined;
   if (Array.isArray(source)) {
-    let sum = 0;
-    let hasData = false;
     for (const row of source) {
       if (!row || typeof row !== 'object') continue;
-      const raw = getValue(row, field);
-      if (raw === undefined) continue;
-      const num = Number(raw);
-      if (!Number.isFinite(num)) continue;
-      sum += num;
-      hasData = true;
+      const val = getValue(row, field);
+      if (val !== undefined && val !== null) return val;
     }
-    if (!hasData && source.length === 0) {
-      hasData = true;
-    }
-    return { sum, hasValue: hasData };
+  } else if (isPlainObject(source)) {
+    const val = getValue(source, field);
+    if (val !== undefined && val !== null) return val;
   }
-  if (isPlainObject(source)) {
-    const raw = getValue(source, field);
-    if (raw === undefined) {
+  return undefined;
+}
+
+const CALC_FIELD_AGGREGATORS = {
+  SUM: {
+    compute(source, field) {
+      if (Array.isArray(source)) {
+        let sum = 0;
+        let hasData = false;
+        for (const row of source) {
+          if (!row || typeof row !== 'object') continue;
+          const num = parseLocalizedNumber(getValue(row, field));
+          if (num === null) continue;
+          sum += num;
+          hasData = true;
+        }
+        if (!hasData && source.length === 0) {
+          hasData = true;
+        }
+        return { sum, hasValue: hasData };
+      }
+      if (isPlainObject(source)) {
+        const num = parseLocalizedNumber(getValue(source, field));
+        if (num === null) return { sum: 0, hasValue: false };
+        return { sum: num, hasValue: true };
+      }
       return { sum: 0, hasValue: false };
-    }
-    const num = Number(raw);
-    if (!Number.isFinite(num)) {
-      return { sum: 0, hasValue: false };
-    }
-    return { sum: num, hasValue: true };
+    },
+    merge(prev = { sum: 0, hasValue: false }, next = { sum: 0, hasValue: false }) {
+      const hasValue = Boolean(prev.hasValue) || Boolean(next.hasValue);
+      const sum = (prev.hasValue ? prev.sum : 0) + (next.hasValue ? next.sum : 0);
+      return { sum, hasValue };
+    },
+    finalize(result) {
+      if (!result || !result.hasValue) return { value: 0, hasValue: false };
+      return { value: result.sum, hasValue: true };
+    },
+  },
+  AVG: {
+    compute(source, field) {
+      if (Array.isArray(source)) {
+        let sum = 0;
+        let count = 0;
+        for (const row of source) {
+          if (!row || typeof row !== 'object') continue;
+          const num = parseLocalizedNumber(getValue(row, field));
+          if (num === null) continue;
+          sum += num;
+          count += 1;
+        }
+        return { sum, count, hasValue: count > 0 };
+      }
+      if (isPlainObject(source)) {
+        const num = parseLocalizedNumber(getValue(source, field));
+        if (num === null) return { sum: 0, count: 0, hasValue: false };
+        return { sum: num, count: 1, hasValue: true };
+      }
+      return { sum: 0, count: 0, hasValue: false };
+    },
+    merge(prev = { sum: 0, count: 0, hasValue: false }, next = { sum: 0, count: 0, hasValue: false }) {
+      const sum = prev.sum + next.sum;
+      const count = prev.count + next.count;
+      const hasValue = Boolean(prev.hasValue) || Boolean(next.hasValue) || count > 0;
+      return { sum, count, hasValue };
+    },
+    finalize(result) {
+      if (!result || !result.hasValue || !result.count) {
+        return { value: 0, hasValue: false };
+      }
+      return { value: result.sum / result.count, hasValue: true };
+    },
+  },
+  MIN: {
+    compute(source, field) {
+      if (Array.isArray(source)) {
+        let min = null;
+        for (const row of source) {
+          if (!row || typeof row !== 'object') continue;
+          const num = parseLocalizedNumber(getValue(row, field));
+          if (num === null) continue;
+          if (min === null || num < min) min = num;
+        }
+        return { min, hasValue: min !== null };
+      }
+      if (isPlainObject(source)) {
+        const num = parseLocalizedNumber(getValue(source, field));
+        if (num === null) return { min: null, hasValue: false };
+        return { min: num, hasValue: true };
+      }
+      return { min: null, hasValue: false };
+    },
+    merge(prev = { min: null, hasValue: false }, next = { min: null, hasValue: false }) {
+      let min = prev.min;
+      if (next.min !== null && (min === null || next.min < min)) {
+        min = next.min;
+      }
+      const hasValue = Boolean(prev.hasValue) || Boolean(next.hasValue) || min !== null;
+      return { min, hasValue };
+    },
+    finalize(result) {
+      if (!result || !result.hasValue || result.min === null) {
+        return { value: 0, hasValue: false };
+      }
+      return { value: result.min, hasValue: true };
+    },
+  },
+  MAX: {
+    compute(source, field) {
+      if (Array.isArray(source)) {
+        let max = null;
+        for (const row of source) {
+          if (!row || typeof row !== 'object') continue;
+          const num = parseLocalizedNumber(getValue(row, field));
+          if (num === null) continue;
+          if (max === null || num > max) max = num;
+        }
+        return { max, hasValue: max !== null };
+      }
+      if (isPlainObject(source)) {
+        const num = parseLocalizedNumber(getValue(source, field));
+        if (num === null) return { max: null, hasValue: false };
+        return { max: num, hasValue: true };
+      }
+      return { max: null, hasValue: false };
+    },
+    merge(prev = { max: null, hasValue: false }, next = { max: null, hasValue: false }) {
+      let max = prev.max;
+      if (next.max !== null && (max === null || next.max > max)) {
+        max = next.max;
+      }
+      const hasValue = Boolean(prev.hasValue) || Boolean(next.hasValue) || max !== null;
+      return { max, hasValue };
+    },
+    finalize(result) {
+      if (!result || !result.hasValue || result.max === null) {
+        return { value: 0, hasValue: false };
+      }
+      return { value: result.max, hasValue: true };
+    },
+  },
+  COUNT: {
+    compute(source, field) {
+      if (Array.isArray(source)) {
+        let count = 0;
+        for (const row of source) {
+          if (!row || typeof row !== 'object') continue;
+          const raw = getValue(row, field);
+          if (raw === undefined || raw === null) continue;
+          if (typeof raw === 'string' && raw.trim() === '') continue;
+          count += 1;
+        }
+        if (count === 0 && source.length === 0) {
+          return { count: 0, hasValue: true };
+        }
+        return { count, hasValue: count > 0 };
+      }
+      if (isPlainObject(source)) {
+        const raw = getValue(source, field);
+        if (raw === undefined || raw === null) return { count: 0, hasValue: false };
+        if (typeof raw === 'string' && raw.trim() === '') {
+          return { count: 0, hasValue: false };
+        }
+        return { count: 1, hasValue: true };
+      }
+      return { count: 0, hasValue: false };
+    },
+    merge(prev = { count: 0, hasValue: false }, next = { count: 0, hasValue: false }) {
+      const count = prev.count + next.count;
+      const hasValue = Boolean(prev.hasValue) || Boolean(next.hasValue) || count > 0;
+      return { count, hasValue };
+    },
+    finalize(result) {
+      if (!result) return { value: 0, hasValue: false };
+      if (!result.hasValue && result.count === 0) {
+        return { value: 0, hasValue: result.hasValue };
+      }
+      return { value: result.count, hasValue: true };
+    },
+  },
+};
+
+function coerceNumber(value) {
+  const num = parseLocalizedNumber(value);
+  if (num === null) {
+    if (value === null || value === undefined || value === '') return 0;
+    const direct = Number(value);
+    return Number.isFinite(direct) ? direct : 0;
   }
-  return { sum: 0, hasValue: false };
+  return num;
+}
+
+function computeFormulaAggregator(agg, source, field) {
+  if (!agg) return null;
+  const key = agg.trim().toUpperCase();
+  if (key === 'SUM' || key === 'AVG' || key === 'MIN' || key === 'MAX') {
+    let values = [];
+    if (Array.isArray(source)) {
+      values = source
+        .filter((row) => row && typeof row === 'object')
+        .map((row) => parseLocalizedNumber(getValue(row, field)))
+        .filter((num) => num !== null);
+    } else if (isPlainObject(source)) {
+      const single = parseLocalizedNumber(getValue(source, field));
+      if (single !== null) values = [single];
+    }
+    if (values.length === 0) {
+      return key === 'MIN' ? Infinity : key === 'MAX' ? -Infinity : 0;
+    }
+    if (key === 'SUM') {
+      return values.reduce((acc, num) => acc + num, 0);
+    }
+    if (key === 'AVG') {
+      return values.reduce((acc, num) => acc + num, 0) / values.length;
+    }
+    if (key === 'MIN') {
+      return Math.min(...values);
+    }
+    if (key === 'MAX') {
+      return Math.max(...values);
+    }
+  }
+  if (key === 'COUNT') {
+    if (Array.isArray(source)) {
+      return source.filter((row) => {
+        if (!row || typeof row !== 'object') return false;
+        const value = getValue(row, field);
+        if (value === undefined || value === null) return false;
+        if (typeof value === 'string' && value.trim() === '') return false;
+        return true;
+      }).length;
+    }
+    if (isPlainObject(source)) {
+      const value = getValue(source, field);
+      if (value === undefined || value === null) return 0;
+      if (typeof value === 'string' && value.trim() === '') return 0;
+      return 1;
+    }
+    return 0;
+  }
+  return null;
 }
 
 export function propagateCalcFields(cfg, data) {
   if (!Array.isArray(cfg.calcFields)) return;
   for (const map of cfg.calcFields) {
-    const cells = Array.isArray(map?.cells) ? map.cells : [];
+    const cells = getCalcFieldCells(map);
     if (!cells.length) continue;
+
+    const computedIndexes = determineComputedIndexes(cells);
+    const computedIndexSet = new Set(computedIndexes);
+
+    const aggregatorState = new Map();
+    const aggregatorOrder = [];
+
+    for (const cell of cells) {
+      const aggKey = cell.__aggKey;
+      if (!aggKey) continue;
+      const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
+      if (!aggregator) continue;
+      const source = data[cell.table];
+      const computed = aggregator.compute(source, cell.field);
+      if (aggregatorState.has(aggKey)) {
+        const merged = aggregator.merge(aggregatorState.get(aggKey), computed);
+        aggregatorState.set(aggKey, merged);
+      } else {
+        aggregatorState.set(aggKey, computed);
+        aggregatorOrder.push(aggKey);
+      }
+    }
 
     let computedValue;
     let hasComputedValue = false;
 
-    let sumValue = 0;
-    let hasSum = false;
-
-    for (const cell of cells) {
-      const { table, field, agg } = cell || {};
-      if (!table || !field || agg !== 'SUM') continue;
-      const source = data[table];
-      const { sum, hasValue } = sumCellValue(source, field);
-      if (hasValue) {
-        sumValue += sum;
-        hasSum = true;
+    for (const aggKey of aggregatorOrder) {
+      const aggregator = CALC_FIELD_AGGREGATORS[aggKey];
+      if (!aggregator) continue;
+      const finalized = aggregator.finalize(aggregatorState.get(aggKey));
+      if (finalized?.hasValue) {
+        computedValue = finalized.value;
+        hasComputedValue = true;
+        break;
       }
     }
 
-    if (hasSum) {
-      computedValue = sumValue;
-      hasComputedValue = true;
-    }
-
     if (!hasComputedValue) {
-      for (const cell of cells) {
-        const { table, field } = cell || {};
-        if (!table || !field) continue;
-        const source = data[table];
-        const direct = getValue(source, field);
+      for (let idx = 0; idx < cells.length; idx += 1) {
+        if (computedIndexSet.has(idx)) continue;
+        const cell = cells[idx];
+        const source = data[cell.table];
+        const direct = pickFirstDefinedFieldValue(source, cell.field);
         if (direct !== undefined) {
           computedValue = direct;
           hasComputedValue = true;
           break;
         }
-        if (Array.isArray(source)) {
-          for (const row of source) {
-            if (!row || typeof row !== 'object') continue;
-            const v = getValue(row, field);
-            if (v !== undefined) {
-              computedValue = v;
-              hasComputedValue = true;
-              break;
-            }
-          }
-        } else if (isPlainObject(source)) {
-          const v = getValue(source, field);
-          if (v !== undefined) {
-            computedValue = v;
-            hasComputedValue = true;
-          }
+      }
+    }
+
+    if (!hasComputedValue) {
+      for (let idx = 0; idx < cells.length; idx += 1) {
+        if (!computedIndexSet.has(idx)) continue;
+        const cell = cells[idx];
+        const source = data[cell.table];
+        const direct = pickFirstDefinedFieldValue(source, cell.field);
+        if (direct !== undefined) {
+          computedValue = direct;
+          hasComputedValue = true;
+          break;
         }
-        if (hasComputedValue) break;
       }
     }
 
     if (!hasComputedValue) continue;
 
-    for (const cell of cells) {
-      const { table, field, agg } = cell || {};
+    for (let idx = 0; idx < cells.length; idx += 1) {
+      const cell = cells[idx];
+      if (!cell) continue;
+      const { table, field } = cell;
       if (!table || !field) continue;
-      const target = data[table];
-      if (!target) continue;
 
-      if (agg === 'SUM' && Array.isArray(target)) {
-        setValue(target, field, computedValue);
+      const isAggregatorCell = Boolean(cell.__aggKey);
+      if (isAggregatorCell && !computedIndexSet.has(idx)) continue;
+
+      const target = data[table];
+
+      if (target === undefined || target === null) {
+        if (!isAggregatorCell || computedIndexSet.has(idx)) {
+          data[table] = { [field]: computedValue };
+        }
         continue;
       }
 
@@ -231,8 +519,16 @@ export function propagateCalcFields(cfg, data) {
           setValue(row, field, computedValue);
         }
         setValue(target, field, computedValue);
-      } else if (isPlainObject(target)) {
+        continue;
+      }
+
+      if (isPlainObject(target)) {
         setValue(target, field, computedValue);
+        continue;
+      }
+
+      if (!isAggregatorCell || computedIndexSet.has(idx)) {
+        data[table] = { [field]: computedValue };
       }
     }
   }
@@ -248,16 +544,45 @@ function evalPosFormulas(cfg, data) {
     let init = false;
     for (const p of calc) {
       const tData = data[p.table] || {};
-      const num = Number(tData[p.field] ?? 0);
-      if (p.agg === '=' && !init) {
+      const agg = typeof p.agg === 'string' ? p.agg.trim().toUpperCase() : '';
+      let num = null;
+      if (agg) {
+        num = computeFormulaAggregator(agg, tData, p.field);
+      }
+      if (num === null || num === Infinity || num === -Infinity) {
+        if (Array.isArray(tData)) {
+          const first = tData.find(
+            (row) => row && typeof row === 'object' && row[p.field] !== undefined,
+          );
+          num = coerceNumber(first?.[p.field]);
+        } else if (isPlainObject(tData)) {
+          num = coerceNumber(getValue(tData, p.field));
+        } else {
+          num = 0;
+        }
+      }
+
+      if (agg === '=' && !init) {
         val = num;
         init = true;
-      } else if (p.agg === '+') {
+      } else if (agg === '+') {
         val += num;
-      } else if (p.agg === '-') {
+      } else if (agg === '-') {
         val -= num;
-      } else if (p.agg === '=') {
+      } else if (agg === '*') {
+        val *= num;
+      } else if (agg === '/') {
+        if (num === 0) {
+          val = 0;
+        } else {
+          val /= num;
+        }
+      } else if (agg === '=' || agg === 'SUM' || agg === 'AVG' || agg === 'MIN' || agg === 'MAX' || agg === 'COUNT') {
         val = num;
+        if (!init) init = true;
+      } else {
+        val = num;
+        if (!init) init = true;
       }
     }
     const targetTable = data[target.table];
@@ -581,6 +906,19 @@ export async function postPosTransaction(
       `POS transaction config not found for layout "${layoutName}"`,
     );
     err.status = 400;
+    throw err;
+  }
+
+  const branchAccessId =
+    sessionInfo?.branchId ?? sessionInfo?.branch_id ?? sessionInfo?.branch ?? null;
+  const departmentAccessId =
+    sessionInfo?.departmentId ??
+    sessionInfo?.department_id ??
+    sessionInfo?.department ??
+    null;
+  if (!hasPosTransactionAccess(cfg, branchAccessId, departmentAccessId)) {
+    const err = new Error('POS transaction access denied for current scope');
+    err.status = 403;
     throw err;
   }
 

@@ -34,8 +34,64 @@ export default function CodingTablesPage() {
   const [structSqlOther, setStructSqlOther] = useState('');
   const [recordsSql, setRecordsSql] = useState('');
   const [recordsSqlOther, setRecordsSqlOther] = useState('');
-  const [triggerSql, setTriggerSql] = useState('');
-  const [foreignKeySql, setForeignKeySql] = useState('');
+  const [triggerSql, setTriggerSqlState] = useState('');
+  const [foreignKeySql, setForeignKeySqlState] = useState('');
+  const triggerSqlTouchedRef = useRef(false);
+  const triggerSqlLoadedRef = useRef('');
+  const triggerSqlTableRef = useRef('');
+  const foreignKeySqlTouchedRef = useRef(false);
+  const foreignKeySqlLoadedRef = useRef('');
+  const foreignKeySqlTableRef = useRef('');
+
+  const setTriggerSql = React.useCallback((value) => {
+    setTriggerSqlState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      triggerSqlTouchedRef.current = true;
+      return next;
+    });
+  }, []);
+
+  const replaceTriggerSql = React.useCallback((value, options = {}) => {
+    const { table, force = false } = options;
+    setTriggerSqlState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      const isDifferentTable = table && table !== triggerSqlTableRef.current;
+      const touched =
+        triggerSqlTouchedRef.current && prev !== triggerSqlLoadedRef.current;
+      if (!force && !isDifferentTable && touched && prev !== next) {
+        return prev;
+      }
+      triggerSqlTouchedRef.current = false;
+      triggerSqlLoadedRef.current = next;
+      if (table) triggerSqlTableRef.current = table;
+      return next;
+    });
+  }, []);
+
+  const setForeignKeySql = React.useCallback((value) => {
+    setForeignKeySqlState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      foreignKeySqlTouchedRef.current = true;
+      return next;
+    });
+  }, []);
+
+  const replaceForeignKeySql = React.useCallback((value, options = {}) => {
+    const { table, force = false } = options;
+    setForeignKeySqlState((prev) => {
+      const next = typeof value === 'function' ? value(prev) : value;
+      const isDifferentTable = table && table !== foreignKeySqlTableRef.current;
+      const touched =
+        foreignKeySqlTouchedRef.current && prev !== foreignKeySqlLoadedRef.current;
+      if (!force && !isDifferentTable && touched && prev !== next) {
+        return prev;
+      }
+      foreignKeySqlTouchedRef.current = false;
+      foreignKeySqlLoadedRef.current = next;
+      if (table) foreignKeySqlTableRef.current = table;
+      return next;
+    });
+  }, []);
   const [sqlMove, setSqlMove] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ done: 0, total: 0 });
@@ -772,8 +828,14 @@ export default function CodingTablesPage() {
     setAllowZeroMap((prev) => ({ ...prev, ...cfg.allowZeroMap }));
     setDefaultValues((prev) => ({ ...prev, ...cfg.defaultValues }));
     setAutoIncStart(cfg.autoIncStart || '1');
-    setForeignKeySql(cfg.foreignKeys || '');
-    setTriggerSql(cfg.triggers || '');
+    replaceForeignKeySql(cfg.foreignKeys || '', {
+      table: cfg.table,
+      force: true,
+    });
+    replaceTriggerSql(cfg.triggers || '', {
+      table: cfg.table,
+      force: true,
+    });
   }
 
   async function loadTableStructure() {
@@ -797,8 +859,14 @@ export default function CodingTablesPage() {
       if (allSql) {
         const cfg = parseSqlConfig(allSql);
         if (cfg) {
-          setForeignKeySql(cfg.foreignKeys || '');
-          setTriggerSql(cfg.triggers || '');
+          replaceForeignKeySql(cfg.foreignKeys || '', {
+            table: tableName,
+            force: true,
+          });
+          replaceTriggerSql(cfg.triggers || '', {
+            table: tableName,
+            force: true,
+          });
         }
       }
     } catch {
@@ -1034,9 +1102,16 @@ export default function CodingTablesPage() {
 
     let defs = [];
     const seenDef = new Set();
+    const canonicalDefKey = (col) => {
+      if (!col) return '';
+      const normalized = normalizeField(col);
+      return normalized.replace(/_/g, '');
+    };
     const addDef = (col, def) => {
-      if (seenDef.has(col)) return;
-      seenDef.add(col);
+      const key = canonicalDefKey(col);
+      if (!key) return;
+      if (seenDef.has(key)) return;
+      seenDef.add(key);
       defs.push(def);
     };
     if (idCol) {
@@ -1054,7 +1129,21 @@ export default function CodingTablesPage() {
       let def = `\`${dbC}\` ${colTypes[c]}`;
       if (localNotNull[c]) def += ' NOT NULL';
       addDef(dbC, def);
-      });
+    });
+    const auditColumnDefs = [
+      ['company_id', "`company_id` INT NOT NULL DEFAULT '2'"],
+      ['department_id', '`department_id` INT DEFAULT NULL'],
+      ['branch_id', '`branch_id` INT DEFAULT NULL'],
+      ['created_by', '`created_by` VARCHAR(50) DEFAULT NULL'],
+      ['created_at', '`created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP'],
+      ['updated_by', '`updated_by` VARCHAR(50) DEFAULT NULL'],
+      [
+        'updated_at',
+        '`updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP',
+      ],
+      ['deleted_at', '`deleted_at` TIMESTAMP NULL DEFAULT NULL'],
+    ];
+    auditColumnDefs.forEach(([col, def]) => addDef(col, def));
     const calcFields = parseCalcFields(calcText);
     calcFields.forEach((cf) => {
       defs.push(`\`${cf.name}\` INT AS (${cf.expression}) STORED`);
@@ -1161,7 +1250,14 @@ export default function CodingTablesPage() {
     ) {
       const defArr = [...(useUnique ? defs : defsNoUnique)];
       if (includeError) defArr.push('`error_description` VARCHAR(255)');
-      const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${idCol ? ` AUTO_INCREMENT=${autoIncStart}` : ''};`;
+      let autoIncrementClause = '';
+      if (idCol) {
+        const parsedAutoInc = Number.parseInt(autoIncStart, 10);
+        if (Number.isFinite(parsedAutoInc) && parsedAutoInc > 0) {
+          autoIncrementClause = ` AUTO_INCREMENT=${parsedAutoInc}`;
+        }
+      }
+      const base = `CREATE TABLE IF NOT EXISTS \`${tableNameForSql}\` (\n  ${defArr.join(',\n  ')}\n)${autoIncrementClause};`;
 
       const trgSql = buildTriggerScripts(triggerSql, tableNameForSql);
       const trgPart = trgSql ? `\n${trgSql}` : '';
@@ -2459,8 +2555,8 @@ export default function CodingTablesPage() {
       if (workbook && sheet) {
         extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
       }
-      setForeignKeySql('');
-      setTriggerSql('');
+      replaceForeignKeySql('', { table: tableName, force: true });
+      replaceTriggerSql('', { table: tableName, force: true });
       return;
     }
     fetch(`/api/coding_table_configs?table=${encodeURIComponent(tableName)}`, {
@@ -2472,8 +2568,8 @@ export default function CodingTablesPage() {
           if (workbook && headers.length > 0) {
             extractHeaders(workbook, sheet, headerRow, mnHeaderRow);
           }
-          setForeignKeySql('');
-          setTriggerSql('');
+          replaceForeignKeySql('', { table: tableName, force: true });
+          replaceTriggerSql('', { table: tableName, force: true });
           return;
         }
         if (!sheetSelectedManuallyRef.current) {
@@ -2549,8 +2645,8 @@ export default function CodingTablesPage() {
         setStartYear(cfg.startYear ?? '');
         setEndYear(cfg.endYear ?? '');
         setAutoIncStart(cfg.autoIncStart ?? '1');
-        setForeignKeySql(cfg.foreignKeys ?? '');
-        setTriggerSql(cfg.triggers ?? '');
+        replaceForeignKeySql(cfg.foreignKeys ?? '', { table: tableName });
+        replaceTriggerSql(cfg.triggers ?? '', { table: tableName });
       })
       .catch(() => {});
   }, [tableName, configNames]);

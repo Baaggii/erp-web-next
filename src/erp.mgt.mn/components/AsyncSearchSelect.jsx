@@ -5,13 +5,18 @@ import React, {
   useContext,
   useCallback,
   useLayoutEffect,
+  useMemo,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { getTenantKeyList } from '../utils/tenantKeys.js';
+import { buildOptionsForRows } from '../utils/buildAsyncSelectOptions.js';
+import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 
 const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
+
+const PAGE_SIZE = 50;
 
 export default function AsyncSearchSelect({
   table,
@@ -55,9 +60,30 @@ export default function AsyncSearchSelect({
   const [tenantMeta, setTenantMeta] = useState(null);
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
+  const effectiveSearchColumns = useMemo(() => {
+    const columnSet = new Set();
+    const addColumn = (col) => {
+      if (typeof col !== 'string') return;
+      const trimmed = col.trim();
+      if (trimmed.length === 0) return;
+      columnSet.add(trimmed);
+    };
+    if (Array.isArray(searchColumns) && searchColumns.length > 0) {
+      searchColumns.forEach(addColumn);
+    } else if (typeof searchColumn === 'string') {
+      addColumn(searchColumn);
+    }
+    if (typeof idField === 'string') {
+      addColumn(idField);
+    }
+    if (Array.isArray(labelFields)) {
+      labelFields.forEach(addColumn);
+    }
+    return Array.from(columnSet);
+  }, [searchColumns, searchColumn, idField, labelFields]);
 
   const findBestOption = useCallback(
-    (query) => {
+    (query, { allowPartial = true } = {}) => {
       const normalized = String(query || '').trim().toLowerCase();
       if (normalized.length === 0) return null;
       let opt = options.find(
@@ -68,7 +94,7 @@ export default function AsyncSearchSelect({
           (o) => String(o.label ?? '').toLowerCase() === normalized,
         );
       }
-      if (opt == null) {
+      if (opt == null && allowPartial) {
         opt = options.find((o) => {
           const valueText = String(o.value ?? '').toLowerCase();
           const labelText = String(o.label ?? '').toLowerCase();
@@ -80,6 +106,84 @@ export default function AsyncSearchSelect({
       return opt || null;
     },
     [options],
+  );
+
+  const compareOptions = useCallback((a, b) => {
+    const aIndex = a?.__index;
+    const bIndex = b?.__index;
+    const aHasIndex = aIndex !== undefined && aIndex !== null && aIndex !== '';
+    const bHasIndex = bIndex !== undefined && bIndex !== null && bIndex !== '';
+    if (aHasIndex && bHasIndex) {
+      const aNum = Number(aIndex);
+      const bNum = Number(bIndex);
+      const aIsNum = Number.isFinite(aNum);
+      const bIsNum = Number.isFinite(bNum);
+      if (aIsNum && bIsNum && aNum !== bNum) {
+        return aNum - bNum;
+      }
+      if (aIsNum && !bIsNum) return -1;
+      if (!aIsNum && bIsNum) return 1;
+      const cmp = String(aIndex).localeCompare(String(bIndex), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
+      if (cmp !== 0) return cmp;
+    } else if (aHasIndex) {
+      return -1;
+    } else if (bHasIndex) {
+      return 1;
+    }
+
+    const aVal = a?.value;
+    const bVal = b?.value;
+    if (aVal == null && bVal == null) return 0;
+    if (aVal == null) return 1;
+    if (bVal == null) return -1;
+    const aNum = Number(aVal);
+    const bNum = Number(bVal);
+    if (Number.isFinite(aNum) && Number.isFinite(bNum)) {
+      return aNum - bNum;
+    }
+    return String(aVal).localeCompare(String(bVal), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  }, []);
+
+  const normalizeOptions = useCallback(
+    (list) => {
+      if (!Array.isArray(list)) return [];
+      const deduped = [];
+      const seen = new Map();
+      list.forEach((opt) => {
+        if (!opt) return;
+        const key =
+          opt.value != null
+            ? `v:${String(opt.value)}`
+            : `l:${JSON.stringify(opt.label ?? opt)}`;
+        if (!seen.has(key)) {
+          seen.set(key, opt);
+          deduped.push(opt);
+        } else {
+          const existing = seen.get(key);
+          if (!existing.label && opt.label) {
+            const idx = deduped.indexOf(existing);
+            if (idx >= 0) deduped[idx] = opt;
+            seen.set(key, opt);
+          } else if (
+            existing.__index == null &&
+            opt.__index != null &&
+            opt.__index !== ''
+          ) {
+            const idx = deduped.indexOf(existing);
+            if (idx >= 0) deduped[idx] = opt;
+            seen.set(key, opt);
+          }
+        }
+      });
+      return deduped.sort(compareOptions);
+    },
+    [compareOptions],
   );
 
   const updateMenuPosition = useCallback(() => {
@@ -111,17 +215,24 @@ export default function AsyncSearchSelect({
     };
   }, [show, updateMenuPosition]);
 
+  const filterOptionsByQuery = useCallback((list, query) => {
+    const normalized = String(query || '').trim().toLowerCase();
+    if (!normalized) return Array.isArray(list) ? list : [];
+    if (!Array.isArray(list)) return [];
+    return list.filter((opt) => {
+      if (!opt) return false;
+      const valueText = opt.value != null ? String(opt.value).toLowerCase() : '';
+      const labelText = opt.label != null ? String(opt.label).toLowerCase() : '';
+      return valueText.includes(normalized) || labelText.includes(normalized);
+    });
+  }, []);
+
   async function fetchPage(p = 1, q = '', append = false, signal) {
-    const cols =
-      searchColumns && searchColumns.length > 0
-        ? searchColumns
-        : searchColumn
-        ? [searchColumn]
-        : [];
+    const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: p, perPage: 50 });
+      const params = new URLSearchParams({ page: p, perPage: PAGE_SIZE });
       const isShared =
         tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
       const keys = getTenantKeyList(tenantMeta);
@@ -143,26 +254,86 @@ export default function AsyncSearchSelect({
       );
       const json = await res.json();
       const rows = Array.isArray(json.rows) ? json.rows : [];
-      const opts = rows.map((r) => {
-        const val = r[idField || searchColumn];
-        const parts = [];
-        if (val !== undefined) parts.push(val);
-        if (labelFields.length === 0) {
-          Object.entries(r).forEach(([k, v]) => {
-            if (k === idField || k === searchColumn) return;
-            if (v !== undefined && parts.length < 3) parts.push(v);
-          });
-        } else {
-          labelFields.forEach((f) => {
-            if (r[f] !== undefined) parts.push(r[f]);
-          });
+      let opts;
+      try {
+        opts = await buildOptionsForRows({
+          table,
+          rows,
+          idField,
+          searchColumn,
+          labelFields,
+          companyId: effectiveCompanyId,
+          branchId: branch,
+          departmentId: department,
+        });
+      } catch {
+        const sortedFallbackRows = sortRowsByIndex(rows);
+        opts = sortedFallbackRows.map((r) => {
+          if (!r || typeof r !== 'object') return { value: undefined, label: '' };
+          const val = r[idField || searchColumn];
+          const parts = [];
+          if (val !== undefined) parts.push(val);
+          if (labelFields.length === 0) {
+            Object.entries(r).forEach(([k, v]) => {
+              if (k === idField || k === searchColumn) return;
+              if (v !== undefined && parts.length < 3) parts.push(v);
+            });
+          } else {
+            labelFields.forEach((f) => {
+              if (r[f] !== undefined) parts.push(r[f]);
+            });
+          }
+          const indexInfo = extractRowIndex(r);
+          return {
+            value: val,
+            label: parts.join(' - '),
+            ...(indexInfo
+              ? {
+                  __index: indexInfo.numeric
+                    ? indexInfo.sortValue
+                    : indexInfo.rawValue,
+                }
+              : {}),
+          };
+        });
+      }
+      const normalizedQuery = String(q || '').trim().toLowerCase();
+      if (normalizedQuery) {
+        opts = filterOptionsByQuery(opts, normalizedQuery);
+      }
+      const totalCount = Number.isFinite(Number(json.count))
+        ? Number(json.count)
+        : null;
+      const more =
+        totalCount != null
+          ? p * PAGE_SIZE < totalCount
+          : rows.length >= PAGE_SIZE;
+      setHasMore(more);
+      if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
+        const nextPage = p + 1;
+        setPage(nextPage);
+        return fetchPage(nextPage, q, true, signal);
+      }
+      setOptions((prev) => {
+        if (append) {
+          const base = Array.isArray(prev) ? prev : [];
+          return normalizeOptions([...base, ...opts]);
         }
-        return { value: val, label: parts.join(' - ') };
+        if (
+          normalizedQuery &&
+          opts.length === 0 &&
+          Array.isArray(prev) &&
+          prev.length > 0
+        ) {
+          const fallback = filterOptionsByQuery(prev, normalizedQuery);
+          if (fallback.length > 0) {
+            return normalizeOptions(fallback);
+          }
+        }
+        return normalizeOptions(opts);
       });
-      setHasMore(rows.length >= 50 && p * 50 < (json.count || Infinity));
-      setOptions((o) => (append ? [...o, ...opts] : opts));
     } catch (err) {
-      if (err.name !== 'AbortError') setOptions(append ? [] : []);
+      if (err.name !== 'AbortError') setOptions([]);
     } finally {
       setLoading(false);
     }
@@ -179,8 +350,18 @@ export default function AsyncSearchSelect({
   }, [value]);
 
   useEffect(() => {
-    if (show && options.length > 0) setHighlight((h) => (h < 0 ? 0 : Math.min(h, options.length - 1)));
-  }, [options, show]);
+    if (!show || options.length === 0) {
+      setHighlight((h) => (h === -1 ? h : Math.min(h, options.length - 1)));
+      return;
+    }
+    setHighlight((h) => {
+      if (h >= 0 && h < options.length) return h;
+      const exactIndex = options.findIndex(
+        (opt) => String(opt.value ?? '') === String(input ?? ''),
+      );
+      return exactIndex >= 0 ? exactIndex : -1;
+    });
+  }, [options, show, input]);
 
   useEffect(() => {
     let canceled = false;
@@ -209,6 +390,7 @@ export default function AsyncSearchSelect({
     return () => controller.abort();
   }, [
     table,
+    effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
     branch,
@@ -229,10 +411,7 @@ export default function AsyncSearchSelect({
     input,
     disabled,
     table,
-    searchColumn,
-    searchColumns,
-    labelFields,
-    idField,
+    effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
     branch,
@@ -252,7 +431,7 @@ export default function AsyncSearchSelect({
       pendingLookupRef.current = null;
       return;
     }
-    const opt = findBestOption(pending.query);
+    const opt = findBestOption(pending.query, { allowPartial: false });
     if (opt) {
       onChange(opt.value, opt.label);
       setInput(String(opt.value));
@@ -295,7 +474,7 @@ export default function AsyncSearchSelect({
     if (idx >= 0 && idx < options.length) {
       opt = options[idx];
     } else if (options.length > 0) {
-      opt = findBestOption(query);
+      opt = findBestOption(query, { allowPartial: false });
     }
 
     if (opt == null) {

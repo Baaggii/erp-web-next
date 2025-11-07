@@ -1,4 +1,4 @@
-import React, { useContext, useEffect } from 'react';
+import React, { useContext, useEffect, useMemo } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
@@ -17,6 +17,131 @@ export default function AppLayout({ children, title }) {
     await logout(user?.empid);
     navigate('/login');
   }
+
+  const workplaceSummaries = useMemo(() => {
+    if (!session) return [];
+
+    const assignments = Array.isArray(session.workplace_assignments)
+      ? session.workplace_assignments
+      : [];
+
+    const seenComposite = new Set();
+    const seenWorkplaceIds = new Set();
+    const seenSessionIds = new Set();
+    const summaries = [];
+
+    const parseId = (value) => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === 'number') {
+        return Number.isFinite(value) ? value : null;
+      }
+      if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        const parsed = Number(trimmed);
+        return Number.isFinite(parsed) ? parsed : null;
+      }
+      return null;
+    };
+
+    const formatAssignment = (assignment) => {
+      if (!assignment || typeof assignment !== 'object') return null;
+
+      const workplaceId =
+        assignment.workplace_id !== undefined
+          ? assignment.workplace_id
+          : assignment.workplaceId;
+      const workplaceSessionId =
+        assignment.workplace_session_id !== undefined
+          ? assignment.workplace_session_id
+          : assignment.workplaceSessionId;
+
+      const normalizedWorkplaceId = parseId(workplaceId);
+      const normalizedSessionId = parseId(workplaceSessionId);
+
+      const compositeKey = `${normalizedWorkplaceId ?? ''}|${normalizedSessionId ?? ''}`;
+      if (seenComposite.has(compositeKey)) return null;
+
+      if (
+        (normalizedWorkplaceId != null && seenWorkplaceIds.has(normalizedWorkplaceId)) ||
+        (normalizedSessionId != null && seenSessionIds.has(normalizedSessionId))
+      ) {
+        return null;
+      }
+
+      seenComposite.add(compositeKey);
+      if (normalizedWorkplaceId != null) {
+        seenWorkplaceIds.add(normalizedWorkplaceId);
+      }
+      if (normalizedSessionId != null) {
+        seenSessionIds.add(normalizedSessionId);
+      }
+
+      const labelParts = [];
+      const baseName = assignment.workplace_name
+        ? String(assignment.workplace_name).trim()
+        : '';
+      if (baseName) {
+        labelParts.push(baseName);
+      }
+
+      const idParts = [];
+      if (normalizedWorkplaceId != null) {
+        idParts.push(`#${normalizedWorkplaceId}`);
+      }
+      if (
+        normalizedSessionId != null &&
+        normalizedSessionId !== normalizedWorkplaceId
+      ) {
+        idParts.push(`session ${normalizedSessionId}`);
+      }
+      if (idParts.length) {
+        labelParts.push(idParts.join(' · '));
+      }
+
+      const contextParts = [];
+      if (assignment.department_name) {
+        contextParts.push(String(assignment.department_name).trim());
+      }
+      if (assignment.branch_name) {
+        contextParts.push(String(assignment.branch_name).trim());
+      }
+      if (contextParts.length) {
+        labelParts.push(contextParts.join(' / '));
+      }
+
+      if (!labelParts.length) {
+        const fallbackId = normalizedSessionId ?? normalizedWorkplaceId;
+        if (fallbackId != null) {
+          labelParts.push(`Session ${fallbackId}`);
+        }
+      }
+
+      return labelParts.join(' – ');
+    };
+
+    assignments.forEach((assignment) => {
+      const label = formatAssignment(assignment);
+      if (label) {
+        summaries.push(label);
+      }
+    });
+
+    if (!summaries.length) {
+      const fallbackLabel = formatAssignment({
+        workplace_id: session.workplace_id ?? null,
+        workplace_session_id: session.workplace_session_id ?? session.workplace_id ?? null,
+        workplace_name: session.workplace_name ?? null,
+        department_name: session.department_name ?? null,
+        branch_name: session.branch_name ?? null,
+      });
+      if (fallbackLabel) {
+        summaries.push(fallbackLabel);
+      }
+    }
+
+    return summaries;
+  }, [session]);
 
   return (
     <div className="flex h-screen">
@@ -53,12 +178,19 @@ export default function AppLayout({ children, title }) {
           <h1 className="text-lg font-semibold">{title || t('erp', 'ERP')}</h1>
           <div className="flex items-center space-x-3 text-sm">
             {session && (
-              <span>
-                {session.company_name}
-                {session.department_name && ` | ${session.department_name}`}
-                {session.branch_name && ` | ${session.branch_name}`}
-                {session.user_level_name && ` | ${session.user_level_name}`}
-              </span>
+              <div className="flex flex-col text-right leading-tight">
+                <span>
+                  {session.company_name}
+                  {session.department_name && ` | ${session.department_name}`}
+                  {session.branch_name && ` | ${session.branch_name}`}
+                  {session.user_level_name && ` | ${session.user_level_name}`}
+                </span>
+                {workplaceSummaries.length > 0 && (
+                  <span className="text-xs text-gray-500">
+                    {workplaceSummaries.join(' • ')}
+                  </span>
+                )}
+              </div>
             )}
             {user && (
               <div className="relative group">

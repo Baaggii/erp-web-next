@@ -12,13 +12,18 @@ import { AuthContext } from '../context/AuthContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
 
 const SESSION_PARAMS = [
-  { name: 'session_branch_id', type: 'INT' },
-  { name: 'session_user_id', type: 'VARCHAR(10)' },
   { name: 'session_company_id', type: 'INT' },
+  { name: 'session_branch_id', type: 'INT' },
+  { name: 'session_department_id', type: 'INT' },
+  { name: 'session_position_id', type: 'INT' },
+  { name: 'session_workplace_id', type: 'INT' },
+  { name: 'session_user_id', type: 'VARCHAR(10)' },
+  { name: 'session_senior_empid', type: 'VARCHAR(10)' },
+  { name: 'session_senior_plan_empid', type: 'VARCHAR(10)' },
 ];
 
 const PARAM_TYPES = ['INT', 'DATE', 'VARCHAR(50)', 'DECIMAL(10,2)'];
-const AGGREGATES = ['NONE', 'SUM', 'COUNT', 'MAX', 'MIN'];
+const AGGREGATES = ['NONE', 'SUM', 'AVG', 'COUNT', 'MAX', 'MIN'];
 const OPERATORS = ['=', '>', '<', '>=', '<=', '<>'];
 const CALC_OPERATORS = ['+', '-', '*', '/'];
 const PAREN_OPTIONS = [0, 1, 2, 3];

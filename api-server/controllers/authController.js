@@ -9,6 +9,8 @@ import {
 import { hash } from '../services/passwordService.js';
 import * as jwtService from '../services/jwtService.js';
 import { getCookieName, getRefreshCookieName } from '../utils/cookieNames.js';
+import { normalizeEmploymentSession } from '../utils/employmentSession.js';
+import { normalizeNumericId } from '../utils/workplaceAssignments.js';
 
 export async function login(req, res, next) {
   try {
@@ -18,46 +20,148 @@ export async function login(req, res, next) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
 
-    const sessions = await getEmploymentSessions(empid);
-    if (sessions.length === 0) {
-      return res.status(403).json({ message: 'No active employment found' });
+    const effectiveDate = new Date();
+    const sessions = await getEmploymentSessions(empid, {
+      effectiveDate,
+      includeDiagnostics: true,
+    });
+    if (!Array.isArray(sessions) || sessions.length === 0) {
+      return res
+        .status(403)
+        .json({ message: 'No employment sessions available for this user' });
     }
 
-    let session;
-    if (companyId == null) {
-      if (sessions.length > 1) {
-        return res.json({ needsCompany: true, sessions });
+    const companyGroups = new Map();
+    sessions.forEach((session) => {
+      if (!session || typeof session !== 'object') return;
+      const normalizedCompanyId = normalizeNumericId(session.company_id);
+      const groupKey =
+        normalizedCompanyId === null
+          ? `null:${session.company_name ?? ''}`
+          : `id:${normalizedCompanyId}`;
+      if (!companyGroups.has(groupKey)) {
+        const name = session.company_name
+          ? String(session.company_name).trim()
+          : normalizedCompanyId !== null
+            ? `Company #${normalizedCompanyId}`
+            : 'Unknown company';
+        companyGroups.set(groupKey, {
+          companyId: normalizedCompanyId,
+          companyName: name,
+          sessions: [],
+        });
       }
-      session = sessions[0];
-    } else {
-      session = sessions.find((s) => s.company_id === Number(companyId));
-      if (!session) {
+      companyGroups.get(groupKey).sessions.push(session);
+    });
+
+    const pickDefaultSession = (items = []) => {
+      if (!Array.isArray(items) || items.length === 0) return null;
+      const withWorkplace = items.find(
+        (item) => item?.workplace_session_id != null,
+      );
+      return withWorkplace ?? items[0];
+    };
+
+    const hasCompanySelection =
+      companyId !== undefined && companyId !== null;
+    let selectedCompanyId = null;
+    if (hasCompanySelection) {
+      selectedCompanyId = normalizeNumericId(companyId);
+      if (selectedCompanyId === null) {
         return res.status(400).json({ message: 'Invalid company selection' });
       }
     }
 
-    const permissions = await getUserLevelActions(
-      session.user_level,
-      session.company_id,
-    );
-  const {
-    company_id: company,
-    branch_id: branch,
-    department_id: department,
-    position_id,
-    position,
-    senior_empid,
-    senior_plan_empid,
-  } = session || {};
+    let sessionGroup = null;
+    if (!hasCompanySelection) {
+      if (companyGroups.size > 1) {
+        const options = Array.from(companyGroups.values()).map(
+          ({ companyId: id, companyName: name }) => ({
+            company_id: id,
+            company_name: name,
+          }),
+        );
+        options.sort((a, b) => {
+          const nameA = (a.company_name || '').toLowerCase();
+          const nameB = (b.company_name || '').toLowerCase();
+          if (nameA < nameB) return -1;
+          if (nameA > nameB) return 1;
+          return 0;
+        });
+        return res.json({ needsCompany: true, sessions: options });
+      }
+      sessionGroup = companyGroups.values().next().value || null;
+    } else {
+      const key = `id:${selectedCompanyId}`;
+      sessionGroup = companyGroups.get(key) || null;
+      if (!sessionGroup) {
+        return res.status(400).json({ message: 'Invalid company selection' });
+      }
+    }
 
-  const payload = {
-    id: user.id,
-    empid: user.empid,
-    position,
-    companyId: company,
-    userLevel: session.user_level,
-    seniorPlanEmpid: senior_plan_empid || null,
-  };
+    const session = pickDefaultSession(sessionGroup?.sessions || []);
+    if (!session) {
+      return res
+        .status(403)
+        .json({ message: 'No employment session found for the selected company' });
+    }
+
+    const workplaceAssignments = (sessionGroup?.sessions || [])
+      .filter((s) => s && s.workplace_session_id != null)
+      .map(
+        ({
+          company_id,
+          company_name,
+          branch_id,
+          branch_name,
+          department_id,
+          department_name,
+          workplace_id,
+          workplace_name,
+          workplace_session_id,
+        }) => ({
+          company_id: company_id ?? null,
+          company_name: company_name ?? null,
+          branch_id: branch_id ?? null,
+          branch_name: branch_name ?? null,
+          department_id: department_id ?? null,
+          department_name: department_name ?? null,
+          workplace_id: workplace_id ?? null,
+          workplace_name: workplace_name ?? null,
+          workplace_session_id: workplace_session_id ?? null,
+        }),
+      );
+
+    const sessionPayload = session
+      ? normalizeEmploymentSession(session, workplaceAssignments)
+      : null;
+
+    const permissions =
+      sessionPayload?.user_level && sessionPayload?.company_id
+        ? await getUserLevelActions(
+            sessionPayload.user_level,
+            sessionPayload.company_id,
+          )
+        : {};
+
+    const {
+      company_id: company = null,
+      branch_id: branch = null,
+      department_id: department = null,
+      position_id = null,
+      position = null,
+      senior_empid = null,
+      senior_plan_empid = null,
+    } = sessionPayload || {};
+
+    const payload = {
+      id: user.id,
+      empid: user.empid,
+      position,
+      companyId: company,
+      userLevel: sessionPayload?.user_level ?? null,
+      seniorPlanEmpid: senior_plan_empid || null,
+    };
     const token = jwtService.sign(payload);
     const refreshToken = jwtService.signRefresh(payload);
 
@@ -77,9 +181,9 @@ export async function login(req, res, next) {
       id: user.id,
       empid: user.empid,
       position,
-      full_name: session?.employee_name,
-      user_level: session?.user_level,
-      user_level_name: session?.user_level_name,
+      full_name: sessionPayload?.employee_name,
+      user_level: sessionPayload?.user_level,
+      user_level_name: sessionPayload?.user_level_name,
       company,
       branch,
       department,
@@ -87,7 +191,11 @@ export async function login(req, res, next) {
       position,
       senior_empid,
       senior_plan_empid,
-      session,
+      workplace: sessionPayload?.workplace_id ?? null,
+      workplace_session_id: sessionPayload?.workplace_session_id ?? null,
+      workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
+      workplace_name: sessionPayload?.workplace_name ?? null,
+      session: sessionPayload,
       permissions,
     });
   } catch (err) {
@@ -107,9 +215,52 @@ export async function logout(req, res) {
 }
 
 export async function getProfile(req, res) {
-  const session = await getEmploymentSession(req.user.empid, req.user.companyId);
-  const permissions = session?.user_level
-    ? await getUserLevelActions(session.user_level, session.company_id)
+  const effectiveDate = new Date();
+  const [session, sessions] = await Promise.all([
+    getEmploymentSession(req.user.empid, req.user.companyId, { effectiveDate }),
+    getEmploymentSessions(req.user.empid, {
+      effectiveDate,
+      includeDiagnostics: true,
+    }),
+  ]);
+
+  const workplaceAssignments = session
+    ? sessions
+        .filter(
+          (s) =>
+            s.company_id === session.company_id &&
+            s.workplace_session_id != null,
+        )
+        .map(
+          ({
+            branch_id,
+            branch_name,
+            department_id,
+            department_name,
+            workplace_id,
+            workplace_name,
+            workplace_session_id,
+          }) => ({
+            branch_id: branch_id ?? null,
+            branch_name: branch_name ?? null,
+            department_id: department_id ?? null,
+            department_name: department_name ?? null,
+            workplace_id: workplace_id ?? null,
+            workplace_name: workplace_name ?? null,
+            workplace_session_id: workplace_session_id ?? null,
+          }),
+        )
+    : [];
+
+  const sessionPayload = session
+    ? normalizeEmploymentSession(session, workplaceAssignments)
+    : null;
+
+  const permissions = sessionPayload?.user_level
+    ? await getUserLevelActions(
+        sessionPayload.user_level,
+        sessionPayload.company_id,
+      )
     : {};
   const {
     company_id: company,
@@ -119,14 +270,16 @@ export async function getProfile(req, res) {
     position,
     senior_empid,
     senior_plan_empid,
-  } = session || {};
+    workplace_id,
+    workplace_name,
+  } = sessionPayload || {};
   res.json({
     id: req.user.id,
     empid: req.user.empid,
     position: req.user.position,
-    full_name: session?.employee_name,
-    user_level: session?.user_level,
-    user_level_name: session?.user_level_name,
+    full_name: sessionPayload?.employee_name,
+    user_level: sessionPayload?.user_level,
+    user_level_name: sessionPayload?.user_level_name,
     company,
     branch,
     department,
@@ -134,7 +287,11 @@ export async function getProfile(req, res) {
     position,
     senior_empid,
     senior_plan_empid,
-    session,
+    workplace: workplace_id ?? null,
+    workplace_session_id: sessionPayload?.workplace_session_id ?? null,
+    workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
+    workplace_name: workplace_name ?? null,
+    session: sessionPayload,
     permissions,
   });
 }
@@ -162,9 +319,52 @@ export async function refresh(req, res) {
     const payload = jwtService.verifyRefresh(token);
     const user = await getUserById(payload.id);
     if (!user) throw new Error('User not found');
-    const session = await getEmploymentSession(user.empid, payload.companyId);
-    const permissions = session?.user_level
-      ? await getUserLevelActions(session.user_level, session.company_id)
+    const effectiveDate = new Date();
+    const [session, sessions] = await Promise.all([
+      getEmploymentSession(user.empid, payload.companyId, { effectiveDate }),
+      getEmploymentSessions(user.empid, {
+        effectiveDate,
+        includeDiagnostics: true,
+      }),
+    ]);
+
+    const workplaceAssignments = session
+      ? sessions
+          .filter(
+            (s) =>
+              s.company_id === session.company_id &&
+              s.workplace_session_id != null,
+          )
+          .map(
+            ({
+              branch_id,
+              branch_name,
+              department_id,
+              department_name,
+              workplace_id,
+              workplace_name,
+              workplace_session_id,
+            }) => ({
+              branch_id: branch_id ?? null,
+              branch_name: branch_name ?? null,
+              department_id: department_id ?? null,
+              department_name: department_name ?? null,
+              workplace_id: workplace_id ?? null,
+              workplace_name: workplace_name ?? null,
+              workplace_session_id: workplace_session_id ?? null,
+            }),
+          )
+      : [];
+
+    const sessionPayload = session
+      ? normalizeEmploymentSession(session, workplaceAssignments)
+      : null;
+
+    const permissions = sessionPayload?.user_level
+      ? await getUserLevelActions(
+          sessionPayload.user_level,
+          sessionPayload.company_id,
+        )
       : {};
     const {
       company_id: company,
@@ -174,13 +374,15 @@ export async function refresh(req, res) {
       position,
       senior_empid,
       senior_plan_empid,
-    } = session || {};
+      workplace_id,
+      workplace_name,
+    } = sessionPayload || {};
     const newPayload = {
       id: user.id,
       empid: user.empid,
       position,
       companyId: company,
-      userLevel: session.user_level,
+      userLevel: sessionPayload?.user_level,
       seniorPlanEmpid: senior_plan_empid || null,
     };
     const newAccess = jwtService.sign(newPayload);
@@ -201,9 +403,9 @@ export async function refresh(req, res) {
       id: user.id,
       empid: user.empid,
       position,
-      full_name: session?.employee_name,
-      user_level: session?.user_level,
-      user_level_name: session?.user_level_name,
+      full_name: sessionPayload?.employee_name,
+      user_level: sessionPayload?.user_level,
+      user_level_name: sessionPayload?.user_level_name,
       company,
       branch,
       department,
@@ -211,7 +413,11 @@ export async function refresh(req, res) {
       position,
       senior_empid,
       senior_plan_empid,
-      session,
+      workplace: workplace_id ?? null,
+      workplace_session_id: sessionPayload?.workplace_session_id ?? null,
+      workplace_session_ids: sessionPayload?.workplace_session_ids ?? [],
+      workplace_name: workplace_name ?? null,
+      session: sessionPayload,
       permissions,
     });
   } catch (err) {

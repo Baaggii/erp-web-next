@@ -172,6 +172,26 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.reportApproval?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.reportApproval?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.reportApproval?.outgoing?.declined?.count || 0;
+    const totalCount =
+      incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setReportState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setReportState((prev) => ({
       ...prev,
       loading: true,
@@ -216,6 +236,26 @@ export default function NotificationsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    const incomingPending = workflows?.changeRequests?.incoming?.pending?.count || 0;
+    const outgoingPending = workflows?.changeRequests?.outgoing?.pending?.count || 0;
+    const outgoingAccepted = workflows?.changeRequests?.outgoing?.accepted?.count || 0;
+    const outgoingDeclined = workflows?.changeRequests?.outgoing?.declined?.count || 0;
+    const totalCount =
+      incomingPending + outgoingPending + outgoingAccepted + outgoingDeclined;
+
+    if (totalCount === 0) {
+      setChangeState({
+        incoming: [],
+        outgoing: [],
+        responses: createEmptyResponses(),
+        loading: false,
+        error: '',
+      });
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setChangeState((prev) => ({
       ...prev,
       loading: true,
@@ -267,6 +307,34 @@ export default function NotificationsPage() {
   const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
   const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
+  const sortTemporaryEntries = useCallback((entries, scope) => {
+    if (!Array.isArray(entries)) return [];
+    const list = [...entries];
+    const getStatus = (entry) => String(entry?.status || '').trim().toLowerCase();
+    const getTime = (entry, status) => {
+      if (!entry) return 0;
+      const reviewedAt = entry.reviewed_at || entry.reviewedAt || entry.updated_at || entry.updatedAt;
+      const createdAt = entry.created_at || entry.createdAt;
+      if (scope === 'created' && status && status !== 'pending') {
+        return new Date(reviewedAt || createdAt || 0).getTime();
+      }
+      return new Date(reviewedAt || createdAt || 0).getTime();
+    };
+
+    list.sort((a, b) => {
+      const statusA = getStatus(a);
+      const statusB = getStatus(b);
+      const processedA = scope === 'created' && statusA && statusA !== 'pending';
+      const processedB = scope === 'created' && statusB && statusB !== 'pending';
+      if (processedA !== processedB) {
+        return processedA ? -1 : 1;
+      }
+      const diff = getTime(b, statusB) - getTime(a, statusA);
+      if (diff !== 0) return diff;
+      return String(b?.id || '').localeCompare(String(a?.id || ''));
+    });
+    return list;
+  }, []);
 
   useEffect(() => {
     if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
@@ -275,16 +343,16 @@ export default function NotificationsPage() {
     const reviewPromise = temporaryFetchScopeEntries('review', SECTION_LIMIT);
     const createdPromise = temporaryFetchScopeEntries('created', SECTION_LIMIT);
     Promise.all([reviewPromise, createdPromise])
-      .then(([review, created]) => {
-        if (!cancelled) {
-          setTemporaryState({
-            loading: false,
-            error: '',
-            review: Array.isArray(review) ? review : [],
-            created: Array.isArray(created) ? created : [],
-          });
-        }
-      })
+        .then(([review, created]) => {
+          if (!cancelled) {
+            setTemporaryState({
+              loading: false,
+              error: '',
+              review: sortTemporaryEntries(review, 'review'),
+              created: sortTemporaryEntries(created, 'created'),
+            });
+          }
+        })
       .catch(() => {
         if (!cancelled)
           setTemporaryState({
@@ -299,10 +367,11 @@ export default function NotificationsPage() {
     };
   }, [
     t,
-    temporaryReviewCount,
-    temporaryCreatedCount,
-    temporaryFetchScopeEntries,
-  ]);
+      temporaryReviewCount,
+      temporaryCreatedCount,
+      temporaryFetchScopeEntries,
+      sortTemporaryEntries,
+    ]);
 
   const reportPending = useMemo(() => {
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
@@ -380,9 +449,34 @@ export default function NotificationsPage() {
   );
 
   const openTemporary = useCallback(
-    (scope) => {
+    (scope, entry) => {
       handleTemporarySeen(scope);
-      navigate('/forms');
+      if (!entry) {
+        navigate('/forms');
+        return;
+      }
+      const params = new URLSearchParams();
+      params.set('temporaryOpen', '1');
+      if (scope) params.set('temporaryScope', scope);
+      params.set('temporaryKey', String(Date.now()));
+      const moduleKey = entry?.moduleKey || entry?.module_key || '';
+      let path = '/forms';
+      if (moduleKey) {
+        params.set('temporaryModule', moduleKey);
+        path = `/forms/${moduleKey.replace(/_/g, '-')}`;
+      }
+      const configName = entry?.configName || entry?.config_name || '';
+      const formName = entry?.formName || entry?.form_name || configName;
+      if (formName) params.set('temporaryForm', formName);
+      if (configName && configName !== formName) {
+        params.set('temporaryConfig', configName);
+      }
+      const tableName = entry?.tableName || entry?.table_name || '';
+      if (tableName) params.set('temporaryTable', tableName);
+      const idValue =
+        entry?.id ?? entry?.temporary_id ?? entry?.temporaryId ?? null;
+      if (idValue != null) params.set('temporaryId', String(idValue));
+      navigate(`${path}?${params.toString()}`);
     },
     [handleTemporarySeen, navigate],
   );
@@ -541,33 +635,70 @@ export default function NotificationsPage() {
     [combineResponses, changeState.responses],
   );
 
-  const renderTemporaryItem = (entry, scope) => (
-    <li key={`${scope}-${entry.id}`} style={styles.listItem}>
-      <div style={styles.listBody}>
-        <div style={styles.listTitle}>{entry.formName || entry.tableName || entry.id}</div>
-        <div style={styles.listMeta}>
-          {entry.createdBy && (
-            <span>
-              {t('notifications_created_by', 'Created by')}: {entry.createdBy}
-            </span>
-          )}
-          {entry.createdAt && (
-            <span>
-              {t('notifications_created_at', 'Created')}: {formatTimestamp(entry.createdAt)}
-            </span>
-          )}
-          {entry.status && (
-            <span>
-              {t('status', 'Status')}: {entry.status}
-            </span>
-          )}
-        </div>
-      </div>
-      <button style={styles.listAction} onClick={() => openTemporary(scope)}>
-        {t('notifications_open_form', 'Open forms')}
-      </button>
-    </li>
-  );
+    const renderTemporaryItem = (entry, scope) => {
+      const statusRaw = entry?.status ? String(entry.status).trim().toLowerCase() : '';
+      const isPending = statusRaw === 'pending' || statusRaw === '';
+      const statusLabel = isPending
+        ? t('temporary_pending_status', 'Pending')
+        : statusRaw === 'promoted'
+        ? t('temporary_promoted_short', 'Promoted')
+        : statusRaw === 'rejected'
+        ? t('temporary_rejected_short', 'Rejected')
+        : entry?.status || '-';
+      const statusColor = statusRaw === 'rejected'
+        ? '#b91c1c'
+        : statusRaw === 'promoted'
+        ? '#15803d'
+        : '#1f2937';
+      const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
+      const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || entry?.updatedAt || entry?.updated_at;
+      const reviewer = entry?.reviewedBy || entry?.reviewed_by || '';
+      return (
+        <li key={`${scope}-${entry.id}`} style={styles.listItem}>
+          <div style={styles.listBody}>
+            <div style={styles.listTitle}>
+              {entry.formLabel || entry.formName || entry.tableName || entry.id}
+            </div>
+            <div style={styles.listMeta}>
+              {entry.createdBy && (
+                <span>
+                  {t('notifications_created_by', 'Created by')}: {entry.createdBy}
+                </span>
+              )}
+              {entry.createdAt && (
+                <span>
+                  {t('notifications_created_at', 'Created')}: {formatTimestamp(entry.createdAt)}
+                </span>
+              )}
+              {statusLabel && (
+                <span style={{ color: statusColor }}>
+                  {t('status', 'Status')}: {statusLabel}
+                </span>
+              )}
+              {!isPending && reviewedAt && (
+                <span>
+                  {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
+                </span>
+              )}
+              {!isPending && reviewer && (
+                <span>
+                  {t('temporary_reviewed_by', 'Reviewed by')}: {reviewer}
+                </span>
+              )}
+            </div>
+            {!isPending && reviewNotes && (
+              <div style={styles.listSummaryNotes}>
+                <strong>{t('temporary_review_notes', 'Review notes')}:</strong>
+                <span style={styles.listSummaryNotesText}>{reviewNotes}</span>
+              </div>
+            )}
+          </div>
+          <button style={styles.listAction} onClick={() => openTemporary(scope, entry)}>
+            {t('notifications_open_form', 'Open forms')}
+          </button>
+        </li>
+      );
+    };
 
   return (
     <div style={styles.page}>
@@ -752,7 +883,10 @@ export default function NotificationsPage() {
                   {temporaryState.review.map((entry) => renderTemporaryItem(entry, 'review'))}
                 </ul>
               )}
-              <button style={styles.listAction} onClick={() => openTemporary('review')}>
+              <button
+                style={styles.listAction}
+                onClick={() => openTemporary('review', temporaryState.review[0])}
+              >
                 {t('notifications_open_review', 'Open review workspace')}
               </button>
             </div>
@@ -765,7 +899,10 @@ export default function NotificationsPage() {
                   {temporaryState.created.map((entry) => renderTemporaryItem(entry, 'created'))}
                 </ul>
               )}
-              <button style={styles.listAction} onClick={() => openTemporary('created')}>
+              <button
+                style={styles.listAction}
+                onClick={() => openTemporary('created', temporaryState.created[0])}
+              >
                 {t('notifications_open_drafts', 'Open drafts workspace')}
               </button>
             </div>
@@ -838,14 +975,28 @@ const styles = {
     fontSize: '1rem',
     fontWeight: 600,
   },
-  list: {
-    listStyle: 'none',
-    margin: 0,
-    padding: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-  },
+    list: {
+      listStyle: 'none',
+      margin: 0,
+      padding: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem',
+    },
+    listSummaryNotes: {
+      marginTop: '0.5rem',
+      padding: '0.5rem',
+      backgroundColor: '#f9fafb',
+      borderRadius: '0.5rem',
+      fontSize: '0.85rem',
+      color: '#1f2937',
+      whiteSpace: 'pre-wrap',
+    },
+    listSummaryNotesText: {
+      display: 'block',
+      marginTop: '0.25rem',
+      whiteSpace: 'pre-wrap',
+    },
   listItem: {
     display: 'flex',
     justifyContent: 'space-between',

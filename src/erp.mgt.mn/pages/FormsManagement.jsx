@@ -9,6 +9,70 @@ import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
 
+const POS_API_FIELDS = [
+  { key: 'totalAmount', label: 'Total amount' },
+  { key: 'totalVAT', label: 'Total VAT' },
+  { key: 'totalCityTax', label: 'Total city tax' },
+  { key: 'customerTin', label: 'Customer TIN' },
+  { key: 'consumerNo', label: 'Consumer number' },
+  { key: 'taxType', label: 'Tax type' },
+  { key: 'lotNo', label: 'Lot number (pharmacy)' },
+];
+
+function normalizeFormConfig(info = {}) {
+  const toArray = (value) => (Array.isArray(value) ? [...value] : []);
+  const toObject = (value) =>
+    value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
+  const toString = (value) => (typeof value === 'string' ? value : '');
+  const temporaryFlag = Boolean(
+    info.supportsTemporarySubmission ??
+      info.allowTemporarySubmission ??
+      info.supportsTemporary ??
+      false,
+  );
+
+  const allowedBranches = toArray(info.allowedBranches).map((v) => String(v));
+  const allowedDepartments = toArray(info.allowedDepartments).map((v) => String(v));
+
+  return {
+    visibleFields: toArray(info.visibleFields),
+    requiredFields: toArray(info.requiredFields),
+    defaultValues: toObject(info.defaultValues),
+    editableDefaultFields: toArray(info.editableDefaultFields),
+    editableFields:
+      info.editableFields === undefined ? [] : toArray(info.editableFields),
+    userIdFields: toArray(info.userIdFields),
+    branchIdFields: toArray(info.branchIdFields),
+    departmentIdFields: toArray(info.departmentIdFields),
+    companyIdFields: toArray(info.companyIdFields),
+    dateField: toArray(info.dateField),
+    emailField: toArray(info.emailField),
+    imagenameField: toArray(info.imagenameField),
+    imageIdField: toString(info.imageIdField),
+    imageFolder: toString(info.imageFolder),
+    printEmpField: toArray(info.printEmpField),
+    printCustField: toArray(info.printCustField),
+    totalCurrencyFields: toArray(info.totalCurrencyFields),
+    totalAmountFields: toArray(info.totalAmountFields),
+    signatureFields: toArray(info.signatureFields),
+    headerFields: toArray(info.headerFields),
+    mainFields: toArray(info.mainFields),
+    footerFields: toArray(info.footerFields),
+    viewSource: toObject(info.viewSource),
+    transactionTypeField: toString(info.transactionTypeField),
+    transactionTypeValue: toString(info.transactionTypeValue),
+    detectFields: toArray(info.detectFields),
+    allowedBranches,
+    allowedDepartments,
+    procedures: toArray(info.procedures),
+    supportsTemporarySubmission: temporaryFlag,
+    allowTemporarySubmission: temporaryFlag,
+    posApiEnabled: Boolean(info.posApiEnabled),
+    posApiType: toString(info.posApiType),
+    posApiMapping: toObject(info.posApiMapping),
+  };
+}
+
 export default function FormsManagement() {
   const { t } = useContext(I18nContext);
   const { addToast } = useToast();
@@ -45,37 +109,7 @@ export default function FormsManagement() {
     debugLog('Component mounted: FormsManagement');
   }, []);
 
-  const [config, setConfig] = useState({
-    visibleFields: [],
-    requiredFields: [],
-    defaultValues: {},
-    editableDefaultFields: [],
-    editableFields: [],
-    userIdFields: [],
-    branchIdFields: [],
-    departmentIdFields: [],
-    companyIdFields: [],
-    dateField: [],
-    emailField: [],
-    imagenameField: [],
-    imageIdField: '',
-    imageFolder: '',
-    printEmpField: [],
-    printCustField: [],
-    totalCurrencyFields: [],
-    totalAmountFields: [],
-    signatureFields: [],
-    headerFields: [],
-    mainFields: [],
-    footerFields: [],
-    viewSource: {},
-    transactionTypeField: '',
-    transactionTypeValue: '',
-    detectFields: [],
-    allowedBranches: [],
-    allowedDepartments: [],
-    procedures: [],
-  });
+  const [config, setConfig] = useState(() => normalizeFormConfig());
 
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
@@ -145,37 +179,7 @@ export default function FormsManagement() {
     setName(cfg.name);
     setModuleKey(cfg.moduleKey || '');
     const info = cfg.config || {};
-    setConfig({
-      visibleFields: info.visibleFields || [],
-      requiredFields: info.requiredFields || [],
-      defaultValues: info.defaultValues || {},
-      editableDefaultFields: info.editableDefaultFields || [],
-      editableFields: info.editableFields || [],
-      userIdFields: info.userIdFields || [],
-      branchIdFields: info.branchIdFields || [],
-      departmentIdFields: info.departmentIdFields || [],
-      companyIdFields: info.companyIdFields || [],
-      dateField: info.dateField || [],
-      emailField: info.emailField || [],
-      imagenameField: info.imagenameField || [],
-      imageIdField: info.imageIdField || '',
-      imageFolder: info.imageFolder || '',
-      printEmpField: info.printEmpField || [],
-      printCustField: info.printCustField || [],
-      totalCurrencyFields: info.totalCurrencyFields || [],
-      totalAmountFields: info.totalAmountFields || [],
-      signatureFields: info.signatureFields || [],
-      headerFields: info.headerFields || [],
-      mainFields: info.mainFields || [],
-      footerFields: info.footerFields || [],
-      viewSource: info.viewSource || {},
-      transactionTypeField: info.transactionTypeField || '',
-      transactionTypeValue: info.transactionTypeValue || '',
-      detectFields: info.detectFields || [],
-      allowedBranches: (info.allowedBranches || []).map(String),
-      allowedDepartments: (info.allowedDepartments || []).map(String),
-      procedures: info.procedures || [],
-    });
+    setConfig(normalizeFormConfig(info));
     setNames([cfg.name]);
     fetch(`/api/tables/${encodeURIComponent(cfg.table)}/columns`, {
       credentials: 'include',
@@ -272,107 +276,17 @@ export default function FormsManagement() {
         setNames(Object.keys(filtered));
         if (filtered[name]) {
           setModuleKey(filtered[name].moduleKey || '');
-          setConfig({
-            visibleFields: filtered[name].visibleFields || [],
-            requiredFields: filtered[name].requiredFields || [],
-            defaultValues: filtered[name].defaultValues || {},
-            editableDefaultFields: filtered[name].editableDefaultFields || [],
-            editableFields: filtered[name].editableFields || [],
-            userIdFields: filtered[name].userIdFields || [],
-            branchIdFields: filtered[name].branchIdFields || [],
-            departmentIdFields: filtered[name].departmentIdFields || [],
-            companyIdFields: filtered[name].companyIdFields || [],
-            dateField: filtered[name].dateField || [],
-            emailField: filtered[name].emailField || [],
-            imagenameField: filtered[name].imagenameField || [],
-            imageIdField: filtered[name].imageIdField || '',
-            imageFolder: filtered[name].imageFolder || '',
-            printEmpField: filtered[name].printEmpField || [],
-            printCustField: filtered[name].printCustField || [],
-            totalCurrencyFields: filtered[name].totalCurrencyFields || [],
-            totalAmountFields: filtered[name].totalAmountFields || [],
-            signatureFields: filtered[name].signatureFields || [],
-            headerFields: filtered[name].headerFields || [],
-            mainFields: filtered[name].mainFields || [],
-            footerFields: filtered[name].footerFields || [],
-            viewSource: filtered[name].viewSource || {},
-            transactionTypeField: filtered[name].transactionTypeField || '',
-            transactionTypeValue: filtered[name].transactionTypeValue || '',
-            detectFields: filtered[name].detectFields || [],
-            allowedBranches: (filtered[name].allowedBranches || []).map(String),
-            allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
-            procedures: filtered[name].procedures || [],
-          });
+          setConfig(normalizeFormConfig(filtered[name]));
         } else {
           setName('');
-          setConfig({
-            visibleFields: [],
-            requiredFields: [],
-            defaultValues: {},
-            editableDefaultFields: [],
-            editableFields: [],
-            userIdFields: [],
-            branchIdFields: [],
-            departmentIdFields: [],
-            companyIdFields: [],
-            dateField: [],
-            emailField: [],
-            imagenameField: [],
-            imageIdField: '',
-            imageFolder: '',
-            printEmpField: [],
-            printCustField: [],
-            totalCurrencyFields: [],
-            totalAmountFields: [],
-            signatureFields: [],
-            headerFields: [],
-            mainFields: [],
-            footerFields: [],
-            viewSource: {},
-            transactionTypeField: '',
-            transactionTypeValue: '',
-            detectFields: [],
-            allowedBranches: [],
-            allowedDepartments: [],
-            procedures: [],
-          });
+          setConfig(normalizeFormConfig());
         }
       })
       .catch(() => {
         setIsDefault(true);
         setNames([]);
         setName('');
-        setConfig({
-          visibleFields: [],
-          requiredFields: [],
-          defaultValues: {},
-          editableDefaultFields: [],
-          editableFields: [],
-          userIdFields: [],
-          branchIdFields: [],
-          departmentIdFields: [],
-          companyIdFields: [],
-          dateField: [],
-          emailField: [],
-          imagenameField: [],
-          imageIdField: '',
-          imageFolder: '',
-          printEmpField: [],
-          printCustField: [],
-          totalCurrencyFields: [],
-          totalAmountFields: [],
-          signatureFields: [],
-          headerFields: [],
-          mainFields: [],
-          footerFields: [],
-          viewSource: {},
-          transactionTypeField: '',
-          transactionTypeValue: '',
-          detectFields: [],
-          allowedBranches: [],
-          allowedDepartments: [],
-          procedures: [],
-        });
+        setConfig(normalizeFormConfig());
         setModuleKey('');
       });
   }, [table, moduleKey]);
@@ -384,71 +298,11 @@ export default function FormsManagement() {
       .then((cfg) => {
         setIsDefault(!!cfg.isDefault);
         setModuleKey(cfg.moduleKey || '');
-        setConfig({
-          visibleFields: cfg.visibleFields || [],
-          requiredFields: cfg.requiredFields || [],
-          defaultValues: cfg.defaultValues || {},
-          editableDefaultFields: cfg.editableDefaultFields || [],
-          editableFields: cfg.editableFields || [],
-          userIdFields: cfg.userIdFields || [],
-          branchIdFields: cfg.branchIdFields || [],
-          departmentIdFields: cfg.departmentIdFields || [],
-          companyIdFields: cfg.companyIdFields || [],
-          dateField: cfg.dateField || [],
-          emailField: cfg.emailField || [],
-          imagenameField: cfg.imagenameField || [],
-          imageIdField: cfg.imageIdField || '',
-          imageFolder: cfg.imageFolder || '',
-          printEmpField: cfg.printEmpField || [],
-          printCustField: cfg.printCustField || [],
-          totalCurrencyFields: cfg.totalCurrencyFields || [],
-          totalAmountFields: cfg.totalAmountFields || [],
-          signatureFields: cfg.signatureFields || [],
-          headerFields: cfg.headerFields || [],
-          mainFields: cfg.mainFields || [],
-          footerFields: cfg.footerFields || [],
-          viewSource: cfg.viewSource || {},
-          transactionTypeField: cfg.transactionTypeField || '',
-          transactionTypeValue: cfg.transactionTypeValue || '',
-          detectFields: cfg.detectFields || [],
-          allowedBranches: (cfg.allowedBranches || []).map(String),
-          allowedDepartments: (cfg.allowedDepartments || []).map(String),
-          procedures: cfg.procedures || [],
-        });
+        setConfig(normalizeFormConfig(cfg));
       })
       .catch(() => {
         setIsDefault(true);
-        setConfig({
-          visibleFields: [],
-          requiredFields: [],
-          defaultValues: {},
-          editableDefaultFields: [],
-          editableFields: [],
-          userIdFields: [],
-          branchIdFields: [],
-          departmentIdFields: [],
-          companyIdFields: [],
-          dateField: [],
-          emailField: [],
-          imagenameField: [],
-          imageIdField: '',
-          imageFolder: '',
-          printEmpField: [],
-          printCustField: [],
-          totalCurrencyFields: [],
-          totalAmountFields: [],
-          signatureFields: [],
-          headerFields: [],
-          mainFields: [],
-          footerFields: [],
-          viewSource: {},
-          transactionTypeField: '',
-          transactionTypeValue: '',
-          detectFields: [],
-          allowedBranches: [],
-          allowedDepartments: [],
-          procedures: [],
-        });
+        setConfig(normalizeFormConfig());
         setModuleKey('');
       });
   }, [table, name, names]);
@@ -500,6 +354,18 @@ export default function FormsManagement() {
     });
   }
 
+  function updatePosApiMapping(field, value) {
+    setConfig((c) => {
+      const next = { ...(c.posApiMapping || {}) };
+      if (!value) {
+        delete next[field];
+      } else {
+        next[field] = value;
+      }
+      return { ...c, posApiMapping: next };
+    });
+  }
+
   async function handleSave() {
     if (!name) {
       alert('Please enter transaction name');
@@ -509,11 +375,20 @@ export default function FormsManagement() {
       ...config,
       moduleKey,
       allowedBranches: config.allowedBranches.map((b) => Number(b)).filter((b) => !Number.isNaN(b)),
-      allowedDepartments: config.allowedDepartments.map((d) => Number(d)).filter((d) => !Number.isNaN(d)),
+      allowedDepartments: config.allowedDepartments
+        .map((d) => Number(d))
+        .filter((d) => !Number.isNaN(d)),
       transactionTypeValue: config.transactionTypeValue
         ? String(config.transactionTypeValue)
         : '',
     };
+    const temporaryFlag = Boolean(
+      config.supportsTemporarySubmission ??
+        config.allowTemporarySubmission ??
+        false,
+    );
+    cfg.allowTemporarySubmission = temporaryFlag;
+    cfg.supportsTemporarySubmission = temporaryFlag;
     if (cfg.transactionTypeField && cfg.transactionTypeValue) {
       cfg.defaultValues = {
         ...cfg.defaultValues,
@@ -601,37 +476,7 @@ export default function FormsManagement() {
       list.filter((c) => !(c.table === table && c.name === name)),
     );
     setName('');
-    setConfig({
-      visibleFields: [],
-      requiredFields: [],
-      defaultValues: {},
-      editableDefaultFields: [],
-      editableFields: [],
-      userIdFields: [],
-      branchIdFields: [],
-      departmentIdFields: [],
-      companyIdFields: [],
-      dateField: [],
-      emailField: [],
-      imagenameField: [],
-      imageIdField: '',
-      imageFolder: '',
-      printEmpField: [],
-      printCustField: [],
-      totalCurrencyFields: [],
-      totalAmountFields: [],
-      signatureFields: [],
-      headerFields: [],
-      mainFields: [],
-      footerFields: [],
-      viewSource: {},
-      transactionTypeField: '',
-      transactionTypeValue: '',
-      detectFields: [],
-      allowedBranches: [],
-      allowedDepartments: [],
-      procedures: [],
-    });
+    setConfig(normalizeFormConfig());
     setModuleKey('');
     setSelectedConfig('');
   }
@@ -690,70 +535,10 @@ export default function FormsManagement() {
         const formNames = Object.keys(filtered);
         setNames(formNames);
         if (filtered[name]) {
-          setConfig({
-            visibleFields: filtered[name].visibleFields || [],
-            requiredFields: filtered[name].requiredFields || [],
-            defaultValues: filtered[name].defaultValues || {},
-            editableDefaultFields: filtered[name].editableDefaultFields || [],
-            editableFields: filtered[name].editableFields || [],
-            userIdFields: filtered[name].userIdFields || [],
-            branchIdFields: filtered[name].branchIdFields || [],
-            departmentIdFields: filtered[name].departmentIdFields || [],
-            companyIdFields: filtered[name].companyIdFields || [],
-            dateField: filtered[name].dateField || [],
-            emailField: filtered[name].emailField || [],
-            imagenameField: filtered[name].imagenameField || [],
-            imageIdField: filtered[name].imageIdField || '',
-            imageFolder: filtered[name].imageFolder || '',
-            printEmpField: filtered[name].printEmpField || [],
-            printCustField: filtered[name].printCustField || [],
-            totalCurrencyFields: filtered[name].totalCurrencyFields || [],
-            totalAmountFields: filtered[name].totalAmountFields || [],
-            signatureFields: filtered[name].signatureFields || [],
-            headerFields: filtered[name].headerFields || [],
-            mainFields: filtered[name].mainFields || [],
-            footerFields: filtered[name].footerFields || [],
-            viewSource: filtered[name].viewSource || {},
-            transactionTypeField: filtered[name].transactionTypeField || '',
-            transactionTypeValue: filtered[name].transactionTypeValue || '',
-            detectFields: filtered[name].detectFields || [],
-            allowedBranches: (filtered[name].allowedBranches || []).map(String),
-            allowedDepartments: (filtered[name].allowedDepartments || []).map(String),
-            procedures: filtered[name].procedures || [],
-          });
+          setConfig(normalizeFormConfig(filtered[name]));
         } else {
           setName('');
-          setConfig({
-            visibleFields: [],
-            requiredFields: [],
-            defaultValues: {},
-            editableDefaultFields: [],
-            editableFields: [],
-            userIdFields: [],
-            branchIdFields: [],
-            departmentIdFields: [],
-            companyIdFields: [],
-            dateField: [],
-            emailField: [],
-            imagenameField: [],
-            imageIdField: '',
-            imageFolder: '',
-            printEmpField: [],
-            printCustField: [],
-            totalCurrencyFields: [],
-            totalAmountFields: [],
-            signatureFields: [],
-            headerFields: [],
-            mainFields: [],
-            footerFields: [],
-            viewSource: {},
-            transactionTypeField: '',
-            transactionTypeValue: '',
-            detectFields: [],
-            allowedBranches: [],
-            allowedDepartments: [],
-            procedures: [],
-          });
+          setConfig(normalizeFormConfig());
         }
       }
       addToast('Imported', 'success');
@@ -888,6 +673,105 @@ export default function FormsManagement() {
                 }
               />
             </label>
+
+            <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                checked={Boolean(config.allowTemporarySubmission)}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setConfig((c) => ({
+                    ...c,
+                    allowTemporarySubmission: checked,
+                    supportsTemporarySubmission: checked,
+                  }));
+                }}
+              />
+              <span>
+                {t(
+                  'allow_temporary_submission',
+                  'Allow temporary transaction submissions',
+                )}
+              </span>
+            </label>
+            <small style={{ color: '#666', marginLeft: '1.5rem', display: 'block' }}>
+              {t(
+                'allow_temporary_submission_hint',
+                'When enabled, users can save drafts that require senior confirmation before posting.',
+              )}
+            </small>
+
+            <fieldset
+              style={{
+                marginTop: '1rem',
+                border: '1px solid #ccc',
+                padding: '0.75rem 1rem',
+              }}
+            >
+              <legend>POSAPI</legend>
+              <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                <input
+                  type="checkbox"
+                  checked={Boolean(config.posApiEnabled)}
+                  onChange={(e) =>
+                    setConfig((c) => ({ ...c, posApiEnabled: e.target.checked }))
+                  }
+                />
+                <span>Enable POSAPI submission</span>
+              </label>
+              <label style={{ display: 'block', marginTop: '0.75rem' }}>
+                Receipt type:
+                <select
+                  value={config.posApiType}
+                  disabled={!config.posApiEnabled}
+                  onChange={(e) =>
+                    setConfig((c) => ({ ...c, posApiType: e.target.value }))
+                  }
+                >
+                  <option value="">Use default from environment</option>
+                  <option value="B2C_RECEIPT">B2C_RECEIPT</option>
+                  <option value="B2C_INVOICE">B2C_INVOICE</option>
+                  <option value="B2B_INVOICE">B2B_INVOICE</option>
+                </select>
+              </label>
+              <div style={{ marginTop: '0.75rem' }}>
+                <strong>Field mapping</strong>
+                <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                  Map POSAPI fields to columns in the master transaction table. Leave
+                  blank to skip optional fields.
+                </p>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: '0.75rem',
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  {POS_API_FIELDS.map((field) => {
+                    const listId = `posapi-${field.key}-columns`;
+                    return (
+                      <label key={field.key} style={{ display: 'flex', flexDirection: 'column' }}>
+                        <span>{field.label}</span>
+                        <input
+                          type="text"
+                          list={listId}
+                          value={config.posApiMapping[field.key] || ''}
+                          onChange={(e) => updatePosApiMapping(field.key, e.target.value)}
+                          placeholder="Column name"
+                          disabled={!config.posApiEnabled}
+                        />
+                        <datalist id={listId}>
+                          {columns.map((col) => (
+                            <option key={col} value={col} />
+                          ))}
+                        </datalist>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </fieldset>
 
             {name && <button onClick={handleDelete}>Delete</button>}
           </div>
@@ -1186,6 +1070,94 @@ export default function FormsManagement() {
                 None
               </button>
             </label>
+            {config.allowTemporarySubmission && (
+              <>
+                <label style={{ marginLeft: '1rem' }}>
+                  Temporary allowed branches:{' '}
+                  <select
+                    multiple
+                    size={8}
+                    value={config.temporaryAllowedBranches}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        temporaryAllowedBranches: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {branchOptions.map((b) => (
+                      <option key={b.value} value={b.value}>
+                        {b.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({
+                        ...c,
+                        temporaryAllowedBranches: branchOptions.map((b) => b.value),
+                      }))
+                    }
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({ ...c, temporaryAllowedBranches: [] }))
+                    }
+                  >
+                    None
+                  </button>
+                </label>
+                <label style={{ marginLeft: '1rem' }}>
+                  Temporary allowed departments:{' '}
+                  <select
+                    multiple
+                    size={8}
+                    value={config.temporaryAllowedDepartments}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        temporaryAllowedDepartments: Array.from(
+                          e.target.selectedOptions,
+                          (o) => o.value,
+                        ),
+                      }))
+                    }
+                  >
+                    {deptOptions.map((d) => (
+                      <option key={d.value} value={d.value}>
+                        {d.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({
+                        ...c,
+                        temporaryAllowedDepartments: deptOptions.map((d) => d.value),
+                      }))
+                    }
+                  >
+                    All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setConfig((c) => ({ ...c, temporaryAllowedDepartments: [] }))
+                    }
+                  >
+                    None
+                  </button>
+                </label>
+              </>
+            )}
             {procedureOptions.length > 0 && (
               <label style={{ marginLeft: '1rem' }}>
                 Procedures:{' '}

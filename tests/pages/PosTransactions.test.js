@@ -2,11 +2,15 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { fetchTriggersForTables } from '../../src/erp.mgt.mn/utils/fetchTriggersForTables.js';
 import { syncCalcFields } from '../../src/erp.mgt.mn/utils/syncCalcFields.js';
+import { applyPosFields } from '../../src/erp.mgt.mn/utils/transactionValues.js';
 
 if (typeof mock.import !== 'function') {
   test('shouldLoadRelations helper', { skip: true }, () => {});
   test('applySessionIdToTables helper', { skip: true }, () => {});
   test('calc field preflight respects SUM aggregators and multi rows', { skip: true }, () => {});
+  test('buildComputedFieldMap collects aggregated targets', { skip: true }, () => {});
+  test('buildComputedFieldMap includes POS targets even when flagged editable', { skip: true }, () => {});
+  test('computed field map keeps non-formula editable columns enabled', { skip: true }, () => {});
   test('generated column configs support lowercase generation_expression metadata', { skip: true }, () => {});
 } else {
   test('shouldLoadRelations helper', async () => {
@@ -212,8 +216,18 @@ if (typeof mock.import !== 'function') {
       },
     ];
 
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions_pos', field: 'payable_amount', agg: '=' },
+          { table: 'transactions_pos', field: 'total_amount', agg: '=' },
+          { table: 'transactions_pos', field: 'total_discount', agg: '-' },
+        ],
+      },
+    ];
+
     const baseData = {
-      transactions_pos: { total_amount: 300 },
+      transactions_pos: { total_amount: 300, total_discount: 20, payable_amount: 280 },
       transactions_order: [
         { ordrap: 100, pos_session_id: 'session-1' },
         { ordrap: 200, pos_session_id: 'session-1' },
@@ -224,7 +238,7 @@ if (typeof mock.import !== 'function') {
       ],
     };
 
-    assert.equal(findCalcFieldMismatch(baseData, calcFields), null);
+    assert.equal(findCalcFieldMismatch(baseData, calcFields, { posFields }), null);
 
     const mismatchTotals = findCalcFieldMismatch(
       {
@@ -232,8 +246,10 @@ if (typeof mock.import !== 'function') {
         transactions_pos: { total_amount: 400 },
       },
       calcFields,
+      { posFields },
     );
     assert.ok(mismatchTotals, 'should detect mismatched SUM totals');
+    assert.match(mismatchTotals.message, /Map 1|Mismatch/, 'includes descriptive message');
 
     const mismatchSession = findCalcFieldMismatch(
       {
@@ -243,8 +259,316 @@ if (typeof mock.import !== 'function') {
         ),
       },
       calcFields,
+      { posFields },
     );
     assert.ok(mismatchSession, 'should detect mismatched multi-row values');
+
+    const mismatchFormula = findCalcFieldMismatch(
+      {
+        ...baseData,
+        transactions_pos: { total_amount: 300, total_discount: 20, payable_amount: 260 },
+      },
+      calcFields,
+      { posFields },
+    );
+    assert.ok(mismatchFormula, 'should detect mismatched POS formula totals');
+    assert.match(mismatchFormula.message, /payable_amount/);
+
+    const filtered = findCalcFieldMismatch(baseData, calcFields, {
+      tables: ['transactions_plan'],
+      posFields,
+    });
+    assert.equal(filtered, null, 'unaffected tables should skip mismatch scan');
+  });
+
+  test('buildComputedFieldMap collects multi-field POS aggregates', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'grand_total' },
+          { table: 'transactions', field: 'total_amount', agg: '=' },
+          { table: 'transactions', field: 'total_discount', agg: '-' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: {
+        total_amount: 'TotalAmount',
+        total_discount: 'TotalDiscount',
+        grand_total: 'GrandTotal',
+      },
+    };
+
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap(
+      [],
+      posFields,
+      columnCaseMap,
+      tables,
+    );
+
+    assert.ok(map.transactions instanceof Set);
+    assert.deepEqual(
+      Array.from(map.transactions).sort(),
+      ['grandtotal'],
+    );
+    assert.equal(map.transactions.has('totalamount'), false);
+  });
+
+  test('buildComputedFieldMap keeps calc map targets editable', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+    const { normalizeCalcFieldConfig } = await mock.import(
+      '../../src/erp.mgt.mn/utils/syncCalcFields.js',
+      {},
+    );
+
+    const calcFields = normalizeCalcFieldConfig([
+      {
+        cells: [
+          { table: 'transactions_pos', field: 'pos_date' },
+          { table: 'transactions_order', field: 'ordrdate' },
+        ],
+      },
+    ]);
+
+    const map = buildComputedFieldMap(
+      calcFields,
+      [],
+      {},
+      ['transactions_pos', 'transactions_order'],
+    );
+
+    assert.equal(map.transactions_pos, undefined);
+    assert.equal(map.transactions_order, undefined);
+  });
+
+  test('buildComputedFieldMap includes POS targets even when flagged editable', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Note' },
+          { table: 'transactions', field: 'Note', agg: '=' },
+          { table: 'transactions', field: 'Suffix', agg: '+' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = { transactions: { note: 'Note', suffix: 'Suffix' } };
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, tables);
+
+    assert.ok(map.transactions instanceof Set);
+    assert.deepEqual(Array.from(map.transactions), ['note']);
+    assert.ok(map.transactions.reasonMap instanceof Map);
+    const reasonSet = map.transactions.reasonMap.get('note');
+    assert.ok(reasonSet instanceof Set);
+    assert.deepEqual(Array.from(reasonSet).sort(), ['posFormula']);
+  });
+
+  test('buildComputedFieldMap ignores POS entries without calc sources', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      { parts: [{ table: 'transactions', field: 'ManualNote' }] },
+      {
+        parts: [
+          { table: 'transactions', field: 'ManualCode' },
+          { table: '', field: '', agg: '=' },
+          { field: 'ignored' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = { transactions: { manualnote: 'ManualNote' } };
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, tables);
+
+    assert.equal(map.transactions, undefined);
+  });
+
+  test('computed field map keeps non-formula editable columns enabled', async () => {
+    const { buildComputedFieldMap, collectDisabledFieldsAndReasons } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Total' },
+          { table: 'transactions', field: 'Amount', agg: '=' },
+          { table: 'transactions', field: 'Fee', agg: '+' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: { total: 'Total', amount: 'Amount', fee: 'Fee' },
+    };
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, tables);
+    const computedSet = map.transactions;
+
+    assert.ok(computedSet instanceof Set);
+    assert.equal(computedSet.has('total'), true);
+    assert.equal(computedSet.has('amount'), false);
+    const totalReasons = computedSet.reasonMap?.get('total');
+    assert.ok(totalReasons instanceof Set);
+    assert.equal(totalReasons.has('posFormula'), true);
+
+    const visible = ['Amount', 'Total'];
+    const editSet = new Set(visible.map((field) => field.toLowerCase()));
+
+    const { disabled, reasonMap } = collectDisabledFieldsAndReasons({
+      allFields: visible,
+      editSet,
+      caseMap: columnCaseMap.transactions,
+    });
+
+    assert.deepEqual(disabled, []);
+    assert.equal(reasonMap.size, 0);
+  });
+
+  test('buildComputedFieldMap tracks reason codes for multi-field formulas', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Total' },
+          { table: 'transactions', field: 'Amount', agg: '=' },
+          { table: 'transactions', field: 'Fee', agg: '+' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = { transactions: { total: 'Total', amount: 'Amount', fee: 'Fee' } };
+    const tables = ['transactions'];
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, tables);
+    assert.ok(map.transactions instanceof Set);
+    assert.equal(map.transactions.has('total'), true);
+    const reasonSet = map.transactions.reasonMap?.get('total');
+    assert.ok(reasonSet instanceof Set);
+    assert.equal(reasonSet.has('posFormula'), true);
+  });
+
+  test('buildComputedFieldMap only guards non-editable POS locks', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Total' },
+          { table: 'transactions', field: 'Subtotal', agg: '=' },
+        ],
+        locks: [
+          { field: 'Total', editable: false, reasonCodes: ['workflowLock'] },
+          { table: 'transactions', field: 'Subtotal', editable: true, reason: 'skip-me' },
+          { table: 'transactions', field: 'Discount', nonEditable: 'yes', codes: ['discountHold'] },
+          { table: 'transactions', field: 'Fee', editable: 'Y' },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: {
+        total: 'Total',
+        subtotal: 'Subtotal',
+        discount: 'Discount',
+      },
+    };
+
+    const map = buildComputedFieldMap([], posFields, columnCaseMap, ['transactions']);
+    assert.ok(map.transactions instanceof Set);
+    assert.equal(map.transactions.has('total'), true);
+    assert.equal(map.transactions.has('discount'), false);
+    assert.equal(map.transactions.has('subtotal'), false);
+    assert.equal(map.transactions.has('fee'), false);
+
+    const reasonMap = map.transactions.reasonMap;
+    assert.ok(reasonMap instanceof Map);
+
+    const totalReasons = reasonMap.get('total');
+    assert.ok(totalReasons instanceof Set);
+    assert.equal(totalReasons.has('posFormula'), true);
+
+    assert.equal(reasonMap.has('subtotal'), false);
+    assert.equal(reasonMap.has('fee'), false);
+    assert.equal(reasonMap.has('discount'), false);
+  });
+
+  test('buildComputedFieldMap always records formula targets', async () => {
+    const { buildComputedFieldMap } = await mock.import(
+      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
+      {},
+    );
+
+    const posFields = [
+      {
+        parts: [
+          { table: 'transactions', field: 'Total' },
+          { table: 'transactions', field: 'Subtotal', agg: '=' },
+        ],
+        locks: [
+          { table: 'transactions', field: 'Total', nonEditable: true, reasons: ['workflowLock'] },
+          { table: 'transactions', field: 'Discount', nonEditable: true, reasons: ['discountHold'] },
+        ],
+      },
+    ];
+
+    const columnCaseMap = {
+      transactions: {
+        total: 'Total',
+        subtotal: 'Subtotal',
+        discount: 'Discount',
+      },
+    };
+
+    const map = buildComputedFieldMap(
+      [],
+      posFields,
+      columnCaseMap,
+      ['transactions'],
+    );
+
+    assert.ok(map.transactions instanceof Set);
+    assert.equal(map.transactions.has('total'), true);
+
+    const reasonMap = map.transactions.reasonMap;
+    assert.ok(reasonMap instanceof Map);
+    const totalReasons = reasonMap.get('total');
+    assert.ok(totalReasons instanceof Set);
+    assert.equal(totalReasons.has('posFormula'), true);
+
+    assert.equal(reasonMap.has('discount'), false);
   });
 
 
@@ -446,6 +770,72 @@ if (typeof mock.import !== 'function') {
 
 }
 
+test('preserveManualChangesAfterRecalc preserves manual overrides even for computed fields', async () => {
+  const { preserveManualChangesAfterRecalc } = await import(
+    '../../src/erp.mgt.mn/utils/preserveManualChanges.js',
+  );
+
+  const computedFieldMap = { transactions: new Set(['totalamount']) };
+  const editableFieldMap = {
+    transactions: { fields: new Set(), hasExplicitConfig: true },
+  };
+  const desiredRow = { TotalAmount: 42, Note: 'manual entry' };
+  const changes = { TotalAmount: 42, Note: 'manual entry' };
+  const recalculatedValues = {
+    transactions: { TotalAmount: 100, Note: '' },
+  };
+
+  const merged = preserveManualChangesAfterRecalc({
+    table: 'transactions',
+    changes,
+    computedFieldMap,
+    editableFieldMap,
+    desiredRow,
+    recalculatedValues,
+  });
+
+  assert.notStrictEqual(merged, recalculatedValues);
+  assert.equal(merged.transactions.TotalAmount, 42);
+  assert.equal(merged.transactions.Note, 'manual entry');
+
+  const stable = preserveManualChangesAfterRecalc({
+    table: 'transactions',
+    changes,
+    computedFieldMap,
+    editableFieldMap,
+    desiredRow,
+    recalculatedValues: merged,
+  });
+
+  assert.strictEqual(stable, merged);
+});
+
+test('preserveManualChangesAfterRecalc allows edits on editable computed fields', async () => {
+  const { preserveManualChangesAfterRecalc } = await import(
+    '../../src/erp.mgt.mn/utils/preserveManualChanges.js',
+  );
+
+  const computedFieldMap = { transactions: new Set(['totalamount']) };
+  const editableFieldMap = { transactions: new Set(['totalamount']) };
+  const changes = { TotalAmount: 42 };
+  const desiredRow = { TotalAmount: 42 };
+  const recalculatedValues = {
+    transactions: { TotalAmount: 100 },
+  };
+
+  const merged = preserveManualChangesAfterRecalc({
+    table: 'transactions',
+    changes,
+    computedFieldMap,
+    editableFieldMap,
+    desiredRow,
+    recalculatedValues,
+  });
+
+  assert.notStrictEqual(merged, recalculatedValues);
+  assert.equal(merged.transactions.TotalAmount, 42);
+});
+
 test('fetchTriggersForTables caches trigger metadata for hidden tables', async () => {
   const fetchesRef = { current: new Map() };
   const loadedRef = { current: new Set() };
@@ -505,11 +895,11 @@ test('fetchTriggersForTables caches trigger metadata for hidden tables', async (
   assert.equal(thirdBatch.length, 0);
 });
 
-test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
-  const calcFields = [
-    {
-      cells: [
-        { table: 'transactions_pos', field: 'total_quantity' },
+  test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
+    const calcFields = [
+      {
+        cells: [
+          { table: 'transactions_pos', field: 'total_quantity' },
         { table: 'transactions_order', field: 'ordrsub', agg: 'SUM' },
         { table: 'transactions_inventory', field: 'bmtr_sub', agg: 'SUM' },
         { table: 'transactions_income', field: 'total_quantity' },
@@ -575,6 +965,122 @@ test('syncCalcFields aggregates SUM cells without mutating detail rows', () => {
   assert.equal(cleared.transactions_income.total_quantity, 0);
   assert.equal(cleared.transactions_pos.total_amount, 0);
   assert.equal(cleared.transactions_income.or_or, 0);
+  });
+
+  test('syncCalcFields supports AVG, MIN, MAX and COUNT aggregators', () => {
+    const calcFields = [
+      {
+        cells: [
+          { table: 'summary', field: 'avg_qty' },
+          { table: 'detail', field: 'qty', agg: 'AVG' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'summary', field: 'min_price' },
+          { table: 'detail', field: 'price', agg: 'MIN' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'summary', field: 'max_price' },
+          { table: 'detail', field: 'price', agg: 'MAX' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'summary', field: 'item_count' },
+          { table: 'detail', field: 'qty', agg: 'COUNT' },
+        ],
+      },
+    ];
+
+    const initial = {
+      summary: {},
+      detail: [
+        { qty: '1,5', price: '10.00' },
+        { qty: '2', price: '15.50' },
+        { qty: null, price: '9,75' },
+      ],
+    };
+
+    const synced = syncCalcFields(initial, calcFields);
+    assert.equal(Number(synced.summary.avg_qty.toFixed(2)), 1.75);
+    assert.equal(synced.summary.min_price, 9.75);
+    assert.equal(synced.summary.max_price, 15.5);
+    assert.equal(synced.summary.item_count, 2);
+  });
+
+  test('applyPosFields handles localized numbers and aggregators', () => {
+    const posFields = [
+      {
+        parts: [
+          { table: 'summary', field: 'avg_price', agg: '=' },
+          { table: 'detail', field: 'price', agg: 'AVG' },
+        ],
+      },
+      {
+        parts: [
+          { table: 'summary', field: 'total_qty', agg: '=' },
+          { table: 'detail', field: 'qty', agg: 'SUM' },
+        ],
+      },
+      {
+        parts: [
+          { table: 'summary', field: 'min_qty', agg: '=' },
+          { table: 'detail', field: 'qty', agg: 'MIN' },
+        ],
+      },
+      {
+        parts: [
+          { table: 'summary', field: 'item_count', agg: '=' },
+          { table: 'detail', field: 'qty', agg: 'COUNT' },
+        ],
+      },
+    ];
+
+    const initial = {
+      summary: {},
+      detail: [
+        { qty: '1,5', price: '10 000' },
+        { qty: '', price: '5,00' },
+        { qty: '2', price: '12.5' },
+      ],
+    };
+
+    const applied = applyPosFields(initial, posFields);
+    assert.equal(Number(applied.summary.avg_price.toFixed(2)), 3339.17);
+    assert.equal(applied.summary.total_qty, 3.5);
+    assert.equal(applied.summary.min_qty, 1.5);
+    assert.equal(applied.summary.item_count, 2);
+  });
+
+  test('syncCalcFields uses visible table values for cross-table mappings', () => {
+    const calcFields = [
+      {
+        cells: [
+          { table: 'transactions_pos', field: 'total_quantity' },
+        { table: 'transactions_order', field: 'ordrsub', agg: 'SUM' },
+        { table: 'transactions_inventory', field: 'bmtr_sub', agg: 'SUM' },
+      ],
+    },
+  ];
+
+  const initial = {
+    transactions_pos: { total_quantity: 0 },
+    transactions_order: [
+      { line: 1, ordrsub: '1.50' },
+      { line: 2, ordrsub: '2.25' },
+    ],
+    transactions_inventory: [{ bmtr_sub: '0.25' }],
+  };
+
+  const synced = syncCalcFields(initial, calcFields);
+
+  assert.equal(synced.transactions_pos.total_quantity, 4);
+  assert.equal(synced.transactions_order[0].ordrsub, '1.50');
+  assert.equal(synced.transactions_order[1].ordrsub, '2.25');
+  assert.equal(synced.transactions_inventory[0].bmtr_sub, '0.25');
 });
 
 test('syncCalcFields updates multi table metadata for header fields', () => {

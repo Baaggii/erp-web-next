@@ -152,29 +152,178 @@ function normalizeMetadata(metadata) {
   return Object.keys(normalized).length ? normalized : null;
 }
 
-function buildPrompt(text, lang, metadata) {
+const LANGUAGE_LABELS = {
+  mn: 'Mongolian (Cyrillic)',
+  en: 'English',
+  ru: 'Russian',
+  ja: 'Japanese',
+  zh: 'Chinese',
+  ko: 'Korean',
+};
+
+function getLanguageLabel(lang) {
+  if (!lang) return 'the target language';
+  const lower = String(lang).toLowerCase();
+  return LANGUAGE_LABELS[lower] || lower;
+}
+
+function sanitizePromptSnippet(value, maxLength = 280) {
+  if (!value) return '';
+  const str = String(value).replace(/[\r\n]+/g, ' ').trim();
+  if (!str) return '';
+  if (str.length <= maxLength) return str;
+  return `${str.slice(0, maxLength - 1)}…`;
+}
+
+function formatMetadataForPrompt(metadata) {
+  if (!metadata || typeof metadata !== 'object') return [];
+  const parts = [];
+  const push = (label, value) => {
+    const snippet = sanitizePromptSnippet(value, 160);
+    if (snippet) parts.push(`${label}: ${snippet}`);
+  };
+  if (metadata.sourceLang) {
+    const label = getLanguageLabel(metadata.sourceLang);
+    push('Source language', label);
+  }
+  if (metadata.module) push('Module', metadata.module);
+  if (metadata.context) push('Context', metadata.context);
+  if (metadata.page) push('Page', metadata.page);
+  if (metadata.key) push('Key', metadata.key);
+  const remainingKeys = Object.keys(metadata)
+    .filter((key) => !['sourceLang', 'module', 'context', 'page', 'key'].includes(key))
+    .sort();
+  for (const key of remainingKeys) {
+    push(key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').trim(), metadata[key]);
+  }
+  return parts;
+}
+
+function buildPrompt(text, lang, metadata, options = {}) {
   const rawText = text ?? '';
   const textStr = typeof rawText === 'string' ? rawText : String(rawText);
-  if (!metadata) {
-    return `Translate the following text to ${lang}: ${textStr}`;
+  const label = getLanguageLabel(lang);
+  const instructions = [
+    `You are an expert translator. Provide a fluent, natural translation into ${label}.`,
+    'Preserve placeholders ({{ }}, %s, <tags>, etc.) exactly and keep relevant punctuation.',
+    'Return only the translated sentence or phrase without commentary.',
+  ];
+
+  if (String(lang).toLowerCase() === 'mn') {
+    instructions.push(
+      'Write in clear, professional Mongolian using Cyrillic script only. Avoid Latin characters, transliteration, or meaningless syllables. Choose terminology appropriate for an ERP/business application.',
+    );
   }
-  const parts = [];
-  if (metadata.sourceLang) {
-    const label =
-      metadata.sourceLang === 'mn'
-        ? 'Mongolian'
-        : metadata.sourceLang === 'en'
-          ? 'English'
-          : metadata.sourceLang;
-    parts.push(`Source language: ${label}`);
+
+  const feedback = sanitizePromptSnippet(options.feedback, 360);
+  if (feedback) {
+    instructions.push(`Previous attempt issues to fix: ${feedback}. Correct them in this translation.`);
   }
-  if (metadata.module) parts.push(`Module: ${metadata.module}`);
-  if (metadata.context) parts.push(`Context: ${metadata.context}`);
-  if (metadata.page) parts.push(`Page: ${metadata.page}`);
-  if (metadata.key) parts.push(`Key: ${metadata.key}`);
-  parts.push(`Text: ${textStr}`);
-  return `Translate the following text to ${lang}.
-${parts.join(', ')}`;
+
+  if (options.attempt && options.attempt > 1) {
+    instructions.push('Provide an alternative phrasing that differs from earlier attempts while keeping the meaning.');
+  }
+
+  const previous = Array.isArray(options.previousCandidates)
+    ? options.previousCandidates
+        .map((candidate) => sanitizePromptSnippet(candidate, 140))
+        .filter(Boolean)
+    : [];
+  if (previous.length) {
+    const recent = previous.slice(-3).map((candidate) => `"${candidate}"`).join('; ');
+    if (recent) {
+      instructions.push(`Do not repeat these rejected outputs: ${recent}.`);
+    }
+  }
+
+  const metadataParts = formatMetadataForPrompt(metadata);
+  const sections = [instructions.join('\n')];
+  if (metadataParts.length) {
+    sections.push(['Context:', ...metadataParts.map((item) => `- ${item}`)].join('\n'));
+  }
+  sections.push(`Text to translate:\n"""${textStr}"""`);
+  return sections.join('\n\n');
+}
+
+const RETRY_REASON_HINTS = {
+  contains_latin_script:
+    'Remove all Latin characters and write the translation using Mongolian Cyrillic only.',
+  contains_tibetan_script:
+    'Avoid Tibetan characters; use standard Mongolian Cyrillic script.',
+  no_cyrillic_content:
+    'Ensure the translation is provided in Mongolian Cyrillic characters.',
+  insufficient_cyrillic_ratio:
+    'Make sure the translation is primarily composed of Mongolian Cyrillic letters.',
+  limited_cyrillic_content:
+    'Add more substantial Mongolian words written in Cyrillic.',
+  insufficient_character_variety:
+    'Use natural Mongolian words instead of repeating the same few characters.',
+  insufficient_word_length:
+    'Include meaningful Mongolian words that are at least a few letters long.',
+  missing_mongolian_vowel:
+    'Use natural Mongolian vocabulary that includes appropriate vowels.',
+  metadata_not_reflected:
+    'Incorporate key terminology from the provided module/context when appropriate.',
+  no_language_signal:
+    'Provide meaningful words in the target language instead of placeholders or punctuation.',
+  identical_to_base:
+    'Do not copy the source text; translate it into the target language.',
+  duplicate_candidate:
+    'Provide a different translation from the earlier attempts.',
+  empty_translation: 'Return an actual translated phrase, not an empty string.',
+  no_translation: 'Provide a translated value rather than omitting the text.',
+  validation_failed: 'The previous attempt did not pass validation; supply a corrected translation.',
+  validation_error:
+    'The previous attempt did not satisfy validation; produce a clearer, correct translation.',
+};
+
+function normalizeReasonCode(reason) {
+  if (!reason) return '';
+  if (reason.startsWith('missing_placeholders')) {
+    const [, payload] = reason.split(':');
+    const placeholderList = payload ? payload.split(',').map((p) => p.trim()).filter(Boolean) : [];
+    if (placeholderList.length) {
+      return `Ensure these placeholders appear exactly as in the source: ${placeholderList.join(', ')}.`;
+    }
+    return 'Ensure all placeholders from the source appear unchanged in the translation.';
+  }
+  if (RETRY_REASON_HINTS[reason]) {
+    return RETRY_REASON_HINTS[reason];
+  }
+  if (reason.includes('_')) {
+    return reason.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  return reason;
+}
+
+function buildRetryFeedback(validation) {
+  if (!validation) return '';
+  const hints = [];
+  if (validation.reason && validation.reason !== 'failed_heuristics') {
+    const normalized = normalizeReasonCode(validation.reason);
+    hints.push(normalized || validation.reason);
+  }
+  const heuristicReasons = Array.isArray(validation.heuristics?.reasons)
+    ? validation.heuristics.reasons
+    : [];
+  for (const reason of heuristicReasons) {
+    const hint = normalizeReasonCode(reason);
+    if (hint) hints.push(hint);
+  }
+  const missingPlaceholders = validation.heuristics?.placeholders?.missing;
+  if (Array.isArray(missingPlaceholders) && missingPlaceholders.length) {
+    hints.push(
+      `Ensure these placeholders are present: ${missingPlaceholders
+        .map((ph) => ph.trim())
+        .filter(Boolean)
+        .join(', ')}.`,
+    );
+  }
+  const summary = validation.summary;
+  if (!hints.length && summary) {
+    hints.push(summary);
+  }
+  return sanitizePromptSnippet(hints.join(' '), 360);
 }
 
 function buildCacheKeyParts(lang, base, metadata) {
@@ -321,14 +470,23 @@ async function idbSet(key, val) {
   });
 }
 
-async function requestTranslation(text, lang, metadata) {
+async function requestTranslation(text, lang, metadata, options = {}) {
   if (aiDisabled) return null;
   try {
-    const prompt = buildPrompt(text, lang, metadata);
+    const prompt = buildPrompt(text, lang, metadata, options);
+    const payload = {
+      prompt,
+      task: 'translation',
+      lang,
+      metadata,
+      key: metadata?.key || options.key,
+      attempt: options.attempt,
+      model: options.model,
+    };
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify(payload),
       skipErrorToast: true,
       skipLoader: true,
     });
@@ -426,7 +584,11 @@ async function requestValidationViaPrompt(payload) {
     const res = await fetch('/api/openai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({
+        prompt,
+        task: 'validation',
+        lang: payload?.lang,
+      }),
       skipErrorToast: true,
       skipLoader: true,
     });
@@ -468,6 +630,7 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
     metadata,
   });
   const summary = summarizeHeuristic(heuristics);
+  const requiresRemoteValidation = lang === 'mn';
   const result = {
     valid: false,
     reason: '',
@@ -487,7 +650,9 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
     };
   }
 
-  if (heuristics.status === 'pass') {
+  const shouldUseHeuristicsOnly = heuristics.status === 'pass' && !requiresRemoteValidation;
+
+  if (shouldUseHeuristicsOnly) {
     return {
       ...result,
       valid: true,
@@ -497,14 +662,28 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
   const payload = { candidate, base, lang, metadata };
   const viaEndpoint = await requestValidationViaEndpoint(payload);
   if (viaEndpoint?.ok) {
+    const remoteNeedsRetry =
+      typeof viaEndpoint.needsRetry === 'boolean'
+        ? viaEndpoint.needsRetry
+        : !viaEndpoint.valid;
+    const lowConfidence =
+      typeof viaEndpoint.languageConfidence === 'number' &&
+      viaEndpoint.languageConfidence < 0.65;
+    const combinedNeedsRetry =
+      remoteNeedsRetry || heuristicsSuggestRetry || lowConfidence;
+    const reason =
+      viaEndpoint.reason ||
+      (lowConfidence ? 'low_language_confidence' : '') ||
+      primaryHeuristicReason ||
+      (combinedNeedsRetry ? 'validation_failed' : '');
     return {
       ...result,
-      valid: Boolean(viaEndpoint.valid),
-      reason: viaEndpoint.reason || '',
-      needsRetry:
-        typeof viaEndpoint.needsRetry === 'boolean'
-          ? viaEndpoint.needsRetry
-          : !viaEndpoint.valid,
+      valid:
+        Boolean(viaEndpoint.valid) &&
+        !heuristicsSuggestRetry &&
+        !lowConfidence,
+      reason,
+      needsRetry: combinedNeedsRetry,
       attemptedRemote: true,
       remoteSource: viaEndpoint.strategy || viaEndpoint.source || 'api',
       languageConfidence: viaEndpoint.languageConfidence ?? null,
@@ -514,11 +693,20 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
   if (viaEndpoint && viaEndpoint.status === 404) {
     const viaPrompt = await requestValidationViaPrompt(payload);
     if (viaPrompt?.ok) {
+      const promptNeedsRetry =
+        typeof viaPrompt.needsRetry === 'boolean'
+          ? viaPrompt.needsRetry
+          : !viaPrompt.valid;
+      const combinedNeedsRetry = promptNeedsRetry || heuristicsSuggestRetry;
+      const reason =
+        viaPrompt.reason ||
+        primaryHeuristicReason ||
+        (combinedNeedsRetry ? 'validation_failed' : '');
       return {
         ...result,
-        valid: Boolean(viaPrompt.valid),
-        reason: viaPrompt.reason || '',
-        needsRetry: Boolean(viaPrompt.needsRetry),
+        valid: Boolean(viaPrompt.valid) && !heuristicsSuggestRetry,
+        reason,
+        needsRetry: combinedNeedsRetry,
         attemptedRemote: true,
         remoteSource: viaPrompt.source,
         languageConfidence: viaPrompt.languageConfidence,
@@ -526,9 +714,21 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
     }
   }
 
+  if (heuristics.status === 'pass' && !requiresRemoteValidation) {
+    return {
+      ...result,
+      valid: true,
+      reason: '',
+      needsRetry: false,
+      attemptedRemote: Boolean(viaEndpoint),
+      remoteSource: viaEndpoint?.status ? `status_${viaEndpoint.status}` : null,
+    };
+  }
+
   return {
     ...result,
     reason:
+      primaryHeuristicReason ||
       heuristics.reasons[0] ||
       (viaEndpoint?.status ? `validation_http_${viaEndpoint.status}` : 'validation_unavailable'),
     needsRetry: true,
@@ -537,7 +737,13 @@ export async function validateAITranslation(candidate, base, lang, metadata) {
   };
 }
 
-export default async function translateWithCache(lang, key, fallback, metadata) {
+export default async function translateWithCache(
+  lang,
+  key,
+  fallback,
+  metadata,
+  options = {},
+) {
   const entryType = metadata?.type;
   const isTooltip = entryType === 'tooltip';
   const locales = isTooltip ? await loadTooltipLocale(lang) : await loadLocale(lang);
@@ -637,61 +843,129 @@ export default async function translateWithCache(lang, key, fallback, metadata) 
     }
   }
 
-  let translated;
-  try {
-    translated = await requestTranslation(base, lang, normalizedMetadata);
-  } catch (err) {
-    if (err.rateLimited) throw err;
-    return createResult(base, {
-      base,
-      source: 'fallback-error',
-      needsRetry: true,
-      validation: {
-        valid: false,
-        reason: 'request_failed',
-        error: err.message,
-      },
-    });
-  }
+  const maxAttempts = String(lang).toLowerCase() === 'mn' ? 5 : 3;
+  const seenCandidates = [];
+  let translationRecord = null;
+  let translatedText = null;
+  let validation = null;
+  let requestError = null;
+  let success = false;
+  let previousValidation = null;
 
-  const translationRecord = createCacheRecord(translated, 'ai');
-  const translatedText = translationRecord?.text;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    let translated;
+    try {
+      translated = await requestTranslation(base, lang, normalizedMetadata, {
+        attempt,
+        feedback: buildRetryFeedback(previousValidation),
+        previousCandidates: seenCandidates.slice(),
+        model: options?.model,
+        key: normalizedMetadata?.key || key,
+      });
+    } catch (err) {
+      if (err.rateLimited) throw err;
+      requestError = err;
+      break;
+    }
 
-  if (!translatedText) {
-    return createResult(base, {
-      base,
-      source: 'fallback-missing',
-      needsRetry: true,
-      validation: {
+    translationRecord = createCacheRecord(translated, 'ai');
+    translatedText = translationRecord?.text || null;
+
+    if (!translated) {
+      validation = {
         valid: false,
+        needsRetry: true,
         reason: 'no_translation',
-      },
-    });
+      };
+      previousValidation = validation;
+      break;
+    }
+
+    if (!translatedText) {
+      validation = {
+        valid: false,
+        needsRetry: true,
+        reason: 'empty_translation',
+      };
+      previousValidation = validation;
+      if (attempt === maxAttempts) break;
+      continue;
+    }
+
+    if (seenCandidates.includes(translatedText)) {
+      validation = {
+        valid: false,
+        needsRetry: true,
+        reason: 'duplicate_candidate',
+      };
+      previousValidation = validation;
+      if (attempt === maxAttempts) break;
+      continue;
+    }
+
+    seenCandidates.push(translatedText);
+
+    try {
+      validation = await validateAITranslation(
+        translatedText,
+        base,
+        lang,
+        normalizedMetadata,
+      );
+    } catch (err) {
+      if (err.rateLimited) throw err;
+      validation = {
+        valid: false,
+        needsRetry: true,
+        reason: 'validation_error',
+      };
+    }
+
+    previousValidation = validation;
+
+    if (validation?.valid && !validation.needsRetry) {
+      success = true;
+      break;
+    }
+
+    if (!validation?.needsRetry) {
+      break;
+    }
   }
 
-  let validation;
-  try {
-    validation = await validateAITranslation(
-      translatedText,
-      base,
-      lang,
-      normalizedMetadata,
-    );
-  } catch (err) {
-    if (err.rateLimited) throw err;
-    validation = {
-      valid: false,
-      needsRetry: true,
-      reason: 'validation_error',
-    };
-  }
+  if (!success) {
+    if (requestError) {
+      return createResult(base, {
+        base,
+        source: 'fallback-error',
+        needsRetry: true,
+        validation: {
+          valid: false,
+          reason: 'request_failed',
+          error: requestError.message,
+        },
+      });
+    }
 
-  if (!validation?.valid) {
+    const fallbackValidation =
+      validation ||
+      previousValidation || {
+        valid: false,
+        needsRetry: true,
+        reason: 'validation_failed',
+      };
+
+    const fallbackSource =
+      fallbackValidation.reason === 'no_translation' ||
+      fallbackValidation.reason === 'empty_translation'
+        ? 'fallback-missing'
+        : 'fallback-validation';
+
     return createResult(base, {
       base,
-      source: 'fallback-validation',
+      source: fallbackSource,
       needsRetry: true,
-      validation,
+      validation: fallbackValidation,
       candidate: translatedText,
     });
   }

@@ -298,6 +298,75 @@ test('propagateCalcFields recalculates totals when inventory rows change', () =>
   assert.equal(data.transactions_expense.z, 0);
 });
 
+test('propagateCalcFields supports AVG, MIN, MAX and COUNT aggregators', () => {
+  const cfg = {
+    calcFields: [
+      {
+        cells: [
+          { table: 'summary', field: 'avg_qty' },
+          { table: 'detail', field: 'qty', agg: 'AVG' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'summary', field: 'min_price' },
+          { table: 'detail', field: 'price', agg: 'MIN' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'summary', field: 'max_price' },
+          { table: 'detail', field: 'price', agg: 'MAX' },
+        ],
+      },
+      {
+        cells: [
+          { table: 'summary', field: 'item_count' },
+          { table: 'detail', field: 'qty', agg: 'COUNT' },
+        ],
+      },
+    ],
+  };
+
+  const data = {
+    summary: {},
+    detail: [
+      { qty: '1,5', price: '10 000' },
+      { qty: null, price: '5,00' },
+      { qty: '2', price: '12.5' },
+    ],
+  };
+
+  propagateCalcFields(cfg, data);
+
+  assert.equal(Number(data.summary.avg_qty.toFixed(2)), 1.75);
+  assert.equal(data.summary.min_price, 5);
+  assert.equal(data.summary.max_price, 10000);
+  assert.equal(data.summary.item_count, 2);
+});
+
+test('propagateCalcFields populates missing targets for calc maps', () => {
+  const cfg = {
+    calcFields: [
+      {
+        cells: [
+          { table: 'summary', field: 'total_amount' },
+          { table: 'detail', field: 'amount', agg: 'SUM' },
+        ],
+      },
+    ],
+  };
+
+  const data = {
+    detail: [{ amount: '10,5' }, { amount: '4.5' }],
+  };
+
+  propagateCalcFields(cfg, data);
+
+  assert.ok(data.summary, 'summary table should be created');
+  assert.equal(data.summary.total_amount, 15);
+});
+
 test('validateConfiguredFields returns empty array for valid data', () => {
   const data = createValidationData();
   const errors = validateConfiguredFields(VALIDATION_CFG, data, VALIDATION_TABLE_TYPES);
