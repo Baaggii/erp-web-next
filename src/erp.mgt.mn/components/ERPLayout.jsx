@@ -3932,6 +3932,20 @@ function MainWindow({ title }) {
   const { userSettings, session } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const generalConfig = useGeneralConfig();
+  const toastApi = useToast();
+  const addToast = useCallback(
+    (message, type) => {
+      if (toastApi && typeof toastApi.addToast === "function") {
+        toastApi.addToast(message, type);
+        return;
+      }
+      if (typeof console !== "undefined" && typeof console.warn === "function") {
+        const typeLabel = type ? `[${type}] ` : "";
+        console.warn(`${typeLabel}${message}`);
+      }
+    },
+    [toastApi],
+  );
   const badgePaths = useMemo(() => {
     const paths = new Set();
     if (hasNew) {
