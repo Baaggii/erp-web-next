@@ -1735,7 +1735,21 @@ export default function ERPLayout() {
               stopMissingTargetWatcher();
             }
             const delta = action === ACTIONS.PREV ? -1 : 1;
+            const currentClampedIndex = clampIndex(index);
             const nextIndex = clampIndex(index + delta);
+            if (delta > 0 && nextIndex !== currentClampedIndex) {
+              const nextStep = tourSteps[nextIndex];
+              if (nextStep && !isTourStepTargetVisible(nextStep)) {
+                const message = t(
+                  "tour_next_step_hidden",
+                  "Reveal the next control before continuing the tour.",
+                );
+                addToast(message, "warning");
+                setTourStepIndex(currentClampedIndex);
+                updateViewerIndex(currentClampedIndex);
+                return;
+              }
+            }
             setTourStepIndex(nextIndex);
             updateViewerIndex(nextIndex);
           } else if (type === EVENTS.TARGET_NOT_FOUND && isCurrentRun) {
@@ -2351,6 +2365,7 @@ export default function ERPLayout() {
       });
     },
     [
+      addToast,
       currentTourPage,
       endTour,
       startMissingTargetWatcher,

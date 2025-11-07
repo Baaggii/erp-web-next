@@ -61,17 +61,11 @@ export default function FormsIndex() {
       session?.userlevel_id ??
       session?.userlevelId ??
       null;
-    if (userRightId != null && String(userRightId).trim() !== '') {
-      params.set('userRightId', userRightId);
-    }
     const workplaceId =
       workplace ??
       session?.workplace_id ??
       session?.workplaceId ??
       null;
-    if (workplaceId != null && String(workplaceId).trim() !== '') {
-      params.set('workplaceId', workplaceId);
-    }
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))

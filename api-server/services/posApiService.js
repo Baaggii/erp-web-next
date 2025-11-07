@@ -24,119 +24,6 @@ function readEnvVar(name, { trim = true } = {}) {
   return trim ? raw.trim() : raw;
 }
 
-const POSAPI_CONFIG_CACHE_TTL = 60 * 1000;
-let cachedSettingsRow = null;
-let cachedSettingsLoadedAt = 0;
-let settingsPromise = null;
-
-function normalizeSettingValue(value) {
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value.trim();
-  if (typeof value === 'number' || typeof value === 'bigint') {
-    return String(value);
-  }
-  return String(value ?? '').trim();
-}
-
-function readSettingsValue(settings, key) {
-  if (!settings || typeof settings !== 'object') return '';
-  if (Object.prototype.hasOwnProperty.call(settings, key)) {
-    return normalizeSettingValue(settings[key]);
-  }
-  const lower = key.toLowerCase();
-  if (Object.prototype.hasOwnProperty.call(settings, lower)) {
-    return normalizeSettingValue(settings[lower]);
-  }
-  const camel = lower.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
-  if (Object.prototype.hasOwnProperty.call(settings, camel)) {
-    return normalizeSettingValue(settings[camel]);
-  }
-  return '';
-}
-
-async function loadSettingsCache() {
-  const now = Date.now();
-  if (cachedSettingsRow && now - cachedSettingsLoadedAt < POSAPI_CONFIG_CACHE_TTL) {
-    return cachedSettingsRow;
-  }
-  if (settingsPromise) {
-    return settingsPromise;
-  }
-  settingsPromise = getSettings()
-    .then((settings) => {
-      cachedSettingsRow = settings || {};
-      cachedSettingsLoadedAt = Date.now();
-      return cachedSettingsRow;
-    })
-    .catch((err) => {
-      console.error('Failed to load POSAPI settings fallback', err);
-      cachedSettingsRow = {};
-      cachedSettingsLoadedAt = Date.now();
-      return cachedSettingsRow;
-    })
-    .finally(() => {
-      settingsPromise = null;
-    });
-  return settingsPromise;
-}
-
-async function resolvePosApiConfig(keys = []) {
-  const config = {};
-  const missing = [];
-  const pending = [];
-  (Array.isArray(keys) ? keys : []).forEach((key) => {
-    const value = readEnvVar(key);
-    if (value) {
-      config[key] = value;
-    } else {
-      pending.push(key);
-    }
-  });
-  if (!pending.length) {
-    return { config, missing };
-  }
-  const settings = await loadSettingsCache();
-  pending.forEach((key) => {
-    const value = readSettingsValue(settings, key);
-    if (value) {
-      config[key] = value;
-    } else {
-      missing.push(key);
-    }
-  });
-  return { config, missing };
-}
-
-let cachedBaseUrl = '';
-let cachedBaseUrlLoadedAt = 0;
-
-async function getPosApiBaseUrl() {
-  const now = Date.now();
-  if (cachedBaseUrl && now - cachedBaseUrlLoadedAt < POSAPI_CONFIG_CACHE_TTL) {
-    return cachedBaseUrl;
-  }
-  const { config, missing } = await resolvePosApiConfig(['POSAPI_EBARIMT_URL']);
-  const resolvedMissing = [...missing];
-  const baseUrl = trimEndSlash(config.POSAPI_EBARIMT_URL || '');
-  if (!baseUrl) {
-    if (!resolvedMissing.includes('POSAPI_EBARIMT_URL')) {
-      resolvedMissing.push('POSAPI_EBARIMT_URL');
-    }
-    const err = new Error(
-      'POSAPI_EBARIMT_URL is not configured. Set the environment variable or update Settings.',
-    );
-    err.status = 500;
-    err.details = {
-      missingEnvVars: resolvedMissing,
-      missingConfigKeys: resolvedMissing,
-    };
-    throw err;
-  }
-  cachedBaseUrl = baseUrl;
-  cachedBaseUrlLoadedAt = Date.now();
-  return cachedBaseUrl;
-}
-
 function toNumber(value) {
   if (value === undefined || value === null) return null;
   if (typeof value === 'number') {
@@ -191,36 +78,31 @@ async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) 
 }
 
 export async function getPosApiToken() {
-  const requiredEnv = ['POSAPI_AUTH_URL', 'POSAPI_AUTH_REALM', 'POSAPI_CLIENT_ID'];
-  const optionalEnv = ['POSAPI_CLIENT_SECRET'];
-  const { config, missing } = await resolvePosApiConfig([...requiredEnv, ...optionalEnv]);
-  const resolvedMissing = missing.filter((key) => requiredEnv.includes(key));
-  const baseUrl = trimEndSlash(config.POSAPI_AUTH_URL || '');
-  const realm = config.POSAPI_AUTH_REALM || '';
-  const clientId = config.POSAPI_CLIENT_ID || '';
-  const clientSecret = config.POSAPI_CLIENT_SECRET || '';
-  if (!baseUrl && !resolvedMissing.includes('POSAPI_AUTH_URL')) {
-    resolvedMissing.push('POSAPI_AUTH_URL');
-  }
-  if (!realm && !resolvedMissing.includes('POSAPI_AUTH_REALM')) {
-    resolvedMissing.push('POSAPI_AUTH_REALM');
-  }
-  if (!clientId && !resolvedMissing.includes('POSAPI_CLIENT_ID')) {
-    resolvedMissing.push('POSAPI_CLIENT_ID');
-  }
-  if (resolvedMissing.length) {
+  const requiredEnv = [
+    'POSAPI_AUTH_URL',
+    'POSAPI_AUTH_REALM',
+    'POSAPI_CLIENT_ID',
+    'POSAPI_CLIENT_SECRET',
+  ];
+  const missing = [];
+  const values = {};
+  requiredEnv.forEach((key) => {
+    const value = readEnvVar(key);
+    if (!value) missing.push(key);
+    values[key] = value;
+  });
+  if (missing.length) {
     const err = new Error(
-      `POSAPI authentication configuration is incomplete. Missing: ${resolvedMissing.join(
-        ', ',
-      )}. Please set the environment variables or update Settings.`,
+      `POSAPI authentication configuration is incomplete. Missing: ${missing.join(', ')}`,
     );
     err.status = 500;
-    err.details = {
-      missingEnvVars: resolvedMissing,
-      missingConfigKeys: resolvedMissing,
-    };
+    err.details = { missingEnvVars: missing };
     throw err;
   }
+  const baseUrl = trimEndSlash(values.POSAPI_AUTH_URL || '');
+  const realm = values.POSAPI_AUTH_REALM;
+  const clientId = values.POSAPI_CLIENT_ID;
+  const clientSecret = values.POSAPI_CLIENT_SECRET;
   const tokenUrl = `${baseUrl}/realms/${realm}/protocol/openid-connect/token`;
   const params = new URLSearchParams();
   params.set('grant_type', 'client_credentials');
@@ -310,46 +192,23 @@ export async function buildReceiptFromDynamicTransaction(record, mapping = {}, t
   }
   const lotNoField = normalizedMapping.lotNo;
   const lotNo = lotNoField ? toStringValue(record[lotNoField]) : '';
-  const optionalKeys = new Set(['POSAPI_DISTRICT_CODE', 'POSAPI_RECEIPT_TYPE']);
-  const { config: receiptConfig, missing } = await resolvePosApiConfig([
-    'POSAPI_BRANCH_NO',
-    'POSAPI_MERCHANT_TIN',
-    'POSAPI_POS_NO',
-    'POSAPI_DISTRICT_CODE',
-    'POSAPI_RECEIPT_TYPE',
-  ]);
-  const requiredMissing = missing.filter((key) => !optionalKeys.has(key));
-  const branchNo = toStringValue(receiptConfig.POSAPI_BRANCH_NO);
-  const merchantTin = toStringValue(receiptConfig.POSAPI_MERCHANT_TIN);
-  const posNo = toStringValue(receiptConfig.POSAPI_POS_NO);
-  const districtCode = toStringValue(receiptConfig.POSAPI_DISTRICT_CODE);
-  const missingEnv = [...requiredMissing];
-  if (!branchNo && !missingEnv.includes('POSAPI_BRANCH_NO')) {
-    missingEnv.push('POSAPI_BRANCH_NO');
-  }
-  if (!merchantTin && !missingEnv.includes('POSAPI_MERCHANT_TIN')) {
-    missingEnv.push('POSAPI_MERCHANT_TIN');
-  }
-  if (!posNo && !missingEnv.includes('POSAPI_POS_NO')) {
-    missingEnv.push('POSAPI_POS_NO');
-  }
+  const branchNo = readEnvVar('POSAPI_BRANCH_NO');
+  const merchantTin = readEnvVar('POSAPI_MERCHANT_TIN');
+  const posNo = readEnvVar('POSAPI_POS_NO');
+  const districtCode = readEnvVar('POSAPI_DISTRICT_CODE');
+  const missingEnv = [];
+  if (!branchNo) missingEnv.push('POSAPI_BRANCH_NO');
+  if (!merchantTin) missingEnv.push('POSAPI_MERCHANT_TIN');
+  if (!posNo) missingEnv.push('POSAPI_POS_NO');
   if (missingEnv.length) {
     const err = new Error(
-      `POSAPI receipt configuration is incomplete. Missing: ${missingEnv.join(
-        ', ',
-      )}. Please set the environment variables or update Settings.`,
+      `POSAPI receipt configuration is incomplete. Missing: ${missingEnv.join(', ')}`,
     );
     err.status = 500;
-    err.details = {
-      missingEnvVars: missingEnv,
-      missingConfigKeys: missingEnv,
-    };
+    err.details = { missingEnvVars: missingEnv };
     throw err;
   }
-  const receiptType =
-    toStringValue(type) ||
-    toStringValue(receiptConfig.POSAPI_RECEIPT_TYPE) ||
-    'B2C_RECEIPT';
+  const receiptType = type || process.env.POSAPI_RECEIPT_TYPE || 'B2C_RECEIPT';
   const item = {
     name: description ? String(description) : 'POS Transaction',
     qty: 1,

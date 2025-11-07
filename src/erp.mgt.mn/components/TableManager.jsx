@@ -2739,40 +2739,71 @@ const TableManager = forwardRef(function TableManager({
   async function issueTransactionEbarimt(recordId) {
     if (!formConfig?.posApiEnabled) return null;
     if (recordId === undefined || recordId === null || `${recordId}`.trim() === '') {
-      const err = new Error(
+      addToast(
         t(
           'ebarimt_missing_id',
           'Unable to issue Ebarimt: missing transaction identifier.',
         ),
+        'error',
       );
-      err.status = 400;
-      throw err;
+      return null;
     }
     if (!formName) {
-      const err = new Error(
-        t('ebarimt_missing_form', 'Unable to issue Ebarimt: form name is not configured.'),
+      addToast(
+        t(
+          'ebarimt_missing_form',
+          'Unable to issue Ebarimt: form name is not configured.',
+        ),
+        'error',
       );
-      err.status = 400;
-      throw err;
+      return null;
     }
-
-    const res = await fetch('/api/transaction_ebarimt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ table, formName, recordId }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) {
-      const message = data?.message || res.statusText || 'Failed to issue Ebarimt';
-      const err = new Error(message);
-      if (data?.details !== undefined) {
-        err.details = data.details;
+    try {
+      const res = await fetch('/api/transaction_ebarimt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ table, formName, recordId }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        addToast(t('ebarimt_post_success', 'Posted & Ebarimt issued'), 'success');
+        if (ebarimtToastEnabled && data?.posApi) {
+          if (Object.prototype.hasOwnProperty.call(data.posApi, 'payload')) {
+            addToast(
+              t('ebarimt_request_payload', 'POSAPI request: {{payload}}', {
+                payload: formatTxnToastPayload(data.posApi.payload),
+              }),
+              'info',
+            );
+          }
+          if (Object.prototype.hasOwnProperty.call(data.posApi, 'response')) {
+            addToast(
+              t('ebarimt_response_payload', 'POSAPI response: {{payload}}', {
+                payload: formatTxnToastPayload(data.posApi.response),
+              }),
+              'info',
+            );
+          }
+        }
+        return data;
       }
-      err.status = res.status;
-      throw err;
+      const errData = await res.json().catch(() => ({}));
+      const message = errData?.message || res.statusText;
+      addToast(
+        t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', { message }),
+        'error',
+      );
+      return null;
+    } catch (err) {
+      addToast(
+        t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', {
+          message: err.message,
+        }),
+        'error',
+      );
+      return null;
     }
-    return data;
   }
 
   async function handleSubmit(values, options = {}) {
@@ -3054,26 +3085,8 @@ const TableManager = forwardRef(function TableManager({
           }
         }
         addToast(msg, 'success');
-        if (shouldIssueEbarimt && ebarimtResult) {
-          addToast(t('ebarimt_post_success', 'Posted & Ebarimt issued'), 'success');
-          if (ebarimtToastEnabled && ebarimtResult?.posApi) {
-            if (Object.prototype.hasOwnProperty.call(ebarimtResult.posApi, 'payload')) {
-              addToast(
-                t('ebarimt_request_payload', 'POSAPI request: {{payload}}', {
-                  payload: formatTxnToastPayload(ebarimtResult.posApi.payload),
-                }),
-                'info',
-              );
-            }
-            if (Object.prototype.hasOwnProperty.call(ebarimtResult.posApi, 'response')) {
-              addToast(
-                t('ebarimt_response_payload', 'POSAPI response: {{payload}}', {
-                  payload: formatTxnToastPayload(ebarimtResult.posApi.response),
-                }),
-                'info',
-              );
-            }
-          }
+        if (shouldIssueEbarimt) {
+          await issueTransactionEbarimt(targetRecordId);
         }
         refreshRows();
         if (isAdding) {
