@@ -4,8 +4,17 @@ import LoginForm from '../components/LoginForm.jsx';
 
 export default function LoginPage() {
   return (
-    <div style={{ padding: '2rem' }}>
+    <main
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #e2e8f0, #f8fafc)',
+        padding: '1.5rem',
+      }}
+    >
       <LoginForm />
-    </div>
+    </main>
   );
 }
