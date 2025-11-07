@@ -1123,25 +1123,9 @@ export default function PosTransactionsPage() {
     branch,
     department,
     permissions: perms,
-    session,
   } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
-  const userRights = useMemo(() => {
-    const source =
-      perms?.permissions && typeof perms.permissions === 'object'
-        ? perms.permissions
-        : session?.permissions && typeof session.permissions === 'object'
-        ? session.permissions
-        : {};
-    return Object.entries(source)
-      .filter(([, allowed]) => Boolean(allowed))
-      .map(([key]) => key);
-  }, [perms, session]);
-
-  const workplaceId = session?.workplace_id ?? session?.workplaceId ?? null;
-  const workplaceSessionId =
-    session?.workplace_session_id ?? session?.workplaceSessionId ?? null;
   const [rawConfigs, setRawConfigs] = useState({});
   const configs = useMemo(() => {
     if (!rawConfigs || typeof rawConfigs !== 'object') return {};
@@ -1167,25 +1151,13 @@ export default function PosTransactionsPage() {
       if (
         hasTransactionFormAccess(cfgValue, branch, department, {
           allowTemporaryAnyScope: true,
-          userRights,
-          workplaceId,
-          workplaceSessionId,
         })
       ) {
         filtered[cfgName] = cfgValue;
       }
     });
     return filtered;
-  }, [
-    rawConfigs,
-    branch,
-    department,
-    perms,
-    licensed,
-    userRights,
-    workplaceId,
-    workplaceSessionId,
-  ]);
+  }, [rawConfigs, branch, department, perms, licensed]);
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
@@ -2502,9 +2474,6 @@ export default function PosTransactionsPage() {
       companyId: company,
       branchId: branch,
       departmentId: department,
-      workplaceId: workplaceId ?? undefined,
-      workplaceSessionId: workplaceSessionId ?? undefined,
-      userRights,
       date: formatTimestamp(new Date()),
     };
     try {

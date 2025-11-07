@@ -18,8 +18,6 @@ const emptyConfig = {
   statusField: { table: '', field: '', created: '', beforePost: '', posted: '' },
   allowedBranches: [],
   allowedDepartments: [],
-  allowedWorkplaces: [],
-  allowedUserRights: [],
   procedures: [],
 };
 
@@ -43,9 +41,6 @@ export default function PosTxnConfig() {
   const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
   const [departments, setDepartments] = useState([]);
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
-  const [workplaces, setWorkplaces] = useState([]);
-  const [workplaceCfg, setWorkplaceCfg] = useState({ idField: null, displayFields: [] });
-  const [userRights, setUserRights] = useState([]);
   const [procedureOptions, setProcedureOptions] = useState([]);
   const procPrefix = generalConfig?.general?.reportProcPrefix || '';
   const branchOptions = useMemo(() => {
@@ -79,52 +74,6 @@ export default function PosTxnConfig() {
       return { value: String(val), label };
     });
   }, [departments, deptCfg]);
-
-  const workplaceOptions = useMemo(() => {
-    const idField = workplaceCfg?.idField || 'workplace_id';
-    return workplaces.map((w) => {
-      const val =
-        w[idField] ?? w.workplace_id ?? w.workplaceId ?? w.id ?? w.workplace_session_id;
-      const label = workplaceCfg?.displayFields?.length
-        ? workplaceCfg.displayFields
-            .map((f) => w[f])
-            .filter((v) => v !== undefined && v !== null)
-            .join(' - ')
-        : Object.values(w)
-            .filter((v) => v !== undefined && v !== null)
-            .join(' - ');
-      return { value: String(val), label };
-    });
-  }, [workplaces, workplaceCfg]);
-
-  const userRightsOptions = useMemo(
-    () =>
-      userRights.map((right) => {
-        if (!right || typeof right !== 'object') {
-          const value = typeof right === 'string' ? right : String(right ?? '');
-          return { value, label: value };
-        }
-        const value = right.key || right.value || '';
-        const label = right.name || right.label || value;
-        return { value: String(value), label: label || String(value) };
-      }),
-    [userRights],
-  );
-
-  const sectionStyle = {
-    border: '1px solid #d0d7de',
-    borderRadius: '6px',
-    padding: '1rem',
-    marginBottom: '1.5rem',
-    background: '#fafafa',
-  };
-  const sectionHeaderStyle = {
-    margin: '0 0 0.75rem 0',
-    fontSize: '1.1rem',
-    fontWeight: 600,
-  };
-  const selectColumnStyle = { display: 'flex', flexDirection: 'column', gap: '0.5rem' };
-  const multiSelectBoxStyle = { minWidth: '16rem', minHeight: '12rem' };
 
   useEffect(() => {
     fetch('/api/pos_txn_config', { credentials: 'include' })
@@ -176,11 +125,6 @@ export default function PosTxnConfig() {
       .then((data) => setBranches(data.rows || []))
       .catch(() => setBranches([]));
 
-    fetch('/api/tables/code_workplace?perPage=500', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { rows: [] }))
-      .then((data) => setWorkplaces(data.rows || []))
-      .catch(() => setWorkplaces([]));
-
     fetch('/api/display_fields?table=code_branches', { credentials: 'include' })
       .then((res) =>
         res.ok ? res.json() : { idField: null, displayFields: [] },
@@ -199,34 +143,6 @@ export default function PosTxnConfig() {
       )
       .then((cfg) => setDeptCfg(cfg || { idField: null, displayFields: [] }))
       .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
-
-    fetch('/api/display_fields?table=code_workplace', { credentials: 'include' })
-      .then((res) =>
-        res.ok ? res.json() : { idField: null, displayFields: [] },
-      )
-      .then((cfg) => setWorkplaceCfg(cfg || { idField: null, displayFields: [] }))
-      .catch(() => setWorkplaceCfg({ idField: null, displayFields: [] }));
-
-    fetch('/api/permissions/actions', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : {}))
-      .then((data) => {
-        const permissionsList = Array.isArray(data.permissions)
-          ? data.permissions
-          : Object.values(data.permissions || {});
-        const normalized = permissionsList
-          .map((p) => {
-            if (!p || typeof p !== 'object') {
-              const value = typeof p === 'string' ? p.trim() : String(p ?? '');
-              return value ? { key: value, name: value } : null;
-            }
-            const key = typeof p.key === 'string' ? p.key.trim() : '';
-            if (!key) return null;
-            return { key, name: typeof p.name === 'string' ? p.name : key };
-          })
-          .filter(Boolean);
-        setUserRights(normalized);
-      })
-      .catch(() => setUserRights([]));
 
   }, []);
 
@@ -363,24 +279,6 @@ export default function PosTxnConfig() {
             ),
           )
         : [];
-      loaded.allowedWorkplaces = Array.isArray(loaded.allowedWorkplaces)
-        ? Array.from(
-            new Set(
-              loaded.allowedWorkplaces
-                .map((w) => (w === undefined || w === null ? '' : String(w)))
-                .filter((w) => w.trim() !== ''),
-            ),
-          )
-        : [];
-      loaded.allowedUserRights = Array.isArray(loaded.allowedUserRights)
-        ? Array.from(
-            new Set(
-              loaded.allowedUserRights
-                .map((r) => (typeof r === 'string' ? r.trim() : String(r ?? '')))
-                .filter((r) => r),
-            ),
-          )
-        : [];
       loaded.procedures = Array.isArray(loaded.procedures)
         ? Array.from(
             new Set(
@@ -513,16 +411,6 @@ export default function PosTxnConfig() {
       ...config,
       allowedBranches: normalizeAccessForSave(config.allowedBranches),
       allowedDepartments: normalizeAccessForSave(config.allowedDepartments),
-      allowedWorkplaces: normalizeAccessForSave(config.allowedWorkplaces),
-      allowedUserRights: Array.isArray(config.allowedUserRights)
-        ? Array.from(
-            new Set(
-              config.allowedUserRights
-                .map((right) => (typeof right === 'string' ? right.trim() : String(right ?? '')))
-                .filter((right) => right),
-            ),
-          )
-        : [],
       procedures: normalizedProcedures,
       tables: [
         {
@@ -724,296 +612,195 @@ export default function PosTxnConfig() {
   return (
     <div>
       <h2>POS Transaction Config</h2>
-      <section style={sectionStyle}>
-        <h3 style={sectionHeaderStyle}>Configuration Selection</h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
-          <label style={selectColumnStyle}>
-            <span>Existing configuration</span>
-            <select value={name} onChange={(e) => loadConfig(e.target.value)} style={{ minWidth: '16rem' }}>
-              <option value="">-- select config --</option>
-              {Object.keys(configs).map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label style={selectColumnStyle}>
-            <span>Config name</span>
-            <input
-              type="text"
-              placeholder="Config name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
-          </label>
-          {name && (
-            <button onClick={handleDelete} style={{ height: '2.5rem' }}>
-              Delete
-            </button>
-          )}
-        </div>
-      </section>
-      <section style={sectionStyle}>
-        <h3 style={sectionHeaderStyle}>Master Transaction</h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-end' }}>
-          <label style={selectColumnStyle}>
-            <span>Label</span>
-            <input
-              type="text"
-              value={config.label}
-              onChange={(e) => setConfig((c) => ({ ...c, label: e.target.value }))}
-            />
-          </label>
-          <label style={selectColumnStyle}>
-            <span>Master table</span>
-            <select
-              value={config.masterTable}
-              onChange={(e) => {
-                const tbl = e.target.value;
-                setConfig((c) => {
-                  const idx = c.tables.findIndex((t) => t.table === tbl);
-                  let tables = c.tables;
-                  let masterForm = '';
-                  if (idx !== -1) {
-                    masterForm = c.tables[idx].form || '';
-                    tables = c.tables.filter((_, i) => i !== idx);
-                  }
-                  return {
-                    ...c,
-                    masterTable: tbl,
-                    masterForm,
-                    tables,
-                    calcFields: c.calcFields.map((row) => ({
-                      ...row,
-                      cells: row.cells.map((cell, i) =>
-                        i === 0 ? { ...cell, table: tbl } : cell,
-                      ),
-                    })),
-                    posFields: c.posFields.map((p) => ({
-                      ...p,
-                      parts: p.parts.map((pt) => ({ ...pt, table: tbl })),
-                    })),
-                  };
-                });
-              }}
-            >
-              <option value="">-- select table --</option>
-              {config.masterTable &&
-                !config.tables.some((t) => t.table === config.masterTable) && (
-                  <option value={config.masterTable}>{config.masterTable}</option>
-                )}
-              {config.tables.map((t, i) => (
-                <option key={i} value={t.table}>
-                  {t.table}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </section>
-      <section style={sectionStyle}>
-        <h3 style={sectionHeaderStyle}>Access Control</h3>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'flex-start' }}>
-          <label style={selectColumnStyle}>
-            <span>Allowed branches</span>
-            <select
-              multiple
-              size={8}
-              style={multiSelectBoxStyle}
-              value={config.allowedBranches}
-              onChange={(e) =>
-                setConfig((c) => ({
-                  ...c,
-                  allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
-                }))
-              }
-            >
-              {branchOptions.map((b) => (
-                <option key={b.value} value={b.value}>
-                  {b.label}
-                </option>
-              ))}
-            </select>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedBranches: branchOptions.map((b) => b.value),
-                  }))
+      <div style={{ marginBottom: '1rem' }}>
+        <select value={name} onChange={(e) => loadConfig(e.target.value)}>
+          <option value="">-- select config --</option>
+          {Object.keys(configs).map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+        <input
+          type="text"
+          placeholder="Config name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          style={{ marginLeft: '0.5rem' }}
+        />
+        {name && (
+          <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
+            Delete
+          </button>
+        )}
+      </div>
+      <div style={{ marginBottom: '1rem' }}>
+        <label style={{ marginRight: '0.5rem' }}>
+          Label:
+          <input
+            type="text"
+            value={config.label}
+            onChange={(e) => setConfig((c) => ({ ...c, label: e.target.value }))}
+            style={{ marginLeft: '0.25rem' }}
+          />
+        </label>
+      </div>
+      <div style={{ marginBottom: '1rem' }}>
+        <label>
+          Master Table:{' '}
+          <select
+            value={config.masterTable}
+            onChange={(e) => {
+              const tbl = e.target.value;
+              setConfig((c) => {
+                const idx = c.tables.findIndex((t) => t.table === tbl);
+                let tables = c.tables;
+                let masterForm = '';
+                if (idx !== -1) {
+                  masterForm = c.tables[idx].form || '';
+                  tables = c.tables.filter((_, i) => i !== idx);
                 }
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
-              >
-                None
-              </button>
-            </div>
-          </label>
-          <label style={selectColumnStyle}>
-            <span>Allowed departments</span>
-            <select
-              multiple
-              size={8}
-              style={multiSelectBoxStyle}
-              value={config.allowedDepartments}
-              onChange={(e) =>
-                setConfig((c) => ({
+                return {
                   ...c,
-                  allowedDepartments: Array.from(
-                    e.target.selectedOptions,
-                    (o) => o.value,
-                  ),
-                }))
-              }
-            >
-              {deptOptions.map((d) => (
-                <option key={d.value} value={d.value}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedDepartments: deptOptions.map((d) => d.value),
-                  }))
-                }
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
-              >
-                None
-              </button>
-            </div>
-          </label>
-          <label style={selectColumnStyle}>
-            <span>Allowed workplaces</span>
-            <select
-              multiple
-              size={8}
-              style={multiSelectBoxStyle}
-              value={config.allowedWorkplaces}
-              onChange={(e) =>
-                setConfig((c) => ({
-                  ...c,
-                  allowedWorkplaces: Array.from(
-                    e.target.selectedOptions,
-                    (o) => o.value,
-                  ),
-                }))
-              }
-            >
-              {workplaceOptions.map((w) => (
-                <option key={w.value} value={w.value}>
-                  {w.label}
-                </option>
-              ))}
-            </select>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedWorkplaces: workplaceOptions.map((w) => w.value),
-                  }))
-                }
-                disabled={workplaceOptions.length === 0}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfig((c) => ({ ...c, allowedWorkplaces: [] }))}
-              >
-                None
-              </button>
-            </div>
-          </label>
-          <label style={selectColumnStyle}>
-            <span>Allowed user rights</span>
-            <select
-              multiple
-              size={8}
-              style={multiSelectBoxStyle}
-              value={config.allowedUserRights}
-              onChange={(e) =>
-                setConfig((c) => ({
-                  ...c,
-                  allowedUserRights: Array.from(
-                    e.target.selectedOptions,
-                    (o) => o.value,
-                  ),
-                }))
-              }
-            >
-              {userRightsOptions.map((right) => (
-                <option key={right.value} value={right.value}>
-                  {right.label}
-                </option>
-              ))}
-            </select>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <button
-                type="button"
-                onClick={() =>
-                  setConfig((c) => ({
-                    ...c,
-                    allowedUserRights: userRightsOptions.map((r) => r.value),
-                  }))
-                }
-                disabled={userRightsOptions.length === 0}
-              >
-                All
-              </button>
-              <button
-                type="button"
-                onClick={() => setConfig((c) => ({ ...c, allowedUserRights: [] }))}
-              >
-                None
-              </button>
-            </div>
-          </label>
-          {procedureOptions.length > 0 && (
-            <label style={selectColumnStyle}>
-              <span>Procedures</span>
-              <select
-                multiple
-                size={8}
-                style={multiSelectBoxStyle}
-                value={config.procedures}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    procedures: Array.from(
-                      e.target.selectedOptions,
-                      (o) => o.value,
+                  masterTable: tbl,
+                  masterForm,
+                  tables,
+                  calcFields: c.calcFields.map((row) => ({
+                    ...row,
+                    cells: row.cells.map((cell, i) =>
+                      i === 0 ? { ...cell, table: tbl } : cell,
                     ),
-                  }))
-                }
-              >
-                {procedureOptions.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-        </div>
-      </section>
+                  })),
+                  posFields: c.posFields.map((p) => ({
+                    ...p,
+                    parts: p.parts.map((pt) => ({ ...pt, table: tbl })),
+                  })),
+                };
+              });
+            }}
+          >
+            <option value="">-- select table --</option>
+            {config.masterTable &&
+              !config.tables.some((t) => t.table === config.masterTable) && (
+                <option value={config.masterTable}>{config.masterTable}</option>
+              )}
+            {config.tables.map((t, i) => (
+              <option key={i} value={t.table}>
+                {t.table}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div
+        style={{
+          marginBottom: '1rem',
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'flex-start',
+          gap: '1rem',
+        }}
+      >
+        <label>
+          Allowed branches:{' '}
+          <select
+            multiple
+            size={8}
+            value={config.allowedBranches}
+            onChange={(e) =>
+              setConfig((c) => ({
+                ...c,
+                allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
+              }))
+            }
+          >
+            {branchOptions.map((b) => (
+              <option key={b.value} value={b.value}>
+                {b.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() =>
+              setConfig((c) => ({
+                ...c,
+                allowedBranches: branchOptions.map((b) => b.value),
+              }))
+            }
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
+          >
+            None
+          </button>
+        </label>
+        <label>
+          Allowed departments:{' '}
+          <select
+            multiple
+            size={8}
+            value={config.allowedDepartments}
+            onChange={(e) =>
+              setConfig((c) => ({
+                ...c,
+                allowedDepartments: Array.from(
+                  e.target.selectedOptions,
+                  (o) => o.value,
+                ),
+              }))
+            }
+          >
+            {deptOptions.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() =>
+              setConfig((c) => ({
+                ...c,
+                allowedDepartments: deptOptions.map((d) => d.value),
+              }))
+            }
+          >
+            All
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
+          >
+            None
+          </button>
+        </label>
+        {procedureOptions.length > 0 && (
+          <label>
+            Procedures:{' '}
+            <select
+              multiple
+              size={8}
+              value={config.procedures}
+              onChange={(e) =>
+                setConfig((c) => ({
+                  ...c,
+                  procedures: Array.from(e.target.selectedOptions, (o) => o.value),
+                }))
+              }
+            >
+              {procedureOptions.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
       <div>
         <h3>Form Configuration</h3>
         <table className="pos-config-grid" style={{ borderCollapse: 'collapse' }}>
