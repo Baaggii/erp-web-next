@@ -9,9 +9,6 @@ import {
   buildReceiptFromDynamicTransaction,
   sendReceipt,
 } from './posApiService.js';
-import { getGeneralConfig } from './generalConfig.js';
-import { serializeError, summarizePosPayload } from '../utils/errorUtils.js';
-import { coerceBoolean } from '../utils/valueUtils.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
@@ -524,15 +521,29 @@ export async function listTemporarySubmissions({
   tableName,
   empId,
   companyId,
-  status = 'pending',
+  status,
 }) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
   const conditions = [];
   const params = [];
-  if (status) {
-    conditions.push('status = ?');
-    params.push(status);
+  const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+  if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
+    if (normalizedStatus === 'processed') {
+      conditions.push("status <> 'pending'");
+    } else {
+      const statusParts = normalizedStatus
+        .split(',')
+        .map((part) => part.trim())
+        .filter(Boolean);
+      if (statusParts.length === 1) {
+        conditions.push('status = ?');
+        params.push(statusParts[0]);
+      } else if (statusParts.length > 1) {
+        conditions.push(`status IN (${statusParts.map(() => '?').join(', ')})`);
+        params.push(...statusParts);
+      }
+    }
   }
   if (companyId != null) {
     conditions.push('(company_id = ? OR company_id IS NULL)');
@@ -551,7 +562,7 @@ export async function listTemporarySubmissions({
   }
   const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
   const [rows] = await pool.query(
-    `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY created_at DESC LIMIT 200`,
+    `SELECT * FROM \`${TEMP_TABLE}\` ${where} ORDER BY updated_at DESC, created_at DESC LIMIT 200`,
     params,
   );
   const mapped = rows.map(mapTemporaryRow);
@@ -564,19 +575,25 @@ export async function getTemporarySummary(empId, companyId) {
   const [[created]] = await pool.query(
     `SELECT
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-        COUNT(*) AS total_cnt
+        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
+        COUNT(*) AS total_cnt,
+        MAX(updated_at) AS latest_update
        FROM \`${TEMP_TABLE}\`
       WHERE created_by = ?
-        AND (company_id = ? OR company_id IS NULL)`,
+        AND (company_id = ? OR company_id IS NULL)
+      LIMIT 1`,
     [normalizedEmp, companyId ?? null],
   );
   const [[review]] = await pool.query(
     `SELECT
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-        COUNT(*) AS total_cnt
+        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
+        COUNT(*) AS total_cnt,
+        MAX(updated_at) AS latest_update
        FROM \`${TEMP_TABLE}\`
       WHERE plan_senior_empid = ?
-        AND (company_id = ? OR company_id IS NULL)`,
+        AND (company_id = ? OR company_id IS NULL)
+      LIMIT 1`,
     [normalizedEmp, companyId ?? null],
   );
   const createdPending = Number(created?.pending_cnt) || 0;
@@ -584,6 +601,12 @@ export async function getTemporarySummary(empId, companyId) {
   return {
     createdPending,
     reviewPending,
+    createdReviewed: Number(created?.reviewed_cnt) || 0,
+    reviewReviewed: Number(review?.reviewed_cnt) || 0,
+    createdTotal: Number(created?.total_cnt) || 0,
+    reviewTotal: Number(review?.total_cnt) || 0,
+    createdLatestUpdate: created?.latest_update || null,
+    reviewLatestUpdate: review?.latest_update || null,
     isReviewer: (Number(review?.total_cnt) || 0) > 0,
   };
 }
@@ -717,22 +740,14 @@ export async function promoteTemporarySubmission(
     const insertedId = inserted?.id ?? null;
     const promotedId = insertedId ? String(insertedId) : null;
     const formName = row.form_name || row.config_name || null;
-    let resultPosApiDetails = null;
     if (formName) {
       try {
-        const [formCfgResult, generalCfgResult] = await Promise.all([
-          getFormConfig(row.table_name, formName, row.company_id),
-          getGeneralConfig(row.company_id ?? 0),
-        ]);
-        const formCfg = formCfgResult?.config;
-        const generalCfg = generalCfgResult?.config;
-        let posApiDetails = null;
-        const posGloballyEnabled = coerceBoolean(
-          generalCfg?.general?.posApiEnabled,
-          true,
+        const { config: formCfg } = await getFormConfig(
+          row.table_name,
+          formName,
+          row.company_id,
         );
-        const posLocallyEnabled = coerceBoolean(formCfg?.posApiEnabled, false);
-        if (posGloballyEnabled && posLocallyEnabled) {
+        if (formCfg?.posApiEnabled) {
           const mapping = formCfg.posApiMapping || {};
           let masterRecord = { ...sanitizedValues };
           if (insertedId) {
@@ -750,7 +765,7 @@ export async function promoteTemporarySubmission(
                 {
                   table: row.table_name,
                   id: insertedId,
-                  error: serializeError(selectErr),
+                  error: selectErr,
                 },
               );
             }
@@ -765,13 +780,6 @@ export async function promoteTemporarySubmission(
           if (payload) {
             try {
               const posApiResponse = await sendReceipt(payload);
-              posApiDetails = {
-                attempted: true,
-                enabled: true,
-                payload,
-                summary: summarizePosPayload(payload),
-                response: posApiResponse || null,
-              };
               if (posApiResponse && insertedId) {
                 const updates = {};
                 const nameMap = new Map();
@@ -808,57 +816,26 @@ export async function promoteTemporarySubmission(
                     console.error('Failed to persist POSAPI response details', {
                       table: row.table_name,
                       id: insertedId,
-                      error: serializeError(updateErr),
+                      error: updateErr,
                     });
                   }
                 }
               }
             } catch (posErr) {
-              posApiDetails = {
-                attempted: true,
-                enabled: true,
-                payload,
-                summary: summarizePosPayload(payload),
-                error: serializeError(posErr),
-              };
               console.error('POSAPI receipt submission failed', {
                 table: row.table_name,
                 recordId: insertedId,
-                payload: summarizePosPayload(payload),
-                error: serializeError(posErr),
+                error: posErr,
               });
             }
-          } else {
-            posApiDetails = {
-              attempted: true,
-              enabled: true,
-              skipped: true,
-              reason: 'Missing required POSAPI fields',
-            };
           }
-        } else if (posLocallyEnabled || posGloballyEnabled) {
-          posApiDetails = {
-            attempted: true,
-            enabled: false,
-            reason: posGloballyEnabled
-              ? 'Form POSAPI disabled'
-              : 'POSAPI globally disabled',
-          };
-        }
-        if (posApiDetails && !resultPosApiDetails) {
-          resultPosApiDetails = posApiDetails;
         }
       } catch (cfgErr) {
         console.error('Failed to evaluate POSAPI configuration', {
           table: row.table_name,
           formName,
-          error: serializeError(cfgErr),
+          error: cfgErr,
         });
-        resultPosApiDetails = {
-          attempted: true,
-          enabled: null,
-          error: serializeError(cfgErr),
-        };
       }
     }
     const trimmedNotes =
@@ -1033,6 +1010,62 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       });
     }
     return { id, status: 'rejected' };
+  } catch (err) {
+    try {
+      await conn.query('ROLLBACK');
+    } catch {}
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+export async function deleteTemporarySubmission(id, { requesterEmpId }) {
+  const normalizedRequester = normalizeEmpId(requesterEmpId);
+  if (!normalizedRequester) {
+    const err = new Error('requesterEmpId required');
+    err.status = 400;
+    throw err;
+  }
+  const conn = await pool.getConnection();
+  try {
+    await ensureTemporaryTable(conn);
+    await conn.query('BEGIN');
+    const [rows] = await conn.query(
+      `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? FOR UPDATE`,
+      [id],
+    );
+    const row = rows[0];
+    if (!row) {
+      const err = new Error('Temporary submission not found');
+      err.status = 404;
+      throw err;
+    }
+    const normalizedCreator = normalizeEmpId(row.created_by);
+    if (normalizedCreator !== normalizedRequester) {
+      const err = new Error('Forbidden');
+      err.status = 403;
+      throw err;
+    }
+    if (row.status !== 'rejected') {
+      const err = new Error('Only rejected temporary submissions can be removed');
+      err.status = 409;
+      throw err;
+    }
+    await conn.query(`DELETE FROM \`${TEMP_TABLE}\` WHERE id = ?`, [id]);
+    await logUserAction(
+      {
+        emp_id: normalizedRequester,
+        table_name: row.table_name,
+        record_id: id,
+        action: 'delete',
+        details: { formName: row.form_name ?? null, temporaryAction: 'delete' },
+        company_id: row.company_id ?? null,
+      },
+      conn,
+    );
+    await conn.query('COMMIT');
+    return { id, deleted: true };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');

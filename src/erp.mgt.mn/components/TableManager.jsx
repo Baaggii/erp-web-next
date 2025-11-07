@@ -36,6 +36,7 @@ import {
 } from '../utils/generatedColumns.js';
 import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
+import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
@@ -543,6 +544,7 @@ const TableManager = forwardRef(function TableManager({
   const [rowDefaults, setRowDefaults] = useState({});
   const [pendingTemporaryPromotion, setPendingTemporaryPromotion] = useState(null);
   const [temporaryPromotionQueue, setTemporaryPromotionQueue] = useState([]);
+  const [activeTemporaryDraftId, setActiveTemporaryDraftId] = useState(null);
   const [gridRows, setGridRows] = useState([]);
   const [selectedRows, setSelectedRows] = useState(new Set());
   const [localRefresh, setLocalRefresh] = useState(0);
@@ -806,6 +808,8 @@ const TableManager = forwardRef(function TableManager({
   const supportsTemporary =
     formSupportsTemporary &&
     (canCreateTemporary || canReviewTemporary || temporaryReviewer);
+  const isEditingTemporaryDraft = activeTemporaryDraftId != null;
+  const canSaveTemporaryDraft = canCreateTemporary || isEditingTemporaryDraft;
   const canPostTransactions =
     accessEvaluation.canPost === undefined
       ? true
@@ -863,17 +867,24 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/transaction_temporaries/summary`, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('failed');
-      const data = await res.json();
-      setTemporarySummary(data);
-      const reviewPending = Number(data?.reviewPending) || 0;
-      const preferredScope =
-        availableTemporaryScopes.includes('review') && reviewPending > 0
-          ? 'review'
-          : defaultTemporaryScope;
+        const res = await fetch(`${API_BASE}/transaction_temporaries/summary`, {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('failed');
+        const data = await res.json();
+        setTemporarySummary(data);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('transaction-temporary-refresh', {
+              detail: { source: 'forms', table },
+            }),
+          );
+        }
+        const reviewPending = Number(data?.reviewPending) || 0;
+        const preferredScope =
+          availableTemporaryScopes.includes('review') && reviewPending > 0
+            ? 'review'
+            : defaultTemporaryScope;
       setTemporaryScope((prev) => {
         if (!availableTemporaryScopes.includes(prev)) return preferredScope;
         if (
@@ -893,11 +904,12 @@ const TableManager = forwardRef(function TableManager({
           : defaultTemporaryScope,
       );
     }
-  }, [
-    formSupportsTemporary,
-    availableTemporaryScopes,
-    defaultTemporaryScope,
-  ]);
+    }, [
+      formSupportsTemporary,
+      availableTemporaryScopes,
+      defaultTemporaryScope,
+      table,
+    ]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
@@ -1907,6 +1919,53 @@ const TableManager = forwardRef(function TableManager({
           }
         });
 
+        const aliasEntries = [];
+        Object.entries(cfgMap).forEach(([column, config]) => {
+          const idFieldName =
+            typeof config?.idField === 'string' ? config.idField : null;
+          if (!idFieldName) return;
+          const canonicalColumn = resolveCanonicalKey(column);
+          const canonicalIdField = resolveCanonicalKey(idFieldName);
+          if (!canonicalIdField || canonicalIdField === canonicalColumn) return;
+          if (!validCols.has(canonicalIdField)) return;
+          aliasEntries.push({
+            alias: canonicalIdField,
+            source: column,
+            config,
+          });
+        });
+
+        aliasEntries.forEach(({ alias, source, config }) => {
+          if (!cfgMap[alias]) {
+            cfgMap[alias] = { ...config };
+          }
+          if (dataMap[source] && !dataMap[alias]) {
+            dataMap[alias] = dataMap[source];
+          }
+          if (rowMap[source] && !rowMap[alias]) {
+            const aliasRows = {};
+            Object.values(rowMap[source]).forEach((row) => {
+              if (!row || typeof row !== 'object') return;
+              const keyMap = {};
+              Object.keys(row).forEach((key) => {
+                keyMap[key.toLowerCase()] = key;
+              });
+              const idFieldName = config?.idField;
+              if (typeof idFieldName !== 'string' || idFieldName.length === 0) {
+                return;
+              }
+              const idKey = keyMap[idFieldName.toLowerCase()] || idFieldName;
+              const identifier = row[idKey];
+              if (identifier !== undefined && identifier !== null) {
+                aliasRows[identifier] = row;
+              }
+            });
+            if (Object.keys(aliasRows).length > 0) {
+              rowMap[alias] = aliasRows;
+            }
+          }
+        });
+
         setRefData(dataMap);
         setRefRows(rowMap);
         const remap = {};
@@ -1930,7 +1989,7 @@ const TableManager = forwardRef(function TableManager({
     return () => {
       canceled = true;
     };
-  }, [table, company, branch, department, resolveCanonicalKey]);
+  }, [table, company, branch, department, resolveCanonicalKey, validCols]);
 
   useEffect(() => {
     if (!table || columnMeta.length === 0) return;
@@ -2964,6 +3023,7 @@ const TableManager = forwardRef(function TableManager({
           setIsAdding(false);
           setGridRows([]);
           setRequestType(null);
+          setActiveTemporaryDraftId(null);
         } else if (res.status === 409) {
           addToast(
             t('similar_request_pending', 'A similar request is already pending'),
@@ -3007,6 +3067,7 @@ const TableManager = forwardRef(function TableManager({
         setGridRows([]);
         setRequestType(null);
         setPendingTemporaryPromotion(null);
+        setActiveTemporaryDraftId(null);
         if (nextEntry) {
           setTimeout(() => {
             openTemporaryPromotion(nextEntry, { resetQueue: false });
@@ -3066,6 +3127,11 @@ const TableManager = forwardRef(function TableManager({
         setIsAdding(false);
         setGridRows([]);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
+        if (activeTemporaryDraftId) {
+          await cleanupActiveTemporaryDraft();
+        } else {
+          setActiveTemporaryDraftId(null);
+        }
         if (isAdding && (formConfig?.imagenameField || []).length) {
           const inserted = rows.find(
             (r) => String(getRowId(r)) === String(savedRow.id),
@@ -3153,7 +3219,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   async function handleSaveTemporary(submission) {
-    if (!canCreateTemporary) return false;
+    if (!canSaveTemporaryDraft) return false;
     if (!submission || typeof submission !== 'object') return false;
     const valueSource =
       submission.values && typeof submission.values === 'object'
@@ -3359,6 +3425,9 @@ const TableManager = forwardRef(function TableManager({
           : t('temporary_saved', 'Saved as temporary draft');
       addToast(message, 'success');
       await refreshTemporarySummary();
+      if (activeTemporaryDraftId) {
+        await cleanupActiveTemporaryDraft();
+      }
       if (failureCount === 0) {
         setShowForm(false);
         setEditing(null);
@@ -3644,11 +3713,19 @@ const TableManager = forwardRef(function TableManager({
       const params = new URLSearchParams();
       params.set('scope', targetScope);
 
-      const requestedStatus =
-        options?.status !== undefined ? options.status : 'pending';
-      if (requestedStatus) {
-        params.set('status', requestedStatus);
-      }
+        const requestedStatus =
+          options?.status !== undefined
+            ? options.status
+            : targetScope === 'review'
+            ? 'pending'
+            : null;
+        const statusValue =
+          requestedStatus === null || requestedStatus === undefined
+            ? ''
+            : String(requestedStatus).trim();
+        if (statusValue) {
+          params.set('status', statusValue);
+        }
 
       const shouldFilterByTable = (() => {
         if (options?.table !== undefined) {
@@ -3728,6 +3805,52 @@ const TableManager = forwardRef(function TableManager({
       temporarySummary,
     ],
   );
+
+  async function cleanupActiveTemporaryDraft({ refreshList = true } = {}) {
+    if (!activeTemporaryDraftId) return;
+    const targetId = activeTemporaryDraftId;
+    let shouldUpdateList = true;
+    try {
+      const res = await fetch(
+        `${API_BASE}/transaction_temporaries/${encodeURIComponent(targetId)}`,
+        { method: 'DELETE', credentials: 'include' },
+      );
+      if (!res.ok && res.status !== 404) {
+        if (res.status === 409) {
+          console.warn('Temporary submission was not rejected, skipping cleanup');
+          shouldUpdateList = false;
+        } else {
+          let errorText = '';
+          try {
+            errorText = await res.text();
+          } catch (readErr) {
+            console.error('Failed to read temporary cleanup response', readErr);
+          }
+          console.error('Failed to remove rejected temporary submission', errorText);
+          shouldUpdateList = false;
+        }
+      }
+    } catch (err) {
+      console.error('Failed to remove rejected temporary submission', err);
+      shouldUpdateList = false;
+    }
+    if (shouldUpdateList) {
+      setTemporaryList((prev) => {
+        if (!Array.isArray(prev) || prev.length === 0) return prev;
+        const target = String(targetId);
+        const filtered = prev.filter((entry) => String(entry?.id ?? '') !== target);
+        return filtered.length === prev.length ? prev : filtered;
+      });
+      if (refreshList) {
+        try {
+          await fetchTemporaryList(temporaryScope);
+        } catch (err) {
+          console.error('Failed to refresh temporary list after cleanup', err);
+        }
+      }
+    }
+    setActiveTemporaryDraftId(null);
+  }
 
   useEffect(() => {
     if (!supportsTemporary || availableTemporaryScopes.length === 0) return;
@@ -3896,68 +4019,114 @@ const TableManager = forwardRef(function TableManager({
     }
   }
 
-  const openTemporaryPromotion = useCallback(
-    async (entry, { resetQueue = true } = {}) => {
-      if (!entry) return;
-      const temporaryId = getTemporaryId(entry);
-      if (!temporaryId) return;
-      if (resetQueue) {
-        setTemporaryPromotionQueue([]);
-      }
-      await ensureColumnMeta();
+    const buildTemporaryFormState = useCallback(
+      (entry) => {
+        if (!entry) {
+          return { values: {}, rows: [] };
+        }
 
-      const valueSources = [
-        entry?.cleanedValues,
-        entry?.payload?.cleanedValues,
-        entry?.payload?.values,
-        entry?.values,
-        entry?.rawValues,
-      ];
-      const baseValues = valueSources.find(
-        (candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate),
-      );
-      const normalizedValues = normalizeToCanonical(
-        stripTemporaryLabelValue(baseValues || {}),
-      );
+        const valueSources = [
+          entry?.cleanedValues,
+          entry?.payload?.cleanedValues,
+          entry?.payload?.values,
+          entry?.values,
+          entry?.rawValues,
+        ];
+        const baseValues = valueSources.find(
+          (candidate) =>
+            candidate && typeof candidate === 'object' && !Array.isArray(candidate),
+        );
+        const normalizedValues = normalizeToCanonical(
+          stripTemporaryLabelValue(baseValues || {}),
+        );
 
-      const rowSources = [
-        entry?.payload?.gridRows,
-        entry?.payload?.values?.rows,
-        entry?.cleanedValues?.rows,
-        entry?.values?.rows,
-        entry?.rawValues?.rows,
-      ];
-      const baseRows = rowSources.find((rows) => Array.isArray(rows));
-      const sanitizedRows = Array.isArray(baseRows)
-        ? baseRows.map((row) => {
-            const stripped = stripTemporaryLabelValue(row);
-            if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
-              return normalizeToCanonical(stripped);
-            }
-            return stripped ?? {};
-          })
-        : [];
+        const rowSources = [
+          entry?.payload?.gridRows,
+          entry?.payload?.values?.rows,
+          entry?.cleanedValues?.rows,
+          entry?.values?.rows,
+          entry?.rawValues?.rows,
+        ];
+        const baseRows = rowSources.find((rows) => Array.isArray(rows));
+        const sanitizedRows = Array.isArray(baseRows)
+          ? baseRows.map((row) => {
+              const stripped = stripTemporaryLabelValue(row);
+              if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
+                return normalizeToCanonical(stripped);
+              }
+              return stripped ?? {};
+            })
+          : [];
 
-      setPendingTemporaryPromotion({ id: temporaryId, entry });
-      setEditing(normalizedValues);
-      setGridRows(sanitizedRows);
-      setIsAdding(true);
+        return { values: normalizedValues, rows: sanitizedRows };
+      },
+      [normalizeToCanonical],
+    );
+
+    const openTemporaryPromotion = useCallback(
+      async (entry, { resetQueue = true } = {}) => {
+        if (!entry) return;
+        const temporaryId = getTemporaryId(entry);
+        if (!temporaryId) return;
+        if (resetQueue) {
+          setTemporaryPromotionQueue([]);
+        }
+        await ensureColumnMeta();
+        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
+
+        setPendingTemporaryPromotion({ id: temporaryId, entry });
+        setEditing(normalizedValues);
+        setGridRows(sanitizedRows);
+        setIsAdding(true);
       setRequestType('temporary-promote');
       setShowTemporaryModal(false);
-      setShowForm(true);
-    },
-    [
-      ensureColumnMeta,
-      normalizeToCanonical,
-      setEditing,
-      setGridRows,
-      setIsAdding,
-      setRequestType,
-      setShowTemporaryModal,
+        setShowForm(true);
+      },
+      [
+        buildTemporaryFormState,
+        ensureColumnMeta,
+        setEditing,
+        setGridRows,
+        setIsAdding,
+        setRequestType,
+        setShowTemporaryModal,
       setShowForm,
       setTemporaryPromotionQueue,
     ],
-  );
+    );
+
+    const openTemporaryDraft = useCallback(
+      async (entry) => {
+        if (!entry || !canCreateTemporary) return;
+        await ensureColumnMeta();
+        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
+
+        const temporaryId = getTemporaryId(entry);
+        setActiveTemporaryDraftId(temporaryId);
+        setPendingTemporaryPromotion(null);
+        setTemporaryPromotionQueue([]);
+        setEditing(normalizedValues);
+        setGridRows(sanitizedRows);
+        setIsAdding(false);
+        setRequestType(null);
+        setShowTemporaryModal(false);
+        setShowForm(true);
+      },
+      [
+        buildTemporaryFormState,
+        canCreateTemporary,
+        ensureColumnMeta,
+        setActiveTemporaryDraftId,
+        setEditing,
+        setGridRows,
+        setIsAdding,
+        setRequestType,
+        setShowForm,
+        setPendingTemporaryPromotion,
+        setTemporaryPromotionQueue,
+        setShowTemporaryModal,
+      ],
+    );
 
   async function rejectTemporary(id) {
     if (!canReviewTemporary) return;
@@ -4590,21 +4759,23 @@ const TableManager = forwardRef(function TableManager({
     if (!formColumns.includes(f) && allColumns.includes(f)) formColumns.push(f);
   });
 
-  let disabledFields = editSet
-    ? formColumns.filter((c) => !editSet.has(c.toLowerCase()))
-    : [];
-  if (requestType === 'temporary-promote') {
-    disabledFields = Array.from(new Set([...formColumns]));
-  } else if (isAdding) {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
-  } else if (editing) {
-    disabledFields = Array.from(
-      new Set([...disabledFields, ...getKeyFields(), ...lockedDefaults]),
-    );
-  } else {
-    disabledFields = Array.from(new Set([...disabledFields, ...lockedDefaults]));
-  }
-  disabledFields = canonicalizeFormFields(disabledFields) || [];
+  const {
+    disabledFields: computedDisabledFields,
+    bypassGuardDefaults: canBypassGuardDefaults,
+  } = resolveDisabledFieldState({
+    editSet,
+    formColumns,
+    requestType,
+    isAdding,
+    editing,
+    lockedDefaults,
+    canonicalizeFormFields,
+    buttonPerms,
+    getKeyFields,
+  });
+  const disabledFields = computedDisabledFields;
+  const guardOverridesActive =
+    canBypassGuardDefaults && (Array.isArray(disabledFields) ? disabledFields.length === 0 : true);
 
   const totals = useMemo(() => {
     const sums = {};
@@ -4691,6 +4862,9 @@ const TableManager = forwardRef(function TableManager({
   );
 
   const showReviewActions = canReviewTemporary && temporaryScope === 'review';
+  const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
+
+  let detailHeaderRendered = false;
 
   return (
     <div>
@@ -5801,13 +5975,15 @@ const TableManager = forwardRef(function TableManager({
           setRequestType(null);
           setPendingTemporaryPromotion(null);
           setTemporaryPromotionQueue([]);
+          setActiveTemporaryDraftId(null);
         }}
         onSubmit={handleSubmit}
-        onSaveTemporary={canCreateTemporary ? handleSaveTemporary : null}
+        onSaveTemporary={canSaveTemporaryDraft ? handleSaveTemporary : null}
         onChange={handleFieldChange}
         columns={formColumns}
         row={editing}
         rows={gridRows}
+        isEditingTemporaryDraft={isEditingTemporaryDraft}
         relations={relationOpts}
         relationConfigs={relationConfigs}
         relationData={refRows}
@@ -5840,10 +6016,10 @@ const TableManager = forwardRef(function TableManager({
         onRowsChange={handleRowsChange}
         autoFillSession={autoFillSession}
         scope="forms"
-        allowTemporarySave={canCreateTemporary}
+        allowTemporarySave={canSaveTemporaryDraft}
         isAdding={isAdding}
         canPost={canPostTransactions}
-        formConfig={formConfig}
+        forceEditable={guardOverridesActive}
       />
       <CascadeDeleteModal
         visible={showCascade}
@@ -6028,14 +6204,25 @@ const TableManager = forwardRef(function TableManager({
                       <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>
                         {t('created_at', 'Created at')}
                       </th>
-                      <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>
-                        {t('details', 'Details')}
-                      </th>
-                      {showReviewActions && (
-                        <th
-                          style={{
-                            borderBottom: '1px solid #d1d5db',
-                            textAlign: 'right',
+                        <th style={{ borderBottom: '1px solid #d1d5db', textAlign: 'left', padding: '0.25rem' }}>
+                          {t('details', 'Details')}
+                        </th>
+                        {showCreatorActions && (
+                          <th
+                            style={{
+                              borderBottom: '1px solid #d1d5db',
+                              textAlign: 'right',
+                              padding: '0.25rem',
+                            }}
+                          >
+                            {t('actions', 'Actions')}
+                          </th>
+                        )}
+                        {showReviewActions && (
+                          <th
+                            style={{
+                              borderBottom: '1px solid #d1d5db',
+                              textAlign: 'right',
                             padding: '0.25rem',
                           }}
                         >
@@ -6049,6 +6236,29 @@ const TableManager = forwardRef(function TableManager({
                       const entryId = getTemporaryId(entry);
                       const rowKey = entryId ?? `row-${index}`;
                       const isFocused = temporaryFocusId && rowKey === temporaryFocusId;
+                      const isActiveDraft =
+                        activeTemporaryDraftId &&
+                        entryId != null &&
+                        String(entryId) === String(activeTemporaryDraftId);
+                      const statusRaw = entry?.status
+                        ? String(entry.status).trim().toLowerCase()
+                        : '';
+                      const isPendingStatus = statusRaw === 'pending' || statusRaw === '';
+                      const statusLabel = isPendingStatus
+                        ? t('temporary_pending_status', 'Pending')
+                        : statusRaw === 'promoted'
+                        ? t('temporary_promoted_short', 'Promoted')
+                        : statusRaw === 'rejected'
+                        ? t('temporary_rejected_short', 'Rejected')
+                        : entry?.status || '-';
+                      const statusColor = statusRaw === 'rejected'
+                        ? '#b91c1c'
+                        : statusRaw === 'promoted'
+                        ? '#15803d'
+                        : '#1f2937';
+                      const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
+                      const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
+                      const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const valueSources = [
                         entry?.values,
                         entry?.cleanedValues,
@@ -6067,21 +6277,45 @@ const TableManager = forwardRef(function TableManager({
                       const detailColumns = Array.from(
                         new Set((detailColumnsSource || []).filter(Boolean)),
                       );
+                      const rowBackgroundColor = isFocused
+                        ? '#fef9c3'
+                        : isActiveDraft
+                        ? '#e0f2fe'
+                        : 'transparent';
+                      const shouldRenderDetailHeader =
+                        !detailHeaderRendered && detailColumns.length > 0;
+                      if (shouldRenderDetailHeader) {
+                        detailHeaderRendered = true;
+                      }
                       return (
                         <tr
                           key={rowKey}
                           ref={(node) => setTemporaryRowRef(rowKey, node)}
                           style={{
-                            backgroundColor: isFocused ? '#fef9c3' : 'transparent',
+                            backgroundColor: rowBackgroundColor,
                             transition: 'background-color 0.2s ease-in-out',
+                            borderLeft: isActiveDraft ? '4px solid #2563eb' : '4px solid transparent',
                           }}
                         >
                           <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-                              {isFocused && (
+                              {(isFocused || isActiveDraft) && (
                                 <span
-                                  style={{ color: '#b45309', fontSize: '0.9rem' }}
-                                  title={t('temporary_highlight', 'Recently opened from notifications')}
+                                  style={{
+                                    color: isFocused ? '#b45309' : '#2563eb',
+                                    fontSize: '0.9rem',
+                                  }}
+                                  title={
+                                    isFocused
+                                      ? t(
+                                          'temporary_highlight',
+                                          'Recently opened from notifications',
+                                        )
+                                      : t(
+                                          'temporary_active_draft',
+                                          'Currently editing this temporary draft',
+                                        )
+                                  }
                                 >
                                   ★
                                 </span>
@@ -6114,19 +6348,55 @@ const TableManager = forwardRef(function TableManager({
                           <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                             {entry?.createdBy}
                           </td>
-                          <td
-                            style={{
-                              borderBottom: '1px solid #f3f4f6',
-                              padding: '0.25rem',
-                              textTransform: 'capitalize',
-                            }}
-                          >
-                            {entry?.status}
-                          </td>
-                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
-                            {formatTimestamp(entry?.createdAt)}
-                          </td>
-                          <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                            <td
+                              style={{
+                                borderBottom: '1px solid #f3f4f6',
+                                padding: '0.25rem',
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontWeight: 600,
+                                  color: statusColor,
+                                  textTransform: 'capitalize',
+                                }}
+                              >
+                                {statusLabel}
+                              </div>
+                              {!isPendingStatus && reviewedAt && (
+                                <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>
+                                  {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
+                                </div>
+                              )}
+                              {!isPendingStatus && reviewedBy && (
+                                <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>
+                                  {t('temporary_reviewed_by', 'Reviewed by')}: {reviewedBy}
+                                </div>
+                              )}
+                              {!isPendingStatus && reviewNotes && (
+                                <div
+                                  style={{
+                                    marginTop: '0.35rem',
+                                    padding: '0.35rem',
+                                    backgroundColor:
+                                      statusRaw === 'rejected' ? '#fee2e2' : '#ecfdf5',
+                                    borderRadius: '0.5rem',
+                                    fontSize: '0.75rem',
+                                    color: '#1f2937',
+                                    whiteSpace: 'pre-wrap',
+                                  }}
+                                >
+                                  <strong style={{ display: 'block', marginBottom: '0.2rem' }}>
+                                    {t('temporary_review_notes', 'Review notes')}
+                                  </strong>
+                                  {reviewNotes}
+                                </div>
+                              )}
+                            </td>
+                            <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
+                              {formatTimestamp(entry?.createdAt)}
+                            </td>
+                            <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                             {detailColumns.length === 0 ? (
                               <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
                                 {t(
@@ -6142,23 +6412,25 @@ const TableManager = forwardRef(function TableManager({
                                     borderCollapse: 'collapse',
                                   }}
                                 >
-                                  <thead>
-                                    <tr>
-                                      {detailColumns.map((col) => (
-                                        <th
-                                          key={col}
-                                          style={{
-                                            borderBottom: '1px solid #e5e7eb',
-                                            padding: '0.25rem',
-                                            textAlign: 'left',
-                                            fontSize: '0.75rem',
-                                          }}
-                                        >
-                                          {labels[col] || col}
-                                        </th>
-                                      ))}
-                                    </tr>
-                                  </thead>
+                                  {shouldRenderDetailHeader && (
+                                    <thead>
+                                      <tr>
+                                        {detailColumns.map((col) => (
+                                          <th
+                                            key={col}
+                                            style={{
+                                              borderBottom: '1px solid #e5e7eb',
+                                              padding: '0.25rem',
+                                              textAlign: 'left',
+                                              fontSize: '0.75rem',
+                                            }}
+                                          >
+                                            {labels[col] || col}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                  )}
                                   <tbody>
                                     <tr>
                                       {detailColumns.map((col) => (
@@ -6177,13 +6449,42 @@ const TableManager = forwardRef(function TableManager({
                                   </tbody>
                                 </table>
                               </div>
+                              )}
+                            </td>
+                            {showCreatorActions && (
+                              <td
+                                style={{
+                                  borderBottom: '1px solid #f3f4f6',
+                                  padding: '0.25rem',
+                                  textAlign: 'right',
+                                  whiteSpace: 'nowrap',
+                                }}
+                              >
+                                {statusRaw === 'rejected' ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => openTemporaryDraft(entry)}
+                                    style={{
+                                      padding: '0.25rem 0.5rem',
+                                      backgroundColor: '#2563eb',
+                                      color: '#fff',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      cursor: 'pointer',
+                                    }}
+                                  >
+                                    {t('temporary_edit_rejected', 'Edit & resubmit')}
+                                  </button>
+                                ) : (
+                                  <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>—</span>
+                                )}
+                              </td>
                             )}
-                          </td>
-                          {showReviewActions && (
-                            <td
-                              style={{
-                                borderBottom: '1px solid #f3f4f6',
-                                padding: '0.25rem',
+                            {showReviewActions && (
+                              <td
+                                style={{
+                                  borderBottom: '1px solid #f3f4f6',
+                                  padding: '0.25rem',
                                 textAlign: 'right',
                                 whiteSpace: 'nowrap',
                               }}

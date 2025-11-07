@@ -245,6 +245,78 @@ function normalizeSelectorList(selectors, fallback) {
   return normalized;
 }
 
+function getViewportSignature() {
+  if (typeof window === "undefined") return "ssr";
+  const width = Math.round(
+    window.innerWidth || document?.documentElement?.clientWidth || 0,
+  );
+  const height = Math.round(
+    window.innerHeight || document?.documentElement?.clientHeight || 0,
+  );
+  const ratio =
+    typeof window.devicePixelRatio === "number"
+      ? window.devicePixelRatio.toFixed(2)
+      : "1";
+  return `${width}x${height}@${ratio}`;
+}
+
+function elementIsProbablyFixed(element) {
+  if (
+    typeof window === "undefined" ||
+    !element ||
+    typeof element !== "object"
+  ) {
+    return false;
+  }
+
+  let current = element;
+  while (current && current !== document.body && current.nodeType === 1) {
+    const style =
+      typeof window.getComputedStyle === "function"
+        ? window.getComputedStyle(current)
+        : null;
+    const position = style?.position || "";
+    if (position === "fixed" || position === "sticky") {
+      return true;
+    }
+    current = current.parentElement;
+  }
+  return false;
+}
+
+function findStepTargetElement(step) {
+  if (typeof document === "undefined") return null;
+  if (!step || typeof step !== "object") return null;
+
+  const selectors = new Set();
+  const addSelector = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    selectors.add(trimmed);
+  };
+
+  if (Array.isArray(step.selectors)) {
+    step.selectors.forEach(addSelector);
+  }
+  if (Array.isArray(step.highlightSelectors)) {
+    step.highlightSelectors.forEach(addSelector);
+  }
+  addSelector(step.selector);
+  addSelector(step.target);
+
+  for (const selector of selectors) {
+    try {
+      const element = document.querySelector(selector);
+      if (element) return element;
+    } catch (err) {
+      // Ignore invalid selectors.
+    }
+  }
+
+  return null;
+}
+
 function normalizeClientStep(step, index = 0) {
   if (!step || typeof step !== 'object') return null;
   const selectorRaw =
@@ -406,6 +478,12 @@ function sanitizeTourStepsForRestart(steps) {
       }
       if ("runId" in sanitized) {
         delete sanitized.runId;
+      }
+      if ("__autoFixed" in sanitized) {
+        delete sanitized.__autoFixed;
+      }
+      if ("__viewportSignature" in sanitized) {
+        delete sanitized.__viewportSignature;
       }
 
       delete sanitized.missingTarget;
@@ -611,7 +689,14 @@ function JoyrideTooltip({
 
 function stripStepForSave(step) {
   if (!step || typeof step !== 'object') return step;
-  const { target, highlightSelectors, __runId, ...rest } = step;
+  const {
+    target,
+    highlightSelectors,
+    __runId,
+    __autoFixed,
+    __viewportSignature,
+    ...rest
+  } = step;
   return rest;
 }
 
@@ -1010,6 +1095,116 @@ export default function ERPLayout() {
     return () => window.removeEventListener('resize', handler);
   }, []);
 
+  const adjustStepsForViewport = useCallback((steps) => {
+    if (!Array.isArray(steps) || !steps.length) return steps;
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return steps;
+    }
+
+    const signature = getViewportSignature();
+    let changed = false;
+
+    const adjusted = steps.map((step) => {
+      if (!step || typeof step !== "object") return step;
+
+      const element = findStepTargetElement(step);
+      const hasElement = !!element;
+      const shouldBeFixed = hasElement ? elementIsProbablyFixed(element) : false;
+      const hadAutoFixed = step.__autoFixed === true;
+      const hasManualFixed = !hadAutoFixed && step.isFixed === true;
+      const needsSignatureUpdate = step.__viewportSignature !== signature;
+
+      const shouldApplyAutoFix = hasElement && shouldBeFixed && !hasManualFixed;
+      const shouldRemoveAutoFix = hasElement && hadAutoFixed && !shouldBeFixed;
+      const maintainAutoFlag = hadAutoFixed && !shouldRemoveAutoFix;
+
+      if (
+        !shouldApplyAutoFix &&
+        !shouldRemoveAutoFix &&
+        !needsSignatureUpdate &&
+        !maintainAutoFlag
+      ) {
+        return step;
+      }
+
+      const nextStep = { ...step };
+      let mutated = false;
+
+      if (shouldApplyAutoFix) {
+        if (!nextStep.isFixed) {
+          nextStep.isFixed = true;
+          mutated = true;
+        }
+        if (nextStep.__autoFixed !== true) {
+          nextStep.__autoFixed = true;
+          mutated = true;
+        }
+      } else if (shouldRemoveAutoFix) {
+        if ("isFixed" in nextStep) {
+          delete nextStep.isFixed;
+          mutated = true;
+        }
+        if ("__autoFixed" in nextStep) {
+          delete nextStep.__autoFixed;
+          mutated = true;
+        }
+      } else if (maintainAutoFlag && nextStep.__autoFixed !== true) {
+        nextStep.__autoFixed = true;
+        mutated = true;
+      }
+
+      if (needsSignatureUpdate) {
+        nextStep.__viewportSignature = signature;
+        mutated = true;
+      }
+
+      if (mutated) {
+        changed = true;
+        return nextStep;
+      }
+
+      return step;
+    });
+
+    return changed ? adjusted : steps;
+  }, []);
+
+  const applyViewportAdjustments = useCallback(() => {
+    setTourSteps((prev) => {
+      if (!Array.isArray(prev) || !prev.length) return prev;
+      const adjusted = adjustStepsForViewport(prev);
+      if (adjusted === prev) return prev;
+      return adjusted;
+    });
+  }, [adjustStepsForViewport]);
+
+  useEffect(() => {
+    if (!runTour) return undefined;
+    if (typeof window === "undefined") return undefined;
+
+    let frameId = null;
+    const handleResize = () => {
+      if (frameId !== null) return;
+      frameId = window.requestAnimationFrame(() => {
+        frameId = null;
+        applyViewportAdjustments();
+      });
+    };
+
+    handleResize();
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+
+    return () => {
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
+  }, [applyViewportAdjustments, runTour]);
+
   const registerTourEntry = useCallback(
     (pageKey, stepsInput = [], pathValue) => {
       if (!pageKey) return null;
@@ -1108,7 +1303,8 @@ export default function ERPLayout() {
         activeTourRunIdRef.current = nextRunId;
         setActiveTourRunId(nextRunId);
 
-        const joyrideSteps = runnableSteps.map((step) => ({
+        const responsiveSteps = adjustStepsForViewport(runnableSteps);
+        const joyrideSteps = responsiveSteps.map((step) => ({
           ...step,
           target: step.target || step.selector || step.id,
           __runId: nextRunId,
@@ -1126,6 +1322,7 @@ export default function ERPLayout() {
       return false;
     },
     [
+      adjustStepsForViewport,
       location.pathname,
       normalizePath,
       registerTourEntry,

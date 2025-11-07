@@ -15,29 +15,6 @@ async function getFetch() {
   return cachedFetch;
 }
 
-function resolveTimeoutMs(value) {
-  if (value === undefined || value === null || value === '') return null;
-  const num = Number(value);
-  if (!Number.isFinite(num) || num <= 0) return null;
-  return num;
-}
-
-function getDefaultTimeoutMs() {
-  return (
-    resolveTimeoutMs(process.env.POSAPI_TIMEOUT_MS) ??
-    resolveTimeoutMs(process.env.POSAPI_REQUEST_TIMEOUT) ??
-    15000
-  );
-}
-
-function createAbortController(timeoutMs) {
-  const resolved = resolveTimeoutMs(timeoutMs) ?? getDefaultTimeoutMs();
-  if (!resolved) return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), resolved);
-  return { controller, timer, timeoutMs: resolved };
-}
-
 function toNumber(value) {
   if (value === undefined || value === null) return null;
   if (typeof value === 'number') {
@@ -71,79 +48,27 @@ async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) 
   }
   const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
   const fetchFn = await getFetch();
-  const abortConfig = createAbortController();
-  try {
-    const res = await fetchFn(url, {
-      method,
-      headers: {
-        ...(headers || {}),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body,
-      signal: abortConfig?.controller.signal,
-    });
-    if (!res.ok) {
-      let text = '';
-      let parsedBody = null;
-      try {
-        text = await res.text();
-        if (text) {
-          parsedBody = JSON.parse(text);
-        }
-      } catch {
-        parsedBody = null;
-      }
-      let messageText = res.statusText;
-      if (text && text.trim()) {
-        messageText = text.trim();
-      } else if (parsedBody && typeof parsedBody === 'object') {
-        if (typeof parsedBody.message === 'string' && parsedBody.message.trim()) {
-          messageText = parsedBody.message.trim();
-        } else if (
-          typeof parsedBody.error_description === 'string' &&
-          parsedBody.error_description.trim()
-        ) {
-          messageText = parsedBody.error_description.trim();
-        } else if (
-          typeof parsedBody.error === 'string' &&
-          parsedBody.error.trim()
-        ) {
-          messageText = parsedBody.error.trim();
-        }
-      }
-      const err = new Error(
-        `POSAPI request failed with status ${res.status}: ${messageText}`,
-      );
-      err.status = res.status;
-      if (parsedBody) {
-        err.body = parsedBody;
-        if (parsedBody.details !== undefined) {
-          err.details = parsedBody.details;
-        }
-      } else if (text) {
-        err.body = text;
-      }
-      throw err;
-    }
-    const contentType = res.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      return res.json();
-    }
-    return res.text();
-  } catch (err) {
-    if (err?.name === 'AbortError') {
-      const timeoutErr = new Error(
-        `POSAPI request timed out after ${abortConfig?.timeoutMs ?? 0} ms`,
-      );
-      timeoutErr.code = 'POSAPI_TIMEOUT';
-      throw timeoutErr;
-    }
+  const res = await fetchFn(url, {
+    method,
+    headers: {
+      ...(headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body,
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(
+      `POSAPI request failed with status ${res.status}: ${text || res.statusText}`,
+    );
+    err.status = res.status;
     throw err;
-  } finally {
-    if (abortConfig?.timer) {
-      clearTimeout(abortConfig.timer);
-    }
   }
+  const contentType = res.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    return res.json();
+  }
+  return res.text();
 }
 
 export async function getPosApiToken() {
@@ -160,73 +85,24 @@ export async function getPosApiToken() {
   params.set('client_id', clientId);
   params.set('client_secret', clientSecret);
   const fetchFn = await getFetch();
-  const abortConfig = createAbortController();
-  try {
-    const res = await fetchFn(tokenUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: params.toString(),
-      signal: abortConfig?.controller.signal,
-    });
-    if (!res.ok) {
-      let text = '';
-      let parsedBody = null;
-      try {
-        text = await res.text();
-        if (text) {
-          parsedBody = JSON.parse(text);
-        }
-      } catch {
-        parsedBody = null;
-      }
-      let messageText = res.statusText;
-      if (text && text.trim()) {
-        messageText = text.trim();
-      } else if (parsedBody && typeof parsedBody === 'object') {
-        if (
-          typeof parsedBody.error_description === 'string' &&
-          parsedBody.error_description.trim()
-        ) {
-          messageText = parsedBody.error_description.trim();
-        } else if (typeof parsedBody.message === 'string' && parsedBody.message.trim()) {
-          messageText = parsedBody.message.trim();
-        } else if (typeof parsedBody.error === 'string' && parsedBody.error.trim()) {
-          messageText = parsedBody.error.trim();
-        }
-      }
-      const err = new Error(
-        `Failed to retrieve POSAPI token (${res.status}): ${messageText}`,
-      );
-      err.status = res.status;
-      if (parsedBody) {
-        err.body = parsedBody;
-        if (parsedBody.error_description) {
-          err.details = parsedBody.error_description;
-        }
-      } else if (text) {
-        err.body = text;
-      }
-      throw err;
-    }
-    const json = await res.json();
-    if (!json?.access_token) {
-      throw new Error('POSAPI token response missing access_token');
-    }
-    return json.access_token;
-  } catch (err) {
-    if (err?.name === 'AbortError') {
-      const timeoutErr = new Error(
-        `POSAPI token request timed out after ${abortConfig?.timeoutMs ?? 0} ms`,
-      );
-      timeoutErr.code = 'POSAPI_TIMEOUT';
-      throw timeoutErr;
-    }
+  const res = await fetchFn(tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    const err = new Error(
+      `Failed to retrieve POSAPI token (${res.status}): ${text || res.statusText}`,
+    );
+    err.status = res.status;
     throw err;
-  } finally {
-    if (abortConfig?.timer) {
-      clearTimeout(abortConfig.timer);
-    }
   }
+  const json = await res.json();
+  if (!json?.access_token) {
+    throw new Error('POSAPI token response missing access_token');
+  }
+  return json.access_token;
 }
 
 export function buildReceiptFromDynamicTransaction(record, mapping = {}, type) {
