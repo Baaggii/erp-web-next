@@ -20,15 +20,6 @@ function matchesScope(list, value) {
   return list.includes(value);
 }
 
-function pickOptionValue(options = {}, keys = []) {
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(options, key)) {
-      return options[key];
-    }
-  }
-  return undefined;
-}
-
 export function hasTransactionFormAccess(
   info,
   branchId,
@@ -38,42 +29,13 @@ export function hasTransactionFormAccess(
   if (!info || typeof info !== 'object') return true;
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
-  const userRightValue = normalizeAccessValue(
-    pickOptionValue(options, [
-      'userRightId',
-      'userRight',
-      'userLevelId',
-      'userlevel_id',
-      'userlevelId',
-      'user_level',
-      'userLevel',
-    ]),
-  );
-  const workplaceValue = normalizeAccessValue(
-    pickOptionValue(options, [
-      'workplaceId',
-      'workplace_id',
-      'workplaceSessionId',
-      'workplace_session_id',
-      'workplace',
-    ]),
-  );
-  const procedureValue = normalizeAccessValue(
-    pickOptionValue(options, ['procedure', 'procedureName', 'procedureId']),
-  );
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
-  const allowedUserRights = normalizeAccessList(info.allowedUserRights);
-  const allowedWorkplaces = normalizeAccessList(info.allowedWorkplaces);
-  const allowedProcedures = normalizeAccessList(info.procedures);
 
   const generalAllowed =
     matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue) &&
-    matchesScope(allowedUserRights, userRightValue) &&
-    matchesScope(allowedWorkplaces, workplaceValue) &&
-    matchesScope(allowedProcedures, procedureValue);
+    matchesScope(allowedDepartments, departmentValue);
 
   if (generalAllowed) return true;
 
@@ -91,16 +53,10 @@ export function hasTransactionFormAccess(
 
   const temporaryBranches = normalizeAccessList(info.temporaryAllowedBranches);
   const temporaryDepartments = normalizeAccessList(info.temporaryAllowedDepartments);
-  const temporaryUserRights = normalizeAccessList(info.temporaryAllowedUserRights);
-  const temporaryWorkplaces = normalizeAccessList(info.temporaryAllowedWorkplaces);
-  const temporaryProcedures = normalizeAccessList(info.temporaryProcedures);
 
   return (
     matchesScope(temporaryBranches, branchValue) &&
-    matchesScope(temporaryDepartments, departmentValue) &&
-    matchesScope(temporaryUserRights, userRightValue) &&
-    matchesScope(temporaryWorkplaces, workplaceValue) &&
-    matchesScope(temporaryProcedures, procedureValue)
+    matchesScope(temporaryDepartments, departmentValue)
   );
 }
 
@@ -120,42 +76,13 @@ export function evaluateTransactionFormAccess(
 
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
-  const userRightValue = normalizeAccessValue(
-    pickOptionValue(options, [
-      'userRightId',
-      'userRight',
-      'userLevelId',
-      'userlevel_id',
-      'userlevelId',
-      'user_level',
-      'userLevel',
-    ]),
-  );
-  const workplaceValue = normalizeAccessValue(
-    pickOptionValue(options, [
-      'workplaceId',
-      'workplace_id',
-      'workplaceSessionId',
-      'workplace_session_id',
-      'workplace',
-    ]),
-  );
-  const procedureValue = normalizeAccessValue(
-    pickOptionValue(options, ['procedure', 'procedureName', 'procedureId']),
-  );
 
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
-  const allowedUserRights = normalizeAccessList(info.allowedUserRights);
-  const allowedWorkplaces = normalizeAccessList(info.allowedWorkplaces);
-  const allowedProcedures = normalizeAccessList(info.procedures);
 
   const canPost =
     matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue) &&
-    matchesScope(allowedUserRights, userRightValue) &&
-    matchesScope(allowedWorkplaces, workplaceValue) &&
-    matchesScope(allowedProcedures, procedureValue);
+    matchesScope(allowedDepartments, departmentValue);
 
   const temporaryEnabled = Boolean(
     info.supportsTemporarySubmission ??
@@ -171,20 +98,10 @@ export function evaluateTransactionFormAccess(
     } else {
       const temporaryBranches = normalizeAccessList(info.temporaryAllowedBranches);
       const temporaryDepartments = normalizeAccessList(info.temporaryAllowedDepartments);
-      const temporaryUserRights = normalizeAccessList(
-        info.temporaryAllowedUserRights,
-      );
-      const temporaryWorkplaces = normalizeAccessList(
-        info.temporaryAllowedWorkplaces,
-      );
-      const temporaryProcedures = normalizeAccessList(info.temporaryProcedures);
 
       allowTemporary =
         matchesScope(temporaryBranches, branchValue) &&
-        matchesScope(temporaryDepartments, departmentValue) &&
-        matchesScope(temporaryUserRights, userRightValue) &&
-        matchesScope(temporaryWorkplaces, workplaceValue) &&
-        matchesScope(temporaryProcedures, procedureValue);
+        matchesScope(temporaryDepartments, departmentValue);
     }
   }
 

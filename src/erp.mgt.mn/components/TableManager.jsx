@@ -523,7 +523,7 @@ const TableManager = forwardRef(function TableManager({
     () => Array.from(requestIdSet).sort().join(','),
     [requestIdSet],
   );
-  const { user, company, branch, department, session, workplace } = useContext(AuthContext);
+  const { user, company, branch, department, session } = useContext(AuthContext);
   const hasSenior = (value) => {
     if (value === null || value === undefined) return false;
     const numeric = Number(value);
@@ -599,33 +599,6 @@ const TableManager = forwardRef(function TableManager({
     () => resolveScopeId(department),
     [department],
   );
-  const userRightScopeId = useMemo(
-    () =>
-      resolveScopeId(
-        session?.user_level ??
-          session?.userlevel_id ??
-          session?.userLevel ??
-          session?.userlevelId ??
-          null,
-      ),
-    [
-      session?.user_level,
-      session?.userlevel_id,
-      session?.userLevel,
-      session?.userlevelId,
-    ],
-  );
-  const workplaceScopeId = useMemo(
-    () =>
-      resolveScopeId(
-        workplace ??
-          session?.workplace_id ??
-          session?.workplaceId ??
-          session?.workplace ??
-          null,
-      ),
-    [workplace, session?.workplace_id, session?.workplaceId, session?.workplace],
-  );
 
   const accessEvaluation = useMemo(
     () =>
@@ -633,19 +606,9 @@ const TableManager = forwardRef(function TableManager({
         formConfig,
         branchScopeId,
         departmentScopeId,
-        {
-          allowTemporaryAnyScope: true,
-          userRightId: userRightScopeId,
-          workplaceId: workplaceScopeId,
-        },
+        { allowTemporaryAnyScope: true },
       ),
-    [
-      formConfig,
-      branchScopeId,
-      departmentScopeId,
-      userRightScopeId,
-      workplaceScopeId,
-    ],
+    [formConfig, branchScopeId, departmentScopeId],
   );
 
   const formSupportsTemporary = Boolean(

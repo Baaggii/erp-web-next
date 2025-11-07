@@ -84,61 +84,18 @@ export function hasPosConfigReadAccess(session = {}, actions = {}) {
   return false;
 }
 
-function pickOptionValue(options = {}, keys = []) {
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(options, key)) {
-      return options[key];
-    }
-  }
-  return undefined;
-}
-
-export function hasPosTransactionAccess(
-  config,
-  branchId,
-  departmentId,
-  options = {},
-) {
+export function hasPosTransactionAccess(config, branchId, departmentId) {
   if (!config || typeof config !== 'object') return true;
 
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
-  const userRightValue = normalizeAccessValue(
-    pickOptionValue(options, [
-      'userRightId',
-      'userRight',
-      'userLevelId',
-      'userlevel_id',
-      'userlevelId',
-      'user_level',
-      'userLevel',
-    ]),
-  );
-  const workplaceValue = normalizeAccessValue(
-    pickOptionValue(options, [
-      'workplaceId',
-      'workplace_id',
-      'workplaceSessionId',
-      'workplace_session_id',
-      'workplace',
-    ]),
-  );
-  const procedureValue = normalizeAccessValue(
-    pickOptionValue(options, ['procedure', 'procedureName', 'procedureId']),
-  );
 
   const allowedBranches = normalizeAccessList(config.allowedBranches);
   const allowedDepartments = normalizeAccessList(config.allowedDepartments);
-  const allowedUserRights = normalizeAccessList(config.allowedUserRights);
-  const allowedWorkplaces = normalizeAccessList(config.allowedWorkplaces);
-  const allowedProcedures = normalizeAccessList(config.procedures);
 
   const generalAllowed =
     matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue) &&
-    matchesScope(allowedUserRights, userRightValue) &&
-    matchesScope(allowedWorkplaces, workplaceValue) &&
-    matchesScope(allowedProcedures, procedureValue);
+    matchesScope(allowedDepartments, departmentValue);
 
   if (generalAllowed) return true;
 
@@ -157,33 +114,18 @@ export function hasPosTransactionAccess(
   const temporaryDepartments = normalizeAccessList(
     config.temporaryAllowedDepartments,
   );
-  const temporaryUserRights = normalizeAccessList(
-    config.temporaryAllowedUserRights,
-  );
-  const temporaryWorkplaces = normalizeAccessList(
-    config.temporaryAllowedWorkplaces,
-  );
-  const temporaryProcedures = normalizeAccessList(config.temporaryProcedures);
 
   return (
     matchesScope(temporaryBranches, branchValue) &&
-    matchesScope(temporaryDepartments, departmentValue) &&
-    matchesScope(temporaryUserRights, userRightValue) &&
-    matchesScope(temporaryWorkplaces, workplaceValue) &&
-    matchesScope(temporaryProcedures, procedureValue)
+    matchesScope(temporaryDepartments, departmentValue)
   );
 }
 
-export function filterPosConfigsByAccess(
-  configMap = {},
-  branchId,
-  departmentId,
-  options = {},
-) {
+export function filterPosConfigsByAccess(configMap = {}, branchId, departmentId) {
   const filtered = {};
   Object.entries(configMap || {}).forEach(([name, info]) => {
     if (!info || typeof info !== 'object') return;
-    if (hasPosTransactionAccess(info, branchId, departmentId, options)) {
+    if (hasPosTransactionAccess(info, branchId, departmentId)) {
       filtered[name] = info;
     }
   });
@@ -212,19 +154,11 @@ export async function setConfig(name, config = {}, companyId = 0) {
     ...config,
     allowedBranches: normalizeStoredAccessList(config.allowedBranches),
     allowedDepartments: normalizeStoredAccessList(config.allowedDepartments),
-    allowedUserRights: normalizeStoredAccessList(config.allowedUserRights),
-    allowedWorkplaces: normalizeStoredAccessList(config.allowedWorkplaces),
     temporaryAllowedBranches: normalizeStoredAccessList(
       config.temporaryAllowedBranches,
     ),
     temporaryAllowedDepartments: normalizeStoredAccessList(
       config.temporaryAllowedDepartments,
-    ),
-    temporaryAllowedUserRights: normalizeStoredAccessList(
-      config.temporaryAllowedUserRights,
-    ),
-    temporaryAllowedWorkplaces: normalizeStoredAccessList(
-      config.temporaryAllowedWorkplaces,
     ),
     supportsTemporarySubmission: Boolean(
       config.supportsTemporarySubmission ??
@@ -240,11 +174,6 @@ export async function setConfig(name, config = {}, companyId = 0) {
     ),
     procedures: Array.isArray(config.procedures)
       ? config.procedures
-          .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
-          .filter((proc) => proc)
-      : [],
-    temporaryProcedures: Array.isArray(config.temporaryProcedures)
-      ? config.temporaryProcedures
           .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
           .filter((proc) => proc)
       : [],

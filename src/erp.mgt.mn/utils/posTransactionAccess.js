@@ -21,54 +21,15 @@ function matchesScope(list, value) {
   return list.includes(normalizedValue);
 }
 
-function pickOptionValue(options = {}, keys = []) {
-  for (const key of keys) {
-    if (Object.prototype.hasOwnProperty.call(options, key)) {
-      return options[key];
-    }
-  }
-  return undefined;
-}
-
-export function hasPosTransactionAccess(info, branchId, departmentId, options = {}) {
+export function hasPosTransactionAccess(info, branchId, departmentId) {
   if (!info || typeof info !== 'object') return true;
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
-  const userRightValue = normalizeAccessValue(
-    pickOptionValue(options, [
-      'userRightId',
-      'userRight',
-      'userLevelId',
-      'userlevel_id',
-      'userlevelId',
-      'user_level',
-      'userLevel',
-    ]),
-  );
-  const workplaceValue = normalizeAccessValue(
-    pickOptionValue(options, [
-      'workplaceId',
-      'workplace_id',
-      'workplaceSessionId',
-      'workplace_session_id',
-      'workplace',
-    ]),
-  );
-  const procedureValue = normalizeAccessValue(
-    pickOptionValue(options, ['procedure', 'procedureName', 'procedureId']),
-  );
-
   const allowedBranches = normalizeAccessList(info.allowedBranches);
   const allowedDepartments = normalizeAccessList(info.allowedDepartments);
-  const allowedUserRights = normalizeAccessList(info.allowedUserRights);
-  const allowedWorkplaces = normalizeAccessList(info.allowedWorkplaces);
-  const allowedProcedures = normalizeAccessList(info.procedures);
   const generalAllowed =
     matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue) &&
-    matchesScope(allowedUserRights, userRightValue) &&
-    matchesScope(allowedWorkplaces, workplaceValue) &&
-    matchesScope(allowedProcedures, procedureValue);
+    matchesScope(allowedDepartments, departmentValue);
 
   if (generalAllowed) return true;
 
@@ -84,33 +45,18 @@ export function hasPosTransactionAccess(info, branchId, departmentId, options = 
   const temporaryDepartments = normalizeAccessList(
     info.temporaryAllowedDepartments,
   );
-  const temporaryUserRights = normalizeAccessList(
-    info.temporaryAllowedUserRights,
-  );
-  const temporaryWorkplaces = normalizeAccessList(
-    info.temporaryAllowedWorkplaces,
-  );
-  const temporaryProcedures = normalizeAccessList(info.temporaryProcedures);
 
   return (
     matchesScope(temporaryBranches, branchValue) &&
-    matchesScope(temporaryDepartments, departmentValue) &&
-    matchesScope(temporaryUserRights, userRightValue) &&
-    matchesScope(temporaryWorkplaces, workplaceValue) &&
-    matchesScope(temporaryProcedures, procedureValue)
+    matchesScope(temporaryDepartments, departmentValue)
   );
 }
 
-export function filterPosConfigsByAccess(
-  configMap = {},
-  branchId,
-  departmentId,
-  options = {},
-) {
+export function filterPosConfigsByAccess(configMap = {}, branchId, departmentId) {
   const filtered = {};
   Object.entries(configMap || {}).forEach(([name, cfg]) => {
     if (!cfg || typeof cfg !== 'object') return;
-    if (hasPosTransactionAccess(cfg, branchId, departmentId, options)) {
+    if (hasPosTransactionAccess(cfg, branchId, departmentId)) {
       filtered[name] = cfg;
     }
   });
