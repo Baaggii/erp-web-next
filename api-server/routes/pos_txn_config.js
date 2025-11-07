@@ -41,11 +41,25 @@ router.get('/', requireAuth, async (req, res, next) => {
       req.session?.department_id ??
       req.session?.departmentId;
 
+    const sessionUserLevel =
+      session?.user_level ??
+      session?.userLevel ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      req.user?.userLevel ??
+      req.user?.userlevel_id ??
+      req.user?.userlevelId;
+    const sessionWorkplace =
+      session?.workplace_id ??
+      session?.workplaceId ??
+      req.session?.workplace_id ??
+      req.session?.workplaceId ??
+      req.session?.workplace;
+
     const branchId = pickScopeValue(req.query.branchId, sessionBranch);
-    const departmentId = pickScopeValue(
-      req.query.departmentId,
-      sessionDepartment,
-    );
+    const departmentId = pickScopeValue(req.query.departmentId, sessionDepartment);
+    const userRightId = pickScopeValue(req.query.userRightId, sessionUserLevel);
+    const workplaceId = pickScopeValue(req.query.workplaceId, sessionWorkplace);
 
     if (name) {
       const { config, isDefault } = await getConfig(name, companyId);
@@ -53,14 +67,17 @@ router.get('/', requireAuth, async (req, res, next) => {
         res.status(404).json({ message: 'POS config not found', isDefault });
         return;
       }
-      if (!hasPosTransactionAccess(config, branchId, departmentId)) {
+      if (!hasPosTransactionAccess(config, branchId, departmentId, { userRightId, workplaceId })) {
         res.status(403).json({ message: 'Access denied', isDefault });
         return;
       }
       res.json({ ...config, isDefault });
     } else {
       const { config, isDefault } = await getAllConfigs(companyId);
-      const filtered = filterPosConfigsByAccess(config, branchId, departmentId);
+      const filtered = filterPosConfigsByAccess(config, branchId, departmentId, {
+        userRightId,
+        workplaceId,
+      });
       res.json({ ...filtered, isDefault });
     }
   } catch (err) {

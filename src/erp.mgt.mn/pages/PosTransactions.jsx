@@ -1123,6 +1123,8 @@ export default function PosTransactionsPage() {
     branch,
     department,
     permissions: perms,
+    session,
+    workplace,
   } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
@@ -1146,18 +1148,33 @@ export default function PosTransactionsPage() {
     const entries = Object.entries(rawConfigs).filter(([key]) => key !== 'isDefault');
     if (entries.length === 0) return {};
     const filtered = {};
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
     entries.forEach(([cfgName, cfgValue]) => {
       if (!cfgValue || typeof cfgValue !== 'object') return;
       if (
         hasTransactionFormAccess(cfgValue, branch, department, {
           allowTemporaryAnyScope: true,
+          userRightId,
+          workplaceId,
         })
       ) {
         filtered[cfgName] = cfgValue;
       }
     });
     return filtered;
-  }, [rawConfigs, branch, department, perms, licensed]);
+  }, [rawConfigs, branch, department, perms, licensed, session, user, workplace]);
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
@@ -1189,6 +1206,10 @@ export default function PosTransactionsPage() {
   const [pendingList, setPendingList] = useState([]);
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [postedId, setPostedId] = useState(null);
+  const canIssueEbarimt = Boolean(
+    config?.masterTable &&
+      memoFormConfigs[config.masterTable]?.posApiEnabled,
+  );
   const [isNarrow, setIsNarrow] = useState(false);
   const tableTypeMap = useMemo(() => {
     const map = {};
@@ -1617,19 +1638,34 @@ export default function PosTransactionsPage() {
     if (branch !== undefined && branch !== null && String(branch).trim() !== '') {
       params.set('branchId', branch);
     }
-    if (
-      department !== undefined &&
-      department !== null &&
-      String(department).trim() !== ''
-    ) {
+    if (department !== undefined && department !== null && String(department).trim() !== '') {
       params.set('departmentId', department);
+    }
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    if (userRightId != null && String(userRightId).trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
+    if (workplaceId != null && String(workplaceId).trim() !== '') {
+      params.set('workplaceId', workplaceId);
     }
     const qs = params.toString();
     fetch(`/api/pos_txn_config${qs ? `?${qs}` : ''}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => setRawConfigs(data))
       .catch(() => setRawConfigs({}));
-  }, [branch, department]);
+  }, [branch, department, session, user, workplace]);
 
   const initRef = useRef('');
 
@@ -1654,12 +1690,27 @@ export default function PosTransactionsPage() {
     if (branch !== undefined && branch !== null && String(branch).trim() !== '') {
       params.set('branchId', branch);
     }
-    if (
-      department !== undefined &&
-      department !== null &&
-      String(department).trim() !== ''
-    ) {
+    if (department !== undefined && department !== null && String(department).trim() !== '') {
       params.set('departmentId', department);
+    }
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    if (userRightId != null && String(userRightId).trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
+    if (workplaceId != null && String(workplaceId).trim() !== '') {
+      params.set('workplaceId', workplaceId);
     }
     fetch(`/api/pos_txn_config?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
@@ -1680,7 +1731,7 @@ export default function PosTransactionsPage() {
       .then(res => res.ok ? res.json() : {})
       .then(data => setLayout(data || {}))
       .catch(() => setLayout({}));
-  }, [name, configs, branch, department]);
+  }, [name, configs, branch, department, session, user, workplace]);
 
   const { formList, visibleTables } = React.useMemo(() => {
     if (!config) return { formList: [], visibleTables: new Set() };
@@ -2568,9 +2619,9 @@ export default function PosTransactionsPage() {
     }
   }
 
-  async function handlePostAll() {
-    if (!name) return;
-    if (!config) return;
+  function buildPostRequest() {
+    if (!name) return null;
+    if (!config) return null;
 
     const isValueMissing = (val) => {
       if (val === undefined || val === null) return true;
@@ -2638,7 +2689,7 @@ export default function PosTransactionsPage() {
             isValueMissing(rows[field])
           ) {
             reportMissingField(table, field);
-            return;
+            return null;
           }
         }
 
@@ -2651,7 +2702,7 @@ export default function PosTransactionsPage() {
               isValueMissing(row[field])
             ) {
               reportMissingField(table, field, idx);
-              return;
+              return null;
             }
           }
         }
@@ -2663,11 +2714,12 @@ export default function PosTransactionsPage() {
             isValueMissing(row[field])
           ) {
             reportMissingField(table, field);
-            return;
+            return null;
           }
         }
       }
     }
+
     let payload = applySessionIdToValues(
       { ...values },
       currentSessionId || masterSessionValue,
@@ -2682,8 +2734,9 @@ export default function PosTransactionsPage() {
     const mismatch = findCalcFieldMismatch(payload, normalizedCalcFields);
     if (mismatch) {
       addToast('Mapping mismatch', 'error');
-      return;
+      return null;
     }
+
     const single = {};
     const multi = {};
     formList.forEach((t) => {
@@ -2698,6 +2751,7 @@ export default function PosTransactionsPage() {
         single[t.table] = value;
       }
     });
+
     const postData = { masterId: masterIdRef.current, single, multi };
     const session = {
       employeeId: user?.empid,
@@ -2706,96 +2760,120 @@ export default function PosTransactionsPage() {
       departmentId: department,
       date: formatTimestamp(new Date()),
     };
+
+    const currentPendingId = pendingId;
+
+    const afterSuccess = async (js = {}) => {
+      if (currentPendingId) {
+        try {
+          await fetch(
+            `/api/pos_txn_pending?id=${encodeURIComponent(currentPendingId)}`,
+            {
+              method: 'DELETE',
+              credentials: 'include',
+            },
+          );
+        } catch {
+          /* ignore */
+        }
+      }
+      setPendingId(null);
+      if (js.id) setPostedId(js.id);
+      if (
+        config.statusField?.table &&
+        config.statusField.field &&
+        config.statusField.posted
+      ) {
+        setValues((v) => {
+          const tbl = config.statusField.table;
+          const field = config.statusField.field;
+          const postedValue = config.statusField.posted;
+          const existing = v?.[tbl]?.[field];
+          if (existing === postedValue) return v;
+          const next = {
+            ...v,
+            [tbl]: {
+              ...(v?.[tbl] || {}),
+              [field]: postedValue,
+            },
+          };
+          return recalcTotals(cloneValuesForRecalc(next));
+        });
+      }
+
+      const imgCfg = memoFormConfigs[config.masterTable] || {};
+      if (!imgCfg.imageIdField || !js.id) return;
+      const columnMap = (columnMeta[config.masterTable] || []).reduce(
+        (m, c) => {
+          m[c.name.toLowerCase()] = c.name;
+          return m;
+        },
+        {},
+      );
+      const rowBefore = values[config.masterTable] || {};
+      const oldImg =
+        rowBefore._imageName ||
+        buildImageName(rowBefore, imgCfg.imagenameField || [], columnMap).name;
+      await new Promise((r) => setTimeout(r, 300));
+      let rowAfter = rowBefore;
+      try {
+        const r2 = await fetch(
+          `/api/tables/${encodeURIComponent(config.masterTable)}/${encodeURIComponent(js.id)}`,
+          { credentials: 'include' },
+        );
+        if (r2.ok) {
+          rowAfter = await r2.json().catch(() => rowBefore);
+        }
+      } catch {
+        rowAfter = rowBefore;
+      }
+      const { name: newImg } = buildImageName(
+        rowAfter,
+        imgCfg.imagenameField || [],
+        columnMap,
+      );
+      const t1 = rowAfter.trtype;
+      const t2 =
+        rowAfter.uitranstypename || rowAfter.transtype || rowAfter.transtypename;
+      const folder = t1 && t2
+        ? `${slugify(t1)}/${slugify(String(t2))}`
+        : config.masterTable;
+      if (oldImg && newImg && oldImg !== newImg) {
+        const renameUrl =
+          `/api/transaction_images/${config.masterTable}/${encodeURIComponent(oldImg)}/rename/${encodeURIComponent(newImg)}?folder=${encodeURIComponent(folder)}`;
+        try {
+          const rn = await fetch(renameUrl, {
+            method: 'POST',
+            credentials: 'include',
+          });
+          if (rn.ok) {
+            const imgs = await rn.json().catch(() => []);
+            (Array.isArray(imgs) ? imgs : []).forEach((p) =>
+              addToast(`Image saved: ${p}`, 'success'),
+            );
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    return { body: { name, data: postData, session }, afterSuccess };
+  }
+
+  async function handlePostAll() {
+    const request = buildPostRequest();
+    if (!request) return;
     try {
       const res = await fetch('/api/pos_txn_post', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, data: postData, session }),
+        body: JSON.stringify(request.body),
       });
       if (res.ok) {
-        if (pendingId) {
-          await fetch(`/api/pos_txn_pending?id=${encodeURIComponent(pendingId)}`, {
-            method: 'DELETE',
-            credentials: 'include',
-          });
-        }
-        setPendingId(null);
         const js = await res.json().catch(() => ({}));
-        if (js.id) setPostedId(js.id);
-        if (config.statusField?.table && config.statusField.field && config.statusField.posted) {
-          setValues((v) => {
-            const tbl = config.statusField.table;
-            const field = config.statusField.field;
-            const postedValue = config.statusField.posted;
-            const existing = v?.[tbl]?.[field];
-            if (existing === postedValue) return v;
-            const next = {
-              ...v,
-              [tbl]: {
-                ...(v?.[tbl] || {}),
-                [field]: postedValue,
-              },
-            };
-            return recalcTotals(cloneValuesForRecalc(next));
-          });
-        }
-        const imgCfg = memoFormConfigs[config.masterTable] || {};
-        if (imgCfg.imageIdField) {
-          const columnMap = (columnMeta[config.masterTable] || []).reduce(
-            (m, c) => {
-              m[c.name.toLowerCase()] = c.name;
-              return m;
-            },
-            {},
-          );
-          const rowBefore = values[config.masterTable] || {};
-          const oldImg =
-            rowBefore._imageName ||
-            buildImageName(rowBefore, imgCfg.imagenameField || [], columnMap).name;
-          await new Promise((r) => setTimeout(r, 300));
-          let rowAfter = rowBefore;
-          try {
-            const r2 = await fetch(
-              `/api/tables/${encodeURIComponent(config.masterTable)}/${encodeURIComponent(js.id)}`,
-              { credentials: 'include' },
-            );
-            if (r2.ok) {
-              rowAfter = await r2.json().catch(() => rowBefore);
-            }
-          } catch {
-            rowAfter = rowBefore;
-          }
-          const { name: newImg } = buildImageName(
-            rowAfter,
-            imgCfg.imagenameField || [],
-            columnMap,
-          );
-          const t1 = rowAfter.trtype;
-          const t2 =
-            rowAfter.uitranstypename || rowAfter.transtype || rowAfter.transtypename;
-          const folder = t1 && t2
-            ? `${slugify(t1)}/${slugify(String(t2))}`
-            : config.masterTable;
-          if (oldImg && newImg && oldImg !== newImg) {
-            const renameUrl =
-              `/api/transaction_images/${config.masterTable}/${encodeURIComponent(oldImg)}/rename/${encodeURIComponent(newImg)}?folder=${encodeURIComponent(folder)}`;
-            try {
-              const rn = await fetch(renameUrl, {
-                method: 'POST',
-                credentials: 'include',
-              });
-              if (rn.ok) {
-                const imgs = await rn.json().catch(() => []);
-                (Array.isArray(imgs) ? imgs : []).forEach((p) =>
-                  addToast(`Image saved: ${p}`, 'success'),
-                );
-              }
-            } catch {
-              /* ignore */
-            }
-          }
-        }
+        await request.afterSuccess(js);
         addToast('Posted', 'success');
       } else {
         const js = await res.json().catch(() => ({}));
@@ -2805,6 +2883,57 @@ export default function PosTransactionsPage() {
       }
     } catch (err) {
       addToast(`Post failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function handlePostEbarimt() {
+    const request = buildPostRequest();
+    if (!request) return;
+    try {
+      const res = await fetch('/api/pos_txn_ebarimt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(request.body),
+      });
+      if (res.ok) {
+        const js = await res.json().catch(() => ({}));
+        await request.afterSuccess(js);
+        addToast('Posted & Ebarimt issued', 'success');
+        if (generalConfig?.general?.ebarimtToastEnabled && js?.posApi) {
+          const stringify = (value) => {
+            if (value == null) return '';
+            if (typeof value === 'string') return value;
+            try {
+              return JSON.stringify(value);
+            } catch {
+              return String(value);
+            }
+          };
+          if (js.posApi.payload) {
+            addToast(
+              `POSAPI request: ${stringify(js.posApi.payload)}`,
+              'info',
+            );
+          }
+          if (js.posApi.response) {
+            addToast(
+              `POSAPI response: ${stringify(js.posApi.response)}`,
+              'info',
+            );
+          }
+        }
+      } else {
+        const js = await res.json().catch(() => ({}));
+        const msg = js.message || res.statusText;
+        const field = parseErrorField(msg);
+        addToast(
+          `Ebarimt post failed: ${msg}${field ? ` (field ${field})` : ''}`,
+          'error',
+        );
+      }
+    } catch (err) {
+      addToast(`Ebarimt post failed: ${err.message}`, 'error');
     }
   }
 
@@ -2864,6 +2993,15 @@ export default function PosTransactionsPage() {
             <button onClick={handleLoadPending} style={{ marginRight: '0.5rem' }} disabled={!name}>Load</button>
             <button onClick={handleDeletePending} style={{ marginRight: '0.5rem' }} disabled={!pendingId}>Delete</button>
             <button onClick={handlePostAll} disabled={!name}>POST</button>
+            {canIssueEbarimt && (
+              <button
+                onClick={handlePostEbarimt}
+                style={{ marginLeft: '0.5rem' }}
+                disabled={!name}
+              >
+                Ebarimt Post
+              </button>
+            )}
           </div>
           {(pendingId || postedId) && (
             <div style={{ marginBottom: '0.5rem' }}>
