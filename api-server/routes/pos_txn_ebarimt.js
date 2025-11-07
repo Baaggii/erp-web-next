@@ -1,0 +1,25 @@
+import express from 'express';
+import { requireAuth } from '../middlewares/auth.js';
+import { postPosTransactionWithEbarimt } from '../services/postPosTransaction.js';
+
+const router = express.Router();
+
+router.post('/', requireAuth, async (req, res, next) => {
+  try {
+    const companyId = Number(req.query.companyId ?? req.user.companyId);
+    const { name, data, session } = req.body;
+    if (!data) return res.status(400).json({ message: 'invalid data' });
+    const info = { ...(session || {}), userId: req.user.id };
+    const result = await postPosTransactionWithEbarimt(
+      name,
+      data,
+      info,
+      companyId,
+    );
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
+export default router;
