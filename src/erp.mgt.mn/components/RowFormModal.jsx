@@ -20,6 +20,7 @@ const RowFormModal = function RowFormModal({
   visible,
   onCancel,
   onSubmit,
+  onSubmitEbarimt = null,
   columns,
   row,
   rows = [],
@@ -73,6 +74,7 @@ const RowFormModal = function RowFormModal({
   isAdding = false,
   isEditingTemporaryDraft = false,
   canPost = true,
+  canIssueEbarimt = false,
   forceEditable = false,
 }) {
   const mounted = useRef(false);
@@ -1798,7 +1800,7 @@ const RowFormModal = function RowFormModal({
     }
   }
 
-  async function submitForm() {
+  async function submitForm(handler = onSubmit) {
     if (!canPost) {
       alert(
         t(
@@ -1810,6 +1812,10 @@ const RowFormModal = function RowFormModal({
     }
     if (submitLocked) return;
     setSubmitLocked(true);
+    if (typeof handler !== 'function') {
+      setSubmitLocked(false);
+      return;
+    }
     if (useGrid && tableRef.current) {
       if (tableRef.current.hasInvalid && tableRef.current.hasInvalid()) {
         alert('Тэмдэглэсэн талбаруудыг засна уу.');
@@ -1889,7 +1895,7 @@ const RowFormModal = function RowFormModal({
             extra.seedRecords = filtered;
           }
           try {
-            const res = await Promise.resolve(onSubmit({ ...extra, ...r }));
+            const res = await Promise.resolve(handler({ ...extra, ...r }));
             if (res === false) {
               failedRows.push(rows[rowIndices[i]]);
             } else {
@@ -1942,7 +1948,7 @@ const RowFormModal = function RowFormModal({
         normalized[k] = val;
       });
       try {
-        const res = await Promise.resolve(onSubmit(normalized));
+        const res = await Promise.resolve(handler(normalized));
         if (res === false) {
           setSubmitLocked(false);
           return;
@@ -2657,6 +2663,15 @@ const RowFormModal = function RowFormModal({
           >
             {t('cancel', 'Cancel')}
           </button>
+          {canPost && canIssueEbarimt && (
+            <button
+              type="button"
+              onClick={() => submitForm(onSubmitEbarimt)}
+              className="px-3 py-1 bg-green-600 text-white rounded"
+            >
+              Ebarimt Post
+            </button>
+          )}
           {canPost && (
             <button
               type="submit"

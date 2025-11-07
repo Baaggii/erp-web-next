@@ -544,6 +544,28 @@ const TableManager = forwardRef(function TableManager({
   const isSubordinate = hasAnySenior;
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
+  const ebarimtToastsEnabled = Boolean(generalConfig.general?.ebarimtToastEnabled);
+  const ebarimtFormName =
+    formName ||
+    formConfig?.configName ||
+    formConfig?.formName ||
+    formConfig?.moduleLabel ||
+    '';
+  const canIssueEbarimt = useMemo(
+    () =>
+      Boolean(
+        isAdding &&
+          formConfig?.posApiEnabled &&
+          generalConfig.general?.ebarimtPosApiEnabled &&
+          ebarimtFormName,
+      ),
+    [
+      isAdding,
+      formConfig?.posApiEnabled,
+      generalConfig.general?.ebarimtPosApiEnabled,
+      ebarimtFormName,
+    ],
+  );
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
 
@@ -2735,7 +2757,11 @@ const TableManager = forwardRef(function TableManager({
     setSelectedRows(new Set());
   }
 
-  async function handleSubmit(values) {
+  async function submitTransaction(values, { issueEbarimt = false } = {}) {
+    if (issueEbarimt && !canIssueEbarimt) {
+      addToast('Ebarimt submission is disabled for this form.', 'error');
+      return false;
+    }
     if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
@@ -2892,10 +2918,17 @@ const TableManager = forwardRef(function TableManager({
       return ok;
     }
 
-    const method = isAdding ? 'POST' : 'PUT';
-    const url = isAdding
+    let method = isAdding ? 'POST' : 'PUT';
+    let url = isAdding
       ? `/api/tables/${encodeURIComponent(table)}`
       : `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(getRowId(editing))}`;
+    let payload = cleaned;
+
+    if (issueEbarimt) {
+      method = 'POST';
+      url = `/api/tables/${encodeURIComponent(table)}/ebarimt`;
+      payload = { values: cleaned, formName: ebarimtFormName };
+    }
 
     if (isAdding) {
       if (columns.has('created_by')) cleaned.created_by = user?.empid;
@@ -2909,9 +2942,10 @@ const TableManager = forwardRef(function TableManager({
         method,
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(cleaned),
+        body: JSON.stringify(payload),
       });
-      const savedRow = res.ok ? await res.json().catch(() => ({})) : {};
+      const responseBody = await res.json().catch(() => ({}));
+      const savedRow = res.ok ? responseBody : {};
       if (res.ok) {
         const params = new URLSearchParams({ page, perPage });
         if (company != null && columns.has('company_id'))
@@ -2935,7 +2969,11 @@ const TableManager = forwardRef(function TableManager({
         setEditing(null);
         setIsAdding(false);
         setGridRows([]);
-        const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
+        const msg = issueEbarimt
+          ? 'Гүйлгээ хадгалагдаж, Ebarimt илгээгдлээ'
+          : isAdding
+          ? 'Шинэ гүйлгээ хадгалагдлаа'
+          : 'Хадгалагдлаа';
         if (activeTemporaryDraftId) {
           await cleanupActiveTemporaryDraft();
         } else {
@@ -2981,26 +3019,62 @@ const TableManager = forwardRef(function TableManager({
           }
         }
         addToast(msg, 'success');
+        if (issueEbarimt && ebarimtToastsEnabled && savedRow?.posApi) {
+          const stringify = (value) => {
+            if (value == null) return '';
+            if (typeof value === 'string') return value;
+            try {
+              return JSON.stringify(value);
+            } catch {
+              return String(value);
+            }
+          };
+          if (savedRow.posApi.payload) {
+            addToast(
+              `POSAPI request: ${stringify(savedRow.posApi.payload)}`,
+              'info',
+            );
+          }
+          if (savedRow.posApi.response) {
+            addToast(
+              `POSAPI response: ${stringify(savedRow.posApi.response)}`,
+              'info',
+            );
+          }
+        }
         refreshRows();
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
         }
         return true;
       } else {
-        let message = 'Хадгалахад алдаа гарлаа';
-        try {
-          const data = await res.json();
-          if (data && data.message) message += `: ${data.message}`;
-        } catch {
-          // ignore
+        let message = issueEbarimt
+          ? 'Ebarimt илгээхэд алдаа гарлаа'
+          : 'Хадгалахад алдаа гарлаа';
+        if (responseBody && responseBody.message) {
+          message += `: ${responseBody.message}`;
         }
         addToast(message, 'error');
         return false;
       }
     } catch (err) {
+      addToast(
+        t('save_failed', 'Failed to save transaction: {{message}}', {
+          message: err.message,
+        }),
+        'error',
+      );
       console.error('Save failed', err);
       return false;
     }
+  }
+
+  async function handleSubmit(values) {
+    return submitTransaction(values);
+  }
+
+  async function handleSubmitEbarimt(values) {
+    return submitTransaction(values, { issueEbarimt: true });
   }
 
   async function handleSaveTemporary(submission) {
@@ -5791,6 +5865,8 @@ const TableManager = forwardRef(function TableManager({
         scope="forms"
         allowTemporarySave={canSaveTemporaryDraft}
         isAdding={isAdding}
+        canIssueEbarimt={canIssueEbarimt}
+        onSubmitEbarimt={canIssueEbarimt ? handleSubmitEbarimt : undefined}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
       />
