@@ -10,7 +10,6 @@ import {
   sendReceipt,
 } from './posApiService.js';
 import { logUserAction } from './userActivityLog.js';
-import { getGeneralConfig } from './generalConfig.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
@@ -749,88 +748,85 @@ export async function promoteTemporarySubmission(
           row.company_id,
         );
         if (formCfg?.posApiEnabled) {
-          const { config: generalCfg } = await getGeneralConfig(row.company_id ?? 0);
-          if (generalCfg?.general?.ebarimtPosApiEnabled) {
-            const mapping = formCfg.posApiMapping || {};
-            let masterRecord = { ...sanitizedValues };
-            if (insertedId) {
-              try {
-                const [masterRows] = await conn.query(
-                  `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
-                  [insertedId],
-                );
-                if (Array.isArray(masterRows) && masterRows[0]) {
-                  masterRecord = masterRows[0];
-                }
-              } catch (selectErr) {
-                console.error(
-                  'Failed to load persisted transaction for POSAPI submission',
-                  {
-                    table: row.table_name,
-                    id: insertedId,
-                    error: selectErr,
-                  },
-                );
+          const mapping = formCfg.posApiMapping || {};
+          let masterRecord = { ...sanitizedValues };
+          if (insertedId) {
+            try {
+              const [masterRows] = await conn.query(
+                `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+                [insertedId],
+              );
+              if (Array.isArray(masterRows) && masterRows[0]) {
+                masterRecord = masterRows[0];
               }
-            }
-            const receiptType =
-              formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-            const payload = buildReceiptFromDynamicTransaction(
-              masterRecord,
-              mapping,
-              receiptType,
-            );
-            if (payload) {
-              try {
-                const posApiResponse = await sendReceipt(payload);
-                if (posApiResponse && insertedId) {
-                  const updates = {};
-                  const nameMap = new Map();
-                  for (const col of Array.isArray(columns) ? columns : []) {
-                    if (!col || !col.name) continue;
-                    nameMap.set(col.name.toLowerCase(), col.name);
-                  }
-                  if (posApiResponse.lottery) {
-                    const lotteryCol =
-                      nameMap.get('lottery') ||
-                      nameMap.get('lottery_no') ||
-                      nameMap.get('lottery_number') ||
-                      nameMap.get('ddtd');
-                    if (lotteryCol) updates[lotteryCol] = posApiResponse.lottery;
-                  }
-                  if (posApiResponse.qrData) {
-                    const qrCol =
-                      nameMap.get('qr_data') ||
-                      nameMap.get('qrdata') ||
-                      nameMap.get('qr_code');
-                    if (qrCol) updates[qrCol] = posApiResponse.qrData;
-                  }
-                  if (Object.keys(updates).length > 0) {
-                    const setClause = Object.keys(updates)
-                      .map((col) => `\`${col}\` = ?`)
-                      .join(', ');
-                    const params = [...Object.values(updates), insertedId];
-                    try {
-                      await conn.query(
-                        `UPDATE \`${row.table_name}\` SET ${setClause} WHERE id = ?`,
-                        params,
-                      );
-                    } catch (updateErr) {
-                      console.error('Failed to persist POSAPI response details', {
-                        table: row.table_name,
-                        id: insertedId,
-                        error: updateErr,
-                      });
-                    }
-                  }
-                }
-              } catch (posErr) {
-                console.error('POSAPI receipt submission failed', {
+            } catch (selectErr) {
+              console.error(
+                'Failed to load persisted transaction for POSAPI submission',
+                {
                   table: row.table_name,
-                  recordId: insertedId,
-                  error: posErr,
-                });
+                  id: insertedId,
+                  error: selectErr,
+                },
+              );
+            }
+          }
+          const receiptType =
+            formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
+          const payload = buildReceiptFromDynamicTransaction(
+            masterRecord,
+            mapping,
+            receiptType,
+          );
+          if (payload) {
+            try {
+              const posApiResponse = await sendReceipt(payload);
+              if (posApiResponse && insertedId) {
+                const updates = {};
+                const nameMap = new Map();
+                for (const col of Array.isArray(columns) ? columns : []) {
+                  if (!col || !col.name) continue;
+                  nameMap.set(col.name.toLowerCase(), col.name);
+                }
+                if (posApiResponse.lottery) {
+                  const lotteryCol =
+                    nameMap.get('lottery') ||
+                    nameMap.get('lottery_no') ||
+                    nameMap.get('lottery_number') ||
+                    nameMap.get('ddtd');
+                  if (lotteryCol) updates[lotteryCol] = posApiResponse.lottery;
+                }
+                if (posApiResponse.qrData) {
+                  const qrCol =
+                    nameMap.get('qr_data') ||
+                    nameMap.get('qrdata') ||
+                    nameMap.get('qr_code');
+                  if (qrCol) updates[qrCol] = posApiResponse.qrData;
+                }
+                if (Object.keys(updates).length > 0) {
+                  const setClause = Object.keys(updates)
+                    .map((col) => `\`${col}\` = ?`)
+                    .join(', ');
+                  const params = [...Object.values(updates), insertedId];
+                  try {
+                    await conn.query(
+                      `UPDATE \`${row.table_name}\` SET ${setClause} WHERE id = ?`,
+                      params,
+                    );
+                  } catch (updateErr) {
+                    console.error('Failed to persist POSAPI response details', {
+                      table: row.table_name,
+                      id: insertedId,
+                      error: updateErr,
+                    });
+                  }
+                }
               }
+            } catch (posErr) {
+              console.error('POSAPI receipt submission failed', {
+                table: row.table_name,
+                recordId: insertedId,
+                error: posErr,
+              });
             }
           }
         }

@@ -27,13 +27,6 @@ import {
   removeCustomRelationAtIndex,
   removeCustomRelationMatching,
 } from '../services/tableRelationsConfig.js';
-import { getFormConfig } from '../services/transactionFormConfig.js';
-import { getGeneralConfig } from '../services/generalConfig.js';
-import {
-  buildReceiptFromDynamicTransaction,
-  sendReceipt,
-} from '../services/posApiService.js';
-import { persistPosApiResponse } from '../services/postPosTransaction.js';
 let bcrypt;
 try {
   const mod = await import('bcryptjs');
@@ -438,112 +431,6 @@ export async function addRow(req, res, next) {
     );
     res.locals.insertId = result?.id;
     res.status(201).json(result);
-  } catch (err) {
-    if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
-      return res.status(400).json({ message: err.message });
-    }
-    next(err);
-  }
-}
-
-export async function addRowWithEbarimt(req, res, next) {
-  try {
-    const table = req.params.table;
-    if (!table) {
-      return res.status(400).json({ message: 'table is required' });
-    }
-    const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
-    const values = req.body?.values;
-    const formName = req.body?.formName;
-    if (!values || typeof values !== 'object') {
-      return res.status(400).json({ message: 'values are required' });
-    }
-    if (!formName) {
-      return res.status(400).json({ message: 'formName is required' });
-    }
-
-    const { config: generalCfg } = await getGeneralConfig(companyId);
-    if (!generalCfg?.general?.ebarimtPosApiEnabled) {
-      return res
-        .status(400)
-        .json({ message: 'POSAPI Ebarimt submissions are disabled' });
-    }
-
-    const { config: formCfg } = await getFormConfig(table, formName, companyId);
-    if (!formCfg?.posApiEnabled) {
-      return res
-        .status(400)
-        .json({ message: 'POSAPI is not enabled for this form' });
-    }
-
-    const columns = await listTableColumns(table);
-    const row = { ...values };
-    if (columns.includes('created_by')) row.created_by = req.user?.empid;
-    if (columns.includes('created_at')) {
-      row.created_at = formatDateForDb(new Date());
-    }
-    if (columns.includes('company_id')) {
-      row.company_id = req.user.companyId;
-    }
-    if (table === 'users' && row.password) {
-      row.password = await bcrypt.hash(row.password, 10);
-    }
-    if (columns.includes('g_burtgel_id') && row.g_burtgel_id == null) {
-      row.g_burtgel_id = row.g_id ?? 0;
-    }
-
-    const result = await insertTableRow(
-      table,
-      row,
-      undefined,
-      undefined,
-      false,
-      req.user?.empid ?? null,
-      {
-        mutationContext: {
-          changedBy: req.user?.empid ?? null,
-          companyId,
-        },
-      },
-    );
-    const insertId = result?.id;
-    if (!insertId) {
-      return res
-        .status(500)
-        .json({ message: 'Insert succeeded but no identifier returned' });
-    }
-    res.locals.insertId = insertId;
-
-    let record = { ...row };
-    try {
-      const [rows] = await pool.query(
-        `SELECT * FROM \`${table}\` WHERE id = ? LIMIT 1`,
-        [insertId],
-      );
-      if (Array.isArray(rows) && rows[0]) {
-        record = rows[0];
-      }
-    } catch (err) {
-      console.error('Failed to reload inserted row for POSAPI submission', {
-        table,
-        id: insertId,
-        error: err,
-      });
-    }
-
-    const mapping = formCfg.posApiMapping || {};
-    const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-    const payload = buildReceiptFromDynamicTransaction(record, mapping, receiptType);
-    if (!payload) {
-      return res
-        .status(400)
-        .json({ message: 'Unable to build POSAPI payload from transaction' });
-    }
-
-    const response = await sendReceipt(payload);
-    await persistPosApiResponse(table, insertId, response);
-
-    res.status(201).json({ ...result, posApi: { payload, response } });
   } catch (err) {
     if (/Can't update table .* in stored function\/trigger/i.test(err.message)) {
       return res.status(400).json({ message: err.message });

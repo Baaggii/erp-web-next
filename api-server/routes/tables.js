@@ -13,7 +13,6 @@ import {
   deleteRow,
   getRowReferences,
   getTableRow,
-  addRowWithEbarimt,
 } from '../controllers/tableController.js';
 import { requireAuth } from '../middlewares/auth.js';
 
@@ -39,7 +38,6 @@ router.get('/:table/:id/references', requireAuth, getRowReferences);
 router.get('/:table/:id', requireAuth, getTableRow);
 router.put('/:table/:id', requireAuth, updateRow);
 router.delete('/:table/:id', requireAuth, deleteRow);
-router.post('/:table/ebarimt', requireAuth, addRowWithEbarimt);
 router.post('/:table', requireAuth, addRow);
 router.get('/:table', requireAuth, getTableRows);
 
