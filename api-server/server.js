@@ -118,8 +118,7 @@ app.use(`/api/${imgBase}/:companyId`, (req, res, next) => {
   return express.static(dir)(req, res, next);
 });
 
-// Health-check: also verify DB connection
-app.get("/api/auth/health", async (req, res, next) => {
+async function handleHealthCheck(req, res, next) {
   try {
     const dbResult = await testConnection();
     if (!dbResult.ok) throw dbResult.error;
@@ -127,7 +126,12 @@ app.get("/api/auth/health", async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
+}
+
+// Health-check: also verify DB connection
+app.get("/api/auth/health", handleHealthCheck);
+app.get("/api/healthz", handleHealthCheck);
+app.get("/api/health", handleHealthCheck);
 
 // API routes
 app.use("/api/auth", authRoutes);
