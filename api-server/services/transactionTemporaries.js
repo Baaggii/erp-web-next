@@ -5,6 +5,13 @@ import {
   listTableColumnsDetailed,
 } from '../../db/index.js';
 import { getFormConfig } from './transactionFormConfig.js';
+import {
+  buildReceiptFromDynamicTransaction,
+  sendReceipt,
+} from './posApiService.js';
+import { getGeneralConfig } from './generalConfig.js';
+import { serializeError, summarizePosPayload } from '../utils/errorUtils.js';
+import { coerceBoolean } from '../utils/valueUtils.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
@@ -707,7 +714,153 @@ export async function promoteTemporarySubmission(
       normalizedReviewer,
       { conn, mutationContext },
     );
-    const promotedId = inserted?.id ? String(inserted.id) : null;
+    const insertedId = inserted?.id ?? null;
+    const promotedId = insertedId ? String(insertedId) : null;
+    const formName = row.form_name || row.config_name || null;
+    let resultPosApiDetails = null;
+    if (formName) {
+      try {
+        const [formCfgResult, generalCfgResult] = await Promise.all([
+          getFormConfig(row.table_name, formName, row.company_id),
+          getGeneralConfig(row.company_id ?? 0),
+        ]);
+        const formCfg = formCfgResult?.config;
+        const generalCfg = generalCfgResult?.config;
+        let posApiDetails = null;
+        const posGloballyEnabled = coerceBoolean(
+          generalCfg?.general?.posApiEnabled,
+          true,
+        );
+        const posLocallyEnabled = coerceBoolean(formCfg?.posApiEnabled, false);
+        if (posGloballyEnabled && posLocallyEnabled) {
+          const mapping = formCfg.posApiMapping || {};
+          let masterRecord = { ...sanitizedValues };
+          if (insertedId) {
+            try {
+              const [masterRows] = await conn.query(
+                `SELECT * FROM \`${row.table_name}\` WHERE id = ? LIMIT 1`,
+                [insertedId],
+              );
+              if (Array.isArray(masterRows) && masterRows[0]) {
+                masterRecord = masterRows[0];
+              }
+            } catch (selectErr) {
+              console.error(
+                'Failed to load persisted transaction for POSAPI submission',
+                {
+                  table: row.table_name,
+                  id: insertedId,
+                  error: serializeError(selectErr),
+                },
+              );
+            }
+          }
+          const receiptType =
+            formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
+          const payload = buildReceiptFromDynamicTransaction(
+            masterRecord,
+            mapping,
+            receiptType,
+          );
+          if (payload) {
+            try {
+              const posApiResponse = await sendReceipt(payload);
+              posApiDetails = {
+                attempted: true,
+                enabled: true,
+                payload,
+                summary: summarizePosPayload(payload),
+                response: posApiResponse || null,
+              };
+              if (posApiResponse && insertedId) {
+                const updates = {};
+                const nameMap = new Map();
+                for (const col of Array.isArray(columns) ? columns : []) {
+                  if (!col || !col.name) continue;
+                  nameMap.set(col.name.toLowerCase(), col.name);
+                }
+                if (posApiResponse.lottery) {
+                  const lotteryCol =
+                    nameMap.get('lottery') ||
+                    nameMap.get('lottery_no') ||
+                    nameMap.get('lottery_number') ||
+                    nameMap.get('ddtd');
+                  if (lotteryCol) updates[lotteryCol] = posApiResponse.lottery;
+                }
+                if (posApiResponse.qrData) {
+                  const qrCol =
+                    nameMap.get('qr_data') ||
+                    nameMap.get('qrdata') ||
+                    nameMap.get('qr_code');
+                  if (qrCol) updates[qrCol] = posApiResponse.qrData;
+                }
+                if (Object.keys(updates).length > 0) {
+                  const setClause = Object.keys(updates)
+                    .map((col) => `\`${col}\` = ?`)
+                    .join(', ');
+                  const params = [...Object.values(updates), insertedId];
+                  try {
+                    await conn.query(
+                      `UPDATE \`${row.table_name}\` SET ${setClause} WHERE id = ?`,
+                      params,
+                    );
+                  } catch (updateErr) {
+                    console.error('Failed to persist POSAPI response details', {
+                      table: row.table_name,
+                      id: insertedId,
+                      error: serializeError(updateErr),
+                    });
+                  }
+                }
+              }
+            } catch (posErr) {
+              posApiDetails = {
+                attempted: true,
+                enabled: true,
+                payload,
+                summary: summarizePosPayload(payload),
+                error: serializeError(posErr),
+              };
+              console.error('POSAPI receipt submission failed', {
+                table: row.table_name,
+                recordId: insertedId,
+                payload: summarizePosPayload(payload),
+                error: serializeError(posErr),
+              });
+            }
+          } else {
+            posApiDetails = {
+              attempted: true,
+              enabled: true,
+              skipped: true,
+              reason: 'Missing required POSAPI fields',
+            };
+          }
+        } else if (posLocallyEnabled || posGloballyEnabled) {
+          posApiDetails = {
+            attempted: true,
+            enabled: false,
+            reason: posGloballyEnabled
+              ? 'Form POSAPI disabled'
+              : 'POSAPI globally disabled',
+          };
+        }
+        if (posApiDetails && !resultPosApiDetails) {
+          resultPosApiDetails = posApiDetails;
+        }
+      } catch (cfgErr) {
+        console.error('Failed to evaluate POSAPI configuration', {
+          table: row.table_name,
+          formName,
+          error: serializeError(cfgErr),
+        });
+        resultPosApiDetails = {
+          attempted: true,
+          enabled: null,
+          error: serializeError(cfgErr),
+        };
+      }
+    }
     const trimmedNotes =
       typeof notes === 'string' && notes.trim() ? notes.trim() : '';
     let reviewNotesValue = trimmedNotes ? trimmedNotes : null;
@@ -785,7 +938,12 @@ export async function promoteTemporarySubmission(
         warnings: sanitationWarnings,
       });
     }
-    return { id, promotedRecordId: promotedId, warnings: sanitationWarnings };
+    return {
+      id,
+      promotedRecordId: promotedId,
+      warnings: sanitationWarnings,
+      posApi: resultPosApiDetails,
+    };
   } catch (err) {
     try {
       await conn.query('ROLLBACK');
