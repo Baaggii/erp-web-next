@@ -27,6 +27,22 @@ function arrify(val) {
   return [String(val)];
 }
 
+function normalizeMixedAccessList(list) {
+  if (!Array.isArray(list) || list.length === 0) return [];
+  const normalized = [];
+  list.forEach((value) => {
+    if (value === undefined || value === null) return;
+    const num = Number(value);
+    if (Number.isFinite(num)) {
+      normalized.push(num);
+      return;
+    }
+    const str = String(value).trim();
+    if (str) normalized.push(str);
+  });
+  return normalized;
+}
+
 function parseEntry(raw = {}) {
   const temporaryFlag = Boolean(
     raw.supportsTemporarySubmission ??
@@ -111,6 +127,8 @@ function parseEntry(raw = {}) {
     allowedDepartments: Array.isArray(raw.allowedDepartments)
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
+    allowedUserRights: normalizeMixedAccessList(raw.allowedUserRights),
+    allowedWorkplaces: normalizeMixedAccessList(raw.allowedWorkplaces),
     temporaryAllowedBranches: Array.isArray(raw.temporaryAllowedBranches)
       ? raw.temporaryAllowedBranches
           .map((v) => Number(v))
@@ -121,8 +139,15 @@ function parseEntry(raw = {}) {
           .map((v) => Number(v))
           .filter((v) => !Number.isNaN(v))
       : [],
+    temporaryAllowedUserRights: normalizeMixedAccessList(
+      raw.temporaryAllowedUserRights,
+    ),
+    temporaryAllowedWorkplaces: normalizeMixedAccessList(
+      raw.temporaryAllowedWorkplaces,
+    ),
     moduleLabel: typeof raw.moduleLabel === 'string' ? raw.moduleLabel : '',
     procedures: arrify(raw.procedures || raw.procedure),
+    temporaryProcedures: arrify(raw.temporaryProcedures),
     supportsTemporarySubmission: temporaryFlag,
     allowTemporarySubmission: temporaryFlag,
     posApiEnabled: Boolean(raw.posApiEnabled),
@@ -181,13 +206,25 @@ export async function findTableByProcedure(proc, companyId = 0) {
 }
 
 export async function listTransactionNames(
-  { moduleKey, branchId, departmentId } = {},
+  { moduleKey, branchId, departmentId, userRightId, workplaceId } = {},
   companyId = 0,
 ) {
   const { cfg, isDefault } = await readConfig(companyId);
   const result = {};
   const bId = branchId ? Number(branchId) : null;
   const dId = departmentId ? Number(departmentId) : null;
+  const userRightValue =
+    userRightId === undefined || userRightId === null
+      ? null
+      : Number.isFinite(Number(userRightId))
+        ? Number(userRightId)
+        : String(userRightId).trim() || null;
+  const workplaceValue =
+    workplaceId === undefined || workplaceId === null
+      ? null
+      : Number.isFinite(Number(workplaceId))
+        ? Number(workplaceId)
+        : String(workplaceId).trim() || null;
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
@@ -200,11 +237,23 @@ export async function listTransactionNames(
       const allowedDepartments = Array.isArray(parsed.allowedDepartments)
         ? parsed.allowedDepartments
         : [];
+      const allowedUserRights = Array.isArray(parsed.allowedUserRights)
+        ? parsed.allowedUserRights
+        : [];
+      const allowedWorkplaces = Array.isArray(parsed.allowedWorkplaces)
+        ? parsed.allowedWorkplaces
+        : [];
       const tempBranches = Array.isArray(parsed.temporaryAllowedBranches)
         ? parsed.temporaryAllowedBranches
         : [];
       const tempDepartments = Array.isArray(parsed.temporaryAllowedDepartments)
         ? parsed.temporaryAllowedDepartments
+        : [];
+      const tempUserRights = Array.isArray(parsed.temporaryAllowedUserRights)
+        ? parsed.temporaryAllowedUserRights
+        : [];
+      const tempWorkplaces = Array.isArray(parsed.temporaryAllowedWorkplaces)
+        ? parsed.temporaryAllowedWorkplaces
         : [];
 
       const branchAllowed =
@@ -215,8 +264,16 @@ export async function listTransactionNames(
         allowedDepartments.length === 0 ||
         dId == null ||
         allowedDepartments.includes(dId);
+      const userRightAllowed =
+        allowedUserRights.length === 0 ||
+        userRightValue === null ||
+        allowedUserRights.includes(userRightValue);
+      const workplaceAllowed =
+        allowedWorkplaces.length === 0 ||
+        workplaceValue === null ||
+        allowedWorkplaces.includes(workplaceValue);
 
-      let permitted = branchAllowed && departmentAllowed;
+      let permitted = branchAllowed && departmentAllowed && userRightAllowed && workplaceAllowed;
 
       if (!permitted) {
         const tempEnabled = Boolean(
@@ -233,7 +290,16 @@ export async function listTransactionNames(
             tempDepartments.length === 0 ||
             dId == null ||
             tempDepartments.includes(dId);
-          permitted = tempBranchAllowed && tempDepartmentAllowed;
+          const tempUserRightAllowed =
+            tempUserRights.length === 0 ||
+            userRightValue === null ||
+            tempUserRights.includes(userRightValue);
+          const tempWorkplaceAllowed =
+            tempWorkplaces.length === 0 ||
+            workplaceValue === null ||
+            tempWorkplaces.includes(workplaceValue);
+          permitted =
+            tempBranchAllowed && tempDepartmentAllowed && tempUserRightAllowed && tempWorkplaceAllowed;
         }
       }
 
@@ -263,8 +329,12 @@ export async function setFormConfig(
     companyIdFields = [],
     allowedBranches = [],
     allowedDepartments = [],
+    allowedUserRights = [],
+    allowedWorkplaces = [],
     temporaryAllowedBranches = [],
     temporaryAllowedDepartments = [],
+    temporaryAllowedUserRights = [],
+    temporaryAllowedWorkplaces = [],
     moduleKey: parentModuleKey = '',
     moduleLabel,
     userIdField,
@@ -289,6 +359,7 @@ export async function setFormConfig(
     detectFields = [],
     detectField = '',
     procedures = [],
+    temporaryProcedures = [],
     supportsTemporarySubmission,
     allowTemporarySubmission,
     posApiEnabled = false,
@@ -308,11 +379,20 @@ export async function setFormConfig(
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
+  const aur = normalizeMixedAccessList(allowedUserRights);
+  const aw = normalizeMixedAccessList(allowedWorkplaces);
   const tab = Array.isArray(temporaryAllowedBranches)
     ? temporaryAllowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
   const tad = Array.isArray(temporaryAllowedDepartments)
     ? temporaryAllowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
+    : [];
+  const taur = normalizeMixedAccessList(temporaryAllowedUserRights);
+  const taw = normalizeMixedAccessList(temporaryAllowedWorkplaces);
+  const tempProcedures = Array.isArray(temporaryProcedures)
+    ? temporaryProcedures
+        .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
+        .filter((proc) => proc)
     : [];
   const { cfg } = await readConfig(companyId);
   if (!cfg[table]) cfg[table] = {};
@@ -348,9 +428,14 @@ export async function setFormConfig(
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
+    allowedUserRights: aur,
+    allowedWorkplaces: aw,
     temporaryAllowedBranches: tab,
     temporaryAllowedDepartments: tad,
+    temporaryAllowedUserRights: taur,
+    temporaryAllowedWorkplaces: taw,
     procedures: arrify(procedures),
+    temporaryProcedures: tempProcedures,
     allowTemporarySubmission: Boolean(
       supportsTemporarySubmission ?? allowTemporarySubmission ?? false,
     ),

@@ -1123,6 +1123,8 @@ export default function PosTransactionsPage() {
     branch,
     department,
     permissions: perms,
+    session,
+    workplace,
   } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
@@ -1146,18 +1148,33 @@ export default function PosTransactionsPage() {
     const entries = Object.entries(rawConfigs).filter(([key]) => key !== 'isDefault');
     if (entries.length === 0) return {};
     const filtered = {};
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
     entries.forEach(([cfgName, cfgValue]) => {
       if (!cfgValue || typeof cfgValue !== 'object') return;
       if (
         hasTransactionFormAccess(cfgValue, branch, department, {
           allowTemporaryAnyScope: true,
+          userRightId,
+          workplaceId,
         })
       ) {
         filtered[cfgName] = cfgValue;
       }
     });
     return filtered;
-  }, [rawConfigs, branch, department, perms, licensed]);
+  }, [rawConfigs, branch, department, perms, licensed, session, user, workplace]);
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
@@ -1617,19 +1634,34 @@ export default function PosTransactionsPage() {
     if (branch !== undefined && branch !== null && String(branch).trim() !== '') {
       params.set('branchId', branch);
     }
-    if (
-      department !== undefined &&
-      department !== null &&
-      String(department).trim() !== ''
-    ) {
+    if (department !== undefined && department !== null && String(department).trim() !== '') {
       params.set('departmentId', department);
+    }
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    if (userRightId != null && String(userRightId).trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
+    if (workplaceId != null && String(workplaceId).trim() !== '') {
+      params.set('workplaceId', workplaceId);
     }
     const qs = params.toString();
     fetch(`/api/pos_txn_config${qs ? `?${qs}` : ''}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
       .then((data) => setRawConfigs(data))
       .catch(() => setRawConfigs({}));
-  }, [branch, department]);
+  }, [branch, department, session, user, workplace]);
 
   const initRef = useRef('');
 
@@ -1654,12 +1686,27 @@ export default function PosTransactionsPage() {
     if (branch !== undefined && branch !== null && String(branch).trim() !== '') {
       params.set('branchId', branch);
     }
-    if (
-      department !== undefined &&
-      department !== null &&
-      String(department).trim() !== ''
-    ) {
+    if (department !== undefined && department !== null && String(department).trim() !== '') {
       params.set('departmentId', department);
+    }
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    if (userRightId != null && String(userRightId).trim() !== '') {
+      params.set('userRightId', userRightId);
+    }
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
+    if (workplaceId != null && String(workplaceId).trim() !== '') {
+      params.set('workplaceId', workplaceId);
     }
     fetch(`/api/pos_txn_config?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
@@ -1680,7 +1727,7 @@ export default function PosTransactionsPage() {
       .then(res => res.ok ? res.json() : {})
       .then(data => setLayout(data || {}))
       .catch(() => setLayout({}));
-  }, [name, configs, branch, department]);
+  }, [name, configs, branch, department, session, user, workplace]);
 
   const { formList, visibleTables } = React.useMemo(() => {
     if (!config) return { formList: [], visibleTables: new Set() };
