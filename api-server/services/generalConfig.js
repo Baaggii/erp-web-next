@@ -26,6 +26,8 @@ const defaults = {
     reportRowToastEnabled: true,
     imageToastEnabled: false,
     workplaceFetchToastEnabled: true,
+    ebarimtToastEnabled: false,
+    ebarimtPosApiEnabled: true,
     debugLoggingEnabled: false,
     editLabelsEnabled: false,
     showTourButtons: true,
@@ -139,6 +141,14 @@ export async function updateGeneralConfig(updates = {}, companyId = 0) {
   cfg.general.workplaceFetchToastEnabled = coerceBoolean(
     cfg.general.workplaceFetchToastEnabled,
     defaults.general.workplaceFetchToastEnabled,
+  );
+  cfg.general.ebarimtToastEnabled = coerceBoolean(
+    cfg.general.ebarimtToastEnabled,
+    defaults.general.ebarimtToastEnabled,
+  );
+  cfg.general.ebarimtPosApiEnabled = coerceBoolean(
+    cfg.general.ebarimtPosApiEnabled,
+    defaults.general.ebarimtPosApiEnabled,
   );
   if (!Object.prototype.hasOwnProperty.call(cfg.general, 'showTourButtons')) {
     cfg.general.showTourButtons = defaults.general.showTourButtons;
