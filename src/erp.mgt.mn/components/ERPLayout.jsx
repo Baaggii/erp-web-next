@@ -269,37 +269,16 @@ function elementIsProbablyFixed(element) {
     return false;
   }
 
-  const root = element.ownerDocument?.documentElement || document.documentElement;
   let current = element;
   while (current && current !== document.body && current.nodeType === 1) {
     const style =
       typeof window.getComputedStyle === "function"
         ? window.getComputedStyle(current)
         : null;
-    const position = style?.position?.toLowerCase() || "";
-    if (position === "fixed") {
+    const position = style?.position || "";
+    if (position === "fixed" || position === "sticky") {
       return true;
     }
-
-    if (position === "sticky") {
-      const rect =
-        typeof current.getBoundingClientRect === "function"
-          ? current.getBoundingClientRect()
-          : null;
-      const viewportHeight = window.innerHeight || root?.clientHeight || 0;
-      const top = Number.parseFloat(style?.top ?? "");
-      const bottom = Number.parseFloat(style?.bottom ?? "");
-      const stuckToTop =
-        Number.isFinite(top) && rect ? Math.abs(rect.top - top) <= 1 : false;
-      const stuckToBottom = Number.isFinite(bottom)
-        ? rect && Math.abs(viewportHeight - rect.bottom - bottom) <= 1
-        : false;
-
-      if (stuckToTop || stuckToBottom) {
-        return true;
-      }
-    }
-
     current = current.parentElement;
   }
   return false;
