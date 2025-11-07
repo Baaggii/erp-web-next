@@ -18,6 +18,8 @@ const emptyConfig = {
   statusField: { table: '', field: '', created: '', beforePost: '', posted: '' },
   allowedBranches: [],
   allowedDepartments: [],
+  allowedUserRights: [],
+  allowedWorkplaces: [],
   procedures: [],
 };
 
@@ -42,6 +44,10 @@ export default function PosTxnConfig() {
   const [departments, setDepartments] = useState([]);
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
   const [procedureOptions, setProcedureOptions] = useState([]);
+  const [userRights, setUserRights] = useState([]);
+  const [userRightCfg, setUserRightCfg] = useState({ idField: null, displayFields: [] });
+  const [workplaces, setWorkplaces] = useState([]);
+  const [workplaceCfg, setWorkplaceCfg] = useState({ idField: null, displayFields: [] });
   const procPrefix = generalConfig?.general?.reportProcPrefix || '';
   const branchOptions = useMemo(() => {
     const idField = branchCfg?.idField || 'id';
@@ -74,6 +80,81 @@ export default function PosTxnConfig() {
       return { value: String(val), label };
     });
   }, [departments, deptCfg]);
+
+  const userRightOptions = useMemo(() => {
+    const idField = userRightCfg?.idField || 'userlevel_id';
+    return userRights.map((right) => {
+      const val =
+        right[idField] ?? right.userlevel_id ?? right.id ?? right.userlevelId ?? '';
+      const label = userRightCfg?.displayFields?.length
+        ? userRightCfg.displayFields
+            .map((field) => right[field])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(right)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
+      return { value: String(val), label: label || String(val) };
+    });
+  }, [userRights, userRightCfg]);
+
+  const workplaceOptions = useMemo(() => {
+    const idField = workplaceCfg?.idField || 'workplace_id';
+    return workplaces.map((workplace) => {
+      const val =
+        workplace[idField] ?? workplace.workplace_id ?? workplace.id ?? workplace.workplaceId ?? '';
+      const label = workplaceCfg?.displayFields?.length
+        ? workplaceCfg.displayFields
+            .map((field) => workplace[field])
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ')
+        : Object.values(workplace)
+            .filter((v) => v !== undefined && v !== null)
+            .join(' - ');
+      return { value: String(val), label: label || String(val) };
+    });
+  }, [workplaces, workplaceCfg]);
+
+  const sectionStyle = useMemo(
+    () => ({
+      border: '1px solid #d0d7de',
+      borderRadius: '8px',
+      padding: '1rem',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem',
+    }),
+    [],
+  );
+
+  const sectionTitleStyle = useMemo(
+    () => ({
+      margin: '0 0 0.5rem',
+      fontSize: '1.1rem',
+      fontWeight: 600,
+    }),
+    [],
+  );
+
+  const controlGroupStyle = useMemo(
+    () => ({
+      display: 'flex',
+      flexWrap: 'wrap',
+      alignItems: 'flex-start',
+      gap: '1rem',
+    }),
+    [],
+  );
+
+  const fieldColumnStyle = useMemo(
+    () => ({
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.5rem',
+      minWidth: '220px',
+    }),
+    [],
+  );
 
   useEffect(() => {
     fetch('/api/pos_txn_config', { credentials: 'include' })
@@ -125,12 +206,29 @@ export default function PosTxnConfig() {
       .then((data) => setBranches(data.rows || []))
       .catch(() => setBranches([]));
 
+    fetch('/api/tables/user_levels?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setUserRights(data.rows || []))
+      .catch(() => setUserRights([]));
+
+    fetch('/api/tables/code_workplace?perPage=500', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : { rows: [] }))
+      .then((data) => setWorkplaces(data.rows || []))
+      .catch(() => setWorkplaces([]));
+
     fetch('/api/display_fields?table=code_branches', { credentials: 'include' })
       .then((res) =>
         res.ok ? res.json() : { idField: null, displayFields: [] },
       )
       .then((cfg) => setBranchCfg(cfg || { idField: null, displayFields: [] }))
       .catch(() => setBranchCfg({ idField: null, displayFields: [] }));
+
+    fetch('/api/display_fields?table=user_levels', { credentials: 'include' })
+      .then((res) =>
+        res.ok ? res.json() : { idField: null, displayFields: [] },
+      )
+      .then((cfg) => setUserRightCfg(cfg || { idField: null, displayFields: [] }))
+      .catch(() => setUserRightCfg({ idField: null, displayFields: [] }));
 
     fetch('/api/tables/code_department?perPage=500', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { rows: [] }))
@@ -143,6 +241,13 @@ export default function PosTxnConfig() {
       )
       .then((cfg) => setDeptCfg(cfg || { idField: null, displayFields: [] }))
       .catch(() => setDeptCfg({ idField: null, displayFields: [] }));
+
+    fetch('/api/display_fields?table=code_workplace', { credentials: 'include' })
+      .then((res) =>
+        res.ok ? res.json() : { idField: null, displayFields: [] },
+      )
+      .then((cfg) => setWorkplaceCfg(cfg || { idField: null, displayFields: [] }))
+      .catch(() => setWorkplaceCfg({ idField: null, displayFields: [] }));
 
   }, []);
 
@@ -279,6 +384,24 @@ export default function PosTxnConfig() {
             ),
           )
         : [];
+      loaded.allowedUserRights = Array.isArray(loaded.allowedUserRights)
+        ? Array.from(
+            new Set(
+              loaded.allowedUserRights
+                .map((r) => (r === undefined || r === null ? '' : String(r)))
+                .filter((r) => r.trim() !== ''),
+            ),
+          )
+        : [];
+      loaded.allowedWorkplaces = Array.isArray(loaded.allowedWorkplaces)
+        ? Array.from(
+            new Set(
+              loaded.allowedWorkplaces
+                .map((w) => (w === undefined || w === null ? '' : String(w)))
+                .filter((w) => w.trim() !== ''),
+            ),
+          )
+        : [];
       loaded.procedures = Array.isArray(loaded.procedures)
         ? Array.from(
             new Set(
@@ -411,6 +534,8 @@ export default function PosTxnConfig() {
       ...config,
       allowedBranches: normalizeAccessForSave(config.allowedBranches),
       allowedDepartments: normalizeAccessForSave(config.allowedDepartments),
+      allowedUserRights: normalizeAccessForSave(config.allowedUserRights),
+      allowedWorkplaces: normalizeAccessForSave(config.allowedWorkplaces),
       procedures: normalizedProcedures,
       tables: [
         {
@@ -610,205 +735,304 @@ export default function PosTxnConfig() {
   }
 
   return (
-    <div>
+    <div style={{ paddingBottom: '2rem' }}>
       <h2>POS Transaction Config</h2>
-      <div style={{ marginBottom: '1rem' }}>
-        <select value={name} onChange={(e) => loadConfig(e.target.value)}>
-          <option value="">-- select config --</option>
-          {Object.keys(configs).map((n) => (
-            <option key={n} value={n}>
-              {n}
-            </option>
-          ))}
-        </select>
-        <input
-          type="text"
-          placeholder="Config name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          style={{ marginLeft: '0.5rem' }}
-        />
-        {name && (
-          <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
-            Delete
-          </button>
-        )}
-      </div>
-      <div style={{ marginBottom: '1rem' }}>
-        <label style={{ marginRight: '0.5rem' }}>
-          Label:
-          <input
-            type="text"
-            value={config.label}
-            onChange={(e) => setConfig((c) => ({ ...c, label: e.target.value }))}
-            style={{ marginLeft: '0.25rem' }}
-          />
-        </label>
-      </div>
-      <div style={{ marginBottom: '1rem' }}>
-        <label>
-          Master Table:{' '}
-          <select
-            value={config.masterTable}
-            onChange={(e) => {
-              const tbl = e.target.value;
-              setConfig((c) => {
-                const idx = c.tables.findIndex((t) => t.table === tbl);
-                let tables = c.tables;
-                let masterForm = '';
-                if (idx !== -1) {
-                  masterForm = c.tables[idx].form || '';
-                  tables = c.tables.filter((_, i) => i !== idx);
-                }
-                return {
-                  ...c,
-                  masterTable: tbl,
-                  masterForm,
-                  tables,
-                  calcFields: c.calcFields.map((row) => ({
-                    ...row,
-                    cells: row.cells.map((cell, i) =>
-                      i === 0 ? { ...cell, table: tbl } : cell,
-                    ),
-                  })),
-                  posFields: c.posFields.map((p) => ({
-                    ...p,
-                    parts: p.parts.map((pt) => ({ ...pt, table: tbl })),
-                  })),
-                };
-              });
-            }}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Configuration Selection</h3>
+          <div
+            style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}
           >
-            <option value="">-- select table --</option>
-            {config.masterTable &&
-              !config.tables.some((t) => t.table === config.masterTable) && (
-                <option value={config.masterTable}>{config.masterTable}</option>
-              )}
-            {config.tables.map((t, i) => (
-              <option key={i} value={t.table}>
-                {t.table}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div
-        style={{
-          marginBottom: '1rem',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'flex-start',
-          gap: '1rem',
-        }}
-      >
-        <label>
-          Allowed branches:{' '}
-          <select
-            multiple
-            size={8}
-            value={config.allowedBranches}
-            onChange={(e) =>
-              setConfig((c) => ({
-                ...c,
-                allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
-              }))
-            }
-          >
-            {branchOptions.map((b) => (
-              <option key={b.value} value={b.value}>
-                {b.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() =>
-              setConfig((c) => ({
-                ...c,
-                allowedBranches: branchOptions.map((b) => b.value),
-              }))
-            }
-          >
-            All
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
-          >
-            None
-          </button>
-        </label>
-        <label>
-          Allowed departments:{' '}
-          <select
-            multiple
-            size={8}
-            value={config.allowedDepartments}
-            onChange={(e) =>
-              setConfig((c) => ({
-                ...c,
-                allowedDepartments: Array.from(
-                  e.target.selectedOptions,
-                  (o) => o.value,
-                ),
-              }))
-            }
-          >
-            {deptOptions.map((d) => (
-              <option key={d.value} value={d.value}>
-                {d.label}
-              </option>
-            ))}
-          </select>
-          <button
-            type="button"
-            onClick={() =>
-              setConfig((c) => ({
-                ...c,
-                allowedDepartments: deptOptions.map((d) => d.value),
-              }))
-            }
-          >
-            All
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
-          >
-            None
-          </button>
-        </label>
-        {procedureOptions.length > 0 && (
-          <label>
-            Procedures:{' '}
-            <select
-              multiple
-              size={8}
-              value={config.procedures}
-              onChange={(e) =>
-                setConfig((c) => ({
-                  ...c,
-                  procedures: Array.from(e.target.selectedOptions, (o) => o.value),
-                }))
-              }
-            >
-              {procedureOptions.map((p) => (
-                <option key={p} value={p}>
-                  {p}
+            <select value={name} onChange={(e) => loadConfig(e.target.value)}>
+              <option value="">-- select config --</option>
+              {Object.keys(configs).map((n) => (
+                <option key={n} value={n}>
+                  {n}
                 </option>
               ))}
             </select>
-          </label>
-        )}
-      </div>
-      <div>
-        <h3>Form Configuration</h3>
-        <table className="pos-config-grid" style={{ borderCollapse: 'collapse' }}>
-          <thead>
-            <tr>
-              <th></th>
-              <th>
-                {config.masterTable || 'Master'}{' '}
+            <input
+              type="text"
+              placeholder="Config name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
+            {name && (
+              <button onClick={handleDelete} style={{ marginLeft: '0.5rem' }}>
+                Delete
+              </button>
+            )}
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Master Form Settings</h3>
+          <div style={controlGroupStyle}>
+            <label style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Label</span>
+              <input
+                type="text"
+                value={config.label}
+                onChange={(e) => setConfig((c) => ({ ...c, label: e.target.value }))}
+              />
+            </label>
+            <label style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Master Table</span>
+              <select
+                value={config.masterTable}
+                onChange={(e) => {
+                  const tbl = e.target.value;
+                  setConfig((c) => {
+                    const idx = c.tables.findIndex((t) => t.table === tbl);
+                    let tables = c.tables;
+                    let masterForm = '';
+                    if (idx !== -1) {
+                      masterForm = c.tables[idx].form || '';
+                      tables = c.tables.filter((_, i) => i !== idx);
+                    }
+                    return {
+                      ...c,
+                      masterTable: tbl,
+                      masterForm,
+                      tables,
+                      calcFields: c.calcFields.map((row) => ({
+                        ...row,
+                        cells: row.cells.map((cell, i) =>
+                          i === 0 ? { ...cell, table: tbl } : cell,
+                        ),
+                      })),
+                      posFields: c.posFields.map((p) => ({
+                        ...p,
+                        parts: p.parts.map((pt) => ({ ...pt, table: tbl })),
+                      })),
+                    };
+                  });
+                }}
+              >
+                <option value="">-- select table --</option>
+                {config.masterTable &&
+                  !config.tables.some((t) => t.table === config.masterTable) && (
+                    <option value={config.masterTable}>{config.masterTable}</option>
+                  )}
+                {config.tables.map((t, i) => (
+                  <option key={i} value={t.table}>
+                    {t.table}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Access Control</h3>
+          <div style={controlGroupStyle}>
+            <div style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Allowed branches</span>
+              <select
+                multiple
+                size={8}
+                value={config.allowedBranches}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedBranches: Array.from(e.target.selectedOptions, (o) => o.value),
+                  }))
+                }
+              >
+                {branchOptions.map((b) => (
+                  <option key={b.value} value={b.value}>
+                    {b.label}
+                  </option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfig((c) => ({
+                      ...c,
+                      allowedBranches: branchOptions.map((b) => b.value),
+                    }))
+                  }
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig((c) => ({ ...c, allowedBranches: [] }))}
+                >
+                  None
+                </button>
+              </div>
+            </div>
+
+            <div style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Allowed departments</span>
+              <select
+                multiple
+                size={8}
+                value={config.allowedDepartments}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedDepartments: Array.from(
+                      e.target.selectedOptions,
+                      (o) => o.value,
+                    ),
+                  }))
+                }
+              >
+                {deptOptions.map((d) => (
+                  <option key={d.value} value={d.value}>
+                    {d.label}
+                  </option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfig((c) => ({
+                      ...c,
+                      allowedDepartments: deptOptions.map((d) => d.value),
+                    }))
+                  }
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig((c) => ({ ...c, allowedDepartments: [] }))}
+                >
+                  None
+                </button>
+              </div>
+            </div>
+
+            <div style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Allowed user rights</span>
+              <select
+                multiple
+                size={8}
+                value={config.allowedUserRights}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedUserRights: Array.from(
+                      e.target.selectedOptions,
+                      (o) => o.value,
+                    ),
+                  }))
+                }
+              >
+                {userRightOptions.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfig((c) => ({
+                      ...c,
+                      allowedUserRights: userRightOptions.map((r) => r.value),
+                    }))
+                  }
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig((c) => ({ ...c, allowedUserRights: [] }))}
+                >
+                  None
+                </button>
+              </div>
+            </div>
+
+            <div style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Allowed workplaces</span>
+              <select
+                multiple
+                size={8}
+                value={config.allowedWorkplaces}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    allowedWorkplaces: Array.from(
+                      e.target.selectedOptions,
+                      (o) => o.value,
+                    ),
+                  }))
+                }
+              >
+                {workplaceOptions.map((w) => (
+                  <option key={w.value} value={w.value}>
+                    {w.label}
+                  </option>
+                ))}
+              </select>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setConfig((c) => ({
+                      ...c,
+                      allowedWorkplaces: workplaceOptions.map((w) => w.value),
+                    }))
+                  }
+                >
+                  All
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfig((c) => ({ ...c, allowedWorkplaces: [] }))}
+                >
+                  None
+                </button>
+              </div>
+            </div>
+
+            {procedureOptions.length > 0 && (
+              <div style={fieldColumnStyle}>
+                <span style={{ fontWeight: 600 }}>Procedures</span>
+                <select
+                  multiple
+                  size={8}
+                  value={config.procedures}
+                  onChange={(e) =>
+                    setConfig((c) => ({
+                      ...c,
+                      procedures: Array.from(
+                        e.target.selectedOptions,
+                        (o) => o.value,
+                      ),
+                    }))
+                  }
+                >
+                  {procedureOptions.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Form Configuration</h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="pos-config-grid" style={{ borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th></th>
+                  <th>
+                    {config.masterTable || 'Master'}{' '}
                 {config.masterTable && (
                   <button onClick={() => removeMaster()}>x</button>
                 )}
@@ -824,11 +1048,11 @@ export default function PosTxnConfig() {
               </th>
             </tr>
           </thead>
-          <tbody>
-            <tr>
-              <td>Transaction Form</td>
-              <td style={{ padding: '4px' }}>
-                <select
+              <tbody>
+                <tr>
+                  <td>Transaction Form</td>
+                  <td style={{ padding: '4px' }}>
+                    <select
                   value={config.masterForm}
                   onChange={(e) => {
                     const form = e.target.value;
@@ -997,156 +1221,171 @@ export default function PosTxnConfig() {
                 ))}
               </tr>
             ))}
-            <tr>
-              <td>
-                <button onClick={handleAddCalc}>Add Mapping</button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div style={{ marginTop: '1rem' }}>
-        <h3>POS-only Fields</h3>
-        {config.posFields.map((f, idx) => (
-          <div key={idx} style={{ marginBottom: '0.5rem' }}>
-            <strong>{f.name}</strong>
-            {f.parts.map((p, pIdx) => (
-              <span key={pIdx} style={{ marginLeft: '0.5rem' }}>
-                {pIdx > 0 && (
-                  <select
-                    value={p.agg}
-                    onChange={(e) => updatePos(idx, pIdx, 'agg', e.target.value)}
-                    style={{ marginRight: '0.25rem' }}
-                  >
-                    <option value="=">=</option>
-                    <option value="+">+</option>
-                    <option value="-">-</option>
-                    <option value="*">*</option>
-                    <option value="/">/</option>
-                    <option value="SUM">SUM</option>
-                    <option value="AVG">AVG</option>
-                  </select>
-                )}
-                <select
-                  value={p.field}
-                  onChange={(e) => updatePos(idx, pIdx, 'field', e.target.value)}
-                >
-                  <option value="">-- field --</option>
-                  {(tableColumns[config.masterTable] || []).map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
-                <button onClick={() => removePosPart(idx, pIdx)}>x</button>
-              </span>
-            ))}
-            <button onClick={() => addPosPart(idx)} style={{ marginLeft: '0.5rem' }}>
-              Add field
-            </button>
-            <button onClick={() => removePos(idx)} style={{ marginLeft: '0.5rem' }}>
-              Remove
-            </button>
+              <tr>
+                <td>
+                  <button onClick={handleAddCalc}>Add Mapping</button>
+                </td>
+              </tr>
+            </tbody>
+            </table>
           </div>
-        ))}
-        <button onClick={handleAddPos}>Add POS Field</button>
-      </div>
-      <div style={{ marginTop: '1rem' }}>
-        <h3>Status Mapping</h3>
-        <div style={{ marginBottom: '0.5rem' }}>
-          <label>
-            Status Table:
-            <select
-              value={config.statusField.table}
-              onChange={(e) =>
-                setConfig((c) => ({
-                  ...c,
-                  statusField: { ...c.statusField, table: e.target.value },
-                }))
-              }
-            >
-              <option value="">-- select table --</option>
-              {tables.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
+        </section>
+
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>POS-only Fields</h3>
+          {config.posFields.map((f, idx) => (
+            <div key={idx} style={{ marginBottom: '0.5rem' }}>
+              <strong>{f.name}</strong>
+              {f.parts.map((p, pIdx) => (
+                <span key={pIdx} style={{ marginLeft: '0.5rem' }}>
+                  {pIdx > 0 && (
+                    <select
+                      value={p.agg}
+                      onChange={(e) => updatePos(idx, pIdx, 'agg', e.target.value)}
+                      style={{ marginRight: '0.25rem' }}
+                    >
+                      <option value="=">=</option>
+                      <option value="+">+</option>
+                      <option value="-">-</option>
+                      <option value="*">*</option>
+                      <option value="/">/</option>
+                      <option value="SUM">SUM</option>
+                      <option value="AVG">AVG</option>
+                    </select>
+                  )}
+                  <select
+                    value={p.field}
+                    onChange={(e) => updatePos(idx, pIdx, 'field', e.target.value)}
+                  >
+                    <option value="">-- field --</option>
+                    {(tableColumns[config.masterTable] || []).map((c) => (
+                      <option key={c} value={c}>
+                        {c}
+                      </option>
+                    ))}
+                  </select>
+                  <button onClick={() => removePosPart(idx, pIdx)}>x</button>
+                </span>
               ))}
-            </select>
-          </label>
-        </div>
-        <select
-          value={config.statusField.field}
-          onChange={(e) =>
-            setConfig((c) => ({
-              ...c,
-              statusField: { ...c.statusField, field: e.target.value },
-            }))
-          }
-        >
-          <option value="">-- status field --</option>
-          {(tableColumns[config.masterTable] || []).map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
+              <button onClick={() => addPosPart(idx)} style={{ marginLeft: '0.5rem' }}>
+                Add field
+              </button>
+              <button onClick={() => removePos(idx)} style={{ marginLeft: '0.5rem' }}>
+                Remove
+              </button>
+            </div>
           ))}
-        </select>
-        <select
-          value={config.statusField.created}
-          onChange={(e) =>
-            setConfig((c) => ({
-              ...c,
-              statusField: { ...c.statusField, created: e.target.value },
-            }))
-          }
-          style={{ marginLeft: '0.5rem' }}
-        >
-          <option value="">-- Created --</option>
-          {statusOptions.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={config.statusField.beforePost}
-          onChange={(e) =>
-            setConfig((c) => ({
-              ...c,
-              statusField: { ...c.statusField, beforePost: e.target.value },
-            }))
-          }
-          style={{ marginLeft: '0.5rem' }}
-        >
-          <option value="">-- Before Post --</option>
-          {statusOptions.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={config.statusField.posted}
-          onChange={(e) =>
-            setConfig((c) => ({
-              ...c,
-              statusField: { ...c.statusField, posted: e.target.value },
-            }))
-          }
-          style={{ marginLeft: '0.5rem' }}
-        >
-          <option value="">-- Posted --</option>
-          {statusOptions.map((s) => (
-            <option key={s.value} value={s.value}>
-              {s.label}
-            </option>
-          ))}
-        </select>
-      </div>
-      <div style={{ marginTop: '1rem' }}>
-        <button onClick={handleImport} style={{ marginRight: '0.5rem' }}>
-          Import Defaults
-        </button>
-        <button onClick={handleSave}>Save</button>
+          <button onClick={handleAddPos}>Add POS Field</button>
+        </section>
+
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Status Mapping</h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+            <label style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Status table</span>
+              <select
+                value={config.statusField.table}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    statusField: { ...c.statusField, table: e.target.value },
+                  }))
+                }
+              >
+                <option value="">-- select table --</option>
+                {tables.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Status field</span>
+              <select
+                value={config.statusField.field}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    statusField: { ...c.statusField, field: e.target.value },
+                  }))
+                }
+              >
+                <option value="">-- status field --</option>
+                {(tableColumns[config.masterTable] || []).map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Created value</span>
+              <select
+                value={config.statusField.created}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    statusField: { ...c.statusField, created: e.target.value },
+                  }))
+                }
+              >
+                <option value="">-- Created --</option>
+                {statusOptions.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Before post value</span>
+              <select
+                value={config.statusField.beforePost}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    statusField: { ...c.statusField, beforePost: e.target.value },
+                  }))
+                }
+              >
+                <option value="">-- Before Post --</option>
+                {statusOptions.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={fieldColumnStyle}>
+              <span style={{ fontWeight: 600 }}>Posted value</span>
+              <select
+                value={config.statusField.posted}
+                onChange={(e) =>
+                  setConfig((c) => ({
+                    ...c,
+                    statusField: { ...c.statusField, posted: e.target.value },
+                  }))
+                }
+              >
+                <option value="">-- Posted --</option>
+                {statusOptions.map((s) => (
+                  <option key={s.value} value={s.value}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>Actions</h3>
+          <div style={{ display: 'flex', gap: '0.75rem' }}>
+            <button onClick={handleImport}>Import Defaults</button>
+            <button onClick={handleSave}>Save</button>
+          </div>
+        </section>
       </div>
     </div>
   );
