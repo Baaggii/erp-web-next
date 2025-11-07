@@ -35,19 +35,14 @@ import {
   removeCustomRelationAtIndex,
   removeCustomRelationMatching,
 } from '../services/tableRelationsConfig.js';
-import { formatDateForDb } from '../utils/formatDate.js';
-
-let cachedBcrypt = null;
-async function loadBcrypt() {
-  if (cachedBcrypt) return cachedBcrypt;
-  try {
-    const mod = await import('bcryptjs');
-    cachedBcrypt = mod.default || mod;
-  } catch {
-    cachedBcrypt = { hash: async (s) => s };
-  }
-  return cachedBcrypt;
+let bcrypt;
+try {
+  const mod = await import('bcryptjs');
+  bcrypt = mod.default || mod;
+} catch {
+  bcrypt = { hash: async (s) => s };
 }
+import { formatDateForDb } from '../utils/formatDate.js';
 
 export async function getTables(req, res, next) {
   try {
@@ -383,9 +378,8 @@ export async function updateRow(req, res, next) {
     if (columns.includes('updated_at')) {
       updates.updated_at = formatDateForDb(new Date());
     }
-      if (req.params.table === 'users' && updates.password) {
-        const bcrypt = await loadBcrypt();
-        updates.password = await bcrypt.hash(updates.password, 10);
+    if (req.params.table === 'users' && updates.password) {
+      updates.password = await bcrypt.hash(updates.password, 10);
     }
     await updateTableRow(
       req.params.table,
@@ -416,18 +410,14 @@ export async function addRow(req, res, next) {
     }
     const columns = await listTableColumns(req.params.table);
     const row = { ...req.body };
-    if (columns.includes('created_by')) {
-      row.created_by = req.user?.empid ?? row.created_by;
-    }
+    if (columns.includes('created_by')) row.created_by = req.user?.empid;
     if (columns.includes('created_at')) {
       row.created_at = formatDateForDb(new Date());
     }
-    const companyId = req.user?.companyId;
-    if (columns.includes('company_id') && companyId !== undefined) {
-      row.company_id = companyId;
+    if (columns.includes('company_id')) {
+      row.company_id = req.user.companyId;
     }
     if (req.params.table === 'users' && row.password) {
-      const bcrypt = await loadBcrypt();
       row.password = await bcrypt.hash(row.password, 10);
     }
     if (columns.includes('g_burtgel_id') && row.g_burtgel_id == null) {
@@ -443,28 +433,16 @@ export async function addRow(req, res, next) {
       {
         mutationContext: {
           changedBy: req.user?.empid ?? null,
-          companyId: companyId ?? null,
+          companyId: req.user.companyId,
         },
       },
     );
     const insertedId = result?.id ?? null;
     res.locals.insertId = insertedId;
 
-    const getHeader =
-      typeof req.get === 'function'
-        ? (name) => req.get(name)
-        : (name) => {
-            const headers = req.headers || {};
-            const lower = String(name).toLowerCase();
-            if (lower in headers) return headers[lower];
-            const match = Object.keys(headers).find(
-              (key) => String(key).toLowerCase() === lower,
-            );
-            return match ? headers[match] : undefined;
-          };
-    const formHeader = getHeader('x-transaction-form');
+    const formHeader = req.get('x-transaction-form');
     const formName = typeof formHeader === 'string' ? formHeader.trim() : '';
-    const issueReceiptHeader = getHeader('x-posapi-issue-receipt');
+    const issueReceiptHeader = req.get('x-posapi-issue-receipt');
     const issuePosReceipt = coerceBoolean(issueReceiptHeader, false);
     let posApiDetails = null;
     if (formName && req.params.table) {
@@ -480,7 +458,6 @@ export async function addRow(req, res, next) {
           true,
         );
         const posLocallyEnabled = coerceBoolean(formCfg?.posApiEnabled, false);
-
         if (issuePosReceipt) {
           if (posGloballyEnabled && posLocallyEnabled) {
             const mapping = formCfg.posApiMapping || {};
@@ -604,19 +581,19 @@ export async function addRow(req, res, next) {
             };
           }
         }
-      } catch (cfgErr) {
-        console.error('Failed to evaluate POSAPI configuration', {
-          table: req.params.table,
-          formName,
+      }
+    } catch (cfgErr) {
+      console.error('Failed to evaluate POSAPI configuration', {
+        table: req.params.table,
+        formName,
+        error: serializeError(cfgErr),
+      });
+      if (issuePosReceipt) {
+        posApiDetails = {
+          attempted: true,
+          enabled: null,
           error: serializeError(cfgErr),
-        });
-        if (issuePosReceipt) {
-          posApiDetails = {
-            attempted: true,
-            enabled: null,
-            error: serializeError(cfgErr),
-          };
-        }
+        };
       }
     }
 
@@ -637,7 +614,6 @@ export async function deleteRow(req, res, next) {
   try {
     const table = req.params.table;
     const id = req.params.id;
-    const companyId = req.user?.companyId;
     let row;
     try {
       const pkCols = await getPrimaryKeyColumns(table);
@@ -653,18 +629,18 @@ export async function deleteRow(req, res, next) {
     } catch {}
     if (row) res.locals.logDetails = row;
     if (req.query.cascade === 'true') {
-      await deleteTableRowCascade(table, id, companyId);
+      await deleteTableRowCascade(table, id, req.user.companyId);
     } else {
       await deleteTableRow(
         table,
         id,
-        companyId,
+        req.user.companyId,
         undefined,
         req.user?.empid ?? null,
         {
           mutationContext: {
             changedBy: req.user?.empid ?? null,
-            companyId: companyId ?? null,
+            companyId: req.user.companyId,
           },
         },
       );

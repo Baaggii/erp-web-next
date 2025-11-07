@@ -1,13 +1,4 @@
-try {
-  await import("dotenv/config");
-} catch (err) {
-  if (process.env.NODE_ENV !== "production") {
-    console.warn(
-      "dotenv/config not found; continuing without .env support",
-      err?.code === "ERR_MODULE_NOT_FOUND" ? undefined : err,
-    );
-  }
-}
+import "dotenv/config";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
