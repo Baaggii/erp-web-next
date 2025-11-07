@@ -1097,7 +1097,7 @@ const styles = {
     position: 'fixed',
     inset: 0,
     backgroundColor: 'rgba(15, 23, 42, 0.55)',
-    zIndex: 1000,
+    zIndex: 12000,
     padding: '2rem',
   },
   overlayPicking: {
