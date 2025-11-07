@@ -35,14 +35,18 @@ import {
   removeCustomRelationAtIndex,
   removeCustomRelationMatching,
 } from '../services/tableRelationsConfig.js';
-let bcrypt;
-try {
-  const mod = await import('bcryptjs');
-  bcrypt = mod.default || mod;
-} catch {
-  bcrypt = { hash: async (s) => s };
-}
+import * as bcryptNamespace from 'bcryptjs';
 import { formatDateForDb } from '../utils/formatDate.js';
+
+const resolvedBcrypt =
+  (bcryptNamespace && typeof bcryptNamespace.default === 'object'
+    ? bcryptNamespace.default
+    : bcryptNamespace) || {};
+
+const bcrypt =
+  resolvedBcrypt && typeof resolvedBcrypt.hash === 'function'
+    ? resolvedBcrypt
+    : { hash: async (value) => value };
 
 export async function getTables(req, res, next) {
   try {
@@ -458,142 +462,142 @@ export async function addRow(req, res, next) {
           true,
         );
         const posLocallyEnabled = coerceBoolean(formCfg?.posApiEnabled, false);
-        if (issuePosReceipt) {
-          if (posGloballyEnabled && posLocallyEnabled) {
-            const mapping = formCfg.posApiMapping || {};
-            const columnCaseMap = new Map();
-            columns.forEach((col) => {
-              if (!col) return;
-              columnCaseMap.set(col.toLowerCase(), col);
-            });
-            let masterRecord = { ...row };
-            const recordId =
-              insertedId !== null && insertedId !== undefined
-                ? insertedId
-                : row.id ?? null;
-            if (recordId !== null && recordId !== undefined) {
-              try {
-                const [rows] = await pool.query(
-                  `SELECT * FROM \`${req.params.table}\` WHERE id = ? LIMIT 1`,
-                  [recordId],
-                );
-                if (Array.isArray(rows) && rows[0]) {
-                  masterRecord = rows[0];
-                }
-              } catch (selectErr) {
-                console.error('Failed to load persisted transaction for POSAPI', {
-                  table: req.params.table,
-                  id: recordId,
-                  error: serializeError(selectErr),
-                });
+        if (issuePosReceipt && posGloballyEnabled && posLocallyEnabled) {
+          const mapping = formCfg.posApiMapping || {};
+          const columnCaseMap = new Map();
+          columns.forEach((col) => {
+            if (!col) return;
+            columnCaseMap.set(col.toLowerCase(), col);
+          });
+
+          let masterRecord = { ...row };
+          const recordId =
+            insertedId !== null && insertedId !== undefined
+              ? insertedId
+              : row.id ?? null;
+          if (recordId !== null && recordId !== undefined) {
+            try {
+              const [rows] = await pool.query(
+                `SELECT * FROM \`${req.params.table}\` WHERE id = ? LIMIT 1`,
+                [recordId],
+              );
+              if (Array.isArray(rows) && rows[0]) {
+                masterRecord = rows[0];
               }
+            } catch (selectErr) {
+              console.error('Failed to load persisted transaction for POSAPI', {
+                table: req.params.table,
+                id: recordId,
+                error: serializeError(selectErr),
+              });
             }
-            const receiptType =
-              formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-            const payload = buildReceiptFromDynamicTransaction(
-              masterRecord,
-              mapping,
-              receiptType,
-            );
-            if (payload) {
-              try {
-                const posApiResponse = await sendReceipt(payload);
-                posApiDetails = {
-                  attempted: true,
-                  enabled: true,
-                  payload,
-                  summary: summarizePosPayload(payload),
-                  response: posApiResponse || null,
-                };
-                if (posApiResponse && recordId != null) {
-                  const updates = {};
-                  if (posApiResponse.lottery) {
-                    const lotteryCol =
-                      columnCaseMap.get('lottery') ||
-                      columnCaseMap.get('lottery_no') ||
-                      columnCaseMap.get('lottery_number') ||
-                      columnCaseMap.get('ddtd');
-                    if (lotteryCol) {
-                      updates[lotteryCol] = posApiResponse.lottery;
-                    }
-                  }
-                  if (posApiResponse.qrData) {
-                    const qrCol =
-                      columnCaseMap.get('qr_data') ||
-                      columnCaseMap.get('qrdata') ||
-                      columnCaseMap.get('qr_code');
-                    if (qrCol) {
-                      updates[qrCol] = posApiResponse.qrData;
-                    }
-                  }
-                  if (Object.keys(updates).length > 0) {
-                    const setClause = Object.keys(updates)
-                      .map((col) => `\`${col}\` = ?`)
-                      .join(', ');
-                    const params = [...Object.values(updates), recordId];
-                    try {
-                      await pool.query(
-                        `UPDATE \`${req.params.table}\` SET ${setClause} WHERE id = ?`,
-                        params,
-                      );
-                    } catch (updateErr) {
-                      console.error(
-                        'Failed to persist POSAPI response details',
-                        {
-                          table: req.params.table,
-                          id: recordId,
-                          error: serializeError(updateErr),
-                        },
-                      );
-                    }
-                  }
-                }
-              } catch (posErr) {
-                posApiDetails = {
-                  attempted: true,
-                  enabled: true,
-                  payload,
-                  summary: summarizePosPayload(payload),
-                  error: serializeError(posErr),
-                };
-                console.error('POSAPI receipt submission failed', {
-                  table: req.params.table,
-                  recordId,
-                  payload: summarizePosPayload(payload),
-                  error: serializeError(posErr),
-                });
-              }
-            } else {
+          }
+
+          const receiptType =
+            formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
+          const payload = buildReceiptFromDynamicTransaction(
+            masterRecord,
+            mapping,
+            receiptType,
+          );
+
+          if (payload) {
+            try {
+              const posApiResponse = await sendReceipt(payload);
               posApiDetails = {
                 attempted: true,
                 enabled: true,
-                skipped: true,
-                reason: 'Missing required POSAPI fields',
+                payload,
+                summary: summarizePosPayload(payload),
+                response: posApiResponse || null,
               };
+
+              if (posApiResponse && recordId != null) {
+                const updates = {};
+                if (posApiResponse.lottery) {
+                  const lotteryCol =
+                    columnCaseMap.get('lottery') ||
+                    columnCaseMap.get('lottery_no') ||
+                    columnCaseMap.get('lottery_number') ||
+                    columnCaseMap.get('ddtd');
+                  if (lotteryCol) {
+                    updates[lotteryCol] = posApiResponse.lottery;
+                  }
+                }
+                if (posApiResponse.qrData) {
+                  const qrCol =
+                    columnCaseMap.get('qr_data') ||
+                    columnCaseMap.get('qrdata') ||
+                    columnCaseMap.get('qr_code');
+                  if (qrCol) {
+                    updates[qrCol] = posApiResponse.qrData;
+                  }
+                }
+                if (Object.keys(updates).length > 0) {
+                  const setClause = Object.keys(updates)
+                    .map((col) => `\`${col}\` = ?`)
+                    .join(', ');
+                  const params = [...Object.values(updates), recordId];
+                  try {
+                    await pool.query(
+                      `UPDATE \`${req.params.table}\` SET ${setClause} WHERE id = ?`,
+                      params,
+                    );
+                  } catch (updateErr) {
+                    console.error('Failed to persist POSAPI response details', {
+                      table: req.params.table,
+                      id: recordId,
+                      error: serializeError(updateErr),
+                    });
+                  }
+                }
+              }
+            } catch (posErr) {
+              posApiDetails = {
+                attempted: true,
+                enabled: true,
+                payload,
+                summary: summarizePosPayload(payload),
+                error: serializeError(posErr),
+              };
+              console.error('POSAPI receipt submission failed', {
+                table: req.params.table,
+                recordId,
+                payload: summarizePosPayload(payload),
+                error: serializeError(posErr),
+              });
             }
           } else {
             posApiDetails = {
               attempted: true,
-              enabled: false,
-              reason: posGloballyEnabled
-                ? 'Form POSAPI disabled'
-                : 'POSAPI globally disabled',
+              enabled: true,
+              skipped: true,
+              reason: 'Missing required POSAPI fields',
             };
           }
+        } else if (issuePosReceipt) {
+          posApiDetails = {
+            attempted: true,
+            enabled: false,
+            skipped: true,
+            reason: posGloballyEnabled
+              ? 'Form POSAPI disabled'
+              : 'POSAPI globally disabled',
+          };
         }
-      }
-    } catch (cfgErr) {
-      console.error('Failed to evaluate POSAPI configuration', {
-        table: req.params.table,
-        formName,
-        error: serializeError(cfgErr),
-      });
-      if (issuePosReceipt) {
-        posApiDetails = {
-          attempted: true,
-          enabled: null,
+      } catch (cfgErr) {
+        console.error('Failed to evaluate POSAPI configuration', {
+          table: req.params.table,
+          formName,
           error: serializeError(cfgErr),
-        };
+        });
+        if (issuePosReceipt) {
+          posApiDetails = {
+            attempted: true,
+            enabled: null,
+            error: serializeError(cfgErr),
+          };
+        }
       }
     }
 
