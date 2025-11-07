@@ -1863,15 +1863,16 @@ export default function ERPLayout() {
             const nextIndex = clampIndex(index + delta);
             if (delta > 0 && nextIndex !== currentClampedIndex) {
               const nextStep = tourSteps[nextIndex];
-              if (nextStep && !isTourStepTargetVisible(nextStep)) {
+              if (
+                nextStep &&
+                !nextStep.missingTargetPauseStep &&
+                !isTourStepTargetVisible(nextStep)
+              ) {
                 const message = t(
                   "tour_next_step_hidden",
                   "Reveal the next control before continuing the tour.",
                 );
                 addToast(message, "warning");
-                setTourStepIndex(currentClampedIndex);
-                updateViewerIndex(currentClampedIndex);
-                return;
               }
             }
             setTourStepIndex(nextIndex);
@@ -4547,6 +4548,8 @@ const styles = {
     borderTopLeftRadius: "4px",
     borderTopRightRadius: "4px",
     fontSize: "0.95rem",
+    position: "relative",
+    zIndex: 1100,
   },
   windowHeaderLeft: {
     display: "flex",
@@ -4606,6 +4609,8 @@ const styles = {
   tourButtonGroup: {
     display: "inline-flex",
     gap: "0.5rem",
+    position: "relative",
+    zIndex: 1101,
   },
   tourButton: {
     backgroundColor: "#4b5563",
