@@ -359,6 +359,127 @@ function findStepTargetElement(step) {
   return null;
 }
 
+function elementHasVisibleBox(element) {
+  if (!element || typeof element !== "object") return false;
+
+  if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
+    try {
+      const style = window.getComputedStyle(element);
+      if (style) {
+        const { display, visibility } = style;
+        if (
+          display === "none" ||
+          visibility === "hidden" ||
+          visibility === "collapse"
+        ) {
+          return false;
+        }
+      }
+    } catch (err) {
+      // Ignore style lookup errors and fall back to geometric checks.
+    }
+  }
+
+  if (typeof element.getBoundingClientRect === "function") {
+    try {
+      const rect = element.getBoundingClientRect();
+      if (rect && typeof rect === "object") {
+        const width =
+          typeof rect.width === "number"
+            ? rect.width
+            : typeof rect.right === "number" && typeof rect.left === "number"
+              ? rect.right - rect.left
+              : 0;
+        const height =
+          typeof rect.height === "number"
+            ? rect.height
+            : typeof rect.bottom === "number" && typeof rect.top === "number"
+              ? rect.bottom - rect.top
+              : 0;
+        if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+          return true;
+        }
+      }
+    } catch (err) {
+      // Ignore getBoundingClientRect errors and fall back to other checks.
+    }
+  }
+
+  const offsetWidth = typeof element.offsetWidth === "number" ? element.offsetWidth : 0;
+  const offsetHeight = typeof element.offsetHeight === "number" ? element.offsetHeight : 0;
+  if (offsetWidth > 0 && offsetHeight > 0) {
+    return true;
+  }
+
+  if (typeof SVGElement !== "undefined" && element instanceof SVGElement) {
+    try {
+      if (typeof element.getBBox === "function") {
+        const box = element.getBBox();
+        if (
+          box &&
+          Number.isFinite(box.width) &&
+          Number.isFinite(box.height) &&
+          box.width > 0 &&
+          box.height > 0
+        ) {
+          return true;
+        }
+      }
+    } catch (err) {
+      // Ignore getBBox errors.
+    }
+  }
+
+  if ("offsetParent" in element) {
+    return Boolean(element.offsetParent);
+  }
+
+  return false;
+}
+
+function gatherStepSelectors(step) {
+  const selectors = new Set();
+  const addSelector = (value) => {
+    if (typeof value !== "string") return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    selectors.add(trimmed);
+  };
+
+  coerceSelectorArray(step?.selectors).forEach(addSelector);
+  coerceSelectorArray(step?.highlightSelectors).forEach(addSelector);
+  addSelector(step?.selector);
+  addSelector(step?.target);
+
+  return Array.from(selectors);
+}
+
+function isTourStepTargetVisible(step) {
+  if (typeof document === "undefined") return true;
+  if (!step || typeof step !== "object") return false;
+
+  const checked = new Set();
+  const selectors = gatherStepSelectors(step);
+
+  for (const selector of selectors) {
+    if (!selector) continue;
+    try {
+      const nodes = document.querySelectorAll(selector);
+      for (const node of nodes) {
+        if (!node || checked.has(node)) continue;
+        checked.add(node);
+        if (elementHasVisibleBox(node)) {
+          return true;
+        }
+      }
+    } catch (err) {
+      // Ignore invalid selectors and continue to the next candidate.
+    }
+  }
+
+  return false;
+}
+
 function normalizeClientStep(step, index = 0) {
   if (!step || typeof step !== 'object') return null;
   const selectorRaw =
