@@ -131,7 +131,8 @@ export default function FinanceTransactions({ moduleKey = 'finance_transactions'
   const [reportResult, setReportResult] = useState(null);
   const [manualParams, setManualParams] = useState({});
   const [externalTemporaryTrigger, setExternalTemporaryTrigger] = useState(null);
-  const { company, branch, department, user, permissions: perms } = useContext(AuthContext);
+  const { company, branch, department, user, permissions: perms, session, workplace } =
+    useContext(AuthContext);
   const buttonPerms = useButtonPerms();
   const generalConfig = useGeneralConfig();
   const licensed = useCompanyModules(company);
@@ -401,7 +402,22 @@ useEffect(() => {
     if (moduleKey) params.set('moduleKey', moduleKey);
     if (branch != null) params.set('branchId', branch);
     if (department != null) params.set('departmentId', department);
-    fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
+    const query = params.toString();
+    const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
+    fetch(url, { credentials: 'include' })
       .then((res) => {
         if (!res.ok) {
           addToast('Failed to load transaction forms', 'error');
@@ -424,6 +440,8 @@ useEffect(() => {
           if (
             !hasTransactionFormAccess(info, branchId, departmentId, {
               allowTemporaryAnyScope: true,
+              userRightId,
+              workplaceId,
             })
           )
             return;
@@ -443,7 +461,7 @@ useEffect(() => {
         addToast('Failed to load transaction forms', 'error');
         setConfigs({});
       });
-  }, [moduleKey, company, branch, department, perms, licensed]);
+  }, [moduleKey, company, branch, department, perms, licensed, session, user, workplace]);
 
   useEffect(() => {
     console.log('FinanceTransactions table sync effect');

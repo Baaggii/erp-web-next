@@ -84,18 +84,34 @@ export function hasPosConfigReadAccess(session = {}, actions = {}) {
   return false;
 }
 
-export function hasPosTransactionAccess(config, branchId, departmentId) {
+export function hasPosTransactionAccess(
+  config,
+  branchId,
+  departmentId,
+  options = {},
+) {
   if (!config || typeof config !== 'object') return true;
 
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
+  const userRightValue = normalizeAccessValue(
+    options?.userRightId ?? options?.userLevel ?? options?.userRight,
+  );
+  const workplaceValue = normalizeAccessValue(options?.workplaceId ?? options?.workplace);
 
   const allowedBranches = normalizeAccessList(config.allowedBranches);
   const allowedDepartments = normalizeAccessList(config.allowedDepartments);
+  const allowedUserRights = normalizeAccessList(config.allowedUserRights);
+  const allowedWorkplaces = normalizeAccessList(config.allowedWorkplaces);
+  const allowedProcedures = normalizeAccessList(config.procedures);
+  const requestedProcedure = normalizeAccessValue(options?.procedure);
 
   const generalAllowed =
     matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue);
+    matchesScope(allowedDepartments, departmentValue) &&
+    matchesScope(allowedUserRights, userRightValue) &&
+    matchesScope(allowedWorkplaces, workplaceValue) &&
+    matchesScope(allowedProcedures, requestedProcedure);
 
   if (generalAllowed) return true;
 
@@ -114,18 +130,29 @@ export function hasPosTransactionAccess(config, branchId, departmentId) {
   const temporaryDepartments = normalizeAccessList(
     config.temporaryAllowedDepartments,
   );
+  const temporaryUserRights = normalizeAccessList(config.temporaryAllowedUserRights);
+  const temporaryWorkplaces = normalizeAccessList(config.temporaryAllowedWorkplaces);
+  const temporaryProcedures = normalizeAccessList(config.temporaryProcedures);
 
   return (
     matchesScope(temporaryBranches, branchValue) &&
-    matchesScope(temporaryDepartments, departmentValue)
+    matchesScope(temporaryDepartments, departmentValue) &&
+    matchesScope(temporaryUserRights, userRightValue) &&
+    matchesScope(temporaryWorkplaces, workplaceValue) &&
+    matchesScope(temporaryProcedures, requestedProcedure)
   );
 }
 
-export function filterPosConfigsByAccess(configMap = {}, branchId, departmentId) {
+export function filterPosConfigsByAccess(
+  configMap = {},
+  branchId,
+  departmentId,
+  options = {},
+) {
   const filtered = {};
   Object.entries(configMap || {}).forEach(([name, info]) => {
     if (!info || typeof info !== 'object') return;
-    if (hasPosTransactionAccess(info, branchId, departmentId)) {
+    if (hasPosTransactionAccess(info, branchId, departmentId, options)) {
       filtered[name] = info;
     }
   });
@@ -154,11 +181,19 @@ export async function setConfig(name, config = {}, companyId = 0) {
     ...config,
     allowedBranches: normalizeStoredAccessList(config.allowedBranches),
     allowedDepartments: normalizeStoredAccessList(config.allowedDepartments),
+    allowedUserRights: normalizeStoredAccessList(config.allowedUserRights),
+    allowedWorkplaces: normalizeStoredAccessList(config.allowedWorkplaces),
     temporaryAllowedBranches: normalizeStoredAccessList(
       config.temporaryAllowedBranches,
     ),
     temporaryAllowedDepartments: normalizeStoredAccessList(
       config.temporaryAllowedDepartments,
+    ),
+    temporaryAllowedUserRights: normalizeStoredAccessList(
+      config.temporaryAllowedUserRights,
+    ),
+    temporaryAllowedWorkplaces: normalizeStoredAccessList(
+      config.temporaryAllowedWorkplaces,
     ),
     supportsTemporarySubmission: Boolean(
       config.supportsTemporarySubmission ??
@@ -174,6 +209,11 @@ export async function setConfig(name, config = {}, companyId = 0) {
     ),
     procedures: Array.isArray(config.procedures)
       ? config.procedures
+          .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
+          .filter((proc) => proc)
+      : [],
+    temporaryProcedures: Array.isArray(config.temporaryProcedures)
+      ? config.temporaryProcedures
           .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
           .filter((proc) => proc)
       : [],

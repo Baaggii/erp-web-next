@@ -544,6 +544,7 @@ const TableManager = forwardRef(function TableManager({
   const isSubordinate = hasAnySenior;
   const generalConfig = useGeneralConfig();
   const txnToastEnabled = generalConfig.general?.txnToastEnabled;
+  const ebarimtToastEnabled = generalConfig.general?.ebarimtToastEnabled;
   const { addToast } = useToast();
   const canRequestStatus = isSubordinate;
 
@@ -2735,7 +2736,78 @@ const TableManager = forwardRef(function TableManager({
     setSelectedRows(new Set());
   }
 
-  async function handleSubmit(values) {
+  async function issueTransactionEbarimt(recordId) {
+    if (!formConfig?.posApiEnabled) return null;
+    if (recordId === undefined || recordId === null || `${recordId}`.trim() === '') {
+      addToast(
+        t(
+          'ebarimt_missing_id',
+          'Unable to issue Ebarimt: missing transaction identifier.',
+        ),
+        'error',
+      );
+      return null;
+    }
+    if (!formName) {
+      addToast(
+        t(
+          'ebarimt_missing_form',
+          'Unable to issue Ebarimt: form name is not configured.',
+        ),
+        'error',
+      );
+      return null;
+    }
+    try {
+      const res = await fetch('/api/transaction_ebarimt', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ table, formName, recordId }),
+      });
+      if (res.ok) {
+        const data = await res.json().catch(() => ({}));
+        addToast(t('ebarimt_post_success', 'Posted & Ebarimt issued'), 'success');
+        if (ebarimtToastEnabled && data?.posApi) {
+          if (Object.prototype.hasOwnProperty.call(data.posApi, 'payload')) {
+            addToast(
+              t('ebarimt_request_payload', 'POSAPI request: {{payload}}', {
+                payload: formatTxnToastPayload(data.posApi.payload),
+              }),
+              'info',
+            );
+          }
+          if (Object.prototype.hasOwnProperty.call(data.posApi, 'response')) {
+            addToast(
+              t('ebarimt_response_payload', 'POSAPI response: {{payload}}', {
+                payload: formatTxnToastPayload(data.posApi.response),
+              }),
+              'info',
+            );
+          }
+        }
+        return data;
+      }
+      const errData = await res.json().catch(() => ({}));
+      const message = errData?.message || res.statusText;
+      addToast(
+        t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', { message }),
+        'error',
+      );
+      return null;
+    } catch (err) {
+      addToast(
+        t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', {
+          message: err.message,
+        }),
+        'error',
+      );
+      return null;
+    }
+  }
+
+  async function handleSubmit(values, options = {}) {
+    const { issueEbarimt = false } = options || {};
     if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
@@ -2936,6 +3008,8 @@ const TableManager = forwardRef(function TableManager({
         setIsAdding(false);
         setGridRows([]);
         const msg = isAdding ? 'Шинэ гүйлгээ хадгалагдлаа' : 'Хадгалагдлаа';
+        const targetRecordId = isAdding ? savedRow?.id ?? null : getRowId(editing);
+        const shouldIssueEbarimt = issueEbarimt && formConfig?.posApiEnabled;
         if (activeTemporaryDraftId) {
           await cleanupActiveTemporaryDraft();
         } else {
@@ -2980,7 +3054,40 @@ const TableManager = forwardRef(function TableManager({
             }
           }
         }
+        let ebarimtResult = null;
+        if (shouldIssueEbarimt) {
+          try {
+            ebarimtResult = await issueTransactionEbarimt(targetRecordId);
+          } catch (err) {
+            const detailParts = [];
+            const missingEnv = Array.isArray(err.details?.missingEnvVars)
+              ? err.details.missingEnvVars
+              : [];
+            if (missingEnv.length) {
+              detailParts.push(`missing config: ${missingEnv.join(', ')}`);
+            }
+            const missingMapping = Array.isArray(err.details?.missingMapping)
+              ? err.details.missingMapping
+              : [];
+            if (missingMapping.length) {
+              detailParts.push(`missing mapping: ${missingMapping.join(', ')}`);
+            }
+            if (err.details?.field && err.details?.column) {
+              detailParts.push(`${err.details.field} (column ${err.details.column})`);
+            }
+            const detailSuffix = detailParts.length ? ` (${detailParts.join('; ')})` : '';
+            addToast(
+              t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', {
+                message: `${err.message}${detailSuffix}`,
+              }),
+              'error',
+            );
+          }
+        }
         addToast(msg, 'success');
+        if (shouldIssueEbarimt) {
+          await issueTransactionEbarimt(targetRecordId);
+        }
         refreshRows();
         if (isAdding) {
           setTimeout(() => openAdd(), 0);
@@ -5793,6 +5900,7 @@ const TableManager = forwardRef(function TableManager({
         isAdding={isAdding}
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
+        posApiEnabled={Boolean(formConfig?.posApiEnabled)}
       />
       <CascadeDeleteModal
         visible={showCascade}

@@ -1,12 +1,20 @@
 import fs from 'fs/promises';
-import path from 'path';
 import { pool } from '../../db/index.js';
 import { getConfigPath } from '../utils/configPaths.js';
-import { hasPosTransactionAccess } from './posTransactionConfig.js';
+import {
+  hasPosTransactionAccess,
+  getConfig as getPosTransactionLayout,
+} from './posTransactionConfig.js';
+import { getFormConfig } from './transactionFormConfig.js';
+import {
+  buildReceiptFromDynamicTransaction,
+  sendReceipt,
+} from './posApiService.js';
 import { parseLocalizedNumber } from '../../utils/parseLocalizedNumber.js';
 
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
+const tableColumnNameMapCache = new Map();
 
 const arrayIndexPattern = /^(0|[1-9]\d*)$/;
 const SUPPORTED_CALC_AGGREGATORS = new Set(['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']);
@@ -65,6 +73,22 @@ async function getMasterTableColumnSet(table) {
   return set;
 }
 
+async function getTableColumnNameMap(table) {
+  if (!table) return new Map();
+  if (tableColumnNameMapCache.has(table)) {
+    return tableColumnNameMapCache.get(table);
+  }
+  const columns = await getMasterTableColumnSet(table);
+  const map = new Map();
+  columns.forEach((name) => {
+    if (typeof name === 'string' && name) {
+      map.set(name.toLowerCase(), name);
+    }
+  });
+  tableColumnNameMapCache.set(table, map);
+  return map;
+}
+
 function normalizeSessionInfo(sessionInfo, posData, masterColumns) {
   if (!isPlainObject(sessionInfo)) return {};
   const allowed = new Set();
@@ -121,6 +145,41 @@ function assignArrayMetadata(target, source) {
   if (!metadata) return target;
   Object.assign(target, metadata);
   return target;
+}
+
+async function persistPosApiResponse(table, id, response) {
+  if (!table || id === undefined || id === null) return;
+  if (!response || typeof response !== 'object') return;
+  const columnMap = await getTableColumnNameMap(table);
+  if (!columnMap || columnMap.size === 0) return;
+  const updates = {};
+  if (response.lottery) {
+    const lotteryCol =
+      columnMap.get('lottery') ||
+      columnMap.get('lottery_no') ||
+      columnMap.get('lottery_number') ||
+      columnMap.get('ddtd');
+    if (lotteryCol) updates[lotteryCol] = response.lottery;
+  }
+  if (response.qrData) {
+    const qrCol =
+      columnMap.get('qr_data') || columnMap.get('qrdata') || columnMap.get('qr_code');
+    if (qrCol) updates[qrCol] = response.qrData;
+  }
+  if (Object.keys(updates).length === 0) return;
+  const setClause = Object.keys(updates)
+    .map((col) => `\`${col}\` = ?`)
+    .join(', ');
+  const params = [...Object.values(updates), id];
+  try {
+    await pool.query(`UPDATE \`${table}\` SET ${setClause} WHERE id = ?`, params);
+  } catch (err) {
+    console.error('Failed to persist POSAPI response details', {
+      table,
+      id,
+      error: err,
+    });
+  }
 }
 
 function normalizeCalcFieldCell(cell) {
@@ -1168,6 +1227,99 @@ export async function postPosTransaction(
   } finally {
     conn.release();
   }
+}
+
+export async function postPosTransactionWithEbarimt(
+  name,
+  data,
+  sessionInfo = {},
+  companyId = 0,
+) {
+  const layoutName = typeof name === 'string' ? name.trim() : '';
+  if (!layoutName) {
+    const err = new Error('POS transaction layout name is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const { config: layout } = await getPosTransactionLayout(layoutName, companyId);
+  if (!layout) {
+    const err = new Error(
+      `POS transaction config not found for layout "${layoutName}"`,
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  const masterTable = layout.masterTable || 'transactions_pos';
+  const masterForm = layout.masterForm || '';
+
+  if (!masterForm) {
+    const err = new Error('POSAPI form configuration is missing for this transaction');
+    err.status = 400;
+    throw err;
+  }
+
+  const { config: formCfg } = await getFormConfig(masterTable, masterForm, companyId);
+  if (!formCfg?.posApiEnabled) {
+    const err = new Error('POSAPI is not enabled for this transaction');
+    err.status = 400;
+    throw err;
+  }
+
+  const masterId = await postPosTransaction(
+    layoutName,
+    data,
+    sessionInfo,
+    companyId,
+  );
+
+  if (masterId === undefined || masterId === null) {
+    const err = new Error('POS transaction did not return an identifier');
+    err.status = 500;
+    throw err;
+  }
+
+  let record = null;
+  try {
+    const [rows] = await pool.query(
+      `SELECT * FROM \`${masterTable}\` WHERE id = ? LIMIT 1`,
+      [masterId],
+    );
+    if (Array.isArray(rows) && rows[0]) {
+      record = rows[0];
+    }
+  } catch (err) {
+    console.error('Failed to load persisted transaction for POSAPI submission', {
+      table: masterTable,
+      id: masterId,
+      error: err,
+    });
+  }
+
+  if (!record) {
+    const err = new Error('Unable to load transaction for POSAPI submission');
+    err.status = 500;
+    throw err;
+  }
+
+  const mapping = formCfg.posApiMapping || {};
+  const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
+  const payload = await buildReceiptFromDynamicTransaction(
+    record,
+    mapping,
+    receiptType,
+  );
+  if (!payload) {
+    const err = new Error('POSAPI receipt payload could not be generated from the transaction');
+    err.status = 400;
+    throw err;
+  }
+
+  const response = await sendReceipt(payload);
+  await persistPosApiResponse(masterTable, masterId, response);
+
+  return { id: masterId, posApi: { payload, response } };
 }
 
 export default postPosTransaction;

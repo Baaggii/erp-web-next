@@ -270,102 +270,6 @@ function normalizeSelectorList(selectors, fallback) {
   return normalized;
 }
 
-function isElementVisibleInViewport(element) {
-  if (!element || typeof element.getBoundingClientRect !== "function") {
-    return false;
-  }
-
-  const rect = element.getBoundingClientRect();
-  if (!rect || rect.width <= 0 || rect.height <= 0) {
-    return false;
-  }
-
-  if (typeof window !== "undefined" && typeof window.getComputedStyle === "function") {
-    let current = element;
-    while (current && current instanceof HTMLElement) {
-      const style = window.getComputedStyle(current);
-      if (!style) break;
-      if (style.visibility === "hidden" || style.display === "none") {
-        return false;
-      }
-      const opacity = Number.parseFloat(style.opacity ?? "1");
-      if (Number.isFinite(opacity) && opacity <= 0) {
-        return false;
-      }
-      if (current === current.ownerDocument?.body) {
-        break;
-      }
-      current = current.parentElement;
-    }
-  }
-
-  if (typeof window !== "undefined") {
-    const viewportWidth = window.innerWidth || element.ownerDocument?.documentElement?.clientWidth || 0;
-    const viewportHeight = window.innerHeight || element.ownerDocument?.documentElement?.clientHeight || 0;
-    if (viewportWidth && (rect.right < 0 || rect.left > viewportWidth)) {
-      return false;
-    }
-    if (viewportHeight && (rect.bottom < 0 || rect.top > viewportHeight)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-function getTourStepSelectorCandidates(step) {
-  if (!step || typeof step !== "object") return [];
-  const selectors = [];
-  const seen = new Set();
-  const pushSelector = (value) => {
-    if (typeof value !== "string") return;
-    const trimmed = value.trim();
-    if (!trimmed || seen.has(trimmed)) return;
-    seen.add(trimmed);
-    selectors.push(trimmed);
-  };
-
-  pushSelector(step.target);
-  pushSelector(step.selector);
-  coerceSelectorArray(step.selectors).forEach(pushSelector);
-  coerceSelectorArray(step.highlightSelectors).forEach(pushSelector);
-
-  return selectors;
-}
-
-function isTourStepTargetVisible(step) {
-  if (!step || step.missingTargetPauseStep) {
-    return true;
-  }
-  if (typeof document === "undefined" || typeof document.querySelectorAll !== "function") {
-    return true;
-  }
-
-  const selectors = getTourStepSelectorCandidates(step);
-  if (!selectors.length) {
-    return true;
-  }
-
-  for (const selector of selectors) {
-    try {
-      const nodes = document.querySelectorAll(selector);
-      if (!nodes || nodes.length === 0) {
-        continue;
-      }
-      for (const node of nodes) {
-        if (!(node instanceof HTMLElement)) continue;
-        if (isElementVisibleInViewport(node)) {
-          return true;
-        }
-      }
-    } catch (err) {
-      // ignore invalid selectors
-    }
-  }
-
-  return false;
-}
-
 function getViewportSignature() {
   if (typeof window === "undefined") return "ssr";
   const width = Math.round(
@@ -4048,6 +3952,20 @@ function MainWindow({ title }) {
   const { userSettings, session } = useContext(AuthContext);
   const { t } = useContext(LangContext);
   const generalConfig = useGeneralConfig();
+  const toastApi = useToast();
+  const addToast = useCallback(
+    (message, type) => {
+      if (toastApi && typeof toastApi.addToast === "function") {
+        toastApi.addToast(message, type);
+        return;
+      }
+      if (typeof console !== "undefined" && typeof console.warn === "function") {
+        const typeLabel = type ? `[${type}] ` : "";
+        console.warn(`${typeLabel}${message}`);
+      }
+    },
+    [toastApi],
+  );
   const badgePaths = useMemo(() => {
     const paths = new Set();
     if (hasNew) {

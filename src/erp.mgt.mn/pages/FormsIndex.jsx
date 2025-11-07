@@ -18,7 +18,8 @@ import {
 export default function FormsIndex() {
   const [transactions, setTransactions] = useState({});
   const modules = useModules();
-  const { company, branch, department, permissions: perms } = useContext(AuthContext);
+  const { company, branch, department, permissions: perms, session, user, workplace } =
+    useContext(AuthContext);
   const licensed = useCompanyModules(company);
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
@@ -52,6 +53,19 @@ export default function FormsIndex() {
     const params = new URLSearchParams();
     if (branch != null) params.set('branchId', branch);
     if (department != null) params.set('departmentId', department);
+    const userRightId =
+      user?.userLevel ??
+      user?.userlevel_id ??
+      user?.userlevelId ??
+      session?.user_level ??
+      session?.userlevel_id ??
+      session?.userlevelId ??
+      null;
+    const workplaceId =
+      workplace ??
+      session?.workplace_id ??
+      session?.workplaceId ??
+      null;
     const url = `/api/transaction_forms${params.toString() ? `?${params.toString()}` : ''}`;
     fetch(url, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -67,6 +81,8 @@ export default function FormsIndex() {
           if (
             !hasTransactionFormAccess(info, branchId, departmentId, {
               allowTemporaryAnyScope: true,
+              userRightId,
+              workplaceId,
             })
           )
             return;
@@ -80,7 +96,7 @@ export default function FormsIndex() {
         setTransactions(grouped);
       })
       .catch((err) => console.error('Error fetching forms:', err));
-  }, [company, perms, licensed, txnModules, modules, branch, department]);
+  }, [company, perms, licensed, txnModules, modules, branch, department, session, user, workplace]);
 
   const groups = Object.entries(transactions);
 
