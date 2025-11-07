@@ -1,6 +1,6 @@
 // src/erp.mgt.mn/components/LoginForm.jsx
 import React, { useState, useContext } from 'react';
-import { login } from '../hooks/useAuth.jsx';
+import { login } from '../hooks/useAuth.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { refreshCompanyModules } from '../hooks/useCompanyModules.js';
 import { refreshModules } from '../hooks/useModules.js';
