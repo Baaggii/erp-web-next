@@ -1,6 +1,6 @@
 // src/erp.mgt.mn/components/LogoutButton.jsx
 import { useContext } from 'react';
-import { useAuth } from '../hooks/useAuth.jsx';    // <-- import the hook, not `logout` directly
+import { useAuth } from '../hooks/useAuth.js';    // <-- import the hook, not `logout` directly
 import { AuthContext } from '../context/AuthContext.jsx';
 import I18nContext from '../context/I18nContext.jsx';
 
