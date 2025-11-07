@@ -772,7 +772,7 @@ export async function promoteTemporarySubmission(
           }
           const receiptType =
             formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-          const payload = buildReceiptFromDynamicTransaction(
+          const payload = await buildReceiptFromDynamicTransaction(
             masterRecord,
             mapping,
             receiptType,

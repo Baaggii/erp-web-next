@@ -1,3 +1,5 @@
+import { getSettings } from '../../db/index.js';
+
 function trimEndSlash(url) {
   if (!url) return '';
   return url.replace(/\/+$/, '');
@@ -49,10 +51,7 @@ function toStringValue(value) {
 }
 
 async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) {
-  const baseUrl = trimEndSlash(process.env.POSAPI_EBARIMT_URL || '');
-  if (!baseUrl) {
-    throw new Error('POSAPI_EBARIMT_URL is not configured');
-  }
+  const baseUrl = await getPosApiBaseUrl();
   const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
   const fetchFn = await getFetch();
   const res = await fetchFn(url, {
@@ -130,7 +129,7 @@ export async function getPosApiToken() {
   return json.access_token;
 }
 
-export function buildReceiptFromDynamicTransaction(record, mapping = {}, type) {
+export async function buildReceiptFromDynamicTransaction(record, mapping = {}, type) {
   if (!record || typeof record !== 'object') return null;
   const normalizedMapping =
     mapping && typeof mapping === 'object' && !Array.isArray(mapping)
