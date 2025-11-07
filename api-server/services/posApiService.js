@@ -24,6 +24,50 @@ function readEnvVar(name, { trim = true } = {}) {
   return trim ? raw.trim() : raw;
 }
 
+function hasValue(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'string') {
+    return value.trim().length > 0;
+  }
+  return true;
+}
+
+let cachedSettings = null;
+let cachedSettingsFetchedAt = 0;
+const SETTINGS_CACHE_TTL_MS = 30 * 1000;
+
+async function getCachedSettings() {
+  const now = Date.now();
+  if (
+    cachedSettings &&
+    cachedSettingsFetchedAt &&
+    now - cachedSettingsFetchedAt < SETTINGS_CACHE_TTL_MS
+  ) {
+    return cachedSettings;
+  }
+  try {
+    const settings = await getSettings();
+    cachedSettings = settings && typeof settings === 'object' ? settings : {};
+    cachedSettingsFetchedAt = now;
+    return cachedSettings;
+  } catch (err) {
+    console.error('Failed to load application settings', err);
+    cachedSettings = {};
+    cachedSettingsFetchedAt = now;
+    return cachedSettings;
+  }
+}
+
+function readSettingValue(settings, key) {
+  if (!settings || typeof settings !== 'object') return undefined;
+  if (key in settings) return settings[key];
+  const lowerKey = key.toLowerCase();
+  if (lowerKey in settings) return settings[lowerKey];
+  const camelKey = lowerKey.replace(/_([a-z0-9])/g, (_, ch) => ch.toUpperCase());
+  if (camelKey in settings) return settings[camelKey];
+  return undefined;
+}
+
 function toNumber(value) {
   if (value === undefined || value === null) return null;
   if (typeof value === 'number') {
@@ -91,6 +135,22 @@ export async function getPosApiToken() {
     if (!value) missing.push(key);
     values[key] = value;
   });
+  if (missing.length) {
+    const settings = await getCachedSettings();
+    const stillMissing = [];
+    missing.forEach((key) => {
+      const fallback = readSettingValue(settings, key);
+      const normalized =
+        typeof fallback === 'string' ? fallback.trim() : fallback;
+      if (hasValue(normalized)) {
+        values[key] = normalized;
+      } else {
+        stillMissing.push(key);
+      }
+    });
+    missing.length = 0;
+    missing.push(...stillMissing);
+  }
   if (missing.length) {
     const err = new Error(
       `POSAPI authentication configuration is incomplete. Missing: ${missing.join(', ')}`,
