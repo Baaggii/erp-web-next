@@ -5,7 +5,7 @@ import UserMenu from "./UserMenu.jsx";
 import { useOutlet, useNavigate, useLocation } from "react-router-dom";
 import { AuthContext } from "../context/AuthContext.jsx";
 import LangContext from "../context/I18nContext.jsx";
-import { logout } from "../hooks/useAuth.js";
+import { logout } from "../hooks/useAuth.jsx";
 import { useModules } from "../hooks/useModules.js";
 import { useTxnModules } from "../hooks/useTxnModules.js";
 import modulePath from "../utils/modulePath.js";

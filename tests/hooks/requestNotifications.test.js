@@ -96,7 +96,7 @@ if (!haveReact) {
     );
 
     const { logout } = await t.mock.import(
-      '../../src/erp.mgt.mn/hooks/useAuth.js',
+      '../../src/erp.mgt.mn/hooks/useAuth.jsx',
       {
         '../utils/apiBase.js': { API_BASE: '/api' },
       },
@@ -255,7 +255,7 @@ if (!haveReact) {
       },
     );
     const { logout } = await t.mock.import(
-      '../../src/erp.mgt.mn/hooks/useAuth.js',
+      '../../src/erp.mgt.mn/hooks/useAuth.jsx',
       {
         '../utils/apiBase.js': { API_BASE: '/api' },
       },
