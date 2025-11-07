@@ -1863,15 +1863,16 @@ export default function ERPLayout() {
             const nextIndex = clampIndex(index + delta);
             if (delta > 0 && nextIndex !== currentClampedIndex) {
               const nextStep = tourSteps[nextIndex];
-              if (nextStep && !isTourStepTargetVisible(nextStep)) {
+              if (
+                nextStep &&
+                !nextStep.missingTargetPauseStep &&
+                !isTourStepTargetVisible(nextStep)
+              ) {
                 const message = t(
                   "tour_next_step_hidden",
                   "Reveal the next control before continuing the tour.",
                 );
                 addToast(message, "warning");
-                setTourStepIndex(currentClampedIndex);
-                updateViewerIndex(currentClampedIndex);
-                return;
               }
             }
             setTourStepIndex(nextIndex);
