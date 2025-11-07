@@ -39,43 +39,6 @@ test('hasPosTransactionAccess honors temporary permissions', () => {
   assert.equal(hasPosTransactionAccess(config, '3', '20'), false);
 });
 
-test('hasPosTransactionAccess evaluates workplace and rights scopes', () => {
-  const config = {
-    allowedWorkplaces: ['alpha', 'beta'],
-    allowedUserRights: ['pos.manage', 'pos.view'],
-  };
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      workplaceId: 'alpha',
-      userRights: ['pos.view'],
-    }),
-    true,
-  );
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      workplaceSessionId: 'beta',
-      userRights: ['pos.manage'],
-    }),
-    true,
-  );
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      workplaceId: 'gamma',
-      workplaceSessionId: 'beta',
-      userRights: ['pos.audit'],
-    }),
-    false,
-  );
-  assert.equal(
-    hasPosTransactionAccess(config, null, null, {
-      workplaceId: 'gamma',
-      workplaceSessionId: 'delta',
-      userRights: ['pos.view'],
-    }),
-    false,
-  );
-});
-
 test('filterPosConfigsByAccess returns only permitted configurations', () => {
   const configs = {
     Alpha: { allowedBranches: [1], allowedDepartments: [] },

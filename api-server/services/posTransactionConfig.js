@@ -84,55 +84,20 @@ export function hasPosConfigReadAccess(session = {}, actions = {}) {
   return false;
 }
 
-export function hasPosTransactionAccess(
-  config,
-  branchId,
-  departmentId,
-  options = {},
-) {
+export function hasPosTransactionAccess(config, branchId, departmentId) {
   if (!config || typeof config !== 'object') return true;
 
   const branchValue = normalizeAccessValue(branchId);
   const departmentValue = normalizeAccessValue(departmentId);
-  const workplaceCandidates = [];
-  [
-    options.workplaceId,
-    options.workplaceSessionId,
-    options.workplace,
-  ].forEach((value) => {
-    const normalized = normalizeAccessValue(value);
-    if (normalized !== null && !workplaceCandidates.includes(normalized)) {
-      workplaceCandidates.push(normalized);
-    }
-  });
-  const rightsList = Array.isArray(options.userRights)
-    ? options.userRights
-        .map((right) => normalizeAccessValue(right))
-        .filter((right) => right !== null)
-    : [];
 
   const allowedBranches = normalizeAccessList(config.allowedBranches);
   const allowedDepartments = normalizeAccessList(config.allowedDepartments);
-  const allowedWorkplaces = normalizeAccessList(config.allowedWorkplaces);
-  const allowedUserRights = normalizeAccessList(config.allowedUserRights);
-
-  const workplaceAllowed =
-    allowedWorkplaces.length === 0 ||
-    workplaceCandidates.length === 0 ||
-    workplaceCandidates.some((value) => allowedWorkplaces.includes(value));
-  const rightsAllowed =
-    allowedUserRights.length === 0 ||
-    rightsList.some((right) => allowedUserRights.includes(right));
 
   const generalAllowed =
     matchesScope(allowedBranches, branchValue) &&
-    matchesScope(allowedDepartments, departmentValue) &&
-    workplaceAllowed &&
-    rightsAllowed;
+    matchesScope(allowedDepartments, departmentValue);
 
   if (generalAllowed) return true;
-
-  if (!workplaceAllowed || !rightsAllowed) return false;
 
   const temporaryEnabled = Boolean(
     config.supportsTemporarySubmission ??
@@ -156,16 +121,11 @@ export function hasPosTransactionAccess(
   );
 }
 
-export function filterPosConfigsByAccess(
-  configMap = {},
-  branchId,
-  departmentId,
-  options = {},
-) {
+export function filterPosConfigsByAccess(configMap = {}, branchId, departmentId) {
   const filtered = {};
   Object.entries(configMap || {}).forEach(([name, info]) => {
     if (!info || typeof info !== 'object') return;
-    if (hasPosTransactionAccess(info, branchId, departmentId, options)) {
+    if (hasPosTransactionAccess(info, branchId, departmentId)) {
       filtered[name] = info;
     }
   });
@@ -200,12 +160,6 @@ export async function setConfig(name, config = {}, companyId = 0) {
     temporaryAllowedDepartments: normalizeStoredAccessList(
       config.temporaryAllowedDepartments,
     ),
-    allowedWorkplaces: normalizeStoredAccessList(config.allowedWorkplaces),
-    allowedUserRights: Array.isArray(config.allowedUserRights)
-      ? config.allowedUserRights
-          .map((right) => (typeof right === 'string' ? right.trim() : String(right ?? '')))
-          .filter((right) => right)
-      : [],
     supportsTemporarySubmission: Boolean(
       config.supportsTemporarySubmission ??
         config.allowTemporarySubmission ??
