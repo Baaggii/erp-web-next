@@ -8,13 +8,51 @@ import {
   findTableByProcedure,
 } from '../services/transactionFormConfig.js';
 import { requireAuth } from '../middlewares/auth.js';
+import { getEmploymentSession } from '../../db/index.js';
 
 const router = express.Router();
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { table, name, moduleKey, branchId, departmentId, proc } = req.query;
+    const {
+      table,
+      name,
+      moduleKey,
+      branchId,
+      departmentId,
+      proc,
+      userRightId,
+      workplaceId,
+      procedure,
+    } = req.query;
+    let resolvedUserRight =
+      userRightId ??
+      req.user?.userLevel ??
+      req.session?.user_level ??
+      req.session?.userLevel ??
+      null;
+    let resolvedWorkplace =
+      workplaceId ??
+      req.session?.workplace_id ??
+      req.session?.workplaceId ??
+      req.session?.workplace ??
+      null;
+    if ((resolvedUserRight == null || resolvedWorkplace == null) && req.user?.empid) {
+      try {
+        const sessionInfo = await getEmploymentSession(req.user.empid, companyId);
+        if (resolvedUserRight == null) {
+          resolvedUserRight =
+            sessionInfo?.user_level ?? sessionInfo?.userlevel_id ?? sessionInfo?.userLevel ?? null;
+        }
+        if (resolvedWorkplace == null) {
+          resolvedWorkplace =
+            sessionInfo?.workplace_id ?? sessionInfo?.workplaceId ?? sessionInfo?.workplace ?? null;
+        }
+      } catch {
+        // ignore session lookup failures
+      }
+    }
     if (proc) {
       const { table: tbl, isDefault } = await findTableByProcedure(proc, companyId);
       if (tbl) res.json({ table: tbl, isDefault });
@@ -26,7 +64,17 @@ router.get('/', requireAuth, async (req, res, next) => {
       const { config, isDefault } = await getConfigsByTable(table, companyId);
       res.json({ ...config, isDefault });
     } else {
-      const { names, isDefault } = await listTransactionNames({ moduleKey, branchId, departmentId }, companyId);
+      const { names, isDefault } = await listTransactionNames(
+        {
+          moduleKey,
+          branchId,
+          departmentId,
+          userRightId: resolvedUserRight,
+          workplaceId: resolvedWorkplace,
+          procedure,
+        },
+        companyId,
+      );
       res.json({ ...names, isDefault });
     }
   } catch (err) {

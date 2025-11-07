@@ -924,7 +924,32 @@ export async function postPosTransaction(
     sessionInfo?.department_id ??
     sessionInfo?.department ??
     null;
-  if (!hasPosTransactionAccess(cfg, branchAccessId, departmentAccessId)) {
+  const userRightAccessId =
+    sessionInfo?.userRightId ??
+    sessionInfo?.userRight ??
+    sessionInfo?.userLevelId ??
+    sessionInfo?.userlevel_id ??
+    sessionInfo?.userlevelId ??
+    sessionInfo?.user_level ??
+    sessionInfo?.userLevel ??
+    null;
+  const workplaceAccessId =
+    sessionInfo?.workplaceId ??
+    sessionInfo?.workplace_id ??
+    sessionInfo?.workplaceSessionId ??
+    sessionInfo?.workplace_session_id ??
+    sessionInfo?.workplace ??
+    null;
+  const procedureName =
+    sessionInfo?.procedure ?? sessionInfo?.procedureName ?? sessionInfo?.proc ?? null;
+
+  if (
+    !hasPosTransactionAccess(cfg, branchAccessId, departmentAccessId, {
+      userRightId: userRightAccessId,
+      workplaceId: workplaceAccessId,
+      procedure: procedureName,
+    })
+  ) {
     const err = new Error('POS transaction access denied for current scope');
     err.status = 403;
     throw err;
