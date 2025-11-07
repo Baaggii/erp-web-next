@@ -4548,6 +4548,8 @@ const styles = {
     borderTopLeftRadius: "4px",
     borderTopRightRadius: "4px",
     fontSize: "0.95rem",
+    position: "relative",
+    zIndex: 1100,
   },
   windowHeaderLeft: {
     display: "flex",
@@ -4607,6 +4609,8 @@ const styles = {
   tourButtonGroup: {
     display: "inline-flex",
     gap: "0.5rem",
+    position: "relative",
+    zIndex: 1101,
   },
   tourButton: {
     backgroundColor: "#4b5563",
