@@ -46,7 +46,7 @@ const getInitialPosition = () => {
 
 const wrapperBaseStyles = {
   position: "fixed",
-  zIndex: 999,
+  zIndex: 12010,
   pointerEvents: "auto",
 };
 
@@ -194,7 +194,7 @@ const emptyStateStyles = {
 
 const collapsedTabBaseStyles = {
   position: "fixed",
-  zIndex: 998,
+  zIndex: 12005,
   backgroundColor: "#1d4ed8",
   color: "#ffffff",
   padding: "0.75rem 0.5rem",
