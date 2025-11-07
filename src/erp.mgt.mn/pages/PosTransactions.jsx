@@ -40,6 +40,136 @@ import {
 export { syncCalcFields };
 export { preserveManualChangesAfterRecalc } from '../utils/preserveManualChanges.js';
 
+function truncateValue(value, maxLength = 200) {
+  if (typeof value !== 'string') return value;
+  if (value.length <= maxLength) return value;
+  return `${value.slice(0, maxLength)}…`;
+}
+
+function toReadableString(value) {
+  if (value === undefined) return 'undefined';
+  if (value === null) return 'null';
+  if (typeof value === 'string') return value.trim();
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return String(value);
+  }
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  return '';
+}
+
+function humanizeKeyName(key) {
+  if (!key || typeof key !== 'string') return key;
+  const withSpaces = key
+    .replace(/[_\-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .toLowerCase();
+  return withSpaces.replace(/(^|\s)\w/g, (match) => match.toUpperCase());
+}
+
+function stringifyDetailed(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch (err) {
+    return String(value);
+  }
+}
+
+function buildPosApiPayloadSummary(payload) {
+  if (!payload || typeof payload !== 'object') return '';
+  const parts = [];
+  const add = (label, raw) => {
+    if (raw === undefined || raw === null) return;
+    const str = toReadableString(raw);
+    if (!str) return;
+    parts.push(`${label}: ${truncateValue(str, 120)}`);
+  };
+
+  add('Branch', payload.branchNo);
+  add('POS', payload.posNo);
+  add('Merchant TIN', payload.merchantTin);
+  add('Receipt type', payload.type);
+  add('District', payload.districtCode);
+  add('Customer TIN', payload.customerTin);
+  add('Consumer No', payload.consumerNo);
+  add('Total amount', payload.totalAmount);
+  add('Total VAT', payload.totalVAT);
+  add('Total city tax', payload.totalCityTax);
+
+  if (Array.isArray(payload.receipts) && payload.receipts.length > 0) {
+    const receipt = payload.receipts[0] || {};
+    add('Receipt count', payload.receipts.length);
+    add('Receipt total', receipt.totalAmount ?? receipt.total);
+    add('Receipt VAT', receipt.totalVAT ?? receipt.vat);
+    if (Array.isArray(receipt.items) && receipt.items.length > 0) {
+      const firstItem = receipt.items[0] || {};
+      add('Item count', receipt.items.length);
+      add('First item', firstItem.name);
+      add('First item price', firstItem.price ?? firstItem.totalAmount);
+    }
+  }
+
+  return parts.join('\n');
+}
+
+function buildPosApiResponseSummary(response) {
+  if (!response || typeof response !== 'object') return '';
+  const parts = [];
+  const seen = new Set();
+
+  const add = (label, raw, key) => {
+    if (raw === undefined || raw === null) return;
+    const str = toReadableString(raw);
+    if (!str) return;
+    const normalizedKey = key || label;
+    if (normalizedKey) seen.add(normalizedKey);
+    parts.push(`${label}: ${truncateValue(str, 160)}`);
+  };
+
+  add('Bill ID', response.billId, 'billId');
+  add('Inactive ID', response.inactiveId, 'inactiveId');
+  add('Lottery number', response.lottery, 'lottery');
+  if (response.qrData) {
+    const qrData = String(response.qrData);
+    parts.push(
+      `QR data: ${truncateValue(qrData, 160)}${
+        qrData.length > 160 ? ` (length ${qrData.length})` : ''
+      }`,
+    );
+    seen.add('qrData');
+  }
+  add('Status', response.status, 'status');
+  add('Code', response.code, 'code');
+  add('Message', response.message, 'message');
+  add('Customer name', response.customerName, 'customerName');
+
+  Object.entries(response).forEach(([key, value]) => {
+    if (seen.has(key)) return;
+    if (value === undefined || value === null) return;
+    if (typeof value === 'object') return;
+    const readable = toReadableString(value);
+    if (!readable) return;
+    parts.push(`${humanizeKeyName(key)}: ${truncateValue(readable, 160)}`);
+  });
+
+  return parts.join('\n');
+}
+
+function buildPosApiToastMessage(title, data, summaryBuilder) {
+  if (data === undefined || data === null) return '';
+  const parts = [];
+  const summary = summaryBuilder ? summaryBuilder(data) : '';
+  if (summary) parts.push(summary);
+  const detailed = stringifyDetailed(data);
+  if (detailed) {
+    const truncated = truncateValue(detailed, 2000);
+    parts.push(truncated);
+  }
+  if (parts.length === 0) return '';
+  return `${title}\n${parts.join('\n\n')}`;
+}
+
 function normalizeValueForComparison(value) {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -2901,26 +3031,21 @@ export default function PosTransactionsPage() {
         await request.afterSuccess(js);
         addToast('Posted & Ebarimt issued', 'success');
         if (generalConfig?.general?.ebarimtToastEnabled && js?.posApi) {
-          const stringify = (value) => {
-            if (value == null) return '';
-            if (typeof value === 'string') return value;
-            try {
-              return JSON.stringify(value);
-            } catch {
-              return String(value);
-            }
-          };
-          if (js.posApi.payload) {
-            addToast(
-              `POSAPI request: ${stringify(js.posApi.payload)}`,
-              'info',
-            );
+          const payloadMessage = buildPosApiToastMessage(
+            'POSAPI submission',
+            js.posApi.payload,
+            buildPosApiPayloadSummary,
+          );
+          if (payloadMessage) {
+            addToast(payloadMessage, 'info');
           }
-          if (js.posApi.response) {
-            addToast(
-              `POSAPI response: ${stringify(js.posApi.response)}`,
-              'info',
-            );
+          const responseMessage = buildPosApiToastMessage(
+            'POSAPI response',
+            js.posApi.response,
+            buildPosApiResponseSummary,
+          );
+          if (responseMessage) {
+            addToast(responseMessage, 'info');
           }
         }
       } else {
