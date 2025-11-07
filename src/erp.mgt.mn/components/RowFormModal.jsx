@@ -74,6 +74,7 @@ const RowFormModal = function RowFormModal({
   isEditingTemporaryDraft = false,
   canPost = true,
   forceEditable = false,
+  posApiEnabled = false,
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -635,6 +636,10 @@ const RowFormModal = function RowFormModal({
     errorsRef.current = errors;
   }, [errors]);
   const [submitLocked, setSubmitLocked] = useState(false);
+  const [issueEbarimtEnabled, setIssueEbarimtEnabled] = useState(() =>
+    Boolean(posApiEnabled),
+  );
+  const prevVisibleRef = useRef(visible);
   const tableRef = useRef(null);
   const [gridRows, setGridRows] = useState(() => (Array.isArray(rows) ? rows : []));
   const prevRowsRef = useRef(rows);
@@ -651,6 +656,13 @@ const RowFormModal = function RowFormModal({
       alreadyRequestedRef.current.clear();
     }
   }, [visible]);
+
+  useEffect(() => {
+    if (visible && !prevVisibleRef.current) {
+      setIssueEbarimtEnabled(Boolean(posApiEnabled));
+    }
+    prevVisibleRef.current = visible;
+  }, [visible, posApiEnabled]);
 
   useEffect(() => {
     if (!useGrid) return;
@@ -1798,7 +1810,8 @@ const RowFormModal = function RowFormModal({
     }
   }
 
-  async function submitForm() {
+  async function submitForm(options = {}) {
+    const submitOptions = options || {};
     if (!canPost) {
       alert(
         t(
@@ -1889,7 +1902,13 @@ const RowFormModal = function RowFormModal({
             extra.seedRecords = filtered;
           }
           try {
-            const res = await Promise.resolve(onSubmit({ ...extra, ...r }));
+            const rowOptions =
+              i === 0
+                ? submitOptions
+                : { ...submitOptions, issueEbarimt: false };
+            const res = await Promise.resolve(
+              onSubmit({ ...extra, ...r }, rowOptions),
+            );
             if (res === false) {
               failedRows.push(rows[rowIndices[i]]);
             } else {
@@ -1942,7 +1961,7 @@ const RowFormModal = function RowFormModal({
         normalized[k] = val;
       });
       try {
-        const res = await Promise.resolve(onSubmit(normalized));
+        const res = await Promise.resolve(onSubmit(normalized, submitOptions));
         if (res === false) {
           setSubmitLocked(false);
           return;
@@ -2626,45 +2645,72 @@ const RowFormModal = function RowFormModal({
             </div>
           </div>
         )}
-        <div className="mt-2 text-right space-x-2">
-          <button
-            type="button"
-            onClick={() => handlePrint('emp')}
-            className="px-3 py-1 bg-gray-200 rounded"
-          >
-            {t('printEmp', 'Print Emp')}
-          </button>
-          <button
-            type="button"
-            onClick={() => handlePrint('cust')}
-            className="px-3 py-1 bg-gray-200 rounded"
-          >
-            {t('printCust', 'Print Cust')}
-          </button>
-          {allowTemporarySave && onSaveTemporary && (isAdding || isEditingTemporaryDraft) && (
+        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          {posApiEnabled && canPost && (
+            <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
+              <input
+                type="checkbox"
+                className="rounded"
+                checked={issueEbarimtEnabled}
+                onChange={(e) => setIssueEbarimtEnabled(e.target.checked)}
+              />
+              <span>{t('issue_ebarimt_toggle', 'Issue Ebarimt (POSAPI)')}</span>
+            </label>
+          )}
+          <div className="text-right space-x-2">
             <button
               type="button"
-              onClick={handleTemporarySave}
-              className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
+              onClick={() => handlePrint('emp')}
+              className="px-3 py-1 bg-gray-200 rounded"
             >
-              {t('save_temporary', 'Save as Temporary')}
+              {t('printEmp', 'Print Emp')}
             </button>
-          )}
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-3 py-1 bg-gray-200 rounded"
-          >
-            {t('cancel', 'Cancel')}
-          </button>
-          {canPost && (
             <button
-              type="submit"
-              className="px-3 py-1 bg-blue-600 text-white rounded"
+              type="button"
+              onClick={() => handlePrint('cust')}
+              className="px-3 py-1 bg-gray-200 rounded"
             >
-              {t('post', 'Post')}
+              {t('printCust', 'Print Cust')}
             </button>
-          )}
+            {allowTemporarySave && onSaveTemporary && (isAdding || isEditingTemporaryDraft) && (
+              <button
+                type="button"
+                onClick={handleTemporarySave}
+                className="px-3 py-1 bg-yellow-400 text-gray-900 rounded"
+              >
+                {t('save_temporary', 'Save as Temporary')}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onCancel}
+              className="px-3 py-1 bg-gray-200 rounded"
+            >
+              {t('cancel', 'Cancel')}
+            </button>
+            {posApiEnabled && canPost && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!issueEbarimtEnabled) return;
+                  submitForm({ issueEbarimt: true });
+                }}
+                className="px-3 py-1 bg-green-600 text-white rounded"
+                disabled={!issueEbarimtEnabled || submitLocked}
+              >
+                {t('ebarimt_post', 'Ebarimt Post')}
+              </button>
+            )}
+            {canPost && (
+              <button
+                type="submit"
+                className="px-3 py-1 bg-blue-600 text-white rounded"
+                disabled={submitLocked}
+              >
+                {t('post', 'Post')}
+              </button>
+            )}
+          </div>
         </div>
         {!canPost && allowTemporarySave && (
           <div className="mt-2 text-sm text-gray-600">

@@ -15,6 +15,13 @@ async function getFetch() {
   return cachedFetch;
 }
 
+function readEnvVar(name, { trim = true } = {}) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === null) return '';
+  if (typeof raw !== 'string') return raw;
+  return trim ? raw.trim() : raw;
+}
+
 function toNumber(value) {
   if (value === undefined || value === null) return null;
   if (typeof value === 'number') {
@@ -72,13 +79,31 @@ async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) 
 }
 
 export async function getPosApiToken() {
-  const baseUrl = trimEndSlash(process.env.POSAPI_AUTH_URL || '');
-  const realm = process.env.POSAPI_AUTH_REALM || '';
-  const clientId = process.env.POSAPI_CLIENT_ID || '';
-  const clientSecret = process.env.POSAPI_CLIENT_SECRET || '';
-  if (!baseUrl || !realm || !clientId || !clientSecret) {
-    throw new Error('POSAPI authentication environment variables are not fully configured');
+  const requiredEnv = [
+    'POSAPI_AUTH_URL',
+    'POSAPI_AUTH_REALM',
+    'POSAPI_CLIENT_ID',
+    'POSAPI_CLIENT_SECRET',
+  ];
+  const missing = [];
+  const values = {};
+  requiredEnv.forEach((key) => {
+    const value = readEnvVar(key);
+    if (!value) missing.push(key);
+    values[key] = value;
+  });
+  if (missing.length) {
+    const err = new Error(
+      `POSAPI authentication configuration is incomplete. Missing: ${missing.join(', ')}`,
+    );
+    err.status = 500;
+    err.details = { missingEnvVars: missing };
+    throw err;
   }
+  const baseUrl = trimEndSlash(values.POSAPI_AUTH_URL || '');
+  const realm = values.POSAPI_AUTH_REALM;
+  const clientId = values.POSAPI_CLIENT_ID;
+  const clientSecret = values.POSAPI_CLIENT_SECRET;
   const tokenUrl = `${baseUrl}/realms/${realm}/protocol/openid-connect/token`;
   const params = new URLSearchParams();
   params.set('grant_type', 'client_credentials');
@@ -111,17 +136,48 @@ export function buildReceiptFromDynamicTransaction(record, mapping = {}, type) {
     mapping && typeof mapping === 'object' && !Array.isArray(mapping)
       ? mapping
       : {};
+
+  const requiredMapping = ['totalAmount'];
+  const missingMapping = requiredMapping.filter((field) => {
+    const column = normalizedMapping[field];
+    return typeof column !== 'string' || !column.trim();
+  });
+  if (missingMapping.length) {
+    const err = new Error(
+      `POSAPI mapping is missing required fields: ${missingMapping.join(', ')}`,
+    );
+    err.status = 400;
+    err.details = { missingMapping };
+    throw err;
+  }
+
   const getFieldValue = (key) => {
     const column = normalizedMapping[key];
     if (typeof column !== 'string' || !column) return undefined;
     return record[column];
   };
-  const totalAmount = toNumber(getFieldValue('totalAmount'));
+
+  const totalAmountField = normalizedMapping.totalAmount;
+  const totalAmount = toNumber(record[totalAmountField]);
   if (totalAmount === null) {
-    return null;
+    const err = new Error(
+      `POSAPI totalAmount is missing or invalid (column: ${totalAmountField})`,
+    );
+    err.status = 400;
+    err.details = { field: 'totalAmount', column: totalAmountField };
+    throw err;
   }
-  const totalVAT = toNumber(getFieldValue('totalVAT')) ?? 0;
-  const totalCityTax = toNumber(getFieldValue('totalCityTax')) ?? 0;
+
+  const totalVATField = normalizedMapping.totalVAT;
+  const totalVAT =
+    totalVATField && totalVATField in record
+      ? toNumber(record[totalVATField]) ?? 0
+      : toNumber(getFieldValue('totalVAT')) ?? 0;
+  const totalCityTaxField = normalizedMapping.totalCityTax;
+  const totalCityTax =
+    totalCityTaxField && totalCityTaxField in record
+      ? toNumber(record[totalCityTaxField]) ?? 0
+      : toNumber(getFieldValue('totalCityTax')) ?? 0;
   const customerTin = toStringValue(getFieldValue('customerTin'));
   const consumerNo = toStringValue(getFieldValue('consumerNo'));
   const taxTypeField = normalizedMapping.taxType;
@@ -135,12 +191,21 @@ export function buildReceiptFromDynamicTransaction(record, mapping = {}, type) {
   }
   const lotNoField = normalizedMapping.lotNo;
   const lotNo = lotNoField ? toStringValue(record[lotNoField]) : '';
-  const branchNo = process.env.POSAPI_BRANCH_NO || '';
-  const merchantTin = process.env.POSAPI_MERCHANT_TIN || '';
-  const posNo = process.env.POSAPI_POS_NO || '';
-  const districtCode = process.env.POSAPI_DISTRICT_CODE || '';
-  if (!branchNo || !merchantTin || !posNo) {
-    return null;
+  const branchNo = readEnvVar('POSAPI_BRANCH_NO');
+  const merchantTin = readEnvVar('POSAPI_MERCHANT_TIN');
+  const posNo = readEnvVar('POSAPI_POS_NO');
+  const districtCode = readEnvVar('POSAPI_DISTRICT_CODE');
+  const missingEnv = [];
+  if (!branchNo) missingEnv.push('POSAPI_BRANCH_NO');
+  if (!merchantTin) missingEnv.push('POSAPI_MERCHANT_TIN');
+  if (!posNo) missingEnv.push('POSAPI_POS_NO');
+  if (missingEnv.length) {
+    const err = new Error(
+      `POSAPI receipt configuration is incomplete. Missing: ${missingEnv.join(', ')}`,
+    );
+    err.status = 500;
+    err.details = { missingEnvVars: missingEnv };
+    throw err;
   }
   const receiptType = type || process.env.POSAPI_RECEIPT_TYPE || 'B2C_RECEIPT';
   const item = {
