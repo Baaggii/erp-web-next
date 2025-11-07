@@ -11,7 +11,6 @@ import {
   sendReceipt,
 } from './posApiService.js';
 import { parseLocalizedNumber } from '../../utils/parseLocalizedNumber.js';
-import { getGeneralConfig } from './generalConfig.js';
 
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
