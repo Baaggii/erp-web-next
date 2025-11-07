@@ -2758,21 +2758,12 @@ const TableManager = forwardRef(function TableManager({
       );
       return null;
     }
-    const requestPayload = { table, formName, recordId };
-    if (ebarimtToastEnabled) {
-      addToast(
-        t('ebarimt_request_submitting', 'Submitting Ebarimt request: {{payload}}', {
-          payload: formatTxnToastPayload(requestPayload),
-        }),
-        'info',
-      );
-    }
     try {
       const res = await fetch('/api/transaction_ebarimt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify({ table, formName, recordId }),
       });
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -2803,22 +2794,6 @@ const TableManager = forwardRef(function TableManager({
         t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', { message }),
         'error',
       );
-      if (ebarimtToastEnabled) {
-        let responseDetail = null;
-        if (errData?.posApi && errData.posApi.response !== undefined) {
-          responseDetail = errData.posApi.response;
-        } else if (errData && typeof errData === 'object' && Object.keys(errData).length > 0) {
-          responseDetail = errData;
-        }
-        if (responseDetail !== null && responseDetail !== undefined) {
-          addToast(
-            t('ebarimt_response_payload', 'POSAPI response: {{payload}}', {
-              payload: formatTxnToastPayload(responseDetail),
-            }),
-            'info',
-          );
-        }
-      }
       return null;
     } catch (err) {
       addToast(
@@ -2827,14 +2802,6 @@ const TableManager = forwardRef(function TableManager({
         }),
         'error',
       );
-      if (ebarimtToastEnabled) {
-        addToast(
-          t('ebarimt_request_error', 'Ebarimt request error details: {{payload}}', {
-            payload: formatTxnToastPayload({ ...requestPayload, error: err.message }),
-          }),
-          'info',
-        );
-      }
       return null;
     }
   }
