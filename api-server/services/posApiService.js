@@ -107,7 +107,9 @@ export async function getPosApiToken() {
   const params = new URLSearchParams();
   params.set('grant_type', 'client_credentials');
   params.set('client_id', clientId);
-  params.set('client_secret', clientSecret);
+  if (clientSecret) {
+    params.set('client_secret', clientSecret);
+  }
   const fetchFn = await getFetch();
   const res = await fetchFn(tokenUrl, {
     method: 'POST',
