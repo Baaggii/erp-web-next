@@ -3054,6 +3054,36 @@ const TableManager = forwardRef(function TableManager({
             }
           }
         }
+        let ebarimtResult = null;
+        if (shouldIssueEbarimt) {
+          try {
+            ebarimtResult = await issueTransactionEbarimt(targetRecordId);
+          } catch (err) {
+            const detailParts = [];
+            const missingEnv = Array.isArray(err.details?.missingEnvVars)
+              ? err.details.missingEnvVars
+              : [];
+            if (missingEnv.length) {
+              detailParts.push(`missing config: ${missingEnv.join(', ')}`);
+            }
+            const missingMapping = Array.isArray(err.details?.missingMapping)
+              ? err.details.missingMapping
+              : [];
+            if (missingMapping.length) {
+              detailParts.push(`missing mapping: ${missingMapping.join(', ')}`);
+            }
+            if (err.details?.field && err.details?.column) {
+              detailParts.push(`${err.details.field} (column ${err.details.column})`);
+            }
+            const detailSuffix = detailParts.length ? ` (${detailParts.join('; ')})` : '';
+            addToast(
+              t('ebarimt_post_failed', 'Ebarimt post failed: {{message}}', {
+                message: `${err.message}${detailSuffix}`,
+              }),
+              'error',
+            );
+          }
+        }
         addToast(msg, 'success');
         if (shouldIssueEbarimt) {
           await issueTransactionEbarimt(targetRecordId);
