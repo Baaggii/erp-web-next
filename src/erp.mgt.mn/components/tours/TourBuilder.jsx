@@ -698,6 +698,10 @@ export default function TourBuilder({ state, onClose }) {
     onClose?.();
   }, [highlightElement, onClose]);
 
+  useEffect(() => () => {
+    highlightElement(null);
+  }, [highlightElement]);
+
   const saveDisabled =
     saving ||
     loading ||
