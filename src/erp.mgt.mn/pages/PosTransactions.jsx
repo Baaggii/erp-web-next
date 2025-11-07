@@ -1127,7 +1127,6 @@ export default function PosTransactionsPage() {
     workplace,
   } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
-  const ebarimtToastEnabled = Boolean(generalConfig?.general?.ebarimtToastEnabled);
   const licensed = useCompanyModules(company);
   const [rawConfigs, setRawConfigs] = useState({});
   const configs = useMemo(() => {
@@ -1176,23 +1175,6 @@ export default function PosTransactionsPage() {
     });
     return filtered;
   }, [rawConfigs, branch, department, perms, licensed, session, user, workplace]);
-
-  const formatEbarimtToastPayload = useCallback((value) => {
-    const maxLength = 500;
-    if (value === undefined) return 'undefined';
-    if (value === null) return 'null';
-    if (typeof value === 'string') {
-      return value.length > maxLength ? `${value.slice(0, maxLength)}…` : value;
-    }
-    try {
-      const json = JSON.stringify(value);
-      if (typeof json === 'string') {
-        return json.length > maxLength ? `${json.slice(0, maxLength)}…` : json;
-      }
-    } catch {}
-    const str = String(value);
-    return str.length > maxLength ? `${str.slice(0, maxLength)}…` : str;
-  }, []);
   const [name, setName] = useState('');
   const [config, setConfig] = useState(null);
   const [formConfigs, setFormConfigs] = useState({});
@@ -2907,34 +2889,36 @@ export default function PosTransactionsPage() {
   async function handlePostEbarimt() {
     const request = buildPostRequest();
     if (!request) return;
-    const requestPayload = request.body ?? {};
-    if (ebarimtToastEnabled) {
-      addToast(
-        `Submitting POSAPI request: ${formatEbarimtToastPayload(requestPayload)}`,
-        'info',
-      );
-    }
     try {
       const res = await fetch('/api/pos_txn_ebarimt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(requestPayload),
+        body: JSON.stringify(request.body),
       });
       if (res.ok) {
         const js = await res.json().catch(() => ({}));
         await request.afterSuccess(js);
         addToast('Posted & Ebarimt issued', 'success');
-        if (ebarimtToastEnabled && js?.posApi) {
-          if (js.posApi.payload !== undefined) {
+        if (generalConfig?.general?.ebarimtToastEnabled && js?.posApi) {
+          const stringify = (value) => {
+            if (value == null) return '';
+            if (typeof value === 'string') return value;
+            try {
+              return JSON.stringify(value);
+            } catch {
+              return String(value);
+            }
+          };
+          if (js.posApi.payload) {
             addToast(
-              `POSAPI request: ${formatEbarimtToastPayload(js.posApi.payload)}`,
+              `POSAPI request: ${stringify(js.posApi.payload)}`,
               'info',
             );
           }
-          if (js.posApi.response !== undefined) {
+          if (js.posApi.response) {
             addToast(
-              `POSAPI response: ${formatEbarimtToastPayload(js.posApi.response)}`,
+              `POSAPI response: ${stringify(js.posApi.response)}`,
               'info',
             );
           }
@@ -2947,34 +2931,9 @@ export default function PosTransactionsPage() {
           `Ebarimt post failed: ${msg}${field ? ` (field ${field})` : ''}`,
           'error',
         );
-        if (ebarimtToastEnabled) {
-          let responseDetail = null;
-          if (js?.posApi && js.posApi.response !== undefined) {
-            responseDetail = js.posApi.response;
-          } else if (js && typeof js === 'object' && Object.keys(js).length > 0) {
-            responseDetail = js;
-          }
-          if (responseDetail !== null && responseDetail !== undefined) {
-            addToast(
-              `POSAPI response: ${formatEbarimtToastPayload(responseDetail)}`,
-              'info',
-            );
-          }
-        }
       }
     } catch (err) {
       addToast(`Ebarimt post failed: ${err.message}`, 'error');
-      if (ebarimtToastEnabled) {
-        addToast(
-          `Ebarimt request error details: ${formatEbarimtToastPayload({
-            ...(typeof requestPayload === 'object' && requestPayload !== null
-              ? requestPayload
-              : { payload: requestPayload }),
-            error: err.message,
-          })}`,
-          'info',
-        );
-      }
     }
   }
 
