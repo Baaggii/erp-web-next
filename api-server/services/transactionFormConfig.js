@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
-import { coerceBoolean } from '../utils/valueUtils.js';
 
   async function readConfig(companyId = 0) {
     const { path: filePath, isDefault } = await getConfigPath(
@@ -112,22 +111,6 @@ function parseEntry(raw = {}) {
     allowedDepartments: Array.isArray(raw.allowedDepartments)
       ? raw.allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
       : [],
-    allowedWorkplaces: Array.isArray(raw.allowedWorkplaces)
-      ? raw.allowedWorkplaces
-          .map((v) => {
-            if (v === undefined || v === null) return null;
-            const num = Number(v);
-            if (Number.isFinite(num)) return num;
-            const str = String(v).trim();
-            return str ? str : null;
-          })
-          .filter((v) => v !== null)
-      : [],
-    allowedUserRights: Array.isArray(raw.allowedUserRights)
-      ? raw.allowedUserRights
-          .map((v) => (typeof v === 'string' ? v.trim() : String(v ?? '')))
-          .filter((v) => v)
-      : [],
     temporaryAllowedBranches: Array.isArray(raw.temporaryAllowedBranches)
       ? raw.temporaryAllowedBranches
           .map((v) => Number(v))
@@ -198,28 +181,13 @@ export async function findTableByProcedure(proc, companyId = 0) {
 }
 
 export async function listTransactionNames(
-  {
-    moduleKey,
-    branchId,
-    departmentId,
-    userRights,
-    workplaceId,
-    workplaceSessionId,
-  } = {},
+  { moduleKey, branchId, departmentId } = {},
   companyId = 0,
 ) {
   const { cfg, isDefault } = await readConfig(companyId);
   const result = {};
   const bId = branchId ? Number(branchId) : null;
   const dId = departmentId ? Number(departmentId) : null;
-  const rightsList = Array.isArray(userRights) ? userRights : [];
-  const workplaceCandidates = [];
-  [workplaceId, workplaceSessionId].forEach((value) => {
-    if (value === undefined || value === null) return;
-    const str = String(value).trim();
-    if (!str) return;
-    if (!workplaceCandidates.includes(str)) workplaceCandidates.push(str);
-  });
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
@@ -231,12 +199,6 @@ export async function listTransactionNames(
         : [];
       const allowedDepartments = Array.isArray(parsed.allowedDepartments)
         ? parsed.allowedDepartments
-        : [];
-      const allowedWorkplaces = Array.isArray(parsed.allowedWorkplaces)
-        ? parsed.allowedWorkplaces.map((w) => String(w))
-        : [];
-      const allowedRights = Array.isArray(parsed.allowedUserRights)
-        ? parsed.allowedUserRights.map((r) => String(r))
         : [];
       const tempBranches = Array.isArray(parsed.temporaryAllowedBranches)
         ? parsed.temporaryAllowedBranches
@@ -253,18 +215,10 @@ export async function listTransactionNames(
         allowedDepartments.length === 0 ||
         dId == null ||
         allowedDepartments.includes(dId);
-      const workplaceAllowed =
-        allowedWorkplaces.length === 0 ||
-        workplaceCandidates.length === 0 ||
-        workplaceCandidates.some((value) => allowedWorkplaces.includes(value));
-      const rightsAllowed =
-        allowedRights.length === 0 ||
-        rightsList.some((right) => allowedRights.includes(String(right)));
 
-      let permitted = branchAllowed && departmentAllowed && workplaceAllowed && rightsAllowed;
+      let permitted = branchAllowed && departmentAllowed;
 
       if (!permitted) {
-        if (!rightsAllowed || !workplaceAllowed) continue;
         const tempEnabled = Boolean(
           parsed.supportsTemporarySubmission ||
             parsed.allowTemporarySubmission ||
@@ -311,8 +265,6 @@ export async function setFormConfig(
     allowedDepartments = [],
     temporaryAllowedBranches = [],
     temporaryAllowedDepartments = [],
-    allowedWorkplaces = [],
-    allowedUserRights = [],
     moduleKey: parentModuleKey = '',
     moduleLabel,
     userIdField,
@@ -356,22 +308,6 @@ export async function setFormConfig(
   const ad = Array.isArray(allowedDepartments)
     ? allowedDepartments.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
-  const aw = Array.isArray(allowedWorkplaces)
-    ? allowedWorkplaces
-        .map((v) => {
-          if (v === undefined || v === null) return null;
-          const num = Number(v);
-          if (Number.isFinite(num)) return num;
-          const str = String(v).trim();
-          return str ? str : null;
-        })
-        .filter((v) => v !== null)
-    : [];
-  const aur = Array.isArray(allowedUserRights)
-    ? allowedUserRights
-        .map((v) => (typeof v === 'string' ? v.trim() : String(v ?? '')))
-        .filter((v) => v)
-    : [];
   const tab = Array.isArray(temporaryAllowedBranches)
     ? temporaryAllowedBranches.map((v) => Number(v)).filter((v) => !Number.isNaN(v))
     : [];
@@ -412,8 +348,6 @@ export async function setFormConfig(
     moduleLabel: moduleLabel || undefined,
     allowedBranches: ab,
     allowedDepartments: ad,
-    allowedWorkplaces: aw,
-    allowedUserRights: aur,
     temporaryAllowedBranches: tab,
     temporaryAllowedDepartments: tad,
     procedures: arrify(procedures),

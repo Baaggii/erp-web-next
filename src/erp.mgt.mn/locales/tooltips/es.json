@@ -469,6 +469,5 @@
   "reports": "Reports",
   "edit_delete_request": "Edit or delete request",
   "settings_show_tour_buttons": "Mostrar u ocultar los botones de tour en el encabezado de la ventana.",
-  "system_settings": "System settings",
-  "pos_api_toasts_enabled": "Mostrar las cargas útiles y respuestas de POSAPI después de emitir recibos."
+  "system_settings": "System settings"
 }
