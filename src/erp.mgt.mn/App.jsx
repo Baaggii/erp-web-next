@@ -8,6 +8,7 @@ import { LoadingProvider } from './context/LoadingContext.jsx';
 import { I18nProvider } from './context/I18nContext.jsx';
 import { debugLog } from './utils/debug.js';
 import RequireAuth from './components/RequireAuth.jsx';
+import RequireAdmin from './components/RequireAdmin.jsx';
 import ERPLayout from './components/ERPLayout.jsx';
 import AppLayout from './components/AppLayout.jsx';
 import LoginPage from './pages/Login.jsx';
@@ -47,6 +48,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import UserSettingsPage from './pages/UserSettings.jsx';
 import AllowedReportsConfigPage from './pages/AllowedReportsConfig.jsx';
 import NotificationsPage from './pages/Notifications.jsx';
+import PosApiAdminPage from './pages/PosApiAdmin.jsx';
 
 export default function App() {
   useEffect(() => {
@@ -196,6 +198,12 @@ function AuthedApp() {
         <Route path="/" element={<ERPLayout />}>
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="requests" element={<RequestsPage />} />
+          <Route element={<RequireAdmin />}>
+            <Route
+              path="settings/posapi-endpoints"
+              element={<PosApiAdminPage />}
+            />
+          </Route>
           {roots.map(renderRoute)}
         </Route>
         <Route

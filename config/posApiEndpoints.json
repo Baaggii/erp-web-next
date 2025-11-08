@@ -1,0 +1,75 @@
+[
+  {
+    "id": "saveReceipt",
+    "name": "Save B2C/B2B Receipt",
+    "method": "POST",
+    "path": "/rest/receipt",
+    "parameters": [],
+    "requestBody": {
+      "schema": {
+        "receipts": [
+          {
+            "merchantTin": "1234567890",
+            "branchNo": "001",
+            "posNo": "POS-01",
+            "date": "2024-01-01T12:34:56",
+            "totalAmount": 10000,
+            "totalVAT": 1000,
+            "totalCityTax": 0,
+            "customerTin": "9876543210",
+            "consumerNo": "99119911",
+            "lottery": "",
+            "items": [
+              {
+                "name": "Product name",
+                "barcode": "1234567890123",
+                "measureUnit": "PCS",
+                "qty": 1,
+                "unitPrice": 10000,
+                "vat": 1000,
+                "cityTax": 0,
+                "totalAmount": 10000
+              }
+            ],
+            "payments": [
+              {
+                "type": "CASH",
+                "amount": 10000
+              }
+            ]
+          }
+        ]
+      },
+      "description": "Batch of receipts with payments and items"
+    },
+    "responseBody": {
+      "schema": {
+        "status": "SUCCESS",
+        "message": "Receipt registered",
+        "receipts": [
+          {
+            "lottery": "АБ12345678",
+            "qrData": "https://ebarimt.mn/verify/...",
+            "receiptNumbers": ["12345678"],
+            "errors": []
+          }
+        ]
+      },
+      "description": "Receipt submission response"
+    },
+    "fieldDescriptions": {
+      "merchantTin": "Registered TIN of the merchant submitting the receipt",
+      "branchNo": "Three digit branch identifier issued with the licence",
+      "posNo": "POS terminal identifier registered with the tax authority",
+      "totalAmount": "Total invoice amount including tax",
+      "totalVAT": "VAT amount for the transaction",
+      "totalCityTax": "City tax amount if applicable",
+      "customerTin": "Buyer TIN for B2B receipts",
+      "consumerNo": "Citizen registry or phone number for B2C receipts",
+      "items": "Line items with product and tax information",
+      "payments": "Payment breakdown for the receipt"
+    },
+    "testable": true,
+    "testServerUrl": "https://posapi-test.tax.gov.mn"
+  }
+]

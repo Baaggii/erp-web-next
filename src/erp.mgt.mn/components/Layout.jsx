@@ -29,6 +29,7 @@ export default function ERPLayout() {
     '/settings/users': t('users', 'Users'),
     '/settings/role-permissions': t('rolePermissions', 'Role Permissions'),
     '/settings/change-password': t('changePassword', 'Change Password'),
+    '/settings/posapi-endpoints': t('posapiRegistry', 'POSAPI Registry'),
   };
   const windowTitle = titleMap[location.pathname] || t('erp', 'ERP');
 
@@ -140,6 +141,13 @@ function Sidebar() {
             </NavLink>
             <NavLink to="/settings/modules" className="menu-item" style={styles.menuItem}>
               {t('modules', 'Modules')}
+            </NavLink>
+            <NavLink
+              to="/settings/posapi-endpoints"
+              className="menu-item"
+              style={styles.menuItem}
+            >
+              {t('posapiRegistry', 'POSAPI Registry')}
             </NavLink>
           </>
         )}
