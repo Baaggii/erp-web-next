@@ -1,0 +1,87 @@
+[
+  {
+    "id": "saveReceipt",
+    "name": "Save B2C/B2B Receipt",
+    "method": "POST",
+    "path": "/rest/receipt",
+    "parameters": [],
+    "requestBody": {
+      "schema": {
+        "receipts": [
+          {
+            "type": "B2C_RECEIPT",
+            "merchantTin": "1234567",
+            "branchNo": "001",
+            "posNo": "POS01",
+            "billId": "INV-1001",
+            "invoiceId": "2024-00001",
+            "customerTin": "12345678901",
+            "consumerNo": "99112233",
+            "totalAmount": 12500,
+            "totalVAT": 1250,
+            "totalCityTax": 250,
+            "taxType": "VAT_ABLE",
+            "note": "Retail sale",
+            "payments": [
+              {
+                "type": "CARD",
+                "amount": 12500
+              }
+            ],
+            "items": [
+              {
+                "code": "12345678",
+                "name": "Sample item",
+                "measureUnit": "PCS",
+                "qty": 1,
+                "price": 12500,
+                "vat": 1250,
+                "cityTax": 250,
+                "totalAmount": 12500
+              }
+            ]
+          }
+        ]
+      },
+      "description": "Batch of receipts with payments and items"
+    },
+    "responseBody": {
+      "schema": {
+        "status": "SUCCESS",
+        "message": "Receipt saved",
+        "lottery": "AB12345678",
+        "qrData": "000201010212...",
+        "receiptNumbers": [
+          {
+            "billId": "INV-1001",
+            "status": "SUCCESS",
+            "message": "Saved",
+            "lottery": "AB12345678",
+            "qrData": "000201010212..."
+          }
+        ]
+      },
+      "description": "Receipt submission response"
+    },
+    "fieldDescriptions": {
+      "type": "Receipt type such as B2C_RECEIPT, B2B_RECEIPT or NHAT_RECEIPT",
+      "merchantTin": "Registered TIN of the merchant issuing the receipt",
+      "branchNo": "Branch identifier registered with the tax authority",
+      "posNo": "POS terminal number configured in POSAPI",
+      "billId": "Unique identifier of the receipt inside the ERP",
+      "invoiceId": "Optional invoice sequence shared with accounting",
+      "customerTin": "Buyer TIN for B2B receipts",
+      "consumerNo": "Citizen ID or phone number for B2C receipts",
+      "totalAmount": "Total receipt amount including taxes",
+      "totalVAT": "VAT amount included in the receipt",
+      "totalCityTax": "City tax amount included in the receipt",
+      "taxType": "VAT_ABLE, VAT_FREE, VAT_ZERO or NO_VAT",
+      "payments": "Array of payment breakdown entries",
+      "items": "Array of goods or services included in the receipt",
+      "lottery": "Lottery number returned by POSAPI",
+      "qrData": "QR code payload returned by POSAPI"
+    },
+    "testable": true,
+    "testServerUrl": "https://posapi-test.tax.gov.mn"
+  }
+]
