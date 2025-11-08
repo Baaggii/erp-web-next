@@ -716,9 +716,7 @@ export default function PosApiAdminPage() {
                   }
                   className="w-full border rounded px-3 py-2 font-mono text-xs"
                   rows={12}
-                  placeholder={`{
-  "receipts": []
-}`}
+                  placeholder="{\n  \"receipts\": []\n}"
                 />
               </label>
               <label className="space-y-2">
@@ -732,9 +730,7 @@ export default function PosApiAdminPage() {
                   }
                   className="w-full border rounded px-3 py-2 font-mono text-xs"
                   rows={12}
-                  placeholder={`{
-  "status": "SUCCESS"
-}`}
+                  placeholder="{\n  \"status\": \"SUCCESS\"\n}"
                 />
               </label>
             </div>
