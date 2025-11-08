@@ -25,6 +25,7 @@ import ReportBuilderPage from './pages/ReportBuilder.jsx';
 import RelationsConfigPage from './pages/RelationsConfig.jsx';
 import PosTxnConfigPage from './pages/PosTxnConfig.jsx';
 import PosTransactionsPage from './pages/PosTransactions.jsx';
+import PosApiAdminPage from './pages/PosApiAdmin.jsx';
 import ModulesPage from './pages/Modules.jsx';
 import GeneralConfigurationPage from './pages/GeneralConfiguration.jsx';
 import UserLevelActionsPage from './pages/UserLevelActions.jsx';
@@ -136,6 +137,7 @@ function AuthedApp() {
       edit_translations: <TranslationEditorPage />,
       user_manual_export: <UserManualExportPage />,
       report_access: <AllowedReportsConfigPage />,
+      pos_api_admin: <PosApiAdminPage />,
     };
 
     modules.forEach((m) => {

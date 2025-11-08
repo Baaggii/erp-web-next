@@ -33,6 +33,7 @@ import reportAccessRoutes from "./routes/report_access.js";
 import tourRoutes from "./routes/tours.js";
 import snapshotArtifactRoutes from "./routes/report_snapshot_artifacts.js";
 import reportApprovalRoutes from "./routes/report_approvals.js";
+import posApiRegistryRoutes from "./routes/pos_api_registry.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -103,6 +104,7 @@ app.use("/api/translations/generate", translationGeneratorRoutes);
 app.use("/api/report_access", reportAccessRoutes);
 app.use("/api/tours", tourRoutes);
 app.use("/api/report_approvals", reportApprovalRoutes);
+app.use("/api/posapi/endpoints", posApiRegistryRoutes);
 app.use("/api/report_snapshot_artifacts", snapshotArtifactRoutes);
 
 // Serve static React build and fallback to index.html
