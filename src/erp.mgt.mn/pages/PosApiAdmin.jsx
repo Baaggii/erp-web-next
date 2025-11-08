@@ -386,7 +386,6 @@ export default function PosApiAdmin() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ endpoint: definition }),
-        skipLoader: true,
       });
       if (!res.ok) {
         const text = await res.text();
@@ -1024,23 +1023,5 @@ const styles = {
   statusPillError: {
     background: '#fee2e2',
     color: '#991b1b',
-  },
-  loadingOverlay: {
-    position: 'absolute',
-    inset: 0,
-    background: 'rgba(255, 255, 255, 0.7)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 20,
-  },
-  loadingMessage: {
-    background: '#ffffff',
-    borderRadius: '9999px',
-    padding: '0.5rem 1.5rem',
-    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.15)',
-    fontWeight: 600,
-    color: '#1e293b',
-    letterSpacing: '0.01em',
   },
 };
