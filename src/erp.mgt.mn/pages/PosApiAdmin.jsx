@@ -77,6 +77,7 @@ export default function PosApiAdmin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
+  const [testState, setTestState] = useState({ running: false, error: '', result: null });
 
   const sortedEndpoints = useMemo(() => {
     return [...endpoints].sort((a, b) => {
@@ -86,33 +87,74 @@ export default function PosApiAdmin() {
     });
   }, [endpoints]);
 
+  const requestPreview = useMemo(() => {
+    const text = (formState.requestSchemaText || '').trim();
+    if (!text) return { state: 'empty', formatted: '', error: '' };
+    try {
+      const parsed = JSON.parse(text);
+      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '' };
+    } catch (err) {
+      return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
+    }
+  }, [formState.requestSchemaText]);
+
+  const responsePreview = useMemo(() => {
+    const text = (formState.responseSchemaText || '').trim();
+    if (!text) return { state: 'empty', formatted: '', error: '' };
+    try {
+      const parsed = JSON.parse(text);
+      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '' };
+    } catch (err) {
+      return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
+    }
+  }, [formState.responseSchemaText]);
+
   useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
     async function fetchEndpoints() {
       try {
+        setLoading(true);
         setError('');
         const res = await fetch(`${API_BASE}/posapi/endpoints`, {
           credentials: 'include',
+          signal: controller.signal,
+          skipLoader: true,
         });
         if (!res.ok) {
           throw new Error('Failed to load POSAPI endpoints');
         }
         const data = await res.json();
+        if (cancelled) return;
         setEndpoints(Array.isArray(data) ? data : []);
         if (Array.isArray(data) && data.length > 0) {
           setSelectedId(data[0].id);
           setFormState(createFormState(data[0]));
         }
       } catch (err) {
+        if (controller.signal.aborted) return;
         console.error(err);
         setError(err.message || 'Failed to load endpoints');
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
+
     fetchEndpoints();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   function handleSelect(id) {
     setStatus('');
     setError('');
+    resetTestState();
     setSelectedId(id);
     const definition = endpoints.find((ep) => ep.id === id);
     setFormState(createFormState(definition));
@@ -120,6 +162,13 @@ export default function PosApiAdmin() {
 
   function handleChange(field, value) {
     setFormState((prev) => ({ ...prev, [field]: value }));
+    if (field !== 'docUrl') {
+      resetTestState();
+    }
+  }
+
+  function resetTestState() {
+    setTestState({ running: false, error: '', result: null });
   }
 
   function buildDefinition() {
@@ -176,6 +225,7 @@ export default function PosApiAdmin() {
       setLoading(true);
       setError('');
       setStatus('');
+      resetTestState();
       const definition = buildDefinition();
       const updated = endpoints.some((ep) => ep.id === selectedId)
         ? endpoints.map((ep) => (ep.id === selectedId ? definition : ep))
@@ -186,6 +236,7 @@ export default function PosApiAdmin() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ endpoints: updated }),
+        skipLoader: true,
       });
       if (!res.ok) {
         throw new Error('Failed to save endpoints');
@@ -222,12 +273,14 @@ export default function PosApiAdmin() {
       setLoading(true);
       setError('');
       setStatus('');
+      resetTestState();
       const updated = endpoints.filter((ep) => ep.id !== selectedId);
       const res = await fetch(`${API_BASE}/posapi/endpoints`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ endpoints: updated }),
+        skipLoader: true,
       });
       if (!res.ok) {
         throw new Error('Failed to delete endpoint');
@@ -260,11 +313,13 @@ export default function PosApiAdmin() {
       setLoading(true);
       setError('');
       setStatus('');
+      resetTestState();
       const res = await fetch(`${API_BASE}/posapi/endpoints/fetch-doc`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ url: formState.docUrl.trim() }),
+        skipLoader: true,
       });
       if (!res.ok) {
         const message = await res.text();
@@ -296,6 +351,62 @@ export default function PosApiAdmin() {
     setFormState({ ...EMPTY_ENDPOINT });
     setStatus('');
     setError('');
+    resetTestState();
+  }
+
+  async function handleTest() {
+    let definition;
+    try {
+      setError('');
+      setStatus('');
+      definition = buildDefinition();
+    } catch (err) {
+      setError(err.message || 'Failed to prepare endpoint');
+      return;
+    }
+
+    if (!definition.testable) {
+      setTestState({ running: false, error: 'Enable the testable checkbox to run tests.', result: null });
+      return;
+    }
+    if (!definition.testServerUrl) {
+      setTestState({ running: false, error: 'Test server URL is required for testing.', result: null });
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Run a test request against ${definition.testServerUrl}? This will use the sample data shown above.`,
+    );
+    if (!confirmed) return;
+
+    try {
+      setTestState({ running: true, error: '', result: null });
+      const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ endpoint: definition }),
+        skipLoader: true,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let message = text;
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && typeof parsed === 'object' && parsed.message) {
+            message = parsed.message;
+          }
+        } catch {
+          // ignore parse failure
+        }
+        throw new Error(message || 'Test request failed');
+      }
+      const data = await res.json();
+      setTestState({ running: false, error: '', result: data });
+    } catch (err) {
+      console.error(err);
+      setTestState({ running: false, error: err.message || 'Failed to run test', result: null });
+    }
   }
 
   return (
@@ -332,6 +443,11 @@ export default function PosApiAdmin() {
         </ul>
       </div>
       <div style={styles.formContainer}>
+        {loading && (
+          <div style={styles.loadingOverlay}>
+            <div style={styles.loadingMessage}>Loading…</div>
+          </div>
+        )}
         <h1>POSAPI Endpoint Registry</h1>
         <p style={{ maxWidth: '720px' }}>
           Manage the list of available POSAPI endpoints. Paste JSON samples
@@ -462,6 +578,43 @@ export default function PosApiAdmin() {
           </div>
         </div>
 
+        <div style={styles.previewSection}>
+          <div style={styles.previewCard}>
+            <div style={styles.previewHeader}>
+              <h3 style={styles.previewTitle}>Request sample</h3>
+              {requestPreview.state === 'ok' && <span style={styles.previewTag}>JSON</span>}
+            </div>
+            {requestPreview.state === 'empty' && (
+              <p style={styles.previewEmpty}>Paste JSON above to see a preview.</p>
+            )}
+            {requestPreview.state === 'error' && (
+              <div style={styles.previewErrorBox}>
+                <strong>Invalid JSON:</strong> {requestPreview.error}
+              </div>
+            )}
+            {requestPreview.state === 'ok' && (
+              <pre style={styles.codeBlock}>{requestPreview.formatted}</pre>
+            )}
+          </div>
+          <div style={styles.previewCard}>
+            <div style={styles.previewHeader}>
+              <h3 style={styles.previewTitle}>Response sample</h3>
+              {responsePreview.state === 'ok' && <span style={styles.previewTag}>JSON</span>}
+            </div>
+            {responsePreview.state === 'empty' && (
+              <p style={styles.previewEmpty}>Paste JSON above to see a preview.</p>
+            )}
+            {responsePreview.state === 'error' && (
+              <div style={styles.previewErrorBox}>
+                <strong>Invalid JSON:</strong> {responsePreview.error}
+              </div>
+            )}
+            {responsePreview.state === 'ok' && (
+              <pre style={styles.codeBlock}>{responsePreview.formatted}</pre>
+            )}
+          </div>
+        </div>
+
         <div style={styles.docFetcher}>
           <label style={{ ...styles.label, flex: 1 }}>
             Documentation URL
@@ -499,6 +652,20 @@ export default function PosApiAdmin() {
         </div>
 
         <div style={styles.actions}>
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={
+              loading ||
+              testState.running ||
+              !formState.testable ||
+              !formState.testServerUrl.trim()
+            }
+            style={styles.testButton}
+          >
+            {testState.running ? 'Testing…' : 'Test endpoint'}
+          </button>
+          <div style={{ flex: 1 }} />
           <button type="button" onClick={handleSave} disabled={loading}>
             {loading ? 'Saving…' : 'Save changes'}
           </button>
@@ -511,6 +678,60 @@ export default function PosApiAdmin() {
             Delete
           </button>
         </div>
+
+        {testState.error && <div style={styles.testError}>{testState.error}</div>}
+
+        {testState.result && (
+          <div style={styles.testResult}>
+            <div style={styles.testResultHeader}>
+              <h3 style={{ margin: 0 }}>Test result</h3>
+              <span
+                style={{
+                  ...styles.statusPill,
+                  ...(testState.result.response.ok
+                    ? styles.statusPillSuccess
+                    : styles.statusPillError),
+                }}
+              >
+                {testState.result.response.ok ? 'Success' : 'Failed'} —{' '}
+                {testState.result.response.status} {testState.result.response.statusText}
+              </span>
+            </div>
+            <div style={styles.testResultBody}>
+              <div style={styles.testColumn}>
+                <h4 style={styles.testColumnTitle}>Request</h4>
+                <div style={styles.metaList}>
+                  <div style={styles.metaRow}>
+                    <span style={styles.metaKey}>Method</span>
+                    <span>{testState.result.request.method}</span>
+                  </div>
+                  <div style={styles.metaRow}>
+                    <span style={styles.metaKey}>URL</span>
+                    <span style={styles.wrapText}>{testState.result.request.url}</span>
+                  </div>
+                </div>
+                {testState.result.request.body && (
+                  <>
+                    <h5 style={styles.subheading}>Body</h5>
+                    <pre style={styles.codeBlock}>
+                      {JSON.stringify(testState.result.request.body, null, 2)}
+                    </pre>
+                  </>
+                )}
+              </div>
+              <div style={styles.testColumn}>
+                <h4 style={styles.testColumnTitle}>Response</h4>
+                {testState.result.response.bodyJson ? (
+                  <pre style={styles.codeBlock}>
+                    {JSON.stringify(testState.result.response.bodyJson, null, 2)}
+                  </pre>
+                ) : (
+                  <pre style={styles.codeBlock}>{testState.result.response.bodyText}</pre>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -573,6 +794,8 @@ const styles = {
     borderRadius: '8px',
     padding: '1.5rem',
     maxWidth: '900px',
+    position: 'relative',
+    overflow: 'hidden',
   },
   formGrid: {
     display: 'grid',
@@ -634,8 +857,9 @@ const styles = {
   actions: {
     marginTop: '1.5rem',
     display: 'flex',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
     gap: '0.75rem',
+    flexWrap: 'wrap',
   },
   error: {
     background: '#fee2e2',
@@ -660,5 +884,163 @@ const styles = {
     borderRadius: '4px',
     padding: '0.5rem 1rem',
     cursor: 'pointer',
+  },
+  previewSection: {
+    marginTop: '2rem',
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '1rem',
+  },
+  previewCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '1rem',
+    background: '#f8fafc',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  previewHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  previewTitle: {
+    margin: 0,
+  },
+  previewTag: {
+    background: '#dbeafe',
+    color: '#1e3a8a',
+    borderRadius: '9999px',
+    fontSize: '0.75rem',
+    fontWeight: 600,
+    padding: '0.15rem 0.5rem',
+  },
+  previewEmpty: {
+    margin: 0,
+    color: '#475569',
+    fontSize: '0.9rem',
+  },
+  previewErrorBox: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    color: '#b91c1c',
+    borderRadius: '6px',
+    padding: '0.5rem 0.75rem',
+    fontSize: '0.9rem',
+  },
+  codeBlock: {
+    background: '#0f172a',
+    color: '#e2e8f0',
+    padding: '0.75rem',
+    borderRadius: '6px',
+    fontSize: '0.85rem',
+    lineHeight: 1.5,
+    overflowX: 'auto',
+    whiteSpace: 'pre',
+  },
+  testButton: {
+    background: '#0ea5e9',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '0.5rem 1rem',
+    cursor: 'pointer',
+  },
+  testError: {
+    marginTop: '1rem',
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    color: '#b91c1c',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
+  },
+  testResult: {
+    marginTop: '1rem',
+    border: '1px solid #cbd5f5',
+    borderRadius: '8px',
+    background: '#f8fafc',
+    padding: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1rem',
+  },
+  testResultHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: '0.75rem',
+  },
+  testResultBody: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gap: '1rem',
+  },
+  testColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  testColumnTitle: {
+    margin: 0,
+  },
+  subheading: {
+    margin: 0,
+    fontSize: '0.85rem',
+    fontWeight: 600,
+    color: '#1e293b',
+  },
+  metaList: {
+    margin: 0,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  metaRow: {
+    display: 'flex',
+    gap: '0.5rem',
+    alignItems: 'center',
+  },
+  metaKey: {
+    fontWeight: 600,
+    minWidth: '60px',
+  },
+  wrapText: {
+    wordBreak: 'break-all',
+  },
+  statusPill: {
+    borderRadius: '9999px',
+    padding: '0.25rem 0.75rem',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+  },
+  statusPillSuccess: {
+    background: '#dcfce7',
+    color: '#166534',
+  },
+  statusPillError: {
+    background: '#fee2e2',
+    color: '#991b1b',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    inset: 0,
+    background: 'rgba(255, 255, 255, 0.7)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  loadingMessage: {
+    background: '#ffffff',
+    borderRadius: '9999px',
+    padding: '0.5rem 1.5rem',
+    boxShadow: '0 10px 25px rgba(15, 23, 42, 0.15)',
+    fontWeight: 600,
+    color: '#1e293b',
+    letterSpacing: '0.01em',
   },
 };
