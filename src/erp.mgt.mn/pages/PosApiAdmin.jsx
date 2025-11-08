@@ -110,27 +110,45 @@ export default function PosApiAdmin() {
   }, [formState.responseSchemaText]);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
     async function fetchEndpoints() {
       try {
+        setLoading(true);
         setError('');
         const res = await fetch(`${API_BASE}/posapi/endpoints`, {
           credentials: 'include',
+          signal: controller.signal,
+          skipLoader: true,
         });
         if (!res.ok) {
           throw new Error('Failed to load POSAPI endpoints');
         }
         const data = await res.json();
+        if (cancelled) return;
         setEndpoints(Array.isArray(data) ? data : []);
         if (Array.isArray(data) && data.length > 0) {
           setSelectedId(data[0].id);
           setFormState(createFormState(data[0]));
         }
       } catch (err) {
+        if (controller.signal.aborted) return;
         console.error(err);
         setError(err.message || 'Failed to load endpoints');
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
       }
     }
+
     fetchEndpoints();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, []);
 
   function handleSelect(id) {
@@ -218,6 +236,7 @@ export default function PosApiAdmin() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ endpoints: updated }),
+        skipLoader: true,
       });
       if (!res.ok) {
         throw new Error('Failed to save endpoints');
@@ -261,6 +280,7 @@ export default function PosApiAdmin() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ endpoints: updated }),
+        skipLoader: true,
       });
       if (!res.ok) {
         throw new Error('Failed to delete endpoint');
@@ -299,6 +319,7 @@ export default function PosApiAdmin() {
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ url: formState.docUrl.trim() }),
+        skipLoader: true,
       });
       if (!res.ok) {
         const message = await res.text();
@@ -421,6 +442,11 @@ export default function PosApiAdmin() {
         </ul>
       </div>
       <div style={styles.formContainer}>
+        {loading && (
+          <div style={styles.loadingOverlay}>
+            <div style={styles.loadingMessage}>Loading…</div>
+          </div>
+        )}
         <h1>POSAPI Endpoint Registry</h1>
         <p style={{ maxWidth: '720px' }}>
           Manage the list of available POSAPI endpoints. Paste JSON samples
@@ -767,6 +793,8 @@ const styles = {
     borderRadius: '8px',
     padding: '1.5rem',
     maxWidth: '900px',
+    position: 'relative',
+    overflow: 'hidden',
   },
   formGrid: {
     display: 'grid',
