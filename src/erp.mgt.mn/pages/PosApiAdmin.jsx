@@ -15,18 +15,7 @@ const EMPTY_ENDPOINT = {
   testable: false,
   testServerUrl: '',
   docUrl: '',
-  requestSampleText: '',
-  responseSampleText: '',
 };
-
-function showToast(message, type = 'info') {
-  if (!message) return;
-  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-    window.dispatchEvent(
-      new CustomEvent('toast', { detail: { message: String(message), type } }),
-    );
-  }
-}
 
 function toPrettyJson(value, fallback = '') {
   if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) {
@@ -55,238 +44,6 @@ function createFormState(definition) {
     testable: Boolean(definition.testable),
     testServerUrl: definition.testServerUrl || '',
     docUrl: '',
-    requestSampleText: toPrettyJson(definition.requestBody?.schema, ''),
-    responseSampleText: toPrettyJson(definition.responseBody?.schema, ''),
-  };
-}
-
-function findMatchingBracket(text, start) {
-  const open = text[start];
-  const close = open === '{' ? '}' : ']';
-  let depth = 0;
-  let inString = false;
-  let escape = false;
-  for (let i = start; i < text.length; i += 1) {
-    const ch = text[i];
-    if (escape) {
-      escape = false;
-      continue;
-    }
-    if (ch === '\\') {
-      escape = true;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
-    if (inString) continue;
-    if (ch === open) depth += 1;
-    if (ch === close) {
-      depth -= 1;
-      if (depth === 0) {
-        return i;
-      }
-    }
-  }
-  return -1;
-}
-
-function findFirstJsonSubstring(text) {
-  if (!text) return '';
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    if (ch === '{' || ch === '[') {
-      const end = findMatchingBracket(text, i);
-      if (end !== -1) {
-        return text.slice(i, end + 1);
-      }
-    }
-  }
-  return '';
-}
-
-function extractJsonCandidates(text) {
-  if (!text) return [];
-  const candidates = [];
-  const trimmed = text.trim();
-  if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
-    candidates.push(trimmed);
-  }
-
-  const codeBlockRegex = /```(?:json)?\s*([\s\S]*?)```/gi;
-  let match;
-  while ((match = codeBlockRegex.exec(text))) {
-    candidates.push(match[1].trim());
-  }
-
-  const singleQuoteDataRegex = /--data(?:-raw)?\s+'([\s\S]*?)'/gi;
-  while ((match = singleQuoteDataRegex.exec(text))) {
-    candidates.push(match[1].trim());
-  }
-
-  const doubleQuoteDataRegex = /--data(?:-raw)?\s+"([\s\S]*?)"/gi;
-  while ((match = doubleQuoteDataRegex.exec(text))) {
-    let unescaped = match[1];
-    try {
-      unescaped = JSON.parse(`"${match[1]}"`);
-    } catch {
-      // Ignore failures and fall back to raw match
-    }
-    candidates.push(unescaped.trim());
-  }
-
-  const balanced = findFirstJsonSubstring(text);
-  if (balanced) {
-    candidates.push(balanced.trim());
-  }
-
-  return Array.from(
-    new Set(
-      candidates
-        .map((candidate) => candidate.trim())
-        .filter((candidate) => candidate.length > 0),
-    ),
-  );
-}
-
-function parseSampleJson(sampleText, label = 'sample') {
-  const candidates = extractJsonCandidates(sampleText);
-  for (const candidate of candidates) {
-    try {
-      const json = JSON.parse(candidate);
-      return { json, pretty: JSON.stringify(json, null, 2) };
-    } catch {
-      // Try next candidate
-    }
-  }
-  throw new Error(`No JSON data found in the ${label}`);
-}
-
-function selectDocBlock(blocks, target) {
-  if (!Array.isArray(blocks) || blocks.length === 0) {
-    return null;
-  }
-  if (target === 'response') {
-    return (
-      blocks.find(
-        (block) =>
-          block &&
-          typeof block === 'object' &&
-          !Array.isArray(block) &&
-          ('status' in block || 'message' in block || 'statusCode' in block),
-      ) || blocks[1] || blocks[0]
-    );
-  }
-  if (target === 'fields') {
-    return (
-      blocks.find(
-        (block) =>
-          block &&
-          typeof block === 'object' &&
-          !Array.isArray(block) &&
-          Object.values(block).every((value) => typeof value === 'string'),
-      ) || blocks[blocks.length - 1] || blocks[0]
-    );
-  }
-  return (
-    blocks.find(
-      (block) =>
-        block &&
-        typeof block === 'object' &&
-        (Array.isArray(block.receipts) || Array.isArray(block.items)),
-    ) || blocks[0]
-  );
-}
-
-function buildDefaultUrl(formState) {
-  const base = (formState.testServerUrl || '').trim();
-  const path = (formState.path || '').trim();
-  if (!base || !path) return '';
-  const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
-  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
-  return `${normalizedBase}${normalizedPath}`;
-}
-
-function parseRequestSample(sampleText, formState) {
-  const sample = (sampleText || '').trim();
-  if (!sample) {
-    throw new Error('Request sample cannot be empty');
-  }
-
-  const headers = {};
-  let url = '';
-  let method = (formState.method || 'GET').toUpperCase();
-  let body;
-  let parsedJson = null;
-
-  if (sample.toLowerCase().startsWith('curl')) {
-    const urlMatch =
-      sample.match(/--url\s+([^\s\\]+)/i) || sample.match(/curl\s+([^\s\\]+)/i);
-    if (urlMatch) {
-      url = urlMatch[1].replace(/\\$/, '');
-    }
-
-    const methodMatch =
-      sample.match(/--request\s+([A-Z]+)/i) || sample.match(/-X\s+([A-Z]+)/i);
-    if (methodMatch) {
-      method = methodMatch[1].toUpperCase();
-    }
-
-    const headerRegex = /--header\s+['"]([^'"\n]+)['"]/gi;
-    let headerMatch;
-    while ((headerMatch = headerRegex.exec(sample))) {
-      const [key, ...rest] = headerMatch[1].split(':');
-      if (!key) continue;
-      headers[key.trim()] = rest.join(':').trim();
-    }
-
-    const candidates = extractJsonCandidates(sample);
-    let fallbackBody = null;
-    for (const candidate of candidates) {
-      try {
-        const json = JSON.parse(candidate);
-        parsedJson = json;
-        body = json;
-        break;
-      } catch {
-        fallbackBody = candidate;
-      }
-    }
-    if (body === undefined && fallbackBody !== null) {
-      body = fallbackBody;
-    }
-    if (body === undefined) {
-      const dataMatch = sample.match(/--data(?:-raw)?\s+([^\s]+)/i);
-      if (dataMatch) {
-        body = dataMatch[1];
-      }
-    }
-  } else {
-    const parsed = parseSampleJson(sample, 'request sample');
-    parsedJson = parsed.json;
-    body = parsed.json;
-  }
-
-  if (!url) {
-    url = buildDefaultUrl(formState);
-  }
-  if (!url) {
-    throw new Error(
-      'Unable to determine request URL. Provide --url in the sample or set the Test server URL.',
-    );
-  }
-
-  if (parsedJson && !headers['Content-Type'] && !headers['content-type']) {
-    headers['Content-Type'] = 'application/json';
-  }
-
-  return {
-    method,
-    url,
-    headers,
-    body,
-    parsedJson,
   };
 }
 
@@ -300,26 +57,6 @@ function parseJsonInput(label, text, defaultValue) {
     error.cause = err;
     throw error;
   }
-}
-
-async function extractErrorMessage(response, fallback) {
-  try {
-    const data = await response.clone().json();
-    if (data && typeof data.message === 'string' && data.message.trim()) {
-      return data.message.trim();
-    }
-  } catch {
-    // Ignore JSON parsing failures and fall through to text parsing
-  }
-  try {
-    const text = await response.text();
-    if (text) {
-      return text.slice(0, 200);
-    }
-  } catch {
-    // Swallow errors and use fallback
-  }
-  return fallback;
 }
 
 function validateEndpoint(endpoint, existingIds, originalId) {
@@ -337,12 +74,9 @@ export default function PosApiAdmin() {
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [formState, setFormState] = useState({ ...EMPTY_ENDPOINT });
-  const [pendingAction, setPendingAction] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
-  const [testResult, setTestResult] = useState(null);
-
-  const isBusy = Boolean(pendingAction);
 
   const sortedEndpoints = useMemo(() => {
     return [...endpoints].sort((a, b) => {
@@ -358,21 +92,15 @@ export default function PosApiAdmin() {
         setError('');
         const res = await fetch(`${API_BASE}/posapi/endpoints`, {
           credentials: 'include',
-          skipErrorToast: true,
         });
         if (!res.ok) {
-          const message = await extractErrorMessage(
-            res,
-            'Failed to load POSAPI endpoints',
-          );
-          throw new Error(message);
+          throw new Error('Failed to load POSAPI endpoints');
         }
         const data = await res.json();
         setEndpoints(Array.isArray(data) ? data : []);
         if (Array.isArray(data) && data.length > 0) {
           setSelectedId(data[0].id);
           setFormState(createFormState(data[0]));
-          setTestResult(null);
         }
       } catch (err) {
         console.error(err);
@@ -388,7 +116,6 @@ export default function PosApiAdmin() {
     setSelectedId(id);
     const definition = endpoints.find((ep) => ep.id === id);
     setFormState(createFormState(definition));
-    setTestResult(null);
   }
 
   function handleChange(field, value) {
@@ -427,11 +154,11 @@ export default function PosApiAdmin() {
       parameters,
       requestBody: {
         schema: requestSchema,
-        description: (formState.requestDescription || '').trim(),
+        description: formState.requestDescription || '',
       },
       responseBody: {
         schema: responseSchema,
-        description: (formState.responseDescription || '').trim(),
+        description: formState.responseDescription || '',
       },
       fieldDescriptions: fieldDescriptions || {},
       testable: Boolean(formState.testable),
@@ -446,7 +173,7 @@ export default function PosApiAdmin() {
 
   async function handleSave() {
     try {
-      setPendingAction('save');
+      setLoading(true);
       setError('');
       setStatus('');
       const definition = buildDefinition();
@@ -458,29 +185,21 @@ export default function PosApiAdmin() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        skipErrorToast: true,
         body: JSON.stringify({ endpoints: updated }),
       });
       if (!res.ok) {
-        const message = await extractErrorMessage(res, 'Failed to save endpoints');
-        throw new Error(message);
+        throw new Error('Failed to save endpoints');
       }
       const saved = await res.json();
-      const nextEndpoints = Array.isArray(saved) ? saved : updated;
-      setEndpoints(nextEndpoints);
-      const canonical =
-        nextEndpoints.find((ep) => ep.id === definition.id) || definition;
-      setSelectedId(canonical.id);
-      setFormState(createFormState(canonical));
-      setTestResult(null);
+      setEndpoints(Array.isArray(saved) ? saved : updated);
+      setSelectedId(definition.id);
+      setFormState(createFormState(definition));
       setStatus('Changes saved');
-      showToast(`Endpoint "${definition.name || definition.id}" saved`, 'success');
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to save endpoints');
-      showToast(err.message || 'Failed to save endpoints', 'error');
     } finally {
-      setPendingAction('');
+      setLoading(false);
     }
   }
 
@@ -500,7 +219,7 @@ export default function PosApiAdmin() {
     );
     if (!confirmed) return;
     try {
-      setPendingAction('delete');
+      setLoading(true);
       setError('');
       setStatus('');
       const updated = endpoints.filter((ep) => ep.id !== selectedId);
@@ -508,15 +227,10 @@ export default function PosApiAdmin() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        skipErrorToast: true,
         body: JSON.stringify({ endpoints: updated }),
       });
       if (!res.ok) {
-        const message = await extractErrorMessage(
-          res,
-          'Failed to delete endpoint',
-        );
-        throw new Error(message);
+        throw new Error('Failed to delete endpoint');
       }
       const saved = await res.json();
       const nextEndpoints = Array.isArray(saved) ? saved : updated;
@@ -529,170 +243,51 @@ export default function PosApiAdmin() {
         setFormState({ ...EMPTY_ENDPOINT });
       }
       setStatus('Endpoint deleted');
-      showToast(`Endpoint "${existing.name || existing.id}" deleted`, 'success');
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to delete endpoint');
-      showToast(err.message || 'Failed to delete endpoint', 'error');
     } finally {
-      setPendingAction('');
+      setLoading(false);
     }
   }
 
   async function handleFetchDoc(target) {
     if (!formState.docUrl.trim()) {
       setError('Documentation URL is required');
-      showToast('Documentation URL is required', 'error');
       return;
     }
     try {
-      setPendingAction('fetch-doc');
+      setLoading(true);
       setError('');
       setStatus('');
       const res = await fetch(`${API_BASE}/posapi/endpoints/fetch-doc`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        skipErrorToast: true,
         body: JSON.stringify({ url: formState.docUrl.trim() }),
       });
       if (!res.ok) {
-        const message = await extractErrorMessage(
-          res,
-          'Failed to fetch documentation',
-        );
-        throw new Error(message);
+        const message = await res.text();
+        throw new Error(message || 'Failed to fetch documentation');
       }
       const data = await res.json();
       if (!data.blocks || data.blocks.length === 0) {
         throw new Error('No JSON examples were found in the documentation');
       }
-      const selectedBlock = selectDocBlock(data.blocks, target);
-      if (!selectedBlock) {
-        throw new Error('No matching JSON example found for this section');
-      }
-      const pretty = JSON.stringify(selectedBlock, null, 2);
+      const pretty = JSON.stringify(data.blocks[0], null, 2);
       if (target === 'request') {
-        setFormState((prev) => ({
-          ...prev,
-          requestSchemaText: pretty,
-          requestSampleText: pretty,
-        }));
+        setFormState((prev) => ({ ...prev, requestSchemaText: pretty }));
       } else if (target === 'response') {
-        setFormState((prev) => ({
-          ...prev,
-          responseSchemaText: pretty,
-          responseSampleText: pretty,
-        }));
+        setFormState((prev) => ({ ...prev, responseSchemaText: pretty }));
       } else {
         setFormState((prev) => ({ ...prev, fieldDescriptionsText: pretty }));
       }
       setStatus('Documentation fetched and applied');
-      setTestResult(null);
-      showToast('Documentation fetched', 'success');
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to fetch documentation');
-      showToast(err.message || 'Failed to fetch documentation', 'error');
     } finally {
-      setPendingAction('');
-    }
-  }
-
-  function handleApplyRequestSample() {
-    try {
-      const parsed = parseSampleJson(formState.requestSampleText, 'request sample');
-      setFormState((prev) => ({
-        ...prev,
-        requestSchemaText: parsed.pretty,
-        requestSampleText: parsed.pretty,
-      }));
-      setStatus('Request schema updated from sample');
-      setError('');
-      showToast('Request sample parsed into schema', 'success');
-    } catch (err) {
-      console.error(err);
-      const message = err.message || 'Failed to parse request sample';
-      setError(message);
-      showToast(message, 'error');
-    }
-  }
-
-  function handleApplyResponseSample() {
-    try {
-      const parsed = parseSampleJson(formState.responseSampleText, 'response sample');
-      setFormState((prev) => ({
-        ...prev,
-        responseSchemaText: parsed.pretty,
-        responseSampleText: parsed.pretty,
-      }));
-      setStatus('Response schema updated from sample');
-      setError('');
-      showToast('Response sample parsed into schema', 'success');
-    } catch (err) {
-      console.error(err);
-      const message = err.message || 'Failed to parse response sample';
-      setError(message);
-      showToast(message, 'error');
-    }
-  }
-
-  async function handleTestSample() {
-    try {
-      const request = parseRequestSample(formState.requestSampleText, formState);
-      setPendingAction('test');
-      setError('');
-      setStatus('');
-      setTestResult(null);
-      const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        skipErrorToast: true,
-        body: JSON.stringify({ request }),
-      });
-      let result;
-      try {
-        result = await res.json();
-      } catch {
-        result = {
-          ok: res.ok,
-          status: res.status,
-          statusText: res.statusText,
-          rawBody: '',
-        };
-      }
-      setTestResult(result);
-      if (result.body) {
-        const pretty = JSON.stringify(result.body, null, 2);
-        setFormState((prev) => ({
-          ...prev,
-          responseSampleText: pretty,
-          responseSchemaText: pretty,
-        }));
-      } else if (result.rawBody) {
-        setFormState((prev) => ({
-          ...prev,
-          responseSampleText: result.rawBody,
-        }));
-      }
-      if (res.ok && result.ok !== false) {
-        setStatus(`Test call succeeded (${result.status})`);
-        showToast(`Test request succeeded (${result.status})`, 'success');
-      } else {
-        const message =
-          result?.message || `Test call returned status ${result.status || res.status}`;
-        setError(message);
-        showToast(message, 'error');
-      }
-    } catch (err) {
-      console.error(err);
-      const message = err.message || 'Failed to test request sample';
-      setError(message);
-      setTestResult(null);
-      showToast(message, 'error');
-    } finally {
-      setPendingAction('');
+      setLoading(false);
     }
   }
 
@@ -701,7 +296,6 @@ export default function PosApiAdmin() {
     setFormState({ ...EMPTY_ENDPOINT });
     setStatus('');
     setError('');
-    setTestResult(null);
   }
 
   return (
@@ -801,11 +395,11 @@ export default function PosApiAdmin() {
           </label>
           <label style={styles.labelFull}>
             Request description
-            <textarea
+            <input
+              type="text"
               value={formState.requestDescription}
               onChange={(e) => handleChange('requestDescription', e.target.value)}
-              style={styles.longTextarea}
-              rows={6}
+              style={styles.input}
               placeholder="Batch of receipts with payments and items"
             />
           </label>
@@ -820,11 +414,11 @@ export default function PosApiAdmin() {
           </label>
           <label style={styles.labelFull}>
             Response description
-            <textarea
+            <input
+              type="text"
               value={formState.responseDescription}
               onChange={(e) => handleChange('responseDescription', e.target.value)}
-              style={styles.longTextarea}
-              rows={6}
+              style={styles.input}
               placeholder="Receipt submission response"
             />
           </label>
@@ -883,104 +477,35 @@ export default function PosApiAdmin() {
             <button
               type="button"
               onClick={() => handleFetchDoc('request')}
-              disabled={isBusy}
+              disabled={loading}
             >
-              {pendingAction === 'fetch-doc' ? 'Fetching…' : 'Fetch request JSON'}
+              Fetch request JSON
             </button>
             <button
               type="button"
               onClick={() => handleFetchDoc('response')}
-              disabled={isBusy}
+              disabled={loading}
             >
-              {pendingAction === 'fetch-doc' ? 'Fetching…' : 'Fetch response JSON'}
+              Fetch response JSON
             </button>
             <button
               type="button"
               onClick={() => handleFetchDoc('fields')}
-              disabled={isBusy}
+              disabled={loading}
             >
-              {pendingAction === 'fetch-doc' ? 'Fetching…' : 'Fetch field descriptions'}
+              Fetch field descriptions
             </button>
           </div>
         </div>
 
-        <div style={styles.sampleSection}>
-          <div style={styles.sampleColumn}>
-            <label style={styles.labelFull}>
-              Request sample / script
-              <textarea
-                value={formState.requestSampleText}
-                onChange={(e) => handleChange('requestSampleText', e.target.value)}
-                style={styles.textarea}
-                rows={12}
-                placeholder="Paste JSON or cURL sample here"
-              />
-            </label>
-            <div style={styles.sampleButtons}>
-              <button type="button" onClick={handleApplyRequestSample} disabled={isBusy}>
-                Use sample for request schema
-              </button>
-              <button
-                type="button"
-                onClick={handleTestSample}
-                disabled={isBusy || !formState.requestSampleText.trim()}
-              >
-                {pendingAction === 'test' ? 'Testing…' : 'Test sample'}
-              </button>
-            </div>
-          </div>
-          <div style={styles.sampleColumn}>
-            <label style={styles.labelFull}>
-              Response sample
-              <textarea
-                value={formState.responseSampleText}
-                onChange={(e) => handleChange('responseSampleText', e.target.value)}
-                style={styles.textarea}
-                rows={12}
-                placeholder="Paste expected response JSON here"
-              />
-            </label>
-            <div style={styles.sampleButtons}>
-              <button
-                type="button"
-                onClick={handleApplyResponseSample}
-                disabled={isBusy || !formState.responseSampleText.trim()}
-              >
-                Use sample for response schema
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {testResult && (
-          <div style={styles.testResultBox}>
-            <div style={styles.testResultHeader}>
-              <strong>
-                HTTP {testResult.status}
-                {testResult.statusText ? ` – ${testResult.statusText}` : ''}
-              </strong>
-              {typeof testResult.durationMs === 'number' && (
-                <span style={{ color: '#475569', marginLeft: '0.5rem' }}>
-                  {testResult.durationMs} ms
-                </span>
-              )}
-            </div>
-            <pre style={styles.codeBlock}>
-              {testResult.body
-                ? JSON.stringify(testResult.body, null, 2)
-                : testResult.rawBody || '(empty body)'}
-            </pre>
-          </div>
-        )}
-
         <div style={styles.actions}>
-          <button type="button" onClick={handleSave} disabled={isBusy}>
-            {pendingAction === 'save' ? 'Saving…' : 'Save changes'}
+          <button type="button" onClick={handleSave} disabled={loading}>
+            {loading ? 'Saving…' : 'Save changes'}
           </button>
           <button
             type="button"
             onClick={handleDelete}
-            disabled={isBusy || (!selectedId && !formState.id)}
+            disabled={loading || (!selectedId && !formState.id)}
             style={styles.deleteButton}
           >
             Delete
@@ -1083,14 +608,6 @@ const styles = {
     fontSize: '0.9rem',
     lineHeight: 1.4,
   },
-  longTextarea: {
-    padding: '0.5rem',
-    borderRadius: '4px',
-    border: '1px solid #cbd5f5',
-    fontSize: '0.95rem',
-    minHeight: '160px',
-    lineHeight: 1.5,
-  },
   inlineFields: {
     gridColumn: '1 / -1',
     display: 'flex',
@@ -1113,47 +630,6 @@ const styles = {
     display: 'flex',
     gap: '0.5rem',
     flexWrap: 'wrap',
-  },
-  sampleSection: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-    gap: '1.5rem',
-    marginTop: '1.5rem',
-  },
-  sampleColumn: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-  },
-  sampleButtons: {
-    display: 'flex',
-    gap: '0.75rem',
-    flexWrap: 'wrap',
-  },
-  testResultBox: {
-    marginTop: '1.5rem',
-    border: '1px solid #cbd5f5',
-    borderRadius: '6px',
-    background: '#f8fafc',
-    padding: '1rem',
-  },
-  testResultHeader: {
-    display: 'flex',
-    alignItems: 'center',
-    fontSize: '0.95rem',
-    marginBottom: '0.75rem',
-    color: '#0f172a',
-    gap: '0.25rem',
-  },
-  codeBlock: {
-    margin: 0,
-    padding: '0.75rem',
-    background: '#0f172a',
-    color: '#f8fafc',
-    borderRadius: '6px',
-    overflowX: 'auto',
-    maxHeight: '320px',
-    whiteSpace: 'pre',
   },
   actions: {
     marginTop: '1.5rem',
