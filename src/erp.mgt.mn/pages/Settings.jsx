@@ -75,6 +75,13 @@ export function GeneralSettings() {
           </Link>
         </TooltipWrapper>
       </p>
+      <p style={{ marginTop: '0.5rem' }}>
+        <TooltipWrapper title={t('posapi_registry', { ns: 'tooltip', defaultValue: 'Manage POSAPI endpoint registry' })}>
+          <Link to="/settings/posapi-endpoints">
+            {t('settings_posapi_registry', 'POSAPI Endpoint Registry')}
+          </Link>
+        </TooltipWrapper>
+      </p>
     </div>
   );
 }
