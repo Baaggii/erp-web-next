@@ -59,26 +59,6 @@ function parseJsonInput(label, text, defaultValue) {
   }
 }
 
-async function extractErrorMessage(response, fallback) {
-  try {
-    const data = await response.clone().json();
-    if (data && typeof data.message === 'string' && data.message.trim()) {
-      return data.message.trim();
-    }
-  } catch {
-    // Ignore JSON parsing failures and fall through to text parsing
-  }
-  try {
-    const text = await response.text();
-    if (text) {
-      return text.slice(0, 200);
-    }
-  } catch {
-    // Swallow errors and use fallback
-  }
-  return fallback;
-}
-
 function validateEndpoint(endpoint, existingIds, originalId) {
   const id = (endpoint.id || '').trim();
   if (!id) throw new Error('ID is required');
@@ -112,14 +92,9 @@ export default function PosApiAdmin() {
         setError('');
         const res = await fetch(`${API_BASE}/posapi/endpoints`, {
           credentials: 'include',
-          skipErrorToast: true,
         });
         if (!res.ok) {
-          const message = await extractErrorMessage(
-            res,
-            'Failed to load POSAPI endpoints',
-          );
-          throw new Error(message);
+          throw new Error('Failed to load POSAPI endpoints');
         }
         const data = await res.json();
         setEndpoints(Array.isArray(data) ? data : []);
@@ -210,12 +185,10 @@ export default function PosApiAdmin() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        skipErrorToast: true,
         body: JSON.stringify({ endpoints: updated }),
       });
       if (!res.ok) {
-        const message = await extractErrorMessage(res, 'Failed to save endpoints');
-        throw new Error(message);
+        throw new Error('Failed to save endpoints');
       }
       const saved = await res.json();
       setEndpoints(Array.isArray(saved) ? saved : updated);
@@ -254,15 +227,10 @@ export default function PosApiAdmin() {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        skipErrorToast: true,
         body: JSON.stringify({ endpoints: updated }),
       });
       if (!res.ok) {
-        const message = await extractErrorMessage(
-          res,
-          'Failed to delete endpoint',
-        );
-        throw new Error(message);
+        throw new Error('Failed to delete endpoint');
       }
       const saved = await res.json();
       const nextEndpoints = Array.isArray(saved) ? saved : updated;
@@ -296,15 +264,11 @@ export default function PosApiAdmin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        skipErrorToast: true,
         body: JSON.stringify({ url: formState.docUrl.trim() }),
       });
       if (!res.ok) {
-        const message = await extractErrorMessage(
-          res,
-          'Failed to fetch documentation',
-        );
-        throw new Error(message);
+        const message = await res.text();
+        throw new Error(message || 'Failed to fetch documentation');
       }
       const data = await res.json();
       if (!data.blocks || data.blocks.length === 0) {
