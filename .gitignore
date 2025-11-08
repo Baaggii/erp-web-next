@@ -15,6 +15,7 @@ config/*.json
 !config/userLevelActions.json
 !config/softDeleteTables.json
 !config/tourOrder.json
+!config/posApiEndpoints.json
 config/generated.sql
 .ico
 uploads/*
