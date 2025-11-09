@@ -15,12 +15,7 @@ const POS_API_FIELDS = [
   { key: 'totalCityTax', label: 'Total city tax' },
   { key: 'customerTin', label: 'Customer TIN' },
   { key: 'consumerNo', label: 'Consumer number' },
-  { key: 'taxType', label: 'Default tax type' },
-  { key: 'itemsField', label: 'Items field (JSON path)' },
-  { key: 'paymentsField', label: 'Payments field (JSON path)' },
-  { key: 'taxTypeField', label: 'Item tax type field' },
-  { key: 'classificationCodeField', label: 'Classification code field' },
-  { key: 'taxProductCodeField', label: 'Tax product code field' },
+  { key: 'taxType', label: 'Tax type' },
   { key: 'lotNo', label: 'Lot number (pharmacy)' },
 ];
 
@@ -97,10 +92,6 @@ function normalizeFormConfig(info = {}) {
     allowTemporarySubmission: temporaryFlag,
     posApiEnabled: Boolean(info.posApiEnabled),
     posApiType: toString(info.posApiType),
-    posApiTypeField: toString(info.posApiTypeField),
-    posApiTypeOptions: toArray(info.posApiTypeOptions)
-      .map((v) => toString(v))
-      .filter((v) => v),
     posApiMapping: toObject(info.posApiMapping),
   };
 }
@@ -900,48 +891,6 @@ export default function FormsManagement() {
                   <option value="B2C_INVOICE">B2C_INVOICE</option>
                   <option value="B2B_INVOICE">B2B_INVOICE</option>
                 </select>
-              </label>
-              <label style={{ ...fieldColumnStyle }}>
-                <span style={{ fontWeight: 600 }}>Receipt type field</span>
-                <input
-                  type="text"
-                  value={config.posApiTypeField}
-                  placeholder="Column or JSON path"
-                  disabled={!config.posApiEnabled}
-                  list="posapi-type-field-columns"
-                  onChange={(e) =>
-                    setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))
-                  }
-                />
-                <datalist id="posapi-type-field-columns">
-                  {columns.map((col) => (
-                    <option key={col} value={col} />
-                  ))}
-                </datalist>
-              </label>
-              <label style={{ ...fieldColumnStyle }}>
-                <span style={{ fontWeight: 600 }}>Selectable POSAPI types</span>
-                <textarea
-                  rows={3}
-                  value={(config.posApiTypeOptions || []).join('\n')}
-                  disabled={!config.posApiEnabled}
-                  placeholder={'One type per line (e.g.\nB2C_RECEIPT\nB2B_RECEIPT)'}
-                  onChange={(e) => {
-                    const entries = Array.from(
-                      new Set(
-                        e.target.value
-                          .split(/\r?\n|,/)
-                          .map((v) => v.trim())
-                          .filter((v) => v),
-                      ),
-                    );
-                    setConfig((c) => ({ ...c, posApiTypeOptions: entries }));
-                  }}
-                />
-                <small style={{ color: '#666' }}>
-                  Provide the POSAPI types available to transaction users. These values
-                  populate the in-form dropdown when POSAPI is enabled.
-                </small>
               </label>
               <div>
                 <strong>Field mapping</strong>

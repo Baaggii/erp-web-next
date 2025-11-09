@@ -75,8 +75,6 @@ const RowFormModal = function RowFormModal({
   canPost = true,
   forceEditable = false,
   posApiEnabled = false,
-  posApiTypeField = '',
-  posApiTypeOptions = [],
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -448,34 +446,6 @@ const RowFormModal = function RowFormModal({
     () => new Set(columns.map((col) => String(col).toLowerCase())),
     [columnsKey],
   );
-  const normalizedPosApiTypeField = React.useMemo(
-    () => (typeof posApiTypeField === 'string' ? posApiTypeField.trim() : ''),
-    [posApiTypeField],
-  );
-  const resolvedPosApiTypeField = React.useMemo(() => {
-    if (!normalizedPosApiTypeField) return '';
-    const match = columns.find(
-      (c) => c.toLowerCase() === normalizedPosApiTypeField.toLowerCase(),
-    );
-    return match || normalizedPosApiTypeField;
-  }, [columnsKey, normalizedPosApiTypeField]);
-  const posApiTypeOptionsList = React.useMemo(
-    () =>
-      Array.isArray(posApiTypeOptions)
-        ? posApiTypeOptions
-            .map((opt) => (typeof opt === 'string' ? opt.trim() : ''))
-            .filter((opt) => opt)
-        : [],
-    [posApiTypeOptions],
-  );
-  const isPosApiTypeColumn = React.useMemo(
-    () =>
-      !!resolvedPosApiTypeField &&
-      columns.some(
-        (c) => c.toLowerCase() === resolvedPosApiTypeField.toLowerCase(),
-      ),
-    [columnsKey, resolvedPosApiTypeField],
-  );
   const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
   const defaultValuesKey = React.useMemo(
     () => JSON.stringify(defaultValues || {}),
@@ -657,43 +627,6 @@ const RowFormModal = function RowFormModal({
       return { snapshot: snapshot ?? formValsRef.current, diff: pendingDiff };
     },
     [computeNextFormVals, onChange],
-  );
-  const posApiTypeValue = React.useMemo(() => {
-    if (!resolvedPosApiTypeField) return '';
-    if (isPosApiTypeColumn) {
-      return formVals[resolvedPosApiTypeField] ?? '';
-    }
-    return extraVals[resolvedPosApiTypeField] ?? '';
-  }, [resolvedPosApiTypeField, isPosApiTypeColumn, formVals, extraVals]);
-
-  const handlePosApiTypeSelection = useCallback(
-    (value) => {
-      if (!resolvedPosApiTypeField) return;
-      const nextValue = value || '';
-      if (isPosApiTypeColumn) {
-        setFormValuesWithGenerated((prev) => ({
-          ...prev,
-          [resolvedPosApiTypeField]: nextValue,
-        }));
-      } else {
-        setExtraVals((prev) => {
-          const prevValue = prev[resolvedPosApiTypeField] ?? '';
-          if (prevValue === nextValue) return prev;
-          const updated = { ...prev };
-          if (nextValue) updated[resolvedPosApiTypeField] = nextValue;
-          else delete updated[resolvedPosApiTypeField];
-          onChange({ [resolvedPosApiTypeField]: nextValue });
-          return updated;
-        });
-      }
-    },
-    [
-      resolvedPosApiTypeField,
-      isPosApiTypeColumn,
-      setFormValuesWithGenerated,
-      setExtraVals,
-      onChange,
-    ],
   );
   const inputRefs = useRef({});
   const readonlyRefs = useRef({});
@@ -2676,37 +2609,6 @@ const RowFormModal = function RowFormModal({
         {renderHeaderTable(headerCols)}
         {renderMainTable(mainCols)}
         {renderSection('Footer', footerCols)}
-        {posApiEnabled &&
-          posApiTypeOptionsList.length > 0 &&
-          resolvedPosApiTypeField && (
-            <div className="mb-2">
-              <label className="flex flex-col gap-1 text-sm text-gray-700">
-                <span className="font-semibold">
-                  {t('posapi_receipt_type', 'POSAPI receipt type')}
-                </span>
-                <select
-                  className="border border-gray-300 rounded px-2 py-1"
-                  value={posApiTypeValue}
-                  onChange={(e) => handlePosApiTypeSelection(e.target.value)}
-                >
-                  <option value="">
-                    {t('posapi_select_type_placeholder', 'Select receipt type')}
-                  </option>
-                  {posApiTypeOptionsList.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </select>
-                <span className="text-xs text-gray-500">
-                  {t(
-                    'posapi_receipt_type_hint',
-                    'Choose the POSAPI receipt or invoice type that should be submitted for this transaction.',
-                  )}
-                </span>
-              </label>
-            </div>
-          )}
         {table === 'companies' && !row && seedOptions.length > 0 && (
           <div className="mt-4">
             <h3 className="font-semibold mb-2">Seed Tables</h3>
