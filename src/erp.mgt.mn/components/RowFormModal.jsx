@@ -15,7 +15,6 @@ import {
 } from '../utils/generatedColumns.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
-import { useToast } from '../context/ToastContext.jsx';
 
 const RowFormModal = function RowFormModal({
   visible,
@@ -76,14 +75,11 @@ const RowFormModal = function RowFormModal({
   canPost = true,
   forceEditable = false,
   posApiEnabled = false,
-  posApiMapping = {},
-  posApiInfoEndpoints = [],
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
   const warned = useRef(false);
   const procCache = useRef({});
-  const [posApiLookups, setPosApiLookups] = useState({});
   const [tableDisplayFields, setTableDisplayFields] = useState({});
   useEffect(() => {
     fetch('/api/display_fields', { credentials: 'include' })
@@ -95,7 +91,6 @@ const RowFormModal = function RowFormModal({
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
   const { t } = useTranslation(['translation', 'tooltip']);
-  const { addToast } = useToast();
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -233,18 +228,6 @@ const RowFormModal = function RowFormModal({
     () => JSON.stringify(columnCaseMap || {}),
     [columnCaseMap],
   );
-  const resolveCanonicalKey = useCallback(
-    (alias) => {
-      if (alias === undefined || alias === null) return alias;
-      const raw = String(alias);
-      const lower = raw.toLowerCase();
-      if (columnCaseMap && columnCaseMap[lower]) return columnCaseMap[lower];
-      const stripped = lower.replace(/_/g, '');
-      if (columnCaseMap && columnCaseMap[stripped]) return columnCaseMap[stripped];
-      return raw;
-    },
-    [columnCaseMapKey, columnCaseMap],
-  );
   const numericScaleMapKey = React.useMemo(
     () => JSON.stringify(numericScaleMap || {}),
     [numericScaleMap],
@@ -297,264 +280,6 @@ const RowFormModal = function RowFormModal({
     },
     [getNumericScale],
   );
-
-  const posApiFieldToColumnMap = React.useMemo(() => {
-    const map = new Map();
-    if (posApiMapping && typeof posApiMapping === 'object' && !Array.isArray(posApiMapping)) {
-      Object.entries(posApiMapping).forEach(([fieldKey, columnName]) => {
-        if (!fieldKey || !columnName) return;
-        const canonical = resolveCanonicalKey(columnName);
-        if (canonical) {
-          map.set(String(fieldKey).toLowerCase(), canonical);
-        }
-      });
-    }
-    return map;
-  }, [posApiMapping, resolveCanonicalKey]);
-
-  const posApiColumnFieldMap = React.useMemo(() => {
-    const map = new Map();
-    posApiFieldToColumnMap.forEach((columnName, fieldKey) => {
-      map.set(String(columnName).toLowerCase(), fieldKey);
-    });
-    return map;
-  }, [posApiFieldToColumnMap]);
-
-  const infoEndpointList = React.useMemo(
-    () =>
-      Array.isArray(posApiInfoEndpoints)
-        ? posApiInfoEndpoints.filter((endpoint) => endpoint && endpoint.id)
-        : [],
-    [posApiInfoEndpoints],
-  );
-
-  const infoEndpointMap = React.useMemo(() => {
-    const map = new Map();
-    infoEndpointList.forEach((endpoint) => {
-      if (!endpoint || !endpoint.id) return;
-      map.set(endpoint.id, endpoint);
-      map.set(String(endpoint.id).toLowerCase(), endpoint);
-    });
-    return map;
-  }, [infoEndpointList]);
-
-  const getInformationEndpoint = infoEndpointMap.get('getInformation') || infoEndpointMap.get('getinformation') || null;
-  const getInformationEndpointId = getInformationEndpoint?.id || null;
-
-  const customerTinFieldName = React.useMemo(() => {
-    const mapped = posApiFieldToColumnMap.get('customertin');
-    if (mapped) return mapped;
-    if (Array.isArray(columns)) {
-      const match = columns.find(
-        (col) => typeof col === 'string' && /customer.*tin|buyer.*tin|_tin$/i.test(col),
-      );
-      if (match) return resolveCanonicalKey(match);
-    }
-    return null;
-  }, [posApiFieldToColumnMap, columns, resolveCanonicalKey]);
-
-  const consumerNoFieldName = React.useMemo(() => {
-    const mapped = posApiFieldToColumnMap.get('consumerno');
-    if (mapped) return mapped;
-    if (Array.isArray(columns)) {
-      const match = columns.find(
-        (col) =>
-          typeof col === 'string' && /consumer|phone|regno|register_no|customer_no/i.test(col),
-      );
-      if (match) return resolveCanonicalKey(match);
-    }
-    return null;
-  }, [posApiFieldToColumnMap, columns, resolveCanonicalKey]);
-
-  const unwrapFieldValue = useCallback((value) => {
-    if (value === undefined || value === null) return value;
-    if (typeof value === 'object') {
-      if ('value' in value) return value.value;
-      if ('id' in value) return value.id;
-      if ('code' in value) return value.code;
-      if ('label' in value && typeof value.label !== 'object') return value.label;
-    }
-    return value;
-  }, []);
-
-  const buildEndpointParams = useCallback(
-    (endpoint, overrides = {}) => {
-      const params = { ...(overrides || {}) };
-      if (!endpoint || typeof endpoint !== 'object') return params;
-      const definitions = Array.isArray(endpoint.parameters) ? endpoint.parameters : [];
-      definitions.forEach((definition) => {
-        const name = definition?.name;
-        if (!name || Object.prototype.hasOwnProperty.call(params, name)) return;
-        const lowerName = String(name).toLowerCase();
-        let columnName = posApiFieldToColumnMap.get(lowerName);
-        let value;
-        if (columnName) {
-          value = unwrapFieldValue(formVals[columnName]);
-        }
-        if (value === undefined) {
-          const canonical = resolveCanonicalKey(name);
-          if (canonical) {
-            value = unwrapFieldValue(formVals[canonical]);
-          }
-        }
-        if (value === undefined && lowerName === 'customertin' && customerTinFieldName) {
-          value = unwrapFieldValue(formVals[customerTinFieldName]);
-        }
-        if (value === undefined && lowerName === 'consumerno' && consumerNoFieldName) {
-          value = unwrapFieldValue(formVals[consumerNoFieldName]);
-        }
-        if (value !== undefined && value !== null && value !== '') {
-          params[name] = value;
-        }
-      });
-      return params;
-    },
-    [
-      formVals,
-      posApiFieldToColumnMap,
-      resolveCanonicalKey,
-      customerTinFieldName,
-      consumerNoFieldName,
-      unwrapFieldValue,
-    ],
-  );
-
-  const handlePosApiLookup = useCallback(
-    async (endpointId, params = {}) => {
-      if (!endpointId) return null;
-      setPosApiLookups((prev) => ({
-        ...prev,
-        [endpointId]: { ...(prev[endpointId] || {}), loading: true, error: null },
-      }));
-      try {
-        const res = await fetch(`${API_BASE}/posapi/invoke`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ endpointId, params }),
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          const message =
-            payload?.message || t('posapi_lookup_failed', 'POSAPI lookup failed');
-          throw new Error(message);
-        }
-        setPosApiLookups((prev) => ({
-          ...prev,
-          [endpointId]: {
-            loading: false,
-            error: null,
-            result: payload,
-            params,
-            ts: Date.now(),
-          },
-        }));
-        return payload;
-      } catch (err) {
-        setPosApiLookups((prev) => ({
-          ...prev,
-          [endpointId]: { ...(prev[endpointId] || {}), loading: false, error: err.message },
-        }));
-        throw err;
-      }
-    },
-    [t],
-  );
-
-  const applyLookupResult = useCallback(
-    (result) => {
-      if (!result || typeof result !== 'object') return;
-      setFormValuesWithGenerated((prev) => {
-        const next = { ...prev };
-        let changed = false;
-        Object.entries(result).forEach(([rawKey, rawValue]) => {
-          if (rawValue === undefined || rawValue === null) return;
-          if (typeof rawValue === 'object') return;
-          const canonical = resolveCanonicalKey(rawKey);
-          if (!canonical) return;
-          const current = next[canonical];
-          if (current !== undefined && current !== null && current !== '') return;
-          next[canonical] = rawValue;
-          changed = true;
-        });
-        return changed ? next : prev;
-      });
-    },
-    [resolveCanonicalKey, setFormValuesWithGenerated],
-  );
-
-  const handleGenericLookup = useCallback(
-    async (endpoint) => {
-      if (!endpoint || !endpoint.id) return;
-      const params = buildEndpointParams(endpoint);
-      try {
-        await handlePosApiLookup(endpoint.id, params);
-      } catch (err) {
-        addToast(
-          t('posapi_lookup_failed', 'POSAPI lookup failed: {{message}}', {
-            message: err.message,
-          }),
-          'error',
-        );
-      }
-    },
-    [buildEndpointParams, handlePosApiLookup, addToast, t],
-  );
-
-  const handleCustomerTinLookup = useCallback(async () => {
-    if (!getInformationEndpointId) {
-      addToast(
-        t('posapi_no_information_endpoint', 'No POSAPI information endpoint is configured'),
-        'warning',
-      );
-      return;
-    }
-    if (!customerTinFieldName) {
-      addToast(
-        t('posapi_missing_customer_tin_field', 'Customer TIN field is not configured'),
-        'warning',
-      );
-      return;
-    }
-    const rawValue = formVals[customerTinFieldName];
-    const value = unwrapFieldValue(rawValue);
-    const normalized = typeof value === 'string' ? value.trim() : value;
-    if (!normalized) {
-      addToast(
-        t('posapi_enter_customer_tin', 'Enter a customer TIN before running the lookup'),
-        'warning',
-      );
-      return;
-    }
-    try {
-      const payload = await handlePosApiLookup(getInformationEndpointId, {
-        customerTin: normalized,
-        regNo: normalized,
-      });
-      const payloadData = payload?.data ?? payload?.response ?? payload;
-      const details = payloadData?.data ?? payloadData;
-      if (details && typeof details === 'object') {
-        applyLookupResult(details);
-      }
-      addToast(t('posapi_lookup_success', 'POSAPI lookup succeeded'), 'success');
-    } catch (err) {
-      addToast(
-        t('posapi_lookup_failed', 'POSAPI lookup failed: {{message}}', {
-          message: err.message,
-        }),
-        'error',
-      );
-    }
-  }, [
-    getInformationEndpointId,
-    customerTinFieldName,
-    formVals,
-    unwrapFieldValue,
-    handlePosApiLookup,
-    applyLookupResult,
-    addToast,
-    t,
-  ]);
 
   const viewSourceMap = React.useMemo(() => {
     const map = {};
@@ -2268,38 +1993,6 @@ const RowFormModal = function RowFormModal({
         : (1 / 10 ** numericScale).toFixed(numericScale);
     const isNumericField = fieldTypeMap[c] === 'number';
 
-    const canonicalFieldName = resolveCanonicalKey(c);
-    const canonicalLower = String(canonicalFieldName || c).toLowerCase();
-    const mappedPosApiField = posApiColumnFieldMap.get(canonicalLower);
-    const isMappedCustomerTin = mappedPosApiField === 'customertin';
-    const isCanonicalCustomerTin =
-      customerTinFieldName && canonicalFieldName === customerTinFieldName;
-    const shouldShowCustomerTinLookup =
-      posApiEnabled &&
-      Boolean(getInformationEndpointId) &&
-      (isMappedCustomerTin || isCanonicalCustomerTin);
-    let extraControls = null;
-    if (shouldShowCustomerTinLookup) {
-      const lookupState = posApiLookups[getInformationEndpointId] || {};
-      extraControls = (
-        <div className="mt-1 flex items-center gap-2">
-          <button
-            type="button"
-            className="rounded bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-            onClick={handleCustomerTinLookup}
-            disabled={Boolean(lookupState.loading)}
-          >
-            {lookupState.loading
-              ? t('posapi_lookup_loading', 'Loading…')
-              : t('posapi_lookup_check_tin', 'Check TIN')}
-          </button>
-          {lookupState.error && (
-            <span className="text-xs text-red-600">{lookupState.error}</span>
-          )}
-        </div>
-      );
-    }
-
     if (disabled) {
       const raw = isColumn ? formVals[c] : extraVals[c];
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
@@ -2379,13 +2072,7 @@ const RowFormModal = function RowFormModal({
           {display}
         </div>
       );
-      const contentWithExtras = extraControls ? (
-        <div className="space-y-1">
-          {content}
-          {extraControls}
-        </div>
-      ) : content;
-      if (!withLabel) return <TooltipWrapper title={tip}>{contentWithExtras}</TooltipWrapper>;
+      if (!withLabel) return <TooltipWrapper title={tip}>{content}</TooltipWrapper>;
       return (
         <TooltipWrapper key={c} title={tip}>
           <div className={fitted ? 'mb-1' : 'mb-3'}>
@@ -2395,7 +2082,7 @@ const RowFormModal = function RowFormModal({
                 <span className="text-red-500">*</span>
               )}
             </label>
-            {contentWithExtras}
+            {content}
           </div>
         </TooltipWrapper>
       );
@@ -2616,14 +2303,7 @@ const RowFormModal = function RowFormModal({
       />
     );
 
-    const controlWithExtras = extraControls ? (
-      <div className="space-y-1">
-        {control}
-        {extraControls}
-      </div>
-    ) : control;
-
-    if (!withLabel) return <TooltipWrapper title={tip}>{controlWithExtras}</TooltipWrapper>;
+    if (!withLabel) return <TooltipWrapper title={tip}>{control}</TooltipWrapper>;
 
     return (
       <TooltipWrapper key={c} title={tip}>
@@ -2634,7 +2314,7 @@ const RowFormModal = function RowFormModal({
               <span className="text-red-500">*</span>
             )}
           </label>
-          {controlWithExtras}
+          {control}
           {err && <div className="text-red-500 text-sm">{err}</div>}
         </div>
       </TooltipWrapper>
@@ -2823,71 +2503,6 @@ const RowFormModal = function RowFormModal({
     );
   }
 
-  function renderPosApiLookupPanel() {
-    if (!posApiEnabled || infoEndpointList.length === 0) return null;
-    return (
-      <div className={fitted ? 'mb-2' : 'mb-3'}>
-        <div className="rounded border border-gray-200 bg-gray-50 p-3">
-          <h3 className="mt-0 mb-2 text-sm font-semibold text-gray-700">
-            {t('posapi_lookup_panel_title', 'POSAPI lookup tools')}
-          </h3>
-          <div className="space-y-3">
-            {infoEndpointList.map((endpoint) => {
-              const state = posApiLookups[endpoint.id] || {};
-              const isInfoEndpoint =
-                getInformationEndpointId &&
-                String(endpoint.id).toLowerCase() ===
-                  String(getInformationEndpointId).toLowerCase();
-              return (
-                <div key={endpoint.id} className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2 text-sm text-gray-700">
-                    <button
-                      type="button"
-                      className="rounded border border-blue-200 bg-white px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-60"
-                      onClick={() => handleGenericLookup(endpoint)}
-                      disabled={Boolean(state.loading)}
-                    >
-                      {state.loading
-                        ? t('posapi_lookup_loading', 'Loading…')
-                        : t('posapi_lookup_invoke', 'Invoke')}
-                    </button>
-                    <span className="font-medium text-gray-800">
-                      {endpoint.name || endpoint.id}
-                    </span>
-                    <span className="text-xs text-gray-500">
-                      {(endpoint.method || 'GET').toUpperCase()} {endpoint.path}
-                    </span>
-                    {isInfoEndpoint && (
-                      <span className="text-xs text-gray-500">
-                        {t(
-                          'posapi_lookup_customer_hint',
-                          'Use the Customer TIN button to fill buyer details.',
-                        )}
-                      </span>
-                    )}
-                    {state.error && (
-                      <span className="text-xs text-red-600">{state.error}</span>
-                    )}
-                    {!state.error && state.result && (
-                      <span className="text-xs text-green-600">
-                        {t('posapi_lookup_success_short', 'Loaded')}
-                      </span>
-                    )}
-                  </div>
-                  {state.result && (
-                    <pre className="max-h-48 overflow-auto rounded border border-gray-200 bg-white p-2 text-xs text-gray-800">
-                      {JSON.stringify(state.result.data ?? state.result, null, 2)}
-                    </pre>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   function handlePrint(mode) {
     const all = [...headerCols, ...mainCols, ...footerCols];
     const list = mode === 'emp' ? printEmpField : printCustField;
@@ -3030,7 +2645,6 @@ const RowFormModal = function RowFormModal({
             </div>
           </div>
         )}
-        {renderPosApiLookupPanel()}
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           {posApiEnabled && canPost && (
             <label className="inline-flex items-center space-x-2 text-sm text-gray-700">

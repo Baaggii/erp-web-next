@@ -1,7 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
-import { loadEndpoints } from './posApiRegistry.js';
 
   async function readConfig(companyId = 0) {
     const { path: filePath, isDefault } = await getConfigPath(
@@ -42,45 +41,6 @@ function normalizeMixedAccessList(list) {
     if (str) normalized.push(str);
   });
   return normalized;
-}
-
-function summarizeEndpointDefinition(endpoint) {
-  if (!endpoint || typeof endpoint !== 'object') return null;
-  const paramList = Array.isArray(endpoint.parameters) ? endpoint.parameters : [];
-  const parameters = paramList
-    .filter((param) => param && typeof param === 'object' && param.name)
-    .map((param) => ({
-      name: param.name,
-      in: param.in || 'query',
-      required: Boolean(param.required),
-      description: param.description || '',
-    }));
-  return {
-    id: endpoint.id || '',
-    name: endpoint.name || endpoint.id || '',
-    category: endpoint.category || '',
-    method: (endpoint.method || 'GET').toUpperCase(),
-    path: endpoint.path || '',
-    usage: endpoint.usage || '',
-    posApiType: endpoint.posApiType || '',
-    defaultForForm: Boolean(endpoint.defaultForForm),
-    parameters,
-  };
-}
-
-function attachInfoEndpointSummaries(config, endpointMap) {
-  if (!config || typeof config !== 'object') return config;
-  const ids = Array.isArray(config.posApiInfoEndpointIds)
-    ? config.posApiInfoEndpointIds
-    : [];
-  if (!ids.length) {
-    return { ...config, posApiInfoEndpoints: [] };
-  }
-  const infoEndpoints = ids
-    .map((id) => endpointMap.get(id))
-    .map((entry) => summarizeEndpointDefinition(entry))
-    .filter(Boolean);
-  return { ...config, posApiInfoEndpoints: infoEndpoints };
 }
 
 function parseEntry(raw = {}) {
@@ -219,22 +179,15 @@ export async function getFormConfig(table, name, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
   const byTable = cfg[table] || {};
   const raw = byTable[name];
-  const parsed = parseEntry(raw);
-  const endpoints = await loadEndpoints();
-  const endpointMap = new Map(endpoints.map((ep) => [ep.id, ep]));
-  const enriched = attachInfoEndpointSummaries(parsed, endpointMap);
-  return { config: enriched, isDefault };
+  return { config: parseEntry(raw), isDefault };
 }
 
 export async function getConfigsByTable(table, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
   const byTable = cfg[table] || {};
   const result = {};
-  const endpoints = await loadEndpoints();
-  const endpointMap = new Map(endpoints.map((ep) => [ep.id, ep]));
   for (const [name, info] of Object.entries(byTable)) {
-    const parsed = parseEntry(info);
-    result[name] = attachInfoEndpointSummaries(parsed, endpointMap);
+    result[name] = parseEntry(info);
   }
   return { config: result, isDefault };
 }
@@ -242,11 +195,9 @@ export async function getConfigsByTable(table, companyId = 0) {
 export async function getConfigsByTransTypeValue(val, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
   const result = [];
-  const endpoints = await loadEndpoints();
-  const endpointMap = new Map(endpoints.map((ep) => [ep.id, ep]));
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
-      const parsed = attachInfoEndpointSummaries(parseEntry(info), endpointMap);
+      const parsed = parseEntry(info);
       if (
         parsed.transactionTypeValue &&
         String(parsed.transactionTypeValue) === String(val)
