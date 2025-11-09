@@ -133,13 +133,38 @@ router.post('/fetch-doc', requireAuth, async (req, res, next) => {
       return;
     }
     const text = await response.text();
+
+    const extractLabel = (source, index, fallback) => {
+      const prefix = source.slice(0, index);
+      const lines = prefix.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      for (let i = lines.length - 1; i >= 0; i -= 1) {
+        const line = lines[i];
+        if (!line) continue;
+        if (line.startsWith('```')) break;
+        if (line.startsWith('#')) {
+          return line.replace(/^#+\s*/, '') || fallback;
+        }
+        if (/request/i.test(line) || /response/i.test(line)) {
+          return line;
+        }
+        if (/example/i.test(line)) {
+          return line;
+        }
+        if (/[A-Za-z]/.test(line[0])) {
+          return line;
+        }
+      }
+      return fallback;
+    };
+
     const blocks = [];
     const codeBlockRegex = /```json\s*([\s\S]*?)```/gi;
     let match;
     while ((match = codeBlockRegex.exec(text))) {
       try {
         const parsed = JSON.parse(match[1]);
-        blocks.push(parsed);
+        const label = extractLabel(text, match.index, `Example ${blocks.length + 1}`);
+        blocks.push({ label, json: parsed });
       } catch (err) {
         console.warn('Failed to parse JSON code block from doc', err);
       }
@@ -148,13 +173,56 @@ router.post('/fetch-doc', requireAuth, async (req, res, next) => {
       const trimmed = text.trim();
       if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
         try {
-          blocks.push(JSON.parse(trimmed));
+          blocks.push({ label: 'Example 1', json: JSON.parse(trimmed) });
         } catch (err) {
           console.warn('Failed to parse top-level JSON from doc', err);
         }
       }
     }
-    res.json({ text, blocks });
+
+    const tableDescriptions = {};
+    const tableRegex = /\|\s*Field\s*\|\s*Description[\s\S]*?\n((?:\|[^\n]*\|\s*\n?)+)/gi;
+    let tableMatch;
+    while ((tableMatch = tableRegex.exec(text))) {
+      const rows = tableMatch[1]
+        .split(/\r?\n/)
+        .map((row) => row.trim())
+        .filter((row) => row.startsWith('|'));
+      for (const row of rows) {
+        const cells = row
+          .split('|')
+          .slice(1, -1)
+          .map((cell) => cell.trim())
+          .filter((cell, index) => !(index === 0 && !cell));
+        if (cells.length < 2) continue;
+        const field = cells[0].replace(/`/g, '');
+        const description = cells[1];
+        if (field && description) {
+          tableDescriptions[field] = description;
+        }
+      }
+    }
+
+    const methodPathRegex = /(GET|POST|PUT|DELETE|PATCH)\s+(\/[^\s]*)/i;
+    const methodMatch = methodPathRegex.exec(text);
+    const methodJsonRegex = /"method"\s*:\s*"(GET|POST|PUT|DELETE|PATCH)"/i;
+    const pathJsonRegex = /"path"\s*:\s*"(\/[^"\s]*)"/i;
+
+    const metadata = {
+      method:
+        (methodMatch && methodMatch[1]) ||
+        (methodJsonRegex.exec(text)?.[1]) ||
+        undefined,
+      path:
+        (methodMatch && methodMatch[2]) ||
+        (pathJsonRegex.exec(text)?.[1]) ||
+        undefined,
+      testServerUrl: 'https://posapi-test.tax.gov.mn',
+    };
+
+    const fieldDescriptions = Object.keys(tableDescriptions).length > 0 ? tableDescriptions : undefined;
+
+    res.json({ text, blocks, metadata, fieldDescriptions });
   } catch (err) {
     next(err);
   }
