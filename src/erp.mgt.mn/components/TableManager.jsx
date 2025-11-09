@@ -2768,6 +2768,14 @@ const TableManager = forwardRef(function TableManager({
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         addToast(t('ebarimt_post_success', 'Posted & Ebarimt issued'), 'success');
+        const warnings = Array.isArray(data?.posApi?.warnings)
+          ? data.posApi.warnings
+              .map((warning) => (typeof warning === 'string' ? warning.trim() : ''))
+              .filter((warning) => warning)
+          : [];
+        warnings.forEach((warning) => {
+          addToast(warning, 'warning');
+        });
         if (ebarimtToastEnabled && data?.posApi) {
           if (Object.prototype.hasOwnProperty.call(data.posApi, 'payload')) {
             addToast(
@@ -5901,6 +5909,8 @@ const TableManager = forwardRef(function TableManager({
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
+        posApiTypeField={formConfig?.posApiTypeField || ''}
+        posApiTypeOptions={formConfig?.posApiTypeOptions || []}
       />
       <CascadeDeleteModal
         visible={showCascade}

@@ -772,10 +772,16 @@ export async function promoteTemporarySubmission(
           }
           const receiptType =
             formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-          const payload = await buildReceiptFromDynamicTransaction(
+          const { payload, warnings } = await buildReceiptFromDynamicTransaction(
             masterRecord,
             mapping,
-            receiptType,
+            {
+              defaultType: receiptType,
+              typeField: formCfg.posApiTypeField || '',
+              typeOptions: Array.isArray(formCfg.posApiTypeOptions)
+                ? formCfg.posApiTypeOptions
+                : [],
+            },
           );
           if (payload) {
             try {
@@ -802,7 +808,15 @@ export async function promoteTemporarySubmission(
                     nameMap.get('qr_code');
                   if (qrCol) updates[qrCol] = posApiResponse.qrData;
                 }
-                if (Object.keys(updates).length > 0) {
+              if (Array.isArray(warnings) && warnings.length) {
+                console.warn('POSAPI warnings during temporary promotion', {
+                  table: row.table_name,
+                  id: insertedId,
+                  warnings,
+                  response: posApiResponse,
+                });
+              }
+              if (Object.keys(updates).length > 0) {
                   const setClause = Object.keys(updates)
                     .map((col) => `\`${col}\` = ?`)
                     .join(', ');

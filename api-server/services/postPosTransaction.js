@@ -166,6 +166,32 @@ async function persistPosApiResponse(table, id, response) {
       columnMap.get('qr_data') || columnMap.get('qrdata') || columnMap.get('qr_code');
     if (qrCol) updates[qrCol] = response.qrData;
   }
+  const ebarimtIdValue =
+    response.ebarimtId || response.ebarimt_id || response.billId || response.bill_id;
+  if (ebarimtIdValue) {
+    const ebarimtCol =
+      columnMap.get('ebarimt_id') ||
+      columnMap.get('ebarimtid') ||
+      columnMap.get('posapi_ebarimt_id');
+    if (ebarimtCol) updates[ebarimtCol] = ebarimtIdValue;
+  }
+  if (response.status) {
+    const statusCol = columnMap.get('posapi_status') || columnMap.get('ebarimt_status');
+    if (statusCol) updates[statusCol] = response.status;
+  }
+  const rawErrorCodes =
+    response.errorCode ||
+    response.error_code ||
+    (Array.isArray(response.errorCodes)
+      ? response.errorCodes.join(',')
+      : response.errorCodes);
+  if (rawErrorCodes) {
+    const errorCol =
+      columnMap.get('posapi_error_code') ||
+      columnMap.get('posapi_error') ||
+      columnMap.get('ebarimt_error_code');
+    if (errorCol) updates[errorCol] = rawErrorCodes;
+  }
   if (Object.keys(updates).length === 0) return;
   const setClause = Object.keys(updates)
     .map((col) => `\`${col}\` = ?`)
@@ -1305,10 +1331,16 @@ export async function postPosTransactionWithEbarimt(
 
   const mapping = formCfg.posApiMapping || {};
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-  const payload = await buildReceiptFromDynamicTransaction(
+  const { payload, warnings } = await buildReceiptFromDynamicTransaction(
     record,
     mapping,
-    receiptType,
+    {
+      defaultType: receiptType,
+      typeField: formCfg.posApiTypeField || '',
+      typeOptions: Array.isArray(formCfg.posApiTypeOptions)
+        ? formCfg.posApiTypeOptions
+        : [],
+    },
   );
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
@@ -1319,7 +1351,14 @@ export async function postPosTransactionWithEbarimt(
   const response = await sendReceipt(payload);
   await persistPosApiResponse(masterTable, masterId, response);
 
-  return { id: masterId, posApi: { payload, response } };
+  return {
+    id: masterId,
+    posApi: {
+      payload,
+      response,
+      warnings: Array.isArray(warnings) ? warnings : [],
+    },
+  };
 }
 
 export default postPosTransaction;
