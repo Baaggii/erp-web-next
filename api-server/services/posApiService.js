@@ -1,4 +1,6 @@
 import { getSettings } from '../../db/index.js';
+import { getEndpointById, loadEndpoints } from './posApiRegistry.js';
+import { createColumnLookup } from './posApiPersistence.js';
 
 function trimEndSlash(url) {
   if (!url) return '';
@@ -48,6 +50,234 @@ function toStringValue(value) {
     return String(value);
   }
   return String(value ?? '').trim();
+}
+
+let cachedBaseUrl = '';
+let cachedBaseUrlLoaded = false;
+
+export async function getPosApiBaseUrl() {
+  if (cachedBaseUrlLoaded && cachedBaseUrl) {
+    return cachedBaseUrl;
+  }
+  let baseUrl = '';
+  try {
+    const settings = await getSettings();
+    if (settings && typeof settings === 'object') {
+      baseUrl =
+        toStringValue(settings.posapi_base_url) ||
+        toStringValue(settings.posapiBaseUrl) ||
+        '';
+    }
+  } catch (err) {
+    // Ignore settings lookup failures and rely on environment variables.
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('Failed to read POSAPI base URL from settings', err);
+    }
+  }
+  if (!baseUrl) {
+    baseUrl =
+      toStringValue(readEnvVar('POSAPI_BASE_URL')) ||
+      toStringValue(readEnvVar('POSAPI_URL')) ||
+      '';
+  }
+  if (!baseUrl) {
+    throw new Error('POSAPI base URL is not configured');
+  }
+  cachedBaseUrl = trimEndSlash(baseUrl);
+  cachedBaseUrlLoaded = true;
+  return cachedBaseUrl;
+}
+
+function resolveColumnName(columnLookup, record, columnName) {
+  if (!columnLookup || typeof columnLookup.get !== 'function') return '';
+  if (typeof columnName !== 'string') return '';
+  const trimmed = columnName.trim();
+  if (!trimmed) return '';
+  const normalized = trimmed.toLowerCase();
+  const underscored = normalized.replace(/[^a-z0-9]+/g, '_');
+  const stripped = normalized.replace(/[^a-z0-9]+/g, '');
+  const candidates = [normalized, underscored, stripped];
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const column = columnLookup.get(candidate);
+    if (column) return column;
+  }
+  if (record && Object.prototype.hasOwnProperty.call(record, trimmed)) {
+    return trimmed;
+  }
+  return '';
+}
+
+function getColumnValue(columnLookup, record, columnName) {
+  const resolved = resolveColumnName(columnLookup, record, columnName);
+  if (!resolved) return undefined;
+  return record[resolved];
+}
+
+function normalizeMapping(mapping) {
+  if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return {};
+  const normalized = {};
+  Object.entries(mapping).forEach(([key, value]) => {
+    if (typeof key !== 'string') return;
+    if (value === undefined || value === null) return;
+    normalized[key] = typeof value === 'string' ? value : String(value);
+  });
+  return normalized;
+}
+
+function parseJsonArray(value) {
+  if (value === undefined || value === null) return [];
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed && typeof parsed === 'object') {
+        if (Array.isArray(parsed.rows)) return parsed.rows;
+        if (Array.isArray(parsed.items)) return parsed.items;
+      }
+    } catch {
+      return [];
+    }
+    return [];
+  }
+  if (typeof value === 'object') {
+    if (Array.isArray(value.rows)) return value.rows;
+    if (Array.isArray(value.items)) return value.items;
+  }
+  return [];
+}
+
+function normalizeItemEntry(item, options = {}) {
+  if (!item || typeof item !== 'object') return null;
+  const next = { ...item };
+  const qtyCandidate =
+    item.qty ?? item.quantity ?? item.count ?? item.qtyTotal ?? item.amountQty;
+  if (qtyCandidate !== undefined) {
+    const parsedQty = toNumber(qtyCandidate);
+    if (parsedQty !== null) next.qty = parsedQty;
+  }
+  const priceCandidate = item.price ?? item.unitPrice ?? item.unit_amount;
+  if (priceCandidate !== undefined) {
+    const parsedPrice = toNumber(priceCandidate);
+    if (parsedPrice !== null) next.price = parsedPrice;
+  }
+  const totalCandidate =
+    item.totalAmount ?? item.amount ?? item.total ?? (next.qty != null && next.price != null ? next.qty * next.price : undefined);
+  if (totalCandidate !== undefined) {
+    const parsedTotal = toNumber(totalCandidate);
+    if (parsedTotal !== null) next.totalAmount = parsedTotal;
+  }
+  const vatCandidate = item.totalVAT ?? item.vat ?? item.vatAmount;
+  if (vatCandidate !== undefined) {
+    const parsedVat = toNumber(vatCandidate);
+    if (parsedVat !== null) {
+      next.totalVAT = parsedVat;
+      if (next.vat === undefined) next.vat = parsedVat;
+    }
+  }
+  const cityTaxCandidate =
+    item.cityTax ?? item.totalCityTax ?? item.cityTaxAmount ?? item.ctAmount;
+  if (cityTaxCandidate !== undefined) {
+    const parsedCityTax = toNumber(cityTaxCandidate);
+    if (parsedCityTax !== null) {
+      next.totalCityTax = parsedCityTax;
+      if (next.cityTax === undefined) next.cityTax = parsedCityTax;
+    }
+  }
+  let usedClassificationField = false;
+  if (options.classificationField && item[options.classificationField] !== undefined) {
+    next.classificationCode = toStringValue(item[options.classificationField]);
+    usedClassificationField = true;
+  }
+  if (!next.classificationCode && options.headerClassificationCode) {
+    next.classificationCode = options.headerClassificationCode;
+  }
+  if (usedClassificationField && options.classificationField) {
+    delete next[options.classificationField];
+  }
+  return next;
+}
+
+function normalizePaymentEntry(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const next = { ...entry };
+  if (next.method && !next.type) {
+    next.type = next.method;
+  }
+  const amountCandidate = next.amount ?? next.total ?? next.value;
+  if (amountCandidate !== undefined) {
+    const parsedAmount = toNumber(amountCandidate);
+    if (parsedAmount !== null) next.amount = parsedAmount;
+  }
+  if (next.amount === undefined && next.value !== undefined) {
+    const parsedValue = toNumber(next.value);
+    if (parsedValue !== null) next.amount = parsedValue;
+  }
+  return next;
+}
+
+function resolveReceiptType({
+  explicitType,
+  typeField,
+  mapping,
+  record,
+  columnLookup,
+  customerTin,
+  consumerNo,
+}) {
+  const candidates = [];
+  if (typeField) candidates.push(typeField);
+  if (mapping.posApiTypeField) candidates.push(mapping.posApiTypeField);
+  if (mapping.typeField) candidates.push(mapping.typeField);
+  for (const candidate of candidates) {
+    const value = toStringValue(getColumnValue(columnLookup, record, candidate));
+    if (value) return value;
+  }
+  const normalizedExplicit = toStringValue(explicitType);
+  if (normalizedExplicit) return normalizedExplicit;
+  if (customerTin) return 'B2B_RECEIPT';
+  if (consumerNo) return 'B2C_RECEIPT';
+  const envType = toStringValue(process.env.POSAPI_RECEIPT_TYPE);
+  return envType || 'B2C_RECEIPT';
+}
+
+function applyAdditionalMappings(
+  payload,
+  normalizedMapping,
+  record,
+  columnLookup,
+  reservedKeys,
+) {
+  Object.entries(normalizedMapping).forEach(([key, columnName]) => {
+    if (reservedKeys.has(key)) return;
+    const value = getColumnValue(columnLookup, record, columnName);
+    if (value === undefined || value === null) return;
+    if (typeof value === 'string' && !value.trim()) return;
+    payload[key] = value;
+  });
+}
+
+export async function resolvePosApiEndpoint(endpointId) {
+  if (endpointId) {
+    const endpoint = await getEndpointById(endpointId);
+    if (!endpoint) {
+      const err = new Error(`POSAPI endpoint not found: ${endpointId}`);
+      err.status = 400;
+      throw err;
+    }
+    return endpoint;
+  }
+  const endpoints = await loadEndpoints();
+  const fallback = endpoints.find((entry) => entry?.defaultForForm) || endpoints[0] || null;
+  if (!fallback) {
+    const err = new Error('No POSAPI endpoints are configured');
+    err.status = 500;
+    throw err;
+  }
+  return fallback;
 }
 
 async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) {
@@ -131,128 +361,238 @@ export async function getPosApiToken() {
   return json.access_token;
 }
 
-export async function buildReceiptFromDynamicTransaction(record, mapping = {}, type) {
+export async function buildReceiptFromDynamicTransaction(
+  record,
+  mapping = {},
+  type,
+  options = {},
+) {
   if (!record || typeof record !== 'object') return null;
-  const normalizedMapping =
-    mapping && typeof mapping === 'object' && !Array.isArray(mapping)
-      ? mapping
-      : {};
+  const normalizedMapping = normalizeMapping(mapping);
+  const columnLookup = createColumnLookup(record);
 
-  const requiredMapping = ['totalAmount'];
-  const missingMapping = requiredMapping.filter((field) => {
-    const column = normalizedMapping[field];
-    return typeof column !== 'string' || !column.trim();
-  });
-  if (missingMapping.length) {
-    const err = new Error(
-      `POSAPI mapping is missing required fields: ${missingMapping.join(', ')}`,
-    );
-    err.status = 400;
-    err.details = { missingMapping };
-    throw err;
-  }
-
-  const getFieldValue = (key) => {
-    const column = normalizedMapping[key];
-    if (typeof column !== 'string' || !column) return undefined;
-    return record[column];
-  };
-
-  const totalAmountField = normalizedMapping.totalAmount;
-  const totalAmount = toNumber(record[totalAmountField]);
+  const totalAmountColumn = normalizedMapping.totalAmount;
+  const totalAmountValue = getColumnValue(columnLookup, record, totalAmountColumn);
+  const totalAmount = toNumber(totalAmountValue);
   if (totalAmount === null) {
     const err = new Error(
-      `POSAPI totalAmount is missing or invalid (column: ${totalAmountField})`,
+      `POSAPI totalAmount is missing or invalid (column: ${totalAmountColumn})`,
     );
     err.status = 400;
-    err.details = { field: 'totalAmount', column: totalAmountField };
+    err.details = { field: 'totalAmount', column: totalAmountColumn };
     throw err;
   }
 
-  const totalVATField = normalizedMapping.totalVAT;
-  const totalVAT =
-    totalVATField && totalVATField in record
-      ? toNumber(record[totalVATField]) ?? 0
-      : toNumber(getFieldValue('totalVAT')) ?? 0;
-  const totalCityTaxField = normalizedMapping.totalCityTax;
-  const totalCityTax =
-    totalCityTaxField && totalCityTaxField in record
-      ? toNumber(record[totalCityTaxField]) ?? 0
-      : toNumber(getFieldValue('totalCityTax')) ?? 0;
-  const customerTin = toStringValue(getFieldValue('customerTin'));
-  const consumerNo = toStringValue(getFieldValue('consumerNo'));
-  const taxTypeField = normalizedMapping.taxType;
-  const taxTypeRaw = taxTypeField ? record[taxTypeField] : undefined;
-  const taxType = toStringValue(taxTypeRaw) || 'VATABLE';
-  const descriptionField =
-    normalizedMapping.description || normalizedMapping.itemDescription;
-  let description = record.description ?? record.remarks ?? '';
-  if (descriptionField && record[descriptionField] != null) {
-    description = record[descriptionField];
+  const totalVatValue = getColumnValue(columnLookup, record, normalizedMapping.totalVAT);
+  const totalVAT = toNumber(totalVatValue);
+  const totalCityTaxValue = getColumnValue(
+    columnLookup,
+    record,
+    normalizedMapping.totalCityTax,
+  );
+  const totalCityTax = toNumber(totalCityTaxValue);
+
+  const customerTin = toStringValue(
+    getColumnValue(columnLookup, record, normalizedMapping.customerTin),
+  );
+  const consumerNo = toStringValue(
+    getColumnValue(columnLookup, record, normalizedMapping.consumerNo),
+  );
+
+  const taxTypeField = normalizedMapping.taxTypeField || normalizedMapping.taxType;
+  let taxType = toStringValue(getColumnValue(columnLookup, record, taxTypeField));
+  if (!taxType) taxType = 'VAT_ABLE';
+
+  const descriptionField = normalizedMapping.description || normalizedMapping.itemDescription;
+  let description = '';
+  if (descriptionField) {
+    const descValue = getColumnValue(columnLookup, record, descriptionField);
+    if (descValue !== undefined && descValue !== null) {
+      description = descValue;
+    }
   }
-  const lotNoField = normalizedMapping.lotNo;
-  const lotNo = lotNoField ? toStringValue(record[lotNoField]) : '';
-  const branchNo = readEnvVar('POSAPI_BRANCH_NO');
-  const merchantTin = readEnvVar('POSAPI_MERCHANT_TIN');
-  const posNo = readEnvVar('POSAPI_POS_NO');
-  const districtCode = readEnvVar('POSAPI_DISTRICT_CODE');
+  if (!description) {
+    description = record.description ?? record.remarks ?? '';
+  }
+
+  const lotNo = toStringValue(
+    getColumnValue(columnLookup, record, normalizedMapping.lotNo),
+  );
+
+  const branchNo =
+    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.branchNo)) ||
+    toStringValue(readEnvVar('POSAPI_BRANCH_NO'));
+  const merchantTin =
+    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.merchantTin)) ||
+    toStringValue(readEnvVar('POSAPI_MERCHANT_TIN'));
+  const posNo =
+    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.posNo)) ||
+    toStringValue(readEnvVar('POSAPI_POS_NO'));
+  const districtCode =
+    toStringValue(getColumnValue(columnLookup, record, normalizedMapping.districtCode)) ||
+    toStringValue(readEnvVar('POSAPI_DISTRICT_CODE'));
+
   const missingEnv = [];
-  if (!branchNo) missingEnv.push('POSAPI_BRANCH_NO');
-  if (!merchantTin) missingEnv.push('POSAPI_MERCHANT_TIN');
-  if (!posNo) missingEnv.push('POSAPI_POS_NO');
+  if (!branchNo) missingEnv.push('branchNo');
+  if (!merchantTin) missingEnv.push('merchantTin');
+  if (!posNo) missingEnv.push('posNo');
   if (missingEnv.length) {
     const err = new Error(
       `POSAPI receipt configuration is incomplete. Missing: ${missingEnv.join(', ')}`,
     );
     err.status = 500;
-    err.details = { missingEnvVars: missingEnv };
+    err.details = { missingFields: missingEnv };
     throw err;
   }
-  const receiptType = type || process.env.POSAPI_RECEIPT_TYPE || 'B2C_RECEIPT';
-  const item = {
-    name: description ? String(description) : 'POS Transaction',
-    qty: 1,
-    price: totalAmount,
-    totalAmount,
-    vat: totalVAT,
-    cityTax: totalCityTax,
-  };
-  if (lotNo) {
-    item.data = { lotNo };
+
+  const classificationField = normalizedMapping.classificationCodeField;
+  const headerClassificationCode = toStringValue(
+    getColumnValue(columnLookup, record, classificationField),
+  );
+
+  const itemsField = normalizedMapping.itemsField || normalizedMapping.items;
+  const rawItems = getColumnValue(columnLookup, record, itemsField);
+  let items = parseJsonArray(rawItems)
+    .map((item) =>
+      normalizeItemEntry(item, {
+        classificationField,
+        headerClassificationCode,
+      }),
+    )
+    .filter(Boolean);
+
+  if (!items.length) {
+    const fallbackItem = {
+      name: description ? String(description) : 'POS Transaction',
+      qty: 1,
+      price: totalAmount,
+      totalAmount,
+    };
+    if (totalVAT !== null) {
+      fallbackItem.totalVAT = totalVAT;
+      fallbackItem.vat = totalVAT;
+    }
+    if (totalCityTax !== null) {
+      fallbackItem.totalCityTax = totalCityTax;
+      fallbackItem.cityTax = totalCityTax;
+    }
+    if (lotNo) {
+      fallbackItem.data = { ...(fallbackItem.data || {}), lotNo };
+    }
+    if (headerClassificationCode) {
+      fallbackItem.classificationCode = headerClassificationCode;
+    }
+    items = [fallbackItem];
+  } else if (lotNo) {
+    items = items.map((item) => {
+      if (!item || typeof item !== 'object') return item;
+      const next = { ...item };
+      if (!next.data || typeof next.data !== 'object') {
+        next.data = { lotNo };
+      } else if (next.data.lotNo === undefined || next.data.lotNo === null) {
+        next.data = { ...next.data, lotNo };
+      }
+      return next;
+    });
   }
+
+  const paymentsField = normalizedMapping.paymentsField || normalizedMapping.payments;
+  const rawPayments = getColumnValue(columnLookup, record, paymentsField);
+  let payments = parseJsonArray(rawPayments)
+    .map((entry) => normalizePaymentEntry(entry))
+    .filter(Boolean);
+  if (!payments.length) {
+    const defaultPaymentType = toStringValue(
+      getColumnValue(columnLookup, record, normalizedMapping.paymentType),
+    );
+    payments = [
+      {
+        type: defaultPaymentType || 'CASH',
+        amount: totalAmount,
+      },
+    ];
+  }
+
+  const receiptType = resolveReceiptType({
+    explicitType: type,
+    typeField: options.typeField || options.posApiTypeField,
+    mapping: normalizedMapping,
+    record,
+    columnLookup,
+    customerTin,
+    consumerNo,
+  });
+
   const receipt = {
     totalAmount,
-    totalVAT,
-    totalCityTax,
+    totalVAT: totalVAT ?? 0,
+    totalCityTax: totalCityTax ?? 0,
     taxType,
-    items: [item],
+    items,
   };
+
   const payload = {
     branchNo,
     merchantTin,
     posNo,
     type: receiptType,
     totalAmount,
-    totalVAT,
-    totalCityTax,
+    totalVAT: totalVAT ?? 0,
+    totalCityTax: totalCityTax ?? 0,
     receipts: [receipt],
   };
   if (districtCode) payload.districtCode = districtCode;
   if (customerTin) payload.customerTin = customerTin;
   if (consumerNo) payload.consumerNo = consumerNo;
+  if (payments.length) payload.payments = payments;
+
+  const reservedMappingKeys = new Set([
+    'totalAmount',
+    'totalVAT',
+    'totalCityTax',
+    'customerTin',
+    'consumerNo',
+    'taxType',
+    'taxTypeField',
+    'description',
+    'itemDescription',
+    'lotNo',
+    'itemsField',
+    'items',
+    'paymentsField',
+    'payments',
+    'branchNo',
+    'merchantTin',
+    'posNo',
+    'districtCode',
+    'classificationCodeField',
+    'posApiTypeField',
+    'typeField',
+  ]);
+  applyAdditionalMappings(payload, normalizedMapping, record, columnLookup, reservedMappingKeys);
+
   return payload;
 }
 
-export async function sendReceipt(payload) {
+export async function sendReceipt(payload, options = {}) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('POSAPI receipt payload is required');
   }
+  const endpoint = options.endpoint || (await resolvePosApiEndpoint(options.endpointId));
+  const method = (endpoint?.method || 'POST').toUpperCase();
+  const path = endpoint?.path || '/rest/receipt';
   const token = await getPosApiToken();
-  return posApiFetch('/rest/receipt', {
-    method: 'POST',
+  const headers = { ...(options.headers || {}) };
+  if (method !== 'GET' && method !== 'HEAD') {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  }
+  const body =
+    method === 'GET' || method === 'HEAD' ? undefined : JSON.stringify(payload);
+  return posApiFetch(path, {
+    method,
     token,
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
+    headers,
+    body,
   });
 }
 

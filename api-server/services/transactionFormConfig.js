@@ -155,6 +155,22 @@ function parseEntry(raw = {}) {
       typeof raw.posApiType === 'string' && raw.posApiType.trim()
         ? raw.posApiType.trim()
         : '',
+    posApiTypeField:
+      typeof raw.posApiTypeField === 'string' ? raw.posApiTypeField : '',
+    posApiEndpointId:
+      typeof raw.posApiEndpointId === 'string' && raw.posApiEndpointId.trim()
+        ? raw.posApiEndpointId.trim()
+        : '',
+    posApiInfoEndpointIds: Array.isArray(raw.posApiInfoEndpointIds)
+      ? raw.posApiInfoEndpointIds
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value) => value)
+      : [],
+    fieldsFromPosApi: Array.isArray(raw.fieldsFromPosApi)
+      ? raw.fieldsFromPosApi
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value) => value)
+      : [],
     posApiMapping: mapping,
   };
 }
