@@ -49,6 +49,32 @@ async function persistPosApiDetails(table, pkColumn, recordId, response, record)
       lookup.get('qr_code');
     if (qrCol) updates[qrCol] = response.qrData;
   }
+  const ebarimtIdValue =
+    response.ebarimtId || response.ebarimt_id || response.billId || response.bill_id;
+  if (ebarimtIdValue) {
+    const ebarimtCol =
+      lookup.get('ebarimt_id') ||
+      lookup.get('ebarimtid') ||
+      lookup.get('posapi_ebarimt_id');
+    if (ebarimtCol) updates[ebarimtCol] = ebarimtIdValue;
+  }
+  if (response.status) {
+    const statusCol = lookup.get('posapi_status') || lookup.get('ebarimt_status');
+    if (statusCol) updates[statusCol] = response.status;
+  }
+  const rawErrorCodes =
+    response.errorCode ||
+    response.error_code ||
+    (Array.isArray(response.errorCodes)
+      ? response.errorCodes.join(',')
+      : response.errorCodes);
+  if (rawErrorCodes) {
+    const errorCol =
+      lookup.get('posapi_error_code') ||
+      lookup.get('posapi_error') ||
+      lookup.get('ebarimt_error_code');
+    if (errorCol) updates[errorCol] = rawErrorCodes;
+  }
   const entries = Object.entries(updates);
   if (entries.length === 0) return;
   const setParts = entries.map(() => '?? = ?').join(', ');
@@ -141,7 +167,17 @@ export async function issueDynamicTransactionEbarimt(
 
   const mapping = formCfg.posApiMapping || {};
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-  const payload = buildReceiptFromDynamicTransaction(record, mapping, receiptType);
+  const { payload, warnings } = await buildReceiptFromDynamicTransaction(
+    record,
+    mapping,
+    {
+      defaultType: receiptType,
+      typeField: formCfg.posApiTypeField || '',
+      typeOptions: Array.isArray(formCfg.posApiTypeOptions)
+        ? formCfg.posApiTypeOptions
+        : [],
+    },
+  );
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
     err.status = 400;
@@ -151,5 +187,12 @@ export async function issueDynamicTransactionEbarimt(
   const response = await sendReceipt(payload);
   await persistPosApiDetails(tableName, pkColumn, recordId, response, record);
 
-  return { id: recordId, posApi: { payload, response } };
+  return {
+    id: recordId,
+    posApi: {
+      payload,
+      response,
+      warnings: Array.isArray(warnings) ? warnings : [],
+    },
+  };
 }

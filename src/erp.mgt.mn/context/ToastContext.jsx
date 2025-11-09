@@ -33,7 +33,14 @@ export function ToastProvider({ children }) {
       <div className="toast-container">
         {toasts.map((t) => (
           <div key={t.id} className={`toast toast-${t.type}`}>
-            {t.type === 'success' ? '✅' : t.type === 'error' ? '❌' : 'ℹ️'} {t.message}
+            {t.type === 'success'
+              ? '✅'
+              : t.type === 'error'
+                ? '❌'
+                : t.type === 'warning'
+                  ? '⚠️'
+                  : 'ℹ️'}{' '}
+            {t.message}
           </div>
         ))}
       </div>

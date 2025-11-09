@@ -155,6 +155,17 @@ function parseEntry(raw = {}) {
       typeof raw.posApiType === 'string' && raw.posApiType.trim()
         ? raw.posApiType.trim()
         : '',
+    posApiTypeField:
+      typeof raw.posApiTypeField === 'string' && raw.posApiTypeField.trim()
+        ? raw.posApiTypeField.trim()
+        : '',
+    posApiTypeOptions: Array.isArray(raw.posApiTypeOptions)
+      ? raw.posApiTypeOptions
+          .map((value) =>
+            typeof value === 'string' && value.trim() ? value.trim() : null,
+          )
+          .filter(Boolean)
+      : [],
     posApiMapping: mapping,
   };
 }
@@ -364,6 +375,8 @@ export async function setFormConfig(
     allowTemporarySubmission,
     posApiEnabled = false,
     posApiType = '',
+    posApiTypeField = '',
+    posApiTypeOptions = [],
     posApiMapping = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
@@ -447,6 +460,17 @@ export async function setFormConfig(
       typeof posApiType === 'string' && posApiType.trim()
         ? posApiType.trim()
         : '',
+    posApiTypeField:
+      typeof posApiTypeField === 'string' && posApiTypeField.trim()
+        ? posApiTypeField.trim()
+        : '',
+    posApiTypeOptions: Array.isArray(posApiTypeOptions)
+      ? posApiTypeOptions
+          .map((value) =>
+            typeof value === 'string' && value.trim() ? value.trim() : null,
+          )
+          .filter(Boolean)
+      : [],
     posApiMapping:
       posApiMapping &&
       typeof posApiMapping === 'object' &&
