@@ -1,9 +1,76 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
+
+const POSAPI_TYPES = [
+  { value: 'B2C_RECEIPT', label: 'B2C receipt' },
+  { value: 'B2B_RECEIPT', label: 'B2B receipt' },
+  { value: 'B2C_INVOICE', label: 'B2C invoice' },
+  { value: 'B2B_INVOICE', label: 'B2B invoice' },
+  { value: 'STOCK_QR', label: 'Stock QR' },
+];
+
+const TAX_TYPES = [
+  { value: 'VAT_ABLE', label: 'VAT-able' },
+  { value: 'VAT_FREE', label: 'VAT-free' },
+  { value: 'VAT_ZERO', label: 'VAT zero' },
+  { value: 'NO_VAT', label: 'No VAT' },
+];
+
+const PAYMENT_TYPES = [
+  { value: 'CASH', label: 'Cash' },
+  { value: 'PAYMENT_CARD', label: 'Payment card' },
+  { value: 'BANK_TRANSFER', label: 'Bank transfer' },
+  { value: 'MOBILE_WALLET', label: 'Mobile wallet' },
+  { value: 'EASY_BANK_CARD', label: 'Easy Bank card' },
+];
+
+const PAYMENT_DESCRIPTIONS = {
+  CASH: 'Cash payment received at the point of sale.',
+  PAYMENT_CARD: 'Payment settled through a credit or debit card.',
+  BANK_TRANSFER: 'Funds received via inter-bank transfer.',
+  MOBILE_WALLET: 'Payment collected through a registered mobile wallet.',
+  EASY_BANK_CARD: 'Payment made with an Easy Bank issued card.',
+};
+
+const METHOD_BADGES = {
+  GET: '#38bdf8',
+  POST: '#34d399',
+  PUT: '#818cf8',
+  PATCH: '#fbbf24',
+  DELETE: '#f87171',
+};
+
+const TYPE_BADGES = {
+  B2C_RECEIPT: '#1d4ed8',
+  B2B_RECEIPT: '#0f172a',
+  B2C_INVOICE: '#4f46e5',
+  B2B_INVOICE: '#7c3aed',
+  STOCK_QR: '#0ea5e9',
+};
+
+const TAX_PRODUCT_OPTIONS = [
+  { value: 'A12345', label: 'Example – VAT exemption (A12345)' },
+  { value: 'B20000', label: 'Example – zero-rated export (B20000)' },
+  { value: 'C30000', label: 'Example – non-VAT product (C30000)' },
+];
+
+function badgeStyle(color) {
+  return {
+    background: color,
+    color: '#fff',
+    borderRadius: '999px',
+    padding: '0.1rem 0.5rem',
+    fontSize: '0.7rem',
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+    display: 'inline-block',
+  };
+}
 
 const EMPTY_ENDPOINT = {
   id: '',
   name: '',
+  category: '',
   method: 'GET',
   path: '',
   parametersText: '[]',
@@ -15,7 +82,202 @@ const EMPTY_ENDPOINT = {
   testable: false,
   testServerUrl: '',
   docUrl: '',
+  posApiType: '',
 };
+
+const PAYMENT_FIELD_DESCRIPTIONS = {
+  payments: 'Breakdown of how the receipt or invoice was paid.',
+  'payments[].type':
+    'Payment method code. Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD.',
+  'payments[].amount': 'Amount paid with the selected payment method.',
+};
+
+function createReceiptTemplate(type, overrides = {}) {
+  const isB2B = type.startsWith('B2B');
+  const base = {
+    type,
+    taxType: 'VAT_ABLE',
+    branchNo: '<branch-number>',
+    posNo: '<pos-number>',
+    merchantTin: '<merchant-tin>',
+    totalAmount: 110000,
+    totalVAT: 10000,
+    totalCityTax: 1000,
+    receipts: [
+      {
+        taxType: 'VAT_ABLE',
+        totalAmount: 110000,
+        totalVAT: 10000,
+        totalCityTax: 1000,
+        items: [
+          {
+            name: 'Sample good or service',
+            barCode: '1234567890123',
+            barCodeType: 'EAN_13',
+            classificationCode: '<product-code>',
+            taxProductCode: 'A12345',
+            measureUnit: 'PCS',
+            qty: 1,
+            price: 100000,
+            vatTaxType: 'VAT_ABLE',
+            cityTax: 1000,
+            lotNo: '',
+          },
+        ],
+      },
+    ],
+    payments: [
+      {
+        type: 'CASH',
+        amount: 110000,
+      },
+    ],
+  };
+  if (isB2B) {
+    base.customerTin = '<buyer-tin>';
+  } else {
+    base.consumerNo = '<consumer-id-or-phone>';
+  }
+  return { ...base, ...overrides };
+}
+
+function createStockQrTemplate() {
+  return {
+    type: 'STOCK_QR',
+    merchantTin: '<merchant-tin>',
+    branchNo: '<branch-number>',
+    posNo: '<pos-number>',
+    stockCodes: [
+      {
+        code: '<stock-code>',
+        name: 'Sample item',
+        classificationCode: '<classification-code>',
+        qty: 1,
+        measureUnit: 'PCS',
+        lotNo: '',
+      },
+    ],
+  };
+}
+
+function resolveTemplate(type) {
+  switch (type) {
+    case 'B2C_RECEIPT':
+    case 'B2B_RECEIPT':
+    case 'B2C_INVOICE':
+    case 'B2B_INVOICE':
+      return createReceiptTemplate(type);
+    case 'STOCK_QR':
+      return createStockQrTemplate();
+    default:
+      return { type };
+  }
+}
+
+function deepClone(value) {
+  if (value === undefined) return undefined;
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch (err) {
+    console.error('Failed to clone value', err);
+    return undefined;
+  }
+}
+
+function createReceiptGroup(taxType = 'VAT_ABLE') {
+  return {
+    taxType,
+    totalAmount: 0,
+    totalVAT: taxType === 'VAT_ABLE' ? 0 : undefined,
+    totalCityTax: taxType === 'VAT_ABLE' ? 0 : undefined,
+    taxProductCode: taxType === 'VAT_FREE' || taxType === 'VAT_ZERO' ? '' : undefined,
+    items: [createReceiptItem(taxType)],
+  };
+}
+
+function createReceiptItem(taxType = 'VAT_ABLE') {
+  return {
+    name: '',
+    barCode: '',
+    barCodeType: 'EAN_13',
+    classificationCode: '',
+    taxProductCode: taxType === 'VAT_FREE' || taxType === 'VAT_ZERO' ? '' : undefined,
+    measureUnit: 'PCS',
+    qty: 1,
+    price: 0,
+    vatTaxType: taxType,
+    cityTax: taxType === 'VAT_ABLE' ? 0 : undefined,
+    lotNo: '',
+  };
+}
+
+function createStockItem() {
+  return {
+    code: '',
+    name: '',
+    classificationCode: '',
+    qty: 1,
+    measureUnit: 'PCS',
+    lotNo: '',
+  };
+}
+
+function normaliseBuilderForType(builder, type) {
+  const template = resolveTemplate(type);
+  const base = typeof builder === 'object' && builder !== null ? deepClone(builder) : {};
+  const next = { ...template, ...base, type };
+
+  if (type === 'STOCK_QR') {
+    const stock = Array.isArray(base?.stockCodes) && base.stockCodes.length > 0
+      ? base.stockCodes
+      : template.stockCodes;
+    next.stockCodes = deepClone(stock) || template.stockCodes || [createStockItem()];
+    delete next.receipts;
+    delete next.payments;
+    delete next.totalAmount;
+    delete next.totalVAT;
+    delete next.totalCityTax;
+    delete next.taxType;
+    delete next.consumerNo;
+    delete next.customerTin;
+  } else {
+    if (type.startsWith('B2B')) {
+      next.customerTin = base?.customerTin || template.customerTin || '<buyer-tin>';
+      delete next.consumerNo;
+    } else {
+      next.consumerNo = base?.consumerNo || template.consumerNo || '<consumer-id-or-phone>';
+      delete next.customerTin;
+    }
+    const receipts = Array.isArray(base?.receipts) && base.receipts.length > 0
+      ? base.receipts
+      : template.receipts;
+    next.receipts = deepClone(receipts) || template.receipts || [createReceiptGroup()];
+    if (!Array.isArray(next.receipts)) {
+      next.receipts = [createReceiptGroup()];
+    }
+    const payments = Array.isArray(base?.payments) && base.payments.length > 0
+      ? base.payments
+      : template.payments;
+    next.payments = deepClone(payments) || template.payments || [
+      {
+        type: 'CASH',
+        amount: next.totalAmount || 0,
+      },
+    ];
+    next.totalAmount = base?.totalAmount ?? template.totalAmount;
+    next.totalVAT = base?.totalVAT ?? template.totalVAT;
+    next.totalCityTax = base?.totalCityTax ?? template.totalCityTax;
+    next.taxType = base?.taxType ?? template.taxType;
+  }
+
+  return next;
+}
+
+function formatTypeLabel(type) {
+  if (!type) return '';
+  const hit = POSAPI_TYPES.find((opt) => opt.value === type);
+  return hit ? hit.label : type;
+}
 
 function toPrettyJson(value, fallback = '') {
   if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) {
@@ -33,6 +295,7 @@ function createFormState(definition) {
   return {
     id: definition.id || '',
     name: definition.name || '',
+    category: definition.category || '',
     method: definition.method || 'GET',
     path: definition.path || '',
     parametersText: toPrettyJson(definition.parameters, '[]'),
@@ -44,6 +307,7 @@ function createFormState(definition) {
     testable: Boolean(definition.testable),
     testServerUrl: definition.testServerUrl || '',
     docUrl: '',
+    posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
   };
 }
 
@@ -78,13 +342,56 @@ export default function PosApiAdmin() {
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [testState, setTestState] = useState({ running: false, error: '', result: null });
+  const [docExamples, setDocExamples] = useState([]);
+  const [selectedDocBlock, setSelectedDocBlock] = useState('');
+  const [docFieldDescriptions, setDocFieldDescriptions] = useState({});
+  const [docMetadata, setDocMetadata] = useState({});
+  const [requestBuilder, setRequestBuilder] = useState(null);
+  const [requestBuilderError, setRequestBuilderError] = useState('');
+  const builderSyncRef = useRef(false);
 
-  const sortedEndpoints = useMemo(() => {
-    return [...endpoints].sort((a, b) => {
-      const left = a.name || a.id || '';
-      const right = b.name || b.id || '';
-      return left.localeCompare(right);
+  const categorizedEndpoints = useMemo(() => {
+    const groups = new Map();
+    endpoints.forEach((endpoint) => {
+      const category = endpoint.category?.trim() || 'Uncategorised';
+      if (!groups.has(category)) {
+        groups.set(category, []);
+      }
+      groups.get(category).push(endpoint);
     });
+    return Array.from(groups.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([category, list]) => ({
+        category,
+        endpoints: list
+          .slice()
+          .sort((a, b) => {
+            const left = a.name || a.id || '';
+            const right = b.name || b.id || '';
+            return left.localeCompare(right);
+          })
+          .map((ep) => {
+            const type = ep.posApiType || ep.requestBody?.schema?.type || '';
+            const preview = [];
+            if (ep.requestBody?.schema && typeof ep.requestBody.schema === 'object') {
+              const keys = Object.keys(ep.requestBody.schema).filter((key) => key !== 'type').slice(0, 5);
+              if (keys.length > 0) {
+                preview.push(`Request: ${keys.join(', ')}`);
+              }
+            }
+            if (ep.responseBody?.schema && typeof ep.responseBody.schema === 'object') {
+              const keys = Object.keys(ep.responseBody.schema).slice(0, 5);
+              if (keys.length > 0) {
+                preview.push(`Response: ${keys.join(', ')}`);
+              }
+            }
+            return {
+              ...ep,
+              _preview: preview.join('\n'),
+              _type: type,
+            };
+          }),
+      }));
   }, [endpoints]);
 
   const requestPreview = useMemo(() => {
@@ -108,6 +415,218 @@ export default function PosApiAdmin() {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
   }, [formState.responseSchemaText]);
+
+  useEffect(() => {
+    if (builderSyncRef.current) {
+      builderSyncRef.current = false;
+      return;
+    }
+    const text = (formState.requestSchemaText || '').trim();
+    if (!text) {
+      setRequestBuilder(null);
+      setRequestBuilderError('');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(text);
+      setRequestBuilder(parsed);
+      setRequestBuilderError('');
+      if (parsed?.type && parsed.type !== formState.posApiType) {
+        setFormState((prev) => ({ ...prev, posApiType: parsed.type }));
+      }
+    } catch (err) {
+      setRequestBuilder(null);
+      setRequestBuilderError(err.message || 'Invalid JSON');
+    }
+  }, [formState.requestSchemaText]);
+
+  const updateRequestBuilder = (updater) => {
+    setRequestBuilder((prev) => {
+      const working = deepClone(prev) || {};
+      const next = typeof updater === 'function' ? updater(working) : updater;
+      if (!next || typeof next !== 'object') {
+        return prev;
+      }
+      builderSyncRef.current = true;
+      setFormState((prevState) => ({
+        ...prevState,
+        requestSchemaText: JSON.stringify(next, null, 2),
+        posApiType: next.type || prevState.posApiType,
+      }));
+      return next;
+    });
+  };
+
+  const handleTypeChange = (type) => {
+    setFormState((prev) => ({ ...prev, posApiType: type }));
+    if (!type) return;
+    updateRequestBuilder((prev) => normaliseBuilderForType(prev, type));
+  };
+
+  const handleBuilderFieldChange = (field, value) => {
+    updateRequestBuilder((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleReceiptChange = (index, field, value) => {
+    updateRequestBuilder((prev) => {
+      const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
+      if (!receipts[index]) return prev;
+      const updated = { ...receipts[index], [field]: value };
+      if (field === 'taxType') {
+        if (value === 'VAT_ABLE') {
+          updated.totalVAT = updated.totalVAT ?? 0;
+          updated.totalCityTax = updated.totalCityTax ?? 0;
+          updated.taxProductCode = undefined;
+        } else if (value === 'VAT_FREE' || value === 'VAT_ZERO') {
+          updated.totalVAT = undefined;
+          updated.totalCityTax = undefined;
+          updated.taxProductCode = updated.taxProductCode ?? '';
+        } else {
+          updated.totalVAT = undefined;
+          updated.totalCityTax = undefined;
+          updated.taxProductCode = undefined;
+        }
+        updated.items = (updated.items || []).map((item) => ({
+          ...item,
+          vatTaxType: value,
+          taxProductCode:
+            value === 'VAT_FREE' || value === 'VAT_ZERO' ? item.taxProductCode ?? '' : undefined,
+          cityTax: value === 'VAT_ABLE' ? item.cityTax ?? 0 : undefined,
+        }));
+      }
+      receipts[index] = updated;
+      return { ...prev, receipts };
+    });
+  };
+
+  const addReceiptGroup = () => {
+    updateRequestBuilder((prev) => ({
+      ...prev,
+      receipts: [...(Array.isArray(prev.receipts) ? prev.receipts : []), createReceiptGroup()],
+    }));
+  };
+
+  const removeReceiptGroup = (index) => {
+    updateRequestBuilder((prev) => {
+      const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
+      receipts.splice(index, 1);
+      return { ...prev, receipts };
+    });
+  };
+
+  const handleReceiptItemChange = (receiptIndex, itemIndex, field, value) => {
+    updateRequestBuilder((prev) => {
+      const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
+      const receipt = receipts[receiptIndex];
+      if (!receipt) return prev;
+      const items = Array.isArray(receipt.items) ? receipt.items.slice() : [];
+      if (!items[itemIndex]) return prev;
+      items[itemIndex] = { ...items[itemIndex], [field]: value };
+      receipts[receiptIndex] = { ...receipt, items };
+      return { ...prev, receipts };
+    });
+  };
+
+  const addReceiptItem = (receiptIndex) => {
+    updateRequestBuilder((prev) => {
+      const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
+      const receipt = receipts[receiptIndex];
+      if (!receipt) return prev;
+      const items = Array.isArray(receipt.items) ? receipt.items.slice() : [];
+      items.push(createReceiptItem(receipt.taxType || 'VAT_ABLE'));
+      receipts[receiptIndex] = { ...receipt, items };
+      return { ...prev, receipts };
+    });
+  };
+
+  const removeReceiptItem = (receiptIndex, itemIndex) => {
+    updateRequestBuilder((prev) => {
+      const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
+      const receipt = receipts[receiptIndex];
+      if (!receipt) return prev;
+      const items = Array.isArray(receipt.items) ? receipt.items.slice() : [];
+      items.splice(itemIndex, 1);
+      receipts[receiptIndex] = { ...receipt, items };
+      return { ...prev, receipts };
+    });
+  };
+
+  const handlePaymentChange = (index, field, value) => {
+    updateRequestBuilder((prev) => {
+      const payments = Array.isArray(prev.payments) ? prev.payments.slice() : [];
+      if (!payments[index]) return prev;
+      payments[index] = { ...payments[index], [field]: value };
+      return { ...prev, payments };
+    });
+  };
+
+  const addPayment = () => {
+    updateRequestBuilder((prev) => ({
+      ...prev,
+      payments: [...(Array.isArray(prev.payments) ? prev.payments : []), { type: 'CASH', amount: 0 }],
+    }));
+  };
+
+  const removePayment = (index) => {
+    updateRequestBuilder((prev) => {
+      const payments = Array.isArray(prev.payments) ? prev.payments.slice() : [];
+      payments.splice(index, 1);
+      return { ...prev, payments };
+    });
+  };
+
+  const handleStockItemChange = (index, field, value) => {
+    updateRequestBuilder((prev) => {
+      const stockCodes = Array.isArray(prev.stockCodes) ? prev.stockCodes.slice() : [];
+      if (!stockCodes[index]) return prev;
+      stockCodes[index] = { ...stockCodes[index], [field]: value };
+      return { ...prev, stockCodes };
+    });
+  };
+
+  const addStockItem = () => {
+    updateRequestBuilder((prev) => ({
+      ...prev,
+      stockCodes: [...(Array.isArray(prev.stockCodes) ? prev.stockCodes : []), createStockItem()],
+    }));
+  };
+
+  const removeStockItem = (index) => {
+    updateRequestBuilder((prev) => {
+      const stockCodes = Array.isArray(prev.stockCodes) ? prev.stockCodes.slice() : [];
+      stockCodes.splice(index, 1);
+      return { ...prev, stockCodes };
+    });
+  };
+
+  const paymentsTotal = useMemo(() => {
+    if (!Array.isArray(requestBuilder?.payments)) return 0;
+    return requestBuilder.payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  }, [requestBuilder]);
+
+  const paymentsBalanced = useMemo(() => {
+    const totalAmount = Number(requestBuilder?.totalAmount || 0);
+    return Math.abs(paymentsTotal - totalAmount) < 0.01;
+  }, [paymentsTotal, requestBuilder]);
+
+  const isReceiptType = formState.posApiType && formState.posApiType !== 'STOCK_QR';
+  const isStockType = formState.posApiType === 'STOCK_QR';
+
+  useEffect(() => {
+    if (!formState.posApiType) return;
+    setRequestBuilder((prev) => {
+      if (!prev || prev.type === formState.posApiType) {
+        return prev;
+      }
+      const next = normaliseBuilderForType(prev, formState.posApiType);
+      builderSyncRef.current = true;
+      setFormState((prevState) => ({
+        ...prevState,
+        requestSchemaText: JSON.stringify(next, null, 2),
+      }));
+      return next;
+    });
+  }, [formState.posApiType]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -155,6 +674,10 @@ export default function PosApiAdmin() {
     setStatus('');
     setError('');
     resetTestState();
+    setDocExamples([]);
+    setSelectedDocBlock('');
+    setDocMetadata({});
+    setDocFieldDescriptions({});
     setSelectedId(id);
     const definition = endpoints.find((ep) => ep.id === id);
     setFormState(createFormState(definition));
@@ -195,11 +718,28 @@ export default function PosApiAdmin() {
       throw new Error('Field descriptions must be a JSON object');
     }
 
+    if (
+      formState.posApiType &&
+      ['B2C_RECEIPT', 'B2B_RECEIPT', 'B2C_INVOICE', 'B2B_INVOICE', 'STOCK_QR'].includes(formState.posApiType)
+    ) {
+      Object.entries(PAYMENT_FIELD_DESCRIPTIONS).forEach(([key, value]) => {
+        if (!fieldDescriptions[key]) {
+          fieldDescriptions[key] = value;
+        }
+      });
+    }
+
+    if (requestSchema && typeof requestSchema === 'object' && formState.posApiType) {
+      requestSchema.type = formState.posApiType;
+    }
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
+      category: formState.category.trim(),
       method: formState.method.trim().toUpperCase(),
       path: formState.path.trim(),
+      posApiType: formState.posApiType || '',
       parameters,
       requestBody: {
         schema: requestSchema,
@@ -304,7 +844,7 @@ export default function PosApiAdmin() {
     }
   }
 
-  async function handleFetchDoc(target) {
+  async function handleFetchDoc() {
     if (!formState.docUrl.trim()) {
       setError('Documentation URL is required');
       return;
@@ -329,15 +869,35 @@ export default function PosApiAdmin() {
       if (!data.blocks || data.blocks.length === 0) {
         throw new Error('No JSON examples were found in the documentation');
       }
-      const pretty = JSON.stringify(data.blocks[0], null, 2);
-      if (target === 'request') {
-        setFormState((prev) => ({ ...prev, requestSchemaText: pretty }));
-      } else if (target === 'response') {
-        setFormState((prev) => ({ ...prev, responseSchemaText: pretty }));
-      } else {
-        setFormState((prev) => ({ ...prev, fieldDescriptionsText: pretty }));
+      setDocExamples(data.blocks);
+      setSelectedDocBlock(data.blocks[0]?.label || '');
+      setDocMetadata(data.metadata || {});
+      if (data.fieldDescriptions && Object.keys(data.fieldDescriptions).length > 0) {
+        setDocFieldDescriptions(data.fieldDescriptions);
+        try {
+          const existing = JSON.parse(formState.fieldDescriptionsText || '{}');
+          const merged = { ...existing, ...data.fieldDescriptions };
+          setFormState((prev) => ({
+            ...prev,
+            fieldDescriptionsText: JSON.stringify(merged, null, 2),
+          }));
+        } catch {
+          setFormState((prev) => ({
+            ...prev,
+            fieldDescriptionsText: JSON.stringify(data.fieldDescriptions, null, 2),
+          }));
+        }
       }
-      setStatus('Documentation fetched and applied');
+      if (data.metadata?.method) {
+        setFormState((prev) => ({ ...prev, method: data.metadata.method }));
+      }
+      if (data.metadata?.path) {
+        setFormState((prev) => ({ ...prev, path: data.metadata.path }));
+      }
+      if (!formState.testServerUrl.trim() && data.metadata?.testServerUrl) {
+        setFormState((prev) => ({ ...prev, testServerUrl: data.metadata.testServerUrl }));
+      }
+      setStatus('Documentation fetched. Select a block to insert.');
     } catch (err) {
       console.error(err);
       setError(err.message || 'Failed to fetch documentation');
@@ -346,12 +906,37 @@ export default function PosApiAdmin() {
     }
   }
 
+  function handleApplyDocBlock(target) {
+    if (docExamples.length === 0) {
+      setError('Fetch documentation first');
+      return;
+    }
+    const selected = docExamples.find((block) => block.label === selectedDocBlock) || docExamples[0];
+    if (!selected) {
+      setError('Selected block not found');
+      return;
+    }
+    const pretty = JSON.stringify(selected.json, null, 2);
+    if (target === 'request') {
+      handleChange('requestSchemaText', pretty);
+    } else if (target === 'response') {
+      handleChange('responseSchemaText', pretty);
+    } else {
+      handleChange('fieldDescriptionsText', pretty);
+    }
+    setStatus(`Applied ${selected.label} to ${target} schema`);
+  }
+
   function handleNew() {
     setSelectedId('');
     setFormState({ ...EMPTY_ENDPOINT });
     setStatus('');
     setError('');
     resetTestState();
+    setDocExamples([]);
+    setSelectedDocBlock('');
+    setDocMetadata({});
+    setDocFieldDescriptions({});
   }
 
   async function handleTest() {
@@ -417,29 +1002,58 @@ export default function PosApiAdmin() {
             + New
           </button>
         </div>
-        <ul style={styles.list}>
-          {sortedEndpoints.map((ep) => (
-            <li key={ep.id}>
-              <button
-                type="button"
-                onClick={() => handleSelect(ep.id)}
-                style={{
-                  ...styles.listButton,
-                  ...(selectedId === ep.id ? styles.listButtonActive : {}),
-                }}
-              >
-                <strong>{ep.name}</strong>
-                <br />
-                <span style={{ fontSize: '0.8rem', color: '#555' }}>{ep.id}</span>
-              </button>
-            </li>
+        <div style={styles.list}>
+          {categorizedEndpoints.map((group) => (
+            <div key={group.category} style={styles.listGroup}>
+              <div style={styles.listGroupHeader}>{group.category}</div>
+              <ul style={styles.listGroupList}>
+                {group.endpoints.map((ep) => {
+                  const methodColor = METHOD_BADGES[ep.method] || '#94a3b8';
+                  const typeColor = TYPE_BADGES[ep._type] || '#1f2937';
+                  const typeLabel = formatTypeLabel(ep._type);
+                  return (
+                    <li key={ep.id}>
+                      <button
+                        type="button"
+                        onClick={() => handleSelect(ep.id)}
+                        style={{
+                          ...styles.listButton,
+                          ...(selectedId === ep.id ? styles.listButtonActive : {}),
+                        }}
+                        title={ep._preview || 'No preview available'}
+                      >
+                        <div style={styles.listButtonHeader}>
+                          <span style={styles.listButtonTitle}>{ep.name || ep.id}</span>
+                          <div style={styles.badgeStack}>
+                            {ep.method && (
+                              <span style={badgeStyle(methodColor)}>{ep.method}</span>
+                            )}
+                            {ep._type && (
+                              <span style={{ ...badgeStyle(typeColor), textTransform: 'none' }}>
+                                {typeLabel || ep._type}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={styles.listButtonSubtle}>{ep.id}</div>
+                        {ep._preview && (
+                          <div style={styles.previewText}>
+                            {ep._preview.split('\n').map((line) => (
+                              <div key={line}>{line}</div>
+                            ))}
+                          </div>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           ))}
-          {sortedEndpoints.length === 0 && (
-            <li style={{ color: '#666', padding: '0.5rem 0' }}>
-              No endpoints configured yet
-            </li>
+          {categorizedEndpoints.length === 0 && (
+            <div style={{ color: '#666', padding: '0.5rem 0' }}>No endpoints configured yet</div>
           )}
-        </ul>
+        </div>
       </div>
       <div style={styles.formContainer}>
         {loading && (
@@ -476,6 +1090,16 @@ export default function PosApiAdmin() {
             />
           </label>
           <label style={styles.label}>
+            Category
+            <input
+              type="text"
+              value={formState.category}
+              onChange={(e) => handleChange('category', e.target.value)}
+              style={styles.input}
+              placeholder="Receipts & Invoices"
+            />
+          </label>
+          <label style={styles.label}>
             Method
             <select
               value={formState.method}
@@ -485,6 +1109,21 @@ export default function PosApiAdmin() {
               {['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].map((method) => (
                 <option key={method} value={method}>
                   {method}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={styles.label}>
+            POSAPI type
+            <select
+              value={formState.posApiType}
+              onChange={(e) => handleTypeChange(e.target.value)}
+              style={styles.input}
+            >
+              <option value="">Select a type…</option>
+              {POSAPI_TYPES.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
                 </option>
               ))}
             </select>
@@ -508,73 +1147,644 @@ export default function PosApiAdmin() {
               rows={6}
             />
           </label>
-          <label style={styles.labelFull}>
-            Request description
-            <input
-              type="text"
-              value={formState.requestDescription}
-              onChange={(e) => handleChange('requestDescription', e.target.value)}
-              style={styles.input}
-              placeholder="Batch of receipts with payments and items"
-            />
-          </label>
-          <label style={styles.labelFull}>
-            Request body schema (JSON)
-            <textarea
-              value={formState.requestSchemaText}
-              onChange={(e) => handleChange('requestSchemaText', e.target.value)}
-              style={styles.textarea}
-              rows={10}
-            />
-          </label>
-          <label style={styles.labelFull}>
-            Response description
-            <input
-              type="text"
-              value={formState.responseDescription}
-              onChange={(e) => handleChange('responseDescription', e.target.value)}
-              style={styles.input}
-              placeholder="Receipt submission response"
-            />
-          </label>
-          <label style={styles.labelFull}>
-            Response body schema (JSON)
-            <textarea
-              value={formState.responseSchemaText}
-              onChange={(e) => handleChange('responseSchemaText', e.target.value)}
-              style={styles.textarea}
-              rows={10}
-            />
-          </label>
-          <label style={styles.labelFull}>
-            Field descriptions (JSON object)
-            <textarea
-              value={formState.fieldDescriptionsText}
-              onChange={(e) => handleChange('fieldDescriptionsText', e.target.value)}
-              style={styles.textarea}
-              rows={8}
-            />
-          </label>
-          <div style={styles.inlineFields}>
-            <label style={{ ...styles.label, flex: 1 }}>
-              Test server URL
-              <input
-                type="text"
-                value={formState.testServerUrl}
-                onChange={(e) => handleChange('testServerUrl', e.target.value)}
-                style={styles.input}
-                placeholder="https://posapi-test.tax.gov.mn"
-              />
-            </label>
-            <label style={{ ...styles.checkboxLabel, marginTop: '1.5rem' }}>
-              <input
-                type="checkbox"
-                checked={formState.testable}
-                onChange={(e) => handleChange('testable', e.target.checked)}
-              />
-              Testable endpoint
-            </label>
+        </div>
+
+        <section style={styles.builderSection}>
+          <div style={styles.sectionHeader}>
+            <h2 style={styles.sectionTitle}>Structured request builder</h2>
+            {formState.posApiType && (
+              <span style={styles.sectionBadge}>{formatTypeLabel(formState.posApiType)}</span>
+            )}
           </div>
+          {!formState.posApiType && (
+            <p style={styles.sectionHelp}>
+              Select a POSAPI type to load guided templates for receipts, invoices, and stock QR payloads.
+            </p>
+          )}
+          {requestBuilderError && (
+            <div style={styles.previewErrorBox}>
+              <strong>Invalid request JSON:</strong> {requestBuilderError}
+            </div>
+          )}
+          {formState.posApiType && requestBuilder && (
+            <>
+              <details open style={styles.detailSection}>
+                <summary style={styles.detailSummary}>Header &amp; totals</summary>
+                <div style={styles.detailBody}>
+                  <div style={styles.builderGrid}>
+                    <label style={styles.builderLabel}>
+                      Branch number
+                      <input
+                        type="text"
+                        value={requestBuilder.branchNo || ''}
+                        onChange={(e) => handleBuilderFieldChange('branchNo', e.target.value)}
+                        style={styles.input}
+                      />
+                    </label>
+                    <label style={styles.builderLabel}>
+                      POS number
+                      <input
+                        type="text"
+                        value={requestBuilder.posNo || ''}
+                        onChange={(e) => handleBuilderFieldChange('posNo', e.target.value)}
+                        style={styles.input}
+                      />
+                    </label>
+                    <label style={styles.builderLabel}>
+                      Merchant TIN
+                      <input
+                        type="text"
+                        value={requestBuilder.merchantTin || ''}
+                        onChange={(e) => handleBuilderFieldChange('merchantTin', e.target.value)}
+                        style={styles.input}
+                      />
+                    </label>
+                    {!isStockType && (
+                      <label style={styles.builderLabel}>
+                        Tax type
+                        <select
+                          value={requestBuilder.taxType || 'VAT_ABLE'}
+                          onChange={(e) => handleBuilderFieldChange('taxType', e.target.value)}
+                          style={styles.input}
+                        >
+                          {TAX_TYPES.map((tax) => (
+                            <option key={tax.value} value={tax.value}>
+                              {tax.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {formState.posApiType?.startsWith('B2B') && (
+                      <label style={styles.builderLabel}>
+                        Customer TIN
+                        <input
+                          type="text"
+                          value={requestBuilder.customerTin || ''}
+                          onChange={(e) => handleBuilderFieldChange('customerTin', e.target.value)}
+                          style={styles.input}
+                        />
+                      </label>
+                    )}
+                    {!formState.posApiType?.startsWith('B2B') && isReceiptType && (
+                      <label style={styles.builderLabel}>
+                        Consumer number / phone
+                        <input
+                          type="text"
+                          value={requestBuilder.consumerNo || ''}
+                          onChange={(e) => handleBuilderFieldChange('consumerNo', e.target.value)}
+                          style={styles.input}
+                        />
+                      </label>
+                    )}
+                    {isReceiptType && (
+                      <>
+                        <label style={styles.builderLabel}>
+                          Total amount
+                          <input
+                            type="number"
+                            value={requestBuilder.totalAmount ?? 0}
+                            onChange={(e) =>
+                              handleBuilderFieldChange('totalAmount', Number(e.target.value) || 0)
+                            }
+                            style={styles.input}
+                          />
+                        </label>
+                        <label style={styles.builderLabel}>
+                          Total VAT
+                          <input
+                            type="number"
+                            value={requestBuilder.totalVAT ?? 0}
+                            onChange={(e) =>
+                              handleBuilderFieldChange('totalVAT', Number(e.target.value) || 0)
+                            }
+                            style={styles.input}
+                            disabled={requestBuilder.taxType !== 'VAT_ABLE'}
+                          />
+                        </label>
+                        <label style={styles.builderLabel}>
+                          Total city tax
+                          <input
+                            type="number"
+                            value={requestBuilder.totalCityTax ?? 0}
+                            onChange={(e) =>
+                              handleBuilderFieldChange('totalCityTax', Number(e.target.value) || 0)
+                            }
+                            style={styles.input}
+                            disabled={requestBuilder.taxType !== 'VAT_ABLE'}
+                          />
+                        </label>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </details>
+
+              {isReceiptType && (
+                <details open style={styles.detailSection}>
+                  <summary style={styles.detailSummary}>Receipts by tax type</summary>
+                  <div style={styles.detailBody}>
+                    <p style={styles.sectionHelp}>
+                      Create one receipt group per tax type. Each group contains its own items and totals.
+                    </p>
+                    {(Array.isArray(requestBuilder.receipts) ? requestBuilder.receipts : []).map(
+                      (receipt, index) => {
+                        const items = Array.isArray(receipt.items) ? receipt.items : [];
+                        const showVatFields = receipt.taxType === 'VAT_ABLE';
+                        const showTaxProduct =
+                          receipt.taxType === 'VAT_FREE' || receipt.taxType === 'VAT_ZERO';
+                        return (
+                          <div key={`receipt-${index}`} style={styles.receiptCard}>
+                            <div style={styles.receiptHeader}>
+                              <div>
+                                <strong>Receipt group {index + 1}</strong>
+                                <span style={styles.receiptSub}>Tax type: {receipt.taxType}</span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeReceiptGroup(index)}
+                                style={styles.smallDangerButton}
+                              >
+                                Remove group
+                              </button>
+                            </div>
+                            <div style={styles.builderGrid}>
+                              <label style={styles.builderLabel}>
+                                Tax type
+                                <select
+                                  value={receipt.taxType || 'VAT_ABLE'}
+                                  onChange={(e) => handleReceiptChange(index, 'taxType', e.target.value)}
+                                  style={styles.input}
+                                >
+                                  {TAX_TYPES.map((tax) => (
+                                    <option key={tax.value} value={tax.value}>
+                                      {tax.label}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label style={styles.builderLabel}>
+                                Group amount
+                                <input
+                                  type="number"
+                                  value={receipt.totalAmount ?? 0}
+                                  onChange={(e) =>
+                                    handleReceiptChange(index, 'totalAmount', Number(e.target.value) || 0)
+                                  }
+                                  style={styles.input}
+                                />
+                              </label>
+                              {showVatFields && (
+                                <>
+                                  <label style={styles.builderLabel}>
+                                    Group VAT
+                                    <input
+                                      type="number"
+                                      value={receipt.totalVAT ?? 0}
+                                      onChange={(e) =>
+                                        handleReceiptChange(index, 'totalVAT', Number(e.target.value) || 0)
+                                      }
+                                      style={styles.input}
+                                    />
+                                  </label>
+                                  <label style={styles.builderLabel}>
+                                    Group city tax
+                                    <input
+                                      type="number"
+                                      value={receipt.totalCityTax ?? 0}
+                                      onChange={(e) =>
+                                        handleReceiptChange(index, 'totalCityTax', Number(e.target.value) || 0)
+                                      }
+                                      style={styles.input}
+                                    />
+                                  </label>
+                                </>
+                              )}
+                              {showTaxProduct && (
+                                <label style={styles.builderLabel}>
+                                  Tax product code
+                                  <input
+                                    type="text"
+                                    list="taxProductCodes"
+                                    value={receipt.taxProductCode ?? ''}
+                                    onChange={(e) => handleReceiptChange(index, 'taxProductCode', e.target.value)}
+                                    style={styles.input}
+                                    placeholder="Select or type the exemption reason"
+                                  />
+                                </label>
+                              )}
+                            </div>
+
+                            <div style={styles.itemsContainer}>
+                              {items.map((item, itemIndex) => (
+                                <div key={`item-${itemIndex}`} style={styles.itemCard}>
+                                  <div style={styles.itemHeader}>
+                                    <strong>Item {itemIndex + 1}</strong>
+                                    <button
+                                      type="button"
+                                      onClick={() => removeReceiptItem(index, itemIndex)}
+                                      style={styles.smallButton}
+                                    >
+                                      Remove item
+                                    </button>
+                                  </div>
+                                  <div style={styles.builderGrid}>
+                                    <label style={styles.builderLabel}>
+                                      Name
+                                      <input
+                                        type="text"
+                                        value={item.name || ''}
+                                        onChange={(e) =>
+                                          handleReceiptItemChange(index, itemIndex, 'name', e.target.value)
+                                        }
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                    <label style={styles.builderLabel}>
+                                      Barcode
+                                      <input
+                                        type="text"
+                                        value={item.barCode || ''}
+                                        onChange={(e) =>
+                                          handleReceiptItemChange(index, itemIndex, 'barCode', e.target.value)
+                                        }
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                    <label style={styles.builderLabel}>
+                                      Classification code
+                                      <input
+                                        type="text"
+                                        value={item.classificationCode || ''}
+                                        onChange={(e) =>
+                                          handleReceiptItemChange(
+                                            index,
+                                            itemIndex,
+                                            'classificationCode',
+                                            e.target.value,
+                                          )
+                                        }
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                    {showTaxProduct && (
+                                      <label style={styles.builderLabel}>
+                                        Tax product code
+                                        <input
+                                          type="text"
+                                          list="taxProductCodes"
+                                          value={item.taxProductCode ?? ''}
+                                          onChange={(e) =>
+                                            handleReceiptItemChange(
+                                              index,
+                                              itemIndex,
+                                              'taxProductCode',
+                                              e.target.value,
+                                            )
+                                          }
+                                          style={styles.input}
+                                        />
+                                      </label>
+                                    )}
+                                    <label style={styles.builderLabel}>
+                                      Measure unit
+                                      <input
+                                        type="text"
+                                        value={item.measureUnit || ''}
+                                        onChange={(e) =>
+                                          handleReceiptItemChange(
+                                            index,
+                                            itemIndex,
+                                            'measureUnit',
+                                            e.target.value,
+                                          )
+                                        }
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                    <label style={styles.builderLabel}>
+                                      Quantity
+                                      <input
+                                        type="number"
+                                        value={item.qty ?? 0}
+                                        onChange={(e) =>
+                                          handleReceiptItemChange(
+                                            index,
+                                            itemIndex,
+                                            'qty',
+                                            Number(e.target.value) || 0,
+                                          )
+                                        }
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                    <label style={styles.builderLabel}>
+                                      Unit price
+                                      <input
+                                        type="number"
+                                        value={item.price ?? 0}
+                                        onChange={(e) =>
+                                          handleReceiptItemChange(
+                                            index,
+                                            itemIndex,
+                                            'price',
+                                            Number(e.target.value) || 0,
+                                          )
+                                        }
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                    {showVatFields && (
+                                      <label style={styles.builderLabel}>
+                                        City tax
+                                        <input
+                                          type="number"
+                                          value={item.cityTax ?? 0}
+                                          onChange={(e) =>
+                                            handleReceiptItemChange(
+                                              index,
+                                              itemIndex,
+                                              'cityTax',
+                                              Number(e.target.value) || 0,
+                                            )
+                                          }
+                                          style={styles.input}
+                                        />
+                                      </label>
+                                    )}
+                                    <label style={styles.builderLabel}>
+                                      VAT tax type
+                                      <select
+                                        value={item.vatTaxType || receipt.taxType || 'VAT_ABLE'}
+                                        onChange={(e) =>
+                                          handleReceiptItemChange(
+                                            index,
+                                            itemIndex,
+                                            'vatTaxType',
+                                            e.target.value,
+                                          )
+                                        }
+                                        style={styles.input}
+                                      >
+                                        {TAX_TYPES.map((tax) => (
+                                          <option key={tax.value} value={tax.value}>
+                                            {tax.label}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label style={styles.builderLabel}>
+                                      Lot number
+                                      <input
+                                        type="text"
+                                        value={item.lotNo || ''}
+                                        onChange={(e) =>
+                                          handleReceiptItemChange(index, itemIndex, 'lotNo', e.target.value)
+                                        }
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+                              ))}
+                              <button
+                                type="button"
+                                onClick={() => addReceiptItem(index)}
+                                style={styles.smallButton}
+                              >
+                                + Add item
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      },
+                    )}
+                    <button type="button" onClick={addReceiptGroup} style={styles.smallButton}>
+                      + Add receipt group
+                    </button>
+                  </div>
+                </details>
+              )}
+
+              {isReceiptType && (
+                <details open style={styles.detailSection}>
+                  <summary style={styles.detailSummary}>Payments</summary>
+                  <div style={styles.detailBody}>
+                    <div style={styles.paymentsTable}>
+                      {(Array.isArray(requestBuilder.payments) ? requestBuilder.payments : []).map(
+                        (payment, index) => (
+                          <div key={`payment-${index}`} style={styles.paymentRow}>
+                            <select
+                              value={payment.type || 'CASH'}
+                              onChange={(e) => handlePaymentChange(index, 'type', e.target.value)}
+                              style={styles.paymentSelect}
+                              title={PAYMENT_DESCRIPTIONS[payment.type] || ''}
+                            >
+                              {PAYMENT_TYPES.map((paymentType) => (
+                                <option key={paymentType.value} value={paymentType.value}>
+                                  {paymentType.label}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              value={payment.amount ?? 0}
+                              onChange={(e) =>
+                                handlePaymentChange(index, 'amount', Number(e.target.value) || 0)
+                              }
+                              style={styles.paymentAmount}
+                            />
+                            <button
+                              type="button"
+                              onClick={() => removePayment(index)}
+                              style={styles.smallDangerButton}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                    <div style={styles.paymentSummary}>
+                      <div>Payment total: {paymentsTotal.toLocaleString()}</div>
+                      <div>Total amount: {(requestBuilder.totalAmount ?? 0).toLocaleString()}</div>
+                      {!paymentsBalanced && (
+                        <div style={styles.warningText}>
+                          The sum of payments must equal the total amount.
+                        </div>
+                      )}
+                    </div>
+                    <button type="button" onClick={addPayment} style={styles.smallButton}>
+                      + Add payment method
+                    </button>
+                  </div>
+                </details>
+              )}
+
+              {isStockType && (
+                <details open style={styles.detailSection}>
+                  <summary style={styles.detailSummary}>Stock QR payload</summary>
+                  <div style={styles.detailBody}>
+                    <p style={styles.sectionHelp}>
+                      Define the stock codes that should be encoded into the QR payload.
+                    </p>
+                    {(Array.isArray(requestBuilder.stockCodes) ? requestBuilder.stockCodes : []).map(
+                      (stock, index) => (
+                        <div key={`stock-${index}`} style={styles.itemCard}>
+                          <div style={styles.itemHeader}>
+                            <strong>Stock entry {index + 1}</strong>
+                            <button
+                              type="button"
+                              onClick={() => removeStockItem(index)}
+                              style={styles.smallButton}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <div style={styles.builderGrid}>
+                            <label style={styles.builderLabel}>
+                              Code
+                              <input
+                                type="text"
+                                value={stock.code || ''}
+                                onChange={(e) => handleStockItemChange(index, 'code', e.target.value)}
+                                style={styles.input}
+                              />
+                            </label>
+                            <label style={styles.builderLabel}>
+                              Name
+                              <input
+                                type="text"
+                                value={stock.name || ''}
+                                onChange={(e) => handleStockItemChange(index, 'name', e.target.value)}
+                                style={styles.input}
+                              />
+                            </label>
+                            <label style={styles.builderLabel}>
+                              Classification code
+                              <input
+                                type="text"
+                                value={stock.classificationCode || ''}
+                                onChange={(e) =>
+                                  handleStockItemChange(index, 'classificationCode', e.target.value)
+                                }
+                                style={styles.input}
+                              />
+                            </label>
+                            <label style={styles.builderLabel}>
+                              Quantity
+                              <input
+                                type="number"
+                                value={stock.qty ?? 0}
+                                onChange={(e) =>
+                                  handleStockItemChange(index, 'qty', Number(e.target.value) || 0)
+                                }
+                                style={styles.input}
+                              />
+                            </label>
+                            <label style={styles.builderLabel}>
+                              Measure unit
+                              <input
+                                type="text"
+                                value={stock.measureUnit || ''}
+                                onChange={(e) => handleStockItemChange(index, 'measureUnit', e.target.value)}
+                                style={styles.input}
+                              />
+                            </label>
+                            <label style={styles.builderLabel}>
+                              Lot number
+                              <input
+                                type="text"
+                                value={stock.lotNo || ''}
+                                onChange={(e) => handleStockItemChange(index, 'lotNo', e.target.value)}
+                                style={styles.input}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      ),
+                    )}
+                    <button type="button" onClick={addStockItem} style={styles.smallButton}>
+                      + Add stock entry
+                    </button>
+                  </div>
+                </details>
+              )}
+            </>
+          )}
+          <datalist id="taxProductCodes">
+            {TAX_PRODUCT_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value} label={option.label} />
+            ))}
+          </datalist>
+        </section>
+
+        <label style={styles.labelFull}>
+          Request description
+          <input
+            type="text"
+            value={formState.requestDescription}
+            onChange={(e) => handleChange('requestDescription', e.target.value)}
+            style={styles.input}
+            placeholder="Batch of receipts with payments and items"
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Request body schema (JSON)
+          <textarea
+            value={formState.requestSchemaText}
+            onChange={(e) => handleChange('requestSchemaText', e.target.value)}
+            style={styles.textarea}
+            rows={10}
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Response description
+          <input
+            type="text"
+            value={formState.responseDescription}
+            onChange={(e) => handleChange('responseDescription', e.target.value)}
+            style={styles.input}
+            placeholder="Receipt submission response"
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Response body schema (JSON)
+          <textarea
+            value={formState.responseSchemaText}
+            onChange={(e) => handleChange('responseSchemaText', e.target.value)}
+            style={styles.textarea}
+            rows={10}
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Field descriptions (JSON object)
+          <textarea
+            value={formState.fieldDescriptionsText}
+            onChange={(e) => handleChange('fieldDescriptionsText', e.target.value)}
+            style={styles.textarea}
+            rows={8}
+          />
+        </label>
+        <div style={styles.inlineFields}>
+          <label style={{ ...styles.label, flex: 1 }}>
+            Test server URL
+            <input
+              type="text"
+              value={formState.testServerUrl}
+              onChange={(e) => handleChange('testServerUrl', e.target.value)}
+              style={styles.input}
+              placeholder="https://posapi-test.tax.gov.mn"
+            />
+          </label>
+          <label style={{ ...styles.checkboxLabel, marginTop: '1.5rem' }}>
+            <input
+              type="checkbox"
+              checked={formState.testable}
+              onChange={(e) => handleChange('testable', e.target.checked)}
+            />
+            Testable endpoint
+          </label>
         </div>
 
         <div style={styles.previewSection}>
@@ -625,30 +1835,64 @@ export default function PosApiAdmin() {
               placeholder="https://developer.itc.gov.mn/docs/..."
             />
           </label>
-          <div style={styles.docButtons}>
-            <button
-              type="button"
-              onClick={() => handleFetchDoc('request')}
-              disabled={loading}
-            >
-              Fetch request JSON
-            </button>
-            <button
-              type="button"
-              onClick={() => handleFetchDoc('response')}
-              disabled={loading}
-            >
-              Fetch response JSON
-            </button>
-            <button
-              type="button"
-              onClick={() => handleFetchDoc('fields')}
-              disabled={loading}
-            >
-              Fetch field descriptions
-            </button>
-          </div>
+          <button type="button" onClick={handleFetchDoc} disabled={loading} style={styles.fetchButton}>
+            {loading ? 'Fetching…' : 'Fetch documentation'}
+          </button>
         </div>
+
+        {docExamples.length > 0 && (
+          <div style={styles.docSelection}>
+            <label style={{ ...styles.label, flex: 1 }}>
+              Select JSON block
+              <select
+                value={selectedDocBlock}
+                onChange={(e) => setSelectedDocBlock(e.target.value)}
+                style={styles.input}
+              >
+                {docExamples.map((block) => (
+                  <option key={block.label} value={block.label}>
+                    {block.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={styles.docButtons}>
+              <button type="button" onClick={() => handleApplyDocBlock('request')}>
+                Insert into request
+              </button>
+              <button type="button" onClick={() => handleApplyDocBlock('response')}>
+                Insert into response
+              </button>
+              <button type="button" onClick={() => handleApplyDocBlock('fields')}>
+                Replace field descriptions
+              </button>
+            </div>
+            {(docMetadata.method || docMetadata.path || docMetadata.testServerUrl) && (
+              <div style={styles.docMetadata}>
+                {docMetadata.method && (
+                  <span>
+                    Method detected: <strong>{docMetadata.method}</strong>
+                  </span>
+                )}
+                {docMetadata.path && (
+                  <span>
+                    Path detected: <strong>{docMetadata.path}</strong>
+                  </span>
+                )}
+                {docMetadata.testServerUrl && (
+                  <span>
+                    Test server defaulted to <strong>{docMetadata.testServerUrl}</strong>
+                  </span>
+                )}
+              </div>
+            )}
+            {docFieldDescriptions && Object.keys(docFieldDescriptions).length > 0 && (
+              <div style={styles.docMetadata}>
+                Loaded {Object.keys(docFieldDescriptions).length} field descriptions from documentation.
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={styles.actions}>
           <button
@@ -773,6 +2017,26 @@ const styles = {
     flexDirection: 'column',
     gap: '0.5rem',
   },
+  listGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    paddingBottom: '0.75rem',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  listGroupHeader: {
+    fontWeight: 700,
+    fontSize: '0.95rem',
+    color: '#1e293b',
+  },
+  listGroupList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
   listButton: {
     width: '100%',
     textAlign: 'left',
@@ -785,6 +2049,33 @@ const styles = {
   listButtonActive: {
     borderColor: '#2563eb',
     background: '#dbeafe',
+  },
+  listButtonHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+    alignItems: 'flex-start',
+  },
+  listButtonTitle: {
+    fontWeight: 600,
+    fontSize: '0.95rem',
+    color: '#0f172a',
+  },
+  badgeStack: {
+    display: 'flex',
+    gap: '0.25rem',
+    flexWrap: 'wrap',
+  },
+  listButtonSubtle: {
+    fontSize: '0.75rem',
+    color: '#64748b',
+    marginTop: '0.25rem',
+  },
+  previewText: {
+    marginTop: '0.25rem',
+    color: '#475569',
+    fontSize: '0.75rem',
+    lineHeight: 1.3,
   },
   formContainer: {
     flex: 1,
@@ -802,11 +2093,78 @@ const styles = {
     gap: '1rem 1.5rem',
     marginTop: '1rem',
   },
+  builderSection: {
+    marginTop: '1.5rem',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    background: '#f8fafc',
+    padding: '1rem 1.25rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1rem',
+  },
+  sectionHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+    flexWrap: 'wrap',
+  },
+  sectionTitle: {
+    margin: 0,
+    fontSize: '1.15rem',
+  },
+  sectionBadge: {
+    background: '#2563eb',
+    color: '#fff',
+    borderRadius: '999px',
+    padding: '0.25rem 0.75rem',
+    fontSize: '0.8rem',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+  },
+  sectionHelp: {
+    margin: 0,
+    fontSize: '0.85rem',
+    color: '#475569',
+  },
+  detailSection: {
+    border: '1px solid #cbd5f5',
+    borderRadius: '6px',
+    background: '#fff',
+    overflow: 'hidden',
+  },
+  detailSummary: {
+    margin: 0,
+    padding: '0.75rem 1rem',
+    cursor: 'pointer',
+    background: '#e0f2fe',
+    fontWeight: 600,
+    listStyle: 'none',
+  },
+  detailBody: {
+    padding: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '1rem',
+  },
   label: {
     display: 'flex',
     flexDirection: 'column',
     fontWeight: 600,
     gap: '0.5rem',
+  },
+  builderGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '0.75rem 1rem',
+  },
+  builderLabel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+    fontWeight: 600,
+    fontSize: '0.85rem',
   },
   labelFull: {
     gridColumn: '1 / -1',
@@ -848,10 +2206,128 @@ const styles = {
     gap: '1rem',
     alignItems: 'flex-end',
   },
+  fetchButton: {
+    background: '#2563eb',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '0.55rem 1.25rem',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
   docButtons: {
     display: 'flex',
     gap: '0.5rem',
     flexWrap: 'wrap',
+  },
+  docSelection: {
+    marginTop: '1rem',
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
+    background: '#f1f5f9',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  docMetadata: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.75rem',
+    fontSize: '0.8rem',
+    color: '#1e293b',
+  },
+  receiptCard: {
+    border: '1px solid #cbd5f5',
+    borderRadius: '6px',
+    padding: '0.75rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+    background: '#fff',
+  },
+  receiptHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  receiptSub: {
+    display: 'block',
+    fontSize: '0.75rem',
+    color: '#475569',
+    marginTop: '0.15rem',
+  },
+  itemsContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  itemCard: {
+    border: '1px dashed #cbd5f5',
+    borderRadius: '6px',
+    padding: '0.75rem',
+    background: '#f8fafc',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  itemHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  smallButton: {
+    background: '#2563eb',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '0.25rem 0.75rem',
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+  },
+  smallDangerButton: {
+    background: '#f87171',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '0.25rem 0.75rem',
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+  },
+  paymentsTable: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  paymentRow: {
+    display: 'grid',
+    gridTemplateColumns: '200px 1fr auto',
+    gap: '0.5rem',
+    alignItems: 'center',
+  },
+  paymentSelect: {
+    padding: '0.4rem',
+    borderRadius: '4px',
+    border: '1px solid #cbd5f5',
+    fontSize: '0.9rem',
+  },
+  paymentAmount: {
+    padding: '0.4rem',
+    borderRadius: '4px',
+    border: '1px solid #cbd5f5',
+    fontSize: '0.9rem',
+  },
+  paymentSummary: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '1rem',
+    fontSize: '0.85rem',
+    color: '#1e293b',
+  },
+  warningText: {
+    color: '#b45309',
+    fontWeight: 600,
   },
   actions: {
     marginTop: '1.5rem',

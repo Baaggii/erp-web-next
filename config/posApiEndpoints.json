@@ -2,45 +2,53 @@
   {
     "id": "saveReceipt",
     "name": "Save B2C/B2B Receipt",
+    "category": "Receipts & Invoices",
     "method": "POST",
     "path": "/rest/receipt",
     "parameters": [],
+    "posApiType": "B2C_RECEIPT",
     "requestBody": {
       "schema": {
+        "type": "B2C_RECEIPT",
+        "taxType": "VAT_ABLE",
+        "branchNo": "001",
+        "posNo": "POS-01",
+        "merchantTin": "1234567890",
+        "consumerNo": "99119911",
+        "totalAmount": 110000,
+        "totalVAT": 10000,
+        "totalCityTax": 1000,
         "receipts": [
           {
-            "merchantTin": "1234567890",
-            "branchNo": "001",
-            "posNo": "POS-01",
-            "date": "2024-01-01T12:34:56",
-            "totalAmount": 10000,
-            "totalVAT": 1000,
-            "totalCityTax": 0,
-            "customerTin": "9876543210",
-            "consumerNo": "99119911",
-            "lottery": "",
+            "taxType": "VAT_ABLE",
+            "totalAmount": 110000,
+            "totalVAT": 10000,
+            "totalCityTax": 1000,
             "items": [
               {
-                "name": "Product name",
-                "barcode": "1234567890123",
+                "name": "Sample good or service",
+                "barCode": "1234567890123",
+                "barCodeType": "EAN_13",
+                "classificationCode": "<product-code>",
+                "taxProductCode": "A12345",
                 "measureUnit": "PCS",
                 "qty": 1,
-                "unitPrice": 10000,
-                "vat": 1000,
-                "cityTax": 0,
-                "totalAmount": 10000
-              }
-            ],
-            "payments": [
-              {
-                "type": "CASH",
-                "amount": 10000
+                "price": 100000,
+                "vatTaxType": "VAT_ABLE",
+                "cityTax": 1000,
+                "lotNo": ""
               }
             ]
           }
+        ],
+        "payments": [
+          {
+            "type": "CASH",
+            "amount": 110000
+          }
         ]
       },
-      "description": "Batch of receipts with payments and items"
+      "description": "Batch of receipts with payments and items grouped by tax type"
     },
     "responseBody": {
       "schema": {
@@ -48,8 +56,9 @@
         "message": "Receipt registered",
         "receipts": [
           {
+            "billId": "2024-000123",
             "lottery": "АБ12345678",
-            "qrData": "https://ebarimt.mn/verify/...",
+            "qrData": "https://posapi-test.tax.gov.mn/verify/...",
             "receiptNumbers": ["12345678"],
             "errors": []
           }
@@ -58,16 +67,26 @@
       "description": "Receipt submission response"
     },
     "fieldDescriptions": {
-      "merchantTin": "Registered TIN of the merchant submitting the receipt",
-      "branchNo": "Three digit branch identifier issued with the licence",
-      "posNo": "POS terminal identifier registered with the tax authority",
-      "totalAmount": "Total invoice amount including tax",
-      "totalVAT": "VAT amount for the transaction",
-      "totalCityTax": "City tax amount if applicable",
-      "customerTin": "Buyer TIN for B2B receipts",
-      "consumerNo": "Citizen registry or phone number for B2C receipts",
-      "items": "Line items with product and tax information",
-      "payments": "Payment breakdown for the receipt"
+      "type": "POSAPI payload type (B2C_RECEIPT, B2B_RECEIPT, B2C_INVOICE, B2B_INVOICE, STOCK_QR).",
+      "taxType": "Overall tax category for the header (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT).",
+      "branchNo": "Three digit branch identifier issued with the licence.",
+      "posNo": "POS terminal identifier registered with the tax authority.",
+      "merchantTin": "Registered TIN of the merchant submitting the receipt.",
+      "consumerNo": "Citizen registry or phone number for B2C receipts.",
+      "customerTin": "Buyer TIN for B2B receipts.",
+      "totalAmount": "Total invoice amount including tax.",
+      "totalVAT": "VAT amount for the transaction when taxType is VAT_ABLE.",
+      "totalCityTax": "City tax amount when applicable to VAT_ABLE receipts.",
+      "receipts": "Groups of line items organised by POSAPI tax type.",
+      "receipts[].taxType": "Tax type for this group (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT).",
+      "receipts[].totalAmount": "Amount for this tax group including tax.",
+      "receipts[].totalVAT": "VAT total for this group when taxType is VAT_ABLE.",
+      "receipts[].items": "Line items with product and tax information for this group.",
+      "receipts[].items[].classificationCode": "Unified product/service classification code.",
+      "receipts[].items[].taxProductCode": "Reason code for VAT_FREE/VAT_ZERO items.",
+      "payments": "Breakdown of how the receipt or invoice was paid.",
+      "payments[].type": "Payment method code. Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD.",
+      "payments[].amount": "Amount paid with the selected payment method."
     },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"
