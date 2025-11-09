@@ -3,31 +3,6 @@ import { requireAuth } from '../middlewares/auth.js';
 import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
 import { getEmploymentSession } from '../../db/index.js';
 
-let cachedHttpClient = null;
-async function getHttpClient() {
-  if (cachedHttpClient) return cachedHttpClient;
-
-  if (typeof globalThis.fetch === 'function') {
-    let HeadersCtor = globalThis.Headers;
-    if (typeof HeadersCtor !== 'function') {
-      const mod = await import('node-fetch');
-      HeadersCtor = mod.Headers;
-    }
-    cachedHttpClient = {
-      fetch: globalThis.fetch.bind(globalThis),
-      Headers: HeadersCtor,
-    };
-    return cachedHttpClient;
-  }
-
-  const mod = await import('node-fetch');
-  cachedHttpClient = {
-    fetch: mod.default,
-    Headers: mod.Headers,
-  };
-  return cachedHttpClient;
-}
-
 const router = express.Router();
 
 async function requireSystemSettings(req, res) {
@@ -146,8 +121,7 @@ router.post('/fetch-doc', requireAuth, async (req, res, next) => {
       res.status(400).json({ message: 'url is required' });
       return;
     }
-    const { fetch: fetchFn } = await getHttpClient();
-    const response = await fetchFn(url, {
+    const response = await fetch(url, {
       headers: {
         Accept: 'application/json, text/plain;q=0.9, text/html;q=0.8, */*;q=0.5',
       },
@@ -278,8 +252,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
 
     const { method, url } = buildTestUrl(definition);
 
-    const { fetch: fetchFn, Headers: HeadersCtor } = await getHttpClient();
-    const headers = new HeadersCtor({ Accept: 'application/json, text/plain;q=0.9, */*;q=0.5' });
+    const headers = new Headers({ Accept: 'application/json, text/plain;q=0.9, */*;q=0.5' });
     let body;
     if (requestBody !== undefined && requestBody !== null && method !== 'GET' && method !== 'HEAD') {
       headers.set('Content-Type', 'application/json');
@@ -288,7 +261,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
 
     let response;
     try {
-      response = await fetchFn(url, { method, headers, body });
+      response = await fetch(url, { method, headers, body });
     } catch (err) {
       res
         .status(502)
