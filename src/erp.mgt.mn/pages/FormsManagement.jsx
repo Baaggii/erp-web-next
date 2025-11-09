@@ -17,6 +17,15 @@ const POS_API_FIELDS = [
   { key: 'consumerNo', label: 'Consumer number' },
   { key: 'taxType', label: 'Tax type' },
   { key: 'lotNo', label: 'Lot number (pharmacy)' },
+  { key: 'branchNo', label: 'Branch number' },
+  { key: 'posNo', label: 'POS number' },
+  { key: 'merchantTin', label: 'Merchant TIN override' },
+  { key: 'districtCode', label: 'District code' },
+  { key: 'itemsField', label: 'Items array column' },
+  { key: 'paymentsField', label: 'Payments array column' },
+  { key: 'paymentType', label: 'Default payment type column' },
+  { key: 'taxTypeField', label: 'Header tax type column' },
+  { key: 'classificationCodeField', label: 'Classification code column' },
 ];
 
 function normalizeFormConfig(info = {}) {
@@ -92,6 +101,14 @@ function normalizeFormConfig(info = {}) {
     allowTemporarySubmission: temporaryFlag,
     posApiEnabled: Boolean(info.posApiEnabled),
     posApiType: toString(info.posApiType),
+    posApiTypeField: toString(info.posApiTypeField),
+    posApiEndpointId: toString(info.posApiEndpointId),
+    posApiInfoEndpointIds: toArray(info.posApiInfoEndpointIds).map((v) =>
+      typeof v === 'string' ? v : String(v),
+    ),
+    fieldsFromPosApi: toArray(info.fieldsFromPosApi).map((v) =>
+      typeof v === 'string' ? v : String(v),
+    ),
     posApiMapping: toObject(info.posApiMapping),
   };
 }
@@ -117,6 +134,7 @@ export default function FormsManagement() {
   const [deptCfg, setDeptCfg] = useState({ idField: null, displayFields: [] });
   const [userRightCfg, setUserRightCfg] = useState({ idField: null, displayFields: [] });
   const [workplaceCfg, setWorkplaceCfg] = useState({ idField: null, displayFields: [] });
+  const [posApiEndpoints, setPosApiEndpoints] = useState([]);
   const [savedConfigs, setSavedConfigs] = useState([]);
   const [selectedConfig, setSelectedConfig] = useState('');
   const generalConfig = useGeneralConfig();
@@ -164,6 +182,21 @@ export default function FormsManagement() {
       });
   }, []);
 
+  useEffect(() => {
+    fetch('/api/posapi/endpoints', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setPosApiEndpoints(data);
+        } else if (data && Array.isArray(data.endpoints)) {
+          setPosApiEndpoints(data.endpoints);
+        } else {
+          setPosApiEndpoints([]);
+        }
+      })
+      .catch(() => setPosApiEndpoints([]));
+  }, []);
+
   const branchOptions = useMemo(() => {
     const idField = branchCfg?.idField || 'id';
     return branches.map((b) => {
@@ -179,6 +212,24 @@ export default function FormsManagement() {
       return { value: String(val), label };
     });
   }, [branches, branchCfg]);
+
+  const endpointOptions = useMemo(() => {
+    if (!Array.isArray(posApiEndpoints)) return [];
+    return posApiEndpoints
+      .map((endpoint) => {
+        if (!endpoint || typeof endpoint !== 'object') return null;
+        const id = typeof endpoint.id === 'string' ? endpoint.id : '';
+        if (!id) return null;
+        const name = typeof endpoint.name === 'string' ? endpoint.name : '';
+        const label = name ? `${id} – ${name}` : id;
+        return {
+          value: id,
+          label,
+          defaultForForm: Boolean(endpoint.defaultForForm),
+        };
+      })
+      .filter(Boolean);
+  }, [posApiEndpoints]);
 
   const deptOptions = useMemo(() => {
     const idField = deptCfg?.idField || 'id';
@@ -497,6 +548,21 @@ export default function FormsManagement() {
     });
   }
 
+  function handleInfoEndpointChange(event) {
+    const selected = Array.from(event.target.selectedOptions || [])
+      .map((opt) => opt.value)
+      .filter((value) => value);
+    setConfig((c) => ({ ...c, posApiInfoEndpointIds: selected }));
+  }
+
+  function handleFieldsFromPosApiChange(value) {
+    const entries = value
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter((item) => item);
+    setConfig((c) => ({ ...c, fieldsFromPosApi: entries }));
+  }
+
   async function handleSave() {
     if (!name) {
       alert('Please enter transaction name');
@@ -551,6 +617,34 @@ export default function FormsManagement() {
         ? String(config.transactionTypeValue)
         : '',
     };
+    cfg.posApiEndpointId = cfg.posApiEndpointId
+      ? String(cfg.posApiEndpointId).trim()
+      : '';
+    if (!cfg.posApiEndpointId) {
+      const defaultEndpoint = endpointOptions.find((opt) => opt?.defaultForForm);
+      if (defaultEndpoint) cfg.posApiEndpointId = defaultEndpoint.value;
+    }
+    cfg.posApiTypeField = cfg.posApiTypeField
+      ? String(cfg.posApiTypeField).trim()
+      : '';
+    cfg.posApiInfoEndpointIds = Array.isArray(cfg.posApiInfoEndpointIds)
+      ? Array.from(
+          new Set(
+            cfg.posApiInfoEndpointIds
+              .map((id) => (typeof id === 'string' ? id.trim() : ''))
+              .filter((id) => id),
+          ),
+        )
+      : [];
+    cfg.fieldsFromPosApi = Array.isArray(cfg.fieldsFromPosApi)
+      ? Array.from(
+          new Set(
+            cfg.fieldsFromPosApi
+              .map((field) => (typeof field === 'string' ? field.trim() : ''))
+              .filter((field) => field),
+          ),
+        )
+      : [];
     const temporaryFlag = Boolean(
       config.supportsTemporarySubmission ??
         config.allowTemporarySubmission ??
@@ -891,6 +985,92 @@ export default function FormsManagement() {
                   <option value="B2C_INVOICE">B2C_INVOICE</option>
                   <option value="B2B_INVOICE">B2B_INVOICE</option>
                 </select>
+              </label>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                  marginBottom: '0.5rem',
+                }}
+              >
+                <label style={{ ...fieldColumnStyle, flex: '1 1 240px' }}>
+                  <span style={{ fontWeight: 600 }}>Primary endpoint</span>
+                  <select
+                    value={config.posApiEndpointId}
+                    disabled={!config.posApiEnabled}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, posApiEndpointId: e.target.value }))
+                    }
+                  >
+                    <option value="">Use registry default</option>
+                    {endpointOptions.map((endpoint) => (
+                      <option key={endpoint.value} value={endpoint.value}>
+                        {endpoint.label}
+                        {endpoint.defaultForForm ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ ...fieldColumnStyle, flex: '1 1 240px' }}>
+                  <span style={{ fontWeight: 600 }}>Lookup endpoints</span>
+                  <select
+                    multiple
+                    value={config.posApiInfoEndpointIds}
+                    onChange={handleInfoEndpointChange}
+                    disabled={!config.posApiEnabled}
+                    size={Math.min(
+                      6,
+                      Math.max(3, endpointOptions.length || 0),
+                    )}
+                  >
+                    {endpointOptions.map((endpoint) => (
+                      <option key={`info-${endpoint.value}`} value={endpoint.value}>
+                        {endpoint.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ color: '#666' }}>
+                    Hold Ctrl (Cmd on macOS) to select multiple endpoints.
+                  </small>
+                </label>
+                <label style={{ ...fieldColumnStyle, flex: '1 1 240px' }}>
+                  <span style={{ fontWeight: 600 }}>Type field override</span>
+                  <input
+                    type="text"
+                    placeholder="Column name"
+                    value={config.posApiTypeField}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))
+                    }
+                    disabled={!config.posApiEnabled}
+                  />
+                  <small style={{ color: '#666' }}>
+                    Optional column containing the POSAPI type (e.g., B2C_RECEIPT).
+                  </small>
+                </label>
+              </div>
+              <label
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.25rem',
+                  marginBottom: '0.75rem',
+                }}
+              >
+                <span style={{ fontWeight: 600 }}>Capture response fields</span>
+                <textarea
+                  rows={3}
+                  value={config.fieldsFromPosApi.join('\n')}
+                  onChange={(e) => handleFieldsFromPosApiChange(e.target.value)}
+                  placeholder={'id\nlottery\nqrData'}
+                  disabled={!config.posApiEnabled}
+                  style={{ fontFamily: 'monospace', resize: 'vertical' }}
+                />
+                <small style={{ color: '#666' }}>
+                  One field path per line (e.g., receipts[0].billId) to persist on the
+                  transaction record.
+                </small>
               </label>
               <div>
                 <strong>Field mapping</strong>

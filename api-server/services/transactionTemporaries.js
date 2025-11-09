@@ -8,7 +8,12 @@ import { getFormConfig } from './transactionFormConfig.js';
 import {
   buildReceiptFromDynamicTransaction,
   sendReceipt,
+  resolvePosApiEndpoint,
 } from './posApiService.js';
+import {
+  computePosApiUpdates,
+  createColumnLookup,
+} from './posApiPersistence.js';
 import { logUserAction } from './userActivityLog.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
@@ -749,6 +754,7 @@ export async function promoteTemporarySubmission(
         );
         if (formCfg?.posApiEnabled) {
           const mapping = formCfg.posApiMapping || {};
+          const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
           let masterRecord = { ...sanitizedValues };
           if (insertedId) {
             try {
@@ -776,37 +782,28 @@ export async function promoteTemporarySubmission(
             masterRecord,
             mapping,
             receiptType,
+            { typeField: formCfg.posApiTypeField },
           );
           if (payload) {
             try {
-              const posApiResponse = await sendReceipt(payload);
+              const posApiResponse = await sendReceipt(payload, { endpoint });
               if (posApiResponse && insertedId) {
-                const updates = {};
-                const nameMap = new Map();
-                for (const col of Array.isArray(columns) ? columns : []) {
-                  if (!col || !col.name) continue;
-                  nameMap.set(col.name.toLowerCase(), col.name);
-                }
-                if (posApiResponse.lottery) {
-                  const lotteryCol =
-                    nameMap.get('lottery') ||
-                    nameMap.get('lottery_no') ||
-                    nameMap.get('lottery_number') ||
-                    nameMap.get('ddtd');
-                  if (lotteryCol) updates[lotteryCol] = posApiResponse.lottery;
-                }
-                if (posApiResponse.qrData) {
-                  const qrCol =
-                    nameMap.get('qr_data') ||
-                    nameMap.get('qrdata') ||
-                    nameMap.get('qr_code');
-                  if (qrCol) updates[qrCol] = posApiResponse.qrData;
-                }
-                if (Object.keys(updates).length > 0) {
-                  const setClause = Object.keys(updates)
-                    .map((col) => `\`${col}\` = ?`)
+                const columnNames = Array.isArray(columns)
+                  ? columns
+                      .map((col) => (col && typeof col.name === 'string' ? col.name : null))
+                      .filter(Boolean)
+                  : [];
+                const lookup = createColumnLookup(columnNames);
+                const updates = computePosApiUpdates(lookup, posApiResponse, {
+                  fieldsFromPosApi: formCfg.fieldsFromPosApi,
+                });
+                const entries = Object.entries(updates || {});
+                if (entries.length > 0) {
+                  const setClause = entries
+                    .map(([col]) => `\`${col}\` = ?`)
                     .join(', ');
-                  const params = [...Object.values(updates), insertedId];
+                  const params = entries.map(([, value]) => value);
+                  params.push(insertedId);
                   try {
                     await conn.query(
                       `UPDATE \`${row.table_name}\` SET ${setClause} WHERE id = ?`,

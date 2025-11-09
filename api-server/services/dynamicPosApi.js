@@ -3,20 +3,17 @@ import { getFormConfig } from './transactionFormConfig.js';
 import {
   buildReceiptFromDynamicTransaction,
   sendReceipt,
+  resolvePosApiEndpoint,
 } from './posApiService.js';
+import {
+  computePosApiUpdates,
+  createColumnLookup,
+} from './posApiPersistence.js';
 
 function normalizeName(value) {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
   return trimmed;
-}
-
-function createColumnLookup(record = {}) {
-  const map = new Map();
-  Object.keys(record).forEach((key) => {
-    map.set(key.toLowerCase(), key);
-  });
-  return map;
 }
 
 function findColumn(record, candidates) {
@@ -29,27 +26,19 @@ function findColumn(record, candidates) {
   return null;
 }
 
-async function persistPosApiDetails(table, pkColumn, recordId, response, record) {
+async function persistPosApiDetails(
+  table,
+  pkColumn,
+  recordId,
+  response,
+  record,
+  options = {},
+) {
   if (!response || typeof response !== 'object') return;
   if (recordId === undefined || recordId === null) return;
   const lookup = createColumnLookup(record);
-  const updates = {};
-  if (response.lottery) {
-    const lotteryCol =
-      lookup.get('lottery') ||
-      lookup.get('lottery_no') ||
-      lookup.get('lottery_number') ||
-      lookup.get('ddtd');
-    if (lotteryCol) updates[lotteryCol] = response.lottery;
-  }
-  if (response.qrData) {
-    const qrCol =
-      lookup.get('qr_data') ||
-      lookup.get('qrdata') ||
-      lookup.get('qr_code');
-    if (qrCol) updates[qrCol] = response.qrData;
-  }
-  const entries = Object.entries(updates);
+  const updates = computePosApiUpdates(lookup, response, options);
+  const entries = Object.entries(updates || {});
   if (entries.length === 0) return;
   const setParts = entries.map(() => '?? = ?').join(', ');
   const params = [table];
@@ -140,16 +129,21 @@ export async function issueDynamicTransactionEbarimt(
   }
 
   const mapping = formCfg.posApiMapping || {};
+  const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-  const payload = buildReceiptFromDynamicTransaction(record, mapping, receiptType);
+  const payload = await buildReceiptFromDynamicTransaction(record, mapping, receiptType, {
+    typeField: formCfg.posApiTypeField,
+  });
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
     err.status = 400;
     throw err;
   }
 
-  const response = await sendReceipt(payload);
-  await persistPosApiDetails(tableName, pkColumn, recordId, response, record);
+  const response = await sendReceipt(payload, { endpoint });
+  await persistPosApiDetails(tableName, pkColumn, recordId, response, record, {
+    fieldsFromPosApi: formCfg.fieldsFromPosApi,
+  });
 
   return { id: recordId, posApi: { payload, response } };
 }
