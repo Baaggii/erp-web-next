@@ -1,4 +1,4 @@
-import { getSettings } from '../../db/index.js';
+import { getSettings, pool } from '../../db/index.js';
 import { getEndpointById, loadEndpoints } from './posApiRegistry.js';
 import { createColumnLookup } from './posApiPersistence.js';
 
@@ -50,6 +50,35 @@ function toStringValue(value) {
     return String(value);
   }
   return String(value ?? '').trim();
+}
+
+function headersToObject(headers) {
+  const obj = {};
+  if (!headers || typeof headers.forEach !== 'function') return obj;
+  headers.forEach((value, key) => {
+    obj[key] = value;
+  });
+  return obj;
+}
+
+function toBoolean(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return Number.isFinite(value) && value !== 0;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return false;
+    return ['1', 'true', 'yes', 'y', 'on'].includes(normalized);
+  }
+  return false;
+}
+
+function isLikelyTin(value) {
+  const normalized = toStringValue(value);
+  if (!normalized) return false;
+  const digits = normalized.replace(/[^0-9]/g, '');
+  if (!digits) return false;
+  return digits.length >= 7 && digits.length <= 12;
 }
 
 let cachedBaseUrl = '';
@@ -219,6 +248,37 @@ function normalizePaymentEntry(entry) {
   return next;
 }
 
+export function determinePosApiPayloadType(
+  record,
+  mapping = {},
+  explicitType,
+  options = {},
+) {
+  if (!record || typeof record !== 'object') {
+    const fallback =
+      toStringValue(explicitType) || toStringValue(process.env.POSAPI_RECEIPT_TYPE);
+    return fallback || 'B2C_RECEIPT';
+  }
+  const normalizedMapping = normalizeMapping(mapping);
+  const columnLookup = createColumnLookup(record);
+  const customerTin = toStringValue(
+    getColumnValue(columnLookup, record, normalizedMapping.customerTin),
+  );
+  const consumerNo = toStringValue(
+    getColumnValue(columnLookup, record, normalizedMapping.consumerNo),
+  );
+  return resolveReceiptType({
+    explicitType,
+    typeField: options.typeField || options.posApiTypeField,
+    mapping: normalizedMapping,
+    record,
+    columnLookup,
+    customerTin,
+    consumerNo,
+    options,
+  });
+}
+
 function resolveReceiptType({
   explicitType,
   typeField,
@@ -227,21 +287,74 @@ function resolveReceiptType({
   columnLookup,
   customerTin,
   consumerNo,
+  options = {},
 }) {
   const candidates = [];
   if (typeField) candidates.push(typeField);
   if (mapping.posApiTypeField) candidates.push(mapping.posApiTypeField);
   if (mapping.typeField) candidates.push(mapping.typeField);
+  if (options.typeField) candidates.push(options.typeField);
   for (const candidate of candidates) {
     const value = toStringValue(getColumnValue(columnLookup, record, candidate));
     if (value) return value;
   }
+
   const normalizedExplicit = toStringValue(explicitType);
-  if (normalizedExplicit) return normalizedExplicit;
-  if (customerTin) return 'B2B_RECEIPT';
-  if (consumerNo) return 'B2C_RECEIPT';
-  const envType = toStringValue(process.env.POSAPI_RECEIPT_TYPE);
-  return envType || 'B2C_RECEIPT';
+
+  const stockFlagCandidates = new Set(
+    [
+      options.stockFlagField,
+      mapping.stockFlagField,
+      mapping.stockFlag,
+      mapping.inventoryFlag,
+      mapping.inventory,
+      mapping.isInventory,
+      mapping.isStock,
+      'stockFlag',
+      'stock',
+      'inventoryFlag',
+      'inventory',
+      'isInventory',
+      'isStock',
+    ]
+      .map((entry) => (typeof entry === 'string' ? entry : ''))
+      .filter(Boolean),
+  );
+
+  const hasStockFlag = (() => {
+    for (const flagField of stockFlagCandidates) {
+      const rawValue = getColumnValue(columnLookup, record, flagField);
+      if (rawValue !== undefined) {
+        if (toBoolean(rawValue)) return true;
+        continue;
+      }
+      if (record && Object.prototype.hasOwnProperty.call(record, flagField)) {
+        if (toBoolean(record[flagField])) return true;
+      }
+    }
+    return false;
+  })();
+
+  if (hasStockFlag) {
+    return 'STOCK_QR';
+  }
+
+  const defaultType = normalizedExplicit || toStringValue(process.env.POSAPI_RECEIPT_TYPE);
+  const preferInvoice = /INVOICE$/i.test(defaultType);
+
+  if (isLikelyTin(customerTin)) {
+    return preferInvoice ? 'B2B_INVOICE' : 'B2B_RECEIPT';
+  }
+
+  if (toStringValue(consumerNo)) {
+    return preferInvoice ? 'B2C_INVOICE' : 'B2C_RECEIPT';
+  }
+
+  if (defaultType) {
+    return defaultType;
+  }
+
+  return 'B2C_RECEIPT';
 }
 
 function applyAdditionalMappings(
@@ -280,7 +393,7 @@ export async function resolvePosApiEndpoint(endpointId) {
   return fallback;
 }
 
-async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) {
+async function posApiFetch(path, { method = 'GET', body, token, headers, raw = false } = {}) {
   const baseUrl = await getPosApiBaseUrl();
   const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
   const fetchFn = await getFetch();
@@ -292,19 +405,51 @@ async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) 
     },
     body,
   });
+  const contentType = res.headers.get('content-type') || '';
+  let textBody = '';
+  try {
+    textBody = await res.text();
+  } catch {
+    textBody = '';
+  }
+  let payload = textBody;
+  if (textBody && contentType.includes('application/json')) {
+    try {
+      payload = JSON.parse(textBody);
+    } catch {
+      payload = textBody;
+    }
+  } else if (!textBody && contentType.includes('application/json')) {
+    payload = null;
+  }
+
   if (!res.ok) {
-    const text = await res.text();
+    let message = res.statusText;
+    if (payload && typeof payload === 'object') {
+      message = payload.message || payload.error || message;
+    } else if (textBody) {
+      message = textBody;
+    }
     const err = new Error(
-      `POSAPI request failed with status ${res.status}: ${text || res.statusText}`,
+      `POSAPI request failed with status ${res.status}: ${message || res.statusText}`,
     );
     err.status = res.status;
+    err.response = payload;
+    err.responseHeaders = headersToObject(res.headers);
+    err.isRetryable = res.status >= 500 || res.status === 429;
     throw err;
   }
-  const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    return res.json();
+
+  if (raw) {
+    return {
+      status: res.status,
+      ok: true,
+      headers: headersToObject(res.headers),
+      data: payload,
+    };
   }
-  return res.text();
+
+  return payload;
 }
 
 export async function getPosApiToken() {
@@ -521,6 +666,7 @@ export async function buildReceiptFromDynamicTransaction(
     columnLookup,
     customerTin,
     consumerNo,
+    options,
   });
 
   const receipt = {
@@ -594,6 +740,282 @@ export async function sendReceipt(payload, options = {}) {
     headers,
     body,
   });
+}
+
+function toSerializable(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return value;
+  if (value instanceof Date) return value.toISOString();
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return String(value);
+  }
+}
+
+async function logPosApiInvocation(details = {}) {
+  const {
+    endpointId,
+    endpointName,
+    method,
+    path,
+    request,
+    response,
+    statusCode,
+    companyId,
+    userId,
+    error,
+  } = details;
+
+  const basePayload = {
+    endpoint: endpointId || endpointName || path || null,
+    method: method || null,
+    path: path || null,
+    status: statusCode ?? error?.status ?? null,
+    companyId: companyId ?? null,
+    userId: userId ?? null,
+    request: request ? toSerializable(request) : null,
+    response: response ? toSerializable(response) : null,
+    error: error ? error.message : null,
+  };
+
+  if (!pool || typeof pool.query !== 'function') {
+    return;
+  }
+
+  const primarySql =
+    'INSERT INTO ebarimt_api_log (endpoint, method, path, status_code, company_id, user_id, request_payload, response_payload, error_message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())';
+  const primaryParams = [
+    basePayload.endpoint,
+    basePayload.method,
+    basePayload.path,
+    basePayload.status,
+    basePayload.companyId,
+    basePayload.userId,
+    basePayload.request ? JSON.stringify(basePayload.request).slice(0, 65535) : null,
+    basePayload.response ? JSON.stringify(basePayload.response).slice(0, 65535) : null,
+    basePayload.error,
+  ];
+
+  try {
+    await pool.query(primarySql, primaryParams);
+    return;
+  } catch (err) {
+    if (err?.code !== 'ER_BAD_FIELD_ERROR' && err?.code !== 'ER_NO_SUCH_TABLE') {
+      if (process.env.NODE_ENV !== 'production') {
+        console.warn('Failed to log POSAPI lookup (primary)', err);
+      }
+      return;
+    }
+  }
+
+  try {
+    await pool.query(
+      'INSERT INTO ebarimt_api_log (endpoint, payload, response, created_at) VALUES (?, ?, ?, NOW())',
+      [
+        basePayload.endpoint,
+        basePayload.request ? JSON.stringify(basePayload.request).slice(0, 65535) : null,
+        basePayload.response ? JSON.stringify(basePayload.response).slice(0, 65535) : null,
+      ],
+    );
+  } catch (fallbackErr) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.warn('Failed to log POSAPI lookup (fallback)', fallbackErr);
+    }
+  }
+}
+
+function normalizeParameterObject(params) {
+  if (!params || typeof params !== 'object') return {};
+  if (Array.isArray(params)) return {};
+  const normalized = {};
+  Object.entries(params).forEach(([key, value]) => {
+    if (!key) return;
+    normalized[key] = value;
+  });
+  return normalized;
+}
+
+function prepareEndpointInvocation(endpoint, params = {}, method = 'GET') {
+  const normalizedParams = normalizeParameterObject(params);
+  const used = new Set();
+  const pathTemplate =
+    typeof endpoint.path === 'string' && endpoint.path.trim()
+      ? endpoint.path.trim()
+      : '/';
+  const missingPathParams = [];
+  const pathParamRegex = /{([^}]+)}/g;
+  let resolvedPath = pathTemplate.replace(pathParamRegex, (match, rawName) => {
+    const name = rawName.trim();
+    const value = normalizedParams[name];
+    if (value === undefined || value === null || value === '') {
+      missingPathParams.push(name);
+      return match;
+    }
+    used.add(name);
+    return encodeURIComponent(String(value));
+  });
+  if (missingPathParams.length) {
+    throw new Error(
+      `Missing POSAPI path parameters: ${missingPathParams
+        .map((param) => param || '')
+        .join(', ')}`,
+    );
+  }
+
+  const queryParams = new URLSearchParams();
+  const bodyPayload = {};
+  const headerPayload = {};
+  const definitions = Array.isArray(endpoint.parameters) ? endpoint.parameters : [];
+
+  definitions.forEach((definition) => {
+    if (!definition || typeof definition !== 'object') return;
+    const name = definition.name;
+    if (!name) return;
+    const value = normalizedParams[name];
+    if (value === undefined || value === null || value === '') return;
+    used.add(name);
+    const location = (definition.in || '').toLowerCase();
+    switch (location) {
+      case 'query':
+        queryParams.append(name, value);
+        break;
+      case 'header':
+        headerPayload[name] = String(value);
+        break;
+      case 'path':
+        // Already applied via path replacement above
+        break;
+      case 'body':
+      case 'json':
+      case 'form':
+        bodyPayload[name] = value;
+        break;
+      default:
+        if (method === 'GET' || method === 'DELETE') {
+          queryParams.append(name, value);
+        } else {
+          bodyPayload[name] = value;
+        }
+        break;
+    }
+  });
+
+  Object.entries(normalizedParams).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return;
+    if (used.has(key)) return;
+    if (method === 'GET' || method === 'DELETE') {
+      queryParams.append(key, value);
+    } else {
+      bodyPayload[key] = value;
+    }
+  });
+
+  const queryObject = Object.fromEntries(queryParams.entries());
+  const queryString = queryParams.toString();
+  const pathWithQuery = `${resolvedPath}${queryString ? `?${queryString}` : ''}`;
+
+  return {
+    path: pathWithQuery,
+    headers: headerPayload,
+    body: bodyPayload,
+    query: queryObject,
+  };
+}
+
+export async function invokePosApiEndpoint(endpointId, parameters = {}, options = {}) {
+  if (!endpointId) {
+    throw new Error('endpointId is required to invoke POSAPI');
+  }
+
+  const endpoint = await resolvePosApiEndpoint(endpointId);
+  const method = (options.method || endpoint?.method || 'GET').toUpperCase();
+  const prepared = prepareEndpointInvocation(endpoint, parameters, method);
+
+  const requestBody =
+    options.body !== undefined && options.body !== null
+      ? options.body
+      : prepared.body;
+
+  const serializedBody =
+    method === 'GET' || method === 'DELETE'
+      ? undefined
+      : typeof requestBody === 'string'
+      ? requestBody
+      : Object.keys(requestBody || {}).length > 0
+      ? JSON.stringify(requestBody)
+      : undefined;
+
+  const headers = {
+    ...(options.headers || {}),
+    ...prepared.headers,
+  };
+  if (serializedBody && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json';
+  }
+
+  const token = await getPosApiToken();
+
+  const auditBase = {
+    endpointId: endpoint.id,
+    endpointName: endpoint.name,
+    method,
+    path: prepared.path,
+    request: {
+      query: prepared.query,
+      body: requestBody,
+      parameters: parameters,
+    },
+    companyId: options.companyId ?? null,
+    userId: options.userId ?? null,
+  };
+
+  const attempts = options.autoRetry === false ? 1 : 2;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const response = await posApiFetch(prepared.path, {
+        method,
+        token,
+        headers,
+        body: serializedBody,
+        raw: true,
+      });
+      await logPosApiInvocation({
+        ...auditBase,
+        statusCode: response.status,
+        response: response.data,
+      });
+      return {
+        endpoint: {
+          id: endpoint.id,
+          name: endpoint.name,
+          method,
+          path: prepared.path,
+        },
+        status: response.status,
+        headers: response.headers,
+        data: response.data,
+      };
+    } catch (err) {
+      await logPosApiInvocation({
+        ...auditBase,
+        statusCode: err?.status,
+        response: err?.response,
+        error: err,
+      });
+      lastError = err;
+      if (!err?.isRetryable || attempt === attempts - 1) {
+        throw err;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+
+  if (lastError) throw lastError;
+  throw new Error('POSAPI invocation failed without an error response');
 }
 
 export async function cancelReceipt(billId, inactiveId) {

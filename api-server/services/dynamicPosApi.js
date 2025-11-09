@@ -2,6 +2,7 @@ import { pool, getPrimaryKeyColumns } from '../../db/index.js';
 import { getFormConfig } from './transactionFormConfig.js';
 import {
   buildReceiptFromDynamicTransaction,
+  determinePosApiPayloadType,
   sendReceipt,
   resolvePosApiEndpoint,
 } from './posApiService.js';
@@ -130,9 +131,14 @@ export async function issueDynamicTransactionEbarimt(
 
   const mapping = formCfg.posApiMapping || {};
   const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
-  const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-  const payload = await buildReceiptFromDynamicTransaction(record, mapping, receiptType, {
+  const defaultType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
+  const resolvedType = determinePosApiPayloadType(record, mapping, defaultType, {
     typeField: formCfg.posApiTypeField,
+    stockFlagField: formCfg.posApiStockFlagField,
+  });
+  const payload = await buildReceiptFromDynamicTransaction(record, mapping, resolvedType, {
+    typeField: formCfg.posApiTypeField,
+    stockFlagField: formCfg.posApiStockFlagField,
   });
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
