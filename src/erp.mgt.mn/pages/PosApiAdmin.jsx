@@ -54,6 +54,20 @@ const TAX_PRODUCT_OPTIONS = [
   { value: 'C30000', label: 'Example – non-VAT product (C30000)' },
 ];
 
+const USAGE_OPTIONS = [
+  { value: 'transaction', label: 'Transaction – triggered during form submission' },
+  { value: 'info', label: 'Information lookup – fetches reference data' },
+  { value: 'admin', label: 'Admin utility – management-only endpoints' },
+  { value: 'other', label: 'Other custom usage' },
+];
+
+const USAGE_BADGES = {
+  transaction: '#047857',
+  info: '#1d4ed8',
+  admin: '#78350f',
+  other: '#475569',
+};
+
 function badgeStyle(color) {
   return {
     background: color,
@@ -83,6 +97,10 @@ const EMPTY_ENDPOINT = {
   testServerUrl: '',
   docUrl: '',
   posApiType: '',
+  usage: 'transaction',
+  defaultForForm: false,
+  topLevelFieldsText: '[]',
+  nestedPathsText: '{}',
 };
 
 const PAYMENT_FIELD_DESCRIPTIONS = {
@@ -279,6 +297,14 @@ function formatTypeLabel(type) {
   return hit ? hit.label : type;
 }
 
+function formatUsageLabel(usage) {
+  if (!usage) return '';
+  const hit = USAGE_OPTIONS.find((opt) => opt.value === usage);
+  if (!hit) return usage;
+  const [shortLabel] = hit.label.split(' – ');
+  return shortLabel || hit.label;
+}
+
 function toPrettyJson(value, fallback = '') {
   if (!value || (typeof value === 'object' && Object.keys(value).length === 0)) {
     return fallback;
@@ -308,6 +334,10 @@ function createFormState(definition) {
     testServerUrl: definition.testServerUrl || '',
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
+    usage: definition.usage || 'other',
+    defaultForForm: Boolean(definition.defaultForForm),
+    topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
+    nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
   };
 }
 
@@ -332,6 +362,10 @@ function validateEndpoint(endpoint, existingIds, originalId) {
   if (!endpoint.name) throw new Error('Name is required');
   if (!endpoint.method) throw new Error('HTTP method is required');
   if (!endpoint.path) throw new Error('Path is required');
+  const allowedUsage = new Set(USAGE_OPTIONS.map((opt) => opt.value));
+  if (!allowedUsage.has(endpoint.usage)) {
+    throw new Error('Usage must be set to a recognised option');
+  }
 }
 
 export default function PosApiAdmin() {
@@ -341,6 +375,7 @@ export default function PosApiAdmin() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
+  const [usageFilter, setUsageFilter] = useState('all');
   const [testState, setTestState] = useState({ running: false, error: '', result: null });
   const [docExamples, setDocExamples] = useState([]);
   const [selectedDocBlock, setSelectedDocBlock] = useState('');
@@ -350,20 +385,20 @@ export default function PosApiAdmin() {
   const [requestBuilderError, setRequestBuilderError] = useState('');
   const builderSyncRef = useRef(false);
 
-  const categorizedEndpoints = useMemo(() => {
-    const groups = new Map();
-    endpoints.forEach((endpoint) => {
-      const category = endpoint.category?.trim() || 'Uncategorised';
-      if (!groups.has(category)) {
-        groups.set(category, []);
-      }
-      groups.get(category).push(endpoint);
-    });
-    return Array.from(groups.entries())
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([category, list]) => ({
-        category,
-        endpoints: list
+  const groupedEndpoints = useMemo(() => {
+    const normalized = endpoints.map((endpoint) => ({
+      ...endpoint,
+      usage: endpoint.usage || 'other',
+    }));
+    const filtered = normalized.filter(
+      (endpoint) => usageFilter === 'all' || endpoint.usage === usageFilter,
+    );
+    const usageOrder = ['transaction', 'info', 'admin', 'other'];
+    return usageOrder
+      .map((usage) => {
+        const label = formatUsageLabel(usage);
+        const list = filtered
+          .filter((ep) => ep.usage === usage)
           .slice()
           .sort((a, b) => {
             const left = a.name || a.id || '';
@@ -374,7 +409,9 @@ export default function PosApiAdmin() {
             const type = ep.posApiType || ep.requestBody?.schema?.type || '';
             const preview = [];
             if (ep.requestBody?.schema && typeof ep.requestBody.schema === 'object') {
-              const keys = Object.keys(ep.requestBody.schema).filter((key) => key !== 'type').slice(0, 5);
+              const keys = Object.keys(ep.requestBody.schema)
+                .filter((key) => key !== 'type')
+                .slice(0, 5);
               if (keys.length > 0) {
                 preview.push(`Request: ${keys.join(', ')}`);
               }
@@ -389,10 +426,20 @@ export default function PosApiAdmin() {
               ...ep,
               _preview: preview.join('\n'),
               _type: type,
+              _usage: usage,
             };
-          }),
-      }));
-  }, [endpoints]);
+          });
+        if (list.length === 0) {
+          return null;
+        }
+        return {
+          usage,
+          label,
+          endpoints: list,
+        };
+      })
+      .filter(Boolean);
+  }, [endpoints, usageFilter]);
 
   const requestPreview = useMemo(() => {
     const text = (formState.requestSchemaText || '').trim();
@@ -684,7 +731,13 @@ export default function PosApiAdmin() {
   }
 
   function handleChange(field, value) {
-    setFormState((prev) => ({ ...prev, [field]: value }));
+    setFormState((prev) => {
+      const next = { ...prev, [field]: value };
+      if (field === 'usage' && value !== 'transaction') {
+        next.defaultForForm = false;
+      }
+      return next;
+    });
     if (field !== 'docUrl') {
       resetTestState();
     }
@@ -718,6 +771,24 @@ export default function PosApiAdmin() {
       throw new Error('Field descriptions must be a JSON object');
     }
 
+    const topLevelFields = parseJsonInput(
+      'Top-level mapping hints',
+      formState.topLevelFieldsText,
+      [],
+    );
+    if (!Array.isArray(topLevelFields)) {
+      throw new Error('Top-level mapping hints must be a JSON array');
+    }
+
+    const nestedPaths = parseJsonInput(
+      'Nested mapping paths',
+      formState.nestedPathsText,
+      {},
+    );
+    if (nestedPaths && typeof nestedPaths !== 'object') {
+      throw new Error('Nested mapping paths must be a JSON object');
+    }
+
     if (
       formState.posApiType &&
       ['B2C_RECEIPT', 'B2B_RECEIPT', 'B2C_INVOICE', 'B2B_INVOICE', 'STOCK_QR'].includes(formState.posApiType)
@@ -733,6 +804,7 @@ export default function PosApiAdmin() {
       requestSchema.type = formState.posApiType;
     }
 
+    const usage = formState.usage || 'other';
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -740,6 +812,8 @@ export default function PosApiAdmin() {
       method: formState.method.trim().toUpperCase(),
       path: formState.path.trim(),
       posApiType: formState.posApiType || '',
+      usage,
+      defaultForForm: usage === 'transaction' ? Boolean(formState.defaultForForm) : false,
       parameters,
       requestBody: {
         schema: requestSchema,
@@ -750,9 +824,20 @@ export default function PosApiAdmin() {
         description: formState.responseDescription || '',
       },
       fieldDescriptions: fieldDescriptions || {},
+      mappingHints: {},
       testable: Boolean(formState.testable),
       testServerUrl: formState.testServerUrl.trim(),
     };
+
+    if (topLevelFields.length > 0) {
+      endpoint.mappingHints.topLevelFields = topLevelFields;
+    }
+    if (nestedPaths && Object.keys(nestedPaths).length > 0) {
+      endpoint.mappingHints.nestedPaths = nestedPaths;
+    }
+    if (Object.keys(endpoint.mappingHints).length === 0) {
+      delete endpoint.mappingHints;
+    }
 
     const existingIds = new Set(endpoints.map((ep) => ep.id));
     validateEndpoint(endpoint, existingIds, selectedId);
@@ -771,20 +856,42 @@ export default function PosApiAdmin() {
         ? endpoints.map((ep) => (ep.id === selectedId ? definition : ep))
         : [...endpoints, definition];
 
+      let normalized = updated.map((ep) => {
+        const usage = ep.usage || 'other';
+        return {
+          ...ep,
+          usage,
+          defaultForForm: usage === 'transaction' ? Boolean(ep.defaultForForm) : false,
+        };
+      });
+      if (definition.usage === 'transaction' && definition.defaultForForm) {
+        normalized = normalized.map((ep) => (
+          ep.id === definition.id
+            ? ep
+            : {
+                ...ep,
+                defaultForForm:
+                  ep.usage === 'transaction' ? false : Boolean(ep.defaultForForm),
+              }
+        ));
+      }
+
       const res = await fetch(`${API_BASE}/posapi/endpoints`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ endpoints: updated }),
+        body: JSON.stringify({ endpoints: normalized }),
         skipLoader: true,
       });
       if (!res.ok) {
         throw new Error('Failed to save endpoints');
       }
       const saved = await res.json();
-      setEndpoints(Array.isArray(saved) ? saved : updated);
-      setSelectedId(definition.id);
-      setFormState(createFormState(definition));
+      const next = Array.isArray(saved) ? saved : normalized;
+      setEndpoints(next);
+      const selected = next.find((ep) => ep.id === definition.id) || definition;
+      setSelectedId(selected.id);
+      setFormState(createFormState(selected));
       setStatus('Changes saved');
     } catch (err) {
       console.error(err);
@@ -1002,15 +1109,41 @@ export default function PosApiAdmin() {
             + New
           </button>
         </div>
+        <div style={styles.filterBar}>
+          <label style={styles.filterLabel}>
+            Usage filter
+            <select
+              value={usageFilter}
+              onChange={(e) => setUsageFilter(e.target.value)}
+              style={styles.filterSelect}
+            >
+              <option value="all">Show all usages</option>
+              {USAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {formatUsageLabel(option.value)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div style={styles.filterHint}>
+            {usageFilter === 'all'
+              ? `${endpoints.length} total`
+              : `${groupedEndpoints.reduce((total, group) => total + group.endpoints.length, 0)} shown`}
+          </div>
+        </div>
         <div style={styles.list}>
-          {categorizedEndpoints.map((group) => (
-            <div key={group.category} style={styles.listGroup}>
-              <div style={styles.listGroupHeader}>{group.category}</div>
+          {groupedEndpoints.map((group) => (
+            <div key={group.usage} style={styles.listGroup}>
+              <div style={styles.listGroupHeader}>
+                <span>{group.label}</span>
+                <span style={styles.listGroupCount}>{group.endpoints.length}</span>
+              </div>
               <ul style={styles.listGroupList}>
                 {group.endpoints.map((ep) => {
                   const methodColor = METHOD_BADGES[ep.method] || '#94a3b8';
                   const typeColor = TYPE_BADGES[ep._type] || '#1f2937';
                   const typeLabel = formatTypeLabel(ep._type);
+                  const usageColor = USAGE_BADGES[ep._usage] || '#0ea5e9';
                   return (
                     <li key={ep.id}>
                       <button
@@ -1028,14 +1161,27 @@ export default function PosApiAdmin() {
                             {ep.method && (
                               <span style={badgeStyle(methodColor)}>{ep.method}</span>
                             )}
+                            {ep._usage && (
+                              <span style={{ ...badgeStyle(usageColor), textTransform: 'none' }}>
+                                {formatUsageLabel(ep._usage)}
+                              </span>
+                            )}
                             {ep._type && (
                               <span style={{ ...badgeStyle(typeColor), textTransform: 'none' }}>
                                 {typeLabel || ep._type}
                               </span>
                             )}
+                            {ep.defaultForForm && (
+                              <span style={{ ...badgeStyle('#059669'), textTransform: 'none' }}>
+                                Default form
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div style={styles.listButtonSubtle}>{ep.id}</div>
+                        {ep.category && (
+                          <div style={styles.listButtonCategory}>{ep.category}</div>
+                        )}
                         {ep._preview && (
                           <div style={styles.previewText}>
                             {ep._preview.split('\n').map((line) => (
@@ -1050,7 +1196,7 @@ export default function PosApiAdmin() {
               </ul>
             </div>
           ))}
-          {categorizedEndpoints.length === 0 && (
+          {groupedEndpoints.length === 0 && (
             <div style={{ color: '#666', padding: '0.5rem 0' }}>No endpoints configured yet</div>
           )}
         </div>
@@ -1112,6 +1258,34 @@ export default function PosApiAdmin() {
                 </option>
               ))}
             </select>
+          </label>
+          <label style={styles.label}>
+            Usage
+            <select
+              value={formState.usage}
+              onChange={(e) => handleChange('usage', e.target.value)}
+              style={styles.input}
+            >
+              {USAGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(formState.defaultForForm)}
+              onChange={(e) => handleChange('defaultForForm', e.target.checked)}
+              disabled={formState.usage !== 'transaction'}
+            />
+            <span>
+              Default for new forms
+              {formState.usage !== 'transaction' && (
+                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
+              )}
+            </span>
           </label>
           <label style={styles.label}>
             POSAPI type
@@ -1766,6 +1940,31 @@ export default function PosApiAdmin() {
             rows={8}
           />
         </label>
+        <label style={styles.labelFull}>
+          Top-level mapping hints (JSON array)
+          <textarea
+            value={formState.topLevelFieldsText}
+            onChange={(e) => handleChange('topLevelFieldsText', e.target.value)}
+            style={styles.textarea}
+            rows={6}
+            placeholder='[
+  { "field": "totalAmount", "required": true, "description": "Total receipt amount" }
+]'
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Nested mapping paths (JSON object)
+          <textarea
+            value={formState.nestedPathsText}
+            onChange={(e) => handleChange('nestedPathsText', e.target.value)}
+            style={styles.textarea}
+            rows={4}
+            placeholder='{
+  "items": "receipts[].items",
+  "payments": "payments"
+}'
+          />
+        </label>
         <div style={styles.inlineFields}>
           <label style={{ ...styles.label, flex: 1 }}>
             Test server URL
@@ -2001,6 +2200,32 @@ const styles = {
     alignItems: 'center',
     marginBottom: '1rem',
   },
+  filterBar: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-end',
+    gap: '0.75rem',
+    marginBottom: '0.75rem',
+  },
+  filterLabel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+    fontWeight: 600,
+    fontSize: '0.85rem',
+    color: '#334155',
+  },
+  filterSelect: {
+    padding: '0.4rem',
+    borderRadius: '4px',
+    border: '1px solid #cbd5f5',
+    fontSize: '0.9rem',
+  },
+  filterHint: {
+    fontSize: '0.8rem',
+    color: '#64748b',
+    marginBottom: '0.3rem',
+  },
   newButton: {
     background: '#2563eb',
     color: '#fff',
@@ -2028,6 +2253,17 @@ const styles = {
     fontWeight: 700,
     fontSize: '0.95rem',
     color: '#1e293b',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  listGroupCount: {
+    fontSize: '0.75rem',
+    color: '#64748b',
+    background: '#e2e8f0',
+    borderRadius: '999px',
+    padding: '0.1rem 0.5rem',
   },
   listGroupList: {
     listStyle: 'none',
@@ -2070,6 +2306,11 @@ const styles = {
     fontSize: '0.75rem',
     color: '#64748b',
     marginTop: '0.25rem',
+  },
+  listButtonCategory: {
+    fontSize: '0.75rem',
+    color: '#0f172a',
+    marginTop: '0.15rem',
   },
   previewText: {
     marginTop: '0.25rem',
@@ -2199,6 +2440,10 @@ const styles = {
     alignItems: 'center',
     gap: '0.5rem',
     fontWeight: 600,
+  },
+  checkboxHint: {
+    fontSize: '0.75rem',
+    color: '#64748b',
   },
   docFetcher: {
     marginTop: '1.5rem',
