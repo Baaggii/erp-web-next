@@ -7,7 +7,6 @@ import {
 import { getFormConfig } from './transactionFormConfig.js';
 import {
   buildReceiptFromDynamicTransaction,
-  determinePosApiPayloadType,
   sendReceipt,
   resolvePosApiEndpoint,
 } from './posApiService.js';
@@ -777,25 +776,13 @@ export async function promoteTemporarySubmission(
               );
             }
           }
-          const defaultType =
+          const receiptType =
             formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-          const resolvedType = determinePosApiPayloadType(
-            masterRecord,
-            mapping,
-            defaultType,
-            {
-              typeField: formCfg.posApiTypeField,
-              stockFlagField: formCfg.posApiStockFlagField,
-            },
-          );
           const payload = await buildReceiptFromDynamicTransaction(
             masterRecord,
             mapping,
-            resolvedType,
-            {
-              typeField: formCfg.posApiTypeField,
-              stockFlagField: formCfg.posApiStockFlagField,
-            },
+            receiptType,
+            { typeField: formCfg.posApiTypeField },
           );
           if (payload) {
             try {
