@@ -7,6 +7,8 @@
     "path": "/rest/receipt",
     "parameters": [],
     "posApiType": "B2C_RECEIPT",
+    "usage": "transaction",
+    "defaultForForm": true,
     "requestBody": {
       "schema": {
         "type": "B2C_RECEIPT",
@@ -87,6 +89,60 @@
       "payments": "Breakdown of how the receipt or invoice was paid.",
       "payments[].type": "Payment method code. Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD.",
       "payments[].amount": "Amount paid with the selected payment method."
+    },
+    "mappingHints": {
+      "topLevelFields": [
+        {
+          "field": "totalAmount",
+          "required": true,
+          "description": "Total invoice amount including taxes."
+        },
+        {
+          "field": "totalVAT",
+          "required": true,
+          "description": "Total VAT amount for VAT_ABLE transactions."
+        },
+        {
+          "field": "totalCityTax",
+          "required": false,
+          "description": "City tax amount for VAT_ABLE receipts when applicable."
+        },
+        {
+          "field": "taxType",
+          "required": true,
+          "description": "Overall tax type for the receipt payload."
+        },
+        {
+          "field": "branchNo",
+          "required": true,
+          "description": "Three digit branch identifier issued with the licence."
+        },
+        {
+          "field": "posNo",
+          "required": true,
+          "description": "Registered POS terminal identifier."
+        },
+        {
+          "field": "merchantTin",
+          "required": true,
+          "description": "Registered TIN of the merchant submitting the receipt."
+        },
+        {
+          "field": "consumerNo",
+          "required": false,
+          "description": "Citizen registry or phone number for B2C receipts."
+        },
+        {
+          "field": "customerTin",
+          "required": false,
+          "description": "Buyer TIN for B2B receipts."
+        }
+      ],
+      "nestedPaths": {
+        "receipts": "receipts",
+        "items": "receipts[].items",
+        "payments": "payments"
+      }
     },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"

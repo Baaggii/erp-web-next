@@ -3,20 +3,17 @@ import { getFormConfig } from './transactionFormConfig.js';
 import {
   buildReceiptFromDynamicTransaction,
   sendReceipt,
+  resolvePosApiEndpoint,
 } from './posApiService.js';
+import {
+  computePosApiUpdates,
+  createColumnLookup,
+} from './posApiPersistence.js';
 
 function normalizeName(value) {
   if (typeof value !== 'string') return '';
   const trimmed = value.trim();
   return trimmed;
-}
-
-function createColumnLookup(record = {}) {
-  const map = new Map();
-  Object.keys(record).forEach((key) => {
-    map.set(key.toLowerCase(), key);
-  });
-  return map;
 }
 
 function findColumn(record, candidates) {
@@ -29,78 +26,19 @@ function findColumn(record, candidates) {
   return null;
 }
 
-async function persistPosApiDetails(table, pkColumn, recordId, response, record) {
+async function persistPosApiDetails(
+  table,
+  pkColumn,
+  recordId,
+  response,
+  record,
+  options = {},
+) {
   if (!response || typeof response !== 'object') return;
   if (recordId === undefined || recordId === null) return;
   const lookup = createColumnLookup(record);
-  const updates = {};
-  const billIdCol =
-    findColumn(record, [
-      'bill_id',
-      'billid',
-      'ebarimt_id',
-      'ebarimt_no',
-      'ebarimt_number',
-      'posapi_bill_id',
-      'posapi_billno',
-    ]) || null;
-  const statusCol =
-    findColumn(record, ['posapi_status', 'ebarimt_status', 'receipt_status']) || null;
-  const errorCol =
-    findColumn(record, [
-      'posapi_error_code',
-      'posapi_error_codes',
-      'ebarimt_error_code',
-      'ebarimt_error_codes',
-      'posapi_error',
-      'ebarimt_error',
-    ]) || null;
-  const responseCol =
-    findColumn(record, ['posapi_response', 'ebarimt_response', 'posapi_response_json']) || null;
-  if (response.lottery) {
-    const lotteryCol =
-      lookup.get('lottery') ||
-      lookup.get('lottery_no') ||
-      lookup.get('lottery_number') ||
-      lookup.get('ddtd');
-    if (lotteryCol) updates[lotteryCol] = response.lottery;
-  }
-  if (response.qrData) {
-    const qrCol =
-      lookup.get('qr_data') ||
-      lookup.get('qrdata') ||
-      lookup.get('qr_code');
-    if (qrCol) updates[qrCol] = response.qrData;
-  }
-  if (billIdCol && response.billId) {
-    updates[billIdCol] = response.billId;
-  }
-  if (statusCol && response.status) {
-    updates[statusCol] = response.status;
-  }
-  const rawErrors =
-    response.errorCodes ?? response.errorCode ?? response.error ?? response.errors;
-  if (errorCol && rawErrors) {
-    let normalizedError = rawErrors;
-    if (Array.isArray(rawErrors)) {
-      normalizedError = rawErrors.join(',');
-    } else if (typeof rawErrors === 'object') {
-      try {
-        normalizedError = JSON.stringify(rawErrors);
-      } catch {
-        normalizedError = String(rawErrors);
-      }
-    }
-    updates[errorCol] = normalizedError;
-  }
-  if (responseCol) {
-    try {
-      updates[responseCol] = JSON.stringify(response);
-    } catch {
-      updates[responseCol] = String(response);
-    }
-  }
-  const entries = Object.entries(updates);
+  const updates = computePosApiUpdates(lookup, response, options);
+  const entries = Object.entries(updates || {});
   if (entries.length === 0) return;
   const setParts = entries.map(() => '?? = ?').join(', ');
   const params = [table];
@@ -191,16 +129,21 @@ export async function issueDynamicTransactionEbarimt(
   }
 
   const mapping = formCfg.posApiMapping || {};
+  const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
-  const payload = buildReceiptFromDynamicTransaction(record, mapping, receiptType);
+  const payload = await buildReceiptFromDynamicTransaction(record, mapping, receiptType, {
+    typeField: formCfg.posApiTypeField,
+  });
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
     err.status = 400;
     throw err;
   }
 
-  const response = await sendReceipt(payload);
-  await persistPosApiDetails(tableName, pkColumn, recordId, response, record);
+  const response = await sendReceipt(payload, { endpoint });
+  await persistPosApiDetails(tableName, pkColumn, recordId, response, record, {
+    fieldsFromPosApi: formCfg.fieldsFromPosApi,
+  });
 
   return { id: recordId, posApi: { payload, response } };
 }
