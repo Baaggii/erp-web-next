@@ -9,6 +9,8 @@
     "posApiType": "B2C_RECEIPT",
     "usage": "transaction",
     "defaultForForm": true,
+    "supportsMultipleReceipts": true,
+    "supportsMultiplePayments": true,
     "requestBody": {
       "schema": {
         "type": "B2C_RECEIPT",
@@ -52,6 +54,68 @@
       },
       "description": "Batch of receipts with payments and items grouped by tax type"
     },
+    "requestFields": [
+      {
+        "field": "type",
+        "required": true,
+        "description": "POSAPI payload type (B2C_RECEIPT, B2B_RECEIPT, B2C_INVOICE, B2B_INVOICE, STOCK_QR)."
+      },
+      {
+        "field": "branchNo",
+        "required": true,
+        "description": "Three digit branch identifier issued with the licence."
+      },
+      {
+        "field": "posNo",
+        "required": true,
+        "description": "POS terminal identifier registered with the tax authority."
+      },
+      {
+        "field": "merchantTin",
+        "required": true,
+        "description": "Registered TIN of the merchant submitting the receipt."
+      },
+      {
+        "field": "consumerNo",
+        "required": false,
+        "description": "Citizen registry or phone number for B2C receipts. Required when type is B2C."
+      },
+      {
+        "field": "customerTin",
+        "required": false,
+        "description": "Buyer TIN for B2B receipts. Required when type is B2B."
+      },
+      {
+        "field": "totalAmount",
+        "required": true,
+        "description": "Total invoice amount including tax."
+      },
+      {
+        "field": "totalVAT",
+        "required": true,
+        "description": "VAT amount for the transaction when taxType is VAT_ABLE."
+      },
+      {
+        "field": "totalCityTax",
+        "required": false,
+        "description": "City tax amount for VAT_ABLE receipts when applicable."
+      },
+      {
+        "field": "receipts[]",
+        "required": true,
+        "description": "Array of receipt groups organised by POSAPI tax type."
+      },
+      {
+        "field": "receipts[].items[]",
+        "required": true,
+        "description": "Line items that include product codes, quantities, prices, and tax data."
+      },
+      {
+        "field": "payments[]",
+        "required": true,
+        "description": "Breakdown of payment methods applied to the receipt or invoice."
+      }
+    ],
     "responseBody": {
       "schema": {
         "status": "SUCCESS",
@@ -68,6 +132,32 @@
       },
       "description": "Receipt submission response"
     },
+    "responseFields": [
+      {
+        "field": "status",
+        "description": "Execution status returned by POSAPI (SUCCESS or ERROR)."
+      },
+      {
+        "field": "message",
+        "description": "Human-readable description of the operation result."
+      },
+      {
+        "field": "receipts[].billId",
+        "description": "Unique bill identifier registered by POSAPI."
+      },
+      {
+        "field": "receipts[].lottery",
+        "description": "Lottery number to be printed on the receipt."
+      },
+      {
+        "field": "receipts[].qrData",
+        "description": "QR payload containing encoded receipt verification data."
+      },
+      {
+        "field": "receipts[].receiptNumbers[]",
+        "description": "List of receipt numbers assigned per tax authority rules."
+      }
+    ],
     "fieldDescriptions": {
       "type": "POSAPI payload type (B2C_RECEIPT, B2B_RECEIPT, B2C_INVOICE, B2B_INVOICE, STOCK_QR).",
       "taxType": "Overall tax category for the header (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT).",
@@ -143,6 +233,304 @@
         "items": "receipts[].items",
         "payments": "payments"
       }
+    },
+    "testable": true,
+    "testServerUrl": "https://posapi-test.tax.gov.mn"
+  },
+  {
+    "id": "getInformation",
+    "name": "List pending receipts",
+    "category": "Monitoring",
+    "method": "GET",
+    "path": "/rest/getInformation",
+    "parameters": [
+      {
+        "name": "startDate",
+        "in": "query",
+        "required": false,
+        "description": "Filter results starting from this date (YYYY-MM-DD)."
+      },
+      {
+        "name": "endDate",
+        "in": "query",
+        "required": false,
+        "description": "Filter results until this date (YYYY-MM-DD)."
+      },
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "description": "Page number when paginating long-running queues."
+      }
+    ],
+    "usage": "info",
+    "requestBody": {
+      "schema": {},
+      "description": "No request body required for GET endpoints."
+    },
+    "requestFields": [
+      {
+        "field": "startDate",
+        "required": false,
+        "description": "Optional filter for the queue start date (YYYY-MM-DD)."
+      },
+      {
+        "field": "endDate",
+        "required": false,
+        "description": "Optional filter for the queue end date (YYYY-MM-DD)."
+      },
+      {
+        "field": "page",
+        "required": false,
+        "description": "Page number for paginated responses."
+      }
+    ],
+    "responseBody": {
+      "schema": {
+        "status": "SUCCESS",
+        "receipts": [
+          {
+            "billId": "2024-000124",
+            "lottery": "АБ12345679",
+            "amount": 65000,
+            "status": "QUEUED",
+            "createdDate": "2024-04-12T14:21:00+08:00"
+          }
+        ]
+      },
+      "description": "Receipts queued on the POSAPI server awaiting acknowledgement."
+    },
+    "responseFields": [
+      {
+        "field": "status",
+        "description": "Execution status returned by POSAPI."
+      },
+      {
+        "field": "receipts[].billId",
+        "description": "Queued receipt identifier."
+      },
+      {
+        "field": "receipts[].status",
+        "description": "POSAPI queue status such as QUEUED or SENT."
+      },
+      {
+        "field": "receipts[].amount",
+        "description": "Total amount of the queued receipt."
+      },
+      {
+        "field": "receipts[].createdDate",
+        "description": "Date the receipt was created or queued."
+      }
+    ],
+    "fieldDescriptions": {
+      "status": "Execution status returned by POSAPI.",
+      "receipts": "List of receipts that are pending on the POSAPI server.",
+      "receipts[].billId": "Queued receipt identifier.",
+      "receipts[].status": "POSAPI queue status such as QUEUED or SENT.",
+      "receipts[].amount": "Total amount of the queued receipt.",
+      "receipts[].createdDate": "Date the receipt was created or queued."
+    },
+    "testable": true,
+    "testServerUrl": "https://posapi-test.tax.gov.mn"
+  },
+  {
+    "id": "getDistrictCodes",
+    "name": "Load district codes",
+    "category": "Reference data",
+    "method": "GET",
+    "path": "/rest/getDistrictCode",
+    "parameters": [],
+    "usage": "info",
+    "requestBody": {
+      "schema": {},
+      "description": "No request body required for this lookup."
+    },
+    "requestFields": [],
+    "responseBody": {
+      "schema": {
+        "districts": [
+          {
+            "code": "1512",
+            "name": "Sukhbaatar district",
+            "city": "Ulaanbaatar"
+          }
+        ]
+      },
+      "description": "Reference list of tax districts."
+    },
+    "responseFields": [
+      {
+        "field": "districts[]",
+        "description": "Array of available district codes."
+      },
+      {
+        "field": "districts[].code",
+        "description": "District code used when registering receipts."
+      },
+      {
+        "field": "districts[].name",
+        "description": "Human-readable district name."
+      },
+      {
+        "field": "districts[].city",
+        "description": "City or province that owns the district."
+      }
+    ],
+    "fieldDescriptions": {
+      "districts": "Array of available district codes.",
+      "districts[].code": "District code used when registering receipts.",
+      "districts[].name": "Human-readable district name.",
+      "districts[].city": "City or province that owns the district."
+    },
+    "testable": true,
+    "testServerUrl": "https://posapi-test.tax.gov.mn"
+  },
+  {
+    "id": "getVatTaxTypes",
+    "name": "Load VAT tax types",
+    "category": "Reference data",
+    "method": "GET",
+    "path": "/rest/vat_tax_type",
+    "parameters": [],
+    "usage": "info",
+    "requestBody": {
+      "schema": {},
+      "description": "No request body required for this lookup."
+    },
+    "requestFields": [],
+    "responseBody": {
+      "schema": {
+        "vatTaxTypes": [
+          {
+            "code": "VAT_ABLE",
+            "description": "Goods and services subject to VAT"
+          }
+        ]
+      },
+      "description": "Reference list of VAT tax type codes."
+    },
+    "responseFields": [
+      {
+        "field": "vatTaxTypes[]",
+        "description": "Array of supported VAT tax type codes."
+      },
+      {
+        "field": "vatTaxTypes[].code",
+        "description": "Tax type identifier returned by POSAPI."
+      },
+      {
+        "field": "vatTaxTypes[].description",
+        "description": "Description of when the tax type is used."
+      }
+    ],
+    "fieldDescriptions": {
+      "vatTaxTypes": "Array of supported VAT tax type codes.",
+      "vatTaxTypes[].code": "Tax type identifier returned by POSAPI.",
+      "vatTaxTypes[].description": "Description of when the tax type is used."
+    },
+    "testable": true,
+    "testServerUrl": "https://posapi-test.tax.gov.mn"
+  },
+  {
+    "id": "getBankAccountInfo",
+    "name": "Fetch bank settlement accounts",
+    "category": "Administration",
+    "method": "GET",
+    "path": "/rest/getBankAccountInfo",
+    "parameters": [],
+    "usage": "admin",
+    "requestBody": {
+      "schema": {},
+      "description": "No request body required for this lookup."
+    },
+    "requestFields": [],
+    "responseBody": {
+      "schema": {
+        "bankAccounts": [
+          {
+            "bankName": "State Bank",
+            "accountNo": "190000000000",
+            "currency": "MNT"
+          }
+        ]
+      },
+      "description": "Bank accounts configured on the POSAPI instance."
+    },
+    "responseFields": [
+      {
+        "field": "bankAccounts[]",
+        "description": "List of bank accounts configured in POSAPI."
+      },
+      {
+        "field": "bankAccounts[].bankName",
+        "description": "Bank name for the configured account."
+      },
+      {
+        "field": "bankAccounts[].accountNo",
+        "description": "Account number registered with the tax authority."
+      },
+      {
+        "field": "bankAccounts[].currency",
+        "description": "Currency code for the account (e.g., MNT)."
+      }
+    ],
+    "fieldDescriptions": {
+      "bankAccounts": "List of bank accounts configured in POSAPI.",
+      "bankAccounts[].bankName": "Bank name for the configured account.",
+      "bankAccounts[].accountNo": "Account number registered with the tax authority.",
+      "bankAccounts[].currency": "Currency code for the account (e.g., MNT)."
+    },
+    "testable": true,
+    "testServerUrl": "https://posapi-test.tax.gov.mn"
+  },
+  {
+    "id": "getBranchInfo",
+    "name": "Fetch registered branch info",
+    "category": "Administration",
+    "method": "GET",
+    "path": "/rest/getBranchInfo",
+    "parameters": [],
+    "usage": "admin",
+    "requestBody": {
+      "schema": {},
+      "description": "No request body required for this lookup."
+    },
+    "requestFields": [],
+    "responseBody": {
+      "schema": {
+        "branches": [
+          {
+            "branchNo": "001",
+            "name": "Main branch",
+            "address": "Sukhbaatar district, Ulaanbaatar"
+          }
+        ]
+      },
+      "description": "Branches licensed for issuing POSAPI receipts."
+    },
+    "responseFields": [
+      {
+        "field": "branches[]",
+        "description": "Array of branches registered in POSAPI."
+      },
+      {
+        "field": "branches[].branchNo",
+        "description": "Branch number issued with the licence."
+      },
+      {
+        "field": "branches[].name",
+        "description": "Branch display name."
+      },
+      {
+        "field": "branches[].address",
+        "description": "Physical address recorded for the branch."
+      }
+    ],
+    "fieldDescriptions": {
+      "branches": "Array of branches registered in POSAPI.",
+      "branches[].branchNo": "Branch number issued with the licence.",
+      "branches[].name": "Branch display name.",
+      "branches[].address": "Physical address recorded for the branch."
     },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"

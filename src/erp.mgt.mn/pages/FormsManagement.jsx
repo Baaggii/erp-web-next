@@ -213,23 +213,39 @@ export default function FormsManagement() {
     });
   }, [branches, branchCfg]);
 
-  const endpointOptions = useMemo(() => {
-    if (!Array.isArray(posApiEndpoints)) return [];
-    return posApiEndpoints
-      .map((endpoint) => {
-        if (!endpoint || typeof endpoint !== 'object') return null;
-        const id = typeof endpoint.id === 'string' ? endpoint.id : '';
-        if (!id) return null;
-        const name = typeof endpoint.name === 'string' ? endpoint.name : '';
-        const label = name ? `${id} – ${name}` : id;
-        return {
-          value: id,
-          label,
-          defaultForForm: Boolean(endpoint.defaultForForm),
-        };
-      })
-      .filter(Boolean);
+  const endpointOptionGroups = useMemo(() => {
+    const base = { transaction: [], info: [], admin: [], other: [] };
+    if (!Array.isArray(posApiEndpoints)) return base;
+    posApiEndpoints.forEach((endpoint) => {
+      if (!endpoint || typeof endpoint !== 'object') return;
+      const id = typeof endpoint.id === 'string' ? endpoint.id.trim() : '';
+      if (!id) return;
+      const name = typeof endpoint.name === 'string' ? endpoint.name : '';
+      const label = name ? `${id} – ${name}` : id;
+      const usage = typeof endpoint.usage === 'string' ? endpoint.usage : 'other';
+      const option = {
+        value: id,
+        label,
+        defaultForForm: Boolean(endpoint.defaultForForm),
+      };
+      if (usage === 'transaction') {
+        base.transaction.push(option);
+      } else if (usage === 'info') {
+        base.info.push(option);
+      } else if (usage === 'admin') {
+        base.admin.push(option);
+      } else {
+        base.other.push(option);
+      }
+    });
+    base.transaction.sort((a, b) => a.label.localeCompare(b.label));
+    base.info.sort((a, b) => a.label.localeCompare(b.label));
+    base.admin.sort((a, b) => a.label.localeCompare(b.label));
+    return base;
   }, [posApiEndpoints]);
+
+  const transactionEndpointOptions = endpointOptionGroups.transaction;
+  const infoEndpointOptions = endpointOptionGroups.info;
 
   const deptOptions = useMemo(() => {
     const idField = deptCfg?.idField || 'id';
@@ -621,7 +637,7 @@ export default function FormsManagement() {
       ? String(cfg.posApiEndpointId).trim()
       : '';
     if (!cfg.posApiEndpointId) {
-      const defaultEndpoint = endpointOptions.find((opt) => opt?.defaultForForm);
+      const defaultEndpoint = transactionEndpointOptions.find((opt) => opt?.defaultForForm);
       if (defaultEndpoint) cfg.posApiEndpointId = defaultEndpoint.value;
     }
     cfg.posApiTypeField = cfg.posApiTypeField
@@ -1004,7 +1020,7 @@ export default function FormsManagement() {
                     }
                   >
                     <option value="">Use registry default</option>
-                    {endpointOptions.map((endpoint) => (
+                    {transactionEndpointOptions.map((endpoint) => (
                       <option key={endpoint.value} value={endpoint.value}>
                         {endpoint.label}
                         {endpoint.defaultForForm ? ' (default)' : ''}
@@ -1021,10 +1037,10 @@ export default function FormsManagement() {
                     disabled={!config.posApiEnabled}
                     size={Math.min(
                       6,
-                      Math.max(3, endpointOptions.length || 0),
+                      Math.max(3, infoEndpointOptions.length || 0),
                     )}
                   >
-                    {endpointOptions.map((endpoint) => (
+                    {infoEndpointOptions.map((endpoint) => (
                       <option key={`info-${endpoint.value}`} value={endpoint.value}>
                         {endpoint.label}
                       </option>
