@@ -153,6 +153,29 @@ async function persistPosApiResponse(table, id, response) {
   const columnMap = await getTableColumnNameMap(table);
   if (!columnMap || columnMap.size === 0) return;
   const updates = {};
+  const billIdCol =
+    columnMap.get('bill_id') ||
+    columnMap.get('billid') ||
+    columnMap.get('ebarimt_id') ||
+    columnMap.get('ebarimt_no') ||
+    columnMap.get('ebarimt_number') ||
+    columnMap.get('posapi_bill_id') ||
+    columnMap.get('posapi_billno');
+  const statusCol =
+    columnMap.get('posapi_status') ||
+    columnMap.get('ebarimt_status') ||
+    columnMap.get('receipt_status');
+  const errorCol =
+    columnMap.get('posapi_error_code') ||
+    columnMap.get('posapi_error_codes') ||
+    columnMap.get('ebarimt_error_code') ||
+    columnMap.get('ebarimt_error_codes') ||
+    columnMap.get('posapi_error') ||
+    columnMap.get('ebarimt_error');
+  const responseCol =
+    columnMap.get('posapi_response') ||
+    columnMap.get('ebarimt_response') ||
+    columnMap.get('posapi_response_json');
   if (response.lottery) {
     const lotteryCol =
       columnMap.get('lottery') ||
@@ -165,6 +188,34 @@ async function persistPosApiResponse(table, id, response) {
     const qrCol =
       columnMap.get('qr_data') || columnMap.get('qrdata') || columnMap.get('qr_code');
     if (qrCol) updates[qrCol] = response.qrData;
+  }
+  if (billIdCol && response.billId) {
+    updates[billIdCol] = response.billId;
+  }
+  if (statusCol && response.status) {
+    updates[statusCol] = response.status;
+  }
+  const rawErrors =
+    response.errorCodes ?? response.errorCode ?? response.error ?? response.errors;
+  if (errorCol && rawErrors) {
+    let normalizedError = rawErrors;
+    if (Array.isArray(rawErrors)) {
+      normalizedError = rawErrors.join(',');
+    } else if (typeof rawErrors === 'object') {
+      try {
+        normalizedError = JSON.stringify(rawErrors);
+      } catch {
+        normalizedError = String(rawErrors);
+      }
+    }
+    updates[errorCol] = normalizedError;
+  }
+  if (responseCol) {
+    try {
+      updates[responseCol] = JSON.stringify(response);
+    } catch {
+      updates[responseCol] = String(response);
+    }
   }
   if (Object.keys(updates).length === 0) return;
   const setClause = Object.keys(updates)

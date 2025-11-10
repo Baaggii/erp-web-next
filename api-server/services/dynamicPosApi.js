@@ -34,6 +34,29 @@ async function persistPosApiDetails(table, pkColumn, recordId, response, record)
   if (recordId === undefined || recordId === null) return;
   const lookup = createColumnLookup(record);
   const updates = {};
+  const billIdCol =
+    findColumn(record, [
+      'bill_id',
+      'billid',
+      'ebarimt_id',
+      'ebarimt_no',
+      'ebarimt_number',
+      'posapi_bill_id',
+      'posapi_billno',
+    ]) || null;
+  const statusCol =
+    findColumn(record, ['posapi_status', 'ebarimt_status', 'receipt_status']) || null;
+  const errorCol =
+    findColumn(record, [
+      'posapi_error_code',
+      'posapi_error_codes',
+      'ebarimt_error_code',
+      'ebarimt_error_codes',
+      'posapi_error',
+      'ebarimt_error',
+    ]) || null;
+  const responseCol =
+    findColumn(record, ['posapi_response', 'ebarimt_response', 'posapi_response_json']) || null;
   if (response.lottery) {
     const lotteryCol =
       lookup.get('lottery') ||
@@ -48,6 +71,34 @@ async function persistPosApiDetails(table, pkColumn, recordId, response, record)
       lookup.get('qrdata') ||
       lookup.get('qr_code');
     if (qrCol) updates[qrCol] = response.qrData;
+  }
+  if (billIdCol && response.billId) {
+    updates[billIdCol] = response.billId;
+  }
+  if (statusCol && response.status) {
+    updates[statusCol] = response.status;
+  }
+  const rawErrors =
+    response.errorCodes ?? response.errorCode ?? response.error ?? response.errors;
+  if (errorCol && rawErrors) {
+    let normalizedError = rawErrors;
+    if (Array.isArray(rawErrors)) {
+      normalizedError = rawErrors.join(',');
+    } else if (typeof rawErrors === 'object') {
+      try {
+        normalizedError = JSON.stringify(rawErrors);
+      } catch {
+        normalizedError = String(rawErrors);
+      }
+    }
+    updates[errorCol] = normalizedError;
+  }
+  if (responseCol) {
+    try {
+      updates[responseCol] = JSON.stringify(response);
+    } catch {
+      updates[responseCol] = String(response);
+    }
   }
   const entries = Object.entries(updates);
   if (entries.length === 0) return;
