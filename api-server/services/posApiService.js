@@ -2,6 +2,24 @@ import { getSettings } from '../../db/index.js';
 import { getEndpointById, loadEndpoints } from './posApiRegistry.js';
 import { createColumnLookup } from './posApiPersistence.js';
 
+const POSAPI_TYPES = new Set([
+  'B2C_RECEIPT',
+  'B2B_RECEIPT',
+  'B2C_INVOICE',
+  'B2B_INVOICE',
+  'STOCK_QR',
+]);
+
+const TAX_TYPES = new Set(['VAT_ABLE', 'VAT_FREE', 'VAT_ZERO', 'NO_VAT']);
+
+const PAYMENT_TYPES = new Set([
+  'CASH',
+  'PAYMENT_CARD',
+  'BANK_TRANSFER',
+  'MOBILE_WALLET',
+  'EASY_BANK_CARD',
+]);
+
 function trimEndSlash(url) {
   if (!url) return '';
   return url.replace(/\/+$/, '');
