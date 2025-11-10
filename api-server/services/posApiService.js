@@ -88,12 +88,29 @@ export async function getPosApiBaseUrl() {
   return cachedBaseUrl;
 }
 
+function tokenizePath(path) {
+  if (typeof path !== 'string' || !path) return [];
+  const tokens = [];
+  const regex = /([^\.\[\]]+)|(\[(\d+)\])/g;
+  let match;
+  while ((match = regex.exec(path))) {
+    if (match[1]) {
+      tokens.push(match[1]);
+    } else if (match[3] !== undefined) {
+      tokens.push(Number(match[3]));
+    }
+  }
+  return tokens;
+}
+
 function resolveColumnName(columnLookup, record, columnName) {
   if (!columnLookup || typeof columnLookup.get !== 'function') return '';
   if (typeof columnName !== 'string') return '';
-  const trimmed = columnName.trim();
-  if (!trimmed) return '';
-  const normalized = trimmed.toLowerCase();
+  const tokens = tokenizePath(columnName.trim());
+  if (!tokens.length) return '';
+  const firstToken = tokens[0];
+  if (typeof firstToken !== 'string') return '';
+  const normalized = firstToken.toLowerCase();
   const underscored = normalized.replace(/[^a-z0-9]+/g, '_');
   const stripped = normalized.replace(/[^a-z0-9]+/g, '');
   const candidates = [normalized, underscored, stripped];
@@ -102,16 +119,144 @@ function resolveColumnName(columnLookup, record, columnName) {
     const column = columnLookup.get(candidate);
     if (column) return column;
   }
-  if (record && Object.prototype.hasOwnProperty.call(record, trimmed)) {
-    return trimmed;
+  if (record && Object.prototype.hasOwnProperty.call(record, firstToken)) {
+    return firstToken;
   }
   return '';
 }
 
+function parseMaybeJson(value) {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    return value;
+  }
+}
+
+function getValueFromTokens(source, tokens) {
+  let current = source;
+  for (const token of tokens) {
+    if (current === undefined || current === null) return undefined;
+    if (typeof current === 'string') {
+      current = parseMaybeJson(current);
+    }
+    if (typeof token === 'number') {
+      if (!Array.isArray(current)) return undefined;
+      current = current[token];
+      continue;
+    }
+    if (typeof current !== 'object') return undefined;
+    current = current[token];
+  }
+  return current;
+}
+
 function getColumnValue(columnLookup, record, columnName) {
-  const resolved = resolveColumnName(columnLookup, record, columnName);
+  if (typeof columnName !== 'string' || !columnName.trim()) return undefined;
+  const tokens = tokenizePath(columnName.trim());
+  if (!tokens.length) return undefined;
+  const [firstToken, ...rest] = tokens;
+  if (typeof firstToken !== 'string') return undefined;
+  const resolved = resolveColumnName(columnLookup, record, firstToken);
   if (!resolved) return undefined;
-  return record[resolved];
+  if (!rest.length) return record[resolved];
+  const baseValue = record[resolved];
+  return getValueFromTokens(baseValue, rest);
+}
+
+const COMPLEX_ARRAY_KEYS = new Set(['itemsField', 'paymentsField', 'receiptsField']);
+const FIELD_MAP_KEYS = new Set(['itemFields', 'paymentFields', 'receiptFields']);
+
+function normalizeFieldMap(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const normalized = {};
+  Object.entries(value).forEach(([key, val]) => {
+    if (typeof key !== 'string') return;
+    if (val === undefined || val === null) return;
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (trimmed) normalized[key] = trimmed;
+      return;
+    }
+    if (typeof val === 'number' || typeof val === 'bigint') {
+      normalized[key] = String(val);
+      return;
+    }
+    if (typeof val === 'boolean') {
+      normalized[key] = val ? 'true' : 'false';
+      return;
+    }
+    if (typeof val === 'object' && val !== null) {
+      const str = String(val);
+      if (str && str !== '[object Object]') {
+        normalized[key] = str;
+      }
+    }
+  });
+  return normalized;
+}
+
+function normalizeArrayDescriptor(value) {
+  if (value === undefined || value === null) return {};
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? { path: trimmed } : {};
+  }
+  if (Array.isArray(value)) {
+    return {};
+  }
+  if (typeof value !== 'object') {
+    return {};
+  }
+  const descriptor = {};
+  const pathCandidate =
+    (typeof value.path === 'string' && value.path.trim()) ||
+    (typeof value.column === 'string' && value.column.trim()) ||
+    (typeof value.field === 'string' && value.field.trim()) ||
+    (typeof value.source === 'string' && value.source.trim());
+  if (pathCandidate) descriptor.path = pathCandidate;
+  const itemsPathCandidate =
+    (typeof value.itemsPath === 'string' && value.itemsPath.trim()) ||
+    (typeof value.innerPath === 'string' && value.innerPath.trim());
+  if (itemsPathCandidate) descriptor.itemsPath = itemsPathCandidate;
+  if (value.fields) {
+    const fieldMap = normalizeFieldMap(value.fields);
+    if (Object.keys(fieldMap).length) descriptor.fields = fieldMap;
+  }
+  if (value.map) {
+    const fieldMap = normalizeFieldMap(value.map);
+    if (Object.keys(fieldMap).length) {
+      descriptor.fields = {
+        ...(descriptor.fields || {}),
+        ...fieldMap,
+      };
+    }
+  }
+  if (value.fieldMap) {
+    const fieldMap = normalizeFieldMap(value.fieldMap);
+    if (Object.keys(fieldMap).length) {
+      descriptor.fields = {
+        ...(descriptor.fields || {}),
+        ...fieldMap,
+      };
+    }
+  }
+  if (value.itemFields) {
+    const fieldMap = normalizeFieldMap(value.itemFields);
+    if (Object.keys(fieldMap).length) descriptor.itemFields = fieldMap;
+  }
+  if (value.paymentFields) {
+    const fieldMap = normalizeFieldMap(value.paymentFields);
+    if (Object.keys(fieldMap).length) descriptor.paymentFields = fieldMap;
+  }
+  if (value.receiptFields) {
+    const fieldMap = normalizeFieldMap(value.receiptFields);
+    if (Object.keys(fieldMap).length) descriptor.receiptFields = fieldMap;
+  }
+  return descriptor;
 }
 
 function normalizeMapping(mapping) {
@@ -120,7 +265,39 @@ function normalizeMapping(mapping) {
   Object.entries(mapping).forEach(([key, value]) => {
     if (typeof key !== 'string') return;
     if (value === undefined || value === null) return;
-    normalized[key] = typeof value === 'string' ? value : String(value);
+    if (COMPLEX_ARRAY_KEYS.has(key)) {
+      const descriptor = normalizeArrayDescriptor(value);
+      if (Object.keys(descriptor).length) {
+        normalized[key] = descriptor;
+      }
+      return;
+    }
+    if (FIELD_MAP_KEYS.has(key)) {
+      const fieldMap = normalizeFieldMap(value);
+      if (Object.keys(fieldMap).length) {
+        normalized[key] = fieldMap;
+      }
+      return;
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      if (trimmed) normalized[key] = trimmed;
+      return;
+    }
+    if (typeof value === 'number' || typeof value === 'bigint') {
+      normalized[key] = String(value);
+      return;
+    }
+    if (typeof value === 'boolean') {
+      normalized[key] = value ? 'true' : 'false';
+      return;
+    }
+    if (typeof value === 'object') {
+      const jsonValue = JSON.stringify(value);
+      if (jsonValue && jsonValue !== '{}') {
+        normalized[key] = jsonValue;
+      }
+    }
   });
   return normalized;
 }
@@ -146,6 +323,72 @@ function parseJsonArray(value) {
   if (typeof value === 'object') {
     if (Array.isArray(value.rows)) return value.rows;
     if (Array.isArray(value.items)) return value.items;
+  }
+  return [];
+}
+
+function mergeFieldMaps(...maps) {
+  return maps.reduce((acc, map) => {
+    if (!map || typeof map !== 'object') return acc;
+    Object.entries(map).forEach(([key, value]) => {
+      if (typeof key !== 'string') return;
+      if (value === undefined || value === null) return;
+      const str = String(value).trim();
+      if (str && str !== '[object Object]') {
+        acc[key] = str;
+      }
+    });
+    return acc;
+  }, {});
+}
+
+function extractDescriptorFieldMap(descriptor, key) {
+  if (!descriptor || typeof descriptor !== 'object') return {};
+  const parts = [];
+  if (descriptor.fields) parts.push(descriptor.fields);
+  if (key && descriptor[key]) parts.push(descriptor[key]);
+  return mergeFieldMaps(...parts);
+}
+
+function getValueAtPath(source, path) {
+  if (path === undefined || path === null) return undefined;
+  if (typeof path === 'string') {
+    const tokens = tokenizePath(path);
+    return getValueFromTokens(source, tokens);
+  }
+  if (Array.isArray(path)) {
+    return getValueFromTokens(source, path);
+  }
+  return undefined;
+}
+
+function applyFieldMap(entry, fieldMap = {}) {
+  if (!entry || typeof entry !== 'object') return entry;
+  const mapEntries = Object.entries(fieldMap);
+  if (!mapEntries.length) return entry;
+  const next = { ...entry };
+  mapEntries.forEach(([target, sourcePath]) => {
+    if (typeof target !== 'string') return;
+    const value = getValueAtPath(entry, sourcePath);
+    if (value === undefined) return;
+    next[target] = value;
+  });
+  return next;
+}
+
+function extractArrayFromDescriptor(record, columnLookup, descriptor) {
+  if (!descriptor) return [];
+  if (typeof descriptor === 'string') {
+    const value = getColumnValue(columnLookup, record, descriptor);
+    return parseJsonArray(value);
+  }
+  if (descriptor && typeof descriptor === 'object') {
+    const { path, itemsPath } = descriptor;
+    let value = path ? getColumnValue(columnLookup, record, path) : undefined;
+    if (itemsPath) {
+      value = getValueAtPath(value, itemsPath);
+    }
+    return parseJsonArray(value);
   }
   return [];
 }
@@ -198,7 +441,25 @@ function normalizeItemEntry(item, options = {}) {
   if (usedClassificationField && options.classificationField) {
     delete next[options.classificationField];
   }
+  if (!next.taxType && options.defaultTaxType) {
+    next.taxType = options.defaultTaxType;
+  }
   return next;
+}
+
+function appendLotNoToItems(items, lotNo) {
+  if (!lotNo) return items;
+  if (!Array.isArray(items)) return items;
+  return items.map((item) => {
+    if (!item || typeof item !== 'object') return item;
+    const next = { ...item };
+    if (!next.data || typeof next.data !== 'object') {
+      next.data = { lotNo };
+    } else if (next.data.lotNo === undefined || next.data.lotNo === null) {
+      next.data = { ...next.data, lotNo };
+    }
+    return next;
+  });
 }
 
 function normalizePaymentEntry(entry) {
@@ -217,6 +478,93 @@ function normalizePaymentEntry(entry) {
     if (parsedValue !== null) next.amount = parsedValue;
   }
   return next;
+}
+
+function normalizeReceiptEntry(entry, options = {}) {
+  if (!entry || typeof entry !== 'object') return null;
+  const mapped = applyFieldMap(entry, options.fieldMap || {});
+  const next = { ...mapped };
+
+  const totalAmountCandidate =
+    next.totalAmount ?? next.amount ?? next.total ?? next.receiptAmount;
+  const parsedTotal = toNumber(totalAmountCandidate);
+  if (parsedTotal !== null) next.totalAmount = parsedTotal;
+
+  const vatCandidate = next.totalVAT ?? next.vat ?? next.vatAmount;
+  const parsedVat = toNumber(vatCandidate);
+  if (parsedVat !== null) {
+    next.totalVAT = parsedVat;
+    if (next.vat === undefined) next.vat = parsedVat;
+  }
+
+  const cityTaxCandidate = next.totalCityTax ?? next.cityTax ?? next.cityTaxAmount;
+  const parsedCityTax = toNumber(cityTaxCandidate);
+  if (parsedCityTax !== null) {
+    next.totalCityTax = parsedCityTax;
+    if (next.cityTax === undefined) next.cityTax = parsedCityTax;
+  }
+
+  const explicitTaxType = toStringValue(next.taxType || next.tax_type || '');
+  if (explicitTaxType) {
+    next.taxType = explicitTaxType;
+  } else if (options.defaultTaxType) {
+    next.taxType = options.defaultTaxType;
+  }
+
+  let items = parseJsonArray(next.items)
+    .map((item) => applyFieldMap(item, options.itemFieldMap || {}))
+    .map((item) =>
+      normalizeItemEntry(item, {
+        classificationField: options.classificationField,
+        headerClassificationCode: options.headerClassificationCode,
+        defaultTaxType: next.taxType || options.defaultTaxType,
+      }),
+    )
+    .filter(Boolean);
+
+  if (options.lotNo) {
+    items = appendLotNoToItems(items, options.lotNo);
+  }
+
+  const payments = parseJsonArray(next.payments)
+    .map((entry) => applyFieldMap(entry, options.paymentFieldMap || {}))
+    .map((entry) => normalizePaymentEntry(entry))
+    .filter(Boolean);
+
+  const receipt = { ...next, items };
+  if (payments.length) {
+    receipt.payments = payments;
+  } else {
+    delete receipt.payments;
+  }
+  if (!receipt.totalAmount && items.length) {
+    const computed = items.reduce((sum, item) => {
+      const amount = toNumber(item.totalAmount ?? item.amount ?? item.total);
+      return sum + (amount ?? 0);
+    }, 0);
+    if (Number.isFinite(computed) && computed > 0) {
+      receipt.totalAmount = computed;
+    }
+  }
+  if (!receipt.totalVAT && items.length) {
+    const computedVat = items.reduce((sum, item) => {
+      const vat = toNumber(item.totalVAT ?? item.vat);
+      return sum + (vat ?? 0);
+    }, 0);
+    if (Number.isFinite(computedVat) && computedVat > 0) {
+      receipt.totalVAT = computedVat;
+    }
+  }
+  if (!receipt.totalCityTax && items.length) {
+    const computedCityTax = items.reduce((sum, item) => {
+      const cityTax = toNumber(item.totalCityTax ?? item.cityTax);
+      return sum + (cityTax ?? 0);
+    }, 0);
+    if (Number.isFinite(computedCityTax) && computedCityTax > 0) {
+      receipt.totalCityTax = computedCityTax;
+    }
+  }
+  return receipt;
 }
 
 function resolveReceiptType({
@@ -401,7 +749,6 @@ export async function buildReceiptFromDynamicTransaction(
 
   const taxTypeField = normalizedMapping.taxTypeField || normalizedMapping.taxType;
   let taxType = toStringValue(getColumnValue(columnLookup, record, taxTypeField));
-  if (!taxType) taxType = 'VAT_ABLE';
 
   const descriptionField = normalizedMapping.description || normalizedMapping.itemDescription;
   let description = '';
@@ -450,23 +797,77 @@ export async function buildReceiptFromDynamicTransaction(
     getColumnValue(columnLookup, record, classificationField),
   );
 
-  const itemsField = normalizedMapping.itemsField || normalizedMapping.items;
-  const rawItems = getColumnValue(columnLookup, record, itemsField);
-  let items = parseJsonArray(rawItems)
+  const itemsDescriptor = normalizedMapping.itemsField || normalizedMapping.items;
+  const paymentsDescriptor =
+    normalizedMapping.paymentsField || normalizedMapping.payments;
+  const receiptsDescriptor =
+    normalizedMapping.receiptsField || normalizedMapping.receipts;
+
+  const itemFieldMap = mergeFieldMaps(
+    normalizedMapping.itemFields,
+    extractDescriptorFieldMap(itemsDescriptor, 'itemFields'),
+    extractDescriptorFieldMap(receiptsDescriptor, 'itemFields'),
+  );
+  const paymentFieldMap = mergeFieldMaps(
+    normalizedMapping.paymentFields,
+    extractDescriptorFieldMap(paymentsDescriptor, 'paymentFields'),
+    extractDescriptorFieldMap(receiptsDescriptor, 'paymentFields'),
+  );
+  const receiptFieldMap = mergeFieldMaps(
+    normalizedMapping.receiptFields,
+    extractDescriptorFieldMap(receiptsDescriptor, 'receiptFields'),
+  );
+
+  let items = extractArrayFromDescriptor(record, columnLookup, itemsDescriptor)
+    .map((item) => applyFieldMap(item, itemFieldMap))
     .map((item) =>
       normalizeItemEntry(item, {
         classificationField,
         headerClassificationCode,
+        defaultTaxType: taxType,
       }),
     )
     .filter(Boolean);
+  items = appendLotNoToItems(items, lotNo);
 
-  if (!items.length) {
+  const rawPayments = extractArrayFromDescriptor(
+    record,
+    columnLookup,
+    paymentsDescriptor,
+  );
+  let payments = rawPayments
+    .map((entry) => applyFieldMap(entry, paymentFieldMap))
+    .map((entry) => normalizePaymentEntry(entry))
+    .filter(Boolean);
+
+  const rawReceipts = extractArrayFromDescriptor(
+    record,
+    columnLookup,
+    receiptsDescriptor,
+  );
+  let receipts = rawReceipts
+    .map((entry) =>
+      normalizeReceiptEntry(entry, {
+        fieldMap: receiptFieldMap,
+        itemFieldMap,
+        paymentFieldMap,
+        classificationField,
+        headerClassificationCode,
+        defaultTaxType: taxType,
+        lotNo,
+      }),
+    )
+    .filter(
+      (receipt) =>
+        receipt && Array.isArray(receipt.items) && receipt.items.length > 0,
+    );
+
+  if (!items.length && !receipts.length) {
     const fallbackItem = {
       name: description ? String(description) : 'POS Transaction',
       qty: 1,
-      price: totalAmount,
-      totalAmount,
+      price: totalAmount ?? 0,
+      totalAmount: totalAmount ?? 0,
     };
     if (totalVAT !== null) {
       fallbackItem.totalVAT = totalVAT;
@@ -483,24 +884,94 @@ export async function buildReceiptFromDynamicTransaction(
       fallbackItem.classificationCode = headerClassificationCode;
     }
     items = [fallbackItem];
-  } else if (lotNo) {
-    items = items.map((item) => {
-      if (!item || typeof item !== 'object') return item;
-      const next = { ...item };
-      if (!next.data || typeof next.data !== 'object') {
-        next.data = { lotNo };
-      } else if (next.data.lotNo === undefined || next.data.lotNo === null) {
-        next.data = { ...next.data, lotNo };
-      }
-      return next;
-    });
   }
 
-  const paymentsField = normalizedMapping.paymentsField || normalizedMapping.payments;
-  const rawPayments = getColumnValue(columnLookup, record, paymentsField);
-  let payments = parseJsonArray(rawPayments)
-    .map((entry) => normalizePaymentEntry(entry))
-    .filter(Boolean);
+  items = appendLotNoToItems(items, lotNo);
+
+  if (!taxType && receipts.length) {
+    const firstReceiptType = toStringValue(receipts[0]?.taxType);
+    if (firstReceiptType) {
+      taxType = firstReceiptType;
+    }
+  }
+  if (!taxType) {
+    taxType = 'VAT_ABLE';
+  }
+
+  if (totalAmount === null) {
+    if (receipts.length) {
+      const computedTotal = receipts.reduce((sum, receipt) => {
+        const value = toNumber(receipt.totalAmount ?? receipt.amount ?? receipt.total);
+        return sum + (value ?? 0);
+      }, 0);
+      if (Number.isFinite(computedTotal) && computedTotal > 0) {
+        totalAmount = computedTotal;
+      }
+    }
+    if (totalAmount === null && items.length) {
+      const computedItemsTotal = items.reduce((sum, item) => {
+        const value = toNumber(item.totalAmount ?? item.amount ?? item.total);
+        return sum + (value ?? 0);
+      }, 0);
+      if (Number.isFinite(computedItemsTotal) && computedItemsTotal > 0) {
+        totalAmount = computedItemsTotal;
+      }
+    }
+  }
+
+  if (totalAmount === null) {
+    const err = new Error(
+      `POSAPI totalAmount is missing or invalid (column: ${totalAmountColumn})`,
+    );
+    err.status = 400;
+    err.details = { field: 'totalAmount', column: totalAmountColumn };
+    throw err;
+  }
+
+  let normalizedTotalVAT = totalVAT;
+  if (normalizedTotalVAT === null) {
+    if (receipts.length) {
+      const computedVat = receipts.reduce((sum, receipt) => {
+        const value = toNumber(receipt.totalVAT ?? receipt.vat);
+        return sum + (value ?? 0);
+      }, 0);
+      if (Number.isFinite(computedVat) && computedVat > 0) {
+        normalizedTotalVAT = computedVat;
+      }
+    }
+    if (normalizedTotalVAT === null && items.length) {
+      const computedVat = items.reduce((sum, item) => {
+        const value = toNumber(item.totalVAT ?? item.vat);
+        return sum + (value ?? 0);
+      }, 0);
+      if (Number.isFinite(computedVat) && computedVat > 0) {
+        normalizedTotalVAT = computedVat;
+      }
+    }
+  }
+
+  let normalizedTotalCityTax = totalCityTax;
+  if (normalizedTotalCityTax === null) {
+    if (receipts.length) {
+      const computedCityTax = receipts.reduce((sum, receipt) => {
+        const value = toNumber(receipt.totalCityTax ?? receipt.cityTax);
+        return sum + (value ?? 0);
+      }, 0);
+      if (Number.isFinite(computedCityTax) && computedCityTax > 0) {
+        normalizedTotalCityTax = computedCityTax;
+      }
+    }
+    if (normalizedTotalCityTax === null && items.length) {
+      const computedCityTax = items.reduce((sum, item) => {
+        const value = toNumber(item.totalCityTax ?? item.cityTax);
+        return sum + (value ?? 0);
+      }, 0);
+      if (Number.isFinite(computedCityTax) && computedCityTax > 0) {
+        normalizedTotalCityTax = computedCityTax;
+      }
+    }
+  }
+
   if (!payments.length) {
     const defaultPaymentType = toStringValue(
       getColumnValue(columnLookup, record, normalizedMapping.paymentType),
@@ -511,6 +982,18 @@ export async function buildReceiptFromDynamicTransaction(
         amount: totalAmount,
       },
     ];
+  } else {
+    payments = payments.map((entry) => {
+      if (!entry || typeof entry !== 'object') return entry;
+      if (entry.amount === undefined || entry.amount === null) {
+        const amount = toNumber(entry.total ?? entry.value);
+        if (amount !== null) {
+          return { ...entry, amount };
+        }
+        return { ...entry, amount: totalAmount };
+      }
+      return entry;
+    });
   }
 
   const receiptType = resolveReceiptType({
@@ -523,13 +1006,23 @@ export async function buildReceiptFromDynamicTransaction(
     consumerNo,
   });
 
-  const receipt = {
-    totalAmount,
-    totalVAT: totalVAT ?? 0,
-    totalCityTax: totalCityTax ?? 0,
-    taxType,
-    items,
-  };
+  const receiptsPayload = receipts.length
+    ? receipts.map((receipt) => {
+        if (!receipt || typeof receipt !== 'object') return receipt;
+        if (!receipt.taxType && taxType) {
+          return { ...receipt, taxType };
+        }
+        return receipt;
+      })
+    : [
+        {
+          totalAmount,
+          totalVAT: normalizedTotalVAT ?? 0,
+          totalCityTax: normalizedTotalCityTax ?? 0,
+          taxType,
+          items: items.length ? items : [],
+        },
+      ];
 
   const payload = {
     branchNo,
@@ -537,9 +1030,9 @@ export async function buildReceiptFromDynamicTransaction(
     posNo,
     type: receiptType,
     totalAmount,
-    totalVAT: totalVAT ?? 0,
-    totalCityTax: totalCityTax ?? 0,
-    receipts: [receipt],
+    totalVAT: normalizedTotalVAT ?? 0,
+    totalCityTax: normalizedTotalCityTax ?? 0,
+    receipts: receiptsPayload,
   };
   if (districtCode) payload.districtCode = districtCode;
   if (customerTin) payload.customerTin = customerTin;
@@ -561,6 +1054,11 @@ export async function buildReceiptFromDynamicTransaction(
     'items',
     'paymentsField',
     'payments',
+    'receiptsField',
+    'receipts',
+    'itemFields',
+    'paymentFields',
+    'receiptFields',
     'branchNo',
     'merchantTin',
     'posNo',

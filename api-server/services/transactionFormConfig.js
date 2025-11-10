@@ -43,6 +43,69 @@ function normalizeMixedAccessList(list) {
   return normalized;
 }
 
+function normalizePosApiMappingValue(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') {
+    return value.trim();
+  }
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return String(value);
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (Array.isArray(value)) {
+    const normalizedArray = value
+      .map((entry) => normalizePosApiMappingValue(entry))
+      .filter((entry) => {
+        if (entry === '' || entry === undefined || entry === null) return false;
+        if (typeof entry === 'object' && Object.keys(entry).length === 0) return false;
+        if (Array.isArray(entry) && entry.length === 0) return false;
+        return true;
+      });
+    return normalizedArray.length ? normalizedArray : '';
+  }
+  if (typeof value === 'object') {
+    const normalizedObject = {};
+    Object.entries(value).forEach(([key, val]) => {
+      if (typeof key !== 'string') return;
+      const normalized = normalizePosApiMappingValue(val);
+      if (
+        normalized === '' ||
+        normalized === undefined ||
+        normalized === null ||
+        (typeof normalized === 'object' && !Array.isArray(normalized) && Object.keys(normalized).length === 0) ||
+        (Array.isArray(normalized) && normalized.length === 0)
+      ) {
+        return;
+      }
+      normalizedObject[key] = normalized;
+    });
+    return Object.keys(normalizedObject).length ? normalizedObject : '';
+  }
+  return String(value);
+}
+
+function sanitizePosApiMapping(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  const normalized = {};
+  Object.entries(source).forEach(([key, value]) => {
+    if (typeof key !== 'string') return;
+    const normalizedValue = normalizePosApiMappingValue(value);
+    if (
+      normalizedValue === '' ||
+      normalizedValue === undefined ||
+      normalizedValue === null ||
+      (typeof normalizedValue === 'object' && !Array.isArray(normalizedValue) && Object.keys(normalizedValue).length === 0) ||
+      (Array.isArray(normalizedValue) && normalizedValue.length === 0)
+    ) {
+      return;
+    }
+    normalized[key] = normalizedValue;
+  });
+  return normalized;
+}
+
 function parseEntry(raw = {}) {
   const temporaryFlag = Boolean(
     raw.supportsTemporarySubmission ??
@@ -50,24 +113,15 @@ function parseEntry(raw = {}) {
       raw.supportsTemporary ??
       false,
   );
-  const mapping = {};
-  if (
-    raw &&
-    typeof raw.posApiMapping === 'object' &&
-    raw.posApiMapping !== null &&
-    !Array.isArray(raw.posApiMapping)
-  ) {
-    for (const [key, value] of Object.entries(raw.posApiMapping)) {
-      if (typeof key !== 'string') continue;
-      if (value === undefined || value === null) {
-        mapping[key] = '';
-      } else if (typeof value === 'string') {
-        mapping[key] = value;
-      } else {
-        mapping[key] = String(value);
-      }
-    }
-  }
+  const mapping = sanitizePosApiMapping(raw.posApiMapping);
+  const infoEndpointsSource = Array.isArray(raw.infoEndpoints)
+    ? raw.infoEndpoints
+    : Array.isArray(raw.posApiInfoEndpointIds)
+      ? raw.posApiInfoEndpointIds
+      : [];
+  const infoEndpoints = infoEndpointsSource
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter((value) => value);
   return {
     visibleFields: Array.isArray(raw.visibleFields)
       ? raw.visibleFields.map(String)
@@ -161,17 +215,14 @@ function parseEntry(raw = {}) {
       typeof raw.posApiEndpointId === 'string' && raw.posApiEndpointId.trim()
         ? raw.posApiEndpointId.trim()
         : '',
-    posApiInfoEndpointIds: Array.isArray(raw.posApiInfoEndpointIds)
-      ? raw.posApiInfoEndpointIds
-          .map((value) => (typeof value === 'string' ? value.trim() : ''))
-          .filter((value) => value)
-      : [],
+    posApiInfoEndpointIds: infoEndpoints,
     fieldsFromPosApi: Array.isArray(raw.fieldsFromPosApi)
       ? raw.fieldsFromPosApi
           .map((value) => (typeof value === 'string' ? value.trim() : ''))
           .filter((value) => value)
       : [],
     posApiMapping: mapping,
+    infoEndpoints,
   };
 }
 
@@ -380,6 +431,11 @@ export async function setFormConfig(
     allowTemporarySubmission,
     posApiEnabled = false,
     posApiType = '',
+    posApiTypeField = '',
+    posApiEndpointId = '',
+    posApiInfoEndpointIds = [],
+    fieldsFromPosApi = [],
+    infoEndpoints = [],
     posApiMapping = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
@@ -463,23 +519,40 @@ export async function setFormConfig(
       typeof posApiType === 'string' && posApiType.trim()
         ? posApiType.trim()
         : '',
-    posApiMapping:
-      posApiMapping &&
-      typeof posApiMapping === 'object' &&
-      posApiMapping !== null &&
-      !Array.isArray(posApiMapping)
-        ? Object.fromEntries(
-            Object.entries(posApiMapping).map(([key, value]) => {
-              if (value === undefined || value === null) {
-                return [key, ''];
-              }
-              if (typeof value === 'string') {
-                return [key, value];
-              }
-              return [key, String(value)];
-            }),
-          )
-        : {},
+    posApiTypeField:
+      typeof posApiTypeField === 'string' ? posApiTypeField.trim() : '',
+    posApiEndpointId:
+      typeof posApiEndpointId === 'string' && posApiEndpointId.trim()
+        ? posApiEndpointId.trim()
+        : '',
+    posApiInfoEndpointIds: Array.isArray(posApiInfoEndpointIds)
+      ? Array.from(
+          new Set(
+            posApiInfoEndpointIds
+              .map((value) => (typeof value === 'string' ? value.trim() : ''))
+              .filter((value) => value),
+          ),
+        )
+      : [],
+    infoEndpoints: Array.isArray(infoEndpoints)
+      ? Array.from(
+          new Set(
+            infoEndpoints
+              .map((value) => (typeof value === 'string' ? value.trim() : ''))
+              .filter((value) => value),
+          ),
+        )
+      : [],
+    fieldsFromPosApi: Array.isArray(fieldsFromPosApi)
+      ? Array.from(
+          new Set(
+            fieldsFromPosApi
+              .map((value) => (typeof value === 'string' ? value.trim() : ''))
+              .filter((value) => value),
+          ),
+        )
+      : [],
+    posApiMapping: sanitizePosApiMapping(posApiMapping),
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
