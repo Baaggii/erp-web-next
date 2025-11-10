@@ -3387,6 +3387,9 @@ export default function PosTransactionsPage() {
                         }
                         if (next < formList.length) focusFirst(formList[next].table);
                       }}
+                      infoEndpoints={fc.infoEndpoints || []}
+                      infoEndpointMappings={fc.infoEndpointMappings || {}}
+                      formName={t.table}
                     />
                   </div>
                 );

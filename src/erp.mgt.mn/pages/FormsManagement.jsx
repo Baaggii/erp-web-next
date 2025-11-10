@@ -66,6 +66,28 @@ function normalizeFormConfig(info = {}) {
   const toArray = (value) => (Array.isArray(value) ? [...value] : []);
   const toObject = (value) =>
     value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
+  const normalizeInfoEndpointMappings = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const result = {};
+    Object.entries(value).forEach(([endpointId, mapping]) => {
+      if (typeof endpointId !== 'string') return;
+      const trimmedEndpoint = endpointId.trim();
+      if (!trimmedEndpoint) return;
+      if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
+      const entries = {};
+      Object.entries(mapping).forEach(([path, column]) => {
+        if (typeof path !== 'string' || typeof column !== 'string') return;
+        const trimmedPath = path.trim();
+        const trimmedColumn = column.trim();
+        if (!trimmedPath || !trimmedColumn) return;
+        entries[trimmedPath] = trimmedColumn;
+      });
+      if (Object.keys(entries).length > 0) {
+        result[trimmedEndpoint] = entries;
+      }
+    });
+    return result;
+  };
   const toString = (value) => (typeof value === 'string' ? value : '');
   const temporaryFlag = Boolean(
     info.supportsTemporarySubmission ??
@@ -147,6 +169,7 @@ function normalizeFormConfig(info = {}) {
       typeof v === 'string' ? v : String(v),
     ),
     posApiMapping: toObject(info.posApiMapping),
+    infoEndpointMappings: normalizeInfoEndpointMappings(info.infoEndpointMappings),
   };
 }
 
@@ -174,6 +197,7 @@ export default function FormsManagement() {
   const [posApiEndpoints, setPosApiEndpoints] = useState([]);
   const [savedConfigs, setSavedConfigs] = useState([]);
   const [selectedConfig, setSelectedConfig] = useState('');
+  const [infoMappingText, setInfoMappingText] = useState({});
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -302,6 +326,37 @@ export default function FormsManagement() {
 
   const transactionEndpointOptions = endpointOptionGroups.transaction;
   const infoEndpointOptions = endpointOptionGroups.info;
+  const endpointById = useMemo(() => {
+    const map = new Map();
+    if (!Array.isArray(posApiEndpoints)) return map;
+    posApiEndpoints.forEach((endpoint) => {
+      if (!endpoint || typeof endpoint !== 'object') return;
+      if (typeof endpoint.id !== 'string') return;
+      map.set(endpoint.id, endpoint);
+    });
+    return map;
+  }, [posApiEndpoints]);
+
+  const infoEndpointsKey = useMemo(
+    () => (config.infoEndpoints || []).join('|'),
+    [config.infoEndpoints],
+  );
+  const infoEndpointMappingsKey = useMemo(
+    () => JSON.stringify(config.infoEndpointMappings || {}),
+    [config.infoEndpointMappings],
+  );
+
+  useEffect(() => {
+    const next = {};
+    (config.infoEndpoints || []).forEach((endpointId) => {
+      const mapping = config.infoEndpointMappings?.[endpointId] || {};
+      const lines = Object.entries(mapping)
+        .map(([path, column]) => `${path} -> ${column}`)
+        .join('\n');
+      next[endpointId] = lines;
+    });
+    setInfoMappingText(next);
+  }, [infoEndpointsKey, infoEndpointMappingsKey]);
 
   const deptOptions = useMemo(() => {
     const idField = deptCfg?.idField || 'id';
@@ -648,11 +703,51 @@ export default function FormsManagement() {
     const selected = Array.from(event.target.selectedOptions || [])
       .map((opt) => opt.value)
       .filter((value) => value);
-    setConfig((c) => ({
-      ...c,
-      posApiInfoEndpointIds: selected,
-      infoEndpoints: selected,
-    }));
+    setConfig((c) => {
+      const mappings = { ...(c.infoEndpointMappings || {}) };
+      Object.keys(mappings).forEach((endpointId) => {
+        if (!selected.includes(endpointId)) delete mappings[endpointId];
+      });
+      return {
+        ...c,
+        posApiInfoEndpointIds: selected,
+        infoEndpoints: selected,
+        infoEndpointMappings: mappings,
+      };
+    });
+    setInfoMappingText((prev) => {
+      const next = {};
+      selected.forEach((endpointId) => {
+        next[endpointId] = prev?.[endpointId] || '';
+      });
+      return next;
+    });
+  }
+
+  function handleInfoMappingBlur(endpointId, text) {
+    setInfoMappingText((prev) => ({ ...prev, [endpointId]: text }));
+    setConfig((c) => {
+      const base = { ...(c.infoEndpointMappings || {}) };
+      const entries = text
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter((line) => line && !line.startsWith('#'));
+      const mapping = {};
+      entries.forEach((line) => {
+        const parts = line.split(/->/);
+        if (parts.length < 2) return;
+        const left = parts[0].trim();
+        const right = parts.slice(1).join('->').trim();
+        if (!left || !right) return;
+        mapping[left] = right;
+      });
+      if (Object.keys(mapping).length === 0) {
+        delete base[endpointId];
+      } else {
+        base[endpointId] = mapping;
+      }
+      return { ...c, infoEndpointMappings: base };
+    });
   }
 
   function handleFieldsFromPosApiChange(value) {
@@ -662,6 +757,28 @@ export default function FormsManagement() {
       .filter((item) => item);
     setConfig((c) => ({ ...c, fieldsFromPosApi: entries }));
   }
+
+  const sanitizeInfoEndpointMappingsForSave = (mappings = {}, endpoints = []) => {
+    if (!mappings || typeof mappings !== 'object' || Array.isArray(mappings)) return {};
+    const allowed = new Set(Array.isArray(endpoints) ? endpoints : []);
+    const sanitized = {};
+    Object.entries(mappings).forEach(([endpointId, mapping]) => {
+      if (!allowed.has(endpointId)) return;
+      if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
+      const entry = {};
+      Object.entries(mapping).forEach(([path, column]) => {
+        if (typeof path !== 'string' || typeof column !== 'string') return;
+        const trimmedPath = path.trim();
+        const trimmedColumn = column.trim();
+        if (!trimmedPath || !trimmedColumn) return;
+        entry[trimmedPath] = trimmedColumn;
+      });
+      if (Object.keys(entry).length > 0) {
+        sanitized[endpointId] = entry;
+      }
+    });
+    return sanitized;
+  };
 
   async function handleSave() {
     if (!name) {
@@ -757,6 +874,10 @@ export default function FormsManagement() {
           ),
         )
       : [];
+    cfg.infoEndpointMappings = sanitizeInfoEndpointMappingsForSave(
+      config.infoEndpointMappings,
+      cfg.infoEndpoints,
+    );
     const temporaryFlag = Boolean(
       config.supportsTemporarySubmission ??
         config.allowTemporarySubmission ??
@@ -1069,6 +1190,71 @@ export default function FormsManagement() {
                       'When enabled, users can save drafts that require senior confirmation before posting.',
                     )}
                   </small>
+                </div>
+                <div style={{ marginTop: '1rem' }}>
+                  <strong>Lookup response mapping</strong>
+                  <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                    Map fields returned by POSAPI information endpoints to columns in this transaction form.
+                  </p>
+                  {config.infoEndpoints.length === 0 ? (
+                    <div style={{ fontSize: '0.85rem', color: '#666' }}>
+                      Select at least one lookup endpoint to configure mappings.
+                    </div>
+                  ) : (
+                    config.infoEndpoints.map((endpointId) => {
+                      const definition = endpointById.get(endpointId) || {};
+                      const label = definition?.name
+                        ? `${endpointId} – ${definition.name}`
+                        : endpointId;
+                      const availableFields = Array.isArray(definition?.responseFields)
+                        ? definition.responseFields
+                            .map((field) => {
+                              if (typeof field === 'string') return field;
+                              if (field && typeof field.field === 'string') return field.field;
+                              return '';
+                            })
+                            .filter((field) => field)
+                        : [];
+                      const textValue = infoMappingText[endpointId] || '';
+                      const lineCount = Math.max(3, textValue.split(/\r?\n/).length || 3);
+                      return (
+                        <div
+                          key={`info-mapping-${endpointId}`}
+                          style={{
+                            marginTop: '0.75rem',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '6px',
+                            padding: '0.75rem',
+                            background: '#f9fafb',
+                          }}
+                        >
+                          <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>{label}</div>
+                          {availableFields.length > 0 && (
+                            <div style={{ fontSize: '0.8rem', color: '#555', marginBottom: '0.5rem' }}>
+                              <strong>Response fields:</strong> {availableFields.join(', ')}
+                            </div>
+                          )}
+                          <textarea
+                            rows={lineCount}
+                            value={textValue}
+                            onChange={(e) =>
+                              setInfoMappingText((prev) => ({
+                                ...prev,
+                                [endpointId]: e.target.value,
+                              }))
+                            }
+                            onBlur={(e) => handleInfoMappingBlur(endpointId, e.target.value)}
+                            placeholder={'billId -> BillId\ncompanyName -> customer_name'}
+                            style={{ width: '100%', fontFamily: 'monospace', resize: 'vertical' }}
+                            disabled={!config.posApiEnabled}
+                          />
+                          <small style={{ color: '#666' }}>
+                            Enter one mapping per line using <code>responseField -&gt; columnName</code>.
+                          </small>
+                        </div>
+                      );
+                    })
+                  )}
                 </div>
               </div>
             </section>
