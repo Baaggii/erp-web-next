@@ -23,9 +23,43 @@ const POS_API_FIELDS = [
   { key: 'districtCode', label: 'District code' },
   { key: 'itemsField', label: 'Items array column' },
   { key: 'paymentsField', label: 'Payments array column' },
+  { key: 'receiptsField', label: 'Receipts array column' },
   { key: 'paymentType', label: 'Default payment type column' },
   { key: 'taxTypeField', label: 'Header tax type column' },
   { key: 'classificationCodeField', label: 'Classification code column' },
+];
+
+const POS_API_ITEM_FIELDS = [
+  { key: 'name', label: 'Item name' },
+  { key: 'description', label: 'Item description' },
+  { key: 'qty', label: 'Quantity' },
+  { key: 'price', label: 'Unit price' },
+  { key: 'totalAmount', label: 'Line total amount' },
+  { key: 'totalVAT', label: 'Line VAT' },
+  { key: 'totalCityTax', label: 'Line city tax' },
+  { key: 'taxType', label: 'Line tax type' },
+  { key: 'classificationCode', label: 'Classification code' },
+  { key: 'taxProductCode', label: 'Tax product code' },
+  { key: 'barCode', label: 'Barcode' },
+  { key: 'measureUnit', label: 'Measure unit' },
+];
+
+const POS_API_PAYMENT_FIELDS = [
+  { key: 'type', label: 'Payment type' },
+  { key: 'amount', label: 'Amount' },
+  { key: 'currency', label: 'Currency' },
+  { key: 'method', label: 'Method' },
+  { key: 'reference', label: 'Reference number' },
+];
+
+const POS_API_RECEIPT_FIELDS = [
+  { key: 'totalAmount', label: 'Receipt total amount' },
+  { key: 'totalVAT', label: 'Receipt total VAT' },
+  { key: 'totalCityTax', label: 'Receipt total city tax' },
+  { key: 'taxType', label: 'Receipt tax type' },
+  { key: 'items', label: 'Receipt items path' },
+  { key: 'payments', label: 'Receipt payments path' },
+  { key: 'description', label: 'Receipt description' },
 ];
 
 function normalizeFormConfig(info = {}) {
@@ -103,7 +137,10 @@ function normalizeFormConfig(info = {}) {
     posApiType: toString(info.posApiType),
     posApiTypeField: toString(info.posApiTypeField),
     posApiEndpointId: toString(info.posApiEndpointId),
-    posApiInfoEndpointIds: toArray(info.posApiInfoEndpointIds).map((v) =>
+    posApiInfoEndpointIds: toArray(
+      info.posApiInfoEndpointIds ?? info.infoEndpoints,
+    ).map((v) => (typeof v === 'string' ? v : String(v))),
+    infoEndpoints: toArray(info.infoEndpoints ?? info.posApiInfoEndpointIds).map((v) =>
       typeof v === 'string' ? v : String(v),
     ),
     fieldsFromPosApi: toArray(info.fieldsFromPosApi).map((v) =>
@@ -155,6 +192,25 @@ export default function FormsManagement() {
   }, []);
 
   const [config, setConfig] = useState(() => normalizeFormConfig());
+
+  const itemFieldMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.itemFields === 'object' &&
+    !Array.isArray(config.posApiMapping.itemFields)
+      ? config.posApiMapping.itemFields
+      : {};
+  const paymentFieldMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.paymentFields === 'object' &&
+    !Array.isArray(config.posApiMapping.paymentFields)
+      ? config.posApiMapping.paymentFields
+      : {};
+  const receiptFieldMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.receiptFields === 'object' &&
+    !Array.isArray(config.posApiMapping.receiptFields)
+      ? config.posApiMapping.receiptFields
+      : {};
 
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
@@ -555,12 +611,36 @@ export default function FormsManagement() {
   function updatePosApiMapping(field, value) {
     setConfig((c) => {
       const next = { ...(c.posApiMapping || {}) };
-      if (!value) {
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (!trimmed) {
         delete next[field];
       } else {
-        next[field] = value;
+        next[field] = trimmed;
       }
       return { ...c, posApiMapping: next };
+    });
+  }
+
+  function updatePosApiNestedMapping(section, field, value) {
+    setConfig((c) => {
+      const base = { ...(c.posApiMapping || {}) };
+      const current = base[section];
+      const nested =
+        current && typeof current === 'object' && !Array.isArray(current)
+          ? { ...current }
+          : {};
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (!trimmed) {
+        delete nested[field];
+      } else {
+        nested[field] = trimmed;
+      }
+      if (Object.keys(nested).length) {
+        base[section] = nested;
+      } else {
+        delete base[section];
+      }
+      return { ...c, posApiMapping: base };
     });
   }
 
@@ -568,7 +648,11 @@ export default function FormsManagement() {
     const selected = Array.from(event.target.selectedOptions || [])
       .map((opt) => opt.value)
       .filter((value) => value);
-    setConfig((c) => ({ ...c, posApiInfoEndpointIds: selected }));
+    setConfig((c) => ({
+      ...c,
+      posApiInfoEndpointIds: selected,
+      infoEndpoints: selected,
+    }));
   }
 
   function handleFieldsFromPosApiChange(value) {
@@ -652,6 +736,18 @@ export default function FormsManagement() {
           ),
         )
       : [];
+    cfg.infoEndpoints = Array.isArray(cfg.infoEndpoints)
+      ? Array.from(
+          new Set(
+            cfg.infoEndpoints
+              .map((id) => (typeof id === 'string' ? id.trim() : ''))
+              .filter((id) => id),
+          ),
+        )
+      : [...cfg.posApiInfoEndpointIds];
+    if (!cfg.infoEndpoints.length) {
+      cfg.infoEndpoints = [...cfg.posApiInfoEndpointIds];
+    }
     cfg.fieldsFromPosApi = Array.isArray(cfg.fieldsFromPosApi)
       ? Array.from(
           new Set(
@@ -1122,6 +1218,121 @@ export default function FormsManagement() {
                       </label>
                     );
                   })}
+                </div>
+                <div style={{ marginTop: '1rem' }}>
+                  <strong>Item field mapping</strong>
+                  <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                    Provide column paths for individual item properties. Paths can reference nested JSON fields
+                    (e.g., <code>details[0].name</code>).
+                  </p>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '0.75rem',
+                      marginTop: '0.5rem',
+                    }}
+                  >
+                    {POS_API_ITEM_FIELDS.map((field) => {
+                      const listId = `posapi-item-${field.key}-columns`;
+                      return (
+                        <label key={`item-${field.key}`} style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span>{field.label}</span>
+                          <input
+                            type="text"
+                            list={listId}
+                            value={itemFieldMapping[field.key] || ''}
+                            onChange={(e) =>
+                              updatePosApiNestedMapping('itemFields', field.key, e.target.value)
+                            }
+                            placeholder="Column or path"
+                            disabled={!config.posApiEnabled}
+                          />
+                          <datalist id={listId}>
+                            {columns.map((col) => (
+                              <option key={`item-${field.key}-${col}`} value={col} />
+                            ))}
+                          </datalist>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{ marginTop: '1rem' }}>
+                  <strong>Payment field mapping</strong>
+                  <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                    Map payment properties when transactions include multiple payment entries.
+                  </p>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '0.75rem',
+                      marginTop: '0.5rem',
+                    }}
+                  >
+                    {POS_API_PAYMENT_FIELDS.map((field) => {
+                      const listId = `posapi-payment-${field.key}-columns`;
+                      return (
+                        <label key={`payment-${field.key}`} style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span>{field.label}</span>
+                          <input
+                            type="text"
+                            list={listId}
+                            value={paymentFieldMapping[field.key] || ''}
+                            onChange={(e) =>
+                              updatePosApiNestedMapping('paymentFields', field.key, e.target.value)
+                            }
+                            placeholder="Column or path"
+                            disabled={!config.posApiEnabled}
+                          />
+                          <datalist id={listId}>
+                            {columns.map((col) => (
+                              <option key={`payment-${field.key}-${col}`} value={col} />
+                            ))}
+                          </datalist>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{ marginTop: '1rem' }}>
+                  <strong>Receipt field mapping</strong>
+                  <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                    Override fields within nested receipt objects when forms produce multiple receipts.
+                  </p>
+                  <div
+                    style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                      gap: '0.75rem',
+                      marginTop: '0.5rem',
+                    }}
+                  >
+                    {POS_API_RECEIPT_FIELDS.map((field) => {
+                      const listId = `posapi-receipt-${field.key}-columns`;
+                      return (
+                        <label key={`receipt-${field.key}`} style={{ display: 'flex', flexDirection: 'column' }}>
+                          <span>{field.label}</span>
+                          <input
+                            type="text"
+                            list={listId}
+                            value={receiptFieldMapping[field.key] || ''}
+                            onChange={(e) =>
+                              updatePosApiNestedMapping('receiptFields', field.key, e.target.value)
+                            }
+                            placeholder="Column or path"
+                            disabled={!config.posApiEnabled}
+                          />
+                          <datalist id={listId}>
+                            {columns.map((col) => (
+                              <option key={`receipt-${field.key}-${col}`} value={col} />
+                            ))}
+                          </datalist>
+                        </label>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             </section>
