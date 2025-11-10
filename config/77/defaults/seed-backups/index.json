@@ -1,0 +1,20 @@
+[
+  {
+    "type": "seed",
+    "fileName": "20251110-130851_manual-backup_company-77.sql",
+    "relativePath": "defaults/seed-backups/20251110-130851_manual-backup_company-77.sql",
+    "generatedAt": "2025-11-10T13:08:51.818Z",
+    "versionName": "manual-backup",
+    "originalName": "Manual Backup",
+    "requestedBy": 5,
+    "tableCount": 1,
+    "rowCount": 2,
+    "companyId": 77,
+    "tables": [
+      {
+        "tableName": "posts",
+        "rows": 2
+      }
+    ]
+  }
+]
