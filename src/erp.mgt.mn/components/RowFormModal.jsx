@@ -75,6 +75,7 @@ const RowFormModal = function RowFormModal({
   canPost = true,
   forceEditable = false,
   posApiEnabled = false,
+  posApiTypeField = '',
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -91,6 +92,20 @@ const RowFormModal = function RowFormModal({
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
   const { t } = useTranslation(['translation', 'tooltip']);
+  const posApiTypeOptions = React.useMemo(
+    () => [
+      {
+        value: '',
+        label: t('posapi_type_auto', 'Auto (determine automatically)'),
+      },
+      { value: 'B2C_RECEIPT', label: t('posapi_type_b2c_receipt', 'B2C Receipt') },
+      { value: 'B2B_RECEIPT', label: t('posapi_type_b2b_receipt', 'B2B Receipt') },
+      { value: 'B2C_INVOICE', label: t('posapi_type_b2c_invoice', 'B2C Invoice') },
+      { value: 'B2B_INVOICE', label: t('posapi_type_b2b_invoice', 'B2B Invoice') },
+      { value: 'STOCK_QR', label: t('posapi_type_stock_qr', 'Stock QR') },
+    ],
+    [t],
+  );
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -540,6 +555,7 @@ const RowFormModal = function RowFormModal({
     });
     return extras;
   });
+  const extraKeys = React.useMemo(() => Object.keys(extraVals || {}), [extraVals]);
   const formValsRef = useRef(formVals);
   const extraValsRef = useRef(extraVals);
   const manualOverrideRef = useRef(new Map());
@@ -550,6 +566,37 @@ const RowFormModal = function RowFormModal({
   useEffect(() => {
     extraValsRef.current = extraVals;
   }, [extraVals]);
+  const posApiTypeFieldLower = React.useMemo(
+    () => (typeof posApiTypeField === 'string' ? posApiTypeField.toLowerCase() : ''),
+    [posApiTypeField],
+  );
+  const posApiTypeBinding = React.useMemo(() => {
+    if (!posApiTypeFieldLower) return null;
+    const columnMatch = columns.find((col) => col.toLowerCase() === posApiTypeFieldLower);
+    if (columnMatch) {
+      return { scope: 'form', key: columnMatch };
+    }
+    const extraMatch = extraKeys.find((key) => key.toLowerCase() === posApiTypeFieldLower);
+    if (extraMatch) {
+      return { scope: 'extra', key: extraMatch };
+    }
+    if (columnLowerSet.has(posApiTypeFieldLower)) {
+      return { scope: 'form', key: posApiTypeField };
+    }
+    return { scope: 'extra', key: posApiTypeField };
+  }, [posApiTypeFieldLower, columns, extraKeys, columnLowerSet, posApiTypeField]);
+  const currentPosApiType = React.useMemo(() => {
+    if (!posApiTypeBinding || !posApiTypeBinding.key) return '';
+    const source = posApiTypeBinding.scope === 'form' ? formVals : extraVals;
+    const raw = source?.[posApiTypeBinding.key];
+    if (raw === undefined || raw === null) return '';
+    if (typeof raw === 'object' && raw !== null && 'value' in raw) {
+      return String(raw.value ?? '');
+    }
+    return String(raw);
+  }, [posApiTypeBinding, formVals, extraVals]);
+  const showPosApiTypeSelect =
+    Boolean(posApiEnabled && canPost && posApiTypeBinding && posApiTypeBinding.key);
   useEffect(() => {
     if (pendingManualOverrideRef.current.size === 0) return;
     const pending = Array.from(pendingManualOverrideRef.current);
@@ -815,6 +862,41 @@ const RowFormModal = function RowFormModal({
       return { ...e, seedRecords: tables };
     });
   }
+
+  const handlePosApiTypeChange = useCallback(
+    (event) => {
+      if (!posApiTypeBinding || !posApiTypeBinding.key) return;
+      const nextValue = event?.target?.value ?? '';
+      if (posApiTypeBinding.scope === 'form') {
+        setFormValuesWithGenerated((prev) => {
+          if (!prev) return prev;
+          const current = prev[posApiTypeBinding.key];
+          if (current === nextValue) return prev;
+          return { ...prev, [posApiTypeBinding.key]: nextValue };
+        });
+      } else {
+        let changed = false;
+        setExtraVals((prev) => {
+          const currentRaw = prev[posApiTypeBinding.key];
+          const current =
+            currentRaw === undefined || currentRaw === null
+              ? ''
+              : String(
+                  typeof currentRaw === 'object' && currentRaw !== null && 'value' in currentRaw
+                    ? currentRaw.value
+                    : currentRaw,
+                );
+          if (current === nextValue) return prev;
+          changed = true;
+          return { ...prev, [posApiTypeBinding.key]: nextValue };
+        });
+        if (changed && typeof onChange === 'function') {
+          onChange({ [posApiTypeBinding.key]: nextValue });
+        }
+      }
+    },
+    [posApiTypeBinding, setFormValuesWithGenerated, onChange],
+  );
 
   function renderSeedTable(name) {
     const opt = seedRecordOptions[name];
@@ -2646,17 +2728,35 @@ const RowFormModal = function RowFormModal({
           </div>
         )}
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          {posApiEnabled && canPost && (
-            <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                className="rounded"
-                checked={issueEbarimtEnabled}
-                onChange={(e) => setIssueEbarimtEnabled(e.target.checked)}
-              />
-              <span>{t('issue_ebarimt_toggle', 'Issue Ebarimt (POSAPI)')}</span>
-            </label>
-          )}
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            {posApiEnabled && canPost && (
+              <label className="inline-flex items-center space-x-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  className="rounded"
+                  checked={issueEbarimtEnabled}
+                  onChange={(e) => setIssueEbarimtEnabled(e.target.checked)}
+                />
+                <span>{t('issue_ebarimt_toggle', 'Issue Ebarimt (POSAPI)')}</span>
+              </label>
+            )}
+            {showPosApiTypeSelect && (
+              <label className="flex items-center space-x-2 text-sm text-gray-700">
+                <span>{t('posapi_type_label', 'POSAPI Type')}</span>
+                <select
+                  className="border border-gray-300 rounded px-2 py-1 text-sm"
+                  value={currentPosApiType}
+                  onChange={handlePosApiTypeChange}
+                >
+                  {posApiTypeOptions.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+          </div>
           <div className="text-right space-x-2">
             <button
               type="button"

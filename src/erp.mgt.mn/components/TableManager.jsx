@@ -5901,6 +5901,7 @@ const TableManager = forwardRef(function TableManager({
         canPost={canPostTransactions}
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
+        posApiTypeField={formConfig?.posApiTypeField || ''}
       />
       <CascadeDeleteModal
         visible={showCascade}

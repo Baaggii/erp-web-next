@@ -567,6 +567,128 @@ function normalizeReceiptEntry(entry, options = {}) {
   return receipt;
 }
 
+const POSAPI_TYPE_VALUES = new Set([
+  'B2C_RECEIPT',
+  'B2B_RECEIPT',
+  'B2C_INVOICE',
+  'B2B_INVOICE',
+  'STOCK_QR',
+]);
+
+function normalizeReceiptTypeValue(value) {
+  const str = toStringValue(value);
+  if (!str) return '';
+  const normalized = str.trim().toUpperCase().replace(/[\s-]+/g, '_');
+  if (POSAPI_TYPE_VALUES.has(normalized)) {
+    return normalized;
+  }
+  return '';
+}
+
+function isTruthyFlag(value) {
+  if (value === undefined || value === null) return false;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return Number(value) !== 0;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    const lower = trimmed.toLowerCase();
+    if (['0', 'false', 'no', 'n', 'off'].includes(lower)) return false;
+    return true;
+  }
+  return Boolean(value);
+}
+
+function detectInventoryFlag({
+  mapping,
+  record,
+  columnLookup,
+  inventoryFlagField,
+}) {
+  const candidates = new Set();
+  const addCandidate = (field) => {
+    if (typeof field !== 'string') return;
+    const trimmed = field.trim();
+    if (!trimmed) return;
+    candidates.add(trimmed);
+  };
+
+  addCandidate(inventoryFlagField);
+  addCandidate(mapping.inventoryFlagField);
+  addCandidate(mapping.inventoryFlag);
+  addCandidate(mapping.stockFlagField);
+  addCandidate(mapping.stockFlag);
+  addCandidate(mapping.stockIndicatorField);
+  addCandidate(mapping.stockIndicator);
+
+  Object.entries(mapping).forEach(([key, value]) => {
+    if (typeof value !== 'string') return;
+    const lowerKey = String(key || '').toLowerCase();
+    if (!lowerKey.includes('flag') && !lowerKey.includes('indicator')) return;
+    if (!lowerKey.includes('inventory') && !lowerKey.includes('stock')) return;
+    addCandidate(value);
+  });
+
+  const fallbackColumns = [
+    'inventoryFlag',
+    'inventory_flag',
+    'inventory',
+    'isInventory',
+    'is_inventory',
+    'stockFlag',
+    'stock_flag',
+    'stockIndicator',
+    'stock_indicator',
+    'stockQr',
+    'stock_qr',
+    'issueStockQr',
+    'issue_stock_qr',
+    'posapiStock',
+    'posapi_stock',
+  ];
+  fallbackColumns.forEach(addCandidate);
+
+  for (const candidate of candidates) {
+    const value = getColumnValue(columnLookup, record, candidate);
+    if (isTruthyFlag(value)) return true;
+  }
+  return false;
+}
+
+function detectDocumentFlavor({ mapping, record, columnLookup }) {
+  const candidates = new Set();
+  const addCandidate = (field) => {
+    if (typeof field !== 'string') return;
+    const trimmed = field.trim();
+    if (!trimmed) return;
+    candidates.add(trimmed);
+  };
+
+  ['invoiceNo', 'invoiceNumber', 'invoice_no', 'invoice_number', 'invoiceId', 'invoice_id']
+    .forEach(addCandidate);
+  ['billNo', 'billNumber', 'bill_no', 'bill_number', 'billId', 'bill_id'].forEach(addCandidate);
+
+  Object.entries(mapping).forEach(([key, value]) => {
+    if (typeof value !== 'string') return;
+    const lowerKey = String(key || '').toLowerCase();
+    if (!lowerKey.includes('invoice') && !lowerKey.includes('bill')) return;
+    if (!lowerKey.endsWith('no') && !lowerKey.endsWith('number') && !lowerKey.endsWith('id'))
+      return;
+    addCandidate(value);
+  });
+
+  for (const candidate of candidates) {
+    const raw = getColumnValue(columnLookup, record, candidate);
+    const str = toStringValue(raw);
+    if (str) {
+      return 'INVOICE';
+    }
+  }
+  return 'RECEIPT';
+}
+
 function resolveReceiptType({
   explicitType,
   typeField,
@@ -575,21 +697,39 @@ function resolveReceiptType({
   columnLookup,
   customerTin,
   consumerNo,
+  inventoryFlagField,
 }) {
   const candidates = [];
   if (typeField) candidates.push(typeField);
   if (mapping.posApiTypeField) candidates.push(mapping.posApiTypeField);
   if (mapping.typeField) candidates.push(mapping.typeField);
   for (const candidate of candidates) {
-    const value = toStringValue(getColumnValue(columnLookup, record, candidate));
-    if (value) return value;
+    const value = getColumnValue(columnLookup, record, candidate);
+    const normalized = normalizeReceiptTypeValue(value);
+    if (normalized) return normalized;
   }
-  const normalizedExplicit = toStringValue(explicitType);
+
+  const normalizedExplicit = normalizeReceiptTypeValue(explicitType);
   if (normalizedExplicit) return normalizedExplicit;
-  if (customerTin) return 'B2B_RECEIPT';
-  if (consumerNo) return 'B2C_RECEIPT';
-  const envType = toStringValue(process.env.POSAPI_RECEIPT_TYPE);
-  return envType || 'B2C_RECEIPT';
+
+  if (detectInventoryFlag({
+    mapping,
+    record,
+    columnLookup,
+    inventoryFlagField,
+  })) {
+    return 'STOCK_QR';
+  }
+
+  const flavor = detectDocumentFlavor({ mapping, record, columnLookup });
+
+  if (customerTin) return `B2B_${flavor}`;
+  if (consumerNo) return `B2C_${flavor}`;
+
+  const envType = normalizeReceiptTypeValue(process.env.POSAPI_RECEIPT_TYPE);
+  if (envType) return envType;
+
+  return flavor === 'INVOICE' ? 'B2C_INVOICE' : 'B2C_RECEIPT';
 }
 
 function applyAdditionalMappings(
@@ -1004,6 +1144,7 @@ export async function buildReceiptFromDynamicTransaction(
     columnLookup,
     customerTin,
     consumerNo,
+    inventoryFlagField: options.inventoryFlagField,
   });
 
   const receiptsPayload = receipts.length
@@ -1066,6 +1207,12 @@ export async function buildReceiptFromDynamicTransaction(
     'classificationCodeField',
     'posApiTypeField',
     'typeField',
+    'inventoryFlag',
+    'inventoryFlagField',
+    'stockFlag',
+    'stockFlagField',
+    'stockIndicator',
+    'stockIndicatorField',
   ]);
   applyAdditionalMappings(payload, normalizedMapping, record, columnLookup, reservedMappingKeys);
 
