@@ -768,7 +768,7 @@ export async function resolvePosApiEndpoint(endpointId) {
   return fallback;
 }
 
-export async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) {
+async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) {
   const baseUrl = await getPosApiBaseUrl();
   const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
   const fetchFn = await getFetch();

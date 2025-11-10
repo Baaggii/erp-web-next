@@ -106,29 +106,6 @@ function sanitizePosApiMapping(source) {
   return normalized;
 }
 
-function sanitizeInfoEndpointMappings(source) {
-  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
-  const normalized = {};
-  Object.entries(source).forEach(([endpointId, mapping]) => {
-    if (typeof endpointId !== 'string') return;
-    const trimmedEndpointId = endpointId.trim();
-    if (!trimmedEndpointId) return;
-    if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
-    const entry = {};
-    Object.entries(mapping).forEach(([path, column]) => {
-      if (typeof path !== 'string' || typeof column !== 'string') return;
-      const trimmedPath = path.trim();
-      const trimmedColumn = column.trim();
-      if (!trimmedPath || !trimmedColumn) return;
-      entry[trimmedPath] = trimmedColumn;
-    });
-    if (Object.keys(entry).length > 0) {
-      normalized[trimmedEndpointId] = entry;
-    }
-  });
-  return normalized;
-}
-
 function parseEntry(raw = {}) {
   const temporaryFlag = Boolean(
     raw.supportsTemporarySubmission ??
@@ -245,7 +222,6 @@ function parseEntry(raw = {}) {
           .filter((value) => value)
       : [],
     posApiMapping: mapping,
-    infoEndpointMappings: sanitizeInfoEndpointMappings(raw.infoEndpointMappings),
     infoEndpoints,
   };
 }
@@ -461,7 +437,6 @@ export async function setFormConfig(
     fieldsFromPosApi = [],
     infoEndpoints = [],
     posApiMapping = {},
-    infoEndpointMappings = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -493,22 +468,6 @@ export async function setFormConfig(
     : [];
   const { cfg } = await readConfig(companyId);
   if (!cfg[table]) cfg[table] = {};
-  const normalizedInfoEndpoints = Array.isArray(infoEndpoints)
-    ? Array.from(
-        new Set(
-          infoEndpoints
-            .map((value) => (typeof value === 'string' ? value.trim() : ''))
-            .filter((value) => value),
-        ),
-      )
-    : [];
-  const sanitizedInfoEndpointMappings = sanitizeInfoEndpointMappings(infoEndpointMappings);
-  const filteredInfoEndpointMappings = {};
-  normalizedInfoEndpoints.forEach((endpointId) => {
-    if (sanitizedInfoEndpointMappings[endpointId]) {
-      filteredInfoEndpointMappings[endpointId] = sanitizedInfoEndpointMappings[endpointId];
-    }
-  });
   cfg[table][name] = {
     visibleFields: arrify(visibleFields),
     requiredFields: arrify(requiredFields),
@@ -575,7 +534,15 @@ export async function setFormConfig(
           ),
         )
       : [],
-    infoEndpoints: normalizedInfoEndpoints,
+    infoEndpoints: Array.isArray(infoEndpoints)
+      ? Array.from(
+          new Set(
+            infoEndpoints
+              .map((value) => (typeof value === 'string' ? value.trim() : ''))
+              .filter((value) => value),
+          ),
+        )
+      : [],
     fieldsFromPosApi: Array.isArray(fieldsFromPosApi)
       ? Array.from(
           new Set(
@@ -586,7 +553,6 @@ export async function setFormConfig(
         )
       : [],
     posApiMapping: sanitizePosApiMapping(posApiMapping),
-    infoEndpointMappings: filteredInfoEndpointMappings,
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
