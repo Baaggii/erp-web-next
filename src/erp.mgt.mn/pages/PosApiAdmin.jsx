@@ -93,12 +93,16 @@ const EMPTY_ENDPOINT = {
   responseDescription: '',
   responseSchemaText: '{}',
   fieldDescriptionsText: '{}',
+  requestFieldsText: '[]',
+  responseFieldsText: '[]',
   testable: false,
   testServerUrl: '',
   docUrl: '',
   posApiType: '',
   usage: 'transaction',
   defaultForForm: false,
+  supportsMultipleReceipts: false,
+  supportsMultiplePayments: false,
   topLevelFieldsText: '[]',
   nestedPathsText: '{}',
 };
@@ -316,6 +320,47 @@ function toPrettyJson(value, fallback = '') {
   }
 }
 
+function parseHintPreview(text, arrayErrorMessage) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) {
+    return { state: 'empty', items: [], error: '' };
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) {
+      return {
+        state: 'error',
+        items: [],
+        error: arrayErrorMessage || 'Hint list must be a JSON array',
+      };
+    }
+    return { state: 'ok', items: parsed, error: '' };
+  } catch (err) {
+    return { state: 'error', items: [], error: err.message || 'Invalid JSON' };
+  }
+}
+
+function normalizeHintEntry(entry) {
+  if (entry === null || entry === undefined) {
+    return { field: '', required: undefined, description: '' };
+  }
+  if (typeof entry === 'string') {
+    return { field: entry, required: undefined, description: '' };
+  }
+  if (typeof entry === 'object') {
+    return {
+      field: typeof entry.field === 'string' ? entry.field : '',
+      required: typeof entry.required === 'boolean' ? entry.required : undefined,
+      description: typeof entry.description === 'string' ? entry.description : '',
+    };
+  }
+  return {
+    field: String(entry),
+    required: undefined,
+    description: '',
+  };
+}
+
 function createFormState(definition) {
   if (!definition) return { ...EMPTY_ENDPOINT };
   return {
@@ -330,12 +375,16 @@ function createFormState(definition) {
     responseDescription: definition.responseBody?.description || '',
     responseSchemaText: toPrettyJson(definition.responseBody?.schema, '{}'),
     fieldDescriptionsText: toPrettyJson(definition.fieldDescriptions, '{}'),
+    requestFieldsText: toPrettyJson(definition.requestFields, '[]'),
+    responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     testable: Boolean(definition.testable),
     testServerUrl: definition.testServerUrl || '',
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
     usage: definition.usage || 'other',
     defaultForForm: Boolean(definition.defaultForForm),
+    supportsMultipleReceipts: Boolean(definition.supportsMultipleReceipts),
+    supportsMultiplePayments: Boolean(definition.supportsMultiplePayments),
     topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
   };
@@ -422,6 +471,12 @@ export default function PosApiAdmin() {
                 preview.push(`Response: ${keys.join(', ')}`);
               }
             }
+            if (ep.supportsMultipleReceipts) {
+              preview.push('Handles multiple receipts[] groups');
+            }
+            if (ep.supportsMultiplePayments) {
+              preview.push('Handles multiple payments[] entries');
+            }
             return {
               ...ep,
               _preview: preview.join('\n'),
@@ -462,6 +517,27 @@ export default function PosApiAdmin() {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
   }, [formState.responseSchemaText]);
+
+  const requestFieldHints = useMemo(
+    () =>
+      parseHintPreview(
+        formState.requestFieldsText,
+        'Request field hints must be a JSON array',
+      ),
+    [formState.requestFieldsText],
+  );
+
+  const responseFieldHints = useMemo(
+    () =>
+      parseHintPreview(
+        formState.responseFieldsText,
+        'Response field hints must be a JSON array',
+      ),
+    [formState.responseFieldsText],
+  );
+
+  const supportsMultipleReceipts = Boolean(formState.supportsMultipleReceipts);
+  const supportsMultiplePayments = Boolean(formState.supportsMultiplePayments);
 
   useEffect(() => {
     if (builderSyncRef.current) {
@@ -735,6 +811,8 @@ export default function PosApiAdmin() {
       const next = { ...prev, [field]: value };
       if (field === 'usage' && value !== 'transaction') {
         next.defaultForForm = false;
+        next.supportsMultipleReceipts = false;
+        next.supportsMultiplePayments = false;
       }
       return next;
     });
@@ -769,6 +847,24 @@ export default function PosApiAdmin() {
     );
     if (fieldDescriptions && typeof fieldDescriptions !== 'object') {
       throw new Error('Field descriptions must be a JSON object');
+    }
+
+    const requestFields = parseJsonInput(
+      'Request field hints',
+      formState.requestFieldsText,
+      [],
+    );
+    if (!Array.isArray(requestFields)) {
+      throw new Error('Request field hints must be a JSON array');
+    }
+
+    const responseFields = parseJsonInput(
+      'Response field hints',
+      formState.responseFieldsText,
+      [],
+    );
+    if (!Array.isArray(responseFields)) {
+      throw new Error('Response field hints must be a JSON array');
     }
 
     const topLevelFields = parseJsonInput(
@@ -814,6 +910,10 @@ export default function PosApiAdmin() {
       posApiType: formState.posApiType || '',
       usage,
       defaultForForm: usage === 'transaction' ? Boolean(formState.defaultForForm) : false,
+      supportsMultipleReceipts:
+        usage === 'transaction' ? Boolean(formState.supportsMultipleReceipts) : false,
+      supportsMultiplePayments:
+        usage === 'transaction' ? Boolean(formState.supportsMultiplePayments) : false,
       parameters,
       requestBody: {
         schema: requestSchema,
@@ -824,6 +924,8 @@ export default function PosApiAdmin() {
         description: formState.responseDescription || '',
       },
       fieldDescriptions: fieldDescriptions || {},
+      requestFields,
+      responseFields,
       mappingHints: {},
       testable: Boolean(formState.testable),
       testServerUrl: formState.testServerUrl.trim(),
@@ -1176,6 +1278,16 @@ export default function PosApiAdmin() {
                                 Default form
                               </span>
                             )}
+                            {ep.supportsMultipleReceipts && (
+                              <span style={{ ...badgeStyle('#f97316'), textTransform: 'none' }}>
+                                Multi receipt
+                              </span>
+                            )}
+                            {ep.supportsMultiplePayments && (
+                              <span style={{ ...badgeStyle('#10b981'), textTransform: 'none' }}>
+                                Multi payment
+                              </span>
+                            )}
                           </div>
                         </div>
                         <div style={styles.listButtonSubtle}>{ep.id}</div>
@@ -1282,6 +1394,34 @@ export default function PosApiAdmin() {
             />
             <span>
               Default for new forms
+              {formState.usage !== 'transaction' && (
+                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
+              )}
+            </span>
+          </label>
+          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(formState.supportsMultipleReceipts)}
+              onChange={(e) => handleChange('supportsMultipleReceipts', e.target.checked)}
+              disabled={formState.usage !== 'transaction'}
+            />
+            <span>
+              Supports multiple receipt groups
+              {formState.usage !== 'transaction' && (
+                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
+              )}
+            </span>
+          </label>
+          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(formState.supportsMultiplePayments)}
+              onChange={(e) => handleChange('supportsMultiplePayments', e.target.checked)}
+              disabled={formState.usage !== 'transaction'}
+            />
+            <span>
+              Supports multiple payment methods
               {formState.usage !== 'transaction' && (
                 <span style={styles.checkboxHint}> (transaction endpoints only)</span>
               )}
@@ -1893,6 +2033,28 @@ export default function PosApiAdmin() {
           </datalist>
         </section>
 
+        {formState.usage === 'transaction' && (supportsMultipleReceipts || supportsMultiplePayments) && (
+          <div style={styles.multiNotice}>
+            <strong>Mapping reminder:</strong>{' '}
+            {supportsMultipleReceipts && supportsMultiplePayments && (
+              <>
+                Provide column mappings for each <code>receipts[]</code> group and each{' '}
+                <code>payments[]</code> entry.
+              </>
+            )}
+            {supportsMultipleReceipts && !supportsMultiplePayments && (
+              <>
+                Provide column mappings for every <code>receipts[]</code> group rather than a single receipt.
+              </>
+            )}
+            {!supportsMultipleReceipts && supportsMultiplePayments && (
+              <>
+                Provide column mappings for every <code>payments[]</code> entry rather than a single payment method.
+              </>
+            )}
+          </div>
+        )}
+
         <label style={styles.labelFull}>
           Request description
           <input
@@ -1940,6 +2102,116 @@ export default function PosApiAdmin() {
             rows={8}
           />
         </label>
+        <label style={styles.labelFull}>
+          Request field hints (JSON array)
+          <textarea
+            value={formState.requestFieldsText}
+            onChange={(e) => handleChange('requestFieldsText', e.target.value)}
+            style={styles.textarea}
+            rows={6}
+            placeholder={"[\n  { \"field\": \"totalAmount\", \"required\": true, \"description\": \"Total amount including tax.\" }\n]"}
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Response field hints (JSON array)
+          <textarea
+            value={formState.responseFieldsText}
+            onChange={(e) => handleChange('responseFieldsText', e.target.value)}
+            style={styles.textarea}
+            rows={6}
+            placeholder={"[\n  { \"field\": \"receipts[].lottery\", \"description\": \"Lottery number generated by POSAPI.\" }\n]"}
+          />
+        </label>
+        <div style={styles.hintGrid}>
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Request fields</h3>
+              {requestFieldHints.state === 'ok' && (
+                <span style={styles.hintCount}>{requestFieldHints.items.length} fields</span>
+              )}
+            </div>
+            {requestFieldHints.state === 'empty' && (
+              <p style={styles.hintEmpty}>Add request field hints in the JSON textarea above.</p>
+            )}
+            {requestFieldHints.state === 'error' && (
+              <div style={styles.hintError}>{requestFieldHints.error}</div>
+            )}
+            {requestFieldHints.state === 'ok' && (
+              <ul style={styles.hintList}>
+                {requestFieldHints.items.map((hint, index) => {
+                  const normalized = normalizeHintEntry(hint);
+                  const fieldLabel = normalized.field || '(unnamed field)';
+                  return (
+                    <li key={`request-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
+                      <div style={styles.hintFieldRow}>
+                        <span style={styles.hintField}>{fieldLabel}</span>
+                        {typeof normalized.required === 'boolean' && (
+                          <span
+                            style={{
+                              ...styles.hintBadge,
+                              ...(normalized.required
+                                ? styles.hintBadgeRequired
+                                : styles.hintBadgeOptional),
+                            }}
+                          >
+                            {normalized.required ? 'Required' : 'Optional'}
+                          </span>
+                        )}
+                      </div>
+                      {normalized.description && (
+                        <p style={styles.hintDescription}>{normalized.description}</p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Response fields</h3>
+              {responseFieldHints.state === 'ok' && (
+                <span style={styles.hintCount}>{responseFieldHints.items.length} fields</span>
+              )}
+            </div>
+            {responseFieldHints.state === 'empty' && (
+              <p style={styles.hintEmpty}>Add response field hints in the JSON textarea above.</p>
+            )}
+            {responseFieldHints.state === 'error' && (
+              <div style={styles.hintError}>{responseFieldHints.error}</div>
+            )}
+            {responseFieldHints.state === 'ok' && (
+              <ul style={styles.hintList}>
+                {responseFieldHints.items.map((hint, index) => {
+                  const normalized = normalizeHintEntry(hint);
+                  const fieldLabel = normalized.field || '(unnamed field)';
+                  return (
+                    <li key={`response-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
+                      <div style={styles.hintFieldRow}>
+                        <span style={styles.hintField}>{fieldLabel}</span>
+                        {typeof normalized.required === 'boolean' && (
+                          <span
+                            style={{
+                              ...styles.hintBadge,
+                              ...(normalized.required
+                                ? styles.hintBadgeRequired
+                                : styles.hintBadgeOptional),
+                            }}
+                          >
+                            {normalized.required ? 'Required' : 'Optional'}
+                          </span>
+                        )}
+                      </div>
+                      {normalized.description && (
+                        <p style={styles.hintDescription}>{normalized.description}</p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        </div>
         <label style={styles.labelFull}>
           Top-level mapping hints (JSON array)
           <textarea
@@ -2428,6 +2700,112 @@ const styles = {
     fontFamily: 'monospace',
     fontSize: '0.9rem',
     lineHeight: 1.4,
+  },
+  multiNotice: {
+    marginTop: '1rem',
+    background: '#fef3c7',
+    border: '1px solid #fcd34d',
+    color: '#92400e',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
+    fontSize: '0.9rem',
+    lineHeight: 1.5,
+  },
+  hintGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: '1rem',
+    marginTop: '0.75rem',
+  },
+  hintCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '1rem',
+    background: '#f8fafc',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  hintHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  hintTitle: {
+    margin: 0,
+    fontSize: '1rem',
+  },
+  hintCount: {
+    fontSize: '0.75rem',
+    color: '#0f172a',
+    background: '#dbeafe',
+    borderRadius: '999px',
+    padding: '0.2rem 0.6rem',
+    fontWeight: 600,
+  },
+  hintEmpty: {
+    margin: 0,
+    color: '#475569',
+    fontSize: '0.85rem',
+  },
+  hintError: {
+    margin: 0,
+    color: '#b91c1c',
+    fontSize: '0.85rem',
+    background: '#fee2e2',
+    border: '1px solid #fecaca',
+    borderRadius: '6px',
+    padding: '0.5rem 0.75rem',
+  },
+  hintList: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  hintItem: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    background: '#fff',
+    padding: '0.5rem 0.75rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  hintFieldRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  hintField: {
+    fontWeight: 600,
+    fontSize: '0.9rem',
+    color: '#0f172a',
+  },
+  hintDescription: {
+    margin: 0,
+    fontSize: '0.85rem',
+    color: '#475569',
+  },
+  hintBadge: {
+    borderRadius: '999px',
+    padding: '0.15rem 0.5rem',
+    fontSize: '0.7rem',
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+  },
+  hintBadgeRequired: {
+    background: '#dcfce7',
+    color: '#166534',
+  },
+  hintBadgeOptional: {
+    background: '#e2e8f0',
+    color: '#1e293b',
   },
   inlineFields: {
     gridColumn: '1 / -1',
