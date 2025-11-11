@@ -248,7 +248,19 @@ function normalizePaymentMethodsMapping(value) {
     }
     if (!config || typeof config !== 'object') return;
     const entry = {};
-    ['amount', 'currency', 'reference'].forEach((field) => {
+    const allowedFields = [
+      'amount',
+      'paidAmount',
+      'currency',
+      'reference',
+      'status',
+      'data',
+      'data.terminalID',
+      'data.rrn',
+      'data.maskedCardNumber',
+      'data.easy',
+    ];
+    allowedFields.forEach((field) => {
       const val = config[field];
       if (val === undefined || val === null) return;
       const str = typeof val === 'string' ? val.trim() : String(val).trim();
@@ -435,6 +447,43 @@ function getValueAtPath(source, path) {
   return undefined;
 }
 
+function setValueAtPath(target, path, value) {
+  if (!target || typeof target !== 'object') return;
+  const tokens = Array.isArray(path) ? path.slice() : tokenizePath(String(path));
+  if (!tokens.length) return;
+  let current = target;
+  for (let i = 0; i < tokens.length - 1; i += 1) {
+    const token = tokens[i];
+    const nextToken = tokens[i + 1];
+    if (typeof token === 'number') {
+      if (!Array.isArray(current)) return;
+      if (!Array.isArray(current[token]) && typeof current[token] !== 'object') {
+        current[token] = typeof nextToken === 'number' ? [] : {};
+      }
+      if (current[token] === undefined || current[token] === null) {
+        current[token] = typeof nextToken === 'number' ? [] : {};
+      }
+      current = current[token];
+    } else {
+      if (
+        current[token] === undefined ||
+        current[token] === null ||
+        typeof current[token] !== 'object'
+      ) {
+        current[token] = typeof nextToken === 'number' ? [] : {};
+      }
+      current = current[token];
+    }
+  }
+  const lastToken = tokens[tokens.length - 1];
+  if (typeof lastToken === 'number') {
+    if (!Array.isArray(current)) return;
+    current[lastToken] = value;
+  } else if (lastToken !== undefined) {
+    current[lastToken] = value;
+  }
+}
+
 function applyFieldMap(entry, fieldMap = {}) {
   if (!entry || typeof entry !== 'object') return entry;
   const mapEntries = Object.entries(fieldMap);
@@ -444,7 +493,11 @@ function applyFieldMap(entry, fieldMap = {}) {
     if (typeof target !== 'string') return;
     const value = getValueAtPath(entry, sourcePath);
     if (value === undefined) return;
-    next[target] = value;
+    if (target.includes('.') || Array.isArray(target)) {
+      setValueAtPath(next, target, value);
+    } else {
+      next[target] = value;
+    }
   });
   return next;
 }
@@ -538,10 +591,13 @@ function appendLotNoToItems(items, lotNo) {
 function normalizePaymentEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const next = { ...entry };
+  if (next.code && !next.type) {
+    next.type = next.code;
+  }
   if (next.method && !next.type) {
     next.type = next.method;
   }
-  const amountCandidate = next.amount ?? next.total ?? next.value;
+  const amountCandidate = next.amount ?? next.paidAmount ?? next.total ?? next.value;
   if (amountCandidate !== undefined) {
     const parsedAmount = toNumber(amountCandidate);
     if (parsedAmount !== null) next.amount = parsedAmount;
@@ -549,6 +605,10 @@ function normalizePaymentEntry(entry) {
   if (next.amount === undefined && next.value !== undefined) {
     const parsedValue = toNumber(next.value);
     if (parsedValue !== null) next.amount = parsedValue;
+  }
+  if (next.amount === undefined && next.paidAmount !== undefined) {
+    const parsedPaidAmount = toNumber(next.paidAmount);
+    if (parsedPaidAmount !== null) next.amount = parsedPaidAmount;
   }
   return next;
 }
