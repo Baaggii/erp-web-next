@@ -178,57 +178,6 @@ const RowFormModal = function RowFormModal({
       return infoEndpoints[0].id;
     });
   }, [infoEndpoints, infoEndpointsKey]);
-  const getFieldDefaultFromRecord = useCallback(
-    (fieldName) => {
-      if (!fieldName) return '';
-      const lower = String(fieldName).toLowerCase();
-      if (columnByLowerMap[lower] !== undefined) {
-        const columnKey = columnByLowerMap[lower];
-        const value = formVals?.[columnKey];
-        if (value !== undefined && value !== null && value !== '') {
-          return value;
-        }
-      }
-      if (extraKeyLookup[lower] !== undefined) {
-        const extraKey = extraKeyLookup[lower];
-        const value = extraVals?.[extraKey];
-        if (value !== undefined && value !== null && value !== '') {
-          return value;
-        }
-      }
-      return '';
-    },
-    [columnByLowerMap, extraKeyLookup, formVals, extraVals],
-  );
-  useEffect(() => {
-    if (!infoModalOpen) return;
-    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
-    if (!endpoint) {
-      setInfoPayload({});
-      return;
-    }
-    const fields = endpoint.requestFields
-      .map((item) => (item && typeof item.field === 'string' ? item.field : ''))
-      .filter((field) => field);
-    if (!fields.length) {
-      setInfoPayload({});
-      return;
-    }
-    setInfoPayload((prev) => {
-      const next = {};
-      fields.forEach((field) => {
-        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
-          next[field] = prev[field];
-        } else {
-          const auto = getFieldDefaultFromRecord(field);
-          if (auto !== '') {
-            next[field] = auto;
-          }
-        }
-      });
-      return next;
-    });
-  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, getFieldDefaultFromRecord]);
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -699,6 +648,57 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [extraKeys]);
+  const getFieldDefaultFromRecord = useCallback(
+    (fieldName) => {
+      if (!fieldName) return '';
+      const lower = String(fieldName).toLowerCase();
+      if (columnByLowerMap[lower] !== undefined) {
+        const columnKey = columnByLowerMap[lower];
+        const value = formVals?.[columnKey];
+        if (value !== undefined && value !== null && value !== '') {
+          return value;
+        }
+      }
+      if (extraKeyLookup[lower] !== undefined) {
+        const extraKey = extraKeyLookup[lower];
+        const value = extraVals?.[extraKey];
+        if (value !== undefined && value !== null && value !== '') {
+          return value;
+        }
+      }
+      return '';
+    },
+    [columnByLowerMap, extraKeyLookup, formVals, extraVals],
+  );
+  useEffect(() => {
+    if (!infoModalOpen) return;
+    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
+    if (!endpoint) {
+      setInfoPayload({});
+      return;
+    }
+    const fields = endpoint.requestFields
+      .map((item) => (item && typeof item.field === 'string' ? item.field : ''))
+      .filter((field) => field);
+    if (!fields.length) {
+      setInfoPayload({});
+      return;
+    }
+    setInfoPayload((prev) => {
+      const next = {};
+      fields.forEach((field) => {
+        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
+          next[field] = prev[field];
+        } else {
+          const auto = getFieldDefaultFromRecord(field);
+          if (auto !== '') {
+            next[field] = auto;
+          }
+        }
+      });
+      return next;
+    });
+  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, getFieldDefaultFromRecord]);
   const formValsRef = useRef(formVals);
   const extraValsRef = useRef(extraVals);
   const manualOverrideRef = useRef(new Map());
