@@ -677,16 +677,6 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [extraKeys]);
-  const formValsRef = useRef(formVals);
-  const extraValsRef = useRef(extraVals);
-  const manualOverrideRef = useRef(new Map());
-  const pendingManualOverrideRef = useRef(new Set());
-  useEffect(() => {
-    formValsRef.current = formVals;
-  }, [formVals]);
-  useEffect(() => {
-    extraValsRef.current = extraVals;
-  }, [extraVals]);
   const getFieldDefaultFromRecord = useCallback(
     (fieldName) => {
       if (!fieldName) return '';
@@ -709,6 +699,16 @@ const RowFormModal = function RowFormModal({
     },
     [columnByLowerMap, extraKeyLookup, formVals, extraVals],
   );
+  const formValsRef = useRef(formVals);
+  const extraValsRef = useRef(extraVals);
+  const manualOverrideRef = useRef(new Map());
+  const pendingManualOverrideRef = useRef(new Set());
+  useEffect(() => {
+    formValsRef.current = formVals;
+  }, [formVals]);
+  useEffect(() => {
+    extraValsRef.current = extraVals;
+  }, [extraVals]);
   const openInfoModal = useCallback(() => {
     setInfoModalOpen(true);
     setInfoError(null);
