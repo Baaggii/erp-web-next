@@ -178,6 +178,28 @@ const RowFormModal = function RowFormModal({
       return infoEndpoints[0].id;
     });
   }, [infoEndpoints, infoEndpointsKey]);
+  const getFieldDefaultFromRecord = useCallback(
+    (fieldName) => {
+      if (!fieldName) return '';
+      const lower = String(fieldName).toLowerCase();
+      if (columnByLowerMap[lower] !== undefined) {
+        const columnKey = columnByLowerMap[lower];
+        const value = formVals?.[columnKey];
+        if (value !== undefined && value !== null && value !== '') {
+          return value;
+        }
+      }
+      if (extraKeyLookup[lower] !== undefined) {
+        const extraKey = extraKeyLookup[lower];
+        const value = extraVals?.[extraKey];
+        if (value !== undefined && value !== null && value !== '') {
+          return value;
+        }
+      }
+      return '';
+    },
+    [columnByLowerMap, extraKeyLookup, formVals, extraVals],
+  );
   useEffect(() => {
     if (!infoModalOpen) return;
     const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
@@ -677,28 +699,6 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [extraKeys]);
-  const getFieldDefaultFromRecord = useCallback(
-    (fieldName) => {
-      if (!fieldName) return '';
-      const lower = String(fieldName).toLowerCase();
-      if (columnByLowerMap[lower] !== undefined) {
-        const columnKey = columnByLowerMap[lower];
-        const value = formVals?.[columnKey];
-        if (value !== undefined && value !== null && value !== '') {
-          return value;
-        }
-      }
-      if (extraKeyLookup[lower] !== undefined) {
-        const extraKey = extraKeyLookup[lower];
-        const value = extraVals?.[extraKey];
-        if (value !== undefined && value !== null && value !== '') {
-          return value;
-        }
-      }
-      return '';
-    },
-    [columnByLowerMap, extraKeyLookup, formVals, extraVals],
-  );
   const formValsRef = useRef(formVals);
   const extraValsRef = useRef(extraVals);
   const manualOverrideRef = useRef(new Map());
