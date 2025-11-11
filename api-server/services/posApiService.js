@@ -169,6 +169,8 @@ function getColumnValue(columnLookup, record, columnName) {
 
 const COMPLEX_ARRAY_KEYS = new Set(['itemsField', 'paymentsField', 'receiptsField']);
 const FIELD_MAP_KEYS = new Set(['itemFields', 'paymentFields', 'receiptFields']);
+const RECEIPT_GROUP_MAPPING_KEY = 'receiptGroups';
+const PAYMENT_METHOD_MAPPING_KEY = 'paymentMethods';
 
 function normalizeFieldMap(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
@@ -195,6 +197,54 @@ function normalizeFieldMap(value) {
         normalized[key] = str;
       }
     }
+  });
+  return normalized;
+}
+
+function normalizeReceiptGroupsMapping(value) {
+  if (!value || typeof value !== 'object') return {};
+  const normalized = {};
+  Object.entries(value).forEach(([key, config]) => {
+    if (typeof key !== 'string') return;
+    const type = key.trim();
+    if (!type) return;
+    const entry = {};
+    if (config && typeof config === 'object') {
+      ['totalAmount', 'totalVAT', 'totalCityTax', 'taxType'].forEach((field) => {
+        const val = config[field];
+        if (val === undefined || val === null) return;
+        const str = typeof val === 'string' ? val.trim() : String(val).trim();
+        if (str) entry[field] = str;
+      });
+    }
+    if (Object.keys(entry).length) normalized[type] = entry;
+  });
+  return normalized;
+}
+
+function normalizePaymentMethodsMapping(value) {
+  if (!value || typeof value !== 'object') return {};
+  const normalized = {};
+  Object.entries(value).forEach(([method, config]) => {
+    if (typeof method !== 'string') return;
+    const code = method.trim();
+    if (!code) return;
+    if (typeof config === 'string' || typeof config === 'number' || typeof config === 'bigint') {
+      const str = String(config).trim();
+      if (str) {
+        normalized[code] = { amount: str };
+      }
+      return;
+    }
+    if (!config || typeof config !== 'object') return;
+    const entry = {};
+    ['amount', 'currency', 'reference'].forEach((field) => {
+      const val = config[field];
+      if (val === undefined || val === null) return;
+      const str = typeof val === 'string' ? val.trim() : String(val).trim();
+      if (str) entry[field] = str;
+    });
+    if (Object.keys(entry).length) normalized[code] = entry;
   });
   return normalized;
 }
@@ -276,6 +326,20 @@ function normalizeMapping(mapping) {
       const fieldMap = normalizeFieldMap(value);
       if (Object.keys(fieldMap).length) {
         normalized[key] = fieldMap;
+      }
+      return;
+    }
+    if (key === RECEIPT_GROUP_MAPPING_KEY) {
+      const groups = normalizeReceiptGroupsMapping(value);
+      if (Object.keys(groups).length) {
+        normalized[key] = groups;
+      }
+      return;
+    }
+    if (key === PAYMENT_METHOD_MAPPING_KEY) {
+      const methods = normalizePaymentMethodsMapping(value);
+      if (Object.keys(methods).length) {
+        normalized[key] = methods;
       }
       return;
     }
@@ -858,6 +922,12 @@ export async function buildReceiptFromDynamicTransaction(
   if (!record || typeof record !== 'object') return null;
   const normalizedMapping = normalizeMapping(mapping);
   const columnLookup = createColumnLookup(record);
+  const receiptGroupMapping =
+    normalizedMapping[RECEIPT_GROUP_MAPPING_KEY] || {};
+  const paymentMethodMapping =
+    normalizedMapping[PAYMENT_METHOD_MAPPING_KEY] || {};
+  delete normalizedMapping[RECEIPT_GROUP_MAPPING_KEY];
+  delete normalizedMapping[PAYMENT_METHOD_MAPPING_KEY];
 
   const totalAmountColumn = normalizedMapping.totalAmount;
   const totalAmountValue = getColumnValue(columnLookup, record, totalAmountColumn);
@@ -980,6 +1050,58 @@ export async function buildReceiptFromDynamicTransaction(
     .map((entry) => normalizePaymentEntry(entry))
     .filter(Boolean);
 
+  const mappedPayments = Object.entries(paymentMethodMapping).map(
+    ([method, config]) => {
+      if (!config || typeof config !== 'object') return null;
+      const amountColumn = config.amount;
+      if (!amountColumn) return null;
+      const amountValue = toNumber(
+        getColumnValue(columnLookup, record, amountColumn),
+      );
+      if (amountValue === null) return null;
+      const payment = { type: method, amount: amountValue };
+      if (config.currency) {
+        const currencyValue = toStringValue(
+          getColumnValue(columnLookup, record, config.currency),
+        );
+        if (currencyValue) payment.currency = currencyValue;
+      }
+      if (config.reference) {
+        const referenceValue = toStringValue(
+          getColumnValue(columnLookup, record, config.reference),
+        );
+        if (referenceValue) payment.reference = referenceValue;
+      }
+      return payment;
+    },
+  ).filter(Boolean);
+
+  if (mappedPayments.length) {
+    const paymentByType = new Map();
+    mappedPayments.forEach((entry) => {
+      if (!entry || typeof entry.type !== 'string') return;
+      paymentByType.set(entry.type, entry);
+    });
+    payments.forEach((entry) => {
+      if (!entry || typeof entry !== 'object') return;
+      const typeCandidate =
+        typeof entry.type === 'string'
+          ? entry.type
+          : typeof entry.method === 'string'
+            ? entry.method
+            : '';
+      if (!typeCandidate) return;
+      const type = typeCandidate;
+      if (paymentByType.has(type)) {
+        const merged = { ...entry, ...paymentByType.get(type), type };
+        paymentByType.set(type, merged);
+      } else {
+        paymentByType.set(type, entry);
+      }
+    });
+    payments = Array.from(paymentByType.values());
+  }
+
   const rawReceipts = extractArrayFromDescriptor(
     record,
     columnLookup,
@@ -1001,6 +1123,35 @@ export async function buildReceiptFromDynamicTransaction(
       (receipt) =>
         receipt && Array.isArray(receipt.items) && receipt.items.length > 0,
     );
+
+  const mappedReceipts = Object.entries(receiptGroupMapping)
+    .map(([typeKey, config]) => {
+      if (!config || typeof config !== 'object') return null;
+      const amountValue = toNumber(
+        getColumnValue(columnLookup, record, config.totalAmount),
+      );
+      if (amountValue === null) return null;
+      const entry = { totalAmount: amountValue };
+      const vatValue = toNumber(
+        getColumnValue(columnLookup, record, config.totalVAT),
+      );
+      if (vatValue !== null) entry.totalVAT = vatValue;
+      const cityValue = toNumber(
+        getColumnValue(columnLookup, record, config.totalCityTax),
+      );
+      if (cityValue !== null) entry.totalCityTax = cityValue;
+      const taxTypeValue = toStringValue(
+        getColumnValue(columnLookup, record, config.taxType),
+      );
+      const resolvedType = taxTypeValue || typeKey;
+      if (resolvedType) entry.taxType = resolvedType;
+      return entry;
+    })
+    .filter(Boolean);
+
+  if (mappedReceipts.length) {
+    receipts = mappedReceipts;
+  }
 
   if (!items.length && !receipts.length) {
     const fallbackItem = {
@@ -1213,10 +1364,77 @@ export async function buildReceiptFromDynamicTransaction(
     'stockFlagField',
     'stockIndicator',
     'stockIndicatorField',
+    RECEIPT_GROUP_MAPPING_KEY,
+    PAYMENT_METHOD_MAPPING_KEY,
   ]);
   applyAdditionalMappings(payload, normalizedMapping, record, columnLookup, reservedMappingKeys);
 
   return payload;
+}
+
+export async function invokePosApiEndpoint(endpointId, payload = {}, options = {}) {
+  const optionBag =
+    options && typeof options === 'object' ? options : { headers: {}, endpoint: null };
+  const endpoint = optionBag.endpoint || (await resolvePosApiEndpoint(endpointId));
+  const method = (endpoint?.method || 'GET').toUpperCase();
+  let path = (endpoint?.path || '/').trim() || '/';
+  const params = Array.isArray(endpoint?.parameters) ? endpoint.parameters : [];
+  const payloadData =
+    payload && typeof payload === 'object' && !Array.isArray(payload)
+      ? { ...payload }
+      : {};
+  const { body: explicitBody, ...restPayload } = payloadData;
+
+  params
+    .filter((param) => param && param.in === 'path' && typeof param.name === 'string')
+    .forEach((param) => {
+      const raw = restPayload[param.name];
+      const strValue =
+        raw === undefined || raw === null ? '' : encodeURIComponent(String(raw));
+      if (strValue) {
+        path = path.replaceAll(`{${param.name}}`, strValue);
+      }
+      delete restPayload[param.name];
+    });
+
+  const queryParams = new URLSearchParams();
+  params
+    .filter((param) => param && param.in === 'query' && typeof param.name === 'string')
+    .forEach((param) => {
+      const value = restPayload[param.name];
+      if (value !== undefined && value !== null && String(value).trim() !== '') {
+        queryParams.append(param.name, String(value));
+      }
+      delete restPayload[param.name];
+    });
+
+  const queryString = queryParams.toString();
+  if (queryString) {
+    path = `${path}${path.includes('?') ? '&' : '?'}${queryString}`;
+  }
+
+  let bodyPayload;
+  if (explicitBody !== undefined) {
+    bodyPayload = explicitBody;
+  } else if (method !== 'GET' && method !== 'HEAD' && Object.keys(restPayload).length) {
+    bodyPayload = restPayload;
+  }
+
+  const headers = { ...(optionBag.headers || {}) };
+  let body;
+  if (bodyPayload !== undefined && method !== 'GET' && method !== 'HEAD') {
+    if (!headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+    body = JSON.stringify(bodyPayload);
+  }
+
+  return posApiFetch(path, {
+    method,
+    body,
+    token: await getPosApiToken(),
+    headers,
+  });
 }
 
 export async function sendReceipt(payload, options = {}) {
