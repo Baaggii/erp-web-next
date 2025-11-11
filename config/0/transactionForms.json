@@ -154,7 +154,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Бараа материал ЭХ борлуулсан САНХҮҮГИЙН орлого": {
       "visibleFields": [
@@ -336,7 +353,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Посын борлуулалтын орлого": {
       "visibleFields": [
@@ -398,7 +432,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     }
   },
   "transactions_expense": {
@@ -604,7 +655,24 @@
       "allowedDepartments": [
         100,
         102
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Посын хямдралын санхүүгийн зардал": {
       "visibleFields": [
@@ -659,7 +727,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Посын хариулт мөнгөний зардал": {
       "visibleFields": [
@@ -709,7 +794,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     }
   },
   "transactions_plan": {
@@ -751,7 +853,24 @@
       ],
       "tooltips": {
         "annot": "tooltip.annot"
-      }
+      },
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Посын гүйлгээний ажил": {
       "visibleFields": [
@@ -801,7 +920,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     }
   },
   "transactions_order": {
@@ -923,7 +1059,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     }
   },
   "transactions_inventory": {
@@ -979,7 +1132,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Посын бараа материалын зарлага": {
       "visibleFields": [
@@ -1037,7 +1207,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Өөр салбар руу шилжүүлэх ЗАРЛАГА": {
       "visibleFields": [
@@ -1162,7 +1349,24 @@
       ],
       "procedures": [
         "dynrep_inventory_warehouse"
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Худалдан авалт ОРЛОГО": {
       "visibleFields": [
@@ -1262,7 +1466,24 @@
         100,
         102,
         110
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Тооллого": {
       "visibleFields": [
@@ -1381,7 +1602,24 @@
       ],
       "procedures": [
         "dynrep_inventory_warehouse"
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "ЭХ, БМ актлах": {
       "visibleFields": [
@@ -1527,7 +1765,24 @@
       ],
       "procedures": [
         "dynrep_inventory_warehouse"
-      ]
+      ],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     }
   },
   "transactions_pos": {
@@ -1585,27 +1840,6 @@
         "receipts[].qrData",
         "receipts[].lottery"
       ],
-      "posApiMapping": {
-        "totalAmount": "payable_amount",
-        "totalVAT": "vat_amount",
-        "totalCityTax": "city_tax",
-        "customerTin": "customer_tin",
-        "consumerNo": "consumer_no",
-        "taxType": "tax_type",
-        "lotNo": "lot_no",
-        "itemsField": "transactions_order",
-        "itemFields": {
-          "name": "transactions_order.ordrbname",
-          "description": "transactions_order.ordrcomments",
-          "qty": "transactions_order.ordrsub",
-          "price": "transactions_order.retail_up",
-          "totalAmount": "transactions_order.retail_total",
-          "classificationCode": "transactions_order.sp_primary_code",
-          "taxProductCode": "transactions_order.sp_selling_code",
-          "barCode": "transactions_order.ordrbkod",
-          "measureUnit": "transactions_order.ordrmu"
-        }
-      },
       "infoEndpoints": [
         {
           "id": "verifyCustomerTin",
@@ -1795,7 +2029,24 @@
       "moduleKey": "parent_mod",
       "allowedBranches": [],
       "allowedDepartments": [],
-      "procedures": []
+      "procedures": [],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "ViewTest": {
       "visibleFields": [],
@@ -1828,7 +2079,24 @@
       "moduleKey": "parent_mod",
       "allowedBranches": [],
       "allowedDepartments": [],
-      "procedures": []
+      "procedures": [],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Labeled": {
       "visibleFields": [],
@@ -1860,7 +2128,24 @@
       "moduleLabel": "My Transactions",
       "allowedBranches": [],
       "allowedDepartments": [],
-      "procedures": []
+      "procedures": [],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Flagged": {
       "visibleFields": [],
@@ -1891,7 +2176,24 @@
       "moduleKey": "parent_mod",
       "allowedBranches": [],
       "allowedDepartments": [],
-      "procedures": []
+      "procedures": [],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "Extra": {
       "visibleFields": [],
@@ -1934,7 +2236,24 @@
       "moduleKey": "parent_mod",
       "allowedBranches": [],
       "allowedDepartments": [],
-      "procedures": []
+      "procedures": [],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     },
     "DetectCfg": {
       "visibleFields": [],
@@ -1968,7 +2287,24 @@
       "moduleKey": "",
       "allowedBranches": [],
       "allowedDepartments": [],
-      "procedures": []
+      "procedures": [],
+      "posApiEndpointId": "saveReceipt",
+      "posApiReceiptTypes": [
+        "B2C_RECEIPT",
+        "B2B_RECEIPT",
+        "B2C_INVOICE",
+        "B2B_INVOICE"
+      ],
+      "posApiPaymentMethods": [
+        "CASH",
+        "PAYMENT_CARD",
+        "BANK_TRANSFER",
+        "MOBILE_WALLET",
+        "EASY_BANK_CARD",
+        "SERVICE_PAYMENT"
+      ],
+      "posApiTypeField": "",
+      "fieldsFromPosApi": []
     }
   }
 }
