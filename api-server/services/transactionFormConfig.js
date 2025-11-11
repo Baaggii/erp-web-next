@@ -102,6 +102,172 @@ function sanitizeMappingHints(hints) {
   return Object.keys(result).length ? result : null;
 }
 
+function normalizeInfoEndpointMappingList(source, mode) {
+  if (!source) return [];
+  if (Array.isArray(source)) return source;
+  if (typeof source === 'object') {
+    return Object.entries(source)
+      .map(([field, value]) => {
+        if (typeof field !== 'string') return null;
+        if (mode === 'request') {
+          if (typeof value === 'string') return { field, source: value };
+          if (value && typeof value === 'object') return { field, ...value };
+          if (value !== undefined && value !== null) return { field, source: String(value) };
+        } else {
+          if (typeof value === 'string') return { field, target: value };
+          if (value && typeof value === 'object') return { field, ...value };
+          if (value !== undefined && value !== null) return { field, target: String(value) };
+        }
+        return { field };
+      })
+      .filter(Boolean);
+  }
+  return [];
+}
+
+function sanitizeInfoEndpointMappingEntry(entry, mode = 'response') {
+  if (!entry || typeof entry !== 'object') return null;
+  const field = typeof entry.field === 'string' ? entry.field.trim() : '';
+  if (!field) return null;
+  const result = { field };
+  if (mode === 'request') {
+    const source = typeof entry.source === 'string' ? entry.source.trim() : '';
+    if (source) result.source = source;
+    if (entry.value !== undefined && entry.value !== null && entry.value !== '') {
+      result.value =
+        typeof entry.value === 'string' ? entry.value : String(entry.value);
+    }
+    if (entry.fallback !== undefined && entry.fallback !== null && entry.fallback !== '') {
+      result.fallback =
+        typeof entry.fallback === 'string' ? entry.fallback : String(entry.fallback);
+    }
+  } else {
+    const target =
+      typeof entry.target === 'string' && entry.target.trim()
+        ? entry.target.trim()
+        : field;
+    result.target = target;
+    if (typeof entry.joinWith === 'string' && entry.joinWith) {
+      result.joinWith = entry.joinWith;
+    }
+    if (typeof entry.pick === 'string' && entry.pick) {
+      const pick = entry.pick.trim().toLowerCase();
+      if (pick === 'first' || pick === 'join') {
+        result.pick = pick;
+      }
+    }
+    if (entry.fallback !== undefined && entry.fallback !== null && entry.fallback !== '') {
+      result.fallback =
+        typeof entry.fallback === 'string' ? entry.fallback : String(entry.fallback);
+    }
+    if (typeof entry.targetLabel === 'string' && entry.targetLabel.trim()) {
+      result.targetLabel = entry.targetLabel.trim();
+    }
+  }
+  if (typeof entry.description === 'string' && entry.description.trim()) {
+    result.description = entry.description.trim();
+  }
+  if (entry.required !== undefined) {
+    result.required = Boolean(entry.required);
+  }
+  return result;
+}
+
+function collectMappingEntries(entry, mode = 'response') {
+  if (!entry || typeof entry !== 'object') return [];
+  const keys =
+    mode === 'request'
+      ? ['requestMappings', 'requestMapping', 'requestFieldMap', 'requestMap']
+      : ['responseMappings', 'responseMapping', 'responseFieldMap', 'responseMap'];
+  for (const key of keys) {
+    if (entry[key] !== undefined) {
+      return normalizeInfoEndpointMappingList(entry[key], mode);
+    }
+  }
+  return [];
+}
+
+function sanitizeInfoEndpointOverride(entry) {
+  if (!entry || typeof entry !== 'object') return null;
+  const id = typeof entry.id === 'string' ? entry.id.trim() : '';
+  if (!id) return null;
+  const config = {};
+  if (typeof entry.label === 'string' && entry.label.trim()) {
+    config.label = entry.label.trim();
+  }
+  if (typeof entry.quickActionLabel === 'string' && entry.quickActionLabel.trim()) {
+    config.quickActionLabel = entry.quickActionLabel.trim();
+  }
+  if (typeof entry.description === 'string' && entry.description.trim()) {
+    config.description = entry.description.trim();
+  }
+  if (typeof entry.modalTitle === 'string' && entry.modalTitle.trim()) {
+    config.modalTitle = entry.modalTitle.trim();
+  }
+  if (entry.autoInvoke !== undefined) {
+    config.autoInvoke = Boolean(entry.autoInvoke);
+  }
+  if (entry.payloadDefaults && typeof entry.payloadDefaults === 'object' && !Array.isArray(entry.payloadDefaults)) {
+    const defaults = {};
+    Object.entries(entry.payloadDefaults).forEach(([key, val]) => {
+      if (typeof key !== 'string') return;
+      if (val === undefined || val === null) return;
+      if (typeof val === 'string') {
+        const trimmed = val.trim();
+        if (trimmed) defaults[key] = trimmed;
+      } else if (typeof val === 'number' || typeof val === 'bigint' || typeof val === 'boolean') {
+        defaults[key] = String(val);
+      }
+    });
+    if (Object.keys(defaults).length) config.payloadDefaults = defaults;
+  }
+  const requestMappingsRaw = collectMappingEntries(entry, 'request');
+  const requestMappings = requestMappingsRaw
+    .map((mapping) => sanitizeInfoEndpointMappingEntry(mapping, 'request'))
+    .filter(Boolean);
+  if (requestMappings.length) config.requestMappings = requestMappings;
+  const responseMappingsRaw = collectMappingEntries(entry, 'response');
+  const responseMappings = responseMappingsRaw
+    .map((mapping) => sanitizeInfoEndpointMappingEntry(mapping, 'response'))
+    .filter(Boolean);
+  if (responseMappings.length) config.responseMappings = responseMappings;
+  if (Object.keys(config).length === 0) return { id, config: {} };
+  return { id, config };
+}
+
+function parseInfoEndpointList(source) {
+  const ids = [];
+  const config = {};
+  if (!Array.isArray(source)) return { ids, config };
+  source.forEach((entry) => {
+    if (typeof entry === 'string') {
+      const id = entry.trim();
+      if (id && !ids.includes(id)) ids.push(id);
+      return;
+    }
+    const sanitized = sanitizeInfoEndpointOverride(entry);
+    if (!sanitized || !sanitized.id) return;
+    if (!ids.includes(sanitized.id)) ids.push(sanitized.id);
+    if (sanitized.config && Object.keys(sanitized.config).length > 0) {
+      config[sanitized.id] = sanitized.config;
+    }
+  });
+  return { ids, config };
+}
+
+function sanitizeInfoEndpointConfigMap(source) {
+  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
+  const result = {};
+  Object.entries(source).forEach(([id, value]) => {
+    if (typeof id !== 'string') return;
+    if (!value || typeof value !== 'object') return;
+    const sanitized = sanitizeInfoEndpointOverride({ id, ...value });
+    if (!sanitized) return;
+    result[id] = sanitized.config || {};
+  });
+  return result;
+}
+
 function sanitizeEndpointForClient(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return null;
   const receiptTypes = Array.isArray(endpoint.receiptTypes)
@@ -227,14 +393,19 @@ function parseEntry(raw = {}) {
       false,
   );
   const mapping = sanitizePosApiMapping(raw.posApiMapping);
-  const infoEndpointsSource = Array.isArray(raw.infoEndpoints)
-    ? raw.infoEndpoints
-    : Array.isArray(raw.posApiInfoEndpointIds)
-      ? raw.posApiInfoEndpointIds
-      : [];
-  const infoEndpoints = infoEndpointsSource
-    .map((value) => (typeof value === 'string' ? value.trim() : ''))
-    .filter((value) => value);
+  const parsedInfo = parseInfoEndpointList(raw.infoEndpoints);
+  const legacyInfoEndpoints = Array.isArray(raw.posApiInfoEndpointIds)
+    ? raw.posApiInfoEndpointIds
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value)
+    : [];
+  const infoEndpoints = Array.from(new Set([...parsedInfo.ids, ...legacyInfoEndpoints]));
+  const infoEndpointConfig = sanitizeInfoEndpointConfigMap({
+    ...parsedInfo.config,
+    ...(raw.infoEndpointConfig && typeof raw.infoEndpointConfig === 'object'
+      ? raw.infoEndpointConfig
+      : {}),
+  });
   const receiptTypes = Array.isArray(raw.posApiReceiptTypes)
     ? raw.posApiReceiptTypes
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
@@ -348,6 +519,7 @@ function parseEntry(raw = {}) {
       : [],
     posApiMapping: mapping,
     infoEndpoints,
+    infoEndpointConfig,
   };
 }
 
@@ -601,6 +773,7 @@ export async function setFormConfig(
     fieldsFromPosApi = [],
     infoEndpoints = [],
     posApiMapping = {},
+    infoEndpointConfig = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -735,6 +908,7 @@ export async function setFormConfig(
         )
       : [],
     posApiMapping: sanitizePosApiMapping(posApiMapping),
+    infoEndpointConfig: sanitizeInfoEndpointConfigMap(infoEndpointConfig),
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
