@@ -84,6 +84,62 @@ const PAYMENT_METHOD_LABELS = {
   SERVICE_PAYMENT: 'Service payment',
 };
 
+const DEFAULT_ENDPOINT_RECEIPT_TYPES = [
+  'B2C_RECEIPT',
+  'B2B_RECEIPT',
+  'B2C_INVOICE',
+  'B2B_INVOICE',
+];
+
+const DEFAULT_ENDPOINT_PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABELS);
+
+function normaliseEndpointUsage(value) {
+  return typeof value === 'string' && ['transaction', 'info', 'admin'].includes(value)
+    ? value
+    : 'transaction';
+}
+
+function normaliseEndpointList(list, fallback) {
+  const source = Array.isArray(list) ? list : fallback;
+  const cleaned = source
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+  const effective = cleaned.length > 0 ? cleaned : fallback;
+  return Array.from(new Set(effective));
+}
+
+function withEndpointMetadata(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const usage = normaliseEndpointUsage(endpoint.usage);
+  const isTransaction = usage === 'transaction';
+  const receiptTypes = isTransaction
+    ? normaliseEndpointList(endpoint.receiptTypes, DEFAULT_ENDPOINT_RECEIPT_TYPES)
+    : [];
+  const paymentMethods = isTransaction
+    ? normaliseEndpointList(endpoint.paymentMethods, DEFAULT_ENDPOINT_PAYMENT_METHODS)
+    : [];
+  let supportsItems = false;
+  if (isTransaction) {
+    if (endpoint.supportsItems === false) {
+      supportsItems = false;
+    } else if (endpoint.supportsItems === true) {
+      supportsItems = true;
+    } else {
+      supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
+    }
+  }
+  return {
+    ...endpoint,
+    usage,
+    defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
+    supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
+    supportsMultiplePayments: isTransaction ? Boolean(endpoint.supportsMultiplePayments) : false,
+    supportsItems,
+    receiptTypes,
+    paymentMethods,
+  };
+}
+
 function formatPosApiTypeLabel(type) {
   if (!type) return '';
   const lookup = {
@@ -407,13 +463,13 @@ export default function FormsManagement() {
     fetch('/api/posapi/endpoints', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
+        let list = [];
         if (Array.isArray(data)) {
-          setPosApiEndpoints(data);
+          list = data;
         } else if (data && Array.isArray(data.endpoints)) {
-          setPosApiEndpoints(data.endpoints);
-        } else {
-          setPosApiEndpoints([]);
+          list = data.endpoints;
         }
+        setPosApiEndpoints(list.map(withEndpointMetadata));
       })
       .catch(() => setPosApiEndpoints([]));
   }, []);
