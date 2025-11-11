@@ -178,35 +178,6 @@ const RowFormModal = function RowFormModal({
       return infoEndpoints[0].id;
     });
   }, [infoEndpoints, infoEndpointsKey]);
-  useEffect(() => {
-    if (!infoModalOpen) return;
-    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
-    if (!endpoint) {
-      setInfoPayload({});
-      return;
-    }
-    const fields = endpoint.requestFields
-      .map((item) => (item && typeof item.field === 'string' ? item.field : ''))
-      .filter((field) => field);
-    if (!fields.length) {
-      setInfoPayload({});
-      return;
-    }
-    setInfoPayload((prev) => {
-      const next = {};
-      fields.forEach((field) => {
-        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
-          next[field] = prev[field];
-        } else {
-          const auto = getFieldDefaultFromRecord(field);
-          if (auto !== '') {
-            next[field] = auto;
-          }
-        }
-      });
-      return next;
-    });
-  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, getFieldDefaultFromRecord]);
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -677,16 +648,6 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [extraKeys]);
-  const formValsRef = useRef(formVals);
-  const extraValsRef = useRef(extraVals);
-  const manualOverrideRef = useRef(new Map());
-  const pendingManualOverrideRef = useRef(new Set());
-  useEffect(() => {
-    formValsRef.current = formVals;
-  }, [formVals]);
-  useEffect(() => {
-    extraValsRef.current = extraVals;
-  }, [extraVals]);
   const getFieldDefaultFromRecord = useCallback(
     (fieldName) => {
       if (!fieldName) return '';
@@ -709,6 +670,45 @@ const RowFormModal = function RowFormModal({
     },
     [columnByLowerMap, extraKeyLookup, formVals, extraVals],
   );
+  useEffect(() => {
+    if (!infoModalOpen) return;
+    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
+    if (!endpoint) {
+      setInfoPayload({});
+      return;
+    }
+    const fields = endpoint.requestFields
+      .map((item) => (item && typeof item.field === 'string' ? item.field : ''))
+      .filter((field) => field);
+    if (!fields.length) {
+      setInfoPayload({});
+      return;
+    }
+    setInfoPayload((prev) => {
+      const next = {};
+      fields.forEach((field) => {
+        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
+          next[field] = prev[field];
+        } else {
+          const auto = getFieldDefaultFromRecord(field);
+          if (auto !== '') {
+            next[field] = auto;
+          }
+        }
+      });
+      return next;
+    });
+  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, getFieldDefaultFromRecord]);
+  const formValsRef = useRef(formVals);
+  const extraValsRef = useRef(extraVals);
+  const manualOverrideRef = useRef(new Map());
+  const pendingManualOverrideRef = useRef(new Set());
+  useEffect(() => {
+    formValsRef.current = formVals;
+  }, [formVals]);
+  useEffect(() => {
+    extraValsRef.current = extraVals;
+  }, [extraVals]);
   const openInfoModal = useCallback(() => {
     setInfoModalOpen(true);
     setInfoError(null);
