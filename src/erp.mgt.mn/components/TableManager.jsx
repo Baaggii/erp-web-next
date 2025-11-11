@@ -5887,7 +5887,6 @@ const TableManager = forwardRef(function TableManager({
         procTriggers={procTriggers}
         columnCaseMap={columnCaseMap}
         table={table}
-        formName={formName}
         tableColumns={columnMeta}
         imagenameField={formConfig?.imagenameField || []}
         imageIdField={formConfig?.imageIdField || ''}
@@ -5903,10 +5902,6 @@ const TableManager = forwardRef(function TableManager({
         forceEditable={guardOverridesActive}
         posApiEnabled={Boolean(formConfig?.posApiEnabled)}
         posApiTypeField={formConfig?.posApiTypeField || ''}
-        infoEndpoints={formConfig?.infoEndpoints?.length
-          ? formConfig.infoEndpoints
-          : formConfig?.posApiInfoEndpointIds || []}
-        infoEndpointMappings={formConfig?.infoEndpointMappings || {}}
       />
       <CascadeDeleteModal
         visible={showCascade}
