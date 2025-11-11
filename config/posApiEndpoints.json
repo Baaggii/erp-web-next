@@ -472,6 +472,11 @@
               "description": "Status flag for the bank transfer."
             },
             {
+              "field": "status",
+              "required": false,
+              "description": "Wallet payment status."
+            },
+            {
               "field": "reference",
               "required": false,
               "description": "Optional cash payment reference or slip number."
@@ -497,7 +502,7 @@
               "description": "Wallet payment status."
             },
             {
-              "field": "reference",
+              "field": "status",
               "required": false,
               "description": "Card authorisation or reference number."
             },
