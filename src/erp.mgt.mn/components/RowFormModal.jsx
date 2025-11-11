@@ -976,6 +976,116 @@ const RowFormModal = function RowFormModal({
     },
     [columnByLowerMap, extraKeyLookup],
   );
+  const handleInvokeInfoEndpoint = useCallback(
+    async ({ endpointId: overrideId, payloadOverride } = {}) => {
+      const targetId = overrideId || activeInfoEndpointId;
+      const endpoint = infoEndpoints.find((entry) => entry.id === targetId);
+      if (!endpoint) return;
+      const rawPayload =
+        payloadOverride && typeof payloadOverride === 'object'
+          ? payloadOverride
+          : infoPayload;
+      const sanitizedPayload = Object.entries(rawPayload || {}).reduce((acc, [key, val]) => {
+        if (!key) return acc;
+        const normalized = typeof val === 'string' ? val.trim() : val;
+        if (normalized !== '' && normalized !== undefined && normalized !== null) {
+          acc[key] = normalized;
+        }
+        return acc;
+      }, {});
+      (endpoint.requestMappings || []).forEach((mapping) => {
+        if (!mapping || typeof mapping !== 'object') return;
+        const field = typeof mapping.field === 'string' ? mapping.field : '';
+        if (!field) return;
+        if (sanitizedPayload[field] !== undefined && sanitizedPayload[field] !== null && sanitizedPayload[field] !== '') {
+          sanitizedPayload[field] =
+            typeof sanitizedPayload[field] === 'string'
+              ? sanitizedPayload[field]
+              : String(sanitizedPayload[field]);
+          return;
+        }
+        let value;
+        if (mapping.scope === 'constant') value = mapping.value;
+        else if (mapping.scope === 'form' && mapping.resolvedSource)
+          value = formValsRef.current?.[mapping.resolvedSource];
+        else if (mapping.scope === 'extra' && mapping.resolvedSource)
+          value = extraValsRef.current?.[mapping.resolvedSource];
+        if (value !== undefined && value !== null && value !== '') {
+          sanitizedPayload[field] = typeof value === 'string' ? value : String(value);
+          return;
+        }
+        if (mapping.fallback) sanitizedPayload[field] = mapping.fallback;
+      });
+      const missingRequired = [];
+      if (endpoint.requiredPayloadFields && endpoint.requiredPayloadFields instanceof Set) {
+        endpoint.requiredPayloadFields.forEach((field) => {
+          const value = sanitizedPayload[field];
+          if (value === undefined || value === null || value === '') {
+            missingRequired.push(field);
+          }
+        });
+      }
+      if (missingRequired.length) {
+        const message = `Missing required lookup fields: ${missingRequired.join(', ')}`;
+        setInfoError(message);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message, type: 'warning' },
+            }),
+          );
+        }
+        return;
+      }
+      setInfoPayload(sanitizedPayload);
+      setInfoLoading(true);
+      setInfoError(null);
+      try {
+        const res = await fetch('/api/posapi/proxy/invoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            endpointId: endpoint.id,
+            payload: sanitizedPayload,
+            context: {
+              table,
+              recordId:
+                row?.id ?? row?.ID ?? row?.id_field ?? row?.Id ?? row?.IdField ?? row?.record_id ?? null,
+            },
+          }),
+        });
+        if (!res.ok) {
+          const message = await res.text();
+          throw new Error(message || res.statusText || 'Lookup failed');
+        }
+        const data = await res.json();
+        setInfoResponse(data.response ?? null);
+        setInfoHistory((prev) => [
+          ...prev.slice(-4),
+          {
+            timestamp: new Date().toISOString(),
+            endpointId: endpoint.id,
+            payload: sanitizedPayload,
+            response: data.response ?? null,
+          },
+        ]);
+      } catch (err) {
+        const message = err.message || 'Lookup failed';
+        setInfoError(message);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message, type: 'error' },
+            }),
+          );
+        }
+      } finally {
+        setInfoLoading(false);
+      }
+    },
+    [infoEndpoints, activeInfoEndpointId, infoPayload, table, row],
+  );
   useEffect(() => {
     if (!infoModalOpen) return;
     const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
@@ -1215,116 +1325,6 @@ const RowFormModal = function RowFormModal({
       return { snapshot: snapshot ?? formValsRef.current, diff: pendingDiff };
     },
     [computeNextFormVals, onChange],
-  );
-  const handleInvokeInfoEndpoint = useCallback(
-    async ({ endpointId: overrideId, payloadOverride } = {}) => {
-      const targetId = overrideId || activeInfoEndpointId;
-      const endpoint = infoEndpoints.find((entry) => entry.id === targetId);
-      if (!endpoint) return;
-      const rawPayload =
-        payloadOverride && typeof payloadOverride === 'object'
-          ? payloadOverride
-          : infoPayload;
-      const sanitizedPayload = Object.entries(rawPayload || {}).reduce((acc, [key, val]) => {
-        if (!key) return acc;
-        const normalized = typeof val === 'string' ? val.trim() : val;
-        if (normalized !== '' && normalized !== undefined && normalized !== null) {
-          acc[key] = normalized;
-        }
-        return acc;
-      }, {});
-      (endpoint.requestMappings || []).forEach((mapping) => {
-        if (!mapping || typeof mapping !== 'object') return;
-        const field = typeof mapping.field === 'string' ? mapping.field : '';
-        if (!field) return;
-        if (sanitizedPayload[field] !== undefined && sanitizedPayload[field] !== null && sanitizedPayload[field] !== '') {
-          sanitizedPayload[field] =
-            typeof sanitizedPayload[field] === 'string'
-              ? sanitizedPayload[field]
-              : String(sanitizedPayload[field]);
-          return;
-        }
-        let value;
-        if (mapping.scope === 'constant') value = mapping.value;
-        else if (mapping.scope === 'form' && mapping.resolvedSource)
-          value = formValsRef.current?.[mapping.resolvedSource];
-        else if (mapping.scope === 'extra' && mapping.resolvedSource)
-          value = extraValsRef.current?.[mapping.resolvedSource];
-        if (value !== undefined && value !== null && value !== '') {
-          sanitizedPayload[field] = typeof value === 'string' ? value : String(value);
-          return;
-        }
-        if (mapping.fallback) sanitizedPayload[field] = mapping.fallback;
-      });
-      const missingRequired = [];
-      if (endpoint.requiredPayloadFields && endpoint.requiredPayloadFields instanceof Set) {
-        endpoint.requiredPayloadFields.forEach((field) => {
-          const value = sanitizedPayload[field];
-          if (value === undefined || value === null || value === '') {
-            missingRequired.push(field);
-          }
-        });
-      }
-      if (missingRequired.length) {
-        const message = `Missing required lookup fields: ${missingRequired.join(', ')}`;
-        setInfoError(message);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message, type: 'warning' },
-            }),
-          );
-        }
-        return;
-      }
-      setInfoPayload(sanitizedPayload);
-      setInfoLoading(true);
-      setInfoError(null);
-      try {
-        const res = await fetch('/api/posapi/proxy/invoke', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            endpointId: endpoint.id,
-            payload: sanitizedPayload,
-            context: {
-              table,
-              recordId:
-                row?.id ?? row?.ID ?? row?.id_field ?? row?.Id ?? row?.IdField ?? row?.record_id ?? null,
-            },
-          }),
-        });
-        if (!res.ok) {
-          const message = await res.text();
-          throw new Error(message || res.statusText || 'Lookup failed');
-        }
-        const data = await res.json();
-        setInfoResponse(data.response ?? null);
-        setInfoHistory((prev) => [
-          ...prev.slice(-4),
-          {
-            timestamp: new Date().toISOString(),
-            endpointId: endpoint.id,
-            payload: sanitizedPayload,
-            response: data.response ?? null,
-          },
-        ]);
-      } catch (err) {
-        const message = err.message || 'Lookup failed';
-        setInfoError(message);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(
-            new CustomEvent('toast', {
-              detail: { message, type: 'error' },
-            }),
-          );
-        }
-      } finally {
-        setInfoLoading(false);
-      }
-    },
-    [infoEndpoints, activeInfoEndpointId, infoPayload, table, row],
   );
   const handleApplyInfoResponse = useCallback(() => {
     if (!infoResponse || typeof infoResponse !== 'object') return;
