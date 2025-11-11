@@ -768,7 +768,7 @@ export async function resolvePosApiEndpoint(endpointId) {
   return fallback;
 }
 
-async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) {
+export async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) {
   const baseUrl = await getPosApiBaseUrl();
   const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
   const fetchFn = await getFetch();
@@ -793,6 +793,219 @@ async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) 
     return res.json();
   }
   return res.text();
+}
+
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object') return false;
+  return Object.getPrototypeOf(value) === Object.prototype;
+}
+
+function normalizeAuditValue(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return Number.isFinite(Number(value)) ? Number(value) : null;
+  }
+  if (typeof value === 'boolean') return value;
+  if (value instanceof Date) return value.toISOString();
+  try {
+    return JSON.parse(JSON.stringify(value));
+  } catch {
+    return String(value);
+  }
+}
+
+function toParamEntries(value) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => normalizeAuditValue(entry))
+      .filter((entry) => entry !== undefined && entry !== null && entry !== '');
+  }
+  const normalized = normalizeAuditValue(value);
+  if (normalized === undefined || normalized === null || normalized === '') return [];
+  return [normalized];
+}
+
+function sanitizeParams(params) {
+  if (!isPlainObject(params)) return {};
+  const sanitized = {};
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined) return;
+    sanitized[key] = value;
+  });
+  return sanitized;
+}
+
+function buildQueryFromParams(params, consumed, paramDefinitions = []) {
+  const query = new URLSearchParams();
+  const byName = new Map();
+  paramDefinitions.forEach((param) => {
+    if (!param || typeof param !== 'object') return;
+    if (!param.name) return;
+    const key = String(param.name);
+    const def = { ...param };
+    byName.set(key, def);
+  });
+
+  Object.entries(params).forEach(([key, rawValue]) => {
+    const def = byName.get(key);
+    if (def && def.in && def.in !== 'query') return;
+    const entries = toParamEntries(rawValue);
+    if (!entries.length) return;
+    entries.forEach((entry) => {
+      query.append(key, String(entry));
+    });
+    consumed.add(key);
+  });
+
+  return query;
+}
+
+function replacePathParams(path, params, consumed, paramDefinitions = []) {
+  if (!path.includes('{')) return path;
+  const paramMap = new Map();
+  paramDefinitions
+    .filter((param) => param && typeof param === 'object' && param.name)
+    .forEach((param) => {
+      if (param.in === 'path') paramMap.set(param.name, param);
+    });
+  return path.replace(/\{([^}]+)\}/g, (match, name) => {
+    const raw = Object.prototype.hasOwnProperty.call(params, name)
+      ? params[name]
+      : undefined;
+    consumed.add(name);
+    if (raw === undefined || raw === null || raw === '') {
+      const def = paramMap.get(name);
+      if (def?.required) {
+        const err = new Error(`Missing required path parameter: ${name}`);
+        err.status = 400;
+        throw err;
+      }
+      return '';
+    }
+    const entries = toParamEntries(raw);
+    if (!entries.length) {
+      const def = paramMap.get(name);
+      if (def?.required) {
+        const err = new Error(`Missing required path parameter: ${name}`);
+        err.status = 400;
+        throw err;
+      }
+      return '';
+    }
+    return encodeURIComponent(String(entries[0]));
+  });
+}
+
+function cloneQueryParams(query) {
+  const result = {};
+  query.forEach((value, key) => {
+    if (Object.prototype.hasOwnProperty.call(result, key)) {
+      const existing = result[key];
+      if (Array.isArray(existing)) {
+        existing.push(value);
+      } else {
+        result[key] = [existing, value];
+      }
+    } else {
+      result[key] = value;
+    }
+  });
+  return result;
+}
+
+function normalizeRequestBody(payload) {
+  if (payload === undefined) return undefined;
+  if (payload === null) return null;
+  if (typeof payload === 'string') return payload;
+  try {
+    return JSON.stringify(payload);
+  } catch {
+    return JSON.stringify(normalizeAuditValue(payload));
+  }
+}
+
+export async function invokePosApiEndpoint(endpointId, options = {}) {
+  if (!endpointId || typeof endpointId !== 'string') {
+    const err = new Error('endpointId is required');
+    err.status = 400;
+    throw err;
+  }
+  const endpoint = await getEndpointById(endpointId);
+  if (!endpoint) {
+    const err = new Error(`POSAPI endpoint not found: ${endpointId}`);
+    err.status = 404;
+    throw err;
+  }
+
+  const method = (endpoint.method || 'GET').toUpperCase();
+  const rawPath = (endpoint.path || '/').trim() || '/';
+  const paramDefinitions = Array.isArray(endpoint.parameters)
+    ? endpoint.parameters.filter((param) => param && typeof param === 'object')
+    : [];
+
+  const normalizedParams = sanitizeParams(options.params || {});
+  const consumed = new Set();
+
+  let resolvedPath;
+  try {
+    resolvedPath = replacePathParams(rawPath, normalizedParams, consumed, paramDefinitions);
+  } catch (err) {
+    throw err;
+  }
+
+  const query = buildQueryFromParams(normalizedParams, consumed, paramDefinitions);
+  const queryString = query.toString();
+  const requestPath = `${resolvedPath}${queryString ? `?${queryString}` : ''}`;
+
+  let requestBody;
+  const explicitBody = options.body;
+  if (explicitBody !== undefined) {
+    requestBody = normalizeRequestBody(explicitBody);
+  }
+
+  const headers = { ...(options.headers || {}) };
+  if (requestBody !== undefined && method !== 'GET' && method !== 'HEAD') {
+    headers['Content-Type'] = headers['Content-Type'] || 'application/json';
+  }
+
+  const token = await getPosApiToken();
+  const response = await posApiFetch(requestPath, {
+    method,
+    token,
+    headers,
+    body:
+      method === 'GET' || method === 'HEAD'
+        ? undefined
+        : requestBody,
+  });
+
+  const requestSnapshot = {
+    method,
+    path: requestPath,
+    params: Object.keys(normalizedParams).length
+      ? JSON.parse(JSON.stringify(normalizedParams, (key, value) => normalizeAuditValue(value)))
+      : {},
+    query: cloneQueryParams(query),
+    body:
+      requestBody === undefined
+        ? undefined
+        : (() => {
+            if (typeof requestBody !== 'string') return requestBody;
+            try {
+              return JSON.parse(requestBody);
+            } catch {
+              return requestBody;
+            }
+          })(),
+  };
+
+  return {
+    endpoint,
+    response,
+    request: requestSnapshot,
+  };
 }
 
 export async function getPosApiToken() {
