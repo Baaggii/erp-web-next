@@ -467,6 +467,11 @@
               "description": "Payment status flag for audit tracking."
             },
             {
+              "field": "status",
+              "required": false,
+              "description": "Status flag for the bank transfer."
+            },
+            {
               "field": "reference",
               "required": false,
               "description": "Optional cash payment reference or slip number."
@@ -485,6 +490,11 @@
               "field": "status",
               "required": true,
               "description": "Card payment status (PAID is required for settlement)."
+            },
+            {
+              "field": "status",
+              "required": false,
+              "description": "Wallet payment status."
             },
             {
               "field": "reference",
@@ -547,7 +557,7 @@
               "description": "Wallet payment status."
             },
             {
-              "field": "reference",
+              "field": "status",
               "required": false,
               "description": "Wallet transaction reference."
             }
