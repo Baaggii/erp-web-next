@@ -377,7 +377,45 @@ export default function PosTxnConfig() {
     return endpoint;
   }, [posApiEndpoints, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
 
-  const supportsItems = selectedEndpoint?.supportsItems !== false;
+  const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
+
+  const hasItemSourceTables = useMemo(() => {
+    const master = typeof config.masterTable === 'string' ? config.masterTable.trim() : '';
+    let detailFound = false;
+    if (Array.isArray(config.tables)) {
+      for (const entry of config.tables) {
+        const tbl = typeof entry?.table === 'string' ? entry.table.trim() : '';
+        if (tbl && (!master || tbl !== master)) {
+          detailFound = true;
+          break;
+        }
+      }
+    }
+    if (!detailFound && Array.isArray(config.posFields)) {
+      for (const entry of config.posFields) {
+        const tbl = typeof entry?.table === 'string' ? entry.table.trim() : '';
+        if (tbl && (!master || tbl !== master)) {
+          detailFound = true;
+          break;
+        }
+      }
+    }
+    return detailFound;
+  }, [config.masterTable, config.tables, config.posFields]);
+
+  const itemMappingConfigured = useMemo(() => {
+    const mapping = config.posApiMapping || {};
+    if (typeof mapping.itemsField === 'string' && mapping.itemsField.trim()) {
+      return true;
+    }
+    const fields = mapping.itemFields;
+    if (fields && typeof fields === 'object' && !Array.isArray(fields)) {
+      return Object.values(fields).some((value) => typeof value === 'string' && value.trim());
+    }
+    return false;
+  }, [config.posApiMapping]);
+
+  const supportsItems = endpointSupportsItems && (hasItemSourceTables || itemMappingConfigured);
 
   const endpointReceiptTypes = useMemo(() => {
     if (
