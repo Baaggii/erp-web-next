@@ -570,49 +570,6 @@ export default function FormsManagement() {
     return endpointPaymentMethods;
   }, [endpointPaymentMethods, configuredPaymentMethods]);
 
-  const serviceReceiptGroupTypes = useMemo(() => {
-    const allowed = new Set((endpointReceiptTypes || []).filter(Boolean));
-    const hintKeys = Object.keys(receiptGroupHints || {});
-    const configuredKeys = Object.keys(receiptGroupMapping || {});
-    const combined = Array.from(
-      new Set([...endpointReceiptTypes, ...hintKeys, ...configuredKeys]).filter((value) => value),
-    );
-    const filtered = combined.filter(
-      (type) => allowed.has(type) || configuredKeys.includes(type),
-    );
-    if (filtered.length) return filtered;
-    return endpointReceiptTypes.length ? endpointReceiptTypes : ['VAT_ABLE'];
-  }, [receiptGroupHints, receiptGroupMapping, endpointReceiptTypes]);
-
-  const servicePaymentMethodCodes = useMemo(() => {
-    const allowed = new Set((endpointPaymentMethods || []).filter(Boolean));
-    const selected = effectivePaymentMethods || [];
-    const hintKeys = Object.keys(paymentMethodHints || {});
-    const configuredKeys = Object.keys(paymentMethodMapping || {});
-    const combined = Array.from(
-      new Set([
-        ...endpointPaymentMethods,
-        ...selected,
-        ...hintKeys,
-        ...configuredKeys,
-      ]).filter((value) => value),
-    );
-    const filtered = combined.filter(
-      (method) =>
-        allowed.has(method) ||
-        configuredPaymentMethods.includes(method) ||
-        Object.prototype.hasOwnProperty.call(paymentMethodMapping, method),
-    );
-    if (filtered.length) return filtered;
-    return endpointPaymentMethods;
-  }, [
-    endpointPaymentMethods,
-    effectivePaymentMethods,
-    paymentMethodHints,
-    paymentMethodMapping,
-    configuredPaymentMethods,
-  ]);
-
   const requiredTopLevelFields = useMemo(() => {
     const hints = selectedEndpoint?.mappingHints?.topLevelFields;
     if (!Array.isArray(hints)) return new Set();
@@ -662,6 +619,29 @@ export default function FormsManagement() {
     });
     return map;
   }, [selectedEndpoint]);
+
+  const serviceReceiptGroupTypes = useMemo(() => {
+    const hintKeys = Object.keys(receiptGroupHints || {});
+    const configuredKeys = Object.keys(receiptGroupMapping || {});
+    const combined = Array.from(new Set([...hintKeys, ...configuredKeys]));
+    if (combined.length) return combined;
+    return ['VAT_ABLE'];
+  }, [receiptGroupHints, receiptGroupMapping]);
+
+  const servicePaymentMethodCodes = useMemo(() => {
+    const selected = effectivePaymentMethods || [];
+    const hintKeys = Object.keys(paymentMethodHints || {});
+    const configuredKeys = Object.keys(paymentMethodMapping || {});
+    const endpointKeys = endpointPaymentMethods || [];
+    return Array.from(
+      new Set([...endpointKeys, ...selected, ...hintKeys, ...configuredKeys]),
+    ).filter((value) => value);
+  }, [
+    effectivePaymentMethods,
+    paymentMethodHints,
+    paymentMethodMapping,
+    endpointPaymentMethods,
+  ]);
 
   const primaryPosApiFields = useMemo(() => {
     if (supportsItems) return POS_API_FIELDS;
