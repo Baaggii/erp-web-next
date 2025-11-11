@@ -5904,6 +5904,7 @@ const TableManager = forwardRef(function TableManager({
         posApiTypeField={formConfig?.posApiTypeField || ''}
         posApiEndpointMeta={formConfig?.posApiEndpointMeta || null}
         posApiInfoEndpointMeta={formConfig?.posApiInfoEndpointMeta || []}
+        posApiInfoEndpointConfig={formConfig?.infoEndpointConfig || {}}
         posApiReceiptTypes={formConfig?.posApiReceiptTypes || []}
         posApiPaymentMethods={formConfig?.posApiPaymentMethods || []}
       />

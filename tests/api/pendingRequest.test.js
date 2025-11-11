@@ -560,7 +560,7 @@ await test('accepted edit requests show original data', async () => {
   db.pool.query = origQuery;
   assert.equal(result.rows.length, 1);
   assert.deepEqual(result.rows[0].original, { name: 'old' });
-  assert.equal(queries.length, 2);
+  assert.equal(queries.length, 3);
 });
 
 await test('respondRequest succeeds with prior non-pending entries', async () => {

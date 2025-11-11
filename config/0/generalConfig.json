@@ -22,7 +22,7 @@
     "reportRowToastEnabled": false,
     "imageToastEnabled": false,
     "workplaceFetchToastEnabled": true,
-    "txnToastEnabled": false,
+    "ebarimtToastEnabled": false,
     "debugLoggingEnabled": false,
     "editLabelsEnabled": true,
     "showTourButtons": true,
@@ -37,6 +37,7 @@
     "procFieldLabels": {},
     "reportProcPrefix": "dynrep_",
     "reportViewPrefix": "dynview_",
+    "txnToastEnabled": false,
     "imageDir": "txn_images"
   },
   "images": {

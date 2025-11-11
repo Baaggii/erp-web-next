@@ -86,6 +86,7 @@ const RowFormModal = function RowFormModal({
   posApiTypeField = '',
   posApiEndpointMeta = null,
   posApiInfoEndpointMeta = [],
+  posApiInfoEndpointConfig = {},
   posApiReceiptTypes = [],
   posApiPaymentMethods = [],
 }) {
@@ -143,18 +144,182 @@ const RowFormModal = function RowFormModal({
   );
   const infoEndpoints = React.useMemo(() => {
     if (!Array.isArray(posApiInfoEndpointMeta)) return [];
+    const overrideMap =
+      posApiInfoEndpointConfig && typeof posApiInfoEndpointConfig === 'object'
+        ? posApiInfoEndpointConfig
+        : {};
     return posApiInfoEndpointMeta
       .filter((entry) => entry && typeof entry === 'object' && typeof entry.id === 'string')
-      .map((entry) => ({
-        id: entry.id,
-        name: entry.name || entry.id,
-        method: entry.method || 'GET',
-        path: entry.path || '/',
-        requestFields: Array.isArray(entry.requestFields) ? entry.requestFields : [],
-      }));
-  }, [posApiInfoEndpointMeta]);
+      .map((entry) => {
+        const override = overrideMap[entry.id] || {};
+        const displayLabel =
+          typeof override.label === 'string' && override.label
+            ? override.label
+            : entry.name || entry.id;
+        const quickActionLabel =
+          typeof override.quickActionLabel === 'string' && override.quickActionLabel
+            ? override.quickActionLabel
+            : '';
+        const autoInvoke =
+          override.autoInvoke === undefined
+            ? Boolean(quickActionLabel)
+            : Boolean(override.autoInvoke);
+        const payloadDefaults = {};
+        if (override.payloadDefaults && typeof override.payloadDefaults === 'object') {
+          Object.entries(override.payloadDefaults).forEach(([key, val]) => {
+            if (typeof key !== 'string') return;
+            if (val === undefined || val === null) return;
+            payloadDefaults[key] = typeof val === 'string' ? val : String(val);
+          });
+        }
+        const requestFields = Array.isArray(entry.requestFields) ? entry.requestFields : [];
+        const responseFields = Array.isArray(entry.responseFields) ? entry.responseFields : [];
+        const requestMappingsRaw = Array.isArray(override.requestMappings)
+          ? override.requestMappings
+          : [];
+        const responseMappingsRaw = Array.isArray(override.responseMappings)
+          ? override.responseMappings
+          : [];
+        const requestMappings = [];
+        const requestPrefill = {};
+        const requiredPayloadFields = new Set(
+          requestFields
+            .filter((field) => field && typeof field.field === 'string' && field.required)
+            .map((field) => field.field),
+        );
+        requestMappingsRaw.forEach((mapping) => {
+          if (!mapping || typeof mapping !== 'object') return;
+          const fieldName = typeof mapping.field === 'string' ? mapping.field : '';
+          if (!fieldName) return;
+          const normalized = {
+            field: fieldName,
+            required: Boolean(mapping.required),
+          };
+          if (normalized.required) requiredPayloadFields.add(fieldName);
+          if (typeof mapping.description === 'string' && mapping.description) {
+            normalized.description = mapping.description;
+          }
+          if (mapping.fallback !== undefined && mapping.fallback !== null && mapping.fallback !== '') {
+            normalized.fallback =
+              typeof mapping.fallback === 'string'
+                ? mapping.fallback
+                : String(mapping.fallback);
+          }
+          if (mapping.value !== undefined && mapping.value !== null && mapping.value !== '') {
+            normalized.scope = 'constant';
+            normalized.value =
+              typeof mapping.value === 'string' ? mapping.value : String(mapping.value);
+          } else if (typeof mapping.source === 'string' && mapping.source.trim()) {
+            const sourceValue = mapping.source.trim();
+            const lower = sourceValue.toLowerCase();
+            if (columnByLowerMap[lower] !== undefined) {
+              normalized.scope = 'form';
+              normalized.resolvedSource = columnByLowerMap[lower];
+            } else if (extraKeyLookup[lower] !== undefined) {
+              normalized.scope = 'extra';
+              normalized.resolvedSource = extraKeyLookup[lower];
+            } else {
+              normalized.scope = 'custom';
+              normalized.resolvedSource = sourceValue;
+            }
+            normalized.source = sourceValue;
+          } else {
+            normalized.scope = 'none';
+          }
+          requestMappings.push(normalized);
+          requestPrefill[fieldName] = normalized;
+        });
+        const responseMappings = [];
+        responseMappingsRaw.forEach((mapping) => {
+          if (!mapping || typeof mapping !== 'object') return;
+          const fieldName = typeof mapping.field === 'string' ? mapping.field : '';
+          if (!fieldName) return;
+          const target =
+            typeof mapping.target === 'string' && mapping.target
+              ? mapping.target
+              : fieldName;
+          const lowerTarget = target.toLowerCase();
+          let scope = 'extra';
+          let resolvedTarget = target;
+          if (columnByLowerMap[lowerTarget] !== undefined) {
+            scope = 'form';
+            resolvedTarget = columnByLowerMap[lowerTarget];
+          } else if (extraKeyLookup[lowerTarget] !== undefined) {
+            scope = 'extra';
+            resolvedTarget = extraKeyLookup[lowerTarget];
+          }
+          const joinWith =
+            typeof mapping.joinWith === 'string' && mapping.joinWith
+              ? mapping.joinWith
+              : ', ';
+          const pick = mapping.pick === 'first' ? 'first' : 'join';
+          const fallback =
+            mapping.fallback !== undefined && mapping.fallback !== null && mapping.fallback !== ''
+              ? typeof mapping.fallback === 'string'
+                ? mapping.fallback
+                : String(mapping.fallback)
+              : undefined;
+          const required = Boolean(mapping.required);
+          const description =
+            typeof mapping.description === 'string' && mapping.description
+              ? mapping.description
+              : undefined;
+          const targetLabel =
+            typeof mapping.targetLabel === 'string' && mapping.targetLabel
+              ? mapping.targetLabel
+              : labels?.[resolvedTarget] || labels?.[target] || target;
+          responseMappings.push({
+            field: fieldName,
+            target,
+            resolvedTarget,
+            scope,
+            joinWith,
+            pick,
+            fallback,
+            required,
+            description,
+            targetLabel,
+          });
+        });
+        return {
+          id: entry.id,
+          name: entry.name || entry.id,
+          method: entry.method || 'GET',
+          path: entry.path || '/',
+          requestFields,
+          responseFields,
+          displayLabel,
+          quickActionLabel,
+          autoInvoke,
+          payloadDefaults,
+          requestMappings,
+          requestPrefill,
+          responseMappings,
+          requiredPayloadFields,
+          description:
+            typeof override.description === 'string' && override.description
+              ? override.description
+              : undefined,
+          modalTitle:
+            typeof override.modalTitle === 'string' && override.modalTitle
+              ? override.modalTitle
+              : undefined,
+        };
+      })
+      .filter(Boolean);
+  }, [
+    posApiInfoEndpointMeta,
+    posApiInfoEndpointConfig,
+    columnByLowerMap,
+    extraKeyLookup,
+    labels,
+  ]);
   const infoEndpointsKey = React.useMemo(
     () => JSON.stringify(infoEndpoints.map((entry) => entry.id)),
+    [infoEndpoints],
+  );
+  const quickInfoEndpoints = React.useMemo(
+    () => infoEndpoints.filter((entry) => entry.quickActionLabel),
     [infoEndpoints],
   );
   const [infoModalOpen, setInfoModalOpen] = useState(false);
@@ -166,6 +331,7 @@ const RowFormModal = function RowFormModal({
   const [infoError, setInfoError] = useState(null);
   const [infoLoading, setInfoLoading] = useState(false);
   const [infoHistory, setInfoHistory] = useState([]);
+  const pendingInfoInvokeRef = useRef(null);
   useEffect(() => {
     if (!infoEndpoints.length) {
       setActiveInfoEndpointId('');
@@ -178,57 +344,6 @@ const RowFormModal = function RowFormModal({
       return infoEndpoints[0].id;
     });
   }, [infoEndpoints, infoEndpointsKey]);
-  const getFieldDefaultFromRecord = useCallback(
-    (fieldName) => {
-      if (!fieldName) return '';
-      const lower = String(fieldName).toLowerCase();
-      if (columnByLowerMap[lower] !== undefined) {
-        const columnKey = columnByLowerMap[lower];
-        const value = formVals?.[columnKey];
-        if (value !== undefined && value !== null && value !== '') {
-          return value;
-        }
-      }
-      if (extraKeyLookup[lower] !== undefined) {
-        const extraKey = extraKeyLookup[lower];
-        const value = extraVals?.[extraKey];
-        if (value !== undefined && value !== null && value !== '') {
-          return value;
-        }
-      }
-      return '';
-    },
-    [columnByLowerMap, extraKeyLookup, formVals, extraVals],
-  );
-  useEffect(() => {
-    if (!infoModalOpen) return;
-    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
-    if (!endpoint) {
-      setInfoPayload({});
-      return;
-    }
-    const fields = endpoint.requestFields
-      .map((item) => (item && typeof item.field === 'string' ? item.field : ''))
-      .filter((field) => field);
-    if (!fields.length) {
-      setInfoPayload({});
-      return;
-    }
-    setInfoPayload((prev) => {
-      const next = {};
-      fields.forEach((field) => {
-        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
-          next[field] = prev[field];
-        } else {
-          const auto = getFieldDefaultFromRecord(field);
-          if (auto !== '') {
-            next[field] = auto;
-          }
-        }
-      });
-      return next;
-    });
-  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, getFieldDefaultFromRecord]);
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -709,7 +824,129 @@ const RowFormModal = function RowFormModal({
   useEffect(() => {
     extraValsRef.current = extraVals;
   }, [extraVals]);
+  const buildPayloadForEndpoint = useCallback(
+    (endpoint, prevPayload = {}) => {
+      if (!endpoint || typeof endpoint !== 'object') return {};
+      const next = {};
+      const prev = prevPayload && typeof prevPayload === 'object' ? prevPayload : {};
+      const assignValue = (field, value) => {
+        if (!field) return;
+        if (value === undefined || value === null) return;
+        const str = typeof value === 'string' ? value : String(value);
+        if (str === '') return;
+        next[field] = str;
+      };
+      Object.entries(endpoint.payloadDefaults || {}).forEach(([key, value]) => {
+        assignValue(key, value);
+      });
+      const formSnapshot = formValsRef.current || {};
+      const extraSnapshot = extraValsRef.current || {};
+      const resolveMappingValue = (mapping) => {
+        if (!mapping || typeof mapping !== 'object') return undefined;
+        if (mapping.scope === 'constant') return mapping.value;
+        if (mapping.scope === 'form' && mapping.resolvedSource) {
+          return formSnapshot[mapping.resolvedSource];
+        }
+        if (mapping.scope === 'extra' && mapping.resolvedSource) {
+          return extraSnapshot[mapping.resolvedSource];
+        }
+        if (mapping.scope === 'custom' && mapping.source) {
+          const lower = mapping.source.toLowerCase();
+          if (columnByLowerMap[lower] !== undefined) {
+            return formSnapshot[columnByLowerMap[lower]];
+          }
+          if (extraKeyLookup[lower] !== undefined) {
+            return extraSnapshot[extraKeyLookup[lower]];
+          }
+        }
+        return undefined;
+      };
+      (endpoint.requestMappings || []).forEach((mapping) => {
+        if (!mapping || typeof mapping !== 'object') return;
+        const field = typeof mapping.field === 'string' ? mapping.field : '';
+        if (!field) return;
+        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
+          assignValue(field, prev[field]);
+          return;
+        }
+        const value = resolveMappingValue(mapping);
+        if (value !== undefined && value !== null && value !== '') {
+          assignValue(field, value);
+          return;
+        }
+        if (mapping.fallback) assignValue(field, mapping.fallback);
+      });
+      const requestedFields = Array.isArray(endpoint.requestFields)
+        ? endpoint.requestFields
+            .map((item) => (item && typeof item.field === 'string' ? item.field : ''))
+            .filter((field) => field)
+        : [];
+      requestedFields.forEach((field) => {
+        if (!field) return;
+        if (next[field] !== undefined && next[field] !== null && next[field] !== '') return;
+        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
+          assignValue(field, prev[field]);
+          return;
+        }
+        const mapping = endpoint.requestPrefill?.[field];
+        const mappedValue = resolveMappingValue(mapping);
+        if (mappedValue !== undefined && mappedValue !== null && mappedValue !== '') {
+          assignValue(field, mappedValue);
+          return;
+        }
+        const lower = field.toLowerCase();
+        if (columnByLowerMap[lower] !== undefined) {
+          const formValue = formSnapshot[columnByLowerMap[lower]];
+          if (formValue !== undefined && formValue !== null && formValue !== '') {
+            assignValue(field, formValue);
+            return;
+          }
+        }
+        if (extraKeyLookup[lower] !== undefined) {
+          const extraValue = extraSnapshot[extraKeyLookup[lower]];
+          if (extraValue !== undefined && extraValue !== null && extraValue !== '') {
+            assignValue(field, extraValue);
+            return;
+          }
+        }
+        if (endpoint.payloadDefaults && endpoint.payloadDefaults[field]) {
+          assignValue(field, endpoint.payloadDefaults[field]);
+        }
+      });
+      (endpoint.requestMappings || []).forEach((mapping) => {
+        if (!mapping || typeof mapping !== 'object') return;
+        const field = typeof mapping.field === 'string' ? mapping.field : '';
+        if (!field) return;
+        if (next[field] !== undefined && next[field] !== null && next[field] !== '') return;
+        const fallback = mapping.fallback;
+        if (fallback) assignValue(field, fallback);
+      });
+      return next;
+    },
+    [columnByLowerMap, extraKeyLookup],
+  );
+  useEffect(() => {
+    if (!infoModalOpen) return;
+    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
+    if (!endpoint) {
+      setInfoPayload({});
+      return;
+    }
+    setInfoPayload((prev) => buildPayloadForEndpoint(endpoint, prev));
+  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, buildPayloadForEndpoint]);
+  useEffect(() => {
+    if (!infoModalOpen) {
+      pendingInfoInvokeRef.current = null;
+      return;
+    }
+    const pending = pendingInfoInvokeRef.current;
+    if (!pending) return;
+    if (pending.endpointId !== activeInfoEndpointId) return;
+    pendingInfoInvokeRef.current = null;
+    handleInvokeInfoEndpoint({ endpointId: pending.endpointId, payloadOverride: pending.payload });
+  }, [infoModalOpen, activeInfoEndpointId, handleInvokeInfoEndpoint]);
   const openInfoModal = useCallback(() => {
+    pendingInfoInvokeRef.current = null;
     setInfoModalOpen(true);
     setInfoError(null);
     setInfoResponse(null);
@@ -719,6 +956,31 @@ const RowFormModal = function RowFormModal({
     setInfoError(null);
     setInfoResponse(null);
   }, []);
+  const openInfoModalForEndpoint = useCallback(
+    (endpointId, { autoInvoke = false } = {}) => {
+      if (!endpointId) return;
+      const endpoint = infoEndpoints.find((entry) => entry.id === endpointId);
+      if (!endpoint) return;
+      const nextPayload = buildPayloadForEndpoint(endpoint, {});
+      setActiveInfoEndpointId(endpointId);
+      setInfoPayload(nextPayload);
+      setInfoError(null);
+      setInfoResponse(null);
+      setInfoModalOpen(true);
+      pendingInfoInvokeRef.current = autoInvoke
+        ? { endpointId, payload: nextPayload }
+        : null;
+    },
+    [infoEndpoints, buildPayloadForEndpoint],
+  );
+  const handleQuickInfoAction = useCallback(
+    (endpoint) => {
+      if (!endpoint) return;
+      const shouldAutoInvoke = endpoint.autoInvoke !== false;
+      openInfoModalForEndpoint(endpoint.id, { autoInvoke: shouldAutoInvoke });
+    },
+    [openInfoModalForEndpoint],
+  );
   const handleInfoPayloadChange = useCallback((field, value) => {
     if (!field) return;
     const normalized = typeof value === 'string' ? value : value ?? '';
@@ -731,6 +993,51 @@ const RowFormModal = function RowFormModal({
       }
       return next;
     });
+  }, []);
+  const getResponseFieldValues = useCallback((response, path) => {
+    if (!response || typeof response !== 'object') return [];
+    if (!path) return [];
+    const segments = String(path)
+      .split('.')
+      .map((segment) => segment.trim())
+      .filter((segment) => segment);
+    if (segments.length === 0) return [];
+    let current = [response];
+    segments.forEach((segment) => {
+      const isArraySegment = segment.endsWith('[]');
+      const key = isArraySegment ? segment.slice(0, -2) : segment;
+      const next = [];
+      current.forEach((item) => {
+        if (item === undefined || item === null) return;
+        if (key === '') {
+          if (isArraySegment && Array.isArray(item)) next.push(...item);
+          else next.push(item);
+          return;
+        }
+        if (typeof item !== 'object') return;
+        const candidate = item[key];
+        if (candidate === undefined || candidate === null) return;
+        if (isArraySegment) {
+          if (Array.isArray(candidate)) next.push(...candidate);
+          else next.push(candidate);
+        } else {
+          next.push(candidate);
+        }
+      });
+      current = next;
+    });
+    return current;
+  }, []);
+  const formatResponseValue = useCallback((value) => {
+    if (value === undefined || value === null) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'bigint') return String(value);
+    if (typeof value === 'boolean') return value ? 'true' : 'false';
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
   }, []);
   const extractResponseFields = useCallback((response) => {
     const result = {};
@@ -858,13 +1165,16 @@ const RowFormModal = function RowFormModal({
     },
     [computeNextFormVals, onChange],
   );
-  const handleInvokeInfoEndpoint = useCallback(async () => {
-    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
-    if (!endpoint) return;
-    setInfoLoading(true);
-    setInfoError(null);
-    try {
-      const sanitizedPayload = Object.entries(infoPayload || {}).reduce((acc, [key, val]) => {
+  const handleInvokeInfoEndpoint = useCallback(
+    async ({ endpointId: overrideId, payloadOverride } = {}) => {
+      const targetId = overrideId || activeInfoEndpointId;
+      const endpoint = infoEndpoints.find((entry) => entry.id === targetId);
+      if (!endpoint) return;
+      const rawPayload =
+        payloadOverride && typeof payloadOverride === 'object'
+          ? payloadOverride
+          : infoPayload;
+      const sanitizedPayload = Object.entries(rawPayload || {}).reduce((acc, [key, val]) => {
         if (!key) return acc;
         const normalized = typeof val === 'string' ? val.trim() : val;
         if (normalized !== '' && normalized !== undefined && normalized !== null) {
@@ -872,63 +1182,182 @@ const RowFormModal = function RowFormModal({
         }
         return acc;
       }, {});
-      const res = await fetch('/api/posapi/proxy/invoke', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          endpointId: endpoint.id,
-          payload: sanitizedPayload,
-          context: {
-            table,
-            recordId:
-              row?.id ?? row?.ID ?? row?.id_field ?? row?.Id ?? row?.IdField ?? row?.record_id ?? null,
-          },
-        }),
+      (endpoint.requestMappings || []).forEach((mapping) => {
+        if (!mapping || typeof mapping !== 'object') return;
+        const field = typeof mapping.field === 'string' ? mapping.field : '';
+        if (!field) return;
+        if (sanitizedPayload[field] !== undefined && sanitizedPayload[field] !== null && sanitizedPayload[field] !== '') {
+          sanitizedPayload[field] =
+            typeof sanitizedPayload[field] === 'string'
+              ? sanitizedPayload[field]
+              : String(sanitizedPayload[field]);
+          return;
+        }
+        let value;
+        if (mapping.scope === 'constant') value = mapping.value;
+        else if (mapping.scope === 'form' && mapping.resolvedSource)
+          value = formValsRef.current?.[mapping.resolvedSource];
+        else if (mapping.scope === 'extra' && mapping.resolvedSource)
+          value = extraValsRef.current?.[mapping.resolvedSource];
+        if (value !== undefined && value !== null && value !== '') {
+          sanitizedPayload[field] = typeof value === 'string' ? value : String(value);
+          return;
+        }
+        if (mapping.fallback) sanitizedPayload[field] = mapping.fallback;
       });
-      if (!res.ok) {
-        const message = await res.text();
-        throw new Error(message || res.statusText || 'Lookup failed');
+      const missingRequired = [];
+      if (endpoint.requiredPayloadFields && endpoint.requiredPayloadFields instanceof Set) {
+        endpoint.requiredPayloadFields.forEach((field) => {
+          const value = sanitizedPayload[field];
+          if (value === undefined || value === null || value === '') {
+            missingRequired.push(field);
+          }
+        });
       }
-      const data = await res.json();
-      setInfoResponse(data.response ?? null);
-      setInfoHistory((prev) => [
-        ...prev.slice(-4),
-        {
-          timestamp: new Date().toISOString(),
-          endpointId: endpoint.id,
-          payload: sanitizedPayload,
-          response: data.response ?? null,
-        },
-      ]);
-    } catch (err) {
-      setInfoError(err.message || 'Lookup failed');
-    } finally {
-      setInfoLoading(false);
-    }
-  }, [infoEndpoints, activeInfoEndpointId, infoPayload, table, row]);
+      if (missingRequired.length) {
+        const message = `Missing required lookup fields: ${missingRequired.join(', ')}`;
+        setInfoError(message);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message, type: 'warning' },
+            }),
+          );
+        }
+        return;
+      }
+      setInfoPayload(sanitizedPayload);
+      setInfoLoading(true);
+      setInfoError(null);
+      try {
+        const res = await fetch('/api/posapi/proxy/invoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            endpointId: endpoint.id,
+            payload: sanitizedPayload,
+            context: {
+              table,
+              recordId:
+                row?.id ?? row?.ID ?? row?.id_field ?? row?.Id ?? row?.IdField ?? row?.record_id ?? null,
+            },
+          }),
+        });
+        if (!res.ok) {
+          const message = await res.text();
+          throw new Error(message || res.statusText || 'Lookup failed');
+        }
+        const data = await res.json();
+        setInfoResponse(data.response ?? null);
+        setInfoHistory((prev) => [
+          ...prev.slice(-4),
+          {
+            timestamp: new Date().toISOString(),
+            endpointId: endpoint.id,
+            payload: sanitizedPayload,
+            response: data.response ?? null,
+          },
+        ]);
+      } catch (err) {
+        const message = err.message || 'Lookup failed';
+        setInfoError(message);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: { message, type: 'error' },
+            }),
+          );
+        }
+      } finally {
+        setInfoLoading(false);
+      }
+    },
+    [infoEndpoints, activeInfoEndpointId, infoPayload, table, row],
+  );
   const handleApplyInfoResponse = useCallback(() => {
     if (!infoResponse || typeof infoResponse !== 'object') return;
-    const flat = extractResponseFields(infoResponse);
+    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
     const formUpdates = {};
     const extraUpdates = {};
-    Object.entries(flat).forEach(([key, value]) => {
-      if (value === undefined || value === null || value === '') return;
-      const lower = String(key).toLowerCase();
-      const normalized = typeof value === 'string' ? value : String(value);
-      if (columnByLowerMap[lower] !== undefined) {
-        formUpdates[columnByLowerMap[lower]] = normalized;
-      } else if (extraKeyLookup[lower] !== undefined) {
-        extraUpdates[extraKeyLookup[lower]] = normalized;
-      }
-    });
+    const appliedTargets = [];
+    const missingRequiredTargets = [];
+    if (endpoint && Array.isArray(endpoint.responseMappings) && endpoint.responseMappings.length > 0) {
+      endpoint.responseMappings.forEach((mapping) => {
+        if (!mapping || typeof mapping !== 'object') return;
+        const values = getResponseFieldValues(infoResponse, mapping.field);
+        const formatted = values
+          .map((value) => formatResponseValue(value))
+          .filter((value) => value !== undefined && value !== null && value !== '');
+        let finalValue = '';
+        if (formatted.length > 0) {
+          if (mapping.pick === 'first') finalValue = formatted[0];
+          else finalValue = formatted.join(mapping.joinWith || ', ');
+        }
+        if (!finalValue && mapping.fallback) finalValue = mapping.fallback;
+        if (!finalValue && mapping.required) {
+          missingRequiredTargets.push(mapping.targetLabel || mapping.resolvedTarget || mapping.target || mapping.field);
+          return;
+        }
+        if (!finalValue) return;
+        if (mapping.scope === 'form') {
+          formUpdates[mapping.resolvedTarget || mapping.target] = finalValue;
+        } else if (mapping.scope === 'extra') {
+          extraUpdates[mapping.resolvedTarget || mapping.target] = finalValue;
+        }
+        appliedTargets.push(mapping.targetLabel || mapping.resolvedTarget || mapping.target || mapping.field);
+      });
+    } else {
+      const flat = extractResponseFields(infoResponse);
+      Object.entries(flat).forEach(([key, value]) => {
+        if (value === undefined || value === null || value === '') return;
+        const lower = String(key).toLowerCase();
+        const normalized = typeof value === 'string' ? value : String(value);
+        if (columnByLowerMap[lower] !== undefined) {
+          formUpdates[columnByLowerMap[lower]] = normalized;
+        } else if (extraKeyLookup[lower] !== undefined) {
+          extraUpdates[extraKeyLookup[lower]] = normalized;
+        }
+      });
+    }
     if (Object.keys(formUpdates).length) {
       setFormValuesWithGenerated((prev) => ({ ...prev, ...formUpdates }));
     }
     if (Object.keys(extraUpdates).length) {
       setExtraVals((prev) => ({ ...prev, ...extraUpdates }));
     }
-  }, [infoResponse, extractResponseFields, columnByLowerMap, extraKeyLookup, setFormValuesWithGenerated, setExtraVals]);
+    if (missingRequiredTargets.length && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `Lookup response missing required fields: ${missingRequiredTargets.join(', ')}`,
+            type: 'warning',
+          },
+        }),
+      );
+    }
+    if (appliedTargets.length && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `Applied ${appliedTargets.join(', ')}`,
+            type: 'success',
+          },
+        }),
+      );
+    }
+  }, [
+    infoResponse,
+    infoEndpoints,
+    activeInfoEndpointId,
+    getResponseFieldValues,
+    formatResponseValue,
+    extractResponseFields,
+    columnByLowerMap,
+    extraKeyLookup,
+    setFormValuesWithGenerated,
+    setExtraVals,
+  ]);
   const activeInfoEndpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId) || null;
   const inputRefs = useRef({});
   const readonlyRefs = useRef({});
@@ -3011,6 +3440,17 @@ const RowFormModal = function RowFormModal({
                 </select>
               </label>
             )}
+            {posApiEnabled &&
+              quickInfoEndpoints.map((endpoint) => (
+                <button
+                  key={`info-quick-${endpoint.id}`}
+                  type="button"
+                  onClick={() => handleQuickInfoAction(endpoint)}
+                  className="px-3 py-1 text-sm rounded border border-indigo-300 bg-indigo-100 text-indigo-800"
+                >
+                  {endpoint.quickActionLabel}
+                </button>
+              ))}
             {posApiEnabled && infoEndpoints.length > 0 && (
               <button
                 type="button"
@@ -3097,7 +3537,12 @@ const RowFormModal = function RowFormModal({
       {infoModalOpen && (
         <Modal
           visible={infoModalOpen}
-          title={t('posapi_info_modal_title', 'POSAPI lookups')}
+          title={
+            activeInfoEndpoint?.modalTitle ||
+            (activeInfoEndpoint?.displayLabel
+              ? `${t('posapi_info_modal_title', 'POSAPI lookups')} – ${activeInfoEndpoint.displayLabel}`
+              : t('posapi_info_modal_title', 'POSAPI lookups'))
+          }
           onClose={closeInfoModal}
           width="600px"
         >
@@ -3109,11 +3554,15 @@ const RowFormModal = function RowFormModal({
                 value={activeInfoEndpointId}
                 onChange={(e) => setActiveInfoEndpointId(e.target.value)}
               >
-                {infoEndpoints.map((endpoint) => (
-                  <option key={endpoint.id} value={endpoint.id}>
-                    {endpoint.id} – {endpoint.name}
-                  </option>
-                ))}
+                {infoEndpoints.map((endpoint) => {
+                  const optionLabel =
+                    endpoint.displayLabel || endpoint.name || endpoint.id;
+                  return (
+                    <option key={endpoint.id} value={endpoint.id}>
+                      {optionLabel}
+                    </option>
+                  );
+                })}
               </select>
             </label>
             {activeInfoEndpoint && (
@@ -3122,6 +3571,11 @@ const RowFormModal = function RowFormModal({
                   <span className="font-semibold text-gray-700">{activeInfoEndpoint.method}</span>{' '}
                   <span className="font-mono">{activeInfoEndpoint.path}</span>
                 </div>
+                {activeInfoEndpoint.description && (
+                  <div className="text-xs text-gray-500">
+                    {activeInfoEndpoint.description}
+                  </div>
+                )}
                 {activeInfoEndpoint.requestFields.length > 0 ? (
                   activeInfoEndpoint.requestFields.map((field) => {
                     const fieldName = field?.field;
@@ -3157,6 +3611,33 @@ const RowFormModal = function RowFormModal({
                       'This endpoint does not require additional parameters.',
                     )}
                   </p>
+                )}
+                {activeInfoEndpoint.responseMappings.length > 0 && (
+                  <div className="flex flex-col gap-1 text-sm text-gray-700">
+                    <span className="font-semibold">
+                      {t('posapi_info_mapped_fields', 'Mapped fields')}
+                    </span>
+                    <ul className="space-y-1 text-xs text-gray-600">
+                      {activeInfoEndpoint.responseMappings.map((mapping) => (
+                        <li key={`response-map-${mapping.field}-${mapping.target}`}>
+                          <span
+                            className={
+                              mapping.required
+                                ? 'font-semibold text-indigo-700'
+                                : 'font-medium text-gray-700'
+                            }
+                          >
+                            {mapping.targetLabel}
+                            {mapping.required ? ' *' : ''}
+                          </span>
+                          <span className="ml-2 text-gray-500">
+                            ← {mapping.field}
+                            {mapping.description ? ` – ${mapping.description}` : ''}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 )}
               </div>
             )}

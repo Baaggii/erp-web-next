@@ -1568,6 +1568,56 @@
         "taxType": "tax_type",
         "lotNo": "lot_no"
       },
+      "infoEndpoints": [
+        {
+          "id": "verifyCustomerTin",
+          "label": "Verify customer TIN",
+          "quickActionLabel": "Check customer",
+          "autoInvoke": true,
+          "requestMappings": [
+            {
+              "field": "customerTin",
+              "source": "customer_tin",
+              "required": true,
+              "description": "Customer TIN from the current transaction."
+            }
+          ],
+          "responseMappings": [
+            {
+              "field": "name",
+              "target": "customer_name",
+              "targetLabel": "Customer name",
+              "required": true,
+              "description": "Registered entity name"
+            },
+            {
+              "field": "status",
+              "target": "customer_status",
+              "targetLabel": "Customer tax status",
+              "description": "Tax authority status"
+            },
+            {
+              "field": "valid",
+              "target": "customer_tin_valid",
+              "targetLabel": "TIN valid",
+              "description": "Boolean flag returned by the lookup",
+              "pick": "first"
+            }
+          ]
+        },
+        {
+          "id": "getInformation",
+          "label": "Pending receipts overview"
+        },
+        {
+          "id": "getDistrictCodes",
+          "label": "District codes"
+        },
+        {
+          "id": "getVatTaxTypes",
+          "label": "VAT tax types"
+        }
+      ],
       "editableDefaultFields": [
         "order_id",
         "cashback",
