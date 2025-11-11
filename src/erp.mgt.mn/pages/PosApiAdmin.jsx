@@ -72,6 +72,51 @@ const DEFAULT_RECEIPT_TYPES = TAX_TYPES.map((tax) => tax.value);
 const DEFAULT_PAYMENT_METHODS = PAYMENT_TYPES.map((payment) => payment.value);
 const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
 
+function normalizeUsage(value) {
+  return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
+}
+
+function sanitizeCodeList(list, fallback) {
+  const source = Array.isArray(list) ? list : fallback;
+  const cleaned = source
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+  const effective = cleaned.length > 0 ? cleaned : fallback;
+  return Array.from(new Set(effective));
+}
+
+function withEndpointMetadata(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const usage = normalizeUsage(endpoint.usage);
+  const isTransaction = usage === 'transaction';
+  const receiptTypes = isTransaction
+    ? sanitizeCodeList(endpoint.receiptTypes, DEFAULT_RECEIPT_TYPES)
+    : [];
+  const paymentMethods = isTransaction
+    ? sanitizeCodeList(endpoint.paymentMethods, DEFAULT_PAYMENT_METHODS)
+    : [];
+  let supportsItems = false;
+  if (isTransaction) {
+    if (endpoint.supportsItems === false) {
+      supportsItems = false;
+    } else if (endpoint.supportsItems === true) {
+      supportsItems = true;
+    } else {
+      supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
+    }
+  }
+  return {
+    ...endpoint,
+    usage,
+    defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
+    supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
+    supportsMultiplePayments: isTransaction ? Boolean(endpoint.supportsMultiplePayments) : false,
+    supportsItems,
+    receiptTypes,
+    paymentMethods,
+  };
+}
+
 function badgeStyle(color) {
   return {
     background: color,
@@ -523,15 +568,7 @@ export default function PosApiAdmin() {
   const builderSyncRef = useRef(false);
 
   const groupedEndpoints = useMemo(() => {
-    const normalized = endpoints.map((endpoint) => {
-      const usage = endpoint.usage && VALID_USAGE_VALUES.has(endpoint.usage)
-        ? endpoint.usage
-        : 'transaction';
-      return {
-        ...endpoint,
-        usage,
-      };
-    });
+    const normalized = endpoints.map(withEndpointMetadata);
     const filtered = normalized.filter(
       (endpoint) => usageFilter === 'all' || endpoint.usage === usageFilter,
     );
@@ -1006,10 +1043,12 @@ export default function PosApiAdmin() {
         }
         const data = await res.json();
         if (cancelled) return;
-        setEndpoints(Array.isArray(data) ? data : []);
-        if (Array.isArray(data) && data.length > 0) {
-          setSelectedId(data[0].id);
-          setFormState(createFormState(data[0]));
+        const list = Array.isArray(data) ? data : [];
+        const normalized = list.map(withEndpointMetadata);
+        setEndpoints(normalized);
+        if (normalized.length > 0) {
+          setSelectedId(normalized[0].id);
+          setFormState(createFormState(normalized[0]));
         }
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -1237,45 +1276,15 @@ export default function PosApiAdmin() {
       setStatus('');
       resetTestState();
       const definition = buildDefinition();
+      const preparedDefinition = withEndpointMetadata(definition);
       const updated = endpoints.some((ep) => ep.id === selectedId)
-        ? endpoints.map((ep) => (ep.id === selectedId ? definition : ep))
-        : [...endpoints, definition];
+        ? endpoints.map((ep) => (ep.id === selectedId ? preparedDefinition : ep))
+        : [...endpoints, preparedDefinition];
 
-      let normalized = updated.map((ep) => {
-        const usage = VALID_USAGE_VALUES.has(ep.usage) ? ep.usage : 'transaction';
-        const isTransactionEndpoint = usage === 'transaction';
-        const receiptTypes = isTransactionEndpoint
-          ? Array.from(
-              new Set(
-                (Array.isArray(ep.receiptTypes) && ep.receiptTypes.length > 0
-                  ? ep.receiptTypes
-                  : DEFAULT_RECEIPT_TYPES),
-              ),
-            )
-          : [];
-        const paymentMethods = isTransactionEndpoint
-          ? Array.from(
-              new Set(
-                (Array.isArray(ep.paymentMethods) && ep.paymentMethods.length > 0
-                  ? ep.paymentMethods
-                  : DEFAULT_PAYMENT_METHODS),
-              ),
-            )
-          : [];
-        return {
-          ...ep,
-          usage,
-          defaultForForm: isTransactionEndpoint ? Boolean(ep.defaultForForm) : false,
-          supportsMultipleReceipts: isTransactionEndpoint ? Boolean(ep.supportsMultipleReceipts) : false,
-          supportsMultiplePayments: isTransactionEndpoint ? Boolean(ep.supportsMultiplePayments) : false,
-          supportsItems: isTransactionEndpoint ? ep.supportsItems !== false : false,
-          receiptTypes,
-          paymentMethods,
-        };
-      });
-      if (definition.usage === 'transaction' && definition.defaultForForm) {
+      let normalized = updated.map(withEndpointMetadata);
+      if (preparedDefinition.usage === 'transaction' && preparedDefinition.defaultForForm) {
         normalized = normalized.map((ep) => (
-          ep.id === definition.id
+          ep.id === preparedDefinition.id
             ? ep
             : {
                 ...ep,
@@ -1296,9 +1305,10 @@ export default function PosApiAdmin() {
         throw new Error('Failed to save endpoints');
       }
       const saved = await res.json();
-      const next = Array.isArray(saved) ? saved : normalized;
+      const nextRaw = Array.isArray(saved) ? saved : normalized;
+      const next = nextRaw.map(withEndpointMetadata);
       setEndpoints(next);
-      const selected = next.find((ep) => ep.id === definition.id) || definition;
+      const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
       setSelectedId(selected.id);
       setFormState(createFormState(selected));
       setStatus('Changes saved');
@@ -1342,7 +1352,8 @@ export default function PosApiAdmin() {
         throw new Error('Failed to delete endpoint');
       }
       const saved = await res.json();
-      const nextEndpoints = Array.isArray(saved) ? saved : updated;
+      const nextRaw = Array.isArray(saved) ? saved : updated;
+      const nextEndpoints = nextRaw.map(withEndpointMetadata);
       setEndpoints(nextEndpoints);
       if (nextEndpoints.length > 0) {
         setSelectedId(nextEndpoints[0].id);
