@@ -25,7 +25,7 @@
       "MOBILE_WALLET",
       "EASY_BANK_CARD"
     ],
-    "notes": "Handles goods and hybrid transactions that include item-level details. For services without items use submitServiceReceipt.",
+    "notes": "Handles goods and service transactions. Include item rows for goods or leave the items array empty for service-only receipts.",
     "requestBody": {
       "schema": {
         "type": "B2C_RECEIPT",
@@ -122,13 +122,23 @@
       },
       {
         "field": "receipts[].items[]",
-        "required": true,
-        "description": "Line items that include product codes, quantities, prices, and tax data."
+        "required": false,
+        "description": "Line items that include product codes, quantities, prices, and tax data. Leave empty when submitting services."
       },
       {
         "field": "payments[]",
         "required": true,
         "description": "Breakdown of payment methods applied to the receipt or invoice."
+      },
+      {
+        "field": "payments[].type",
+        "required": true,
+        "description": "Payment method code. Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD, SERVICE_PAYMENT."
+      },
+      {
+        "field": "payments[].amount",
+        "required": true,
+        "description": "Amount paid with the selected payment method."
       }
     ],
     "responseBody": {
@@ -140,7 +150,9 @@
             "billId": "2024-000123",
             "lottery": "АБ12345678",
             "qrData": "https://posapi-test.tax.gov.mn/verify/...",
-            "receiptNumbers": ["12345678"],
+            "receiptNumbers": [
+              "12345678"
+            ],
             "errors": []
           }
         ]
@@ -422,312 +434,6 @@
       "nestedPaths": {
         "receipts": "receipts",
         "items": "receipts[].items",
-        "payments": "payments"
-      }
-    },
-    "testable": true,
-    "testServerUrl": "https://posapi-test.tax.gov.mn"
-  },
-  {
-    "id": "submitServiceReceipt",
-    "name": "Submit service transaction",
-    "category": "Receipts & Invoices",
-    "method": "POST",
-    "path": "/rest/service/receipt",
-    "parameters": [],
-    "usage": "transaction",
-    "supportsItems": false,
-    "supportsMultipleReceipts": true,
-    "supportsMultiplePayments": true,
-    "notes": "Service-only endpoint that omits the items array. Use saveReceipt when goods or mixed receipts are required.",
-    "receiptTypes": [
-      "B2C_RECEIPT",
-      "B2B_RECEIPT",
-      "B2C_INVOICE",
-      "B2B_INVOICE"
-    ],
-    "paymentMethods": [
-      "CASH",
-      "PAYMENT_CARD",
-      "BANK_TRANSFER",
-      "MOBILE_WALLET",
-      "EASY_BANK_CARD",
-      "SERVICE_PAYMENT"
-    ],
-    "requestBody": {
-      "schema": {
-        "type": "B2C_RECEIPT",
-        "branchNo": "001",
-        "posNo": "POS-01",
-        "merchantTin": "1234567890",
-        "customerTin": "1234567890",
-        "consumerNo": "99119911",
-        "totalAmount": 55000,
-        "totalVAT": 5000,
-        "totalCityTax": 0,
-        "receipts": [
-          {
-            "taxType": "VAT_ABLE",
-            "totalAmount": 55000,
-            "totalVAT": 5000,
-            "totalCityTax": 0
-          }
-        ],
-        "payments": [
-          {
-            "type": "CASH",
-            "amount": 55000,
-            "reference": "INV-2024-001"
-          }
-        ]
-      },
-      "description": "Payload for registering service transactions without item breakdowns."
-    },
-    "requestFields": [
-      {
-        "field": "type",
-        "required": true,
-        "description": "POSAPI payload type for the service transaction."
-      },
-      {
-        "field": "branchNo",
-        "required": true,
-        "description": "Three digit branch identifier issued with the licence."
-      },
-      {
-        "field": "posNo",
-        "required": true,
-        "description": "POS terminal identifier registered with the tax authority."
-      },
-      {
-        "field": "merchantTin",
-        "required": true,
-        "description": "Registered TIN of the merchant submitting the receipt."
-      },
-      {
-        "field": "customerTin",
-        "required": false,
-        "description": "Buyer TIN for B2B service receipts."
-      },
-      {
-        "field": "consumerNo",
-        "required": false,
-        "description": "Citizen registry or phone number for B2C service receipts."
-      },
-      {
-        "field": "totalAmount",
-        "required": true,
-        "description": "Total amount charged for the service."
-      },
-      {
-        "field": "totalVAT",
-        "required": false,
-        "description": "Total VAT amount for VAT-able services."
-      },
-      {
-        "field": "totalCityTax",
-        "required": false,
-        "description": "City tax amount when applicable."
-      },
-      {
-        "field": "receipts[].taxType",
-        "required": true,
-        "description": "Tax type code that classifies the service group."
-      },
-      {
-        "field": "receipts[].totalAmount",
-        "required": true,
-        "description": "Amount associated with the service tax group."
-      },
-      {
-        "field": "receipts[].totalVAT",
-        "required": false,
-        "description": "VAT portion of the service group."
-      },
-      {
-        "field": "payments[].type",
-        "required": true,
-        "description": "Payment method used to settle the service."
-      },
-      {
-        "field": "payments[].amount",
-        "required": true,
-        "description": "Amount paid with the specified method."
-      },
-      {
-        "field": "payments[].reference",
-        "required": false,
-        "description": "Reference number supplied by the payment channel."
-      }
-    ],
-    "responseBody": {
-      "schema": {
-        "status": "SUCCESS",
-        "billId": "SR-2024-0001",
-        "message": "Service receipt registered",
-        "receipts": [
-          {
-            "taxType": "VAT_ABLE",
-            "billId": "SR-2024-0001",
-            "createdDate": "2024-05-01T10:15:00+08:00"
-          }
-        ]
-      },
-      "description": "Response from POSAPI confirming the service transaction."
-    },
-    "responseFields": [
-      {
-        "field": "status",
-        "description": "Execution status returned by POSAPI."
-      },
-      {
-        "field": "billId",
-        "description": "Generated service receipt identifier."
-      },
-      {
-        "field": "receipts[].taxType",
-        "description": "Tax type associated with the registered service receipt."
-      },
-      {
-        "field": "receipts[].billId",
-        "description": "Receipt identifier returned by POSAPI."
-      },
-      {
-        "field": "receipts[].createdDate",
-        "description": "Timestamp when the service receipt was created."
-      }
-    ],
-    "fieldDescriptions": {
-      "status": "Execution status returned by POSAPI.",
-      "billId": "Generated service receipt identifier.",
-      "receipts[].taxType": "Tax type associated with the registered service receipt.",
-      "receipts[].billId": "Receipt identifier returned by POSAPI.",
-      "receipts[].createdDate": "Timestamp when the service receipt was created."
-    },
-    "mappingHints": {
-      "topLevelFields": [
-        {
-          "field": "totalAmount",
-          "required": true,
-          "description": "Total amount charged for the service."
-        },
-        {
-          "field": "totalVAT",
-          "required": false,
-          "description": "Total VAT amount for VAT-able services."
-        },
-        {
-          "field": "totalCityTax",
-          "required": false,
-          "description": "City tax amount when applicable."
-        },
-        {
-          "field": "taxType",
-          "required": false,
-          "description": "Overall tax type for the service payload."
-        },
-        {
-          "field": "branchNo",
-          "required": true,
-          "description": "Three digit branch identifier issued with the licence."
-        },
-        {
-          "field": "posNo",
-          "required": true,
-          "description": "Registered POS terminal identifier."
-        },
-        {
-          "field": "merchantTin",
-          "required": true,
-          "description": "Registered TIN of the merchant submitting the receipt."
-        },
-        {
-          "field": "customerTin",
-          "required": false,
-          "description": "Buyer TIN for B2B service receipts."
-        },
-        {
-          "field": "consumerNo",
-          "required": false,
-          "description": "Citizen registry or phone number for B2C service receipts."
-        }
-      ],
-      "receiptGroups": [
-        {
-          "type": "VAT_ABLE",
-          "fields": [
-            {
-              "field": "totalAmount",
-              "required": true,
-              "description": "Amount for VAT-able services."
-            },
-            {
-              "field": "totalVAT",
-              "required": false,
-              "description": "VAT portion for VAT-able services."
-            },
-            {
-              "field": "totalCityTax",
-              "required": false,
-              "description": "City tax amount when applicable."
-            },
-            {
-              "field": "taxType",
-              "required": false,
-              "description": "Column that overrides the tax type when provided."
-            }
-          ]
-        },
-        {
-          "type": "VAT_FREE",
-          "fields": [
-            {
-              "field": "totalAmount",
-              "required": false,
-              "description": "Amount for VAT-free service revenue."
-            },
-            {
-              "field": "taxType",
-              "required": false,
-              "description": "Column that overrides the tax type when provided."
-            }
-          ]
-        }
-      ],
-      "paymentMethods": [
-        {
-          "method": "CASH",
-          "fields": [
-            {
-              "field": "amount",
-              "required": true,
-              "description": "Column providing the cash payment amount."
-            },
-            {
-              "field": "reference",
-              "required": false,
-              "description": "Optional reference recorded for the cash payment."
-            }
-          ]
-        },
-        {
-          "method": "BANK_TRANSFER",
-          "fields": [
-            {
-              "field": "amount",
-              "required": false,
-              "description": "Column providing the bank transfer amount."
-            },
-            {
-              "field": "reference",
-              "required": false,
-              "description": "Bank transfer reference number."
-            }
-          ]
-        }
-      ],
-      "nestedPaths": {
-        "receipts": "receipts",
         "payments": "payments"
       }
     },
