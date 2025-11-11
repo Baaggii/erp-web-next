@@ -22,6 +22,7 @@ const PAYMENT_TYPES = [
   { value: 'BANK_TRANSFER', label: 'Bank transfer' },
   { value: 'MOBILE_WALLET', label: 'Mobile wallet' },
   { value: 'EASY_BANK_CARD', label: 'Easy Bank card' },
+  { value: 'SERVICE_PAYMENT', label: 'Service payment' },
 ];
 
 const PAYMENT_DESCRIPTIONS = {
@@ -30,6 +31,7 @@ const PAYMENT_DESCRIPTIONS = {
   BANK_TRANSFER: 'Funds received via inter-bank transfer.',
   MOBILE_WALLET: 'Payment collected through a registered mobile wallet.',
   EASY_BANK_CARD: 'Payment made with an Easy Bank issued card.',
+  SERVICE_PAYMENT: 'Payment processed through a service-only channel.',
 };
 
 const METHOD_BADGES = {
@@ -58,15 +60,17 @@ const USAGE_OPTIONS = [
   { value: 'transaction', label: 'Transaction – triggered during form submission' },
   { value: 'info', label: 'Information lookup – fetches reference data' },
   { value: 'admin', label: 'Admin utility – management-only endpoints' },
-  { value: 'other', label: 'Other custom usage' },
 ];
 
 const USAGE_BADGES = {
   transaction: '#047857',
   info: '#1d4ed8',
   admin: '#78350f',
-  other: '#475569',
 };
+
+const DEFAULT_RECEIPT_TYPES = TAX_TYPES.map((tax) => tax.value);
+const DEFAULT_PAYMENT_METHODS = PAYMENT_TYPES.map((payment) => payment.value);
+const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
 
 function badgeStyle(color) {
   return {
@@ -103,6 +107,9 @@ const EMPTY_ENDPOINT = {
   defaultForForm: false,
   supportsMultipleReceipts: false,
   supportsMultiplePayments: false,
+  supportsItems: true,
+  receiptTypes: DEFAULT_RECEIPT_TYPES.slice(),
+  paymentMethods: DEFAULT_PAYMENT_METHODS.slice(),
   topLevelFieldsText: '[]',
   nestedPathsText: '{}',
 };
@@ -206,14 +213,14 @@ function deepClone(value) {
   }
 }
 
-function createReceiptGroup(taxType = 'VAT_ABLE') {
+function createReceiptGroup(taxType = 'VAT_ABLE', withItems = true) {
   return {
     taxType,
     totalAmount: 0,
     totalVAT: taxType === 'VAT_ABLE' ? 0 : undefined,
     totalCityTax: taxType === 'VAT_ABLE' ? 0 : undefined,
     taxProductCode: taxType === 'VAT_FREE' || taxType === 'VAT_ZERO' ? '' : undefined,
-    items: [createReceiptItem(taxType)],
+    items: withItems ? [createReceiptItem(taxType)] : undefined,
   };
 }
 
@@ -233,6 +240,36 @@ function createReceiptItem(taxType = 'VAT_ABLE') {
   };
 }
 
+function normalizeReceiptByTaxType(receipt, taxType) {
+  const updated = { ...receipt, taxType };
+  if (taxType === 'VAT_ABLE') {
+    updated.totalVAT = updated.totalVAT ?? 0;
+    updated.totalCityTax = updated.totalCityTax ?? 0;
+    updated.taxProductCode = undefined;
+  } else if (taxType === 'VAT_FREE' || taxType === 'VAT_ZERO') {
+    updated.totalVAT = undefined;
+    updated.totalCityTax = undefined;
+    updated.taxProductCode = updated.taxProductCode ?? '';
+  } else {
+    updated.totalVAT = undefined;
+    updated.totalCityTax = undefined;
+    updated.taxProductCode = undefined;
+  }
+  const items = Array.isArray(updated.items) ? updated.items : [];
+  updated.items = items.map((item) => ({
+    ...item,
+    vatTaxType: taxType,
+    taxProductCode: taxType === 'VAT_FREE' || taxType === 'VAT_ZERO'
+      ? item.taxProductCode ?? ''
+      : undefined,
+    cityTax: taxType === 'VAT_ABLE' ? item.cityTax ?? 0 : undefined,
+  }));
+  if (updated.items.length === 0) {
+    updated.items = undefined;
+  }
+  return updated;
+}
+
 function createStockItem() {
   return {
     code: '',
@@ -244,7 +281,7 @@ function createStockItem() {
   };
 }
 
-function normaliseBuilderForType(builder, type) {
+function normaliseBuilderForType(builder, type, withItems = true) {
   const template = resolveTemplate(type);
   const base = typeof builder === 'object' && builder !== null ? deepClone(builder) : {};
   const next = { ...template, ...base, type };
@@ -273,9 +310,23 @@ function normaliseBuilderForType(builder, type) {
     const receipts = Array.isArray(base?.receipts) && base.receipts.length > 0
       ? base.receipts
       : template.receipts;
-    next.receipts = deepClone(receipts) || template.receipts || [createReceiptGroup()];
+    next.receipts = deepClone(receipts) || template.receipts || [createReceiptGroup('VAT_ABLE', withItems)];
     if (!Array.isArray(next.receipts)) {
-      next.receipts = [createReceiptGroup()];
+      next.receipts = [createReceiptGroup('VAT_ABLE', withItems)];
+    }
+    if (!withItems) {
+      next.receipts = next.receipts.map((receipt) => {
+        const cleaned = { ...receipt };
+        delete cleaned.items;
+        return cleaned;
+      });
+    } else {
+      next.receipts = next.receipts.map((receipt) => {
+        const items = Array.isArray(receipt.items) && receipt.items.length > 0
+          ? receipt.items
+          : [createReceiptItem(receipt.taxType || 'VAT_ABLE')];
+        return { ...receipt, items };
+      });
     }
     const payments = Array.isArray(base?.payments) && base.payments.length > 0
       ? base.payments
@@ -363,6 +414,30 @@ function normalizeHintEntry(entry) {
 
 function createFormState(definition) {
   if (!definition) return { ...EMPTY_ENDPOINT };
+  const rawUsage = definition.usage && VALID_USAGE_VALUES.has(definition.usage)
+    ? definition.usage
+    : 'transaction';
+  const isTransaction = rawUsage === 'transaction';
+  const resolvedReceiptTypes = Array.isArray(definition.receiptTypes)
+    ? definition.receiptTypes.slice()
+    : [];
+  const resolvedPaymentMethods = Array.isArray(definition.paymentMethods)
+    ? definition.paymentMethods.slice()
+    : [];
+  const sanitizeRequestHints = (value) => {
+    if (!Array.isArray(value)) return [];
+    return value.map((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (!normalized.field) {
+        return normalized;
+      }
+      return {
+        field: normalized.field,
+        required: typeof normalized.required === 'boolean' ? normalized.required : false,
+        ...(normalized.description ? { description: normalized.description } : {}),
+      };
+    });
+  };
   return {
     id: definition.id || '',
     name: definition.name || '',
@@ -375,16 +450,29 @@ function createFormState(definition) {
     responseDescription: definition.responseBody?.description || '',
     responseSchemaText: toPrettyJson(definition.responseBody?.schema, '{}'),
     fieldDescriptionsText: toPrettyJson(definition.fieldDescriptions, '{}'),
-    requestFieldsText: toPrettyJson(definition.requestFields, '[]'),
+    requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     testable: Boolean(definition.testable),
     testServerUrl: definition.testServerUrl || '',
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
-    usage: definition.usage || 'other',
-    defaultForForm: Boolean(definition.defaultForForm),
-    supportsMultipleReceipts: Boolean(definition.supportsMultipleReceipts),
-    supportsMultiplePayments: Boolean(definition.supportsMultiplePayments),
+    usage: rawUsage,
+    defaultForForm: isTransaction ? Boolean(definition.defaultForForm) : false,
+    supportsMultipleReceipts: isTransaction ? Boolean(definition.supportsMultipleReceipts) : false,
+    supportsMultiplePayments: isTransaction ? Boolean(definition.supportsMultiplePayments) : false,
+    supportsItems: isTransaction
+      ? definition.supportsItems !== undefined
+        ? Boolean(definition.supportsItems)
+        : definition.posApiType === 'STOCK_QR'
+          ? false
+          : true
+      : false,
+    receiptTypes: isTransaction
+      ? (resolvedReceiptTypes.length > 0 ? resolvedReceiptTypes : DEFAULT_RECEIPT_TYPES.slice())
+      : [],
+    paymentMethods: isTransaction
+      ? (resolvedPaymentMethods.length > 0 ? resolvedPaymentMethods : DEFAULT_PAYMENT_METHODS.slice())
+      : [],
     topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
   };
@@ -435,14 +523,19 @@ export default function PosApiAdmin() {
   const builderSyncRef = useRef(false);
 
   const groupedEndpoints = useMemo(() => {
-    const normalized = endpoints.map((endpoint) => ({
-      ...endpoint,
-      usage: endpoint.usage || 'other',
-    }));
+    const normalized = endpoints.map((endpoint) => {
+      const usage = endpoint.usage && VALID_USAGE_VALUES.has(endpoint.usage)
+        ? endpoint.usage
+        : 'transaction';
+      return {
+        ...endpoint,
+        usage,
+      };
+    });
     const filtered = normalized.filter(
       (endpoint) => usageFilter === 'all' || endpoint.usage === usageFilter,
     );
-    const usageOrder = ['transaction', 'info', 'admin', 'other'];
+    const usageOrder = ['transaction', 'info', 'admin'];
     return usageOrder
       .map((usage) => {
         const label = formatUsageLabel(usage);
@@ -476,6 +569,15 @@ export default function PosApiAdmin() {
             }
             if (ep.supportsMultiplePayments) {
               preview.push('Handles multiple payments[] entries');
+            }
+            if (usage === 'transaction' && ep.supportsItems === false) {
+              preview.push('Service-only: no receipt items');
+            }
+            if (Array.isArray(ep.receiptTypes) && ep.receiptTypes.length > 0) {
+              preview.push(`Receipt types: ${ep.receiptTypes.join(', ')}`);
+            }
+            if (Array.isArray(ep.paymentMethods) && ep.paymentMethods.length > 0) {
+              preview.push(`Payment methods: ${ep.paymentMethods.join(', ')}`);
             }
             return {
               ...ep,
@@ -536,8 +638,33 @@ export default function PosApiAdmin() {
     [formState.responseFieldsText],
   );
 
-  const supportsMultipleReceipts = Boolean(formState.supportsMultipleReceipts);
-  const supportsMultiplePayments = Boolean(formState.supportsMultiplePayments);
+  const isTransactionUsage = formState.usage === 'transaction';
+  const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
+  const selectedReceiptTypes = Array.isArray(formState.receiptTypes)
+    ? formState.receiptTypes
+    : [];
+  const selectedPaymentMethods = Array.isArray(formState.paymentMethods)
+    ? formState.paymentMethods
+    : [];
+
+  const allowedReceiptTypes = useMemo(() => {
+    if (!isTransactionUsage) return [];
+    const values = selectedReceiptTypes.length > 0 ? selectedReceiptTypes : DEFAULT_RECEIPT_TYPES;
+    const unique = Array.from(new Set(values));
+    return TAX_TYPES.filter((tax) => unique.includes(tax.value));
+  }, [isTransactionUsage, selectedReceiptTypes]);
+
+  const allowedPaymentTypes = useMemo(() => {
+    if (!isTransactionUsage) return [];
+    const values = selectedPaymentMethods.length > 0 ? selectedPaymentMethods : DEFAULT_PAYMENT_METHODS;
+    const unique = Array.from(new Set(values));
+    return PAYMENT_TYPES.filter((payment) => unique.includes(payment.value));
+  }, [isTransactionUsage, selectedPaymentMethods]);
+
+  const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
+  const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
+  const receiptTypeOptions = allowedReceiptTypes.length > 0 ? allowedReceiptTypes : TAX_TYPES;
+  const paymentTypeOptions = allowedPaymentTypes.length > 0 ? allowedPaymentTypes : PAYMENT_TYPES;
 
   useEffect(() => {
     if (builderSyncRef.current) {
@@ -583,7 +710,7 @@ export default function PosApiAdmin() {
   const handleTypeChange = (type) => {
     setFormState((prev) => ({ ...prev, posApiType: type }));
     if (!type) return;
-    updateRequestBuilder((prev) => normaliseBuilderForType(prev, type));
+    updateRequestBuilder((prev) => normaliseBuilderForType(prev, type, supportsItems));
   };
 
   const handleBuilderFieldChange = (field, value) => {
@@ -591,41 +718,34 @@ export default function PosApiAdmin() {
   };
 
   const handleReceiptChange = (index, field, value) => {
+    let nextValue = value;
+    if (field === 'taxType') {
+      const allowedValues = allowedReceiptTypes.map((option) => option.value);
+      if (allowedValues.length > 0 && !allowedValues.includes(nextValue)) {
+        [nextValue] = allowedValues;
+      }
+    }
     updateRequestBuilder((prev) => {
       const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
       if (!receipts[index]) return prev;
-      const updated = { ...receipts[index], [field]: value };
-      if (field === 'taxType') {
-        if (value === 'VAT_ABLE') {
-          updated.totalVAT = updated.totalVAT ?? 0;
-          updated.totalCityTax = updated.totalCityTax ?? 0;
-          updated.taxProductCode = undefined;
-        } else if (value === 'VAT_FREE' || value === 'VAT_ZERO') {
-          updated.totalVAT = undefined;
-          updated.totalCityTax = undefined;
-          updated.taxProductCode = updated.taxProductCode ?? '';
-        } else {
-          updated.totalVAT = undefined;
-          updated.totalCityTax = undefined;
-          updated.taxProductCode = undefined;
-        }
-        updated.items = (updated.items || []).map((item) => ({
-          ...item,
-          vatTaxType: value,
-          taxProductCode:
-            value === 'VAT_FREE' || value === 'VAT_ZERO' ? item.taxProductCode ?? '' : undefined,
-          cityTax: value === 'VAT_ABLE' ? item.cityTax ?? 0 : undefined,
-        }));
-      }
+      const existing = receipts[index];
+      const updated =
+        field === 'taxType'
+          ? normalizeReceiptByTaxType(existing, nextValue)
+          : { ...existing, [field]: nextValue };
       receipts[index] = updated;
       return { ...prev, receipts };
     });
   };
 
   const addReceiptGroup = () => {
+    const defaultType = allowedReceiptTypes[0]?.value || 'VAT_ABLE';
     updateRequestBuilder((prev) => ({
       ...prev,
-      receipts: [...(Array.isArray(prev.receipts) ? prev.receipts : []), createReceiptGroup()],
+      receipts: [
+        ...(Array.isArray(prev.receipts) ? prev.receipts : []),
+        createReceiptGroup(defaultType, supportsItems),
+      ],
     }));
   };
 
@@ -638,6 +758,7 @@ export default function PosApiAdmin() {
   };
 
   const handleReceiptItemChange = (receiptIndex, itemIndex, field, value) => {
+    if (!supportsItems) return;
     updateRequestBuilder((prev) => {
       const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
       const receipt = receipts[receiptIndex];
@@ -651,6 +772,7 @@ export default function PosApiAdmin() {
   };
 
   const addReceiptItem = (receiptIndex) => {
+    if (!supportsItems) return;
     updateRequestBuilder((prev) => {
       const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
       const receipt = receipts[receiptIndex];
@@ -663,6 +785,7 @@ export default function PosApiAdmin() {
   };
 
   const removeReceiptItem = (receiptIndex, itemIndex) => {
+    if (!supportsItems) return;
     updateRequestBuilder((prev) => {
       const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
       const receipt = receipts[receiptIndex];
@@ -678,15 +801,26 @@ export default function PosApiAdmin() {
     updateRequestBuilder((prev) => {
       const payments = Array.isArray(prev.payments) ? prev.payments.slice() : [];
       if (!payments[index]) return prev;
-      payments[index] = { ...payments[index], [field]: value };
+      let nextValue = value;
+      if (field === 'type') {
+        const allowedValues = allowedPaymentTypes.map((option) => option.value);
+        if (allowedValues.length > 0 && !allowedValues.includes(nextValue)) {
+          [nextValue] = allowedValues;
+        }
+      }
+      payments[index] = { ...payments[index], [field]: nextValue };
       return { ...prev, payments };
     });
   };
 
   const addPayment = () => {
+    const defaultPayment = allowedPaymentTypes[0]?.value || 'CASH';
     updateRequestBuilder((prev) => ({
       ...prev,
-      payments: [...(Array.isArray(prev.payments) ? prev.payments : []), { type: 'CASH', amount: 0 }],
+      payments: [
+        ...(Array.isArray(prev.payments) ? prev.payments : []),
+        { type: defaultPayment, amount: 0 },
+      ],
     }));
   };
 
@@ -697,6 +831,109 @@ export default function PosApiAdmin() {
       return { ...prev, payments };
     });
   };
+
+  const toggleReceiptType = (code) => {
+    if (!isTransactionUsage) return;
+    resetTestState();
+    setFormState((prev) => {
+      const current = Array.isArray(prev.receiptTypes) ? prev.receiptTypes.slice() : [];
+      const index = current.indexOf(code);
+      if (index >= 0) {
+        current.splice(index, 1);
+      } else {
+        current.push(code);
+      }
+      const nextValues = current.length > 0 ? current : DEFAULT_RECEIPT_TYPES.slice();
+      return { ...prev, receiptTypes: nextValues };
+    });
+  };
+
+  const togglePaymentMethod = (code) => {
+    if (!isTransactionUsage) return;
+    resetTestState();
+    setFormState((prev) => {
+      const current = Array.isArray(prev.paymentMethods) ? prev.paymentMethods.slice() : [];
+      const index = current.indexOf(code);
+      if (index >= 0) {
+        current.splice(index, 1);
+      } else {
+        current.push(code);
+      }
+      const nextValues = current.length > 0 ? current : DEFAULT_PAYMENT_METHODS.slice();
+      return { ...prev, paymentMethods: nextValues };
+    });
+  };
+
+  useEffect(() => {
+    if (!isTransactionUsage) return;
+    updateRequestBuilder((prev) => {
+      if (!prev || typeof prev !== 'object') return prev;
+      const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
+      if (receipts.length === 0) return prev;
+      let changed = false;
+      const nextReceipts = receipts.map((receipt) => {
+        if (!supportsItems) {
+          if (receipt && Object.prototype.hasOwnProperty.call(receipt, 'items')) {
+            const clone = { ...receipt };
+            delete clone.items;
+            changed = true;
+            return clone;
+          }
+          return receipt;
+        }
+        const items = Array.isArray(receipt.items) && receipt.items.length > 0
+          ? receipt.items
+          : [createReceiptItem(receipt.taxType || 'VAT_ABLE')];
+        if (!Array.isArray(receipt.items) || receipt.items.length === 0) {
+          changed = true;
+          return { ...receipt, items };
+        }
+        return receipt;
+      });
+      if (!changed) return prev;
+      return { ...prev, receipts: nextReceipts };
+    });
+  }, [supportsItems, isTransactionUsage]);
+
+  useEffect(() => {
+    if (!isTransactionUsage) return;
+    if (allowedReceiptTypes.length === 0) return;
+    const allowedValues = allowedReceiptTypes.map((option) => option.value);
+    updateRequestBuilder((prev) => {
+      const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
+      if (receipts.length === 0) return prev;
+      let changed = false;
+      const nextReceipts = receipts.map((receipt) => {
+        if (allowedValues.includes(receipt.taxType)) {
+          return receipt;
+        }
+        changed = true;
+        return normalizeReceiptByTaxType(receipt, allowedValues[0]);
+      });
+      if (!changed) return prev;
+      return { ...prev, receipts: nextReceipts };
+    });
+  }, [allowedReceiptTypes, isTransactionUsage]);
+
+  useEffect(() => {
+    if (!isTransactionUsage) return;
+    if (allowedPaymentTypes.length === 0) return;
+    const allowedValues = allowedPaymentTypes.map((option) => option.value);
+    updateRequestBuilder((prev) => {
+      const payments = Array.isArray(prev.payments) ? prev.payments.slice() : [];
+      if (payments.length === 0) return prev;
+      let changed = false;
+      const nextPayments = payments.map((payment) => {
+        if (allowedValues.includes(payment.type)) {
+          return payment;
+        }
+        changed = true;
+        return { ...payment, type: allowedValues[0] };
+      });
+      if (!changed) return prev;
+      return { ...prev, payments: nextPayments };
+    });
+  }, [allowedPaymentTypes, isTransactionUsage]);
 
   const handleStockItemChange = (index, field, value) => {
     updateRequestBuilder((prev) => {
@@ -741,7 +978,7 @@ export default function PosApiAdmin() {
       if (!prev || prev.type === formState.posApiType) {
         return prev;
       }
-      const next = normaliseBuilderForType(prev, formState.posApiType);
+      const next = normaliseBuilderForType(prev, formState.posApiType, supportsItems);
       builderSyncRef.current = true;
       setFormState((prevState) => ({
         ...prevState,
@@ -749,7 +986,7 @@ export default function PosApiAdmin() {
       }));
       return next;
     });
-  }, [formState.posApiType]);
+  }, [formState.posApiType, supportsItems]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -809,10 +1046,22 @@ export default function PosApiAdmin() {
   function handleChange(field, value) {
     setFormState((prev) => {
       const next = { ...prev, [field]: value };
-      if (field === 'usage' && value !== 'transaction') {
-        next.defaultForForm = false;
+      if (field === 'usage') {
+        if (value !== 'transaction') {
+          next.defaultForForm = false;
+          next.supportsMultipleReceipts = false;
+          next.supportsMultiplePayments = false;
+          next.supportsItems = false;
+          next.receiptTypes = [];
+          next.paymentMethods = [];
+        } else {
+          next.supportsItems = true;
+          next.receiptTypes = DEFAULT_RECEIPT_TYPES.slice();
+          next.paymentMethods = DEFAULT_PAYMENT_METHODS.slice();
+        }
+      }
+      if (field === 'supportsItems' && value === false) {
         next.supportsMultipleReceipts = false;
-        next.supportsMultiplePayments = false;
       }
       return next;
     });
@@ -849,12 +1098,12 @@ export default function PosApiAdmin() {
       throw new Error('Field descriptions must be a JSON object');
     }
 
-    const requestFields = parseJsonInput(
+    const requestFieldsRaw = parseJsonInput(
       'Request field hints',
       formState.requestFieldsText,
       [],
     );
-    if (!Array.isArray(requestFields)) {
+    if (!Array.isArray(requestFieldsRaw)) {
       throw new Error('Request field hints must be a JSON array');
     }
 
@@ -900,7 +1149,40 @@ export default function PosApiAdmin() {
       requestSchema.type = formState.posApiType;
     }
 
-    const usage = formState.usage || 'other';
+    const sanitizedRequestFields = requestFieldsRaw.map((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (!normalized.field) {
+        return normalized;
+      }
+      return {
+        field: normalized.field,
+        required: typeof normalized.required === 'boolean' ? normalized.required : false,
+        ...(normalized.description ? { description: normalized.description } : {}),
+      };
+    });
+
+    const usage = VALID_USAGE_VALUES.has(formState.usage)
+      ? formState.usage
+      : 'transaction';
+    const isTransaction = usage === 'transaction';
+    const uniqueReceiptTypes = isTransaction
+      ? Array.from(
+          new Set(
+            (Array.isArray(formState.receiptTypes) && formState.receiptTypes.length > 0
+              ? formState.receiptTypes
+              : DEFAULT_RECEIPT_TYPES),
+          ),
+        )
+      : [];
+    const uniquePaymentMethods = isTransaction
+      ? Array.from(
+          new Set(
+            (Array.isArray(formState.paymentMethods) && formState.paymentMethods.length > 0
+              ? formState.paymentMethods
+              : DEFAULT_PAYMENT_METHODS),
+          ),
+        )
+      : [];
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -909,11 +1191,12 @@ export default function PosApiAdmin() {
       path: formState.path.trim(),
       posApiType: formState.posApiType || '',
       usage,
-      defaultForForm: usage === 'transaction' ? Boolean(formState.defaultForForm) : false,
-      supportsMultipleReceipts:
-        usage === 'transaction' ? Boolean(formState.supportsMultipleReceipts) : false,
-      supportsMultiplePayments:
-        usage === 'transaction' ? Boolean(formState.supportsMultiplePayments) : false,
+      defaultForForm: isTransaction ? Boolean(formState.defaultForForm) : false,
+      supportsMultipleReceipts: isTransaction ? Boolean(formState.supportsMultipleReceipts) : false,
+      supportsMultiplePayments: isTransaction ? Boolean(formState.supportsMultiplePayments) : false,
+      supportsItems: isTransaction ? Boolean(formState.supportsItems) : false,
+      receiptTypes: isTransaction ? uniqueReceiptTypes : [],
+      paymentMethods: isTransaction ? uniquePaymentMethods : [],
       parameters,
       requestBody: {
         schema: requestSchema,
@@ -924,7 +1207,7 @@ export default function PosApiAdmin() {
         description: formState.responseDescription || '',
       },
       fieldDescriptions: fieldDescriptions || {},
-      requestFields,
+      requestFields: sanitizedRequestFields,
       responseFields,
       mappingHints: {},
       testable: Boolean(formState.testable),
@@ -959,11 +1242,35 @@ export default function PosApiAdmin() {
         : [...endpoints, definition];
 
       let normalized = updated.map((ep) => {
-        const usage = ep.usage || 'other';
+        const usage = VALID_USAGE_VALUES.has(ep.usage) ? ep.usage : 'transaction';
+        const isTransactionEndpoint = usage === 'transaction';
+        const receiptTypes = isTransactionEndpoint
+          ? Array.from(
+              new Set(
+                (Array.isArray(ep.receiptTypes) && ep.receiptTypes.length > 0
+                  ? ep.receiptTypes
+                  : DEFAULT_RECEIPT_TYPES),
+              ),
+            )
+          : [];
+        const paymentMethods = isTransactionEndpoint
+          ? Array.from(
+              new Set(
+                (Array.isArray(ep.paymentMethods) && ep.paymentMethods.length > 0
+                  ? ep.paymentMethods
+                  : DEFAULT_PAYMENT_METHODS),
+              ),
+            )
+          : [];
         return {
           ...ep,
           usage,
-          defaultForForm: usage === 'transaction' ? Boolean(ep.defaultForForm) : false,
+          defaultForForm: isTransactionEndpoint ? Boolean(ep.defaultForForm) : false,
+          supportsMultipleReceipts: isTransactionEndpoint ? Boolean(ep.supportsMultipleReceipts) : false,
+          supportsMultiplePayments: isTransactionEndpoint ? Boolean(ep.supportsMultiplePayments) : false,
+          supportsItems: isTransactionEndpoint ? ep.supportsItems !== false : false,
+          receiptTypes,
+          paymentMethods,
         };
       });
       if (definition.usage === 'transaction' && definition.defaultForForm) {
@@ -1273,6 +1580,11 @@ export default function PosApiAdmin() {
                                 {typeLabel || ep._type}
                               </span>
                             )}
+                            {ep._usage === 'transaction' && ep.supportsItems === false && (
+                              <span style={{ ...badgeStyle('#475569'), textTransform: 'none' }}>
+                                Service only
+                              </span>
+                            )}
                             {ep.defaultForForm && (
                               <span style={{ ...badgeStyle('#059669'), textTransform: 'none' }}>
                                 Default form
@@ -1427,6 +1739,20 @@ export default function PosApiAdmin() {
               )}
             </span>
           </label>
+          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(formState.supportsItems)}
+              onChange={(e) => handleChange('supportsItems', e.target.checked)}
+              disabled={formState.usage !== 'transaction'}
+            />
+            <span>
+              Includes receipt items
+              {formState.usage !== 'transaction' && (
+                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
+              )}
+            </span>
+          </label>
           <label style={styles.label}>
             POSAPI type
             <select
@@ -1442,6 +1768,56 @@ export default function PosApiAdmin() {
               ))}
             </select>
           </label>
+          {formState.usage === 'transaction' && (
+            <div style={styles.labelFull}>
+              <span style={styles.multiSelectTitle}>Receipt tax types</span>
+              <span style={styles.multiSelectHint}>
+                Limit the tax type choices when building receipts and mapping fields.
+              </span>
+              <div style={styles.multiSelectOptions}>
+                {TAX_TYPES.map((tax) => {
+                  const checked = Array.isArray(formState.receiptTypes)
+                    ? formState.receiptTypes.includes(tax.value)
+                    : false;
+                  return (
+                    <label key={tax.value} style={styles.multiSelectOption}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleReceiptType(tax.value)}
+                      />
+                      <span>{tax.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {formState.usage === 'transaction' && (
+            <div style={styles.labelFull}>
+              <span style={styles.multiSelectTitle}>Payment methods</span>
+              <span style={styles.multiSelectHint}>
+                Choose the payment methods offered in the request builder UI.
+              </span>
+              <div style={styles.multiSelectOptions}>
+                {PAYMENT_TYPES.map((payment) => {
+                  const checked = Array.isArray(formState.paymentMethods)
+                    ? formState.paymentMethods.includes(payment.value)
+                    : false;
+                  return (
+                    <label key={payment.value} style={styles.multiSelectOption}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => togglePaymentMethod(payment.value)}
+                      />
+                      <span>{payment.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <label style={styles.label}>
             Path
             <input
@@ -1521,7 +1897,7 @@ export default function PosApiAdmin() {
                           onChange={(e) => handleBuilderFieldChange('taxType', e.target.value)}
                           style={styles.input}
                         >
-                          {TAX_TYPES.map((tax) => (
+                          {receiptTypeOptions.map((tax) => (
                             <option key={tax.value} value={tax.value}>
                               {tax.label}
                             </option>
@@ -1628,14 +2004,14 @@ export default function PosApiAdmin() {
                                 <select
                                   value={receipt.taxType || 'VAT_ABLE'}
                                   onChange={(e) => handleReceiptChange(index, 'taxType', e.target.value)}
-                                  style={styles.input}
-                                >
-                                  {TAX_TYPES.map((tax) => (
-                                    <option key={tax.value} value={tax.value}>
-                                      {tax.label}
-                                    </option>
-                                  ))}
-                                </select>
+                          style={styles.input}
+                        >
+                          {receiptTypeOptions.map((tax) => (
+                            <option key={tax.value} value={tax.value}>
+                              {tax.label}
+                            </option>
+                          ))}
+                        </select>
                               </label>
                               <label style={styles.builderLabel}>
                                 Group amount
@@ -1689,13 +2065,14 @@ export default function PosApiAdmin() {
                               )}
                             </div>
 
-                            <div style={styles.itemsContainer}>
-                              {items.map((item, itemIndex) => (
-                                <div key={`item-${itemIndex}`} style={styles.itemCard}>
-                                  <div style={styles.itemHeader}>
-                                    <strong>Item {itemIndex + 1}</strong>
-                                    <button
-                                      type="button"
+                            {supportsItems ? (
+                              <div style={styles.itemsContainer}>
+                                {items.map((item, itemIndex) => (
+                                  <div key={`item-${itemIndex}`} style={styles.itemCard}>
+                                    <div style={styles.itemHeader}>
+                                      <strong>Item {itemIndex + 1}</strong>
+                                      <button
+                                        type="button"
                                       onClick={() => removeReceiptItem(index, itemIndex)}
                                       style={styles.smallButton}
                                     >
@@ -1840,7 +2217,7 @@ export default function PosApiAdmin() {
                                         }
                                         style={styles.input}
                                       >
-                                        {TAX_TYPES.map((tax) => (
+                                        {receiptTypeOptions.map((tax) => (
                                           <option key={tax.value} value={tax.value}>
                                             {tax.label}
                                           </option>
@@ -1860,15 +2237,21 @@ export default function PosApiAdmin() {
                                     </label>
                                   </div>
                                 </div>
-                              ))}
-                              <button
-                                type="button"
-                                onClick={() => addReceiptItem(index)}
-                                style={styles.smallButton}
-                              >
-                                + Add item
-                              </button>
-                            </div>
+                                ))}
+                                <button
+                                  type="button"
+                                  onClick={() => addReceiptItem(index)}
+                                  style={styles.smallButton}
+                                >
+                                  + Add item
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={styles.serviceOnlyHint}>
+                                Items are disabled for this endpoint. Enable "Includes receipt items" to
+                                manage goods-level details.
+                              </div>
+                            )}
                           </div>
                         );
                       },
@@ -1894,7 +2277,7 @@ export default function PosApiAdmin() {
                               style={styles.paymentSelect}
                               title={PAYMENT_DESCRIPTIONS[payment.type] || ''}
                             >
-                              {PAYMENT_TYPES.map((paymentType) => (
+                              {paymentTypeOptions.map((paymentType) => (
                                 <option key={paymentType.value} value={paymentType.value}>
                                   {paymentType.label}
                                 </option>
@@ -2686,6 +3069,28 @@ const styles = {
     fontWeight: 600,
     gap: '0.5rem',
   },
+  multiSelectTitle: {
+    fontWeight: 700,
+    fontSize: '0.95rem',
+    color: '#0f172a',
+  },
+  multiSelectHint: {
+    fontWeight: 400,
+    fontSize: '0.8rem',
+    color: '#475569',
+  },
+  multiSelectOptions: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.75rem',
+  },
+  multiSelectOption: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    fontWeight: 500,
+    fontSize: '0.85rem',
+  },
   input: {
     padding: '0.5rem',
     borderRadius: '4px',
@@ -2710,6 +3115,14 @@ const styles = {
     padding: '0.75rem 1rem',
     fontSize: '0.9rem',
     lineHeight: 1.5,
+  },
+  serviceOnlyHint: {
+    background: '#f1f5f9',
+    border: '1px dashed #cbd5f5',
+    borderRadius: '6px',
+    padding: '0.75rem 1rem',
+    color: '#334155',
+    fontSize: '0.9rem',
   },
   hintGrid: {
     display: 'grid',
