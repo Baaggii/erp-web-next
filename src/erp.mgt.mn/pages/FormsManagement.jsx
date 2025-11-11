@@ -438,24 +438,6 @@ export default function FormsManagement() {
     return endpointPaymentMethods;
   }, [endpointPaymentMethods, configuredPaymentMethods]);
 
-  const serviceReceiptGroupTypes = useMemo(() => {
-    const hintKeys = Object.keys(receiptGroupHints || {});
-    const configuredKeys = Object.keys(receiptGroupMapping || {});
-    const combined = Array.from(new Set([...hintKeys, ...configuredKeys]));
-    if (combined.length) return combined;
-    return ['VAT_ABLE'];
-  }, [receiptGroupHints, receiptGroupMapping]);
-
-  const servicePaymentMethodCodes = useMemo(() => {
-    const selected = effectivePaymentMethods || [];
-    const hintKeys = Object.keys(paymentMethodHints || {});
-    const configuredKeys = Object.keys(paymentMethodMapping || {});
-    const endpointKeys = endpointPaymentMethods || [];
-    return Array.from(
-      new Set([...endpointKeys, ...selected, ...hintKeys, ...configuredKeys]),
-    ).filter((value) => value);
-  }, [effectivePaymentMethods, paymentMethodHints, paymentMethodMapping, endpointPaymentMethods]);
-
   const requiredTopLevelFields = useMemo(() => {
     const hints = selectedEndpoint?.mappingHints?.topLevelFields;
     if (!Array.isArray(hints)) return new Set();
@@ -505,6 +487,29 @@ export default function FormsManagement() {
     });
     return map;
   }, [selectedEndpoint]);
+
+  const serviceReceiptGroupTypes = useMemo(() => {
+    const hintKeys = Object.keys(receiptGroupHints || {});
+    const configuredKeys = Object.keys(receiptGroupMapping || {});
+    const combined = Array.from(new Set([...hintKeys, ...configuredKeys]));
+    if (combined.length) return combined;
+    return ['VAT_ABLE'];
+  }, [receiptGroupHints, receiptGroupMapping]);
+
+  const servicePaymentMethodCodes = useMemo(() => {
+    const selected = effectivePaymentMethods || [];
+    const hintKeys = Object.keys(paymentMethodHints || {});
+    const configuredKeys = Object.keys(paymentMethodMapping || {});
+    const endpointKeys = endpointPaymentMethods || [];
+    return Array.from(
+      new Set([...endpointKeys, ...selected, ...hintKeys, ...configuredKeys]),
+    ).filter((value) => value);
+  }, [
+    effectivePaymentMethods,
+    paymentMethodHints,
+    paymentMethodMapping,
+    endpointPaymentMethods,
+  ]);
 
   const primaryPosApiFields = useMemo(() => {
     if (supportsItems) return POS_API_FIELDS;
