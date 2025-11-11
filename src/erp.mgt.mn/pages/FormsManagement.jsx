@@ -93,6 +93,25 @@ const DEFAULT_ENDPOINT_RECEIPT_TYPES = [
 
 const DEFAULT_ENDPOINT_PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABELS);
 
+const BADGE_BASE_STYLE = {
+  borderRadius: '999px',
+  padding: '0.1rem 0.5rem',
+  fontSize: '0.7rem',
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.03em',
+};
+
+const REQUIRED_BADGE_STYLE = {
+  background: '#fee2e2',
+  color: '#b91c1c',
+};
+
+const OPTIONAL_BADGE_STYLE = {
+  background: '#e2e8f0',
+  color: '#475569',
+};
+
 function normaliseEndpointUsage(value) {
   return typeof value === 'string' && ['transaction', 'info', 'admin'].includes(value)
     ? value
@@ -626,14 +645,18 @@ export default function FormsManagement() {
     return endpointPaymentMethods;
   }, [endpointPaymentMethods, configuredPaymentMethods]);
 
-  const requiredTopLevelFields = useMemo(() => {
+  const topLevelFieldHints = useMemo(() => {
     const hints = selectedEndpoint?.mappingHints?.topLevelFields;
-    if (!Array.isArray(hints)) return new Set();
-    return new Set(
-      hints
-        .filter((entry) => entry && entry.field && entry.required)
-        .map((entry) => entry.field),
-    );
+    if (!Array.isArray(hints)) return {};
+    const map = {};
+    hints.forEach((entry) => {
+      if (!entry || typeof entry.field !== 'string') return;
+      map[entry.field] = {
+        required: Boolean(entry.required),
+        description: typeof entry.description === 'string' ? entry.description : '',
+      };
+    });
+    return map;
   }, [selectedEndpoint]);
 
   const receiptGroupHints = useMemo(() => {
@@ -652,6 +675,20 @@ export default function FormsManagement() {
         };
       });
       map[type] = fieldMap;
+    });
+    return map;
+  }, [selectedEndpoint]);
+
+  const itemFieldHints = useMemo(() => {
+    const source = selectedEndpoint?.mappingHints?.itemFields;
+    if (!Array.isArray(source)) return {};
+    const map = {};
+    source.forEach((entry) => {
+      if (!entry || typeof entry.field !== 'string') return;
+      map[entry.field] = {
+        required: Boolean(entry.required),
+        description: typeof entry.description === 'string' ? entry.description : '',
+      };
     });
     return map;
   }, [selectedEndpoint]);
@@ -689,9 +726,18 @@ export default function FormsManagement() {
     const hintKeys = Object.keys(paymentMethodHints || {});
     const configuredKeys = Object.keys(paymentMethodMapping || {});
     const endpointKeys = endpointPaymentMethods || [];
-    return Array.from(
-      new Set([...endpointKeys, ...selected, ...hintKeys, ...configuredKeys]),
-    ).filter((value) => value);
+    const selectedSet = new Set(selected);
+    const base = selected.length > 0 ? selected : endpointKeys;
+    const combined = new Set([
+      ...base,
+      ...configuredKeys,
+      ...hintKeys.filter((code) => selectedSet.size === 0 || selectedSet.has(code)),
+    ]);
+    return Array.from(combined).filter((value) => {
+      if (!value) return false;
+      if (selectedSet.size === 0) return true;
+      return selectedSet.has(value) || configuredKeys.includes(value);
+    });
   }, [
     effectivePaymentMethods,
     paymentMethodHints,
@@ -1805,12 +1851,29 @@ export default function FormsManagement() {
                 >
                   {primaryPosApiFields.map((field) => {
                     const listId = `posapi-${field.key}-columns`;
-                    const isRequired = requiredTopLevelFields.has(field.key);
+                    const hint = topLevelFieldHints[field.key] || {};
+                    const isRequired = Boolean(hint.required);
+                    const description = hint.description;
                     return (
                       <label key={field.key} style={{ display: 'flex', flexDirection: 'column' }}>
-                        <span style={isRequired ? { fontWeight: 600, color: '#b91c1c' } : {}}>
+                        <span
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            fontWeight: 600,
+                            color: '#0f172a',
+                          }}
+                        >
                           {field.label}
-                          {isRequired ? ' *' : ''}
+                          <span
+                            style={{
+                              ...BADGE_BASE_STYLE,
+                              ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                            }}
+                          >
+                            {isRequired ? 'Required' : 'Optional'}
+                          </span>
                         </span>
                         <input
                           type="text"
@@ -1825,6 +1888,9 @@ export default function FormsManagement() {
                             <option key={col} value={col} />
                           ))}
                         </datalist>
+                        {description && (
+                          <small style={{ color: '#555' }}>{description}</small>
+                        )}
                       </label>
                     );
                   })}
@@ -1865,12 +1931,33 @@ export default function FormsManagement() {
                           ) {
                             tableChoices.unshift(selectedTable);
                           }
+                          const itemHint = itemFieldHints[field.key] || {};
+                          const itemRequired = Boolean(itemHint.required);
+                          const itemDescription = itemHint.description;
                           return (
                             <div
                               key={`item-${field.key}`}
                               style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
                             >
-                              <span style={{ fontWeight: 500 }}>{field.label}</span>
+                              <span
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.5rem',
+                                  fontWeight: 600,
+                                  color: '#0f172a',
+                                }}
+                              >
+                                {field.label}
+                                <span
+                                  style={{
+                                    ...BADGE_BASE_STYLE,
+                                    ...(itemRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                  }}
+                                >
+                                  {itemRequired ? 'Required' : 'Optional'}
+                                </span>
+                              </span>
                               <div
                                 style={{
                                   display: 'flex',
@@ -1923,6 +2010,9 @@ export default function FormsManagement() {
                                   />
                                 ))}
                               </datalist>
+                              {itemDescription && (
+                                <small style={{ color: '#555' }}>{itemDescription}</small>
+                              )}
                             </div>
                           );
                         })}
@@ -2064,14 +2154,23 @@ export default function FormsManagement() {
                                   style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
                                 >
                                   <span
-                                    style={
-                                      isRequired
-                                        ? { fontWeight: 600, color: '#b91c1c' }
-                                        : { fontWeight: 500 }
-                                    }
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                      fontWeight: 600,
+                                      color: '#0f172a',
+                                    }}
                                   >
                                     {label}
-                                    {isRequired ? ' *' : ''}
+                                    <span
+                                      style={{
+                                        ...BADGE_BASE_STYLE,
+                                        ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                      }}
+                                    >
+                                      {isRequired ? 'Required' : 'Optional'}
+                                    </span>
                                   </span>
                                   <input
                                     type="text"
@@ -2150,14 +2249,23 @@ export default function FormsManagement() {
                                   style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
                                 >
                                   <span
-                                    style={
-                                      isRequired
-                                        ? { fontWeight: 600, color: '#b91c1c' }
-                                        : { fontWeight: 500 }
-                                    }
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                      fontWeight: 600,
+                                      color: '#0f172a',
+                                    }}
                                   >
                                     {fieldLabel}
-                                    {isRequired ? ' *' : ''}
+                                    <span
+                                      style={{
+                                        ...BADGE_BASE_STYLE,
+                                        ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                      }}
+                                    >
+                                      {isRequired ? 'Required' : 'Optional'}
+                                    </span>
                                   </span>
                                   <input
                                     type="text"

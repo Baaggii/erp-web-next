@@ -9,8 +9,23 @@
     "posApiType": "B2C_RECEIPT",
     "usage": "transaction",
     "defaultForForm": true,
+    "supportsItems": true,
     "supportsMultipleReceipts": true,
     "supportsMultiplePayments": true,
+    "receiptTypes": [
+      "B2C_RECEIPT",
+      "B2B_RECEIPT",
+      "B2C_INVOICE",
+      "B2B_INVOICE"
+    ],
+    "paymentMethods": [
+      "CASH",
+      "PAYMENT_CARD",
+      "BANK_TRANSFER",
+      "MOBILE_WALLET",
+      "EASY_BANK_CARD"
+    ],
+    "notes": "Handles goods and hybrid transactions that include item-level details. For services without items use submitServiceReceipt.",
     "requestBody": {
       "schema": {
         "type": "B2C_RECEIPT",
@@ -424,6 +439,7 @@
     "supportsItems": false,
     "supportsMultipleReceipts": true,
     "supportsMultiplePayments": true,
+    "notes": "Service-only endpoint that omits the items array. Use saveReceipt when goods or mixed receipts are required.",
     "receiptTypes": [
       "B2C_RECEIPT",
       "B2B_RECEIPT",

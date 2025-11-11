@@ -1,9 +1,200 @@
-import React, { useEffect, useState, useContext, useMemo } from 'react';
+import React, { useEffect, useState, useContext, useMemo, useRef } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+
+const POS_API_FIELDS = [
+  { key: 'totalAmount', label: 'Total amount' },
+  { key: 'totalVAT', label: 'Total VAT' },
+  { key: 'totalCityTax', label: 'Total city tax' },
+  { key: 'customerTin', label: 'Customer TIN' },
+  { key: 'consumerNo', label: 'Consumer number' },
+  { key: 'taxType', label: 'Tax type' },
+  { key: 'lotNo', label: 'Lot number (pharmacy)' },
+  { key: 'branchNo', label: 'Branch number' },
+  { key: 'posNo', label: 'POS number' },
+  { key: 'merchantTin', label: 'Merchant TIN override' },
+  { key: 'districtCode', label: 'District code' },
+  { key: 'itemsField', label: 'Items array column' },
+  { key: 'paymentsField', label: 'Payments array column' },
+  { key: 'receiptsField', label: 'Receipts array column' },
+  { key: 'paymentType', label: 'Default payment type column' },
+  { key: 'taxTypeField', label: 'Header tax type column' },
+  { key: 'classificationCodeField', label: 'Classification code column' },
+];
+
+const POS_API_ITEM_FIELDS = [
+  { key: 'name', label: 'Item name' },
+  { key: 'description', label: 'Item description' },
+  { key: 'qty', label: 'Quantity' },
+  { key: 'price', label: 'Unit price' },
+  { key: 'totalAmount', label: 'Line total amount' },
+  { key: 'totalVAT', label: 'Line VAT' },
+  { key: 'totalCityTax', label: 'Line city tax' },
+  { key: 'taxType', label: 'Line tax type' },
+  { key: 'classificationCode', label: 'Classification code' },
+  { key: 'taxProductCode', label: 'Tax product code' },
+  { key: 'barCode', label: 'Barcode' },
+  { key: 'measureUnit', label: 'Measure unit' },
+];
+
+const POS_API_PAYMENT_FIELDS = [
+  { key: 'type', label: 'Payment type' },
+  { key: 'amount', label: 'Amount' },
+  { key: 'currency', label: 'Currency' },
+  { key: 'method', label: 'Method' },
+  { key: 'reference', label: 'Reference number' },
+];
+
+const POS_API_RECEIPT_FIELDS = [
+  { key: 'totalAmount', label: 'Receipt total amount' },
+  { key: 'totalVAT', label: 'Receipt total VAT' },
+  { key: 'totalCityTax', label: 'Receipt total city tax' },
+  { key: 'taxType', label: 'Receipt tax type' },
+  { key: 'items', label: 'Receipt items path' },
+  { key: 'payments', label: 'Receipt payments path' },
+  { key: 'description', label: 'Receipt description' },
+];
+
+const SERVICE_RECEIPT_FIELDS = [
+  { key: 'totalAmount', label: 'Total amount' },
+  { key: 'totalVAT', label: 'Total VAT' },
+  { key: 'totalCityTax', label: 'Total city tax' },
+  { key: 'taxType', label: 'Tax type override' },
+];
+
+const SERVICE_PAYMENT_FIELDS = [
+  { key: 'amount', label: 'Amount' },
+  { key: 'currency', label: 'Currency' },
+  { key: 'reference', label: 'Reference number' },
+];
+
+const PAYMENT_METHOD_LABELS = {
+  CASH: 'Cash',
+  PAYMENT_CARD: 'Payment card',
+  BANK_TRANSFER: 'Bank transfer',
+  MOBILE_WALLET: 'Mobile wallet',
+  EASY_BANK_CARD: 'Easy Bank card',
+  SERVICE_PAYMENT: 'Service payment',
+};
+
+const DEFAULT_ENDPOINT_RECEIPT_TYPES = [
+  'B2C_RECEIPT',
+  'B2B_RECEIPT',
+  'B2C_INVOICE',
+  'B2B_INVOICE',
+];
+
+const DEFAULT_ENDPOINT_PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABELS);
+
+const BADGE_BASE_STYLE = {
+  borderRadius: '999px',
+  padding: '0.1rem 0.5rem',
+  fontSize: '0.7rem',
+  fontWeight: 600,
+  textTransform: 'uppercase',
+  letterSpacing: '0.03em',
+};
+
+const REQUIRED_BADGE_STYLE = {
+  background: '#fee2e2',
+  color: '#b91c1c',
+};
+
+const OPTIONAL_BADGE_STYLE = {
+  background: '#e2e8f0',
+  color: '#475569',
+};
+
+function parseFieldSource(value = '', primaryTableName = '') {
+  if (typeof value !== 'string') {
+    return { table: '', column: '', raw: value ? String(value) : '' };
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return { table: '', column: '', raw: '' };
+  const parts = trimmed.split('.');
+  if (parts.length > 1) {
+    const [first, ...rest] = parts;
+    if (/^[a-zA-Z0-9_]+$/.test(first)) {
+      const normalizedPrimary =
+        typeof primaryTableName === 'string' ? primaryTableName.trim() : '';
+      if (normalizedPrimary && first === normalizedPrimary) {
+        return { table: '', column: rest.join('.'), raw: trimmed };
+      }
+      return { table: first, column: rest.join('.'), raw: trimmed };
+    }
+  }
+  return { table: '', column: trimmed, raw: trimmed };
+}
+
+function buildFieldSource(tableName, columnName) {
+  const tablePart = typeof tableName === 'string' ? tableName.trim() : '';
+  const columnPart = typeof columnName === 'string' ? columnName.trim() : '';
+  if (!columnPart) return '';
+  if (!tablePart) return columnPart;
+  return `${tablePart}.${columnPart}`;
+}
+
+function normaliseEndpointUsage(value) {
+  return typeof value === 'string' && ['transaction', 'info', 'admin'].includes(value)
+    ? value
+    : 'transaction';
+}
+
+function normaliseEndpointList(list, fallback) {
+  const source = Array.isArray(list) ? list : fallback;
+  const cleaned = source
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+  const effective = cleaned.length > 0 ? cleaned : fallback;
+  return Array.from(new Set(effective));
+}
+
+function withEndpointMetadata(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const usage = normaliseEndpointUsage(endpoint.usage);
+  const isTransaction = usage === 'transaction';
+  const receiptTypes = isTransaction
+    ? normaliseEndpointList(endpoint.receiptTypes, DEFAULT_ENDPOINT_RECEIPT_TYPES)
+    : [];
+  const paymentMethods = isTransaction
+    ? normaliseEndpointList(endpoint.paymentMethods, DEFAULT_ENDPOINT_PAYMENT_METHODS)
+    : [];
+  let supportsItems = false;
+  if (isTransaction) {
+    if (endpoint.supportsItems === false) {
+      supportsItems = false;
+    } else if (endpoint.supportsItems === true) {
+      supportsItems = true;
+    } else {
+      supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
+    }
+  }
+  return {
+    ...endpoint,
+    usage,
+    defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
+    supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
+    supportsMultiplePayments: isTransaction ? Boolean(endpoint.supportsMultiplePayments) : false,
+    supportsItems,
+    receiptTypes,
+    paymentMethods,
+  };
+}
+
+function formatPosApiTypeLabel(type) {
+  if (!type) return '';
+  const lookup = {
+    B2C_RECEIPT: 'B2C Receipt',
+    B2B_RECEIPT: 'B2B Receipt',
+    B2C_INVOICE: 'B2C Invoice',
+    B2B_INVOICE: 'B2B Invoice',
+    STOCK_QR: 'Stock QR',
+  };
+  return lookup[type] || type.replace(/_/g, ' ');
+}
 
 const emptyConfig = {
   label: '',
@@ -26,6 +217,13 @@ const emptyConfig = {
   temporaryAllowedUserRights: [],
   temporaryAllowedWorkplaces: [],
   temporaryProcedures: [],
+  posApiEnabled: false,
+  posApiEndpointId: '',
+  posApiTypeField: '',
+  posApiReceiptTypes: [],
+  posApiPaymentMethods: [],
+  fieldsFromPosApi: [],
+  posApiMapping: {},
 };
 
 export default function PosTxnConfig() {
@@ -53,6 +251,40 @@ export default function PosTxnConfig() {
   const [userRightCfg, setUserRightCfg] = useState({ idField: null, displayFields: [] });
   const [workplaces, setWorkplaces] = useState([]);
   const [workplaceCfg, setWorkplaceCfg] = useState({ idField: null, displayFields: [] });
+  const [posApiEndpoints, setPosApiEndpoints] = useState([]);
+  const loadingTablesRef = useRef(new Set());
+
+  const itemFieldMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.itemFields === 'object' &&
+    !Array.isArray(config.posApiMapping.itemFields)
+      ? config.posApiMapping.itemFields
+      : {};
+  const paymentFieldMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.paymentFields === 'object' &&
+    !Array.isArray(config.posApiMapping.paymentFields)
+      ? config.posApiMapping.paymentFields
+      : {};
+  const receiptFieldMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.receiptFields === 'object' &&
+    !Array.isArray(config.posApiMapping.receiptFields)
+      ? config.posApiMapping.receiptFields
+      : {};
+  const receiptGroupMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.receiptGroups === 'object' &&
+    !Array.isArray(config.posApiMapping.receiptGroups)
+      ? config.posApiMapping.receiptGroups
+      : {};
+  const paymentMethodMapping =
+    config.posApiMapping &&
+    typeof config.posApiMapping.paymentMethods === 'object' &&
+    !Array.isArray(config.posApiMapping.paymentMethods)
+      ? config.posApiMapping.paymentMethods
+      : {};
+
   const procPrefix = generalConfig?.general?.reportProcPrefix || '';
   const branchOptions = useMemo(() => {
     const idField = branchCfg?.idField || 'id';
@@ -120,6 +352,258 @@ export default function PosTxnConfig() {
     });
   }, [workplaces, workplaceCfg]);
 
+  const transactionEndpointOptions = useMemo(() => {
+    return posApiEndpoints
+      .filter((endpoint) => endpoint && endpoint.usage === 'transaction')
+      .map((endpoint) => ({
+        value: endpoint.id,
+        label: endpoint.name ? `${endpoint.id} – ${endpoint.name}` : endpoint.id,
+        supportsItems: endpoint.supportsItems !== false,
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [posApiEndpoints]);
+
+  const selectedEndpoint = useMemo(() => {
+    let endpoint = null;
+    if (config.posApiEndpointId) {
+      endpoint = posApiEndpoints.find((ep) => ep?.id === config.posApiEndpointId) || null;
+    }
+    if (!endpoint && config.posApiEndpointMeta) {
+      endpoint = withEndpointMetadata(config.posApiEndpointMeta);
+    }
+    if (!endpoint && config.posApiMapping && config.posApiMapping.itemFields) {
+      endpoint = { supportsItems: true };
+    }
+    return endpoint;
+  }, [posApiEndpoints, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
+
+  const supportsItems = selectedEndpoint?.supportsItems !== false;
+
+  const endpointReceiptTypes = useMemo(() => {
+    if (
+      selectedEndpoint &&
+      Array.isArray(selectedEndpoint.receiptTypes) &&
+      selectedEndpoint.receiptTypes.length
+    ) {
+      return selectedEndpoint.receiptTypes.map((value) => String(value));
+    }
+    return DEFAULT_ENDPOINT_RECEIPT_TYPES;
+  }, [selectedEndpoint]);
+
+  const configuredReceiptTypes = useMemo(() => {
+    return Array.isArray(config.posApiReceiptTypes)
+      ? config.posApiReceiptTypes
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value) => value)
+      : [];
+  }, [config.posApiReceiptTypes]);
+
+  const effectiveReceiptTypes = useMemo(() => {
+    return configuredReceiptTypes.length ? configuredReceiptTypes : endpointReceiptTypes;
+  }, [configuredReceiptTypes, endpointReceiptTypes]);
+
+  const receiptTypeUniverse = useMemo(() => {
+    const allowed = new Set((endpointReceiptTypes || []).filter(Boolean));
+    const combined = Array.from(
+      new Set([...endpointReceiptTypes, ...configuredReceiptTypes].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredReceiptTypes.includes(value),
+    );
+    if (filtered.length) return filtered;
+    return endpointReceiptTypes;
+  }, [endpointReceiptTypes, configuredReceiptTypes]);
+
+  const endpointPaymentMethods = useMemo(() => {
+    if (
+      selectedEndpoint &&
+      Array.isArray(selectedEndpoint.paymentMethods) &&
+      selectedEndpoint.paymentMethods.length
+    ) {
+      return selectedEndpoint.paymentMethods.map((value) => String(value));
+    }
+    return DEFAULT_ENDPOINT_PAYMENT_METHODS;
+  }, [selectedEndpoint]);
+
+  const configuredPaymentMethods = useMemo(() => {
+    return Array.isArray(config.posApiPaymentMethods)
+      ? config.posApiPaymentMethods
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value) => value)
+      : [];
+  }, [config.posApiPaymentMethods]);
+
+  const effectivePaymentMethods = useMemo(() => {
+    return configuredPaymentMethods.length
+      ? configuredPaymentMethods
+      : endpointPaymentMethods;
+  }, [configuredPaymentMethods, endpointPaymentMethods]);
+
+  const paymentMethodUniverse = useMemo(() => {
+    const allowed = new Set((endpointPaymentMethods || []).filter(Boolean));
+    const combined = Array.from(
+      new Set([...endpointPaymentMethods, ...configuredPaymentMethods].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredPaymentMethods.includes(value),
+    );
+    if (filtered.length) return filtered;
+    return endpointPaymentMethods;
+  }, [endpointPaymentMethods, configuredPaymentMethods]);
+
+  const topLevelFieldHints = useMemo(() => {
+    const hints = selectedEndpoint?.mappingHints?.topLevelFields;
+    if (!Array.isArray(hints)) return {};
+    const map = {};
+    hints.forEach((entry) => {
+      if (!entry || typeof entry.field !== 'string') return;
+      map[entry.field] = {
+        required: Boolean(entry.required),
+        description: typeof entry.description === 'string' ? entry.description : '',
+      };
+    });
+    return map;
+  }, [selectedEndpoint]);
+
+  const itemFieldHints = useMemo(() => {
+    const source = selectedEndpoint?.mappingHints?.itemFields;
+    if (!Array.isArray(source)) return {};
+    const map = {};
+    source.forEach((entry) => {
+      if (!entry || typeof entry.field !== 'string') return;
+      map[entry.field] = {
+        required: Boolean(entry.required),
+        description: typeof entry.description === 'string' ? entry.description : '',
+      };
+    });
+    return map;
+  }, [selectedEndpoint]);
+
+  const receiptGroupHints = useMemo(() => {
+    const source = selectedEndpoint?.mappingHints?.receiptGroups;
+    if (!Array.isArray(source)) return {};
+    const map = {};
+    source.forEach((group) => {
+      const type = typeof group?.type === 'string' ? group.type : '';
+      if (!type) return;
+      const fieldMap = {};
+      (group.fields || []).forEach((field) => {
+        if (!field || typeof field.field !== 'string') return;
+        fieldMap[field.field] = {
+          required: Boolean(field.required),
+          description: typeof field.description === 'string' ? field.description : '',
+        };
+      });
+      map[type] = fieldMap;
+    });
+    return map;
+  }, [selectedEndpoint]);
+
+  const paymentMethodHints = useMemo(() => {
+    const source = selectedEndpoint?.mappingHints?.paymentMethods;
+    if (!Array.isArray(source)) return {};
+    const map = {};
+    source.forEach((method) => {
+      const code = typeof method?.method === 'string' ? method.method : '';
+      if (!code) return;
+      const fieldMap = {};
+      (method.fields || []).forEach((field) => {
+        if (!field || typeof field.field !== 'string') return;
+        fieldMap[field.field] = {
+          required: Boolean(field.required),
+          description: typeof field.description === 'string' ? field.description : '',
+        };
+      });
+      map[code] = fieldMap;
+    });
+    return map;
+  }, [selectedEndpoint]);
+
+  const serviceReceiptGroupTypes = useMemo(() => {
+    const hintKeys = Object.keys(receiptGroupHints || {});
+    const configuredKeys = Object.keys(receiptGroupMapping || {});
+    const combined = Array.from(new Set([...hintKeys, ...configuredKeys]));
+    if (combined.length) return combined;
+    return ['VAT_ABLE'];
+  }, [receiptGroupHints, receiptGroupMapping]);
+
+  const servicePaymentMethodCodes = useMemo(() => {
+    const selected = effectivePaymentMethods || [];
+    const selectedSet = new Set(selected);
+    const hintKeys = Object.keys(paymentMethodHints || {});
+    const configuredKeys = Object.keys(paymentMethodMapping || {});
+    const endpointKeys = endpointPaymentMethods || [];
+    const base = selected.length > 0 ? selected : endpointKeys;
+    const combined = new Set([
+      ...base,
+      ...configuredKeys,
+      ...hintKeys.filter((code) => selectedSet.size === 0 || selectedSet.has(code)),
+    ]);
+    return Array.from(combined).filter((value) => {
+      if (!value) return false;
+      if (selectedSet.size === 0) return true;
+      return selectedSet.has(value) || configuredKeys.includes(value);
+    });
+  }, [
+    effectivePaymentMethods,
+    paymentMethodHints,
+    paymentMethodMapping,
+    endpointPaymentMethods,
+  ]);
+
+  const primaryPosApiFields = useMemo(() => {
+    if (supportsItems) return POS_API_FIELDS;
+    return POS_API_FIELDS.filter(
+      (field) => !['itemsField', 'paymentsField', 'receiptsField'].includes(field.key),
+    );
+  }, [supportsItems]);
+
+  const itemTableOptions = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    const add = (value) => {
+      if (!value) return;
+      const str = typeof value === 'string' ? value.trim() : String(value || '').trim();
+      if (!str || seen.has(str)) return;
+      seen.add(str);
+      list.push(str);
+    };
+    add(config.masterTable);
+    config.tables.forEach((entry) => add(entry.table));
+    Object.values(itemFieldMapping || {}).forEach((value) => {
+      const parsed = parseFieldSource(value, config.masterTable);
+      if (parsed.table) add(parsed.table);
+    });
+    return list;
+  }, [config.masterTable, config.tables, itemFieldMapping]);
+
+  const masterColumnOptions = useMemo(() => {
+    const primary = config.masterTable;
+    if (!primary) return masterCols;
+    return tableColumns[primary] || masterCols;
+  }, [config.masterTable, tableColumns, masterCols]);
+
+  const allColumnOptions = useMemo(() => {
+    const options = new Set();
+    (tableColumns[config.masterTable] || masterCols || []).forEach((col) => {
+      if (col) options.add(col);
+    });
+    config.tables.forEach((entry) => {
+      const tbl = typeof entry?.table === 'string' ? entry.table.trim() : '';
+      if (!tbl) return;
+      (tableColumns[tbl] || []).forEach((col) => {
+        if (col) options.add(`${tbl}.${col}`);
+      });
+    });
+    return Array.from(options);
+  }, [config.masterTable, config.tables, tableColumns, masterCols]);
+
+  const fieldsFromPosApiText = useMemo(() => {
+    return Array.isArray(config.fieldsFromPosApi)
+      ? config.fieldsFromPosApi.join('\n')
+      : '';
+  }, [config.fieldsFromPosApi]);
+
   const sectionStyle = useMemo(
     () => ({
       border: '1px solid #d0d7de',
@@ -173,6 +657,17 @@ export default function PosTxnConfig() {
         setConfigs({});
         setIsDefault(true);
       });
+
+    fetch('/api/posapi/endpoints', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => {
+        if (Array.isArray(data)) {
+          setPosApiEndpoints(data.map(withEndpointMetadata));
+        } else {
+          setPosApiEndpoints([]);
+        }
+      })
+      .catch(() => setPosApiEndpoints([]));
 
     fetch('/api/transaction_forms', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : {}))
@@ -310,6 +805,29 @@ export default function PosTxnConfig() {
     });
   }, [config.masterTable, config.tables, tableColumns]);
 
+  const ensureColumnsLoadedFor = (tableName) => {
+    const trimmed = typeof tableName === 'string' ? tableName.trim() : '';
+    if (!trimmed) return;
+    if (tableColumns[trimmed]) return;
+    if (loadingTablesRef.current.has(trimmed)) return;
+    loadingTablesRef.current.add(trimmed);
+    fetch(`/api/tables/${encodeURIComponent(trimmed)}/columns`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((cols) => {
+        const names = Array.isArray(cols) ? cols.map((c) => c.name || c) : [];
+        setTableColumns((prev) => ({ ...prev, [trimmed]: names }));
+        if (trimmed === config.masterTable) setMasterCols(names);
+      })
+      .catch(() => {
+        setTableColumns((prev) => ({ ...prev, [trimmed]: [] }));
+      })
+      .finally(() => {
+        loadingTablesRef.current.delete(trimmed);
+      });
+  };
+
   async function loadConfig(n) {
     if (!n) {
       setName('');
@@ -409,6 +927,39 @@ export default function PosTxnConfig() {
         loaded.temporaryAllowedWorkplaces,
       );
       loaded.temporaryProcedures = normalizeProcedures(loaded.temporaryProcedures);
+
+      loaded.posApiEnabled = Boolean(loaded.posApiEnabled);
+      loaded.posApiEndpointId =
+        typeof loaded.posApiEndpointId === 'string' ? loaded.posApiEndpointId : '';
+      loaded.posApiTypeField =
+        typeof loaded.posApiTypeField === 'string' ? loaded.posApiTypeField : '';
+      loaded.posApiReceiptTypes = Array.isArray(loaded.posApiReceiptTypes)
+        ? loaded.posApiReceiptTypes
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value)
+        : [];
+      loaded.posApiPaymentMethods = Array.isArray(loaded.posApiPaymentMethods)
+        ? loaded.posApiPaymentMethods
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value)
+        : [];
+      loaded.fieldsFromPosApi = Array.isArray(loaded.fieldsFromPosApi)
+        ? loaded.fieldsFromPosApi
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value)
+        : [];
+      loaded.posApiMapping =
+        loaded.posApiMapping &&
+        typeof loaded.posApiMapping === 'object' &&
+        !Array.isArray(loaded.posApiMapping)
+          ? { ...loaded.posApiMapping }
+          : {};
+      if (loaded.posApiEndpointMeta && typeof loaded.posApiEndpointMeta === 'object') {
+        loaded.posApiEndpointMeta = { ...loaded.posApiEndpointMeta };
+      } else {
+        delete loaded.posApiEndpointMeta;
+      }
+
       setIsDefault(!!def);
       setName(n);
       setConfig(loaded);
@@ -417,6 +968,154 @@ export default function PosTxnConfig() {
       setName(n);
       setConfig({ ...emptyConfig });
     }
+  }
+
+  function handleFieldsFromPosApiChange(value) {
+    const entries = value
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter((item) => item);
+    setConfig((c) => ({ ...c, fieldsFromPosApi: entries }));
+  }
+
+  function toggleReceiptTypeSelection(type) {
+    const normalized = typeof type === 'string' ? type.trim() : '';
+    if (!normalized) return;
+    setConfig((c) => {
+      const current = Array.isArray(c.posApiReceiptTypes)
+        ? c.posApiReceiptTypes.filter((entry) => typeof entry === 'string' && entry.trim())
+        : [];
+      const selectedSet = new Set(current);
+      if (selectedSet.has(normalized)) {
+        selectedSet.delete(normalized);
+      } else {
+        selectedSet.add(normalized);
+      }
+      const ordered = endpointReceiptTypes.filter((entry) => selectedSet.has(entry));
+      const leftovers = Array.from(selectedSet).filter(
+        (entry) => !endpointReceiptTypes.includes(entry),
+      );
+      return { ...c, posApiReceiptTypes: [...ordered, ...leftovers] };
+    });
+  }
+
+  function togglePaymentMethodSelection(method) {
+    const normalized = typeof method === 'string' ? method.trim() : '';
+    if (!normalized) return;
+    setConfig((c) => {
+      const current = Array.isArray(c.posApiPaymentMethods)
+        ? c.posApiPaymentMethods.filter((entry) => typeof entry === 'string' && entry.trim())
+        : [];
+      const selectedSet = new Set(current);
+      if (selectedSet.has(normalized)) {
+        selectedSet.delete(normalized);
+      } else {
+        selectedSet.add(normalized);
+      }
+      const ordered = endpointPaymentMethods.filter((entry) => selectedSet.has(entry));
+      const leftovers = Array.from(selectedSet).filter(
+        (entry) => !endpointPaymentMethods.includes(entry),
+      );
+      return { ...c, posApiPaymentMethods: [...ordered, ...leftovers] };
+    });
+  }
+
+  function updatePosApiMapping(field, value) {
+    setConfig((c) => {
+      const next = { ...(c.posApiMapping || {}) };
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (!trimmed) {
+        delete next[field];
+      } else {
+        next[field] = trimmed;
+      }
+      return { ...c, posApiMapping: next };
+    });
+  }
+
+  function updatePosApiNestedMapping(scope, key, value) {
+    setConfig((c) => {
+      const base = { ...(c.posApiMapping || {}) };
+      const current = base[scope] && typeof base[scope] === 'object' && !Array.isArray(base[scope])
+        ? { ...base[scope] }
+        : {};
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (!trimmed) {
+        delete current[key];
+      } else {
+        current[key] = trimmed;
+      }
+      if (Object.keys(current).length === 0) {
+        delete base[scope];
+      } else {
+        base[scope] = current;
+      }
+      return { ...c, posApiMapping: base };
+    });
+  }
+
+  function updateReceiptGroupMapping(type, key, value) {
+    const scope = 'receiptGroups';
+    setConfig((c) => {
+      const base = { ...(c.posApiMapping || {}) };
+      const currentGroups =
+        base[scope] && typeof base[scope] === 'object' && !Array.isArray(base[scope])
+          ? { ...base[scope] }
+          : {};
+      const group =
+        currentGroups[type] && typeof currentGroups[type] === 'object'
+          ? { ...currentGroups[type] }
+          : {};
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (!trimmed) {
+        delete group[key];
+      } else {
+        group[key] = trimmed;
+      }
+      if (Object.keys(group).length === 0) {
+        delete currentGroups[type];
+      } else {
+        currentGroups[type] = group;
+      }
+      if (Object.keys(currentGroups).length === 0) {
+        delete base[scope];
+      } else {
+        base[scope] = currentGroups;
+      }
+      return { ...c, posApiMapping: base };
+    });
+  }
+
+  function updatePaymentMethodMapping(method, key, value) {
+    const scope = 'paymentMethods';
+    setConfig((c) => {
+      const base = { ...(c.posApiMapping || {}) };
+      const current =
+        base[scope] && typeof base[scope] === 'object' && !Array.isArray(base[scope])
+          ? { ...base[scope] }
+          : {};
+      const methodMap =
+        current[method] && typeof current[method] === 'object'
+          ? { ...current[method] }
+          : {};
+      const trimmed = typeof value === 'string' ? value.trim() : value;
+      if (!trimmed) {
+        delete methodMap[key];
+      } else {
+        methodMap[key] = trimmed;
+      }
+      if (Object.keys(methodMap).length === 0) {
+        delete current[method];
+      } else {
+        current[method] = methodMap;
+      }
+      if (Object.keys(current).length === 0) {
+        delete base[scope];
+      } else {
+        base[scope] = current;
+      }
+      return { ...c, posApiMapping: base };
+    });
   }
 
   function addColumn() {
@@ -452,6 +1151,7 @@ export default function PosTxnConfig() {
           : key === 'table'
           ? value
           : tables[idx].table;
+      if (newTbl) ensureColumnsLoadedFor(newTbl);
       return {
         ...c,
         tables,
@@ -537,6 +1237,31 @@ export default function PosTxnConfig() {
           ),
         )
       : [];
+    const sanitizeSelectionList = (list, fallback) => {
+      const source = Array.isArray(list) ? list : fallback;
+      const cleaned = source
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value);
+      const base = cleaned.length > 0 ? cleaned : fallback;
+      return Array.from(new Set(base));
+    };
+    const sanitizedReceiptTypes = sanitizeSelectionList(
+      config.posApiReceiptTypes,
+      endpointReceiptTypes,
+    );
+    const sanitizedPaymentMethods = sanitizeSelectionList(
+      config.posApiPaymentMethods,
+      endpointPaymentMethods,
+    );
+    const sanitizedFieldsFromPosApi = Array.isArray(config.fieldsFromPosApi)
+      ? Array.from(
+          new Set(
+            config.fieldsFromPosApi
+              .map((field) => (typeof field === 'string' ? field.trim() : ''))
+              .filter((field) => field),
+          ),
+        )
+      : [];
     const saveCfg = {
       ...config,
       allowedBranches: normalizeAccessForSave(config.allowedBranches),
@@ -555,6 +1280,20 @@ export default function PosTxnConfig() {
         config.temporaryAllowedWorkplaces,
       ),
       temporaryProcedures: normalizedTemporaryProcedures,
+      posApiEnabled: Boolean(config.posApiEnabled),
+      posApiEndpointId: config.posApiEndpointId
+        ? String(config.posApiEndpointId).trim()
+        : '',
+      posApiTypeField: config.posApiTypeField
+        ? String(config.posApiTypeField).trim()
+        : '',
+      posApiReceiptTypes: sanitizedReceiptTypes,
+      posApiPaymentMethods: sanitizedPaymentMethods,
+      fieldsFromPosApi: sanitizedFieldsFromPosApi,
+      posApiMapping:
+        config.posApiMapping && typeof config.posApiMapping === 'object'
+          ? config.posApiMapping
+          : {},
       tables: [
         {
           table: config.masterTable,
@@ -1469,6 +2208,667 @@ export default function PosTxnConfig() {
               </tr>
             </tbody>
             </table>
+          </div>
+        </section>
+
+        <section style={sectionStyle}>
+          <h3 style={sectionTitleStyle}>POSAPI Integration</h3>
+          <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <input
+              type="checkbox"
+              checked={Boolean(config.posApiEnabled)}
+              onChange={(e) =>
+                setConfig((c) => ({
+                  ...c,
+                  posApiEnabled: e.target.checked,
+                }))
+              }
+            />
+            <span>Enable POSAPI submission</span>
+          </label>
+          <div style={controlGroupStyle}>
+            <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
+              <span style={{ fontWeight: 600 }}>POSAPI endpoint</span>
+              <select
+                value={config.posApiEndpointId}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, posApiEndpointId: e.target.value }))
+                }
+                disabled={!config.posApiEnabled}
+              >
+                <option value="">-- select endpoint --</option>
+                {transactionEndpointOptions.map((endpoint) => (
+                  <option key={endpoint.value} value={endpoint.value}>
+                    {endpoint.label}
+                  </option>
+                ))}
+              </select>
+              <small style={{ color: '#666' }}>
+                Endpoints are managed from POSAPI Admin. Choose one that matches the transaction
+                type.
+              </small>
+            </label>
+            <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
+              <span style={{ fontWeight: 600 }}>Receipt type column</span>
+              <input
+                type="text"
+                list="posapi-type-field-options"
+                value={config.posApiTypeField}
+                onChange={(e) =>
+                  setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))
+                }
+                disabled={!config.posApiEnabled}
+                placeholder="Header column or table.column"
+              />
+              <datalist id="posapi-type-field-options">
+                {allColumnOptions.map((col) => (
+                  <option key={`type-field-${col}`} value={col} />
+                ))}
+              </datalist>
+              <small style={{ color: '#666' }}>
+                Optional override for the POSAPI type (e.g., B2C_RECEIPT) stored on the
+                transaction.
+              </small>
+            </label>
+          </div>
+          {config.posApiEnabled && selectedEndpoint && (
+            <div
+              style={{
+                border: '1px solid #cbd5f5',
+                background: '#f8fafc',
+                borderRadius: '8px',
+                padding: '0.75rem',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.5rem',
+              }}
+            >
+              <strong>Endpoint capabilities</strong>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                <span
+                  style={{
+                    ...BADGE_BASE_STYLE,
+                    background: supportsItems ? '#dcfce7' : '#fee2e2',
+                    color: supportsItems ? '#047857' : '#b91c1c',
+                  }}
+                >
+                  {supportsItems ? 'Supports items' : 'Service only'}
+                </span>
+                {selectedEndpoint.supportsMultipleReceipts && (
+                  <span
+                    style={{
+                      ...BADGE_BASE_STYLE,
+                      background: '#ede9fe',
+                      color: '#5b21b6',
+                    }}
+                  >
+                    Multiple receipts
+                  </span>
+                )}
+                {selectedEndpoint.supportsMultiplePayments && (
+                  <span
+                    style={{
+                      ...BADGE_BASE_STYLE,
+                      background: '#cffafe',
+                      color: '#0e7490',
+                    }}
+                  >
+                    Multiple payments
+                  </span>
+                )}
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
+                <div>
+                  <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#475569' }}>
+                    Receipt types
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {(selectedEndpoint.receiptTypes || []).map((type) => (
+                      <span key={`endpoint-receipt-${type}`}>{formatPosApiTypeLabel(type)}</span>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#475569' }}>
+                    Payment methods
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    {(selectedEndpoint.paymentMethods || []).map((method) => (
+                      <span key={`endpoint-payment-${method}`}>
+                        {PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ')}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          {config.posApiEnabled && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div>
+                <strong>Receipt types</strong>
+                <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                  Select the POSAPI receipt types this transaction can generate.
+                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.75rem',
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  {receiptTypeUniverse.map((type) => {
+                    const checked = effectiveReceiptTypes.includes(type);
+                    return (
+                      <label
+                        key={`pos-receipt-type-${type}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleReceiptTypeSelection(type)}
+                          disabled={!config.posApiEnabled}
+                        />
+                        <span>{formatPosApiTypeLabel(type)}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div>
+                <strong>Payment methods</strong>
+                <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                  Choose the payment methods available for this POS transaction.
+                </p>
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: '0.75rem',
+                    alignItems: 'flex-start',
+                  }}
+                >
+                  {paymentMethodUniverse.map((method) => {
+                    const label = PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
+                    const checked = effectivePaymentMethods.includes(method);
+                    return (
+                      <label
+                        key={`pos-payment-method-${method}`}
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => togglePaymentMethodSelection(method)}
+                          disabled={!config.posApiEnabled}
+                        />
+                        <span>{label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+          <label
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.25rem',
+              marginTop: '0.75rem',
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>Capture response fields</span>
+            <textarea
+              rows={3}
+              value={fieldsFromPosApiText}
+              onChange={(e) => handleFieldsFromPosApiChange(e.target.value)}
+              placeholder={'id\nlottery\nqrData'}
+              disabled={!config.posApiEnabled}
+              style={{ fontFamily: 'monospace', resize: 'vertical' }}
+            />
+            <small style={{ color: '#666' }}>
+              One field path per line (e.g., receipts[0].billId) to persist on the transaction
+              record.
+            </small>
+          </label>
+          <div>
+            <strong>Field mapping</strong>
+            <p style={{ fontSize: '0.85rem', color: '#555' }}>
+              Map POSAPI fields to the configured tables. Required fields are highlighted based on
+              endpoint metadata.
+            </p>
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+                gap: '0.75rem',
+                marginTop: '0.5rem',
+              }}
+            >
+              {primaryPosApiFields.map((field) => {
+                const listId = `posapi-${field.key}-columns`;
+                const hint = topLevelFieldHints[field.key] || {};
+                const isRequired = Boolean(hint.required);
+                const description = hint.description;
+                const value = config.posApiMapping?.[field.key] || '';
+                return (
+                  <label key={field.key} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                    <span
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        fontWeight: 600,
+                        color: '#0f172a',
+                      }}
+                    >
+                      {field.label}
+                      <span
+                        style={{
+                          ...BADGE_BASE_STYLE,
+                          ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                        }}
+                      >
+                        {isRequired ? 'Required' : 'Optional'}
+                      </span>
+                    </span>
+                    <input
+                      type="text"
+                      list={listId}
+                      value={value}
+                      onChange={(e) => updatePosApiMapping(field.key, e.target.value)}
+                      placeholder="Column or path"
+                      disabled={!config.posApiEnabled}
+                    />
+                    <datalist id={listId}>
+                      {allColumnOptions.map((col) => (
+                        <option key={`field-${field.key}-${col}`} value={col} />
+                      ))}
+                    </datalist>
+                    {description && <small style={{ color: '#555' }}>{description}</small>}
+                  </label>
+                );
+              })}
+            </div>
+            {supportsItems && (
+              <div style={{ marginTop: '1rem' }}>
+                <strong>Item field mapping</strong>
+                <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                  Choose the source table and column for each item property. Leave the table blank
+                  to read from the master record or provide a custom JSON path.
+                </p>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+                    gap: '0.75rem',
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  {POS_API_ITEM_FIELDS.map((field) => {
+                    const rawValue = itemFieldMapping[field.key] || '';
+                    const parsed = parseFieldSource(rawValue, config.masterTable);
+                    const selectedTable = parsed.table;
+                    const columnValue = parsed.column;
+                    const listId = `posapi-item-${field.key}-columns-${selectedTable || 'master'}`;
+                    const availableColumns = selectedTable
+                      ? tableColumns[selectedTable] || []
+                      : masterColumnOptions || [];
+                    const tableChoices = itemTableOptions.filter(Boolean).slice();
+                    if (selectedTable && !tableChoices.includes(selectedTable)) {
+                      tableChoices.unshift(selectedTable);
+                    }
+                    const itemHint = itemFieldHints[field.key] || {};
+                    const itemRequired = Boolean(itemHint.required);
+                    const itemDescription = itemHint.description;
+                    return (
+                      <div
+                        key={`item-${field.key}`}
+                        style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
+                      >
+                        <span
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '0.5rem',
+                            fontWeight: 600,
+                            color: '#0f172a',
+                          }}
+                        >
+                          {field.label}
+                          <span
+                            style={{
+                              ...BADGE_BASE_STYLE,
+                              ...(itemRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                            }}
+                          >
+                            {itemRequired ? 'Required' : 'Optional'}
+                          </span>
+                        </span>
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexWrap: 'wrap',
+                            gap: '0.5rem',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <select
+                            value={selectedTable}
+                            onChange={(e) => {
+                              const nextTable = e.target.value;
+                              if (nextTable) ensureColumnsLoadedFor(nextTable);
+                              const nextValue = buildFieldSource(nextTable, parsed.column);
+                              updatePosApiNestedMapping('itemFields', field.key, nextValue);
+                            }}
+                            disabled={!config.posApiEnabled}
+                            style={{ minWidth: '160px' }}
+                          >
+                            <option value="">{config.masterTable || 'Master table'}</option>
+                            {tableChoices.map((tbl) => (
+                              <option key={`item-${field.key}-table-${tbl}`} value={tbl}>
+                                {tbl}
+                              </option>
+                            ))}
+                          </select>
+                          <input
+                            type="text"
+                            list={listId}
+                            value={columnValue}
+                            onChange={(e) =>
+                              updatePosApiNestedMapping(
+                                'itemFields',
+                                field.key,
+                                buildFieldSource(selectedTable, e.target.value),
+                              )
+                            }
+                            placeholder="Column or path"
+                            disabled={!config.posApiEnabled}
+                            style={{ flex: '1 1 160px', minWidth: '160px' }}
+                          />
+                        </div>
+                        <datalist id={listId}>
+                          {(availableColumns || []).map((col) => (
+                            <option
+                              key={`item-${field.key}-${selectedTable || 'master'}-${col}`}
+                              value={col}
+                            />
+                          ))}
+                        </datalist>
+                        {itemDescription && <small style={{ color: '#555' }}>{itemDescription}</small>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            <div style={{ marginTop: '1rem' }}>
+              <strong>Payment field mapping</strong>
+              <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                Map payment properties when transactions include multiple payment entries.
+              </p>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '0.75rem',
+                  marginTop: '0.5rem',
+                }}
+              >
+                {POS_API_PAYMENT_FIELDS.map((field) => {
+                  const listId = `posapi-payment-${field.key}-columns`;
+                  return (
+                    <label
+                      key={`payment-${field.key}`}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{field.label}</span>
+                      <input
+                        type="text"
+                        list={listId}
+                        value={paymentFieldMapping[field.key] || ''}
+                        onChange={(e) =>
+                          updatePosApiNestedMapping('paymentFields', field.key, e.target.value)
+                        }
+                        placeholder="Column or path"
+                        disabled={!config.posApiEnabled}
+                      />
+                      <datalist id={listId}>
+                        {allColumnOptions.map((col) => (
+                          <option key={`payment-${field.key}-${col}`} value={col} />
+                        ))}
+                      </datalist>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ marginTop: '1rem' }}>
+              <strong>Receipt field mapping</strong>
+              <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                Override fields within nested receipt objects when transactions produce multiple
+                receipts.
+              </p>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '0.75rem',
+                  marginTop: '0.5rem',
+                }}
+              >
+                {POS_API_RECEIPT_FIELDS.map((field) => {
+                  const listId = `posapi-receipt-${field.key}-columns`;
+                  return (
+                    <label
+                      key={`receipt-${field.key}`}
+                      style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{field.label}</span>
+                      <input
+                        type="text"
+                        list={listId}
+                        value={receiptFieldMapping[field.key] || ''}
+                        onChange={(e) =>
+                          updatePosApiNestedMapping('receiptFields', field.key, e.target.value)
+                        }
+                        placeholder="Column or path"
+                        disabled={!config.posApiEnabled}
+                      />
+                      <datalist id={listId}>
+                        {allColumnOptions.map((col) => (
+                          <option key={`receipt-${field.key}-${col}`} value={col} />
+                        ))}
+                      </datalist>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+          <div style={{ marginTop: '1rem' }}>
+            <strong>{supportsItems ? 'Receipt group overrides' : 'Service receipt groups'}</strong>
+            <p style={{ fontSize: '0.85rem', color: '#555' }}>
+              {supportsItems
+                ? 'Override totals for POSAPI receipt groups when itemised data needs to be regrouped by tax type.'
+                : 'Map aggregated service totals for each tax group. Required fields are marked in red based on the POSAPI endpoint metadata.'}
+            </p>
+            <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
+              {serviceReceiptGroupTypes.map((type) => {
+                const hintMap = receiptGroupHints[type] || {};
+                const baseFields = SERVICE_RECEIPT_FIELDS.map((entry) => entry.key);
+                const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
+                const groupValues =
+                  receiptGroupMapping[type] && typeof receiptGroupMapping[type] === 'object'
+                    ? receiptGroupMapping[type]
+                    : {};
+                return (
+                  <div
+                    key={`service-group-${type}`}
+                    style={{
+                      border: '1px solid #d1d5db',
+                      borderRadius: '8px',
+                      padding: '0.75rem',
+                    }}
+                  >
+                    <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>
+                      Tax group: {type.replace(/_/g, ' ')}
+                    </h4>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '0.75rem',
+                      }}
+                    >
+                      {combined.map((fieldKey) => {
+                        const descriptor = SERVICE_RECEIPT_FIELDS.find((entry) => entry.key === fieldKey);
+                        const label = descriptor
+                          ? descriptor.label
+                          : fieldKey.replace(/([A-Z])/g, ' $1');
+                        const hint = hintMap[fieldKey] || {};
+                        const isRequired = Boolean(hint.required);
+                        const description = hint.description;
+                        const listId = `service-receipt-${type}-${fieldKey}`;
+                        return (
+                          <label
+                            key={`service-receipt-${type}-${fieldKey}`}
+                            style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+                          >
+                            <span
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontWeight: 600,
+                                color: '#0f172a',
+                              }}
+                            >
+                              {label}
+                              <span
+                                style={{
+                                  ...BADGE_BASE_STYLE,
+                                  ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                }}
+                              >
+                                {isRequired ? 'Required' : 'Optional'}
+                              </span>
+                            </span>
+                            <input
+                              type="text"
+                              list={listId}
+                              value={groupValues[fieldKey] || ''}
+                              onChange={(e) => updateReceiptGroupMapping(type, fieldKey, e.target.value)}
+                              placeholder="Column or path"
+                              disabled={!config.posApiEnabled}
+                            />
+                            <datalist id={listId}>
+                              {allColumnOptions.map((col) => (
+                                <option key={`service-receipt-${fieldKey}-${col}`} value={col} />
+                              ))}
+                            </datalist>
+                            {description && <small style={{ color: '#555' }}>{description}</small>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{ marginTop: '1rem' }}>
+            <strong>{supportsItems ? 'Payment method overrides' : 'Service payment methods'}</strong>
+            <p style={{ fontSize: '0.85rem', color: '#555' }}>
+              {supportsItems
+                ? 'Map stored payment breakdowns to the POSAPI method codes returned by the endpoint.'
+                : 'Map payment information captured on the transaction record to each available POSAPI payment method.'}
+            </p>
+            <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
+              {servicePaymentMethodCodes.map((method) => {
+                const hintMap = paymentMethodHints[method] || {};
+                const baseFields = SERVICE_PAYMENT_FIELDS.map((entry) => entry.key);
+                const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
+                const methodValues =
+                  paymentMethodMapping[method] && typeof paymentMethodMapping[method] === 'object'
+                    ? paymentMethodMapping[method]
+                    : {};
+                const label = PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
+                return (
+                  <div
+                    key={`service-payment-${method}`}
+                    style={{
+                      border: '1px solid #d1d5db',
+                      borderRadius: '8px',
+                      padding: '0.75rem',
+                    }}
+                  >
+                    <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Method: {label}</h4>
+                    <div
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                        gap: '0.75rem',
+                      }}
+                    >
+                      {combined.map((fieldKey) => {
+                        const descriptor = SERVICE_PAYMENT_FIELDS.find((entry) => entry.key === fieldKey);
+                        const fieldLabel = descriptor
+                          ? descriptor.label
+                          : fieldKey.replace(/([A-Z])/g, ' $1');
+                        const hint = hintMap[fieldKey] || {};
+                        const isRequired = Boolean(hint.required);
+                        const description = hint.description;
+                        const listId = `service-payment-${method}-${fieldKey}`;
+                        return (
+                          <label
+                            key={`service-payment-${method}-${fieldKey}`}
+                            style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+                          >
+                            <span
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                fontWeight: 600,
+                                color: '#0f172a',
+                              }}
+                            >
+                              {fieldLabel}
+                              <span
+                                style={{
+                                  ...BADGE_BASE_STYLE,
+                                  ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                }}
+                              >
+                                {isRequired ? 'Required' : 'Optional'}
+                              </span>
+                            </span>
+                            <input
+                              type="text"
+                              list={listId}
+                              value={methodValues[fieldKey] || ''}
+                              onChange={(e) => updatePaymentMethodMapping(method, fieldKey, e.target.value)}
+                              placeholder="Column or path"
+                              disabled={!config.posApiEnabled}
+                            />
+                            <datalist id={listId}>
+                              {allColumnOptions.map((col) => (
+                                <option key={`service-payment-${fieldKey}-${col}`} value={col} />
+                              ))}
+                            </datalist>
+                            {description && <small style={{ color: '#555' }}>{description}</small>}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         </section>
 
