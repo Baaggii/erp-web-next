@@ -1840,6 +1840,15 @@
         "receipts[].qrData",
         "receipts[].lottery"
       ],
+      "posApiMapping": {
+        "totalAmount": "payable_amount",
+        "totalVAT": "vat_amount",
+        "totalCityTax": "city_tax",
+        "customerTin": "customer_tin",
+        "consumerNo": "consumer_no",
+        "taxType": "tax_type",
+        "lotNo": "lot_no"
+      },
       "infoEndpoints": [
         {
           "id": "verifyCustomerTin",

@@ -27,7 +27,7 @@
       "EASY_BANK_CARD",
       "SERVICE_PAYMENT"
     ],
-    "notes": "Handles goods, services, and stock QR receipts. Populate item rows for goods, or submit empty item arrays when issuing service-only receipts.",
+    "notes": "Handles goods and service transactions. Include item rows for goods or leave the items array empty for service-only receipts.",
     "requestBody": {
       "schema": {
         "branchNo": "001",
@@ -189,22 +189,12 @@
       {
         "field": "payments[].type",
         "required": true,
-        "description": "Payment method code (type/code). Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD, SERVICE_PAYMENT."
+        "description": "Payment method code. Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD, SERVICE_PAYMENT."
       },
       {
-        "field": "payments[].status",
+        "field": "payments[].amount",
         "required": true,
-        "description": "Payment status (e.g., PAID, PENDING, CANCELLED)."
-      },
-      {
-        "field": "payments[].paidAmount",
-        "required": true,
-        "description": "Amount paid with the selected payment method. Legacy integrations may send this as amount."
-      },
-      {
-        "field": "payments[].data",
-        "required": false,
-        "description": "Card metadata object required when code/type is PAYMENT_CARD."
+        "description": "Amount paid with the selected payment method."
       }
     ],
     "responseBody": {
@@ -477,6 +467,11 @@
               "description": "Payment status flag for audit tracking."
             },
             {
+              "field": "status",
+              "required": false,
+              "description": "Status flag for the bank transfer."
+            },
+            {
               "field": "reference",
               "required": false,
               "description": "Optional cash payment reference or slip number."
@@ -495,6 +490,11 @@
               "field": "status",
               "required": true,
               "description": "Card payment status (PAID is required for settlement)."
+            },
+            {
+              "field": "status",
+              "required": false,
+              "description": "Wallet payment status."
             },
             {
               "field": "reference",
@@ -557,7 +557,7 @@
               "description": "Wallet payment status."
             },
             {
-              "field": "reference",
+              "field": "status",
               "required": false,
               "description": "Wallet transaction reference."
             }
@@ -574,37 +574,7 @@
             {
               "field": "status",
               "required": false,
-              "description": "Status flag for the Easy Bank card payment."
-            },
-            {
-              "field": "reference",
-              "required": false,
               "description": "Reference for the Easy Bank card payment."
-            },
-            {
-              "field": "data.easy",
-              "required": false,
-              "description": "Boolean that should be true when Easy card auto-confirmation applies."
-            }
-          ]
-        },
-        {
-          "method": "SERVICE_PAYMENT",
-          "fields": [
-            {
-              "field": "paidAmount",
-              "required": false,
-              "description": "Amount recorded against the service-only payment channel."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Status flag for the service payment."
-            },
-            {
-              "field": "reference",
-              "required": false,
-              "description": "Reference or confirmation number for the service payment."
             }
           ]
         }
