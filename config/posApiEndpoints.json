@@ -228,6 +228,182 @@
           "description": "Buyer TIN for B2B receipts."
         }
       ],
+      "itemFields": [
+        {
+          "field": "name",
+          "required": true,
+          "description": "Item name printed on the receipt."
+        },
+        {
+          "field": "qty",
+          "required": true,
+          "description": "Quantity sold for the line item."
+        },
+        {
+          "field": "price",
+          "required": true,
+          "description": "Unit price of the item before tax."
+        },
+        {
+          "field": "totalAmount",
+          "required": true,
+          "description": "Extended amount for the line item including tax."
+        },
+        {
+          "field": "totalVAT",
+          "required": false,
+          "description": "VAT portion attributed to the line item."
+        },
+        {
+          "field": "totalCityTax",
+          "required": false,
+          "description": "City tax portion attributed to the line item."
+        },
+        {
+          "field": "taxType",
+          "required": false,
+          "description": "Specific tax type override for the item when different from the header."
+        },
+        {
+          "field": "classificationCode",
+          "required": true,
+          "description": "Unified classification code for the good."
+        },
+        {
+          "field": "taxProductCode",
+          "required": false,
+          "description": "Tax product or exemption reason code when required by POSAPI."
+        },
+        {
+          "field": "barCode",
+          "required": false,
+          "description": "Barcode identifier for the item."
+        },
+        {
+          "field": "measureUnit",
+          "required": false,
+          "description": "Measurement unit for the item quantity."
+        }
+      ],
+      "receiptGroups": [
+        {
+          "type": "VAT_ABLE",
+          "fields": [
+            {
+              "field": "totalAmount",
+              "required": true,
+              "description": "Total amount for VAT-able sales."
+            },
+            {
+              "field": "totalVAT",
+              "required": true,
+              "description": "VAT amount for VAT-able sales."
+            },
+            {
+              "field": "totalCityTax",
+              "required": false,
+              "description": "City tax amount associated with the VAT-able group."
+            },
+            {
+              "field": "taxType",
+              "required": false,
+              "description": "Override tax type when the column provides it."
+            }
+          ]
+        },
+        {
+          "type": "VAT_FREE",
+          "fields": [
+            {
+              "field": "totalAmount",
+              "required": false,
+              "description": "Total amount for VAT-free sales."
+            },
+            {
+              "field": "taxType",
+              "required": false,
+              "description": "Optional override for the VAT-free tax type."
+            }
+          ]
+        }
+      ],
+      "paymentMethods": [
+        {
+          "method": "CASH",
+          "fields": [
+            {
+              "field": "amount",
+              "required": true,
+              "description": "Cash amount paid."
+            },
+            {
+              "field": "reference",
+              "required": false,
+              "description": "Optional cash payment reference or slip number."
+            }
+          ]
+        },
+        {
+          "method": "PAYMENT_CARD",
+          "fields": [
+            {
+              "field": "amount",
+              "required": true,
+              "description": "Card payment amount."
+            },
+            {
+              "field": "reference",
+              "required": false,
+              "description": "Card authorisation or reference number."
+            }
+          ]
+        },
+        {
+          "method": "BANK_TRANSFER",
+          "fields": [
+            {
+              "field": "amount",
+              "required": false,
+              "description": "Amount settled by bank transfer."
+            },
+            {
+              "field": "reference",
+              "required": false,
+              "description": "Bank transaction reference."
+            }
+          ]
+        },
+        {
+          "method": "MOBILE_WALLET",
+          "fields": [
+            {
+              "field": "amount",
+              "required": false,
+              "description": "Amount charged to the mobile wallet."
+            },
+            {
+              "field": "reference",
+              "required": false,
+              "description": "Wallet transaction reference."
+            }
+          ]
+        },
+        {
+          "method": "EASY_BANK_CARD",
+          "fields": [
+            {
+              "field": "amount",
+              "required": false,
+              "description": "Amount paid with Easy Bank card."
+            },
+            {
+              "field": "reference",
+              "required": false,
+              "description": "Reference for the Easy Bank card payment."
+            }
+          ]
+        }
+      ],
       "nestedPaths": {
         "receipts": "receipts",
         "items": "receipts[].items",
