@@ -172,31 +172,41 @@ const FIELD_MAP_KEYS = new Set(['itemFields', 'paymentFields', 'receiptFields'])
 const RECEIPT_GROUP_MAPPING_KEY = 'receiptGroups';
 const PAYMENT_METHOD_MAPPING_KEY = 'paymentMethods';
 
+function coerceFieldMapValue(value) {
+  if (value === undefined || value === null) return '';
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed;
+  }
+  if (typeof value === 'number' || typeof value === 'bigint') {
+    return String(value);
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
+  }
+  if (typeof value === 'object') {
+    if (typeof value.path === 'string' && value.path.trim()) {
+      return value.path.trim();
+    }
+    const tablePart = typeof value.table === 'string' ? value.table.trim() : '';
+    const columnPart = typeof value.column === 'string' ? value.column.trim() : '';
+    if (tablePart && columnPart) return `${tablePart}.${columnPart}`;
+    if (columnPart) return columnPart;
+    if (tablePart) return tablePart;
+  }
+  const str = String(value);
+  const trimmed = str.trim();
+  if (trimmed && trimmed !== '[object Object]') return trimmed;
+  return '';
+}
+
 function normalizeFieldMap(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   const normalized = {};
   Object.entries(value).forEach(([key, val]) => {
     if (typeof key !== 'string') return;
-    if (val === undefined || val === null) return;
-    if (typeof val === 'string') {
-      const trimmed = val.trim();
-      if (trimmed) normalized[key] = trimmed;
-      return;
-    }
-    if (typeof val === 'number' || typeof val === 'bigint') {
-      normalized[key] = String(val);
-      return;
-    }
-    if (typeof val === 'boolean') {
-      normalized[key] = val ? 'true' : 'false';
-      return;
-    }
-    if (typeof val === 'object' && val !== null) {
-      const str = String(val);
-      if (str && str !== '[object Object]') {
-        normalized[key] = str;
-      }
-    }
+    const coerced = coerceFieldMapValue(val);
+    if (coerced) normalized[key] = coerced;
   });
   return normalized;
 }
@@ -396,10 +406,9 @@ function mergeFieldMaps(...maps) {
     if (!map || typeof map !== 'object') return acc;
     Object.entries(map).forEach(([key, value]) => {
       if (typeof key !== 'string') return;
-      if (value === undefined || value === null) return;
-      const str = String(value).trim();
-      if (str && str !== '[object Object]') {
-        acc[key] = str;
+      const coerced = coerceFieldMapValue(value);
+      if (coerced) {
+        acc[key] = coerced;
       }
     });
     return acc;
