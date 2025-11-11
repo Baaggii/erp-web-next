@@ -34,6 +34,15 @@ const PAYMENT_DESCRIPTIONS = {
   SERVICE_PAYMENT: 'Payment processed through a service-only channel.',
 };
 
+const PAYMENT_BADGES = {
+  CASH: '#047857',
+  PAYMENT_CARD: '#7c3aed',
+  BANK_TRANSFER: '#2563eb',
+  MOBILE_WALLET: '#0f766e',
+  EASY_BANK_CARD: '#d97706',
+  SERVICE_PAYMENT: '#db2777',
+};
+
 const METHOD_BADGES = {
   GET: '#38bdf8',
   POST: '#34d399',
@@ -114,6 +123,7 @@ function withEndpointMetadata(endpoint) {
     supportsItems,
     receiptTypes,
     paymentMethods,
+    notes: typeof endpoint.notes === 'string' ? endpoint.notes : '',
   };
 }
 
@@ -157,6 +167,7 @@ const EMPTY_ENDPOINT = {
   paymentMethods: DEFAULT_PAYMENT_METHODS.slice(),
   topLevelFieldsText: '[]',
   nestedPathsText: '{}',
+  notes: '',
 };
 
 const PAYMENT_FIELD_DESCRIPTIONS = {
@@ -520,6 +531,7 @@ function createFormState(definition) {
       : [],
     topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
+    notes: definition.notes || '',
   };
 }
 
@@ -656,6 +668,24 @@ export default function PosApiAdmin() {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
   }, [formState.responseSchemaText]);
+
+  const formReceiptTypes = useMemo(() => {
+    if (formState.usage !== 'transaction') return [];
+    if (Array.isArray(formState.receiptTypes) && formState.receiptTypes.length > 0) {
+      return formState.receiptTypes;
+    }
+    return DEFAULT_RECEIPT_TYPES;
+  }, [formState.usage, formState.receiptTypes]);
+
+  const formPaymentMethods = useMemo(() => {
+    if (formState.usage !== 'transaction') return [];
+    if (Array.isArray(formState.paymentMethods) && formState.paymentMethods.length > 0) {
+      return formState.paymentMethods;
+    }
+    return DEFAULT_PAYMENT_METHODS;
+  }, [formState.usage, formState.paymentMethods]);
+
+  const formSupportsItems = formState.usage === 'transaction' ? formState.supportsItems !== false : false;
 
   const requestFieldHints = useMemo(
     () =>
@@ -1236,6 +1266,7 @@ export default function PosApiAdmin() {
       supportsItems: isTransaction ? Boolean(formState.supportsItems) : false,
       receiptTypes: isTransaction ? uniqueReceiptTypes : [],
       paymentMethods: isTransaction ? uniquePaymentMethods : [],
+      notes: formState.notes ? formState.notes.trim() : '',
       parameters,
       requestBody: {
         schema: requestSchema,
@@ -1617,6 +1648,76 @@ export default function PosApiAdmin() {
                         {ep.category && (
                           <div style={styles.listButtonCategory}>{ep.category}</div>
                         )}
+                        {ep._usage === 'transaction' && (
+                          <div style={styles.listMeta}>
+                            <div style={styles.listMetaRow}>
+                              <span style={styles.listMetaLabel}>Receipt types</span>
+                              {(Array.isArray(ep.receiptTypes) && ep.receiptTypes.length > 0
+                                ? ep.receiptTypes
+                                : ['ALL_SUPPORTED']
+                              ).map((type) => {
+                                const badgeColor =
+                                  type === 'ALL_SUPPORTED'
+                                    ? '#475569'
+                                    : TYPE_BADGES[type] || '#1f2937';
+                                const label =
+                                  type === 'ALL_SUPPORTED'
+                                    ? 'All supported'
+                                    : formatTypeLabel(type) || type;
+                                return (
+                                  <span
+                                    key={`${ep.id}-receipt-${type}`}
+                                    style={{
+                                      ...badgeStyle(badgeColor),
+                                      textTransform: 'none',
+                                    }}
+                                  >
+                                    {label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            <div style={styles.listMetaRow}>
+                              <span style={styles.listMetaLabel}>Payments</span>
+                              {(Array.isArray(ep.paymentMethods) && ep.paymentMethods.length > 0
+                                ? ep.paymentMethods
+                                : ['ALL_SUPPORTED']
+                              ).map((method) => {
+                                const badgeColor =
+                                  method === 'ALL_SUPPORTED'
+                                    ? '#475569'
+                                    : PAYMENT_BADGES[method] || '#475569';
+                                const label =
+                                  method === 'ALL_SUPPORTED'
+                                    ? 'All supported'
+                                    : method.replace(/_/g, ' ');
+                                return (
+                                  <span
+                                    key={`${ep.id}-payment-${method}`}
+                                    style={{
+                                      ...badgeStyle(badgeColor),
+                                      textTransform: 'none',
+                                    }}
+                                  >
+                                    {label}
+                                  </span>
+                                );
+                              })}
+                            </div>
+                            <div style={styles.listMetaRow}>
+                              <span style={styles.listMetaLabel}>Items</span>
+                              <span
+                                style={{
+                                  ...badgeStyle(ep.supportsItems !== false ? '#15803d' : '#475569'),
+                                  textTransform: 'none',
+                                }}
+                              >
+                                {ep.supportsItems !== false ? 'Includes items' : 'Service only'}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                        {ep.notes && <div style={styles.notesText}>{ep.notes}</div>}
                         {ep._preview && (
                           <div style={styles.previewText}>
                             {ep._preview.split('\n').map((line) => (
@@ -1649,6 +1750,52 @@ export default function PosApiAdmin() {
         </p>
         {error && <div style={styles.error}>{error}</div>}
         {status && <div style={styles.status}>{status}</div>}
+        {formState.usage === 'transaction' && (
+          <div style={styles.capabilitiesBox}>
+            <div style={styles.capabilitiesRow}>
+              <span style={styles.capabilitiesLabel}>Supports items</span>
+              <span
+                style={{
+                  ...badgeStyle(formSupportsItems ? '#15803d' : '#475569'),
+                  textTransform: 'none',
+                }}
+              >
+                {formSupportsItems ? 'Includes items' : 'Service only'}
+              </span>
+            </div>
+            <div style={styles.capabilitiesRow}>
+              <span style={styles.capabilitiesLabel}>Receipt types</span>
+              {formReceiptTypes.map((type) => (
+                <span
+                  key={`form-receipt-${type}`}
+                  style={{
+                    ...badgeStyle(TYPE_BADGES[type] || '#1f2937'),
+                    textTransform: 'none',
+                  }}
+                >
+                  {formatTypeLabel(type) || type}
+                </span>
+              ))}
+            </div>
+            <div style={styles.capabilitiesRow}>
+              <span style={styles.capabilitiesLabel}>Payment methods</span>
+              {formPaymentMethods.map((method) => (
+                <span
+                  key={`form-payment-${method}`}
+                  style={{
+                    ...badgeStyle(PAYMENT_BADGES[method] || '#475569'),
+                    textTransform: 'none',
+                  }}
+                >
+                  {method.replace(/_/g, ' ')}
+                </span>
+              ))}
+            </div>
+            {formState.notes && (
+              <div style={{ fontSize: '0.85rem', color: '#475569' }}>{formState.notes}</div>
+            )}
+          </div>
+        )}
         <div style={styles.formGrid}>
           <label style={styles.label}>
             Endpoint ID
@@ -1846,6 +1993,16 @@ export default function PosApiAdmin() {
               onChange={(e) => handleChange('parametersText', e.target.value)}
               style={styles.textarea}
               rows={6}
+            />
+          </label>
+          <label style={styles.labelFull}>
+            Notes / guidance
+            <textarea
+              value={formState.notes}
+              onChange={(e) => handleChange('notes', e.target.value)}
+              style={styles.textarea}
+              rows={3}
+              placeholder="Explain when to use this endpoint"
             />
           </label>
         </div>
@@ -2978,11 +3135,36 @@ const styles = {
     color: '#0f172a',
     marginTop: '0.15rem',
   },
+  listMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+    marginTop: '0.35rem',
+  },
+  listMetaRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '0.35rem',
+    fontSize: '0.7rem',
+    color: '#475569',
+  },
+  listMetaLabel: {
+    fontWeight: 600,
+    textTransform: 'uppercase',
+    letterSpacing: '0.03em',
+  },
   previewText: {
     marginTop: '0.25rem',
     color: '#475569',
     fontSize: '0.75rem',
     lineHeight: 1.3,
+  },
+  notesText: {
+    marginTop: '0.35rem',
+    fontSize: '0.75rem',
+    color: '#0f172a',
+    fontStyle: 'italic',
   },
   formContainer: {
     flex: 1,
@@ -3034,6 +3216,27 @@ const styles = {
     margin: 0,
     fontSize: '0.85rem',
     color: '#475569',
+  },
+  capabilitiesBox: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem 1rem',
+    background: '#f8fafc',
+    marginTop: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  capabilitiesRow: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: '0.5rem',
+    fontSize: '0.85rem',
+    color: '#1e293b',
+  },
+  capabilitiesLabel: {
+    fontWeight: 600,
   },
   detailSection: {
     border: '1px solid #cbd5f5',
