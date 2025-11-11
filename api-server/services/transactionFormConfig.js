@@ -106,29 +106,6 @@ function sanitizePosApiMapping(source) {
   return normalized;
 }
 
-function sanitizeInfoEndpointMappings(source) {
-  if (!source || typeof source !== 'object' || Array.isArray(source)) return {};
-  const normalized = {};
-  Object.entries(source).forEach(([endpointId, mapping]) => {
-    if (typeof endpointId !== 'string') return;
-    const trimmedId = endpointId.trim();
-    if (!trimmedId) return;
-    if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
-    const normalizedMapping = {};
-    Object.entries(mapping).forEach(([field, path]) => {
-      if (typeof field !== 'string' || typeof path !== 'string') return;
-      const trimmedField = field.trim();
-      const trimmedPath = path.trim();
-      if (!trimmedField || !trimmedPath) return;
-      normalizedMapping[trimmedField] = trimmedPath;
-    });
-    if (Object.keys(normalizedMapping).length > 0) {
-      normalized[trimmedId] = normalizedMapping;
-    }
-  });
-  return normalized;
-}
-
 function parseEntry(raw = {}) {
   const temporaryFlag = Boolean(
     raw.supportsTemporarySubmission ??
@@ -137,9 +114,6 @@ function parseEntry(raw = {}) {
       false,
   );
   const mapping = sanitizePosApiMapping(raw.posApiMapping);
-  const infoEndpointMappings = sanitizeInfoEndpointMappings(
-    raw.infoEndpointMappings || raw.posApiInfoMappings,
-  );
   const infoEndpointsSource = Array.isArray(raw.infoEndpoints)
     ? raw.infoEndpoints
     : Array.isArray(raw.posApiInfoEndpointIds)
@@ -248,7 +222,6 @@ function parseEntry(raw = {}) {
           .filter((value) => value)
       : [],
     posApiMapping: mapping,
-    infoEndpointMappings,
     infoEndpoints,
   };
 }
@@ -464,7 +437,6 @@ export async function setFormConfig(
     fieldsFromPosApi = [],
     infoEndpoints = [],
     posApiMapping = {},
-    infoEndpointMappings = {},
   } = config || {};
   const uid = arrify(userIdFields.length ? userIdFields : userIdField ? [userIdField] : []);
   const bid = arrify(
@@ -581,7 +553,6 @@ export async function setFormConfig(
         )
       : [],
     posApiMapping: sanitizePosApiMapping(posApiMapping),
-    infoEndpointMappings: sanitizeInfoEndpointMappings(infoEndpointMappings),
   };
   if (editableFields !== undefined) {
     cfg[table][name].editableFields = arrify(editableFields);
