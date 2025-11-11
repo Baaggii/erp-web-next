@@ -67,6 +67,28 @@ function normalizeFormConfig(info = {}) {
   const toObject = (value) =>
     value && typeof value === 'object' && !Array.isArray(value) ? { ...value } : {};
   const toString = (value) => (typeof value === 'string' ? value : '');
+  const normalizeInfoMappings = (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const normalized = {};
+    Object.entries(value).forEach(([endpointId, mapping]) => {
+      if (typeof endpointId !== 'string') return;
+      const trimmedId = endpointId.trim();
+      if (!trimmedId) return;
+      if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
+      const normalizedMapping = {};
+      Object.entries(mapping).forEach(([field, path]) => {
+        if (typeof field !== 'string' || typeof path !== 'string') return;
+        const trimmedField = field.trim();
+        const trimmedPath = path.trim();
+        if (!trimmedField || !trimmedPath) return;
+        normalizedMapping[trimmedField] = trimmedPath;
+      });
+      if (Object.keys(normalizedMapping).length > 0) {
+        normalized[trimmedId] = normalizedMapping;
+      }
+    });
+    return normalized;
+  };
   const temporaryFlag = Boolean(
     info.supportsTemporarySubmission ??
       info.allowTemporarySubmission ??
@@ -147,6 +169,7 @@ function normalizeFormConfig(info = {}) {
       typeof v === 'string' ? v : String(v),
     ),
     posApiMapping: toObject(info.posApiMapping),
+    infoEndpointMappings: normalizeInfoMappings(info.infoEndpointMappings),
   };
 }
 
@@ -210,6 +233,12 @@ export default function FormsManagement() {
     typeof config.posApiMapping.receiptFields === 'object' &&
     !Array.isArray(config.posApiMapping.receiptFields)
       ? config.posApiMapping.receiptFields
+      : {};
+  const infoEndpointMappings =
+    config.infoEndpointMappings &&
+    typeof config.infoEndpointMappings === 'object' &&
+    !Array.isArray(config.infoEndpointMappings)
+      ? config.infoEndpointMappings
       : {};
 
   useEffect(() => {
@@ -648,11 +677,23 @@ export default function FormsManagement() {
     const selected = Array.from(event.target.selectedOptions || [])
       .map((opt) => opt.value)
       .filter((value) => value);
-    setConfig((c) => ({
-      ...c,
-      posApiInfoEndpointIds: selected,
-      infoEndpoints: selected,
-    }));
+    setConfig((c) => {
+      const existingMappings =
+        c.infoEndpointMappings && typeof c.infoEndpointMappings === 'object'
+          ? { ...c.infoEndpointMappings }
+          : {};
+      Object.keys(existingMappings).forEach((endpointId) => {
+        if (!selected.includes(endpointId)) {
+          delete existingMappings[endpointId];
+        }
+      });
+      return {
+        ...c,
+        posApiInfoEndpointIds: selected,
+        infoEndpoints: selected,
+        infoEndpointMappings: existingMappings,
+      };
+    });
   }
 
   function handleFieldsFromPosApiChange(value) {
@@ -661,6 +702,31 @@ export default function FormsManagement() {
       .map((item) => item.trim())
       .filter((item) => item);
     setConfig((c) => ({ ...c, fieldsFromPosApi: entries }));
+  }
+
+  function handleInfoEndpointMappingChange(endpointId, text) {
+    const lines = String(text || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line);
+    const mapping = {};
+    lines.forEach((line) => {
+      const match = line.match(/^([^:=]+)\s*[:=]\s*(.+)$/);
+      if (!match) return;
+      const field = match[1].trim();
+      const path = match[2].trim();
+      if (!field || !path) return;
+      mapping[field] = path;
+    });
+    setConfig((c) => {
+      const next =
+        c.infoEndpointMappings && typeof c.infoEndpointMappings === 'object'
+          ? { ...c.infoEndpointMappings }
+          : {};
+      if (Object.keys(mapping).length > 0) next[endpointId] = mapping;
+      else delete next[endpointId];
+      return { ...c, infoEndpointMappings: next };
+    });
   }
 
   async function handleSave() {
@@ -694,6 +760,28 @@ export default function FormsManagement() {
             ),
           )
         : [];
+    const normalizeInfoMappings = (map = {}) => {
+      if (!map || typeof map !== 'object' || Array.isArray(map)) return {};
+      const normalized = {};
+      Object.entries(map).forEach(([endpointId, mapping]) => {
+        if (typeof endpointId !== 'string') return;
+        const trimmedId = endpointId.trim();
+        if (!trimmedId) return;
+        if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
+        const normalizedMapping = {};
+        Object.entries(mapping).forEach(([field, path]) => {
+          if (typeof field !== 'string' || typeof path !== 'string') return;
+          const trimmedField = field.trim();
+          const trimmedPath = path.trim();
+          if (!trimmedField || !trimmedPath) return;
+          normalizedMapping[trimmedField] = trimmedPath;
+        });
+        if (Object.keys(normalizedMapping).length > 0) {
+          normalized[trimmedId] = normalizedMapping;
+        }
+      });
+      return normalized;
+    };
     const cfg = {
       ...config,
       moduleKey,
@@ -757,6 +845,7 @@ export default function FormsManagement() {
           ),
         )
       : [];
+    cfg.infoEndpointMappings = normalizeInfoMappings(cfg.infoEndpointMappings);
     const temporaryFlag = Boolean(
       config.supportsTemporarySubmission ??
         config.allowTemporarySubmission ??
@@ -1160,13 +1249,66 @@ export default function FormsManagement() {
                   <small style={{ color: '#666' }}>
                     Optional column containing the POSAPI type (e.g., B2C_RECEIPT).
                   </small>
-                </label>
+              </label>
+            </div>
+            {config.infoEndpoints.length > 0 && (
+              <div style={{ marginTop: '1rem' }}>
+                <strong>Lookup field mapping</strong>
+                <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                  Define how responses from POSAPI lookup endpoints populate form fields. Use one mapping per line in the format
+                  <code>field = response.path</code>.
+                </p>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+                    gap: '0.75rem',
+                    marginTop: '0.5rem',
+                  }}
+                >
+                  {config.infoEndpoints.map((endpointId) => {
+                    const definition = posApiEndpoints.find((ep) => ep?.id === endpointId) || {};
+                    const label = definition.name ? `${endpointId} – ${definition.name}` : endpointId;
+                    const value = Object.entries(infoEndpointMappings[endpointId] || {})
+                      .map(([field, path]) => `${field} = ${path}`)
+                      .join('\n');
+                    return (
+                      <div
+                        key={`info-mapping-${endpointId}`}
+                        style={{
+                          border: '1px solid #d1d5db',
+                          borderRadius: '6px',
+                          padding: '0.75rem',
+                          backgroundColor: '#f9fafb',
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, marginBottom: '0.5rem' }}>{label}</div>
+                        <textarea
+                          value={value}
+                          onChange={(e) => handleInfoEndpointMappingChange(endpointId, e.target.value)}
+                          placeholder={'customer_name = companyName\ncustomer_address = address.line1'}
+                          disabled={!config.posApiEnabled}
+                          style={{
+                            width: '100%',
+                            minHeight: '90px',
+                            fontFamily: 'monospace',
+                            resize: 'vertical',
+                          }}
+                        />
+                        <small style={{ color: '#666' }}>
+                          Supports dot and bracket notation. Example: <code>details[0].vatType</code>
+                        </small>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
-              <label
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.25rem',
+            )}
+            <label
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.25rem',
                   marginBottom: '0.75rem',
                 }}
               >
