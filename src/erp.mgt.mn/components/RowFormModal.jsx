@@ -142,208 +142,6 @@ const RowFormModal = function RowFormModal({
     ],
     [normalizedReceiptTypes, formatReceiptTypeLabel, t],
   );
-  const infoEndpoints = React.useMemo(() => {
-    if (!Array.isArray(posApiInfoEndpointMeta)) return [];
-    const overrideMap =
-      posApiInfoEndpointConfig && typeof posApiInfoEndpointConfig === 'object'
-        ? posApiInfoEndpointConfig
-        : {};
-    return posApiInfoEndpointMeta
-      .filter((entry) => entry && typeof entry === 'object' && typeof entry.id === 'string')
-      .map((entry) => {
-        const override = overrideMap[entry.id] || {};
-        const displayLabel =
-          typeof override.label === 'string' && override.label
-            ? override.label
-            : entry.name || entry.id;
-        const quickActionLabel =
-          typeof override.quickActionLabel === 'string' && override.quickActionLabel
-            ? override.quickActionLabel
-            : '';
-        const autoInvoke =
-          override.autoInvoke === undefined
-            ? Boolean(quickActionLabel)
-            : Boolean(override.autoInvoke);
-        const payloadDefaults = {};
-        if (override.payloadDefaults && typeof override.payloadDefaults === 'object') {
-          Object.entries(override.payloadDefaults).forEach(([key, val]) => {
-            if (typeof key !== 'string') return;
-            if (val === undefined || val === null) return;
-            payloadDefaults[key] = typeof val === 'string' ? val : String(val);
-          });
-        }
-        const requestFields = Array.isArray(entry.requestFields) ? entry.requestFields : [];
-        const responseFields = Array.isArray(entry.responseFields) ? entry.responseFields : [];
-        const requestMappingsRaw = Array.isArray(override.requestMappings)
-          ? override.requestMappings
-          : [];
-        const responseMappingsRaw = Array.isArray(override.responseMappings)
-          ? override.responseMappings
-          : [];
-        const requestMappings = [];
-        const requestPrefill = {};
-        const requiredPayloadFields = new Set(
-          requestFields
-            .filter((field) => field && typeof field.field === 'string' && field.required)
-            .map((field) => field.field),
-        );
-        requestMappingsRaw.forEach((mapping) => {
-          if (!mapping || typeof mapping !== 'object') return;
-          const fieldName = typeof mapping.field === 'string' ? mapping.field : '';
-          if (!fieldName) return;
-          const normalized = {
-            field: fieldName,
-            required: Boolean(mapping.required),
-          };
-          if (normalized.required) requiredPayloadFields.add(fieldName);
-          if (typeof mapping.description === 'string' && mapping.description) {
-            normalized.description = mapping.description;
-          }
-          if (mapping.fallback !== undefined && mapping.fallback !== null && mapping.fallback !== '') {
-            normalized.fallback =
-              typeof mapping.fallback === 'string'
-                ? mapping.fallback
-                : String(mapping.fallback);
-          }
-          if (mapping.value !== undefined && mapping.value !== null && mapping.value !== '') {
-            normalized.scope = 'constant';
-            normalized.value =
-              typeof mapping.value === 'string' ? mapping.value : String(mapping.value);
-          } else if (typeof mapping.source === 'string' && mapping.source.trim()) {
-            const sourceValue = mapping.source.trim();
-            const lower = sourceValue.toLowerCase();
-            if (columnByLowerMap[lower] !== undefined) {
-              normalized.scope = 'form';
-              normalized.resolvedSource = columnByLowerMap[lower];
-            } else if (extraKeyLookup[lower] !== undefined) {
-              normalized.scope = 'extra';
-              normalized.resolvedSource = extraKeyLookup[lower];
-            } else {
-              normalized.scope = 'custom';
-              normalized.resolvedSource = sourceValue;
-            }
-            normalized.source = sourceValue;
-          } else {
-            normalized.scope = 'none';
-          }
-          requestMappings.push(normalized);
-          requestPrefill[fieldName] = normalized;
-        });
-        const responseMappings = [];
-        responseMappingsRaw.forEach((mapping) => {
-          if (!mapping || typeof mapping !== 'object') return;
-          const fieldName = typeof mapping.field === 'string' ? mapping.field : '';
-          if (!fieldName) return;
-          const target =
-            typeof mapping.target === 'string' && mapping.target
-              ? mapping.target
-              : fieldName;
-          const lowerTarget = target.toLowerCase();
-          let scope = 'extra';
-          let resolvedTarget = target;
-          if (columnByLowerMap[lowerTarget] !== undefined) {
-            scope = 'form';
-            resolvedTarget = columnByLowerMap[lowerTarget];
-          } else if (extraKeyLookup[lowerTarget] !== undefined) {
-            scope = 'extra';
-            resolvedTarget = extraKeyLookup[lowerTarget];
-          }
-          const joinWith =
-            typeof mapping.joinWith === 'string' && mapping.joinWith
-              ? mapping.joinWith
-              : ', ';
-          const pick = mapping.pick === 'first' ? 'first' : 'join';
-          const fallback =
-            mapping.fallback !== undefined && mapping.fallback !== null && mapping.fallback !== ''
-              ? typeof mapping.fallback === 'string'
-                ? mapping.fallback
-                : String(mapping.fallback)
-              : undefined;
-          const required = Boolean(mapping.required);
-          const description =
-            typeof mapping.description === 'string' && mapping.description
-              ? mapping.description
-              : undefined;
-          const targetLabel =
-            typeof mapping.targetLabel === 'string' && mapping.targetLabel
-              ? mapping.targetLabel
-              : labels?.[resolvedTarget] || labels?.[target] || target;
-          responseMappings.push({
-            field: fieldName,
-            target,
-            resolvedTarget,
-            scope,
-            joinWith,
-            pick,
-            fallback,
-            required,
-            description,
-            targetLabel,
-          });
-        });
-        return {
-          id: entry.id,
-          name: entry.name || entry.id,
-          method: entry.method || 'GET',
-          path: entry.path || '/',
-          requestFields,
-          responseFields,
-          displayLabel,
-          quickActionLabel,
-          autoInvoke,
-          payloadDefaults,
-          requestMappings,
-          requestPrefill,
-          responseMappings,
-          requiredPayloadFields,
-          description:
-            typeof override.description === 'string' && override.description
-              ? override.description
-              : undefined,
-          modalTitle:
-            typeof override.modalTitle === 'string' && override.modalTitle
-              ? override.modalTitle
-              : undefined,
-        };
-      })
-      .filter(Boolean);
-  }, [
-    posApiInfoEndpointMeta,
-    posApiInfoEndpointConfig,
-    columnByLowerMap,
-    extraKeyLookup,
-    labels,
-  ]);
-  const infoEndpointsKey = React.useMemo(
-    () => JSON.stringify(infoEndpoints.map((entry) => entry.id)),
-    [infoEndpoints],
-  );
-  const quickInfoEndpoints = React.useMemo(
-    () => infoEndpoints.filter((entry) => entry.quickActionLabel),
-    [infoEndpoints],
-  );
-  const [infoModalOpen, setInfoModalOpen] = useState(false);
-  const [activeInfoEndpointId, setActiveInfoEndpointId] = useState(
-    () => infoEndpoints[0]?.id || '',
-  );
-  const [infoPayload, setInfoPayload] = useState({});
-  const [infoResponse, setInfoResponse] = useState(null);
-  const [infoError, setInfoError] = useState(null);
-  const [infoLoading, setInfoLoading] = useState(false);
-  const [infoHistory, setInfoHistory] = useState([]);
-  const pendingInfoInvokeRef = useRef(null);
-  useEffect(() => {
-    if (!infoEndpoints.length) {
-      setActiveInfoEndpointId('');
-      return;
-    }
-    setActiveInfoEndpointId((prev) => {
-      if (prev && infoEndpoints.some((entry) => entry.id === prev)) {
-        return prev;
-      }
-      return infoEndpoints[0].id;
-    });
-  }, [infoEndpoints, infoEndpointsKey]);
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -836,6 +634,208 @@ const RowFormModal = function RowFormModal({
     },
     [columnByLowerMap, extraKeyLookup, formVals, extraVals],
   );
+  const infoEndpoints = React.useMemo(() => {
+    if (!Array.isArray(posApiInfoEndpointMeta)) return [];
+    const overrideMap =
+      posApiInfoEndpointConfig && typeof posApiInfoEndpointConfig === 'object'
+        ? posApiInfoEndpointConfig
+        : {};
+    return posApiInfoEndpointMeta
+      .filter((entry) => entry && typeof entry === 'object' && typeof entry.id === 'string')
+      .map((entry) => {
+        const override = overrideMap[entry.id] || {};
+        const displayLabel =
+          typeof override.label === 'string' && override.label
+            ? override.label
+            : entry.name || entry.id;
+        const quickActionLabel =
+          typeof override.quickActionLabel === 'string' && override.quickActionLabel
+            ? override.quickActionLabel
+            : '';
+        const autoInvoke =
+          override.autoInvoke === undefined
+            ? Boolean(quickActionLabel)
+            : Boolean(override.autoInvoke);
+        const payloadDefaults = {};
+        if (override.payloadDefaults && typeof override.payloadDefaults === 'object') {
+          Object.entries(override.payloadDefaults).forEach(([key, val]) => {
+            if (typeof key !== 'string') return;
+            if (val === undefined || val === null) return;
+            payloadDefaults[key] = typeof val === 'string' ? val : String(val);
+          });
+        }
+        const requestFields = Array.isArray(entry.requestFields) ? entry.requestFields : [];
+        const responseFields = Array.isArray(entry.responseFields) ? entry.responseFields : [];
+        const requestMappingsRaw = Array.isArray(override.requestMappings)
+          ? override.requestMappings
+          : [];
+        const responseMappingsRaw = Array.isArray(override.responseMappings)
+          ? override.responseMappings
+          : [];
+        const requestMappings = [];
+        const requestPrefill = {};
+        const requiredPayloadFields = new Set(
+          requestFields
+            .filter((field) => field && typeof field.field === 'string' && field.required)
+            .map((field) => field.field),
+        );
+        requestMappingsRaw.forEach((mapping) => {
+          if (!mapping || typeof mapping !== 'object') return;
+          const fieldName = typeof mapping.field === 'string' ? mapping.field : '';
+          if (!fieldName) return;
+          const normalized = {
+            field: fieldName,
+            required: Boolean(mapping.required),
+          };
+          if (normalized.required) requiredPayloadFields.add(fieldName);
+          if (typeof mapping.description === 'string' && mapping.description) {
+            normalized.description = mapping.description;
+          }
+          if (mapping.fallback !== undefined && mapping.fallback !== null && mapping.fallback !== '') {
+            normalized.fallback =
+              typeof mapping.fallback === 'string'
+                ? mapping.fallback
+                : String(mapping.fallback);
+          }
+          if (mapping.value !== undefined && mapping.value !== null && mapping.value !== '') {
+            normalized.scope = 'constant';
+            normalized.value =
+              typeof mapping.value === 'string' ? mapping.value : String(mapping.value);
+          } else if (typeof mapping.source === 'string' && mapping.source.trim()) {
+            const sourceValue = mapping.source.trim();
+            const lower = sourceValue.toLowerCase();
+            if (columnByLowerMap[lower] !== undefined) {
+              normalized.scope = 'form';
+              normalized.resolvedSource = columnByLowerMap[lower];
+            } else if (extraKeyLookup[lower] !== undefined) {
+              normalized.scope = 'extra';
+              normalized.resolvedSource = extraKeyLookup[lower];
+            } else {
+              normalized.scope = 'custom';
+              normalized.resolvedSource = sourceValue;
+            }
+            normalized.source = sourceValue;
+          } else {
+            normalized.scope = 'none';
+          }
+          requestMappings.push(normalized);
+          requestPrefill[fieldName] = normalized;
+        });
+        const responseMappings = [];
+        responseMappingsRaw.forEach((mapping) => {
+          if (!mapping || typeof mapping !== 'object') return;
+          const fieldName = typeof mapping.field === 'string' ? mapping.field : '';
+          if (!fieldName) return;
+          const target =
+            typeof mapping.target === 'string' && mapping.target
+              ? mapping.target
+              : fieldName;
+          const lowerTarget = target.toLowerCase();
+          let scope = 'extra';
+          let resolvedTarget = target;
+          if (columnByLowerMap[lowerTarget] !== undefined) {
+            scope = 'form';
+            resolvedTarget = columnByLowerMap[lowerTarget];
+          } else if (extraKeyLookup[lowerTarget] !== undefined) {
+            scope = 'extra';
+            resolvedTarget = extraKeyLookup[lowerTarget];
+          }
+          const joinWith =
+            typeof mapping.joinWith === 'string' && mapping.joinWith
+              ? mapping.joinWith
+              : ', ';
+          const pick = mapping.pick === 'first' ? 'first' : 'join';
+          const fallback =
+            mapping.fallback !== undefined && mapping.fallback !== null && mapping.fallback !== ''
+              ? typeof mapping.fallback === 'string'
+                ? mapping.fallback
+                : String(mapping.fallback)
+              : undefined;
+          const required = Boolean(mapping.required);
+          const description =
+            typeof mapping.description === 'string' && mapping.description
+              ? mapping.description
+              : undefined;
+          const targetLabel =
+            typeof mapping.targetLabel === 'string' && mapping.targetLabel
+              ? mapping.targetLabel
+              : labels?.[resolvedTarget] || labels?.[target] || target;
+          responseMappings.push({
+            field: fieldName,
+            target,
+            resolvedTarget,
+            scope,
+            joinWith,
+            pick,
+            fallback,
+            required,
+            description,
+            targetLabel,
+          });
+        });
+        return {
+          id: entry.id,
+          name: entry.name || entry.id,
+          method: entry.method || 'GET',
+          path: entry.path || '/',
+          requestFields,
+          responseFields,
+          displayLabel,
+          quickActionLabel,
+          autoInvoke,
+          payloadDefaults,
+          requestMappings,
+          requestPrefill,
+          responseMappings,
+          requiredPayloadFields,
+          description:
+            typeof override.description === 'string' && override.description
+              ? override.description
+              : undefined,
+          modalTitle:
+            typeof override.modalTitle === 'string' && override.modalTitle
+              ? override.modalTitle
+              : undefined,
+        };
+      })
+      .filter(Boolean);
+  }, [
+    posApiInfoEndpointMeta,
+    posApiInfoEndpointConfig,
+    columnByLowerMap,
+    extraKeyLookup,
+    labels,
+  ]);
+  const infoEndpointsKey = React.useMemo(
+    () => JSON.stringify(infoEndpoints.map((entry) => entry.id)),
+    [infoEndpoints],
+  );
+  const quickInfoEndpoints = React.useMemo(
+    () => infoEndpoints.filter((entry) => entry.quickActionLabel),
+    [infoEndpoints],
+  );
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  const [activeInfoEndpointId, setActiveInfoEndpointId] = useState(
+    () => infoEndpoints[0]?.id || '',
+  );
+  const [infoPayload, setInfoPayload] = useState({});
+  const [infoResponse, setInfoResponse] = useState(null);
+  const [infoError, setInfoError] = useState(null);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [infoHistory, setInfoHistory] = useState([]);
+  const pendingInfoInvokeRef = useRef(null);
+  useEffect(() => {
+    if (!infoEndpoints.length) {
+      setActiveInfoEndpointId('');
+      return;
+    }
+    setActiveInfoEndpointId((prev) => {
+      if (prev && infoEndpoints.some((entry) => entry.id === prev)) {
+        return prev;
+      }
+      return infoEndpoints[0].id;
+    });
+  }, [infoEndpoints, infoEndpointsKey]);
   useEffect(() => {
     if (!infoModalOpen) return;
     const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
