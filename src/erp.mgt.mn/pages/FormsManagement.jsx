@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useContext } from 'react';
+import React, { useEffect, useState, useMemo, useContext, useRef } from 'react';
 import { useModules, refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
@@ -212,6 +212,7 @@ export default function FormsManagement() {
   const [workplaces, setWorkplaces] = useState([]);
   const [txnTypes, setTxnTypes] = useState([]);
   const [columns, setColumns] = useState([]);
+  const [tableColumns, setTableColumns] = useState({});
   const [views, setViews] = useState([]);
   const [procedureOptions, setProcedureOptions] = useState([]);
   const [branchCfg, setBranchCfg] = useState({ idField: null, displayFields: [] });
@@ -221,6 +222,7 @@ export default function FormsManagement() {
   const [posApiEndpoints, setPosApiEndpoints] = useState([]);
   const [savedConfigs, setSavedConfigs] = useState([]);
   const [selectedConfig, setSelectedConfig] = useState('');
+  const loadingTablesRef = useRef(new Set());
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
@@ -237,6 +239,69 @@ export default function FormsManagement() {
   useEffect(() => {
     debugLog('Component mounted: FormsManagement');
   }, []);
+
+  const ensureColumnsLoaded = (tableName, { updatePrimary = false, force = false } = {}) => {
+    const trimmed = typeof tableName === 'string' ? tableName.trim() : '';
+    if (!trimmed) {
+      if (updatePrimary) setColumns([]);
+      return;
+    }
+    const existing = tableColumns[trimmed];
+    if (!force && existing) {
+      if (updatePrimary) setColumns(existing);
+      return;
+    }
+    if (loadingTablesRef.current.has(trimmed)) {
+      if (updatePrimary && existing) setColumns(existing);
+      return;
+    }
+    loadingTablesRef.current.add(trimmed);
+    fetch(`/api/tables/${encodeURIComponent(trimmed)}/columns`, {
+      credentials: 'include',
+    })
+      .then((res) => (res.ok ? res.json() : []))
+      .then((cols) => {
+        const names = Array.isArray(cols) ? cols.map((c) => c.name || c) : [];
+        setTableColumns((prev) => ({ ...prev, [trimmed]: names }));
+        if (updatePrimary) setColumns(names);
+      })
+      .catch(() => {
+        setTableColumns((prev) => ({ ...prev, [trimmed]: [] }));
+        if (updatePrimary) setColumns([]);
+      })
+      .finally(() => {
+        loadingTablesRef.current.delete(trimmed);
+      });
+  };
+
+  const parseFieldSource = (value = '', primaryTableName = '') => {
+    if (typeof value !== 'string') {
+      return { table: '', column: '', raw: value ? String(value) : '' };
+    }
+    const trimmed = value.trim();
+    if (!trimmed) return { table: '', column: '', raw: '' };
+    const parts = trimmed.split('.');
+    if (parts.length > 1) {
+      const [first, ...rest] = parts;
+      if (/^[a-zA-Z0-9_]+$/.test(first)) {
+        const normalizedPrimary =
+          typeof primaryTableName === 'string' ? primaryTableName.trim() : '';
+        if (normalizedPrimary && first === normalizedPrimary) {
+          return { table: '', column: rest.join('.'), raw: trimmed };
+        }
+        return { table: first, column: rest.join('.'), raw: trimmed };
+      }
+    }
+    return { table: '', column: trimmed, raw: trimmed };
+  };
+
+  const buildFieldSource = (tableName, columnName) => {
+    const tablePart = typeof tableName === 'string' ? tableName.trim() : '';
+    const columnPart = typeof columnName === 'string' ? columnName.trim() : '';
+    if (!columnPart) return '';
+    if (!tablePart) return columnPart;
+    return `${tablePart}.${columnPart}`;
+  };
 
   const [config, setConfig] = useState(() => normalizeFormConfig());
 
@@ -270,6 +335,47 @@ export default function FormsManagement() {
     !Array.isArray(config.posApiMapping.paymentMethods)
       ? config.posApiMapping.paymentMethods
       : {};
+
+  useEffect(() => {
+    const tablesToLoad = new Set();
+    Object.values(itemFieldMapping || {}).forEach((value) => {
+      const parsed = parseFieldSource(value, table);
+      if (parsed.table) tablesToLoad.add(parsed.table);
+    });
+    if (config.posApiMapping) {
+      const descriptor = config.posApiMapping.itemsField || config.posApiMapping.items;
+      if (descriptor && typeof descriptor === 'object' && descriptor.path) {
+        const parsed = parseFieldSource(descriptor.path, table);
+        if (parsed.table) tablesToLoad.add(parsed.table);
+      }
+    }
+    tablesToLoad.forEach((tbl) => ensureColumnsLoaded(tbl));
+  }, [itemFieldMapping, config.posApiMapping, table]);
+
+  const itemTableOptions = useMemo(() => {
+    const seen = new Set();
+    const list = [];
+    const add = (value) => {
+      if (!value) return;
+      const str = typeof value === 'string' ? value.trim() : String(value || '').trim();
+      if (!str || seen.has(str)) return;
+      seen.add(str);
+      list.push(str);
+    };
+    add(table);
+    Object.keys(tableColumns || {}).forEach(add);
+    (tables || []).forEach((entry) => {
+      if (!entry) return;
+      if (typeof entry === 'string') {
+        add(entry);
+        return;
+      }
+      if (typeof entry === 'object') {
+        add(entry.table || entry.name || '');
+      }
+    });
+    return list;
+  }, [table, tableColumns, tables]);
 
   useEffect(() => {
     fetch('/api/transaction_forms', { credentials: 'include' })
@@ -363,14 +469,32 @@ export default function FormsManagement() {
   const infoEndpointOptions = endpointOptionGroups.info;
 
   const selectedEndpoint = useMemo(() => {
+    let endpoint = null;
     if (config.posApiEndpointId) {
       const match = posApiEndpoints.find(
-        (endpoint) => endpoint?.id === config.posApiEndpointId,
+        (candidate) => candidate?.id === config.posApiEndpointId,
       );
-      if (match) return match;
+      if (match) endpoint = match;
     }
-    return config.posApiEndpointMeta || null;
-  }, [posApiEndpoints, config.posApiEndpointId, config.posApiEndpointMeta]);
+    if (!endpoint && config.posApiEndpointMeta) {
+      endpoint = config.posApiEndpointMeta;
+    }
+    if (!endpoint) return null;
+    const next = { ...endpoint };
+    const hasItemMapping =
+      config.posApiMapping &&
+      typeof config.posApiMapping === 'object' &&
+      (config.posApiMapping.itemFields || config.posApiMapping.itemsField);
+    if (hasItemMapping) {
+      next.supportsItems = true;
+    }
+    return next;
+  }, [
+    posApiEndpoints,
+    config.posApiEndpointId,
+    config.posApiEndpointMeta,
+    config.posApiMapping,
+  ]);
 
   const supportsItems = selectedEndpoint?.supportsItems !== false;
 
@@ -398,10 +522,14 @@ export default function FormsManagement() {
   }, [configuredReceiptTypes, endpointReceiptTypes]);
 
   const receiptTypeUniverse = useMemo(() => {
+    const allowed = new Set((endpointReceiptTypes || []).filter(Boolean));
     const combined = Array.from(
-      new Set([...endpointReceiptTypes, ...configuredReceiptTypes]),
-    ).filter((value) => value);
-    if (combined.length) return combined;
+      new Set([...endpointReceiptTypes, ...configuredReceiptTypes].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredReceiptTypes.includes(value),
+    );
+    if (filtered.length) return filtered;
     return endpointReceiptTypes;
   }, [endpointReceiptTypes, configuredReceiptTypes]);
 
@@ -431,10 +559,14 @@ export default function FormsManagement() {
   }, [configuredPaymentMethods, endpointPaymentMethods]);
 
   const paymentMethodUniverse = useMemo(() => {
+    const allowed = new Set((endpointPaymentMethods || []).filter(Boolean));
     const combined = Array.from(
-      new Set([...endpointPaymentMethods, ...configuredPaymentMethods]),
-    ).filter((value) => value);
-    if (combined.length) return combined;
+      new Set([...endpointPaymentMethods, ...configuredPaymentMethods].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredPaymentMethods.includes(value),
+    );
+    if (filtered.length) return filtered;
     return endpointPaymentMethods;
   }, [endpointPaymentMethods, configuredPaymentMethods]);
 
@@ -630,12 +762,7 @@ export default function FormsManagement() {
     const info = cfg.config || {};
     setConfig(normalizeFormConfig(info));
     setNames([cfg.name]);
-    fetch(`/api/tables/${encodeURIComponent(cfg.table)}/columns`, {
-      credentials: 'include',
-    })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((cols) => setColumns(cols.map((c) => c.name || c)))
-      .catch(() => setColumns([]));
+    ensureColumnsLoaded(cfg.table, { updatePrimary: true, force: true });
   }
 
     useEffect(() => {
@@ -727,11 +854,11 @@ export default function FormsManagement() {
     }, [generalConfig?.general?.reportProcPrefix, generalConfig?.general?.reportViewPrefix]);
 
   useEffect(() => {
-    if (!table) return;
-    fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : []))
-      .then((cols) => setColumns(cols.map((c) => c.name || c)))
-      .catch(() => setColumns([]));
+    if (!table) {
+      setColumns([]);
+      return;
+    }
+    ensureColumnsLoaded(table, { updatePrimary: true });
     const params = new URLSearchParams({ table, moduleKey });
     fetch(`/api/transaction_forms?${params.toString()}`, { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : { isDefault: true }))
@@ -1646,46 +1773,101 @@ export default function FormsManagement() {
                     );
                   })}
                 </div>
-                {supportsItems ? (
+                {supportsItems && (
                   <>
                     <div style={{ marginTop: '1rem' }}>
                       <strong>Item field mapping</strong>
                       <p style={{ fontSize: '0.85rem', color: '#555' }}>
-                        Provide column paths for individual item properties. Paths can reference
-                        nested JSON fields (e.g., <code>details[0].name</code>).
+                        Choose the source table and column for each item property. Leave the
+                        table blank to read from the master record or enter a custom JSON path.
                       </p>
                       <div
                         style={{
                           display: 'grid',
-                          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
                           gap: '0.75rem',
                           marginTop: '0.5rem',
                         }}
                       >
                         {POS_API_ITEM_FIELDS.map((field) => {
-                          const listId = `posapi-item-${field.key}-columns`;
+                          const rawValue = itemFieldMapping[field.key] || '';
+                          const parsed = parseFieldSource(rawValue, table);
+                          const selectedTable = parsed.table;
+                          const columnValue = parsed.column;
+                          const listId = `posapi-item-${field.key}-columns-${selectedTable || 'master'}`;
+                          const availableColumns = selectedTable
+                            ? tableColumns[selectedTable] || []
+                            : columns;
+                          const tableChoices = itemTableOptions
+                            .filter((tbl) => tbl && (!table || tbl !== table))
+                            .slice();
+                          if (
+                            selectedTable &&
+                            selectedTable !== '' &&
+                            (!table || selectedTable !== table) &&
+                            !tableChoices.includes(selectedTable)
+                          ) {
+                            tableChoices.unshift(selectedTable);
+                          }
                           return (
-                            <label
+                            <div
                               key={`item-${field.key}`}
-                              style={{ display: 'flex', flexDirection: 'column' }}
+                              style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
                             >
-                              <span>{field.label}</span>
-                              <input
-                                type="text"
-                                list={listId}
-                                value={itemFieldMapping[field.key] || ''}
-                                onChange={(e) =>
-                                  updatePosApiNestedMapping('itemFields', field.key, e.target.value)
-                                }
-                                placeholder="Column or path"
-                                disabled={!config.posApiEnabled}
-                              />
+                              <span style={{ fontWeight: 500 }}>{field.label}</span>
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  gap: '0.5rem',
+                                  alignItems: 'center',
+                                }}
+                              >
+                                <select
+                                  value={selectedTable}
+                                  onChange={(e) => {
+                                    const nextTable = e.target.value;
+                                    if (nextTable) ensureColumnsLoaded(nextTable);
+                                    const nextValue = buildFieldSource(nextTable, parsed.column);
+                                    updatePosApiNestedMapping('itemFields', field.key, nextValue);
+                                  }}
+                                  disabled={!config.posApiEnabled}
+                                  style={{ minWidth: '160px' }}
+                                >
+                                  <option value="">
+                                    {table ? `${table} (master)` : 'Master table'}
+                                  </option>
+                                  {tableChoices.map((tbl) => (
+                                    <option key={`item-${field.key}-table-${tbl}`} value={tbl}>
+                                      {tbl}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="text"
+                                  list={listId}
+                                  value={columnValue}
+                                  onChange={(e) =>
+                                    updatePosApiNestedMapping(
+                                      'itemFields',
+                                      field.key,
+                                      buildFieldSource(selectedTable, e.target.value),
+                                    )
+                                  }
+                                  placeholder="Column or path"
+                                  disabled={!config.posApiEnabled}
+                                  style={{ flex: '1 1 140px', minWidth: '140px' }}
+                                />
+                              </div>
                               <datalist id={listId}>
-                                {columns.map((col) => (
-                                  <option key={`item-${field.key}-${col}`} value={col} />
+                                {availableColumns.map((col) => (
+                                  <option
+                                    key={`item-${field.key}-${selectedTable || 'master'}-${col}`}
+                                    value={col}
+                                  />
                                 ))}
                               </datalist>
-                            </label>
+                            </div>
                           );
                         })}
                       </div>
@@ -1774,187 +1956,180 @@ export default function FormsManagement() {
                       </div>
                     </div>
                   </>
-                ) : (
-                  <>
-                    <div style={{ marginTop: '1rem' }}>
-                      <strong>Service receipt groups</strong>
-                      <p style={{ fontSize: '0.85rem', color: '#555' }}>
-                        Map aggregated service totals for each tax group. Required fields are marked
-                        in red based on the POSAPI endpoint metadata.
-                      </p>
-                      <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
-                        {serviceReceiptGroupTypes.map((type) => {
-                          const hintMap = receiptGroupHints[type] || {};
-                          const baseFields = SERVICE_RECEIPT_FIELDS.map((entry) => entry.key);
-                          const combined = Array.from(
-                            new Set([...baseFields, ...Object.keys(hintMap)]),
-                          );
-                          const groupValues =
-                            receiptGroupMapping[type] &&
-                            typeof receiptGroupMapping[type] === 'object'
-                              ? receiptGroupMapping[type]
-                              : {};
-                          return (
-                            <div
-                              key={`service-group-${type}`}
-                              style={{
-                                border: '1px solid #d1d5db',
-                                borderRadius: '8px',
-                                padding: '0.75rem',
-                              }}
-                            >
-                              <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>
-                                Tax group: {type.replace(/_/g, ' ')}
-                              </h4>
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                                  gap: '0.75rem',
-                                }}
-                              >
-                                {combined.map((fieldKey) => {
-                                  const descriptor =
-                                    SERVICE_RECEIPT_FIELDS.find((entry) => entry.key === fieldKey);
-                                  const label = descriptor
-                                    ? descriptor.label
-                                    : fieldKey.replace(/([A-Z])/g, ' $1');
-                                  const hint = hintMap[fieldKey] || {};
-                                  const isRequired = Boolean(hint.required);
-                                  const description = hint.description;
-                                  const listId = `service-receipt-${type}-${fieldKey}`;
-                                  return (
-                                    <label
-                                      key={`service-receipt-${type}-${fieldKey}`}
-                                      style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
-                                    >
-                                      <span
-                                        style={
-                                          isRequired
-                                            ? { fontWeight: 600, color: '#b91c1c' }
-                                            : { fontWeight: 500 }
-                                        }
-                                      >
-                                        {label}
-                                        {isRequired ? ' *' : ''}
-                                      </span>
-                                      <input
-                                        type="text"
-                                        list={listId}
-                                        value={groupValues[fieldKey] || ''}
-                                        onChange={(e) =>
-                                          updateReceiptGroupMapping(type, fieldKey, e.target.value)
-                                        }
-                                        placeholder="Column or path"
-                                        disabled={!config.posApiEnabled}
-                                      />
-                                      <datalist id={listId}>
-                                        {columns.map((col) => (
-                                          <option key={`service-receipt-${fieldKey}-${col}`} value={col} />
-                                        ))}
-                                      </datalist>
-                                      {description && (
-                                        <small style={{ color: '#555' }}>{description}</small>
-                                      )}
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                    <div style={{ marginTop: '1rem' }}>
-                      <strong>Service payment methods</strong>
-                      <p style={{ fontSize: '0.85rem', color: '#555' }}>
-                        Map payment information captured on the transaction record to each available
-                        POSAPI payment method.
-                      </p>
-                      <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
-                        {servicePaymentMethodCodes.map((method) => {
-                          const hintMap = paymentMethodHints[method] || {};
-                          const baseFields = SERVICE_PAYMENT_FIELDS.map((entry) => entry.key);
-                          const combined = Array.from(
-                            new Set([...baseFields, ...Object.keys(hintMap)]),
-                          );
-                          const methodValues =
-                            paymentMethodMapping[method] &&
-                            typeof paymentMethodMapping[method] === 'object'
-                              ? paymentMethodMapping[method]
-                              : {};
-                          const label = PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
-                          return (
-                            <div
-                              key={`service-payment-${method}`}
-                              style={{
-                                border: '1px solid #d1d5db',
-                                borderRadius: '8px',
-                                padding: '0.75rem',
-                              }}
-                            >
-                              <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Method: {label}</h4>
-                              <div
-                                style={{
-                                  display: 'grid',
-                                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                                  gap: '0.75rem',
-                                }}
-                              >
-                                {combined.map((fieldKey) => {
-                                  const descriptor =
-                                    SERVICE_PAYMENT_FIELDS.find((entry) => entry.key === fieldKey);
-                                  const fieldLabel = descriptor
-                                    ? descriptor.label
-                                    : fieldKey.replace(/([A-Z])/g, ' $1');
-                                  const hint = hintMap[fieldKey] || {};
-                                  const isRequired = Boolean(hint.required);
-                                  const description = hint.description;
-                                  const listId = `service-payment-${method}-${fieldKey}`;
-                                  return (
-                                    <label
-                                      key={`service-payment-${method}-${fieldKey}`}
-                                      style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
-                                    >
-                                      <span
-                                        style={
-                                          isRequired
-                                            ? { fontWeight: 600, color: '#b91c1c' }
-                                            : { fontWeight: 500 }
-                                        }
-                                      >
-                                        {fieldLabel}
-                                        {isRequired ? ' *' : ''}
-                                      </span>
-                                      <input
-                                        type="text"
-                                        list={listId}
-                                        value={methodValues[fieldKey] || ''}
-                                        onChange={(e) =>
-                                          updatePaymentMethodMapping(method, fieldKey, e.target.value)
-                                        }
-                                        placeholder="Column or path"
-                                        disabled={!config.posApiEnabled}
-                                      />
-                                      <datalist id={listId}>
-                                        {columns.map((col) => (
-                                          <option key={`service-payment-${fieldKey}-${col}`} value={col} />
-                                        ))}
-                                      </datalist>
-                                      {description && (
-                                        <small style={{ color: '#555' }}>{description}</small>
-                                      )}
-                                    </label>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </>
                 )}
+                <div style={{ marginTop: '1rem' }}>
+                  <strong>{supportsItems ? 'Receipt group overrides' : 'Service receipt groups'}</strong>
+                  <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                    {supportsItems
+                      ? 'Override totals for POSAPI receipt groups when itemised data needs to be regrouped by tax type.'
+                      : 'Map aggregated service totals for each tax group. Required fields are marked in red based on the POSAPI endpoint metadata.'}
+                  </p>
+                  <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
+                    {serviceReceiptGroupTypes.map((type) => {
+                      const hintMap = receiptGroupHints[type] || {};
+                      const baseFields = SERVICE_RECEIPT_FIELDS.map((entry) => entry.key);
+                      const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
+                      const groupValues =
+                        receiptGroupMapping[type] && typeof receiptGroupMapping[type] === 'object'
+                          ? receiptGroupMapping[type]
+                          : {};
+                      return (
+                        <div
+                          key={`service-group-${type}`}
+                          style={{
+                            border: '1px solid #d1d5db',
+                            borderRadius: '8px',
+                            padding: '0.75rem',
+                          }}
+                        >
+                          <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>
+                            Tax group: {type.replace(/_/g, ' ')}
+                          </h4>
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                              gap: '0.75rem',
+                            }}
+                          >
+                            {combined.map((fieldKey) => {
+                              const descriptor =
+                                SERVICE_RECEIPT_FIELDS.find((entry) => entry.key === fieldKey);
+                              const label = descriptor
+                                ? descriptor.label
+                                : fieldKey.replace(/([A-Z])/g, ' $1');
+                              const hint = hintMap[fieldKey] || {};
+                              const isRequired = Boolean(hint.required);
+                              const description = hint.description;
+                              const listId = `service-receipt-${type}-${fieldKey}`;
+                              return (
+                                <label
+                                  key={`service-receipt-${type}-${fieldKey}`}
+                                  style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+                                >
+                                  <span
+                                    style={
+                                      isRequired
+                                        ? { fontWeight: 600, color: '#b91c1c' }
+                                        : { fontWeight: 500 }
+                                    }
+                                  >
+                                    {label}
+                                    {isRequired ? ' *' : ''}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    list={listId}
+                                    value={groupValues[fieldKey] || ''}
+                                    onChange={(e) =>
+                                      updateReceiptGroupMapping(type, fieldKey, e.target.value)
+                                    }
+                                    placeholder="Column or path"
+                                    disabled={!config.posApiEnabled}
+                                  />
+                                  <datalist id={listId}>
+                                    {columns.map((col) => (
+                                      <option key={`service-receipt-${fieldKey}-${col}`} value={col} />
+                                    ))}
+                                  </datalist>
+                                  {description && (
+                                    <small style={{ color: '#555' }}>{description}</small>
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{ marginTop: '1rem' }}>
+                  <strong>{supportsItems ? 'Payment method overrides' : 'Service payment methods'}</strong>
+                  <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                    {supportsItems
+                      ? 'Map stored payment breakdowns to the POSAPI method codes returned by the endpoint.'
+                      : 'Map payment information captured on the transaction record to each available POSAPI payment method.'}
+                  </p>
+                  <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
+                    {servicePaymentMethodCodes.map((method) => {
+                      const hintMap = paymentMethodHints[method] || {};
+                      const baseFields = SERVICE_PAYMENT_FIELDS.map((entry) => entry.key);
+                      const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
+                      const methodValues =
+                        paymentMethodMapping[method] && typeof paymentMethodMapping[method] === 'object'
+                          ? paymentMethodMapping[method]
+                          : {};
+                      const label = PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
+                      return (
+                        <div
+                          key={`service-payment-${method}`}
+                          style={{
+                            border: '1px solid #d1d5db',
+                            borderRadius: '8px',
+                            padding: '0.75rem',
+                          }}
+                        >
+                          <h4 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Method: {label}</h4>
+                          <div
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                              gap: '0.75rem',
+                            }}
+                          >
+                            {combined.map((fieldKey) => {
+                              const descriptor =
+                                SERVICE_PAYMENT_FIELDS.find((entry) => entry.key === fieldKey);
+                              const fieldLabel = descriptor
+                                ? descriptor.label
+                                : fieldKey.replace(/([A-Z])/g, ' $1');
+                              const hint = hintMap[fieldKey] || {};
+                              const isRequired = Boolean(hint.required);
+                              const description = hint.description;
+                              const listId = `service-payment-${method}-${fieldKey}`;
+                              return (
+                                <label
+                                  key={`service-payment-${method}-${fieldKey}`}
+                                  style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
+                                >
+                                  <span
+                                    style={
+                                      isRequired
+                                        ? { fontWeight: 600, color: '#b91c1c' }
+                                        : { fontWeight: 500 }
+                                    }
+                                  >
+                                    {fieldLabel}
+                                    {isRequired ? ' *' : ''}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    list={listId}
+                                    value={methodValues[fieldKey] || ''}
+                                    onChange={(e) =>
+                                      updatePaymentMethodMapping(method, fieldKey, e.target.value)
+                                    }
+                                    placeholder="Column or path"
+                                    disabled={!config.posApiEnabled}
+                                  />
+                                  <datalist id={listId}>
+                                    {columns.map((col) => (
+                                      <option key={`service-payment-${fieldKey}-${col}`} value={col} />
+                                    ))}
+                                  </datalist>
+                                  {description && (
+                                    <small style={{ color: '#555' }}>{description}</small>
+                                  )}
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             </section>
 
