@@ -42,10 +42,16 @@ const POS_API_ITEM_FIELDS = [
 
 const POS_API_PAYMENT_FIELDS = [
   { key: 'type', label: 'Payment type' },
-  { key: 'amount', label: 'Amount' },
+  { key: 'paidAmount', label: 'Paid amount' },
+  { key: 'amount', label: 'Amount (legacy)' },
+  { key: 'status', label: 'Status' },
   { key: 'currency', label: 'Currency' },
   { key: 'method', label: 'Method' },
   { key: 'reference', label: 'Reference number' },
+  { key: 'data.terminalID', label: 'Terminal ID' },
+  { key: 'data.rrn', label: 'RRN' },
+  { key: 'data.maskedCardNumber', label: 'Masked card number' },
+  { key: 'data.easy', label: 'Easy Bank flag' },
 ];
 
 const POS_API_RECEIPT_FIELDS = [
@@ -66,7 +72,8 @@ const SERVICE_RECEIPT_FIELDS = [
 ];
 
 const SERVICE_PAYMENT_FIELDS = [
-  { key: 'amount', label: 'Amount' },
+  { key: 'paidAmount', label: 'Paid amount' },
+  { key: 'amount', label: 'Amount (legacy)' },
   { key: 'currency', label: 'Currency' },
   { key: 'reference', label: 'Reference number' },
 ];
@@ -85,6 +92,7 @@ const DEFAULT_ENDPOINT_RECEIPT_TYPES = [
   'B2B_RECEIPT',
   'B2C_INVOICE',
   'B2B_INVOICE',
+  'STOCK_QR',
 ];
 
 const DEFAULT_ENDPOINT_PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABELS);

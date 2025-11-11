@@ -16,54 +16,105 @@
       "B2C_RECEIPT",
       "B2B_RECEIPT",
       "B2C_INVOICE",
-      "B2B_INVOICE"
+      "B2B_INVOICE",
+      "STOCK_QR"
     ],
     "paymentMethods": [
       "CASH",
       "PAYMENT_CARD",
       "BANK_TRANSFER",
       "MOBILE_WALLET",
-      "EASY_BANK_CARD"
+      "EASY_BANK_CARD",
+      "SERVICE_PAYMENT"
     ],
     "notes": "Handles goods and service transactions. Include item rows for goods or leave the items array empty for service-only receipts.",
     "requestBody": {
       "schema": {
+        "branchNo": "001",
+        "posNo": "001",
+        "merchantTin": "37900846788",
         "type": "B2C_RECEIPT",
         "taxType": "VAT_ABLE",
-        "branchNo": "001",
-        "posNo": "POS-01",
-        "merchantTin": "1234567890",
-        "consumerNo": "99119911",
-        "totalAmount": 110000,
-        "totalVAT": 10000,
-        "totalCityTax": 1000,
+        "consumerNo": "10038071",
+        "customerTin": null,
+        "totalAmount": 15100,
+        "totalVAT": 500,
+        "totalCityTax": 100,
         "receipts": [
           {
             "taxType": "VAT_ABLE",
-            "totalAmount": 110000,
-            "totalVAT": 10000,
-            "totalCityTax": 1000,
+            "totalAmount": 5600,
+            "totalVAT": 500,
+            "totalCityTax": 100,
             "items": [
               {
-                "name": "Sample good or service",
-                "barCode": "1234567890123",
-                "barCodeType": "EAN_13",
-                "classificationCode": "<product-code>",
-                "taxProductCode": "A12345",
-                "measureUnit": "PCS",
+                "name": "Талх",
+                "barCode": "19059010880001",
+                "barCodeType": "GS1",
+                "classificationCode": "2349010",
+                "taxProductCode": null,
+                "measureUnit": "ш",
                 "qty": 1,
-                "price": 100000,
-                "vatTaxType": "VAT_ABLE",
-                "cityTax": 1000,
-                "lotNo": ""
+                "unitPrice": 5000,
+                "totalAmount": 5600,
+                "totalVAT": 500,
+                "totalCityTax": 100
+              }
+            ]
+          },
+          {
+            "taxType": "VAT_ZERO",
+            "totalAmount": 7000,
+            "totalVAT": 0,
+            "items": []
+          },
+          {
+            "taxType": "NO_VAT",
+            "totalAmount": 2500,
+            "totalVAT": 0,
+            "items": [
+              {
+                "name": "Засвар үйлчилгээ",
+                "qty": 1,
+                "unitPrice": 2500,
+                "totalAmount": 2500
               }
             ]
           }
         ],
         "payments": [
           {
-            "type": "CASH",
-            "amount": 110000
+            "code": "CASH",
+            "status": "PAID",
+            "paidAmount": 4000
+          },
+          {
+            "code": "PAYMENT_CARD",
+            "status": "PAID",
+            "paidAmount": 600,
+            "data": {
+              "terminalID": "11111",
+              "rrn": "123456789123",
+              "maskedCardNumber": "123456XXXXXX7890",
+              "easy": true
+            }
+          },
+          {
+            "code": "PAYMENT_CARD",
+            "status": "PAID",
+            "paidAmount": 1000,
+            "data": {
+              "terminalID": "111",
+              "rrn": "123456789121",
+              "maskedCardNumber": "123456XXXXXX7891",
+              "easy": false
+            }
+          },
+          {
+            "code": "BANK_TRANSFER",
+            "status": "PENDING",
+            "paidAmount": 9500,
+            "reference": "BT2024-0001"
           }
         ]
       },
@@ -74,6 +125,11 @@
         "field": "type",
         "required": true,
         "description": "POSAPI payload type (B2C_RECEIPT, B2B_RECEIPT, B2C_INVOICE, B2B_INVOICE, STOCK_QR)."
+      },
+      {
+        "field": "taxType",
+        "required": true,
+        "description": "Default tax type for the payload (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT)."
       },
       {
         "field": "branchNo",
@@ -204,11 +260,23 @@
       "receipts[].items[].classificationCode": "Unified product/service classification code.",
       "receipts[].items[].taxProductCode": "Reason code for VAT_FREE/VAT_ZERO items.",
       "payments": "Breakdown of how the receipt or invoice was paid.",
-      "payments[].type": "Payment method code. Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD.",
-      "payments[].amount": "Amount paid with the selected payment method."
+      "payments[].type": "Payment method code (type/code). Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD, SERVICE_PAYMENT.",
+      "payments[].status": "Payment status (PAID, PENDING, CANCELLED).",
+      "payments[].paidAmount": "Amount paid with the selected payment method. Also accepted as amount in legacy payloads.",
+      "payments[].amount": "Legacy alias for paidAmount.",
+      "payments[].data": "Card metadata envelope when submitting PAYMENT_CARD entries.",
+      "payments[].data.terminalID": "Card terminal identifier provided by the bank.",
+      "payments[].data.rrn": "Retrieval reference number returned by the acquiring bank.",
+      "payments[].data.maskedCardNumber": "Masked primary account number used for settlement.",
+      "payments[].data.easy": "Boolean flag indicating whether Easy Bank card auto-confirmation applies."
     },
     "mappingHints": {
       "topLevelFields": [
+        {
+          "field": "type",
+          "required": true,
+          "description": "POSAPI document type column (B2C_RECEIPT, B2B_RECEIPT, B2C_INVOICE, B2B_INVOICE, STOCK_QR)."
+        },
         {
           "field": "totalAmount",
           "required": true,
@@ -352,6 +420,36 @@
               "description": "Optional override for the VAT-free tax type."
             }
           ]
+        },
+        {
+          "type": "VAT_ZERO",
+          "fields": [
+            {
+              "field": "totalAmount",
+              "required": false,
+              "description": "Total amount for VAT zero-rated sales."
+            },
+            {
+              "field": "taxType",
+              "required": false,
+              "description": "Optional override for the zero-rated tax type."
+            }
+          ]
+        },
+        {
+          "type": "NO_VAT",
+          "fields": [
+            {
+              "field": "totalAmount",
+              "required": false,
+              "description": "Total amount for non-VAT sales."
+            },
+            {
+              "field": "taxType",
+              "required": false,
+              "description": "Optional override for the non-VAT tax type."
+            }
+          ]
         }
       ],
       "paymentMethods": [
@@ -359,9 +457,14 @@
           "method": "CASH",
           "fields": [
             {
-              "field": "amount",
+              "field": "paidAmount",
               "required": true,
               "description": "Cash amount paid."
+            },
+            {
+              "field": "status",
+              "required": false,
+              "description": "Payment status flag for audit tracking."
             },
             {
               "field": "reference",
@@ -374,14 +477,39 @@
           "method": "PAYMENT_CARD",
           "fields": [
             {
-              "field": "amount",
+              "field": "paidAmount",
               "required": true,
               "description": "Card payment amount."
+            },
+            {
+              "field": "status",
+              "required": true,
+              "description": "Card payment status (PAID is required for settlement)."
             },
             {
               "field": "reference",
               "required": false,
               "description": "Card authorisation or reference number."
+            },
+            {
+              "field": "data.terminalID",
+              "required": false,
+              "description": "Terminal identifier supplied by the acquiring bank."
+            },
+            {
+              "field": "data.rrn",
+              "required": false,
+              "description": "Retrieval reference number returned with the card transaction."
+            },
+            {
+              "field": "data.maskedCardNumber",
+              "required": false,
+              "description": "Masked card number printed on the receipt."
+            },
+            {
+              "field": "data.easy",
+              "required": false,
+              "description": "Flag indicating Easy Bank auto-confirmation."
             }
           ]
         },
@@ -389,9 +517,14 @@
           "method": "BANK_TRANSFER",
           "fields": [
             {
-              "field": "amount",
+              "field": "paidAmount",
               "required": false,
               "description": "Amount settled by bank transfer."
+            },
+            {
+              "field": "status",
+              "required": false,
+              "description": "Status flag for the bank transfer."
             },
             {
               "field": "reference",
@@ -404,9 +537,14 @@
           "method": "MOBILE_WALLET",
           "fields": [
             {
-              "field": "amount",
+              "field": "paidAmount",
               "required": false,
               "description": "Amount charged to the mobile wallet."
+            },
+            {
+              "field": "status",
+              "required": false,
+              "description": "Wallet payment status."
             },
             {
               "field": "reference",
@@ -419,12 +557,12 @@
           "method": "EASY_BANK_CARD",
           "fields": [
             {
-              "field": "amount",
+              "field": "paidAmount",
               "required": false,
               "description": "Amount paid with Easy Bank card."
             },
             {
-              "field": "reference",
+              "field": "status",
               "required": false,
               "description": "Reference for the Easy Bank card payment."
             }

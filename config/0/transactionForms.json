@@ -1847,19 +1847,7 @@
         "customerTin": "customer_tin",
         "consumerNo": "consumer_no",
         "taxType": "tax_type",
-        "lotNo": "lot_no",
-        "itemsField": "transactions_order",
-        "itemFields": {
-          "name": "transactions_order.ordrbname",
-          "description": "transactions_order.ordrcomments",
-          "qty": "transactions_order.ordrsub",
-          "price": "transactions_order.retail_up",
-          "totalAmount": "transactions_order.retail_total",
-          "classificationCode": "transactions_order.sp_primary_code",
-          "taxProductCode": "transactions_order.sp_selling_code",
-          "barCode": "transactions_order.ordrbkod",
-          "measureUnit": "transactions_order.ordrmu"
-        }
+        "lotNo": "lot_no"
       },
       "infoEndpoints": [
         {
