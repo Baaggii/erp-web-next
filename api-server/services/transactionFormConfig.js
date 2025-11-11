@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
+import { loadEndpoints } from './posApiRegistry.js';
 
   async function readConfig(companyId = 0) {
     const { path: filePath, isDefault } = await getConfigPath(
@@ -41,6 +42,118 @@ function normalizeMixedAccessList(list) {
     if (str) normalized.push(str);
   });
   return normalized;
+}
+
+function sanitizeMappingHintField(field) {
+  if (!field || typeof field !== 'object') return null;
+  const key = typeof field.field === 'string' ? field.field.trim() : '';
+  if (!key) return null;
+  return {
+    field: key,
+    required: Boolean(field.required),
+    description:
+      typeof field.description === 'string' ? field.description : undefined,
+  };
+}
+
+function sanitizeMappingHints(hints) {
+  if (!hints || typeof hints !== 'object') return null;
+  const result = {};
+  if (Array.isArray(hints.topLevelFields)) {
+    const fields = hints.topLevelFields
+      .map((entry) => sanitizeMappingHintField(entry))
+      .filter(Boolean);
+    if (fields.length) result.topLevelFields = fields;
+  }
+  if (Array.isArray(hints.receiptGroups)) {
+    const groups = hints.receiptGroups
+      .map((group) => {
+        const type = typeof group?.type === 'string' ? group.type.trim() : '';
+        if (!type) return null;
+        const fields = Array.isArray(group.fields)
+          ? group.fields.map((entry) => sanitizeMappingHintField(entry)).filter(Boolean)
+          : [];
+        return { type, fields };
+      })
+      .filter(Boolean);
+    if (groups.length) result.receiptGroups = groups;
+  }
+  if (Array.isArray(hints.paymentMethods)) {
+    const methods = hints.paymentMethods
+      .map((method) => {
+        const code = typeof method?.method === 'string' ? method.method.trim() : '';
+        if (!code) return null;
+        const fields = Array.isArray(method.fields)
+          ? method.fields.map((entry) => sanitizeMappingHintField(entry)).filter(Boolean)
+          : [];
+        return { method: code, fields };
+      })
+      .filter(Boolean);
+    if (methods.length) result.paymentMethods = methods;
+  }
+  if (hints.nestedPaths && typeof hints.nestedPaths === 'object') {
+    const entries = Object.entries(hints.nestedPaths)
+      .filter(([key, val]) => typeof key === 'string' && typeof val === 'string' && key && val)
+      .map(([key, val]) => [key, val]);
+    if (entries.length) {
+      result.nestedPaths = Object.fromEntries(entries);
+    }
+  }
+  return Object.keys(result).length ? result : null;
+}
+
+function sanitizeEndpointForClient(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return null;
+  const receiptTypes = Array.isArray(endpoint.receiptTypes)
+    ? endpoint.receiptTypes
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value)
+    : [];
+  const paymentMethods = Array.isArray(endpoint.paymentMethods)
+    ? endpoint.paymentMethods
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value)
+    : [];
+  const sanitizeFieldList = (list) =>
+    Array.isArray(list)
+      ? list
+          .map((entry) => {
+            if (!entry || typeof entry !== 'object') return null;
+            const field = typeof entry.field === 'string' ? entry.field.trim() : '';
+            if (!field) return null;
+            return {
+              field,
+              required: Boolean(entry.required),
+              description:
+                typeof entry.description === 'string' ? entry.description : undefined,
+            };
+          })
+          .filter(Boolean)
+      : [];
+
+  const sanitized = {
+    id: typeof endpoint.id === 'string' ? endpoint.id : '',
+    name: typeof endpoint.name === 'string' ? endpoint.name : '',
+    method: typeof endpoint.method === 'string' ? endpoint.method : 'GET',
+    path: typeof endpoint.path === 'string' ? endpoint.path : '/',
+    usage: typeof endpoint.usage === 'string' ? endpoint.usage : undefined,
+    supportsItems: endpoint.supportsItems !== false,
+    supportsMultipleReceipts: Boolean(endpoint.supportsMultipleReceipts),
+    supportsMultiplePayments: Boolean(endpoint.supportsMultiplePayments),
+    receiptTypes,
+    paymentMethods,
+    mappingHints: sanitizeMappingHints(endpoint.mappingHints),
+  };
+
+  const requestFields = sanitizeFieldList(endpoint.requestFields);
+  if (requestFields.length) sanitized.requestFields = requestFields;
+  const responseFields = sanitizeFieldList(endpoint.responseFields);
+  if (responseFields.length) sanitized.responseFields = responseFields;
+  if (endpoint.fieldDescriptions && typeof endpoint.fieldDescriptions === 'object') {
+    sanitized.fieldDescriptions = endpoint.fieldDescriptions;
+  }
+
+  return sanitized;
 }
 
 function normalizePosApiMappingValue(value) {
@@ -122,6 +235,16 @@ function parseEntry(raw = {}) {
   const infoEndpoints = infoEndpointsSource
     .map((value) => (typeof value === 'string' ? value.trim() : ''))
     .filter((value) => value);
+  const receiptTypes = Array.isArray(raw.posApiReceiptTypes)
+    ? raw.posApiReceiptTypes
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value)
+    : [];
+  const paymentMethods = Array.isArray(raw.posApiPaymentMethods)
+    ? raw.posApiPaymentMethods
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value)
+    : [];
   return {
     visibleFields: Array.isArray(raw.visibleFields)
       ? raw.visibleFields.map(String)
@@ -216,6 +339,8 @@ function parseEntry(raw = {}) {
         ? raw.posApiEndpointId.trim()
         : '',
     posApiInfoEndpointIds: infoEndpoints,
+    posApiReceiptTypes: receiptTypes,
+    posApiPaymentMethods: paymentMethods,
     fieldsFromPosApi: Array.isArray(raw.fieldsFromPosApi)
       ? raw.fieldsFromPosApi
           .map((value) => (typeof value === 'string' ? value.trim() : ''))
@@ -230,15 +355,38 @@ export async function getFormConfig(table, name, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
   const byTable = cfg[table] || {};
   const raw = byTable[name];
-  return { config: parseEntry(raw), isDefault };
+  const parsed = parseEntry(raw);
+  const endpoints = await loadEndpoints();
+  const endpointMeta = endpoints.find((entry) => entry?.id === parsed.posApiEndpointId);
+  const infoEndpointMeta = parsed.infoEndpoints
+    .map((id) => endpoints.find((entry) => entry?.id === id))
+    .filter(Boolean)
+    .map((entry) => sanitizeEndpointForClient(entry));
+  const config = {
+    ...parsed,
+    posApiEndpointMeta: sanitizeEndpointForClient(endpointMeta),
+    posApiInfoEndpointMeta: infoEndpointMeta,
+  };
+  return { config, isDefault };
 }
 
 export async function getConfigsByTable(table, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
+  const endpoints = await loadEndpoints();
   const byTable = cfg[table] || {};
   const result = {};
   for (const [name, info] of Object.entries(byTable)) {
-    result[name] = parseEntry(info);
+    const parsed = parseEntry(info);
+    const endpointMeta = endpoints.find((entry) => entry?.id === parsed.posApiEndpointId);
+    const infoEndpointMeta = parsed.infoEndpoints
+      .map((id) => endpoints.find((entry) => entry?.id === id))
+      .filter(Boolean)
+      .map((entry) => sanitizeEndpointForClient(entry));
+    result[name] = {
+      ...parsed,
+      posApiEndpointMeta: sanitizeEndpointForClient(endpointMeta),
+      posApiInfoEndpointMeta: infoEndpointMeta,
+    };
   }
   return { config: result, isDefault };
 }
@@ -246,6 +394,7 @@ export async function getConfigsByTable(table, companyId = 0) {
 export async function getConfigsByTransTypeValue(val, companyId = 0) {
   const { cfg, isDefault } = await readConfig(companyId);
   const result = [];
+  const endpoints = await loadEndpoints();
   for (const [tbl, names] of Object.entries(cfg)) {
     for (const [name, info] of Object.entries(names)) {
       const parsed = parseEntry(info);
@@ -253,7 +402,20 @@ export async function getConfigsByTransTypeValue(val, companyId = 0) {
         parsed.transactionTypeValue &&
         String(parsed.transactionTypeValue) === String(val)
       ) {
-        result.push({ table: tbl, name, config: parsed });
+        const endpointMeta = endpoints.find((entry) => entry?.id === parsed.posApiEndpointId);
+        const infoEndpointMeta = parsed.infoEndpoints
+          .map((id) => endpoints.find((entry) => entry?.id === id))
+          .filter(Boolean)
+          .map((entry) => sanitizeEndpointForClient(entry));
+        result.push({
+          table: tbl,
+          name,
+          config: {
+            ...parsed,
+            posApiEndpointMeta: sanitizeEndpointForClient(endpointMeta),
+            posApiInfoEndpointMeta: infoEndpointMeta,
+          },
+        });
       }
     }
   }
@@ -434,6 +596,8 @@ export async function setFormConfig(
     posApiTypeField = '',
     posApiEndpointId = '',
     posApiInfoEndpointIds = [],
+    posApiReceiptTypes = [],
+    posApiPaymentMethods = [],
     fieldsFromPosApi = [],
     infoEndpoints = [],
     posApiMapping = {},
@@ -538,6 +702,24 @@ export async function setFormConfig(
       ? Array.from(
           new Set(
             infoEndpoints
+              .map((value) => (typeof value === 'string' ? value.trim() : ''))
+              .filter((value) => value),
+          ),
+        )
+      : [],
+    posApiReceiptTypes: Array.isArray(posApiReceiptTypes)
+      ? Array.from(
+          new Set(
+            posApiReceiptTypes
+              .map((value) => (typeof value === 'string' ? value.trim() : ''))
+              .filter((value) => value),
+          ),
+        )
+      : [],
+    posApiPaymentMethods: Array.isArray(posApiPaymentMethods)
+      ? Array.from(
+          new Set(
+            posApiPaymentMethods
               .map((value) => (typeof value === 'string' ? value.trim() : ''))
               .filter((value) => value),
           ),

@@ -16,6 +16,14 @@ import {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
+const DEFAULT_RECEIPT_TYPES = [
+  'B2C_RECEIPT',
+  'B2B_RECEIPT',
+  'B2C_INVOICE',
+  'B2B_INVOICE',
+  'STOCK_QR',
+];
+
 const RowFormModal = function RowFormModal({
   visible,
   onCancel,
@@ -76,6 +84,10 @@ const RowFormModal = function RowFormModal({
   forceEditable = false,
   posApiEnabled = false,
   posApiTypeField = '',
+  posApiEndpointMeta = null,
+  posApiInfoEndpointMeta = [],
+  posApiReceiptTypes = [],
+  posApiPaymentMethods = [],
 }) {
   const mounted = useRef(false);
   const renderCount = useRef(0);
@@ -92,20 +104,109 @@ const RowFormModal = function RowFormModal({
   const cfg = generalConfig[scope] || {};
   const general = generalConfig.general || {};
   const { t } = useTranslation(['translation', 'tooltip']);
+  const formatReceiptTypeLabel = React.useCallback(
+    (type) => {
+      if (!type) return '';
+      const fallback = type
+        .toLowerCase()
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+      return t(`posapi_type_${type.toLowerCase()}`, fallback);
+    },
+    [t],
+  );
+  const normalizedReceiptTypes = React.useMemo(() => {
+    const configured = Array.isArray(posApiReceiptTypes)
+      ? posApiReceiptTypes
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+          .filter((entry) => entry)
+      : [];
+    const merged = [...configured];
+    DEFAULT_RECEIPT_TYPES.forEach((type) => {
+      if (!merged.includes(type)) merged.push(type);
+    });
+    return merged.length ? merged : DEFAULT_RECEIPT_TYPES;
+  }, [posApiReceiptTypes]);
   const posApiTypeOptions = React.useMemo(
     () => [
       {
         value: '',
         label: t('posapi_type_auto', 'Auto (determine automatically)'),
       },
-      { value: 'B2C_RECEIPT', label: t('posapi_type_b2c_receipt', 'B2C Receipt') },
-      { value: 'B2B_RECEIPT', label: t('posapi_type_b2b_receipt', 'B2B Receipt') },
-      { value: 'B2C_INVOICE', label: t('posapi_type_b2c_invoice', 'B2C Invoice') },
-      { value: 'B2B_INVOICE', label: t('posapi_type_b2b_invoice', 'B2B Invoice') },
-      { value: 'STOCK_QR', label: t('posapi_type_stock_qr', 'Stock QR') },
+      ...normalizedReceiptTypes.map((type) => ({
+        value: type,
+        label: formatReceiptTypeLabel(type),
+      })),
     ],
-    [t],
+    [normalizedReceiptTypes, formatReceiptTypeLabel, t],
   );
+  const infoEndpoints = React.useMemo(() => {
+    if (!Array.isArray(posApiInfoEndpointMeta)) return [];
+    return posApiInfoEndpointMeta
+      .filter((entry) => entry && typeof entry === 'object' && typeof entry.id === 'string')
+      .map((entry) => ({
+        id: entry.id,
+        name: entry.name || entry.id,
+        method: entry.method || 'GET',
+        path: entry.path || '/',
+        requestFields: Array.isArray(entry.requestFields) ? entry.requestFields : [],
+      }));
+  }, [posApiInfoEndpointMeta]);
+  const infoEndpointsKey = React.useMemo(
+    () => JSON.stringify(infoEndpoints.map((entry) => entry.id)),
+    [infoEndpoints],
+  );
+  const [infoModalOpen, setInfoModalOpen] = useState(false);
+  const [activeInfoEndpointId, setActiveInfoEndpointId] = useState(
+    () => infoEndpoints[0]?.id || '',
+  );
+  const [infoPayload, setInfoPayload] = useState({});
+  const [infoResponse, setInfoResponse] = useState(null);
+  const [infoError, setInfoError] = useState(null);
+  const [infoLoading, setInfoLoading] = useState(false);
+  const [infoHistory, setInfoHistory] = useState([]);
+  useEffect(() => {
+    if (!infoEndpoints.length) {
+      setActiveInfoEndpointId('');
+      return;
+    }
+    setActiveInfoEndpointId((prev) => {
+      if (prev && infoEndpoints.some((entry) => entry.id === prev)) {
+        return prev;
+      }
+      return infoEndpoints[0].id;
+    });
+  }, [infoEndpoints, infoEndpointsKey]);
+  useEffect(() => {
+    if (!infoModalOpen) return;
+    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
+    if (!endpoint) {
+      setInfoPayload({});
+      return;
+    }
+    const fields = endpoint.requestFields
+      .map((item) => (item && typeof item.field === 'string' ? item.field : ''))
+      .filter((field) => field);
+    if (!fields.length) {
+      setInfoPayload({});
+      return;
+    }
+    setInfoPayload((prev) => {
+      const next = {};
+      fields.forEach((field) => {
+        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
+          next[field] = prev[field];
+        } else {
+          const auto = getFieldDefaultFromRecord(field);
+          if (auto !== '') {
+            next[field] = auto;
+          }
+        }
+      });
+      return next;
+    });
+  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, getFieldDefaultFromRecord]);
   labelFontSize = labelFontSize ?? cfg.labelFontSize ?? 14;
   boxWidth = boxWidth ?? cfg.boxWidth ?? 60;
   boxHeight = boxHeight ?? cfg.boxHeight ?? 30;
@@ -461,6 +562,17 @@ const RowFormModal = function RowFormModal({
     () => new Set(columns.map((col) => String(col).toLowerCase())),
     [columnsKey],
   );
+  const columnByLowerMap = React.useMemo(() => {
+    const map = {};
+    columns.forEach((col) => {
+      if (col === undefined || col === null) return;
+      const lower = String(col).toLowerCase();
+      if (!map[lower]) {
+        map[lower] = col;
+      }
+    });
+    return map;
+  }, [columns]);
   const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
   const defaultValuesKey = React.useMemo(
     () => JSON.stringify(defaultValues || {}),
@@ -556,6 +668,15 @@ const RowFormModal = function RowFormModal({
     return extras;
   });
   const extraKeys = React.useMemo(() => Object.keys(extraVals || {}), [extraVals]);
+  const extraKeyLookup = React.useMemo(() => {
+    const map = {};
+    extraKeys.forEach((key) => {
+      if (key === undefined || key === null) return;
+      const lower = String(key).toLowerCase();
+      if (!map[lower]) map[lower] = key;
+    });
+    return map;
+  }, [extraKeys]);
   const formValsRef = useRef(formVals);
   const extraValsRef = useRef(extraVals);
   const manualOverrideRef = useRef(new Map());
@@ -566,6 +687,68 @@ const RowFormModal = function RowFormModal({
   useEffect(() => {
     extraValsRef.current = extraVals;
   }, [extraVals]);
+  const getFieldDefaultFromRecord = useCallback(
+    (fieldName) => {
+      if (!fieldName) return '';
+      const lower = String(fieldName).toLowerCase();
+      if (columnByLowerMap[lower] !== undefined) {
+        const columnKey = columnByLowerMap[lower];
+        const value = formVals?.[columnKey];
+        if (value !== undefined && value !== null && value !== '') {
+          return value;
+        }
+      }
+      if (extraKeyLookup[lower] !== undefined) {
+        const extraKey = extraKeyLookup[lower];
+        const value = extraVals?.[extraKey];
+        if (value !== undefined && value !== null && value !== '') {
+          return value;
+        }
+      }
+      return '';
+    },
+    [columnByLowerMap, extraKeyLookup, formVals, extraVals],
+  );
+  const openInfoModal = useCallback(() => {
+    setInfoModalOpen(true);
+    setInfoError(null);
+    setInfoResponse(null);
+  }, []);
+  const closeInfoModal = useCallback(() => {
+    setInfoModalOpen(false);
+    setInfoError(null);
+    setInfoResponse(null);
+  }, []);
+  const handleInfoPayloadChange = useCallback((field, value) => {
+    if (!field) return;
+    const normalized = typeof value === 'string' ? value : value ?? '';
+    setInfoPayload((prev) => {
+      const next = { ...prev };
+      if (normalized === '') {
+        delete next[field];
+      } else {
+        next[field] = normalized;
+      }
+      return next;
+    });
+  }, []);
+  const extractResponseFields = useCallback((response) => {
+    const result = {};
+    if (!response || typeof response !== 'object') return result;
+    Object.entries(response).forEach(([key, val]) => {
+      if (val === undefined || val === null) return;
+      if (typeof val === 'object') {
+        try {
+          result[key] = JSON.stringify(val);
+        } catch {
+          result[key] = String(val);
+        }
+      } else {
+        result[key] = val;
+      }
+    });
+    return result;
+  }, []);
   const posApiTypeFieldLower = React.useMemo(
     () => (typeof posApiTypeField === 'string' ? posApiTypeField.toLowerCase() : ''),
     [posApiTypeField],
@@ -675,6 +858,78 @@ const RowFormModal = function RowFormModal({
     },
     [computeNextFormVals, onChange],
   );
+  const handleInvokeInfoEndpoint = useCallback(async () => {
+    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
+    if (!endpoint) return;
+    setInfoLoading(true);
+    setInfoError(null);
+    try {
+      const sanitizedPayload = Object.entries(infoPayload || {}).reduce((acc, [key, val]) => {
+        if (!key) return acc;
+        const normalized = typeof val === 'string' ? val.trim() : val;
+        if (normalized !== '' && normalized !== undefined && normalized !== null) {
+          acc[key] = normalized;
+        }
+        return acc;
+      }, {});
+      const res = await fetch('/api/posapi/proxy/invoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          endpointId: endpoint.id,
+          payload: sanitizedPayload,
+          context: {
+            table,
+            recordId:
+              row?.id ?? row?.ID ?? row?.id_field ?? row?.Id ?? row?.IdField ?? row?.record_id ?? null,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || res.statusText || 'Lookup failed');
+      }
+      const data = await res.json();
+      setInfoResponse(data.response ?? null);
+      setInfoHistory((prev) => [
+        ...prev.slice(-4),
+        {
+          timestamp: new Date().toISOString(),
+          endpointId: endpoint.id,
+          payload: sanitizedPayload,
+          response: data.response ?? null,
+        },
+      ]);
+    } catch (err) {
+      setInfoError(err.message || 'Lookup failed');
+    } finally {
+      setInfoLoading(false);
+    }
+  }, [infoEndpoints, activeInfoEndpointId, infoPayload, table, row]);
+  const handleApplyInfoResponse = useCallback(() => {
+    if (!infoResponse || typeof infoResponse !== 'object') return;
+    const flat = extractResponseFields(infoResponse);
+    const formUpdates = {};
+    const extraUpdates = {};
+    Object.entries(flat).forEach(([key, value]) => {
+      if (value === undefined || value === null || value === '') return;
+      const lower = String(key).toLowerCase();
+      const normalized = typeof value === 'string' ? value : String(value);
+      if (columnByLowerMap[lower] !== undefined) {
+        formUpdates[columnByLowerMap[lower]] = normalized;
+      } else if (extraKeyLookup[lower] !== undefined) {
+        extraUpdates[extraKeyLookup[lower]] = normalized;
+      }
+    });
+    if (Object.keys(formUpdates).length) {
+      setFormValuesWithGenerated((prev) => ({ ...prev, ...formUpdates }));
+    }
+    if (Object.keys(extraUpdates).length) {
+      setExtraVals((prev) => ({ ...prev, ...extraUpdates }));
+    }
+  }, [infoResponse, extractResponseFields, columnByLowerMap, extraKeyLookup, setFormValuesWithGenerated, setExtraVals]);
+  const activeInfoEndpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId) || null;
   const inputRefs = useRef({});
   const readonlyRefs = useRef({});
   const [errors, setErrors] = useState({});
@@ -2756,6 +3011,20 @@ const RowFormModal = function RowFormModal({
                 </select>
               </label>
             )}
+            {posApiEnabled && infoEndpoints.length > 0 && (
+              <button
+                type="button"
+                onClick={openInfoModal}
+                className="px-3 py-1 text-sm rounded border border-indigo-200 bg-indigo-50 text-indigo-700"
+              >
+                {t('posapi_open_info_lookup', 'POSAPI Lookups')}
+              </button>
+            )}
+            {posApiEnabled && posApiEndpointMeta && (
+              <span className="text-xs text-gray-500">
+                {(posApiEndpointMeta.method || 'POST').toUpperCase()} {posApiEndpointMeta.path || ''}
+              </span>
+            )}
           </div>
           <div className="text-right space-x-2">
             <button
@@ -2825,6 +3094,128 @@ const RowFormModal = function RowFormModal({
         </div>
         </form>
       </Modal>
+      {infoModalOpen && (
+        <Modal
+          visible={infoModalOpen}
+          title={t('posapi_info_modal_title', 'POSAPI lookups')}
+          onClose={closeInfoModal}
+          width="600px"
+        >
+          <div className="flex flex-col gap-4">
+            <label className="flex flex-col gap-1 text-sm text-gray-700">
+              <span className="font-semibold">{t('posapi_info_endpoint_label', 'Endpoint')}</span>
+              <select
+                className="border border-gray-300 rounded px-2 py-1 text-sm"
+                value={activeInfoEndpointId}
+                onChange={(e) => setActiveInfoEndpointId(e.target.value)}
+              >
+                {infoEndpoints.map((endpoint) => (
+                  <option key={endpoint.id} value={endpoint.id}>
+                    {endpoint.id} – {endpoint.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {activeInfoEndpoint && (
+              <div className="flex flex-col gap-3">
+                <div className="text-xs text-gray-600">
+                  <span className="font-semibold text-gray-700">{activeInfoEndpoint.method}</span>{' '}
+                  <span className="font-mono">{activeInfoEndpoint.path}</span>
+                </div>
+                {activeInfoEndpoint.requestFields.length > 0 ? (
+                  activeInfoEndpoint.requestFields.map((field) => {
+                    const fieldName = field?.field;
+                    if (!fieldName) return null;
+                    const required = Boolean(field?.required);
+                    const description = field?.description;
+                    const value = infoPayload[fieldName] || '';
+                    return (
+                      <label
+                        key={`info-field-${fieldName}`}
+                        className="flex flex-col gap-1 text-sm text-gray-700"
+                      >
+                        <span className={required ? 'font-semibold text-red-600' : 'font-semibold'}>
+                          {fieldName}
+                          {required ? ' *' : ''}
+                        </span>
+                        <input
+                          type="text"
+                          className="border border-gray-300 rounded px-2 py-1 text-sm"
+                          value={value}
+                          onChange={(e) => handleInfoPayloadChange(fieldName, e.target.value)}
+                        />
+                        {description && (
+                          <span className="text-xs text-gray-500">{description}</span>
+                        )}
+                      </label>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm text-gray-600">
+                    {t(
+                      'posapi_info_no_fields',
+                      'This endpoint does not require additional parameters.',
+                    )}
+                  </p>
+                )}
+              </div>
+            )}
+            {infoError && <div className="text-sm text-red-600">{infoError}</div>}
+            {infoResponse && (
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-semibold text-gray-700">
+                  {t('posapi_info_response', 'Response')}
+                </span>
+                <pre className="bg-gray-100 border border-gray-200 rounded p-2 text-xs overflow-x-auto">
+                  {JSON.stringify(infoResponse, null, 2)}
+                </pre>
+              </div>
+            )}
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                className="px-3 py-1 bg-blue-600 text-white rounded"
+                onClick={handleInvokeInfoEndpoint}
+                disabled={infoLoading}
+              >
+                {infoLoading ? t('loading', 'Loading...') : t('posapi_info_invoke', 'Invoke')}
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="px-3 py-1 bg-gray-200 rounded"
+                  onClick={closeInfoModal}
+                >
+                  {t('close', 'Close')}
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1 bg-green-600 text-white rounded"
+                  onClick={handleApplyInfoResponse}
+                  disabled={!infoResponse}
+                >
+                  {t('posapi_info_apply', 'Apply to form')}
+                </button>
+              </div>
+            </div>
+            {infoHistory.length > 0 && (
+              <div className="text-xs text-gray-500 space-y-1">
+                <div className="font-semibold text-gray-600">
+                  {t('posapi_info_recent', 'Recent lookups')}
+                </div>
+                <ul className="space-y-1">
+                  {[...infoHistory].reverse().map((entry, index) => (
+                    <li key={`${entry.timestamp}-${index}`}>
+                      <span className="font-medium text-gray-700">{entry.endpointId}</span>{' '}
+                      – {new Date(entry.timestamp).toLocaleString()}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </Modal>
+      )}
       <RowDetailModal
         visible={!!previewRow}
         onClose={() => setPreviewRow(null)}
