@@ -77,7 +77,8 @@ const USAGE_BADGES = {
   admin: '#78350f',
 };
 
-const DEFAULT_RECEIPT_TYPES = TAX_TYPES.map((tax) => tax.value);
+const DEFAULT_RECEIPT_TYPES = POSAPI_TYPES.map((type) => type.value);
+const DEFAULT_TAX_TYPES = TAX_TYPES.map((tax) => tax.value);
 const DEFAULT_PAYMENT_METHODS = PAYMENT_TYPES.map((payment) => payment.value);
 const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
 
@@ -101,6 +102,9 @@ function withEndpointMetadata(endpoint) {
   const receiptTypes = isTransaction
     ? sanitizeCodeList(endpoint.receiptTypes, DEFAULT_RECEIPT_TYPES)
     : [];
+  const taxTypes = isTransaction
+    ? sanitizeCodeList(endpoint.taxTypes || endpoint.receiptTaxTypes, DEFAULT_TAX_TYPES)
+    : [];
   const paymentMethods = isTransaction
     ? sanitizeCodeList(endpoint.paymentMethods, DEFAULT_PAYMENT_METHODS)
     : [];
@@ -122,6 +126,7 @@ function withEndpointMetadata(endpoint) {
     supportsMultiplePayments: isTransaction ? Boolean(endpoint.supportsMultiplePayments) : false,
     supportsItems,
     receiptTypes,
+    taxTypes,
     paymentMethods,
     notes: typeof endpoint.notes === 'string' ? endpoint.notes : '',
   };
@@ -164,6 +169,7 @@ const EMPTY_ENDPOINT = {
   supportsMultiplePayments: false,
   supportsItems: true,
   receiptTypes: DEFAULT_RECEIPT_TYPES.slice(),
+  taxTypes: DEFAULT_TAX_TYPES.slice(),
   paymentMethods: DEFAULT_PAYMENT_METHODS.slice(),
   topLevelFieldsText: '[]',
   nestedPathsText: '{}',
@@ -175,6 +181,241 @@ const PAYMENT_FIELD_DESCRIPTIONS = {
   'payments[].type':
     'Payment method code. Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD.',
   'payments[].amount': 'Amount paid with the selected payment method.',
+};
+
+const TAX_TYPE_DESCRIPTIONS = {
+  VAT_ABLE: 'Standard VAT rate applies. Include VAT and city tax totals.',
+  VAT_FREE: 'VAT exempt sale. Provide a taxProductCode reference for the exemption reason.',
+  VAT_ZERO: 'Zero-rated VAT sale (for example, exports). Provide a taxProductCode reference.',
+  NO_VAT: 'Sale that falls completely outside the VAT system.',
+};
+
+const RECEIPT_SAMPLE_PAYLOADS = {
+  B2C_RECEIPT: createReceiptTemplate('B2C_RECEIPT', {
+    branchNo: '001',
+    posNo: 'A01',
+    merchantTin: '12345678901',
+    consumerNo: '99001122',
+    totalAmount: 55000,
+    totalVAT: 5000,
+    totalCityTax: 500,
+    receipts: [
+      {
+        taxType: 'VAT_ABLE',
+        totalAmount: 55000,
+        totalVAT: 5000,
+        totalCityTax: 500,
+        items: [
+          {
+            name: 'Latte (16oz)',
+            barCode: '9770001112233',
+            barCodeType: 'EAN_13',
+            classificationCode: '5610201',
+            measureUnit: 'PCS',
+            qty: 1,
+            price: 50000,
+            vatTaxType: 'VAT_ABLE',
+            cityTax: 500,
+            lotNo: '',
+          },
+          {
+            name: 'Butter croissant',
+            barCode: '9770001112240',
+            barCodeType: 'EAN_13',
+            classificationCode: '1071100',
+            measureUnit: 'PCS',
+            qty: 1,
+            price: 5000,
+            vatTaxType: 'VAT_ABLE',
+            cityTax: 0,
+            lotNo: '',
+          },
+        ],
+      },
+    ],
+    payments: [
+      {
+        type: 'PAYMENT_CARD',
+        amount: 55000,
+        data: {
+          cardIssuer: 'VISA',
+          last4: '1234',
+          transactionId: 'A1B2C3',
+        },
+      },
+    ],
+  }),
+  B2B_RECEIPT: createReceiptTemplate('B2B_RECEIPT', {
+    branchNo: '002',
+    posNo: 'B15',
+    merchantTin: '12345678901',
+    customerTin: '8889990001',
+    totalAmount: 1280000,
+    totalVAT: 116363,
+    totalCityTax: 0,
+    receipts: [
+      {
+        taxType: 'VAT_ABLE',
+        totalAmount: 1280000,
+        totalVAT: 116363,
+        totalCityTax: 0,
+        items: [
+          {
+            name: 'Office chair',
+            barCode: '5901234123457',
+            barCodeType: 'EAN_13',
+            classificationCode: '9401300',
+            measureUnit: 'PCS',
+            qty: 4,
+            price: 320000,
+            vatTaxType: 'VAT_ABLE',
+            cityTax: 0,
+            lotNo: 'CHAIR-2024-04',
+          },
+        ],
+      },
+    ],
+    payments: [
+      { type: 'BANK_TRANSFER', amount: 1280000 },
+    ],
+  }),
+  B2C_INVOICE: createReceiptTemplate('B2C_INVOICE', {
+    branchNo: '001',
+    posNo: 'A01',
+    merchantTin: '12345678901',
+    consumerNo: '88119922',
+    invoiceNo: 'INV-2024-0152',
+    invoiceDate: '2024-07-01',
+    dueDate: '2024-07-10',
+    totalAmount: 275000,
+    totalVAT: 25000,
+    totalCityTax: 2500,
+    receipts: [
+      {
+        taxType: 'VAT_ABLE',
+        totalAmount: 275000,
+        totalVAT: 25000,
+        totalCityTax: 2500,
+        items: [
+          {
+            name: 'Annual maintenance subscription',
+            barCode: 'SUBSCRIPTION-001',
+            barCodeType: 'EAN_13',
+            classificationCode: '6202000',
+            measureUnit: 'PKG',
+            qty: 1,
+            price: 250000,
+            vatTaxType: 'VAT_ABLE',
+            cityTax: 2500,
+            lotNo: '',
+          },
+          {
+            name: 'On-site installation',
+            barCode: '',
+            barCodeType: 'EAN_13',
+            classificationCode: '6209000',
+            measureUnit: 'HRS',
+            qty: 5,
+            price: 5000,
+            vatTaxType: 'VAT_ABLE',
+            cityTax: 0,
+            lotNo: '',
+          },
+        ],
+      },
+    ],
+    payments: [
+      { type: 'CASH', amount: 50000 },
+      { type: 'PAYMENT_CARD', amount: 225000, data: { cardIssuer: 'Mastercard', last4: '4455' } },
+    ],
+  }),
+  B2B_INVOICE: createReceiptTemplate('B2B_INVOICE', {
+    branchNo: '005',
+    posNo: 'INV-01',
+    merchantTin: '12345678901',
+    customerTin: '3021456987',
+    invoiceNo: 'INV-2024-0420',
+    invoiceDate: '2024-07-05',
+    dueDate: '2024-08-05',
+    totalAmount: 1940000,
+    totalVAT: 176000,
+    totalCityTax: 0,
+    receipts: [
+      {
+        taxType: 'VAT_ABLE',
+        totalAmount: 1540000,
+        totalVAT: 176000,
+        totalCityTax: 0,
+        items: [
+          {
+            name: 'Industrial cleaner (20L)',
+            barCode: 'ICLEAN-20L',
+            barCodeType: 'EAN_13',
+            classificationCode: '2815200',
+            measureUnit: 'PCS',
+            qty: 10,
+            price: 154000,
+            vatTaxType: 'VAT_ABLE',
+            cityTax: 0,
+            lotNo: 'CLEAN-LOT-07',
+          },
+        ],
+      },
+      {
+        taxType: 'VAT_ZERO',
+        totalAmount: 400000,
+        taxProductCode: 'EXPORT-001',
+        items: [
+          {
+            name: 'Export logistics service',
+            classificationCode: '5229200',
+            measureUnit: 'SRV',
+            qty: 1,
+            price: 400000,
+            vatTaxType: 'VAT_ZERO',
+            taxProductCode: 'EXPORT-001',
+            lotNo: '',
+          },
+        ],
+      },
+    ],
+    payments: [
+      { type: 'BANK_TRANSFER', amount: 1500000 },
+      {
+        type: 'EASY_BANK_CARD',
+        amount: 440000,
+        data: {
+          rrn: '112233445566',
+          approvalCode: 'AP1234',
+          terminalId: 'TERM-0091',
+        },
+      },
+    ],
+  }),
+  STOCK_QR: {
+    ...createStockQrTemplate(),
+    branchNo: '001',
+    posNo: 'STOCK-QR',
+    merchantTin: '12345678901',
+    stockCodes: [
+      {
+        code: 'STOCK-001',
+        name: 'Finished goods pallet',
+        classificationCode: '2011000',
+        qty: 12,
+        measureUnit: 'PCS',
+        lotNo: 'FG-2024-07',
+      },
+      {
+        code: 'STOCK-RAW-01',
+        name: 'Raw material pack',
+        classificationCode: '0899000',
+        qty: 48,
+        measureUnit: 'PCS',
+        lotNo: 'RM-2024-05',
+      },
+    ],
+  },
 };
 
 function createReceiptTemplate(type, overrides = {}) {
@@ -480,6 +721,11 @@ function createFormState(definition) {
   const resolvedPaymentMethods = Array.isArray(definition.paymentMethods)
     ? definition.paymentMethods.slice()
     : [];
+  const resolvedTaxTypes = Array.isArray(definition.taxTypes)
+    ? definition.taxTypes.slice()
+    : Array.isArray(definition.receiptTaxTypes)
+      ? definition.receiptTaxTypes.slice()
+      : [];
   const sanitizeRequestHints = (value) => {
     if (!Array.isArray(value)) return [];
     return value.map((entry) => {
@@ -525,6 +771,9 @@ function createFormState(definition) {
       : false,
     receiptTypes: isTransaction
       ? (resolvedReceiptTypes.length > 0 ? resolvedReceiptTypes : DEFAULT_RECEIPT_TYPES.slice())
+      : [],
+    taxTypes: isTransaction
+      ? (resolvedTaxTypes.length > 0 ? resolvedTaxTypes : DEFAULT_TAX_TYPES.slice())
       : [],
     paymentMethods: isTransaction
       ? (resolvedPaymentMethods.length > 0 ? resolvedPaymentMethods : DEFAULT_PAYMENT_METHODS.slice())
@@ -577,6 +826,10 @@ export default function PosApiAdmin() {
   const [docMetadata, setDocMetadata] = useState({});
   const [requestBuilder, setRequestBuilder] = useState(null);
   const [requestBuilderError, setRequestBuilderError] = useState('');
+  const [sampleImportText, setSampleImportText] = useState('');
+  const [sampleImportError, setSampleImportError] = useState('');
+  const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
+  const [paymentDataErrors, setPaymentDataErrors] = useState({});
   const builderSyncRef = useRef(false);
 
   const groupedEndpoints = useMemo(() => {
@@ -677,6 +930,14 @@ export default function PosApiAdmin() {
     return DEFAULT_RECEIPT_TYPES;
   }, [formState.usage, formState.receiptTypes]);
 
+  const formTaxTypes = useMemo(() => {
+    if (formState.usage !== 'transaction') return [];
+    if (Array.isArray(formState.taxTypes) && formState.taxTypes.length > 0) {
+      return formState.taxTypes;
+    }
+    return DEFAULT_TAX_TYPES;
+  }, [formState.usage, formState.taxTypes]);
+
   const formPaymentMethods = useMemo(() => {
     if (formState.usage !== 'transaction') return [];
     if (Array.isArray(formState.paymentMethods) && formState.paymentMethods.length > 0) {
@@ -710,16 +971,17 @@ export default function PosApiAdmin() {
   const selectedReceiptTypes = Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
     : [];
+  const selectedTaxTypes = Array.isArray(formState.taxTypes) ? formState.taxTypes : [];
   const selectedPaymentMethods = Array.isArray(formState.paymentMethods)
     ? formState.paymentMethods
     : [];
 
-  const allowedReceiptTypes = useMemo(() => {
+  const allowedTaxTypes = useMemo(() => {
     if (!isTransactionUsage) return [];
-    const values = selectedReceiptTypes.length > 0 ? selectedReceiptTypes : DEFAULT_RECEIPT_TYPES;
+    const values = selectedTaxTypes.length > 0 ? selectedTaxTypes : DEFAULT_TAX_TYPES;
     const unique = Array.from(new Set(values));
     return TAX_TYPES.filter((tax) => unique.includes(tax.value));
-  }, [isTransactionUsage, selectedReceiptTypes]);
+  }, [isTransactionUsage, selectedTaxTypes]);
 
   const allowedPaymentTypes = useMemo(() => {
     if (!isTransactionUsage) return [];
@@ -730,7 +992,10 @@ export default function PosApiAdmin() {
 
   const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
   const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
-  const receiptTypeOptions = allowedReceiptTypes.length > 0 ? allowedReceiptTypes : TAX_TYPES;
+  const receiptTypeOptions = formReceiptTypes.length > 0
+    ? POSAPI_TYPES.filter((type) => formReceiptTypes.includes(type.value))
+    : POSAPI_TYPES;
+  const taxTypeOptions = allowedTaxTypes.length > 0 ? allowedTaxTypes : TAX_TYPES;
   const paymentTypeOptions = allowedPaymentTypes.length > 0 ? allowedPaymentTypes : PAYMENT_TYPES;
 
   useEffect(() => {
@@ -757,6 +1022,34 @@ export default function PosApiAdmin() {
     }
   }, [formState.requestSchemaText]);
 
+  useEffect(() => {
+    const payments = Array.isArray(requestBuilder?.payments) ? requestBuilder.payments : [];
+    setPaymentDataDrafts((prev) => {
+      const next = {};
+      payments.forEach((payment, index) => {
+        if (payment.type === 'PAYMENT_CARD') {
+          const key = String(index);
+          if (Object.prototype.hasOwnProperty.call(prev, key)) {
+            next[key] = prev[key];
+          } else {
+            next[key] = JSON.stringify(payment.data ?? {}, null, 2);
+          }
+        }
+      });
+      return next;
+    });
+    setPaymentDataErrors((prev) => {
+      const next = {};
+      payments.forEach((payment, index) => {
+        const key = String(index);
+        if (payment.type === 'PAYMENT_CARD' && prev[key]) {
+          next[key] = prev[key];
+        }
+      });
+      return next;
+    });
+  }, [requestBuilder]);
+
   const updateRequestBuilder = (updater) => {
     setRequestBuilder((prev) => {
       const working = deepClone(prev) || {};
@@ -774,6 +1067,79 @@ export default function PosApiAdmin() {
     });
   };
 
+  const handlePaymentDataChange = (index, text) => {
+    const key = String(index);
+    setPaymentDataDrafts((prev) => ({ ...prev, [key]: text }));
+    const trimmed = text.trim();
+    if (!trimmed) {
+      setPaymentDataErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      updateRequestBuilder((prev) => {
+        const payments = Array.isArray(prev.payments) ? prev.payments.slice() : [];
+        if (!payments[index]) return prev;
+        const updated = { ...payments[index] };
+        delete updated.data;
+        payments[index] = updated;
+        return { ...prev, payments };
+      });
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed !== 'object') {
+        throw new Error('Payment data must be a JSON object');
+      }
+      setPaymentDataErrors((prev) => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      updateRequestBuilder((prev) => {
+        const payments = Array.isArray(prev.payments) ? prev.payments.slice() : [];
+        if (!payments[index]) return prev;
+        payments[index] = { ...payments[index], data: parsed };
+        return { ...prev, payments };
+      });
+    } catch (err) {
+      setPaymentDataErrors((prev) => ({ ...prev, [key]: err.message || 'Invalid JSON' }));
+    }
+  };
+
+  const handleEasyBankDataChange = (index, field, value) => {
+    updateRequestBuilder((prev) => {
+      const payments = Array.isArray(prev.payments) ? prev.payments.slice() : [];
+      if (!payments[index]) return prev;
+      const existing = payments[index];
+      if (existing.type !== 'EASY_BANK_CARD') return prev;
+      const baseData =
+        existing && typeof existing.data === 'object' && existing.data !== null
+          ? { ...existing.data }
+          : { rrn: '', approvalCode: '', terminalId: '' };
+      baseData[field] = value;
+      payments[index] = { ...existing, data: baseData };
+      return { ...prev, payments };
+    });
+  };
+
+  const toggleReceiptType = (code) => {
+    if (!isTransactionUsage) return;
+    resetTestState();
+    setFormState((prev) => {
+      const current = Array.isArray(prev.receiptTypes) ? prev.receiptTypes.slice() : [];
+      const index = current.indexOf(code);
+      if (index >= 0) {
+        current.splice(index, 1);
+      } else {
+        current.push(code);
+      }
+      const nextValues = current.length > 0 ? current : DEFAULT_RECEIPT_TYPES.slice();
+      return { ...prev, receiptTypes: nextValues };
+    });
+  };
+
   const handleTypeChange = (type) => {
     setFormState((prev) => ({ ...prev, posApiType: type }));
     if (!type) return;
@@ -786,8 +1152,8 @@ export default function PosApiAdmin() {
 
   const handleReceiptChange = (index, field, value) => {
     let nextValue = value;
-    if (field === 'taxType') {
-      const allowedValues = allowedReceiptTypes.map((option) => option.value);
+      if (field === 'taxType') {
+        const allowedValues = allowedTaxTypes.map((option) => option.value);
       if (allowedValues.length > 0 && !allowedValues.includes(nextValue)) {
         [nextValue] = allowedValues;
       }
@@ -806,7 +1172,7 @@ export default function PosApiAdmin() {
   };
 
   const addReceiptGroup = () => {
-    const defaultType = allowedReceiptTypes[0]?.value || 'VAT_ABLE';
+    const defaultType = allowedTaxTypes[0]?.value || 'VAT_ABLE';
     updateRequestBuilder((prev) => ({
       ...prev,
       receipts: [
@@ -865,19 +1231,69 @@ export default function PosApiAdmin() {
   };
 
   const handlePaymentChange = (index, field, value) => {
+    let finalType = null;
+    let cardDraftText = '';
     updateRequestBuilder((prev) => {
       const payments = Array.isArray(prev.payments) ? prev.payments.slice() : [];
       if (!payments[index]) return prev;
-      let nextValue = value;
+      const existing = payments[index];
+      const updated = { ...existing };
       if (field === 'type') {
+        let nextValue = value;
         const allowedValues = allowedPaymentTypes.map((option) => option.value);
         if (allowedValues.length > 0 && !allowedValues.includes(nextValue)) {
           [nextValue] = allowedValues;
         }
+        updated.type = nextValue;
+        if (nextValue === 'PAYMENT_CARD') {
+          const baseData =
+            existing && typeof existing.data === 'object' && existing.data !== null
+              ? existing.data
+              : {};
+          updated.data = baseData;
+          cardDraftText = JSON.stringify(baseData, null, 2);
+        } else if (nextValue === 'EASY_BANK_CARD') {
+          const baseData =
+            existing && typeof existing.data === 'object' && existing.data !== null
+              ? existing.data
+              : {};
+          updated.data = {
+            rrn: baseData.rrn || '',
+            approvalCode: baseData.approvalCode || '',
+            terminalId: baseData.terminalId || '',
+          };
+        } else {
+          delete updated.data;
+        }
+      } else {
+        updated[field] = value;
       }
-      payments[index] = { ...payments[index], [field]: nextValue };
+      payments[index] = updated;
+      finalType = updated.type;
+      if (!cardDraftText && finalType === 'PAYMENT_CARD') {
+        cardDraftText = JSON.stringify(updated.data ?? {}, null, 2);
+      }
       return { ...prev, payments };
     });
+    if (field === 'type') {
+      const key = String(index);
+      if (finalType === 'PAYMENT_CARD') {
+        setPaymentDataDrafts((prev) => ({ ...prev, [key]: cardDraftText || prev[key] || '{}'}));
+      } else {
+        setPaymentDataDrafts((prev) => {
+          if (!Object.prototype.hasOwnProperty.call(prev, key)) return prev;
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+      }
+      setPaymentDataErrors((prev) => {
+        if (!prev[key]) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+    }
   };
 
   const addPayment = () => {
@@ -886,7 +1302,15 @@ export default function PosApiAdmin() {
       ...prev,
       payments: [
         ...(Array.isArray(prev.payments) ? prev.payments : []),
-        { type: defaultPayment, amount: 0 },
+        {
+          type: defaultPayment,
+          amount: 0,
+          ...(defaultPayment === 'PAYMENT_CARD'
+            ? { data: {} }
+            : defaultPayment === 'EASY_BANK_CARD'
+              ? { data: { rrn: '', approvalCode: '', terminalId: '' } }
+              : {}),
+        },
       ],
     }));
   };
@@ -897,21 +1321,34 @@ export default function PosApiAdmin() {
       payments.splice(index, 1);
       return { ...prev, payments };
     });
+    const reindex = (source) => {
+      const next = {};
+      Object.entries(source).forEach(([key, value]) => {
+        const currentIndex = Number(key);
+        if (Number.isNaN(currentIndex)) return;
+        if (currentIndex === index) return;
+        const newIndex = currentIndex > index ? currentIndex - 1 : currentIndex;
+        next[String(newIndex)] = value;
+      });
+      return next;
+    };
+    setPaymentDataDrafts((prev) => reindex(prev));
+    setPaymentDataErrors((prev) => reindex(prev));
   };
 
-  const toggleReceiptType = (code) => {
+  const toggleTaxType = (code) => {
     if (!isTransactionUsage) return;
     resetTestState();
     setFormState((prev) => {
-      const current = Array.isArray(prev.receiptTypes) ? prev.receiptTypes.slice() : [];
+      const current = Array.isArray(prev.taxTypes) ? prev.taxTypes.slice() : [];
       const index = current.indexOf(code);
       if (index >= 0) {
         current.splice(index, 1);
       } else {
         current.push(code);
       }
-      const nextValues = current.length > 0 ? current : DEFAULT_RECEIPT_TYPES.slice();
-      return { ...prev, receiptTypes: nextValues };
+      const nextValues = current.length > 0 ? current : DEFAULT_TAX_TYPES.slice();
+      return { ...prev, taxTypes: nextValues };
     });
   };
 
@@ -964,8 +1401,8 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!isTransactionUsage) return;
-    if (allowedReceiptTypes.length === 0) return;
-    const allowedValues = allowedReceiptTypes.map((option) => option.value);
+    if (allowedTaxTypes.length === 0) return;
+    const allowedValues = allowedTaxTypes.map((option) => option.value);
     updateRequestBuilder((prev) => {
       const receipts = Array.isArray(prev.receipts) ? prev.receipts.slice() : [];
       if (receipts.length === 0) return prev;
@@ -980,7 +1417,7 @@ export default function PosApiAdmin() {
       if (!changed) return prev;
       return { ...prev, receipts: nextReceipts };
     });
-  }, [allowedReceiptTypes, isTransactionUsage]);
+  }, [allowedTaxTypes, isTransactionUsage]);
 
   useEffect(() => {
     if (!isTransactionUsage) return;
@@ -1107,6 +1544,8 @@ export default function PosApiAdmin() {
     setSelectedDocBlock('');
     setDocMetadata({});
     setDocFieldDescriptions({});
+    setSampleImportText('');
+    setSampleImportError('');
     setSelectedId(id);
     const definition = endpoints.find((ep) => ep.id === id);
     setFormState(createFormState(definition));
@@ -1122,10 +1561,12 @@ export default function PosApiAdmin() {
           next.supportsMultiplePayments = false;
           next.supportsItems = false;
           next.receiptTypes = [];
+          next.taxTypes = [];
           next.paymentMethods = [];
         } else {
           next.supportsItems = true;
           next.receiptTypes = DEFAULT_RECEIPT_TYPES.slice();
+          next.taxTypes = DEFAULT_TAX_TYPES.slice();
           next.paymentMethods = DEFAULT_PAYMENT_METHODS.slice();
         }
       }
@@ -1137,6 +1578,82 @@ export default function PosApiAdmin() {
     if (field !== 'docUrl') {
       resetTestState();
     }
+  }
+
+  function handleApplySamplePayload(type) {
+    const sample = RECEIPT_SAMPLE_PAYLOADS[type];
+    if (!sample) return;
+    resetTestState();
+    const cloned = deepClone(sample) || {};
+    const nextReceiptTypes = Array.isArray(formState.receiptTypes)
+      ? Array.from(new Set([...formState.receiptTypes, type]))
+      : [type];
+    setFormState((prev) => ({
+      ...prev,
+      usage: 'transaction',
+      posApiType: type,
+      receiptTypes: nextReceiptTypes,
+    }));
+    updateRequestBuilder(() => normaliseBuilderForType(cloned, type, supportsItems));
+    setStatus(`Loaded ${formatTypeLabel(type)} sample payload into the builder.`);
+    setSampleImportError('');
+  }
+
+  async function handleCopySamplePayload(type) {
+    const sample = RECEIPT_SAMPLE_PAYLOADS[type];
+    if (!sample) return;
+    try {
+      if (!navigator?.clipboard) {
+        throw new Error('Clipboard API is not available in this browser.');
+      }
+      await navigator.clipboard.writeText(JSON.stringify(sample, null, 2));
+      setStatus(`Copied ${formatTypeLabel(type)} sample payload to the clipboard.`);
+      setSampleImportError('');
+    } catch (err) {
+      setSampleImportError(err.message || 'Unable to copy the sample payload.');
+    }
+  }
+
+  function handleSampleImport() {
+    const trimmed = sampleImportText.trim();
+    if (!trimmed) {
+      setSampleImportError('Provide JSON to import.');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      const targetType = parsed?.type || formState.posApiType || 'B2C_RECEIPT';
+      resetTestState();
+      updateRequestBuilder(() => normaliseBuilderForType(parsed, targetType, supportsItems));
+      const nextReceiptTypes = Array.isArray(formState.receiptTypes)
+        ? Array.from(new Set([...formState.receiptTypes, targetType]))
+        : [targetType];
+      setFormState((prev) => ({
+        ...prev,
+        usage: 'transaction',
+        posApiType: targetType,
+        receiptTypes: nextReceiptTypes,
+      }));
+      setSampleImportError('');
+      setStatus('Imported sample JSON into the request builder.');
+    } catch (err) {
+      setSampleImportError(err.message || 'Invalid JSON.');
+    }
+  }
+
+  function handleSampleFile(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === 'string' ? reader.result : '';
+      setSampleImportText(text);
+      setSampleImportError('');
+    };
+    reader.onerror = () => {
+      setSampleImportError('Failed to read the selected file.');
+    };
+    reader.readAsText(file);
   }
 
   function resetTestState() {
@@ -1243,6 +1760,15 @@ export default function PosApiAdmin() {
           ),
         )
       : [];
+    const uniqueTaxTypes = isTransaction
+      ? Array.from(
+          new Set(
+            (Array.isArray(formState.taxTypes) && formState.taxTypes.length > 0
+              ? formState.taxTypes
+              : DEFAULT_TAX_TYPES),
+          ),
+        )
+      : [];
     const uniquePaymentMethods = isTransaction
       ? Array.from(
           new Set(
@@ -1265,6 +1791,8 @@ export default function PosApiAdmin() {
       supportsMultiplePayments: isTransaction ? Boolean(formState.supportsMultiplePayments) : false,
       supportsItems: isTransaction ? Boolean(formState.supportsItems) : false,
       receiptTypes: isTransaction ? uniqueReceiptTypes : [],
+      taxTypes: isTransaction ? uniqueTaxTypes : [],
+      ...(isTransaction ? { receiptTaxTypes: uniqueTaxTypes } : {}),
       paymentMethods: isTransaction ? uniquePaymentMethods : [],
       notes: formState.notes ? formState.notes.trim() : '',
       parameters,
@@ -1495,6 +2023,8 @@ export default function PosApiAdmin() {
     setSelectedDocBlock('');
     setDocMetadata({});
     setDocFieldDescriptions({});
+    setSampleImportText('');
+    setSampleImportError('');
   }
 
   async function handleTest() {
@@ -1928,21 +2458,46 @@ export default function PosApiAdmin() {
           </label>
           {formState.usage === 'transaction' && (
             <div style={styles.labelFull}>
+              <span style={styles.multiSelectTitle}>Receipt types</span>
+              <span style={styles.multiSelectHint}>
+                Choose the transaction types this endpoint accepts at runtime.
+              </span>
+              <div style={styles.multiSelectOptions}>
+                {POSAPI_TYPES.map((type) => {
+                  const checked = Array.isArray(formState.receiptTypes)
+                    ? formState.receiptTypes.includes(type.value)
+                    : false;
+                  return (
+                    <label key={type.value} style={styles.multiSelectOption}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleReceiptType(type.value)}
+                      />
+                      <span>{type.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          {formState.usage === 'transaction' && (
+            <div style={styles.labelFull}>
               <span style={styles.multiSelectTitle}>Receipt tax types</span>
               <span style={styles.multiSelectHint}>
                 Limit the tax type choices when building receipts and mapping fields.
               </span>
               <div style={styles.multiSelectOptions}>
                 {TAX_TYPES.map((tax) => {
-                  const checked = Array.isArray(formState.receiptTypes)
-                    ? formState.receiptTypes.includes(tax.value)
+                  const checked = Array.isArray(formState.taxTypes)
+                    ? formState.taxTypes.includes(tax.value)
                     : false;
                   return (
                     <label key={tax.value} style={styles.multiSelectOption}>
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={() => toggleReceiptType(tax.value)}
+                        onChange={() => toggleTaxType(tax.value)}
                       />
                       <span>{tax.label}</span>
                     </label>
@@ -2065,7 +2620,7 @@ export default function PosApiAdmin() {
                           onChange={(e) => handleBuilderFieldChange('taxType', e.target.value)}
                           style={styles.input}
                         >
-                          {receiptTypeOptions.map((tax) => (
+                          {taxTypeOptions.map((tax) => (
                             <option key={tax.value} value={tax.value}>
                               {tax.label}
                             </option>
@@ -2138,6 +2693,86 @@ export default function PosApiAdmin() {
                 </div>
               </details>
 
+              {formState.usage === 'transaction' && (
+                <details open style={styles.detailSection}>
+                  <summary style={styles.detailSummary}>Receipt &amp; invoice samples</summary>
+                  <div style={styles.detailBody}>
+                    <p style={styles.sectionHelp}>
+                      Each <code>receipts[]</code> entry must declare one of the following tax types.
+                      Create a separate receipt group when a sale mixes different tax treatments.
+                    </p>
+                    <ul style={styles.inlineList}>
+                      {TAX_TYPES.map((tax) => (
+                        <li key={`tax-${tax.value}`} style={styles.inlineListItem}>
+                          <strong>{tax.value}</strong>
+                          {TAX_TYPE_DESCRIPTIONS[tax.value]
+                            ? ` – ${TAX_TYPE_DESCRIPTIONS[tax.value]}`
+                            : ''}
+                        </li>
+                      ))}
+                    </ul>
+                    <div style={styles.sampleGrid}>
+                      {POSAPI_TYPES.map((type) => {
+                        const sample = RECEIPT_SAMPLE_PAYLOADS[type.value];
+                        if (!sample) return null;
+                        const pretty = JSON.stringify(sample, null, 2);
+                        return (
+                          <div key={`sample-${type.value}`} style={styles.sampleCard}>
+                            <div style={styles.sampleHeader}>
+                              <strong>{type.label}</strong>
+                              <div style={styles.sampleActions}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleApplySamplePayload(type.value)}
+                                  style={styles.smallButton}
+                                >
+                                  Use in builder
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopySamplePayload(type.value)}
+                                  style={styles.smallSecondaryButton}
+                                >
+                                  Copy JSON
+                                </button>
+                              </div>
+                            </div>
+                            <pre style={styles.samplePre}>{pretty}</pre>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={styles.sampleImportContainer}>
+                      <label style={styles.sampleImportLabel}>
+                        Paste a sample JSON payload
+                        <textarea
+                          value={sampleImportText}
+                          onChange={(e) => setSampleImportText(e.target.value)}
+                          style={styles.sampleTextarea}
+                          placeholder={`{\n  "type": "B2C_RECEIPT",\n  "receipts": []\n}`}
+                          rows={6}
+                        />
+                      </label>
+                      <div style={styles.sampleImportControls}>
+                        <button type="button" onClick={handleSampleImport} style={styles.smallButton}>
+                          Import to builder
+                        </button>
+                        <label style={styles.sampleFileLabel}>
+                          <span>Upload JSON file</span>
+                          <input
+                            type="file"
+                            accept="application/json,.json"
+                            onChange={handleSampleFile}
+                            style={styles.sampleFileInput}
+                          />
+                        </label>
+                      </div>
+                      {sampleImportError && <div style={styles.previewErrorBox}>{sampleImportError}</div>}
+                    </div>
+                  </div>
+                </details>
+              )}
+
               {isReceiptType && (
                 <details open style={styles.detailSection}>
                   <summary style={styles.detailSummary}>Receipts by tax type</summary>
@@ -2172,14 +2807,14 @@ export default function PosApiAdmin() {
                                 <select
                                   value={receipt.taxType || 'VAT_ABLE'}
                                   onChange={(e) => handleReceiptChange(index, 'taxType', e.target.value)}
-                          style={styles.input}
-                        >
-                          {receiptTypeOptions.map((tax) => (
-                            <option key={tax.value} value={tax.value}>
-                              {tax.label}
-                            </option>
-                          ))}
-                        </select>
+                                  style={styles.input}
+                                >
+                                  {taxTypeOptions.map((tax) => (
+                                    <option key={tax.value} value={tax.value}>
+                                      {tax.label}
+                                    </option>
+                                  ))}
+                                </select>
                               </label>
                               <label style={styles.builderLabel}>
                                 Group amount
@@ -2385,7 +3020,7 @@ export default function PosApiAdmin() {
                                         }
                                         style={styles.input}
                                       >
-                                        {receiptTypeOptions.map((tax) => (
+                                        {taxTypeOptions.map((tax) => (
                                           <option key={tax.value} value={tax.value}>
                                             {tax.label}
                                           </option>
@@ -2437,37 +3072,99 @@ export default function PosApiAdmin() {
                   <div style={styles.detailBody}>
                     <div style={styles.paymentsTable}>
                       {(Array.isArray(requestBuilder.payments) ? requestBuilder.payments : []).map(
-                        (payment, index) => (
-                          <div key={`payment-${index}`} style={styles.paymentRow}>
-                            <select
-                              value={payment.type || 'CASH'}
-                              onChange={(e) => handlePaymentChange(index, 'type', e.target.value)}
-                              style={styles.paymentSelect}
-                              title={PAYMENT_DESCRIPTIONS[payment.type] || ''}
-                            >
-                              {paymentTypeOptions.map((paymentType) => (
-                                <option key={paymentType.value} value={paymentType.value}>
-                                  {paymentType.label}
-                                </option>
-                              ))}
-                            </select>
-                            <input
-                              type="number"
-                              value={payment.amount ?? 0}
-                              onChange={(e) =>
-                                handlePaymentChange(index, 'amount', Number(e.target.value) || 0)
-                              }
-                              style={styles.paymentAmount}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => removePayment(index)}
-                              style={styles.smallDangerButton}
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ),
+                        (payment, index) => {
+                          const type = payment.type || 'CASH';
+                          const draftKey = String(index);
+                          const draftValue =
+                            paymentDataDrafts[draftKey] ?? JSON.stringify(payment.data ?? {}, null, 2);
+                          const dataError = paymentDataErrors[draftKey];
+                          const isPaymentCard = type === 'PAYMENT_CARD';
+                          const isEasyBank = type === 'EASY_BANK_CARD';
+                          return (
+                            <div key={`payment-${index}`} style={styles.paymentGroup}>
+                              <div style={styles.paymentRow}>
+                                <select
+                                  value={type}
+                                  onChange={(e) => handlePaymentChange(index, 'type', e.target.value)}
+                                  style={styles.paymentSelect}
+                                  title={PAYMENT_DESCRIPTIONS[type] || ''}
+                                >
+                                  {paymentTypeOptions.map((paymentType) => (
+                                    <option key={paymentType.value} value={paymentType.value}>
+                                      {paymentType.label}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="number"
+                                  value={payment.amount ?? 0}
+                                  onChange={(e) =>
+                                    handlePaymentChange(index, 'amount', Number(e.target.value) || 0)
+                                  }
+                                  style={styles.paymentAmount}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => removePayment(index)}
+                                  style={styles.smallDangerButton}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                              {isPaymentCard && (
+                                <div style={styles.paymentDataContainer}>
+                                  <label style={styles.paymentDataLabel}>
+                                    Payment data (JSON)
+                                    <textarea
+                                      value={draftValue}
+                                      onChange={(e) => handlePaymentDataChange(index, e.target.value)}
+                                      style={styles.paymentDataTextarea}
+                                      rows={4}
+                                    />
+                                  </label>
+                                  {dataError && <div style={styles.inlineError}>{dataError}</div>}
+                                </div>
+                              )}
+                              {isEasyBank && (
+                                <div style={styles.paymentDataContainer}>
+                                  <div style={styles.easyBankGrid}>
+                                    <label style={styles.paymentDataLabel}>
+                                      Retrieval reference number (RRN)
+                                      <input
+                                        type="text"
+                                        value={payment.data?.rrn || ''}
+                                        onChange={(e) => handleEasyBankDataChange(index, 'rrn', e.target.value)}
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                    <label style={styles.paymentDataLabel}>
+                                      Approval code
+                                      <input
+                                        type="text"
+                                        value={payment.data?.approvalCode || ''}
+                                        onChange={(e) =>
+                                          handleEasyBankDataChange(index, 'approvalCode', e.target.value)
+                                        }
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                    <label style={styles.paymentDataLabel}>
+                                      Terminal ID
+                                      <input
+                                        type="text"
+                                        value={payment.data?.terminalId || ''}
+                                        onChange={(e) =>
+                                          handleEasyBankDataChange(index, 'terminalId', e.target.value)
+                                        }
+                                        style={styles.input}
+                                      />
+                                    </label>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        },
                       )}
                     </div>
                     <div style={styles.paymentSummary}>
@@ -3217,6 +3914,96 @@ const styles = {
     fontSize: '0.85rem',
     color: '#475569',
   },
+  inlineList: {
+    listStyle: 'none',
+    margin: '0.75rem 0',
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+  },
+  inlineListItem: {
+    fontSize: '0.85rem',
+    color: '#1f2937',
+  },
+  sampleGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gap: '1rem',
+    marginTop: '1rem',
+  },
+  sampleCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    background: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    padding: '0.75rem',
+  },
+  sampleHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  sampleActions: {
+    display: 'flex',
+    gap: '0.4rem',
+  },
+  samplePre: {
+    background: '#0f172a',
+    color: '#f8fafc',
+    borderRadius: '4px',
+    padding: '0.75rem',
+    fontSize: '0.75rem',
+    maxHeight: '220px',
+    overflow: 'auto',
+  },
+  sampleImportContainer: {
+    marginTop: '1rem',
+    borderTop: '1px solid #e2e8f0',
+    paddingTop: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  sampleImportLabel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+    fontWeight: 600,
+    fontSize: '0.85rem',
+    color: '#1f2937',
+  },
+  sampleTextarea: {
+    width: '100%',
+    borderRadius: '4px',
+    border: '1px solid #cbd5f5',
+    fontFamily: 'monospace',
+    fontSize: '0.85rem',
+    padding: '0.6rem',
+  },
+  sampleImportControls: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.75rem',
+    alignItems: 'center',
+  },
+  sampleFileLabel: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    background: '#e0f2fe',
+    color: '#0f172a',
+    borderRadius: '4px',
+    padding: '0.3rem 0.75rem',
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+  },
+  sampleFileInput: {
+    display: 'none',
+  },
   capabilitiesBox: {
     border: '1px solid #e2e8f0',
     borderRadius: '8px',
@@ -3536,6 +4323,15 @@ const styles = {
     cursor: 'pointer',
     fontSize: '0.8rem',
   },
+  smallSecondaryButton: {
+    background: '#e2e8f0',
+    color: '#0f172a',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '0.25rem 0.75rem',
+    cursor: 'pointer',
+    fontSize: '0.8rem',
+  },
   smallDangerButton: {
     background: '#f87171',
     color: '#fff',
@@ -3549,6 +4345,15 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.5rem',
+  },
+  paymentGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    padding: '0.75rem',
+    background: '#fff',
   },
   paymentRow: {
     display: 'grid',
@@ -3567,6 +4372,37 @@ const styles = {
     borderRadius: '4px',
     border: '1px solid #cbd5f5',
     fontSize: '0.9rem',
+  },
+  paymentDataContainer: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  paymentDataLabel: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.3rem',
+    fontSize: '0.8rem',
+    color: '#1f2937',
+    fontWeight: 600,
+  },
+  paymentDataTextarea: {
+    width: '100%',
+    borderRadius: '4px',
+    border: '1px solid #cbd5f5',
+    fontFamily: 'monospace',
+    fontSize: '0.8rem',
+    padding: '0.5rem',
+    minHeight: '120px',
+  },
+  inlineError: {
+    color: '#b91c1c',
+    fontSize: '0.78rem',
+  },
+  easyBankGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '0.75rem',
   },
   paymentSummary: {
     display: 'flex',
