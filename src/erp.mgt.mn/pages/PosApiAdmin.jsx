@@ -2913,10 +2913,7 @@ export default function PosApiAdmin() {
                                           value={draftValue}
                                           onChange={(e) => handlePaymentDataDraftChange(index, e.target.value)}
                                           onBlur={() => applyPaymentDataDraft(index)}
-                                          placeholder={`{
-  "authCode": "",
-  "cardNumber": ""
-}`}
+                                          placeholder="{\n  \"authCode\": \"\",\n  \"cardNumber\": \"\"\n}"
                                           style={styles.paymentDataTextarea}
                                           rows={4}
                                         />
