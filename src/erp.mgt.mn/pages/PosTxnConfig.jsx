@@ -477,6 +477,22 @@ export default function PosTxnConfig() {
     ? selectedEndpoint?.allowMultiplePaymentMethods !== false
     : true;
 
+  const receiptTypesFeatureEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptTypes !== false
+    : true;
+  const receiptTaxTypesFeatureEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptTaxTypes !== false
+    : true;
+  const paymentMethodsFeatureEnabled = selectedEndpoint
+    ? selectedEndpoint.enablePaymentMethods !== false
+    : true;
+  const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
+    ? selectedEndpoint?.allowMultipleReceiptTypes === true
+    : false;
+  const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
+    ? selectedEndpoint?.allowMultiplePaymentMethods !== false
+    : true;
+
   const endpointReceiptTypes = useMemo(() => {
     if (!receiptTypesFeatureEnabled) return [];
     if (

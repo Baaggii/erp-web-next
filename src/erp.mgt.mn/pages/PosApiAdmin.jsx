@@ -212,7 +212,7 @@ function withEndpointMetadata(endpoint) {
   const enableReceiptTaxTypes = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
   const enablePaymentMethods = isTransaction ? endpoint.enablePaymentMethods !== false : false;
   const enableReceiptItems = isTransaction ? endpoint.enableReceiptItems !== false : false;
-  const allowMultipleReceiptTypes = enableReceiptTypes ? endpoint.allowMultipleReceiptTypes === true : false;
+  const allowMultipleReceiptTypes = enableReceiptTypes ? endpoint.allowMultipleReceiptTypes !== false : false;
   const allowMultipleReceiptTaxTypes = enableReceiptTaxTypes
     ? endpoint.allowMultipleReceiptTaxTypes !== false
     : false;
@@ -320,7 +320,7 @@ const EMPTY_ENDPOINT = {
   supportsMultiplePayments: false,
   supportsItems: true,
   enableReceiptTypes: true,
-  allowMultipleReceiptTypes: false,
+  allowMultipleReceiptTypes: true,
   receiptTypeTemplates: {},
   enableReceiptTaxTypes: true,
   allowMultipleReceiptTaxTypes: true,
@@ -908,7 +908,7 @@ function createFormState(definition) {
   const paymentMethodsEnabled = isTransaction ? definition.enablePaymentMethods !== false : false;
   const receiptItemsEnabled = isTransaction ? definition.enableReceiptItems !== false : false;
   const allowMultipleReceiptTypes = receiptTypesEnabled
-    ? definition.allowMultipleReceiptTypes === true
+    ? definition.allowMultipleReceiptTypes !== false
     : false;
   const allowMultipleReceiptTaxTypes = receiptTaxTypesEnabled
     ? definition.allowMultipleReceiptTaxTypes !== false
@@ -1373,7 +1373,7 @@ export default function PosApiAdmin() {
     if (!receiptTypesEnabled) return;
     resetTestState();
     setFormState((prev) => {
-      const allowMultiple = prev.allowMultipleReceiptTypes === true;
+      const allowMultiple = prev.allowMultipleReceiptTypes !== false;
       let current = Array.isArray(prev.receiptTypes) ? prev.receiptTypes.slice() : [];
       const index = current.indexOf(code);
       if (allowMultiple) {
@@ -1954,7 +1954,7 @@ export default function PosApiAdmin() {
         if (!Array.isArray(next.receiptTypes) || next.receiptTypes.length === 0) {
           next.receiptTypes = DEFAULT_RECEIPT_TYPES.slice(
             0,
-            next.allowMultipleReceiptTypes === true ? DEFAULT_RECEIPT_TYPES.length : 1,
+            next.allowMultipleReceiptTypes === false ? 1 : DEFAULT_RECEIPT_TYPES.length,
           );
         }
       }
@@ -2909,7 +2909,7 @@ export default function PosApiAdmin() {
                   <span>Enable receipt types</span>
                 </label>
                 <span style={styles.toggleStateBadge}>
-                  {formState.allowMultipleReceiptTypes === true ? 'Multiple allowed' : 'Single value'}
+                  {formState.allowMultipleReceiptTypes !== false ? 'Multiple allowed' : 'Single value'}
                 </span>
               </div>
               {receiptTypesEnabled ? (
@@ -2954,7 +2954,7 @@ export default function PosApiAdmin() {
                           <div style={styles.templateHeader}>
                             <strong>{formatTypeLabel(code) || code}</strong>
                             <span style={styles.templatePill}>
-                              {formState.allowMultipleReceiptTypes === true ? 'Multi' : 'Single'}
+                              {formState.allowMultipleReceiptTypes !== false ? 'Multi' : 'Single'}
                             </span>
                           </div>
                           <textarea
