@@ -133,6 +133,7 @@ export async function issueDynamicTransactionEbarimt(
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
   const payload = await buildReceiptFromDynamicTransaction(record, mapping, receiptType, {
     typeField: formCfg.posApiTypeField,
+    endpoint,
   });
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
