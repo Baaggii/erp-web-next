@@ -201,6 +201,9 @@ function withEndpointMetadata(endpoint) {
       supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
     }
   }
+  if (!receiptItemsEnabled) {
+    supportsItems = false;
+  }
   return {
     ...endpoint,
     usage,
