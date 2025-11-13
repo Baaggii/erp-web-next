@@ -80,19 +80,33 @@ const USAGE_BADGES = {
 const DEFAULT_RECEIPT_TYPES = POSAPI_TYPES.map((type) => type.value);
 const DEFAULT_TAX_TYPES = TAX_TYPES.map((tax) => tax.value);
 const DEFAULT_PAYMENT_METHODS = PAYMENT_TYPES.map((payment) => payment.value);
+const VALID_RECEIPT_TYPES = new Set(DEFAULT_RECEIPT_TYPES);
+const VALID_TAX_TYPES = new Set(DEFAULT_TAX_TYPES);
+const VALID_PAYMENT_METHODS = new Set(DEFAULT_PAYMENT_METHODS);
 const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
 
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
 }
 
-function sanitizeCodeList(list, fallback) {
+function sanitizeCodeList(list, fallback, allowedValues) {
+  const allowedSet =
+    allowedValues instanceof Set
+      ? allowedValues
+      : Array.isArray(allowedValues)
+        ? new Set(allowedValues)
+        : null;
   const source = Array.isArray(list) ? list : fallback;
   const cleaned = source
     .map((value) => (typeof value === 'string' ? value.trim() : ''))
-    .filter(Boolean);
-  const effective = cleaned.length > 0 ? cleaned : fallback;
-  return Array.from(new Set(effective));
+    .filter((value) => value && (!allowedSet || allowedSet.has(value)));
+  const fallbackList = Array.isArray(fallback) ? fallback : [];
+  const fallbackCleaned = fallbackList
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter((value) => value && (!allowedSet || allowedSet.has(value)));
+  const effective = cleaned.length > 0 ? cleaned : fallbackCleaned;
+  const deduped = Array.from(new Set(effective));
+  return allowedSet ? deduped.filter((value) => allowedSet.has(value)) : deduped;
 }
 
 function withEndpointMetadata(endpoint) {
@@ -100,13 +114,17 @@ function withEndpointMetadata(endpoint) {
   const usage = normalizeUsage(endpoint.usage);
   const isTransaction = usage === 'transaction';
   const receiptTypes = isTransaction
-    ? sanitizeCodeList(endpoint.receiptTypes, DEFAULT_RECEIPT_TYPES)
+    ? sanitizeCodeList(endpoint.receiptTypes, DEFAULT_RECEIPT_TYPES, VALID_RECEIPT_TYPES)
     : [];
   const taxTypes = isTransaction
-    ? sanitizeCodeList(endpoint.taxTypes || endpoint.receiptTaxTypes, DEFAULT_TAX_TYPES)
+    ? sanitizeCodeList(
+        endpoint.taxTypes || endpoint.receiptTaxTypes,
+        DEFAULT_TAX_TYPES,
+        VALID_TAX_TYPES,
+      )
     : [];
   const paymentMethods = isTransaction
-    ? sanitizeCodeList(endpoint.paymentMethods, DEFAULT_PAYMENT_METHODS)
+    ? sanitizeCodeList(endpoint.paymentMethods, DEFAULT_PAYMENT_METHODS, VALID_PAYMENT_METHODS)
     : [];
   let supportsItems = false;
   if (isTransaction) {
@@ -1135,7 +1153,7 @@ export default function PosApiAdmin() {
       } else {
         current.push(code);
       }
-      const nextValues = current.length > 0 ? current : DEFAULT_RECEIPT_TYPES.slice();
+      const nextValues = sanitizeCodeList(current, DEFAULT_RECEIPT_TYPES, VALID_RECEIPT_TYPES);
       return { ...prev, receiptTypes: nextValues };
     });
   };
@@ -1347,7 +1365,7 @@ export default function PosApiAdmin() {
       } else {
         current.push(code);
       }
-      const nextValues = current.length > 0 ? current : DEFAULT_TAX_TYPES.slice();
+      const nextValues = sanitizeCodeList(current, DEFAULT_TAX_TYPES, VALID_TAX_TYPES);
       return { ...prev, taxTypes: nextValues };
     });
   };
@@ -1363,7 +1381,7 @@ export default function PosApiAdmin() {
       } else {
         current.push(code);
       }
-      const nextValues = current.length > 0 ? current : DEFAULT_PAYMENT_METHODS.slice();
+      const nextValues = sanitizeCodeList(current, DEFAULT_PAYMENT_METHODS, VALID_PAYMENT_METHODS);
       return { ...prev, paymentMethods: nextValues };
     });
   };
@@ -1752,31 +1770,13 @@ export default function PosApiAdmin() {
       : 'transaction';
     const isTransaction = usage === 'transaction';
     const uniqueReceiptTypes = isTransaction
-      ? Array.from(
-          new Set(
-            (Array.isArray(formState.receiptTypes) && formState.receiptTypes.length > 0
-              ? formState.receiptTypes
-              : DEFAULT_RECEIPT_TYPES),
-          ),
-        )
+      ? sanitizeCodeList(formState.receiptTypes, DEFAULT_RECEIPT_TYPES, VALID_RECEIPT_TYPES)
       : [];
     const uniqueTaxTypes = isTransaction
-      ? Array.from(
-          new Set(
-            (Array.isArray(formState.taxTypes) && formState.taxTypes.length > 0
-              ? formState.taxTypes
-              : DEFAULT_TAX_TYPES),
-          ),
-        )
+      ? sanitizeCodeList(formState.taxTypes, DEFAULT_TAX_TYPES, VALID_TAX_TYPES)
       : [];
     const uniquePaymentMethods = isTransaction
-      ? Array.from(
-          new Set(
-            (Array.isArray(formState.paymentMethods) && formState.paymentMethods.length > 0
-              ? formState.paymentMethods
-              : DEFAULT_PAYMENT_METHODS),
-          ),
-        )
+      ? sanitizeCodeList(formState.paymentMethods, DEFAULT_PAYMENT_METHODS, VALID_PAYMENT_METHODS)
       : [];
     const endpoint = {
       id: formState.id.trim(),
