@@ -17,7 +17,6 @@ const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 const PAGE_SIZE = 50;
-const MAX_AUTO_SEARCH_PAGES = 20;
 
 export default function AsyncSearchSelect({
   table,
@@ -228,14 +227,7 @@ export default function AsyncSearchSelect({
     });
   }, []);
 
-  async function fetchPage(
-    p = 1,
-    q = '',
-    append = false,
-    signal,
-    options = {},
-  ) {
-    const { autoExtend = false, extendCount = 0 } = options;
+  async function fetchPage(p = 1, q = '', append = false, signal) {
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
     setLoading(true);
@@ -317,21 +309,11 @@ export default function AsyncSearchSelect({
           ? p * PAGE_SIZE < totalCount
           : rows.length >= PAGE_SIZE;
       setHasMore(more);
-      if (
-        normalizedQuery &&
-        opts.length === 0 &&
-        more &&
-        !signal?.aborted &&
-        extendCount + 1 < MAX_AUTO_SEARCH_PAGES
-      ) {
+      if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
         const nextPage = p + 1;
-        setPage((prev) => Math.max(prev, nextPage));
-        return await fetchPage(nextPage, q, true, signal, {
-          autoExtend,
-          extendCount: extendCount + 1,
-        });
+        setPage(nextPage);
+        return fetchPage(nextPage, q, true, signal);
       }
-      setPage((prev) => Math.max(prev, p));
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
@@ -350,19 +332,6 @@ export default function AsyncSearchSelect({
         }
         return normalizeOptions(opts);
       });
-      if (
-        normalizedQuery &&
-        autoExtend &&
-        more &&
-        !signal?.aborted &&
-        extendCount + 1 < MAX_AUTO_SEARCH_PAGES
-      ) {
-        const nextPage = p + 1;
-        return await fetchPage(nextPage, q, true, signal, {
-          autoExtend: true,
-          extendCount: extendCount + 1,
-        });
-      }
     } catch (err) {
       if (err.name !== 'AbortError') setOptions([]);
     } finally {
@@ -435,9 +404,7 @@ export default function AsyncSearchSelect({
     const controller = new AbortController();
     const q = String(input || '').trim();
     setPage(1);
-    fetchPage(1, q, false, controller.signal, {
-      autoExtend: Boolean(q),
-    });
+    fetchPage(1, q, false, controller.signal);
     return () => controller.abort();
   }, [
     show,
