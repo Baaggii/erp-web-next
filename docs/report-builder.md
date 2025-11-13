@@ -23,3 +23,68 @@ at once. The procedure groups detail rows into a JSON payload that exposes both
 record-level hints and session variables for the locking subsystem. This makes
 it easy to exercise scenarios where a single report row needs to reserve records
 from more than one table before the report can be approved.
+
+## Configuring report totals
+
+`ReportTable` automatically renders a `TOTAL` footer whenever the current result
+set contains at least one numeric column. Each numeric column is summed on the
+fly, so basic totals appear without any extra configuration or metadata in your
+stored procedure output.【F:src/erp.mgt.mn/components/ReportTable.jsx†L640-L687】
+
+If a stored procedure needs to expose a true summary row (for example, a total
+that comes from a different aggregation query), include that row in the payload
+under any of the following keys: `totalRow`, `total_row`, `totals`, `summary`,
+`summaryRow`, or `summary_row`. Arrays are converted to `{ columnName: value }
+` maps using the column list, and plain objects are used directly. The
+sanitization layer inside `normalizeSnapshotRow` keeps the summary aligned with
+the resolved columns before the UI consumes it.【F:api-server/services/pendingRequest.js†L139-L178】
+
+Snapshots and the standalone `ReportSnapshotViewer` preserve the same summary by
+pulling the `totalRow` value back out of the normalized dataset, ensuring that
+the footer appears in downloaded artifacts as well as in the live table. Leaving
+those keys undefined simply omits the summary row, so the viewer falls back to
+the automatically computed totals described above.【F:src/erp.mgt.mn/utils/normalizeSnapshot.js†L211-L229】
+
+### Structuring stored procedures for toggleable totals
+
+Stored procedures can control whether a handcrafted total row is emitted by
+shaping the metadata block that the approval API persists. The snapshot parser
+expects a JSON object with `columns`, `rows`, and an optional `totalRow`. When
+`totalRow` is `NULL` or missing the UI only displays the automatically summed
+footer; when the property is populated the UI renders the supplied summary
+verbatim.【F:api-server/services/pendingRequest.js†L139-L178】
+
+The example below adds a boolean parameter that lets the caller decide whether a
+backend summary row should be included. The stored procedure still returns the
+detail result set first, then emits a second `SELECT` that produces the snapshot
+metadata consumed by the approval workflow.
+
+```sql
+CREATE PROCEDURE dynrep_1_sp_transactions_test_report(
+  IN p_company_id INT,
+  IN p_include_totals TINYINT
+)
+BEGIN
+  -- existing detail SELECT omitted for brevity
+
+  SELECT JSON_OBJECT(
+    'columns', JSON_ARRAY('transaction_id', 'company_id', 'total_amount'),
+    'rows', JSON_ARRAYAGG(JSON_ARRAY(id, company_id, total_amount)),
+    'totalRow', CASE
+      WHEN COALESCE(p_include_totals, 1) = 1 THEN JSON_OBJECT(
+        'transaction_id', NULL,
+        'company_id', NULL,
+        'total_amount', SUM(total_amount)
+      )
+      ELSE NULL
+    END
+  ) AS report_snapshot
+  FROM transactions_test
+  WHERE p_company_id IS NULL OR company_id = p_company_id;
+END;
+```
+
+This layout keeps the SQL readable and guarantees that the backend can toggle
+handcrafted totals without changing any frontend code. Passing `0` for
+`p_include_totals` removes the `totalRow` payload entirely, so the automatic
+`TOTAL` footer will be used instead.
