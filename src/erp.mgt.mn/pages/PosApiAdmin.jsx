@@ -848,6 +848,9 @@ export default function PosApiAdmin() {
   const [sampleImportError, setSampleImportError] = useState('');
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
+  const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
+  const [taxTypeListError, setTaxTypeListError] = useState('');
+  const taxTypeInputDirtyRef = useRef(false);
   const builderSyncRef = useRef(false);
 
   const groupedEndpoints = useMemo(() => {
@@ -993,6 +996,20 @@ export default function PosApiAdmin() {
   const selectedPaymentMethods = Array.isArray(formState.paymentMethods)
     ? formState.paymentMethods
     : [];
+
+  useEffect(() => {
+    if (!isTransactionUsage) {
+      setTaxTypeListText('');
+      setTaxTypeListError('');
+      taxTypeInputDirtyRef.current = false;
+      return;
+    }
+    if (taxTypeInputDirtyRef.current) {
+      return;
+    }
+    const source = selectedTaxTypes.length > 0 ? selectedTaxTypes : DEFAULT_TAX_TYPES;
+    setTaxTypeListText(source.join(', '));
+  }, [isTransactionUsage, selectedTaxTypes]);
 
   const allowedTaxTypes = useMemo(() => {
     if (!isTransactionUsage) return [];
@@ -1354,6 +1371,63 @@ export default function PosApiAdmin() {
     setPaymentDataErrors((prev) => reindex(prev));
   };
 
+  const parseTaxTypeListInput = (value) => {
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+    if (!trimmed) {
+      return { hasInput: false, values: [], invalid: [] };
+    }
+    const tokens = value
+      .split(/[\s,]+/)
+      .map((token) => token.trim().toUpperCase())
+      .filter(Boolean);
+    const normalized = sanitizeCodeList(tokens, [], VALID_TAX_TYPES);
+    const invalid = tokens.filter((token) => !VALID_TAX_TYPES.has(token));
+    return { hasInput: tokens.length > 0, values: normalized, invalid };
+  };
+
+  const applyTaxTypeListText = () => {
+    if (!isTransactionUsage) return;
+    const { hasInput, values, invalid } = parseTaxTypeListInput(taxTypeListText);
+    if (hasInput && values.length === 0) {
+      setTaxTypeListError('Enter VAT_ABLE, VAT_FREE, VAT_ZERO or NO_VAT values separated by commas or new lines.');
+      return;
+    }
+    if (invalid.length > 0) {
+      setTaxTypeListError(`Ignored invalid codes: ${invalid.join(', ')}`);
+    } else {
+      setTaxTypeListError('');
+    }
+    resetTestState();
+    taxTypeInputDirtyRef.current = false;
+    const nextText = values.length > 0 ? values.join(', ') : '';
+    setTaxTypeListText(nextText);
+    setFormState((prev) => ({ ...prev, taxTypes: values }));
+  };
+
+  const handleTaxTypeListChange = (value) => {
+    if (!isTransactionUsage) return;
+    taxTypeInputDirtyRef.current = true;
+    setTaxTypeListText(value);
+    if (taxTypeListError) {
+      setTaxTypeListError('');
+    }
+  };
+
+  const handleTaxTypeListFocus = () => {
+    if (!isTransactionUsage) return;
+    taxTypeInputDirtyRef.current = true;
+  };
+
+  const handleTaxTypeListBlur = () => {
+    if (!isTransactionUsage) return;
+    applyTaxTypeListText();
+  };
+
+  const handleTaxTypeListApplyClick = () => {
+    if (!isTransactionUsage) return;
+    applyTaxTypeListText();
+  };
+
   const toggleTaxType = (code) => {
     if (!isTransactionUsage) return;
     resetTestState();
@@ -1368,6 +1442,8 @@ export default function PosApiAdmin() {
       const nextValues = sanitizeCodeList(current, DEFAULT_TAX_TYPES, VALID_TAX_TYPES);
       return { ...prev, taxTypes: nextValues };
     });
+    taxTypeInputDirtyRef.current = false;
+    setTaxTypeListError('');
   };
 
   const togglePaymentMethod = (code) => {
@@ -2503,6 +2579,28 @@ export default function PosApiAdmin() {
                     </label>
                   );
                 })}
+              </div>
+              <div style={styles.multiSelectImport}>
+                <span style={styles.multiSelectTitle}>Paste tax-type codes</span>
+                <span style={styles.multiSelectHint}>
+                  Paste comma- or newline-separated values (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT).
+                </span>
+                <textarea
+                  value={taxTypeListText}
+                  onChange={(e) => handleTaxTypeListChange(e.target.value)}
+                  onFocus={handleTaxTypeListFocus}
+                  onBlur={handleTaxTypeListBlur}
+                  style={styles.inlineTextarea}
+                  rows={3}
+                  placeholder="VAT_ABLE, VAT_FREE"
+                />
+                <div style={styles.inlineActionRow}>
+                  <button type="button" style={styles.applyButton} onClick={handleTaxTypeListApplyClick}>
+                    Apply pasted values
+                  </button>
+                  <span style={styles.inlineActionHint}>Values outside the supported list are ignored.</span>
+                </div>
+                {taxTypeListError && <div style={styles.inputError}>{taxTypeListError}</div>}
               </div>
             </div>
           )}
@@ -4092,11 +4190,26 @@ const styles = {
     fontWeight: 500,
     fontSize: '0.85rem',
   },
+  multiSelectImport: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.4rem',
+    marginTop: '0.75rem',
+  },
   input: {
     padding: '0.5rem',
     borderRadius: '4px',
     border: '1px solid #cbd5f5',
     fontSize: '0.95rem',
+  },
+  inlineTextarea: {
+    minHeight: '90px',
+    padding: '0.5rem',
+    borderRadius: '4px',
+    border: '1px solid #cbd5f5',
+    fontFamily: 'monospace',
+    fontSize: '0.9rem',
+    lineHeight: 1.4,
   },
   textarea: {
     minHeight: '140px',
@@ -4106,6 +4219,29 @@ const styles = {
     fontFamily: 'monospace',
     fontSize: '0.9rem',
     lineHeight: 1.4,
+  },
+  inlineActionRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  applyButton: {
+    background: '#0f172a',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '4px',
+    padding: '0.4rem 0.9rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  inlineActionHint: {
+    fontSize: '0.8rem',
+    color: '#475569',
+  },
+  inputError: {
+    fontSize: '0.8rem',
+    color: '#b91c1c',
   },
   multiNotice: {
     marginTop: '1rem',
