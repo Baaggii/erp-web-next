@@ -100,7 +100,6 @@ const DEFAULT_ENDPOINT_RECEIPT_TYPES = [
 ];
 
 const DEFAULT_ENDPOINT_PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABELS);
-const DEFAULT_ENDPOINT_TAX_TYPES = ['VAT_ABLE', 'VAT_FREE', 'VAT_ZERO', 'NO_VAT'];
 
 const BADGE_BASE_STYLE = {
   borderRadius: '999px',
@@ -561,7 +560,7 @@ export default function FormsManagement() {
       if (match) endpoint = match;
     }
     if (!endpoint && config.posApiEndpointMeta) {
-      endpoint = withEndpointMetadata(config.posApiEndpointMeta);
+      endpoint = config.posApiEndpointMeta;
     }
     if (!endpoint) return null;
     const next = { ...endpoint };
@@ -580,27 +579,7 @@ export default function FormsManagement() {
     config.posApiMapping,
   ]);
 
-  const receiptTypesFeatureEnabled = selectedEndpoint
-    ? selectedEndpoint.enableReceiptTypes !== false
-    : true;
-  const receiptTaxTypesFeatureEnabled = selectedEndpoint
-    ? selectedEndpoint.enableReceiptTaxTypes !== false
-    : true;
-  const paymentMethodsFeatureEnabled = selectedEndpoint
-    ? selectedEndpoint.enablePaymentMethods !== false
-    : true;
-  const receiptItemsFeatureEnabled = selectedEndpoint
-    ? selectedEndpoint.enableReceiptItems !== false
-    : true;
-  const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
-    ? selectedEndpoint?.allowMultipleReceiptTypes === true
-    : false;
-  const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
-    ? selectedEndpoint?.allowMultiplePaymentMethods !== false
-    : false;
-
-  const supportsItems =
-    receiptItemsFeatureEnabled && selectedEndpoint?.supportsItems !== false;
+  const supportsItems = selectedEndpoint?.supportsItems !== false;
 
   const endpointReceiptTypes = useMemo(() => {
     if (
@@ -614,22 +593,16 @@ export default function FormsManagement() {
   }, [selectedEndpoint]);
 
   const configuredReceiptTypes = useMemo(() => {
-    if (!receiptTypesFeatureEnabled) return [];
-    const values = Array.isArray(config.posApiReceiptTypes)
+    return Array.isArray(config.posApiReceiptTypes)
       ? config.posApiReceiptTypes
           .map((value) => (typeof value === 'string' ? value.trim() : ''))
           .filter((value) => value)
       : [];
-    if (receiptTypesAllowMultiple) {
-      return values;
-    }
-    return values.slice(0, 1);
-  }, [config.posApiReceiptTypes, receiptTypesFeatureEnabled, receiptTypesAllowMultiple]);
+  }, [config.posApiReceiptTypes]);
 
   const effectiveReceiptTypes = useMemo(() => {
-    if (!receiptTypesFeatureEnabled) return [];
     return configuredReceiptTypes.length ? configuredReceiptTypes : endpointReceiptTypes;
-  }, [configuredReceiptTypes, endpointReceiptTypes, receiptTypesFeatureEnabled]);
+  }, [configuredReceiptTypes, endpointReceiptTypes]);
 
   const receiptTypeUniverse = useMemo(() => {
     const allowed = new Set((endpointReceiptTypes || []).filter(Boolean));
@@ -644,7 +617,6 @@ export default function FormsManagement() {
   }, [endpointReceiptTypes, configuredReceiptTypes]);
 
   const endpointPaymentMethods = useMemo(() => {
-    if (!paymentMethodsFeatureEnabled) return [];
     if (
       selectedEndpoint &&
       Array.isArray(selectedEndpoint.paymentMethods) &&
@@ -653,34 +625,23 @@ export default function FormsManagement() {
       return selectedEndpoint.paymentMethods.map((value) => String(value));
     }
     return Object.keys(PAYMENT_METHOD_LABELS);
-  }, [selectedEndpoint, paymentMethodsFeatureEnabled]);
+  }, [selectedEndpoint]);
 
   const configuredPaymentMethods = useMemo(() => {
-    if (!paymentMethodsFeatureEnabled) return [];
-    const values = Array.isArray(config.posApiPaymentMethods)
+    return Array.isArray(config.posApiPaymentMethods)
       ? config.posApiPaymentMethods
           .map((value) => (typeof value === 'string' ? value.trim() : ''))
           .filter((value) => value)
       : [];
-    if (paymentMethodsAllowMultiple) {
-      return values;
-    }
-    return values.slice(0, 1);
-  }, [
-    config.posApiPaymentMethods,
-    paymentMethodsFeatureEnabled,
-    paymentMethodsAllowMultiple,
-  ]);
+  }, [config.posApiPaymentMethods]);
 
   const effectivePaymentMethods = useMemo(() => {
-    if (!paymentMethodsFeatureEnabled) return [];
     return configuredPaymentMethods.length
       ? configuredPaymentMethods
       : endpointPaymentMethods;
-  }, [configuredPaymentMethods, endpointPaymentMethods, paymentMethodsFeatureEnabled]);
+  }, [configuredPaymentMethods, endpointPaymentMethods]);
 
   const paymentMethodUniverse = useMemo(() => {
-    if (!paymentMethodsFeatureEnabled) return [];
     const allowed = new Set((endpointPaymentMethods || []).filter(Boolean));
     const combined = Array.from(
       new Set([...endpointPaymentMethods, ...configuredPaymentMethods].filter((value) => value)),
@@ -690,19 +651,7 @@ export default function FormsManagement() {
     );
     if (filtered.length) return filtered;
     return endpointPaymentMethods;
-  }, [endpointPaymentMethods, configuredPaymentMethods, paymentMethodsFeatureEnabled]);
-
-  const endpointReceiptTaxTypes = useMemo(() => {
-    if (!receiptTaxTypesFeatureEnabled) return [];
-    if (
-      selectedEndpoint &&
-      Array.isArray(selectedEndpoint.receiptTaxTypes) &&
-      selectedEndpoint.receiptTaxTypes.length
-    ) {
-      return selectedEndpoint.receiptTaxTypes.map((value) => String(value));
-    }
-    return DEFAULT_ENDPOINT_TAX_TYPES;
-  }, [selectedEndpoint, receiptTaxTypesFeatureEnabled]);
+  }, [endpointPaymentMethods, configuredPaymentMethods]);
 
   const topLevelFieldHints = useMemo(() => {
     const hints = selectedEndpoint?.mappingHints?.topLevelFields;
@@ -773,23 +722,14 @@ export default function FormsManagement() {
   }, [selectedEndpoint]);
 
   const serviceReceiptGroupTypes = useMemo(() => {
-    if (!receiptTaxTypesFeatureEnabled) return [];
     const hintKeys = Object.keys(receiptGroupHints || {});
     const configuredKeys = Object.keys(receiptGroupMapping || {});
-    const combined = Array.from(
-      new Set([...endpointReceiptTaxTypes, ...hintKeys, ...configuredKeys]),
-    ).filter(Boolean);
+    const combined = Array.from(new Set([...hintKeys, ...configuredKeys]));
     if (combined.length) return combined;
     return ['VAT_ABLE'];
-  }, [
-    receiptGroupHints,
-    receiptGroupMapping,
-    endpointReceiptTaxTypes,
-    receiptTaxTypesFeatureEnabled,
-  ]);
+  }, [receiptGroupHints, receiptGroupMapping]);
 
   const servicePaymentMethodCodes = useMemo(() => {
-    if (!paymentMethodsFeatureEnabled) return [];
     const selected = effectivePaymentMethods || [];
     const hintKeys = Object.keys(paymentMethodHints || {});
     const configuredKeys = Object.keys(paymentMethodMapping || {});
@@ -811,7 +751,6 @@ export default function FormsManagement() {
     paymentMethodHints,
     paymentMethodMapping,
     endpointPaymentMethods,
-    paymentMethodsFeatureEnabled,
   ]);
 
   const primaryPosApiFields = useMemo(() => {
@@ -1241,14 +1180,10 @@ export default function FormsManagement() {
   function toggleReceiptTypeSelection(value) {
     const normalized = typeof value === 'string' ? value.trim() : '';
     if (!normalized) return;
-    if (!receiptTypesFeatureEnabled) return;
     setConfig((c) => {
       const current = Array.isArray(c.posApiReceiptTypes)
         ? c.posApiReceiptTypes.filter((entry) => typeof entry === 'string' && entry.trim())
         : [];
-      if (!receiptTypesAllowMultiple) {
-        return { ...c, posApiReceiptTypes: [normalized] };
-      }
       const selectedSet = new Set(current);
       if (selectedSet.has(normalized)) {
         selectedSet.delete(normalized);
@@ -1266,14 +1201,10 @@ export default function FormsManagement() {
   function togglePaymentMethodSelection(value) {
     const normalized = typeof value === 'string' ? value.trim() : '';
     if (!normalized) return;
-    if (!paymentMethodsFeatureEnabled) return;
     setConfig((c) => {
       const current = Array.isArray(c.posApiPaymentMethods)
         ? c.posApiPaymentMethods.filter((entry) => typeof entry === 'string' && entry.trim())
         : [];
-      if (!paymentMethodsAllowMultiple) {
-        return { ...c, posApiPaymentMethods: [normalized] };
-      }
       const selectedSet = new Set(current);
       if (selectedSet.has(normalized)) {
         selectedSet.delete(normalized);
@@ -1823,84 +1754,72 @@ export default function FormsManagement() {
               </div>
               {config.posApiEnabled && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {receiptTypesFeatureEnabled && (
-                    <div>
-                      <strong>Receipt types</strong>
-                      <p style={{ fontSize: '0.85rem', color: '#555' }}>
-                        {receiptTypesAllowMultiple
-                          ? 'Enable the POSAPI receipt types available for this form. Leave all selected to allow automatic detection.'
-                          : 'Choose the single POSAPI receipt type operators should submit for this form.'}
-                      </p>
-                      <div
-                        style={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: '0.75rem',
-                          alignItems: 'flex-start',
-                        }}
-                      >
-                        {receiptTypeUniverse.map((type) => {
-                          const checked = effectiveReceiptTypes.includes(type);
-                          const inputType = receiptTypesAllowMultiple ? 'checkbox' : 'radio';
-                          return (
-                            <label
-                              key={`receipt-type-${type}`}
-                              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                            >
-                              <input
-                                type={inputType}
-                                name="posapi-receipt-types"
-                                checked={checked}
-                                onChange={() => toggleReceiptTypeSelection(type)}
-                                disabled={!config.posApiEnabled}
-                              />
-                              <span>{formatPosApiTypeLabel(type)}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
+                  <div>
+                    <strong>Receipt types</strong>
+                    <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                      Enable the POSAPI receipt types available for this form. Leave all selected to
+                      allow automatic detection.
+                    </p>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '0.75rem',
+                        alignItems: 'flex-start',
+                      }}
+                    >
+                      {receiptTypeUniverse.map((type) => {
+                        const checked = effectiveReceiptTypes.includes(type);
+                        return (
+                          <label
+                            key={`receipt-type-${type}`}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleReceiptTypeSelection(type)}
+                              disabled={!config.posApiEnabled}
+                            />
+                            <span>{formatPosApiTypeLabel(type)}</span>
+                          </label>
+                        );
+                      })}
                     </div>
-                  )}
-                  {paymentMethodsFeatureEnabled && (
-                    <div>
-                      <strong>Payment methods</strong>
-                      <p style={{ fontSize: '0.85rem', color: '#555' }}>
-                        {paymentMethodsAllowMultiple
-                          ? 'Select the payment methods that can be submitted through this transaction.'
-                          : 'Choose the single payment method code that should be sent for this form.'}
-                      </p>
-                      <div
-                        style={{
-                          display: 'flex',
-                          flexWrap: 'wrap',
-                          gap: '0.75rem',
-                          alignItems: 'flex-start',
-                        }}
-                      >
-                        {paymentMethodUniverse.map((method) => {
-                          const label =
-                            PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
-                          const checked = effectivePaymentMethods.includes(method);
-                          const inputType = paymentMethodsAllowMultiple ? 'checkbox' : 'radio';
-                          return (
-                            <label
-                              key={`payment-method-${method}`}
-                              style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                            >
-                              <input
-                                type={inputType}
-                                name="posapi-payment-methods"
-                                checked={checked}
-                                onChange={() => togglePaymentMethodSelection(method)}
-                                disabled={!config.posApiEnabled}
-                              />
-                              <span>{label}</span>
-                            </label>
-                          );
-                        })}
-                      </div>
+                  </div>
+                  <div>
+                    <strong>Payment methods</strong>
+                    <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                      Select the payment methods that can be submitted through this transaction.
+                    </p>
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexWrap: 'wrap',
+                        gap: '0.75rem',
+                        alignItems: 'flex-start',
+                      }}
+                    >
+                      {paymentMethodUniverse.map((method) => {
+                        const label = PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
+                        const checked = effectivePaymentMethods.includes(method);
+                        return (
+                          <label
+                            key={`payment-method-${method}`}
+                            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => togglePaymentMethodSelection(method)}
+                              disabled={!config.posApiEnabled}
+                            />
+                            <span>{label}</span>
+                          </label>
+                        );
+                      })}
                     </div>
-                  )}
+                  </div>
                 </div>
               )}
               <label
@@ -2192,18 +2111,15 @@ export default function FormsManagement() {
                     </div>
                   </>
                 )}
-                {receiptTaxTypesFeatureEnabled && (
-                  <div style={{ marginTop: '1rem' }}>
-                    <strong>
-                      {supportsItems ? 'Receipt group overrides' : 'Service receipt groups'}
-                    </strong>
-                    <p style={{ fontSize: '0.85rem', color: '#555' }}>
-                      {supportsItems
-                        ? 'Override totals for POSAPI receipt groups when itemised data needs to be regrouped by tax type.'
-                        : 'Map aggregated service totals for each tax group. Required fields are marked in red based on the POSAPI endpoint metadata.'}
-                    </p>
-                    <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
-                      {serviceReceiptGroupTypes.map((type) => {
+                <div style={{ marginTop: '1rem' }}>
+                  <strong>{supportsItems ? 'Receipt group overrides' : 'Service receipt groups'}</strong>
+                  <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                    {supportsItems
+                      ? 'Override totals for POSAPI receipt groups when itemised data needs to be regrouped by tax type.'
+                      : 'Map aggregated service totals for each tax group. Required fields are marked in red based on the POSAPI endpoint metadata.'}
+                  </p>
+                  <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
+                    {serviceReceiptGroupTypes.map((type) => {
                       const hintMap = receiptGroupHints[type] || {};
                       const baseFields = SERVICE_RECEIPT_FIELDS.map((entry) => entry.key);
                       const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
@@ -2290,19 +2206,16 @@ export default function FormsManagement() {
                       );
                     })}
                   </div>
-                )}
-                {paymentMethodsFeatureEnabled && (
-                  <div style={{ marginTop: '1rem' }}>
-                    <strong>
-                      {supportsItems ? 'Payment method overrides' : 'Service payment methods'}
-                    </strong>
-                    <p style={{ fontSize: '0.85rem', color: '#555' }}>
-                      {supportsItems
-                        ? 'Map stored payment breakdowns to the POSAPI method codes returned by the endpoint.'
-                        : 'Map payment information captured on the transaction record to each available POSAPI payment method.'}
-                    </p>
-                    <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
-                      {servicePaymentMethodCodes.map((method) => {
+                </div>
+                <div style={{ marginTop: '1rem' }}>
+                  <strong>{supportsItems ? 'Payment method overrides' : 'Service payment methods'}</strong>
+                  <p style={{ fontSize: '0.85rem', color: '#555' }}>
+                    {supportsItems
+                      ? 'Map stored payment breakdowns to the POSAPI method codes returned by the endpoint.'
+                      : 'Map payment information captured on the transaction record to each available POSAPI payment method.'}
+                  </p>
+                  <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
+                    {servicePaymentMethodCodes.map((method) => {
                       const hintMap = paymentMethodHints[method] || {};
                       const baseFields = SERVICE_PAYMENT_FIELDS.map((entry) => entry.key);
                       const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
@@ -2388,7 +2301,7 @@ export default function FormsManagement() {
                       );
                     })}
                   </div>
-                )}
+                </div>
               </div>
             </section>
 

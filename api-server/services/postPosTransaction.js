@@ -1303,7 +1303,7 @@ export async function postPosTransactionWithEbarimt(
     record,
     mapping,
     receiptType,
-    { typeField: formCfg.posApiTypeField, endpoint },
+    { typeField: formCfg.posApiTypeField },
   );
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');

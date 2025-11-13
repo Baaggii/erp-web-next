@@ -416,9 +416,6 @@ export default function PosTxnConfig() {
   }, [posApiEndpoints, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
 
   const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
-  const receiptItemsFeatureEnabled = selectedEndpoint
-    ? selectedEndpoint.enableReceiptItems !== false
-    : true;
 
   const hasItemSourceTables = useMemo(() => {
     const master = typeof config.masterTable === 'string' ? config.masterTable.trim() : '';
@@ -456,26 +453,7 @@ export default function PosTxnConfig() {
     return false;
   }, [config.posApiMapping]);
 
-  const supportsItems =
-    endpointSupportsItems &&
-    receiptItemsFeatureEnabled &&
-    (hasItemSourceTables || itemMappingConfigured);
-
-  const receiptTypesFeatureEnabled = selectedEndpoint
-    ? selectedEndpoint.enableReceiptTypes !== false
-    : true;
-  const receiptTaxTypesFeatureEnabled = selectedEndpoint
-    ? selectedEndpoint.enableReceiptTaxTypes !== false
-    : true;
-  const paymentMethodsFeatureEnabled = selectedEndpoint
-    ? selectedEndpoint.enablePaymentMethods !== false
-    : true;
-  const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
-    ? selectedEndpoint?.allowMultipleReceiptTypes === true
-    : false;
-  const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
-    ? selectedEndpoint?.allowMultiplePaymentMethods !== false
-    : true;
+  const supportsItems = endpointSupportsItems && (hasItemSourceTables || itemMappingConfigured);
 
   const receiptTypesFeatureEnabled = selectedEndpoint
     ? selectedEndpoint.enableReceiptTypes !== false
