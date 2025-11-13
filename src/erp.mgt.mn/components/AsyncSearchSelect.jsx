@@ -17,6 +17,8 @@ const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 const PAGE_SIZE = 50;
+const MAX_AUTO_SEARCH_RESULTS = 200;
+const MAX_AUTO_SEARCH_PAGES = 10;
 
 export default function AsyncSearchSelect({
   table,
@@ -314,10 +316,13 @@ export default function AsyncSearchSelect({
         setPage(nextPage);
         return fetchPage(nextPage, q, true, signal);
       }
+      let nextOptionsSnapshot = [];
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
-          return normalizeOptions([...base, ...opts]);
+          const merged = normalizeOptions([...base, ...opts]);
+          nextOptionsSnapshot = merged;
+          return merged;
         }
         if (
           normalizedQuery &&
@@ -327,11 +332,26 @@ export default function AsyncSearchSelect({
         ) {
           const fallback = filterOptionsByQuery(prev, normalizedQuery);
           if (fallback.length > 0) {
-            return normalizeOptions(fallback);
+            const normalizedFallback = normalizeOptions(fallback);
+            nextOptionsSnapshot = normalizedFallback;
+            return normalizedFallback;
           }
         }
-        return normalizeOptions(opts);
+        const normalizedOpts = normalizeOptions(opts);
+        nextOptionsSnapshot = normalizedOpts;
+        return normalizedOpts;
       });
+      const shouldAutoLoadMore =
+        normalizedQuery &&
+        more &&
+        !signal?.aborted &&
+        nextOptionsSnapshot.length < MAX_AUTO_SEARCH_RESULTS &&
+        p < MAX_AUTO_SEARCH_PAGES;
+      if (shouldAutoLoadMore) {
+        const nextPage = p + 1;
+        setPage(nextPage);
+        return fetchPage(nextPage, q, true, signal);
+      }
     } catch (err) {
       if (err.name !== 'AbortError') setOptions([]);
     } finally {
