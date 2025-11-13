@@ -588,47 +588,6 @@ function appendLotNoToItems(items, lotNo) {
   });
 }
 
-function summarizeReceiptFromItems(items) {
-  if (!Array.isArray(items) || !items.length) return {};
-  const sumField = (selector) => {
-    const total = items.reduce((sum, entry) => {
-      const value = selector(entry);
-      const parsed = toNumber(value);
-      return sum + (parsed ?? 0);
-    }, 0);
-    if (Number.isFinite(total) && total > 0) {
-      return total;
-    }
-    return null;
-  };
-  const summary = {};
-  const totalAmount = sumField((entry) => entry.totalAmount ?? entry.amount ?? entry.total);
-  if (totalAmount !== null) summary.totalAmount = totalAmount;
-  const totalVAT = sumField((entry) => entry.totalVAT ?? entry.vat);
-  if (totalVAT !== null) summary.totalVAT = totalVAT;
-  const totalCityTax = sumField((entry) => entry.totalCityTax ?? entry.cityTax);
-  if (totalCityTax !== null) summary.totalCityTax = totalCityTax;
-  return summary;
-}
-
-function groupItemsIntoReceipts(items, fallbackTaxType) {
-  if (!Array.isArray(items) || !items.length) return [];
-  const groups = new Map();
-  items.forEach((item) => {
-    if (!item || typeof item !== 'object') return;
-    const rawType = toStringValue(item.taxType || item.tax_type || '');
-    const groupKey = rawType || fallbackTaxType || 'VAT_ABLE';
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, []);
-    }
-    groups.get(groupKey).push(item);
-  });
-  return Array.from(groups.entries()).map(([groupType, groupItems]) => {
-    const summary = summarizeReceiptFromItems(groupItems);
-    return { taxType: groupType, items: groupItems, ...summary };
-  });
-}
-
 function normalizePaymentEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const next = { ...entry };
@@ -1030,7 +989,6 @@ export async function buildReceiptFromDynamicTransaction(
   options = {},
 ) {
   if (!record || typeof record !== 'object') return null;
-  const optionBag = options && typeof options === 'object' ? options : {};
   const normalizedMapping = normalizeMapping(mapping);
   const columnLookup = createColumnLookup(record);
   const receiptGroupMapping =
@@ -1039,15 +997,6 @@ export async function buildReceiptFromDynamicTransaction(
     normalizedMapping[PAYMENT_METHOD_MAPPING_KEY] || {};
   delete normalizedMapping[RECEIPT_GROUP_MAPPING_KEY];
   delete normalizedMapping[PAYMENT_METHOD_MAPPING_KEY];
-
-  const endpointMeta =
-    optionBag.endpoint && typeof optionBag.endpoint === 'object'
-      ? optionBag.endpoint
-      : null;
-  const endpointUsage =
-    typeof endpointMeta?.usage === 'string' ? endpointMeta.usage : 'transaction';
-  const receiptTaxTypesEnabled =
-    endpointUsage === 'transaction' && endpointMeta?.enableReceiptTaxTypes !== false;
 
   const totalAmountColumn = normalizedMapping.totalAmount;
   const totalAmountValue = getColumnValue(columnLookup, record, totalAmountColumn);
@@ -1273,13 +1222,6 @@ export async function buildReceiptFromDynamicTransaction(
     receipts = mappedReceipts;
   }
 
-  if (receiptTaxTypesEnabled && receipts.length === 0 && items.length > 0) {
-    const groupedReceipts = groupItemsIntoReceipts(items, taxType);
-    if (groupedReceipts.length > 0) {
-      receipts = groupedReceipts;
-    }
-  }
-
   if (!items.length && !receipts.length) {
     const fallbackItem = {
       name: description ? String(description) : 'POS Transaction',
@@ -1416,13 +1358,13 @@ export async function buildReceiptFromDynamicTransaction(
 
   const receiptType = resolveReceiptType({
     explicitType: type,
-    typeField: optionBag.typeField || optionBag.posApiTypeField,
+    typeField: options.typeField || options.posApiTypeField,
     mapping: normalizedMapping,
     record,
     columnLookup,
     customerTin,
     consumerNo,
-    inventoryFlagField: optionBag.inventoryFlagField,
+    inventoryFlagField: options.inventoryFlagField,
   });
 
   const receiptsPayload = receipts.length

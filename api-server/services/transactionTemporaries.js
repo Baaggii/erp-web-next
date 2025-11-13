@@ -782,7 +782,7 @@ export async function promoteTemporarySubmission(
             masterRecord,
             mapping,
             receiptType,
-            { typeField: formCfg.posApiTypeField, endpoint },
+            { typeField: formCfg.posApiTypeField },
           );
           if (payload) {
             try {
