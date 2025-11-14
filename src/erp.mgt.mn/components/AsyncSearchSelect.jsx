@@ -416,18 +416,53 @@ export default function AsyncSearchSelect({
   }, [value]);
 
   useEffect(() => {
-    if (!show || options.length === 0) {
-      setHighlight((h) => (h === -1 ? h : Math.min(h, options.length - 1)));
+    if (!show) {
+      setHighlight((h) => (options.length === 0 ? -1 : Math.min(h, options.length - 1)));
       return;
     }
-    setHighlight((h) => {
-      if (h >= 0 && h < options.length) return h;
-      const exactIndex = options.findIndex(
-        (opt) => String(opt.value ?? '') === String(input ?? ''),
-      );
-      return exactIndex >= 0 ? exactIndex : -1;
-    });
-  }, [options, show, input]);
+    if (options.length === 0) {
+      setHighlight(-1);
+      return;
+    }
+    const query = String(input ?? '').trim();
+    const fallbackIndex = options.length > 0 ? 0 : -1;
+    if (!query) {
+      setHighlight((h) => (h >= 0 && h < options.length ? h : fallbackIndex));
+      return;
+    }
+    const exact = findBestOption(query, { allowPartial: false });
+    const similar = exact || findBestOption(query, { allowPartial: true });
+    if (!similar) {
+      setHighlight(-1);
+      return;
+    }
+    const idx = options.indexOf(similar);
+    if (idx >= 0) {
+      setHighlight(idx);
+    } else {
+      setHighlight(fallbackIndex);
+    }
+  }, [options, show, input, findBestOption]);
+
+  useEffect(() => {
+    if (!show) return;
+    if (highlight < 0) return;
+    const listEl = listRef.current;
+    if (!listEl) return;
+    const collection = listEl.children;
+    if (!collection || highlight >= collection.length || highlight < 0) return;
+    const item = collection[highlight];
+    if (!item || typeof item.offsetTop !== 'number') return;
+    const itemTop = item.offsetTop;
+    const itemBottom = itemTop + item.offsetHeight;
+    const viewTop = listEl.scrollTop;
+    const viewBottom = viewTop + listEl.clientHeight;
+    if (itemTop < viewTop) {
+      listEl.scrollTop = itemTop;
+    } else if (itemBottom > viewBottom) {
+      listEl.scrollTop = itemBottom - listEl.clientHeight;
+    }
+  }, [highlight, show]);
 
   useEffect(() => {
     setRemoteDisplayFields([]);
@@ -557,6 +592,18 @@ export default function AsyncSearchSelect({
     if (e.key !== 'Enter') return;
 
     const query = String(input || '').trim();
+    if (query === '0') {
+      e.preventDefault();
+      pendingLookupRef.current = null;
+      forcedLocalSearchRef.current = '';
+      setInput('');
+      setLabel('');
+      onChange('');
+      if (internalRef.current) internalRef.current.value = '';
+      actionRef.current = { type: 'enter', matched: false, query: '' };
+      setShow(false);
+      return;
+    }
     if (loading || show === false) {
       actionRef.current = { type: 'enter', matched: 'pending', query };
       pendingLookupRef.current = {
@@ -638,15 +685,18 @@ export default function AsyncSearchSelect({
                 {options.map((opt, idx) => (
                   <li
                     key={opt.value}
-                    onMouseDown={() => {
+                    onMouseDown={(event) => {
+                      event.preventDefault();
                       onChange(opt.value, opt.label);
-                      if (onSelect) onSelect(opt);
                       setInput(String(opt.value));
                       setLabel(opt.label || '');
                       if (internalRef.current)
                         internalRef.current.value = String(opt.value);
                       chosenRef.current = opt;
                       setShow(false);
+                      if (onSelect) {
+                        setTimeout(() => onSelect(opt), 0);
+                      }
                     }}
                     onMouseEnter={() => setHighlight(idx)}
                     style={{
