@@ -618,43 +618,30 @@ export default function FormsManagement() {
     config.posApiMapping,
   ]);
 
-  const formReceiptTypeToggle = config.posApiEnableReceiptTypes !== false;
-  const formReceiptTaxTypeToggle = config.posApiEnableReceiptTaxTypes !== false;
-  const formReceiptItemToggle = config.posApiEnableReceiptItems !== false;
-  const formPaymentMethodToggle = config.posApiEnablePaymentMethods !== false;
-
   const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
-  const endpointReceiptItemsAvailable = endpointSupportsItems
-    ? selectedEndpoint
-      ? selectedEndpoint.enableReceiptItems !== false
-      : true
-    : false;
-  const receiptItemsFeatureEnabled = endpointReceiptItemsAvailable && formReceiptItemToggle;
-  const supportsItems = receiptItemsFeatureEnabled;
+  const receiptItemsFeatureEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptItems !== false
+    : endpointSupportsItems;
+  const supportsItems = endpointSupportsItems && receiptItemsFeatureEnabled;
 
-  const endpointReceiptTypesEnabled = selectedEndpoint
+  const receiptTypesFeatureEnabled = selectedEndpoint
     ? selectedEndpoint.enableReceiptTypes !== false
     : true;
-  const receiptTypesFeatureEnabled = endpointReceiptTypesEnabled && formReceiptTypeToggle;
-  const endpointReceiptTaxTypesEnabled = selectedEndpoint
+  const receiptTaxTypesFeatureEnabled = selectedEndpoint
     ? selectedEndpoint.enableReceiptTaxTypes !== false
     : true;
-  const receiptTaxTypesFeatureEnabled =
-    endpointReceiptTaxTypesEnabled && formReceiptTaxTypeToggle;
-  const endpointPaymentMethodsEnabled = selectedEndpoint
+  const paymentMethodsFeatureEnabled = selectedEndpoint
     ? selectedEndpoint.enablePaymentMethods !== false
     : true;
-  const paymentMethodsFeatureEnabled =
-    endpointPaymentMethodsEnabled && formPaymentMethodToggle;
-  const receiptTypesAllowMultiple = endpointReceiptTypesEnabled
+  const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
     ? selectedEndpoint?.allowMultipleReceiptTypes !== false
     : true;
-  const paymentMethodsAllowMultiple = endpointPaymentMethodsEnabled
+  const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
     ? selectedEndpoint?.allowMultiplePaymentMethods !== false
     : true;
 
   const endpointReceiptTypes = useMemo(() => {
-    if (!endpointReceiptTypesEnabled) return [];
+    if (!receiptTypesFeatureEnabled) return [];
     if (
       selectedEndpoint &&
       Array.isArray(selectedEndpoint.receiptTypes) &&
@@ -663,10 +650,10 @@ export default function FormsManagement() {
       return selectedEndpoint.receiptTypes.map((value) => String(value));
     }
     return DEFAULT_ENDPOINT_RECEIPT_TYPES;
-  }, [selectedEndpoint, endpointReceiptTypesEnabled]);
+  }, [selectedEndpoint, receiptTypesFeatureEnabled]);
 
   const configuredReceiptTypes = useMemo(() => {
-    if (!endpointReceiptTypesEnabled) return [];
+    if (!receiptTypesFeatureEnabled) return [];
     const values = Array.isArray(config.posApiReceiptTypes)
       ? config.posApiReceiptTypes
           .map((value) => (typeof value === 'string' ? value.trim() : ''))
@@ -676,19 +663,15 @@ export default function FormsManagement() {
       return values;
     }
     return values.slice(0, 1);
-  }, [
-    config.posApiReceiptTypes,
-    endpointReceiptTypesEnabled,
-    receiptTypesAllowMultiple,
-  ]);
+  }, [config.posApiReceiptTypes, receiptTypesFeatureEnabled, receiptTypesAllowMultiple]);
 
   const effectiveReceiptTypes = useMemo(() => {
-    if (!endpointReceiptTypesEnabled) return [];
+    if (!receiptTypesFeatureEnabled) return [];
     return configuredReceiptTypes.length ? configuredReceiptTypes : endpointReceiptTypes;
-  }, [configuredReceiptTypes, endpointReceiptTypes, endpointReceiptTypesEnabled]);
+  }, [configuredReceiptTypes, endpointReceiptTypes, receiptTypesFeatureEnabled]);
 
   const receiptTypeUniverse = useMemo(() => {
-    if (!endpointReceiptTypesEnabled) return [];
+    if (!receiptTypesFeatureEnabled) return [];
     const allowed = new Set((endpointReceiptTypes || []).filter(Boolean));
     const combined = Array.from(
       new Set([...endpointReceiptTypes, ...configuredReceiptTypes].filter((value) => value)),
@@ -698,7 +681,7 @@ export default function FormsManagement() {
     );
     if (filtered.length) return filtered;
     return endpointReceiptTypes;
-  }, [endpointReceiptTypes, configuredReceiptTypes, endpointReceiptTypesEnabled]);
+  }, [endpointReceiptTypes, configuredReceiptTypes, receiptTypesFeatureEnabled]);
 
   const endpointReceiptTaxTypes = useMemo(() => {
     if (!receiptTaxTypesFeatureEnabled) return [];
@@ -1899,65 +1882,32 @@ export default function FormsManagement() {
                       marginBottom: '1rem',
                     }}
                   >
-                    <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={formReceiptTypeToggle && endpointReceiptTypesEnabled}
-                        disabled={!endpointReceiptTypesEnabled}
-                        onChange={(e) =>
-                          setConfig((c) => ({
-                            ...c,
-                            posApiEnableReceiptTypes: e.target.checked,
-                          }))
-                        }
-                      />
-                      <span>Enable receipt types</span>
-                    </label>
-                    <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={formReceiptItemToggle && endpointReceiptItemsAvailable}
-                        disabled={!endpointReceiptItemsAvailable}
-                        onChange={(e) =>
-                          setConfig((c) => ({
-                            ...c,
-                            posApiEnableReceiptItems: e.target.checked,
-                          }))
-                        }
-                      />
-                      <span>Enable receipt items</span>
-                    </label>
-                    <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={formReceiptTaxTypeToggle && endpointReceiptTaxTypesEnabled}
-                        disabled={!endpointReceiptTaxTypesEnabled}
-                        onChange={(e) =>
-                          setConfig((c) => ({
-                            ...c,
-                            posApiEnableReceiptTaxTypes: e.target.checked,
-                          }))
-                        }
-                      />
-                      <span>Enable receipt tax types</span>
-                    </label>
-                    <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                      <input
-                        type="checkbox"
-                        checked={formPaymentMethodToggle && endpointPaymentMethodsEnabled}
-                        disabled={!endpointPaymentMethodsEnabled}
-                        onChange={(e) =>
-                          setConfig((c) => ({
-                            ...c,
-                            posApiEnablePaymentMethods: e.target.checked,
-                          }))
-                        }
-                      />
-                      <span>Enable payment methods</span>
-                    </label>
-                  </div>
-                </>
-              )}
+                    {infoEndpointOptions.map((endpoint) => (
+                      <option key={`info-${endpoint.value}`} value={endpoint.value}>
+                        {endpoint.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ color: '#666' }}>
+                    Hold Ctrl (Cmd on macOS) to select multiple endpoints.
+                  </small>
+                </label>
+                <label style={{ ...fieldColumnStyle, flex: '1 1 240px' }}>
+                  <span style={{ fontWeight: 600 }}>Type field override</span>
+                  <input
+                    type="text"
+                    placeholder="Column name"
+                    value={config.posApiTypeField}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))
+                    }
+                    disabled={!config.posApiEnabled}
+                  />
+                  <small style={{ color: '#666' }}>
+                    Optional column containing the POSAPI type (e.g., B2C_RECEIPT).
+                  </small>
+                </label>
+              </div>
               {config.posApiEnabled && receiptTypesFeatureEnabled && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div>
