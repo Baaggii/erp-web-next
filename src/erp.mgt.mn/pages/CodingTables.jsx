@@ -2331,7 +2331,7 @@ export default function CodingTablesPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ mappings: finalMap }),
+        body: JSON.stringify(finalMap),
       });
       alert('Mappings saved');
     } catch {
