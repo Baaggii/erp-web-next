@@ -4,6 +4,24 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import {
+  POS_API_FIELDS,
+  POS_API_ITEM_FIELDS,
+  POS_API_PAYMENT_FIELDS,
+  POS_API_RECEIPT_FIELDS,
+  SERVICE_RECEIPT_FIELDS,
+  SERVICE_PAYMENT_FIELDS,
+  PAYMENT_METHOD_LABELS,
+  DEFAULT_ENDPOINT_RECEIPT_TYPES,
+  DEFAULT_ENDPOINT_TAX_TYPES,
+  DEFAULT_ENDPOINT_PAYMENT_METHODS,
+  BADGE_BASE_STYLE,
+  REQUIRED_BADGE_STYLE,
+  OPTIONAL_BADGE_STYLE,
+  resolveFeatureToggle,
+  withEndpointMetadata,
+  formatPosApiTypeLabel,
+} from '../utils/posApiConfig.js';
 
 const POS_API_FIELDS = [
   { key: 'totalAmount', label: 'Total amount' },
@@ -231,17 +249,6 @@ function withEndpointMetadata(endpoint) {
   };
 }
 
-function formatPosApiTypeLabel(type) {
-  if (!type) return '';
-  const lookup = {
-    B2C_RECEIPT: 'B2C Receipt',
-    B2B_RECEIPT: 'B2B Receipt',
-    B2C_INVOICE: 'B2C Invoice',
-    B2B_INVOICE: 'B2B Invoice',
-    STOCK_QR: 'Stock QR',
-  };
-  return lookup[type] || type.replace(/_/g, ' ');
-}
 
 const emptyConfig = {
   label: '',
