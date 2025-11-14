@@ -2543,8 +2543,10 @@ export default function FormsManagement() {
                       })}
                     </div>
                   </div>
-                )}
-              </div>
+                  )}
+                </div>
+              </>
+            )}
             </section>
 
             <section style={sectionStyle}>
