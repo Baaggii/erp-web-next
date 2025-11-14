@@ -61,6 +61,12 @@ export default function AsyncSearchSelect({
   const [remoteDisplayFields, setRemoteDisplayFields] = useState([]);
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
+  const forcedLocalSearchRef = useRef('');
+  const fetchRequestIdRef = useRef(0);
+  const beginFetchRequest = useCallback(() => {
+    fetchRequestIdRef.current += 1;
+    return fetchRequestIdRef.current;
+  }, []);
   const effectiveLabelFields = useMemo(() => {
     const set = new Set();
     const addField = (field) => {
@@ -247,11 +253,17 @@ export default function AsyncSearchSelect({
     q = '',
     append = false,
     signal,
-    { skipRemoteSearch = false } = {},
+    { skipRemoteSearch = false, requestId: providedRequestId } = {},
   ) {
+    const requestId =
+      typeof providedRequestId === 'number'
+        ? providedRequestId
+        : fetchRequestIdRef.current;
+    const canUpdateState = () =>
+      requestId === fetchRequestIdRef.current && !(signal?.aborted);
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
-    setLoading(true);
+    if (canUpdateState()) setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, perPage: PAGE_SIZE });
       const isShared =
@@ -263,8 +275,15 @@ export default function AsyncSearchSelect({
       }
       const normalizedQuery = String(q || '').trim();
       const normalizedSearch = normalizedQuery.toLowerCase();
+      if (!normalizedSearch) {
+        forcedLocalSearchRef.current = '';
+      }
+      const forceLocalSearch =
+        normalizedSearch &&
+        forcedLocalSearchRef.current &&
+        forcedLocalSearchRef.current === normalizedSearch;
       const shouldUseRemoteSearch =
-        normalizedQuery && !skipRemoteSearch && cols.length > 0;
+        normalizedQuery && !skipRemoteSearch && !forceLocalSearch && cols.length > 0;
       if (shouldUseRemoteSearch) {
         params.set('search', normalizedQuery);
         params.set('searchColumns', cols.join(','));
@@ -274,6 +293,7 @@ export default function AsyncSearchSelect({
         { credentials: 'include', signal },
       );
       const json = await res.json();
+      if (!canUpdateState()) return;
       const rows = Array.isArray(json.rows) ? json.rows : [];
       let opts;
       try {
@@ -328,6 +348,7 @@ export default function AsyncSearchSelect({
         totalCount != null
           ? p * PAGE_SIZE < totalCount
           : rows.length >= PAGE_SIZE;
+      if (!canUpdateState()) return;
       setHasMore(more);
       if (
         normalizedFilter &&
@@ -335,9 +356,20 @@ export default function AsyncSearchSelect({
         more &&
         !signal?.aborted
       ) {
+        // When a search query is active and no matches were found in the
+        // current page, we fetch the next page locally. Because the previous
+        // options still contain the unfiltered first page, users would see the
+        // original items sitting above the upcoming matches. Clearing the
+        // options before continuing ensures that the results list only contains
+        // the matching items once they are loaded, regardless of which page
+        // they came from.
+        setOptions([]);
         const nextPage = p + 1;
         setPage(nextPage);
-        return fetchPage(nextPage, q, true, signal, { skipRemoteSearch });
+        return fetchPage(nextPage, q, true, signal, {
+          skipRemoteSearch,
+          requestId,
+        });
       }
       if (
         shouldUseRemoteSearch &&
@@ -346,10 +378,16 @@ export default function AsyncSearchSelect({
         !skipRemoteSearch &&
         !signal?.aborted
       ) {
+        if (!canUpdateState()) return;
+        forcedLocalSearchRef.current = normalizedSearch;
         setPage(1);
-        return fetchPage(1, q, false, signal, { skipRemoteSearch: true });
+        return fetchPage(1, q, false, signal, {
+          skipRemoteSearch: true,
+          requestId,
+        });
       }
       const nextList = normalizedFilter ? filteredOpts : opts;
+      if (!canUpdateState()) return;
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
@@ -358,9 +396,9 @@ export default function AsyncSearchSelect({
         return normalizeOptions(nextList);
       });
     } catch (err) {
-      if (err.name !== 'AbortError') setOptions([]);
+      if (err.name !== 'AbortError' && canUpdateState()) setOptions([]);
     } finally {
-      setLoading(false);
+      if (canUpdateState()) setLoading(false);
     }
   }
 
@@ -371,6 +409,9 @@ export default function AsyncSearchSelect({
     } else {
       setInput(value || '');
       if (!value) setLabel('');
+    }
+    if (!value) {
+      forcedLocalSearchRef.current = '';
     }
   }, [value]);
 
@@ -415,6 +456,10 @@ export default function AsyncSearchSelect({
   }, [table]);
 
   useEffect(() => {
+    forcedLocalSearchRef.current = '';
+  }, [table]);
+
+  useEffect(() => {
     let canceled = false;
     setTenantMeta(null);
     if (!table) return;
@@ -436,7 +481,8 @@ export default function AsyncSearchSelect({
   useEffect(() => {
     if (!shouldFetch || disabled || tenantMeta === null) return;
     const controller = new AbortController();
-    fetchPage(1, '', false, controller.signal);
+    const requestId = beginFetchRequest();
+    fetchPage(1, '', false, controller.signal, { requestId });
     setPage(1);
     return () => controller.abort();
   }, [
@@ -446,6 +492,7 @@ export default function AsyncSearchSelect({
     effectiveCompanyId,
     disabled,
     shouldFetch,
+    beginFetchRequest,
   ]);
 
   useEffect(() => {
@@ -453,7 +500,8 @@ export default function AsyncSearchSelect({
     const controller = new AbortController();
     const q = String(input || '').trim();
     setPage(1);
-    fetchPage(1, q, false, controller.signal);
+    const requestId = beginFetchRequest();
+    fetchPage(1, q, false, controller.signal, { requestId });
     return () => controller.abort();
   }, [
     show,
@@ -463,6 +511,7 @@ export default function AsyncSearchSelect({
     effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
+    beginFetchRequest,
   ]);
 
   useEffect(() => {
@@ -521,7 +570,9 @@ export default function AsyncSearchSelect({
     if (idx >= 0 && idx < options.length) {
       opt = options[idx];
     } else if (options.length > 0) {
-      opt = findBestOption(query, { allowPartial: false });
+      opt =
+        findBestOption(query, { allowPartial: false }) ||
+        findBestOption(query, { allowPartial: true });
     }
 
     if (opt == null) {
@@ -532,15 +583,7 @@ export default function AsyncSearchSelect({
     const optIndex = options.indexOf(opt);
     if (optIndex >= 0) setHighlight(optIndex);
     e.preventDefault();
-    onChange(opt.value, opt.label);
-    if (onSelect) onSelect(opt);
-    setInput(String(opt.value));
-    setLabel(opt.label || '');
-    if (internalRef.current) internalRef.current.value = String(opt.value);
-    e.target.value = String(opt.value);
-    e.selectedOption = opt;
-    chosenRef.current = opt;
-    actionRef.current = { type: 'enter', matched: true, option: opt };
+    actionRef.current = { type: 'enter', matched: true, option: opt, query };
     setShow(false);
   }
 
@@ -574,7 +617,11 @@ export default function AsyncSearchSelect({
                     const next = page + 1;
                     setPage(next);
                     const controller = new AbortController();
-                    fetchPage(next, q, true, controller.signal);
+                    const requestId =
+                      fetchRequestIdRef.current || beginFetchRequest();
+                    fetchPage(next, q, true, controller.signal, {
+                      requestId,
+                    });
                   }
                 }}
                 style={{
@@ -646,6 +693,7 @@ export default function AsyncSearchSelect({
         value={input}
         onChange={(e) => {
           pendingLookupRef.current = null;
+          forcedLocalSearchRef.current = '';
           setInput(e.target.value);
           setLabel('');
           onChange(e.target.value);

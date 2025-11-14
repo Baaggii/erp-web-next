@@ -4,7 +4,13 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import { withPosApiEndpointMetadata } from '../utils/posApiConfig.js';
+import {
+  DEFAULT_ENDPOINT_RECEIPT_TYPES,
+  DEFAULT_ENDPOINT_TAX_TYPES,
+  DEFAULT_ENDPOINT_PAYMENT_METHODS,
+  resolveFeatureToggle,
+  withPosApiEndpointMetadata,
+} from '../utils/posApiConfig.js';
 import { parseFieldSource } from '../utils/posApiFieldSource.js';
 import PosApiIntegrationSection from '../components/PosApiIntegrationSection.jsx';
  
@@ -191,6 +197,355 @@ export default function PosTxnConfig() {
     });
   }, [workplaces, workplaceCfg]);
 
+  const endpointCandidates = useMemo(() => {
+    const list = [];
+    const addEndpoint = (endpoint, usageFallback = 'other') => {
+      if (!endpoint) return;
+      const enriched = withPosApiEndpointMetadata(endpoint);
+      const id = typeof enriched?.id === 'string' ? enriched.id.trim() : '';
+      if (!id) return;
+      if (list.some((entry) => entry?.id === id)) return;
+      list.push({ ...enriched, usage: enriched?.usage || usageFallback });
+    };
+
+    if (Array.isArray(posApiEndpoints)) {
+      posApiEndpoints.forEach((endpoint) => addEndpoint(endpoint, endpoint?.usage || 'other'));
+    }
+
+    addEndpoint(config.posApiEndpointMeta, 'transaction');
+    if (config.posApiEndpointId) {
+      addEndpoint({ id: config.posApiEndpointId, usage: 'transaction' }, 'transaction');
+    }
+
+    const infoEndpointMeta = Array.isArray(config.posApiInfoEndpointMeta)
+      ? config.posApiInfoEndpointMeta
+      : [];
+    infoEndpointMeta.forEach((meta) => addEndpoint(meta, 'info'));
+
+    const infoEndpointIds = Array.isArray(config.posApiInfoEndpointIds)
+      ? config.posApiInfoEndpointIds
+      : [];
+    infoEndpointIds.forEach((id) => addEndpoint({ id, usage: 'info' }, 'info'));
+
+    return list;
+  }, [
+    posApiEndpoints,
+    config.posApiEndpointMeta,
+    config.posApiEndpointId,
+    config.posApiInfoEndpointMeta,
+    config.posApiInfoEndpointIds,
+  ]);
+
+  const endpointOptionGroups = useMemo(() => {
+    const base = { transaction: [], info: [], admin: [], other: [] };
+    endpointCandidates.forEach((endpoint) => {
+      if (!endpoint || typeof endpoint !== 'object') return;
+      const id = typeof endpoint.id === 'string' ? endpoint.id.trim() : '';
+      if (!id) return;
+      const name = typeof endpoint.name === 'string' ? endpoint.name : '';
+      const label = name ? `${id} – ${name}` : id;
+      const usage = typeof endpoint.usage === 'string' ? endpoint.usage : 'other';
+      const option = {
+        value: id,
+        label,
+        defaultForForm: Boolean(endpoint.defaultForForm),
+      };
+      if (usage === 'transaction') {
+        base.transaction.push(option);
+      } else if (usage === 'info') {
+        base.info.push(option);
+      } else if (usage === 'admin') {
+        base.admin.push(option);
+      } else {
+        base.other.push(option);
+      }
+    });
+    base.transaction.sort((a, b) => a.label.localeCompare(b.label));
+    base.info.sort((a, b) => a.label.localeCompare(b.label));
+    base.admin.sort((a, b) => a.label.localeCompare(b.label));
+    return base;
+  }, [endpointCandidates]);
+
+  const transactionEndpointOptions = endpointOptionGroups.transaction;
+  const infoEndpointOptions = endpointOptionGroups.info;
+
+  const selectedEndpoint = useMemo(() => {
+    let endpoint = null;
+    if (config.posApiEndpointId) {
+      endpoint = endpointCandidates.find((ep) => ep?.id === config.posApiEndpointId) || null;
+    }
+    if (!endpoint && config.posApiEndpointMeta) {
+      endpoint = withPosApiEndpointMetadata(config.posApiEndpointMeta);
+    }
+    if (!endpoint && config.posApiMapping && config.posApiMapping.itemFields) {
+      endpoint = { supportsItems: true };
+    }
+    return endpoint;
+  }, [
+    endpointCandidates,
+    config.posApiEndpointId,
+    config.posApiEndpointMeta,
+    config.posApiMapping,
+  ]);
+
+  const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
+
+  const endpointReceiptItemsEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptItems !== false
+    : endpointSupportsItems;
+  const endpointReceiptTypesEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptTypes !== false
+    : true;
+  const endpointReceiptTaxTypesEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptTaxTypes !== false
+    : true;
+  const endpointPaymentMethodsEnabled = selectedEndpoint
+    ? selectedEndpoint.enablePaymentMethods !== false
+    : true;
+
+  const receiptItemsToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptItems,
+    endpointSupportsItems && endpointReceiptItemsEnabled,
+    endpointReceiptItemsEnabled,
+  );
+  const receiptTypesToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptTypes,
+    endpointReceiptTypesEnabled,
+    endpointReceiptTypesEnabled,
+  );
+  const receiptTaxTypesToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptTaxTypes,
+    endpointReceiptTaxTypesEnabled,
+    endpointReceiptTaxTypesEnabled,
+  );
+  const paymentMethodsToggleValue = resolveFeatureToggle(
+    config.posApiEnablePaymentMethods,
+    endpointPaymentMethodsEnabled,
+    endpointPaymentMethodsEnabled,
+  );
+
+  const supportsItems = receiptItemsToggleValue;
+
+  const receiptTypesFeatureEnabled = config.posApiEnabled && receiptTypesToggleValue;
+  const receiptTaxTypesFeatureEnabled = config.posApiEnabled && receiptTaxTypesToggleValue;
+  const paymentMethodsFeatureEnabled = config.posApiEnabled && paymentMethodsToggleValue;
+  const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
+    ? selectedEndpoint?.allowMultipleReceiptTypes !== false
+    : true;
+  const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
+    ? selectedEndpoint?.allowMultiplePaymentMethods !== false
+    : true;
+
+  const endpointReceiptTypes = useMemo(() => {
+    if (!receiptTypesFeatureEnabled) return [];
+    if (
+      selectedEndpoint &&
+      Array.isArray(selectedEndpoint.receiptTypes) &&
+      selectedEndpoint.receiptTypes.length
+    ) {
+      return selectedEndpoint.receiptTypes.map((value) => String(value));
+    }
+    return DEFAULT_ENDPOINT_RECEIPT_TYPES;
+  }, [selectedEndpoint, receiptTypesFeatureEnabled]);
+
+  const configuredReceiptTypes = useMemo(() => {
+    if (!receiptTypesFeatureEnabled) return [];
+    const values = Array.isArray(config.posApiReceiptTypes)
+      ? config.posApiReceiptTypes
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value) => value)
+      : [];
+    if (receiptTypesAllowMultiple) {
+      return values;
+    }
+    return values.slice(0, 1);
+  }, [config.posApiReceiptTypes, receiptTypesFeatureEnabled, receiptTypesAllowMultiple]);
+
+  const effectiveReceiptTypes = useMemo(() => {
+    if (!receiptTypesFeatureEnabled) return [];
+    return configuredReceiptTypes.length ? configuredReceiptTypes : endpointReceiptTypes;
+  }, [configuredReceiptTypes, endpointReceiptTypes, receiptTypesFeatureEnabled]);
+
+  const receiptTypeUniverse = useMemo(() => {
+    if (!receiptTypesFeatureEnabled) return [];
+    const allowed = new Set((endpointReceiptTypes || []).filter(Boolean));
+    const combined = Array.from(
+      new Set([...endpointReceiptTypes, ...configuredReceiptTypes].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredReceiptTypes.includes(value),
+    );
+    if (filtered.length) return filtered;
+    return endpointReceiptTypes;
+  }, [endpointReceiptTypes, configuredReceiptTypes, receiptTypesFeatureEnabled]);
+
+  const endpointPaymentMethods = useMemo(() => {
+    if (!paymentMethodsFeatureEnabled) return [];
+    if (
+      selectedEndpoint &&
+      Array.isArray(selectedEndpoint.paymentMethods) &&
+      selectedEndpoint.paymentMethods.length
+    ) {
+      return selectedEndpoint.paymentMethods.map((value) => String(value));
+    }
+    return DEFAULT_ENDPOINT_PAYMENT_METHODS;
+  }, [selectedEndpoint, paymentMethodsFeatureEnabled]);
+
+  const configuredPaymentMethods = useMemo(() => {
+    if (!paymentMethodsFeatureEnabled) return [];
+    const values = Array.isArray(config.posApiPaymentMethods)
+      ? config.posApiPaymentMethods
+          .map((value) => (typeof value === 'string' ? value.trim() : ''))
+          .filter((value) => value)
+      : [];
+    if (paymentMethodsAllowMultiple) {
+      return values;
+    }
+    return values.slice(0, 1);
+  }, [config.posApiPaymentMethods, paymentMethodsFeatureEnabled, paymentMethodsAllowMultiple]);
+
+  const effectivePaymentMethods = useMemo(() => {
+    if (!paymentMethodsFeatureEnabled) return [];
+    return configuredPaymentMethods.length
+      ? configuredPaymentMethods
+      : endpointPaymentMethods;
+  }, [configuredPaymentMethods, endpointPaymentMethods, paymentMethodsFeatureEnabled]);
+
+  const paymentMethodUniverse = useMemo(() => {
+    if (!paymentMethodsFeatureEnabled) return [];
+    const allowed = new Set((endpointPaymentMethods || []).filter(Boolean));
+    const combined = Array.from(
+      new Set([...endpointPaymentMethods, ...configuredPaymentMethods].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredPaymentMethods.includes(value),
+    );
+    if (filtered.length) return filtered;
+    return endpointPaymentMethods;
+  }, [endpointPaymentMethods, configuredPaymentMethods, paymentMethodsFeatureEnabled]);
+
+  const endpointReceiptTaxTypes = useMemo(() => {
+    if (!receiptTaxTypesFeatureEnabled) return [];
+    if (
+      selectedEndpoint &&
+      Array.isArray(selectedEndpoint.receiptTaxTypes) &&
+      selectedEndpoint.receiptTaxTypes.length
+    ) {
+      return selectedEndpoint.receiptTaxTypes.map((value) => String(value));
+    }
+    return DEFAULT_ENDPOINT_TAX_TYPES;
+  }, [selectedEndpoint, receiptTaxTypesFeatureEnabled]);
+
+  const topLevelFieldHints = useMemo(() => {
+    const hints = selectedEndpoint?.mappingHints?.topLevelFields;
+    if (!Array.isArray(hints)) return {};
+    const map = {};
+    hints.forEach((entry) => {
+      if (!entry || typeof entry.field !== 'string') return;
+      map[entry.field] = {
+        required: Boolean(entry.required),
+        description: typeof entry.description === 'string' ? entry.description : '',
+      };
+    });
+    return map;
+  }, [selectedEndpoint]);
+
+  const itemFieldHints = useMemo(() => {
+    const source = selectedEndpoint?.mappingHints?.itemFields;
+    if (!Array.isArray(source)) return {};
+    const map = {};
+    source.forEach((entry) => {
+      if (!entry || typeof entry.field !== 'string') return;
+      map[entry.field] = {
+        required: Boolean(entry.required),
+        description: typeof entry.description === 'string' ? entry.description : '',
+      };
+    });
+    return map;
+  }, [selectedEndpoint]);
+
+  const receiptGroupHints = useMemo(() => {
+    const source = selectedEndpoint?.mappingHints?.receiptGroups;
+    if (!Array.isArray(source)) return {};
+    const map = {};
+    source.forEach((group) => {
+      const type = typeof group?.type === 'string' ? group.type : '';
+      if (!type) return;
+      const fieldMap = {};
+      (group.fields || []).forEach((field) => {
+        if (!field || typeof field.field !== 'string') return;
+        fieldMap[field.field] = {
+          required: Boolean(field.required),
+          description: typeof field.description === 'string' ? field.description : '',
+        };
+      });
+      map[type] = fieldMap;
+    });
+    return map;
+  }, [selectedEndpoint]);
+
+  const paymentMethodHints = useMemo(() => {
+    const source = selectedEndpoint?.mappingHints?.paymentMethods;
+    if (!Array.isArray(source)) return {};
+    const map = {};
+    source.forEach((method) => {
+      const code = typeof method?.method === 'string' ? method.method : '';
+      if (!code) return;
+      const fieldMap = {};
+      (method.fields || []).forEach((field) => {
+        if (!field || typeof field.field !== 'string') return;
+        fieldMap[field.field] = {
+          required: Boolean(field.required),
+          description: typeof field.description === 'string' ? field.description : '',
+        };
+      });
+      map[code] = fieldMap;
+    });
+    return map;
+  }, [selectedEndpoint]);
+
+  const serviceReceiptGroupTypes = useMemo(() => {
+    if (!receiptTaxTypesFeatureEnabled) return [];
+    const hintKeys = Object.keys(receiptGroupHints || {});
+    const configuredKeys = Object.keys(receiptGroupMapping || {});
+    const combined = Array.from(
+      new Set([...endpointReceiptTaxTypes, ...hintKeys, ...configuredKeys]),
+    ).filter(Boolean);
+    if (combined.length) return combined;
+    return ['VAT_ABLE'];
+  }, [
+    receiptGroupHints,
+    receiptGroupMapping,
+    endpointReceiptTaxTypes,
+    receiptTaxTypesFeatureEnabled,
+  ]);
+
+  const servicePaymentMethodCodes = useMemo(() => {
+    if (!paymentMethodsFeatureEnabled) return [];
+    const selected = effectivePaymentMethods || [];
+    const selectedSet = new Set(selected);
+    const hintKeys = Object.keys(paymentMethodHints || {});
+    const configuredKeys = Object.keys(paymentMethodMapping || {});
+    const endpointKeys = endpointPaymentMethods || [];
+    const base = selected.length > 0 ? selected : endpointKeys;
+    const combined = new Set([
+      ...base,
+      ...configuredKeys,
+      ...hintKeys.filter((code) => selectedSet.size === 0 || selectedSet.has(code)),
+    ]);
+    return Array.from(combined).filter((value) => {
+      if (!value) return false;
+      if (selectedSet.size === 0) return true;
+      return selectedSet.has(value) || configuredKeys.includes(value);
+    });
+  }, [
+    effectivePaymentMethods,
+    paymentMethodHints,
+    paymentMethodMapping,
+    endpointPaymentMethods,
+    paymentMethodsFeatureEnabled,
+  ]);
+
   const itemTableOptions = useMemo(() => {
     const seen = new Set();
     const list = [];
@@ -232,12 +587,6 @@ export default function PosTxnConfig() {
   }, [config.masterTable, config.tables, tableColumns, masterCols]);
 
   const columns = allColumnOptions;
-
-  const fieldsFromPosApiText = useMemo(() => {
-    return Array.isArray(config.fieldsFromPosApi)
-      ? config.fieldsFromPosApi.join('\n')
-      : '';
-  }, [config.fieldsFromPosApi]);
 
   const sectionStyle = useMemo(
     () => ({
@@ -622,228 +971,6 @@ export default function PosTxnConfig() {
     }
   }
 
-  async function handleSave() {
-    if (!name) {
-      addToast('Name required', 'error');
-      return;
-    }
-    const normalizeAccessForSave = (list) =>
-      Array.isArray(list)
-        ? Array.from(
-            new Set(
-              list
-                .map((item) => {
-                  if (item === undefined || item === null) return null;
-                  const num = Number(item);
-                  if (Number.isFinite(num)) return num;
-                  const str = String(item).trim();
-                  return str ? str : null;
-                })
-                .filter((val) => val !== null),
-            ),
-          )
-        : [];
-    const normalizedProcedures = Array.isArray(config.procedures)
-      ? Array.from(
-          new Set(
-            config.procedures
-              .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
-              .filter((proc) => proc),
-          ),
-        )
-      : [];
-    const normalizedTemporaryProcedures = Array.isArray(config.temporaryProcedures)
-      ? Array.from(
-          new Set(
-            config.temporaryProcedures
-              .map((proc) => (typeof proc === 'string' ? proc.trim() : ''))
-              .filter((proc) => proc),
-          ),
-        )
-      : [];
-    const sanitizeSelectionList = (list = [], allowedList = [], allowMultiple = true) => {
-      const allowedSet = new Set(
-        (allowedList || []).map((value) => (typeof value === 'string' ? value : String(value))),
-      );
-      const sanitized = Array.isArray(list)
-        ? Array.from(
-            new Set(
-              list
-                .map((value) => (typeof value === 'string' ? value.trim() : ''))
-                .filter((value) => value),
-            ),
-          )
-        : [];
-      if (allowedSet.size === 0) {
-        return allowMultiple ? sanitized : sanitized.slice(0, 1);
-      }
-      const filtered = sanitized.filter((value) => allowedSet.has(value));
-      if (filtered.length) {
-        return allowMultiple ? filtered : filtered.slice(0, 1);
-      }
-      const fallback = Array.from(allowedSet);
-      return allowMultiple ? fallback : fallback.slice(0, 1);
-    };
-    const sanitizedReceiptTypes = sanitizeSelectionList(
-      config.posApiReceiptTypes,
-      endpointReceiptTypes,
-      receiptTypesAllowMultiple,
-    );
-    const sanitizedPaymentMethods = sanitizeSelectionList(
-      config.posApiPaymentMethods,
-      endpointPaymentMethods,
-      paymentMethodsAllowMultiple,
-    );
-    const sanitizeEndpointList = (list) =>
-      Array.isArray(list)
-        ? Array.from(
-            new Set(
-              list
-                .map((id) => (typeof id === 'string' ? id.trim() : ''))
-                .filter((id) => id),
-            ),
-          )
-        : [];
-    const sanitizedInfoEndpoints = sanitizeEndpointList(config.posApiInfoEndpointIds);
-    const sanitizedLookupEndpoints = sanitizeEndpointList(config.infoEndpoints);
-    if (!sanitizedLookupEndpoints.length) {
-      sanitizedLookupEndpoints.push(...sanitizedInfoEndpoints);
-    }
-    const sanitizedFieldsFromPosApi = Array.isArray(config.fieldsFromPosApi)
-      ? Array.from(
-          new Set(
-            config.fieldsFromPosApi
-              .map((field) => (typeof field === 'string' ? field.trim() : ''))
-              .filter((field) => field),
-          ),
-        )
-      : [];
-    const saveCfg = {
-      ...config,
-      allowedBranches: normalizeAccessForSave(config.allowedBranches),
-      allowedDepartments: normalizeAccessForSave(config.allowedDepartments),
-      allowedUserRights: normalizeAccessForSave(config.allowedUserRights),
-      allowedWorkplaces: normalizeAccessForSave(config.allowedWorkplaces),
-      procedures: normalizedProcedures,
-      temporaryAllowedBranches: normalizeAccessForSave(config.temporaryAllowedBranches),
-      temporaryAllowedDepartments: normalizeAccessForSave(
-        config.temporaryAllowedDepartments,
-      ),
-      temporaryAllowedUserRights: normalizeAccessForSave(
-        config.temporaryAllowedUserRights,
-      ),
-      temporaryAllowedWorkplaces: normalizeAccessForSave(
-        config.temporaryAllowedWorkplaces,
-      ),
-      temporaryProcedures: normalizedTemporaryProcedures,
-      posApiEnabled: Boolean(config.posApiEnabled),
-      posApiEndpointId: config.posApiEndpointId
-        ? String(config.posApiEndpointId).trim()
-        : '',
-      posApiType: config.posApiType ? String(config.posApiType).trim() : '',
-      posApiInfoEndpointIds: sanitizedInfoEndpoints,
-      infoEndpoints: sanitizedLookupEndpoints,
-      posApiTypeField: config.posApiTypeField
-        ? String(config.posApiTypeField).trim()
-        : '',
-      posApiReceiptTypes: sanitizedReceiptTypes,
-      posApiPaymentMethods: sanitizedPaymentMethods,
-      fieldsFromPosApi: sanitizedFieldsFromPosApi,
-      posApiMapping:
-        config.posApiMapping && typeof config.posApiMapping === 'object'
-          ? config.posApiMapping
-          : {},
-      tables: [
-        {
-          table: config.masterTable,
-          form: config.masterForm,
-          type: config.masterType,
-          position: config.masterPosition,
-          view: config.masterView,
-        },
-        ...config.tables,
-      ],
-    };
-    ['posApiEnableReceiptTypes', 'posApiEnableReceiptItems', 'posApiEnableReceiptTaxTypes', 'posApiEnablePaymentMethods'].forEach(
-      (key) => {
-        if (typeof saveCfg[key] === 'boolean') {
-          saveCfg[key] = Boolean(saveCfg[key]);
-        } else {
-          delete saveCfg[key];
-        }
-      },
-    );
-    if (!saveCfg.posApiEndpointId) {
-      const defaultEndpoint = transactionEndpointOptions.find((opt) => opt?.defaultForForm);
-      if (defaultEndpoint) saveCfg.posApiEndpointId = defaultEndpoint.value;
-    }
-    if (isDefault) {
-      try {
-        const resImport = await fetch(
-          `/api/config/import?companyId=${encodeURIComponent(company ?? '')}`,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({ files: ['posTransactionConfig.json'] }),
-          },
-        );
-        if (!resImport.ok) throw new Error('import failed');
-        setIsDefault(false);
-      } catch (err) {
-        addToast(`Import failed: ${err.message}`, 'error');
-        return;
-      }
-    }
-    await fetch('/api/pos_txn_config', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ name, config: saveCfg }),
-    });
-    refreshTxnModules();
-    refreshModules();
-    addToast('Saved', 'success');
-    fetch('/api/pos_txn_config', { credentials: 'include' })
-      .then((res) => (res.ok ? res.json() : { isDefault: true }))
-      .then((data) => {
-        setIsDefault(!!data.isDefault);
-        const { isDefault: _def, ...rest } = data || {};
-        setConfigs(rest);
-      })
-      .catch(() => {});
-  }
-
-  async function handleDelete() {
-    if (!name) return;
-    if (!window.confirm('Delete configuration?')) return;
-    try {
-      const res = await fetch(`/api/pos_txn_config?name=${encodeURIComponent(name)}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        addToast('Delete failed', 'error');
-        return;
-      }
-      refreshTxnModules();
-      refreshModules();
-      addToast('Deleted', 'success');
-      setName('');
-      setConfig({ ...emptyConfig });
-      fetch('/api/pos_txn_config', { credentials: 'include' })
-        .then((res) => (res.ok ? res.json() : { isDefault: true }))
-        .then((data) => {
-          setIsDefault(!!data.isDefault);
-          const { isDefault: _def, ...rest } = data || {};
-          setConfigs(rest);
-        })
-        .catch(() => {});
-    } catch {
-      addToast('Delete failed', 'error');
-    }
-  }
-
   async function handleImport() {
     if (
       !window.confirm(
@@ -872,6 +999,267 @@ export default function PosTxnConfig() {
       addToast('Imported', 'success');
     } catch (err) {
       addToast(`Import failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function handleSave() {
+    const trimmedName = (name || '').trim();
+    if (!trimmedName) {
+      addToast('Please enter configuration name', 'error');
+      return;
+    }
+
+    const normalizedMasterForm =
+      typeof config.masterForm === 'string' ? config.masterForm.trim() : '';
+    const normalizedMasterTable =
+      (typeof config.masterTable === 'string' ? config.masterTable.trim() : '') ||
+      formToTable[normalizedMasterForm] ||
+      '';
+
+    const normalizeTableEntry = (entry = {}) => {
+      const form = typeof entry.form === 'string' ? entry.form.trim() : '';
+      const explicitTable = typeof entry.table === 'string' ? entry.table.trim() : '';
+      const resolvedTable = explicitTable || formToTable[form] || '';
+      return {
+        table: resolvedTable,
+        form,
+        type: entry.type === 'multi' ? 'multi' : 'single',
+        position: entry.position || 'upper_left',
+        view: entry.view || 'fitted',
+      };
+    };
+
+    const normalizedTables = config.tables.map((entry) => normalizeTableEntry(entry));
+    const tableOrder = [normalizedMasterTable, ...normalizedTables.map((t) => t.table)];
+
+    const normalizedCalcFields = config.calcFields.map((row, rowIdx) => {
+      const sourceCells = Array.isArray(row.cells) ? [...row.cells] : [];
+      while (sourceCells.length < tableOrder.length) {
+        sourceCells.push({ table: tableOrder[sourceCells.length], field: '', agg: '' });
+      }
+      const mappedCells = sourceCells.slice(0, tableOrder.length).map((cell, cellIdx) => ({
+        table: tableOrder[cellIdx] || '',
+        field: typeof cell?.field === 'string' ? cell.field : '',
+        agg: typeof cell?.agg === 'string' ? cell.agg : '',
+      }));
+      return {
+        name: row?.name || `Map${rowIdx + 1}`,
+        cells: mappedCells,
+      };
+    });
+
+    const normalizedPosFields = config.posFields.map((field, idx) => {
+      const parts = Array.isArray(field?.parts) && field.parts.length
+        ? field.parts
+        : [{ agg: '=', field: '', table: normalizedMasterTable }];
+      return {
+        name: field?.name || `PF${idx + 1}`,
+        parts: parts.map((part, partIdx) => ({
+          agg: typeof part?.agg === 'string' ? part.agg : partIdx === 0 ? '=' : '+',
+          field: typeof part?.field === 'string' ? part.field : '',
+          table:
+            (typeof part?.table === 'string' ? part.table : '') ||
+            normalizedMasterTable,
+        })),
+      };
+    });
+
+    const normalizeProcedureList = (list = []) =>
+      Array.isArray(list)
+        ? Array.from(
+            new Set(
+              list
+                .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+                .filter((entry) => entry),
+            ),
+          )
+        : [];
+
+    const normalizedStatusField = {
+      table: typeof config.statusField?.table === 'string' ? config.statusField.table : '',
+      field: typeof config.statusField?.field === 'string' ? config.statusField.field : '',
+      created:
+        typeof config.statusField?.created === 'string'
+          ? config.statusField.created
+          : '',
+      beforePost:
+        typeof config.statusField?.beforePost === 'string'
+          ? config.statusField.beforePost
+          : '',
+      posted:
+        typeof config.statusField?.posted === 'string' ? config.statusField.posted : '',
+    };
+
+    const cleanedConfig = {
+      ...config,
+      masterForm: normalizedMasterForm,
+      masterTable: normalizedMasterTable,
+      masterType: config.masterType === 'multi' ? 'multi' : 'single',
+      masterPosition: config.masterPosition || 'upper_left',
+      masterView: config.masterView || 'fitted',
+      tables: normalizedTables,
+      calcFields: normalizedCalcFields,
+      posFields: normalizedPosFields,
+      statusField: normalizedStatusField,
+      procedures: normalizeProcedureList(config.procedures),
+      temporaryProcedures: normalizeProcedureList(config.temporaryProcedures),
+    };
+
+    cleanedConfig.supportsTemporarySubmission = Boolean(
+      config.supportsTemporarySubmission ??
+        config.allowTemporarySubmission ??
+        false,
+    );
+    cleanedConfig.allowTemporarySubmission = cleanedConfig.supportsTemporarySubmission;
+
+    try {
+      const res = await fetch('/api/pos_txn_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: trimmedName, config: cleanedConfig }),
+      });
+      if (!res.ok) throw new Error('Unable to save configuration');
+      refreshTxnModules();
+      refreshModules();
+      addToast('Saved', 'success');
+      setConfigs((prev) => ({ ...prev, [trimmedName]: cleanedConfig }));
+      setName(trimmedName);
+      setConfig(cleanedConfig);
+      setIsDefault(false);
+    } catch (err) {
+      addToast(`Save failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function handleDelete() {
+    const trimmedName = (name || '').trim();
+    if (!trimmedName) return;
+    if (!window.confirm('Delete POS configuration?')) return;
+    try {
+      const res = await fetch(`/api/pos_txn_config?name=${encodeURIComponent(trimmedName)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Unable to delete configuration');
+      addToast('Deleted', 'success');
+      setConfigs((prev) => {
+        const copy = { ...prev };
+        delete copy[trimmedName];
+        return copy;
+      });
+      setName('');
+      setConfig({ ...emptyConfig });
+    } catch (err) {
+      addToast(`Delete failed: ${err.message}`, 'error');
+    }
+  }
+
+  function addColumn() {
+    setConfig((c) => ({
+      ...c,
+      tables: [
+        ...c.tables,
+        { table: '', form: '', type: 'single', position: 'upper_left', view: 'fitted' },
+      ],
+      calcFields: c.calcFields.map((row) => ({
+        ...row,
+        cells: [...(row.cells || []), { table: '', field: '', agg: '' }],
+      })),
+    }));
+  }
+
+  function removeMaster() {
+    setConfig((c) => ({
+      ...c,
+      masterTable: '',
+      masterForm: '',
+      masterType: 'single',
+      masterPosition: 'upper_left',
+      masterView: 'fitted',
+      calcFields: c.calcFields.map((row) => ({
+        ...row,
+        cells: (row.cells || []).map((cell, idx) =>
+          idx === 0 ? { ...cell, table: '', field: '', agg: '' } : cell,
+        ),
+      })),
+      posFields: c.posFields.map((field) => ({
+        ...field,
+        parts: (field.parts || []).map((part, idx) =>
+          idx === 0 ? { ...part, agg: '=', table: '', field: '' } : part,
+        ),
+      })),
+      statusField: { ...c.statusField, table: '', field: '' },
+    }));
+  }
+
+  function removeColumn(idx) {
+    setConfig((c) => {
+      const removed = c.tables[idx];
+      const updatedTables = c.tables.filter((_, i) => i !== idx);
+      const updatedCalcFields = c.calcFields.map((row) => ({
+        ...row,
+        cells: (row.cells || []).filter((_, cellIdx) => cellIdx !== idx + 1),
+      }));
+      const statusField =
+        removed && removed.table && c.statusField?.table === removed.table
+          ? { ...c.statusField, table: '', field: '' }
+          : c.statusField;
+      return { ...c, tables: updatedTables, calcFields: updatedCalcFields, statusField };
+    });
+  }
+
+  function updateColumn(idx, key, value) {
+    const resolvedValue = typeof value === 'string' ? value : '';
+    const resolvedTableName =
+      key === 'form'
+        ? formToTable[resolvedValue.trim()] || ''
+        : key === 'table'
+          ? resolvedValue.trim()
+          : null;
+
+    setConfig((c) => {
+      const nextTables = c.tables.map((entry, i) => {
+        if (i !== idx) return entry;
+        if (key === 'form') {
+          return {
+            ...entry,
+            form: resolvedValue.trim(),
+            table: resolvedTableName || '',
+          };
+        }
+        if (key === 'type') {
+          return { ...entry, type: value === 'multi' ? 'multi' : 'single' };
+        }
+        if (key === 'position') {
+          return { ...entry, position: resolvedValue || 'upper_left' };
+        }
+        if (key === 'view') {
+          return { ...entry, view: resolvedValue || 'fitted' };
+        }
+        if (key === 'table') {
+          return { ...entry, table: resolvedTableName || '' };
+        }
+        return { ...entry, [key]: value };
+      });
+
+      const totalColumns = nextTables.length + 1;
+      const calcFields = c.calcFields.map((row) => {
+        const cells = Array.isArray(row.cells) ? [...row.cells] : [];
+        while (cells.length < totalColumns) {
+          cells.push({ table: '', field: '', agg: '' });
+        }
+        if (resolvedTableName !== null) {
+          cells[idx + 1] = { ...cells[idx + 1], table: resolvedTableName || '' };
+        }
+        return { ...row, cells };
+      });
+
+      return { ...c, tables: nextTables, calcFields };
+    });
+
+    if (resolvedTableName) {
+      ensureColumnsLoadedFor(resolvedTableName);
     }
   }
 
