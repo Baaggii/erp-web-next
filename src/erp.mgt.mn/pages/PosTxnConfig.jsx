@@ -94,6 +94,11 @@ const emptyConfig = {
   temporaryProcedures: [],
   posApiEnabled: false,
   posApiEndpointId: '',
+  posApiEndpointMeta: null,
+  posApiType: '',
+  posApiInfoEndpointIds: [],
+  posApiInfoEndpointMeta: [],
+  infoEndpoints: [],
   posApiTypeField: '',
   posApiReceiptTypes: [],
   posApiPaymentMethods: [],
@@ -251,19 +256,57 @@ export default function PosTxnConfig() {
       addEndpoint({ id: config.posApiEndpointId, usage: 'transaction' }, 'transaction');
     }
 
-    return list;
-  }, [posApiEndpoints, config.posApiEndpointMeta, config.posApiEndpointId]);
+    const infoEndpointMeta = Array.isArray(config.posApiInfoEndpointMeta)
+      ? config.posApiInfoEndpointMeta
+      : [];
+    infoEndpointMeta.forEach((meta) => addEndpoint(meta, 'info'));
 
-  const transactionEndpointOptions = useMemo(() => {
-    return endpointCandidates
-      .filter((endpoint) => endpoint && endpoint.usage === 'transaction')
-      .map((endpoint) => ({
-        value: endpoint.id,
-        label: endpoint.name ? `${endpoint.id} – ${endpoint.name}` : endpoint.id,
-        supportsItems: endpoint.supportsItems !== false,
-      }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+    const infoEndpointIds = Array.isArray(config.posApiInfoEndpointIds)
+      ? config.posApiInfoEndpointIds
+      : [];
+    infoEndpointIds.forEach((id) => addEndpoint({ id, usage: 'info' }, 'info'));
+
+    return list;
+  }, [
+    posApiEndpoints,
+    config.posApiEndpointMeta,
+    config.posApiEndpointId,
+    config.posApiInfoEndpointMeta,
+    config.posApiInfoEndpointIds,
+  ]);
+
+  const endpointOptionGroups = useMemo(() => {
+    const base = { transaction: [], info: [], admin: [], other: [] };
+    endpointCandidates.forEach((endpoint) => {
+      if (!endpoint || typeof endpoint !== 'object') return;
+      const id = typeof endpoint.id === 'string' ? endpoint.id.trim() : '';
+      if (!id) return;
+      const name = typeof endpoint.name === 'string' ? endpoint.name : '';
+      const label = name ? `${id} – ${name}` : id;
+      const usage = typeof endpoint.usage === 'string' ? endpoint.usage : 'other';
+      const option = {
+        value: id,
+        label,
+        defaultForForm: Boolean(endpoint.defaultForForm),
+      };
+      if (usage === 'transaction') {
+        base.transaction.push(option);
+      } else if (usage === 'info') {
+        base.info.push(option);
+      } else if (usage === 'admin') {
+        base.admin.push(option);
+      } else {
+        base.other.push(option);
+      }
+    });
+    base.transaction.sort((a, b) => a.label.localeCompare(b.label));
+    base.info.sort((a, b) => a.label.localeCompare(b.label));
+    base.admin.sort((a, b) => a.label.localeCompare(b.label));
+    return base;
   }, [endpointCandidates]);
+
+  const transactionEndpointOptions = endpointOptionGroups.transaction;
+  const infoEndpointOptions = endpointOptionGroups.info;
 
   const selectedEndpoint = useMemo(() => {
     let endpoint = null;
@@ -286,42 +329,6 @@ export default function PosTxnConfig() {
 
   const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
 
-  const hasItemSourceTables = useMemo(() => {
-    const master = typeof config.masterTable === 'string' ? config.masterTable.trim() : '';
-    let detailFound = false;
-    if (Array.isArray(config.tables)) {
-      for (const entry of config.tables) {
-        const tbl = typeof entry?.table === 'string' ? entry.table.trim() : '';
-        if (tbl && (!master || tbl !== master)) {
-          detailFound = true;
-          break;
-        }
-      }
-    }
-    if (!detailFound && Array.isArray(config.posFields)) {
-      for (const entry of config.posFields) {
-        const tbl = typeof entry?.table === 'string' ? entry.table.trim() : '';
-        if (tbl && (!master || tbl !== master)) {
-          detailFound = true;
-          break;
-        }
-      }
-    }
-    return detailFound;
-  }, [config.masterTable, config.tables, config.posFields]);
-
-  const itemMappingConfigured = useMemo(() => {
-    const mapping = config.posApiMapping || {};
-    if (typeof mapping.itemsField === 'string' && mapping.itemsField.trim()) {
-      return true;
-    }
-    const fields = mapping.itemFields;
-    if (fields && typeof fields === 'object' && !Array.isArray(fields)) {
-      return Object.values(fields).some((value) => typeof value === 'string' && value.trim());
-    }
-    return false;
-  }, [config.posApiMapping]);
-
   const endpointReceiptItemsEnabled = selectedEndpoint
     ? selectedEndpoint.enableReceiptItems !== false
     : endpointSupportsItems;
@@ -335,14 +342,10 @@ export default function PosTxnConfig() {
     ? selectedEndpoint.enablePaymentMethods !== false
     : true;
 
-  const receiptItemsSupported =
-    endpointSupportsItems &&
-    endpointReceiptItemsEnabled &&
-    (hasItemSourceTables || itemMappingConfigured);
   const receiptItemsToggleValue = resolveFeatureToggle(
     config.posApiEnableReceiptItems,
-    receiptItemsSupported,
-    receiptItemsSupported,
+    endpointSupportsItems && endpointReceiptItemsEnabled,
+    endpointReceiptItemsEnabled,
   );
   const receiptTypesToggleValue = resolveFeatureToggle(
     config.posApiEnableReceiptTypes,
@@ -366,8 +369,8 @@ export default function PosTxnConfig() {
   const receiptTaxTypesFeatureEnabled = config.posApiEnabled && receiptTaxTypesToggleValue;
   const paymentMethodsFeatureEnabled = config.posApiEnabled && paymentMethodsToggleValue;
   const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
-    ? selectedEndpoint?.allowMultipleReceiptTypes === true
-    : false;
+    ? selectedEndpoint?.allowMultipleReceiptTypes !== false
+    : true;
   const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
     ? selectedEndpoint?.allowMultiplePaymentMethods !== false
     : true;
@@ -628,6 +631,8 @@ export default function PosTxnConfig() {
     });
     return Array.from(options);
   }, [config.masterTable, config.tables, tableColumns, masterCols]);
+
+  const columns = allColumnOptions;
 
   const fieldsFromPosApiText = useMemo(() => {
     return Array.isArray(config.fieldsFromPosApi)
@@ -962,8 +967,22 @@ export default function PosTxnConfig() {
       loaded.posApiEnabled = Boolean(loaded.posApiEnabled);
       loaded.posApiEndpointId =
         typeof loaded.posApiEndpointId === 'string' ? loaded.posApiEndpointId : '';
+      loaded.posApiType = typeof loaded.posApiType === 'string' ? loaded.posApiType : '';
       loaded.posApiTypeField =
         typeof loaded.posApiTypeField === 'string' ? loaded.posApiTypeField : '';
+      loaded.posApiInfoEndpointIds = Array.isArray(loaded.posApiInfoEndpointIds)
+        ? loaded.posApiInfoEndpointIds
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value)
+        : [];
+      loaded.infoEndpoints = Array.isArray(loaded.infoEndpoints)
+        ? loaded.infoEndpoints
+            .map((value) => (typeof value === 'string' ? value.trim() : ''))
+            .filter((value) => value)
+        : [...loaded.posApiInfoEndpointIds];
+      if (!loaded.infoEndpoints.length) {
+        loaded.infoEndpoints = [...loaded.posApiInfoEndpointIds];
+      }
       loaded.posApiReceiptTypes = Array.isArray(loaded.posApiReceiptTypes)
         ? loaded.posApiReceiptTypes
             .map((value) => (typeof value === 'string' ? value.trim() : ''))
@@ -990,6 +1009,9 @@ export default function PosTxnConfig() {
       } else {
         delete loaded.posApiEndpointMeta;
       }
+      loaded.posApiInfoEndpointMeta = Array.isArray(loaded.posApiInfoEndpointMeta)
+        ? loaded.posApiInfoEndpointMeta.filter((entry) => entry && typeof entry === 'object')
+        : [];
 
       setIsDefault(!!def);
       setName(n);
@@ -1007,6 +1029,17 @@ export default function PosTxnConfig() {
       .map((item) => item.trim())
       .filter((item) => item);
     setConfig((c) => ({ ...c, fieldsFromPosApi: entries }));
+  }
+
+  function handleInfoEndpointChange(event) {
+    const selected = Array.from(event.target.selectedOptions || [])
+      .map((opt) => opt.value)
+      .filter((value) => value);
+    setConfig((c) => ({
+      ...c,
+      posApiInfoEndpointIds: selected,
+      infoEndpoints: selected,
+    }));
   }
 
   function toggleReceiptTypeSelection(type) {
@@ -1282,22 +1315,54 @@ export default function PosTxnConfig() {
           ),
         )
       : [];
-    const sanitizeSelectionList = (list, fallback) => {
-      const source = Array.isArray(list) ? list : fallback;
-      const cleaned = source
-        .map((value) => (typeof value === 'string' ? value.trim() : ''))
-        .filter((value) => value);
-      const base = cleaned.length > 0 ? cleaned : fallback;
-      return Array.from(new Set(base));
+    const sanitizeSelectionList = (list = [], allowedList = [], allowMultiple = true) => {
+      const allowedSet = new Set(
+        (allowedList || []).map((value) => (typeof value === 'string' ? value : String(value))),
+      );
+      const sanitized = Array.isArray(list)
+        ? Array.from(
+            new Set(
+              list
+                .map((value) => (typeof value === 'string' ? value.trim() : ''))
+                .filter((value) => value),
+            ),
+          )
+        : [];
+      if (allowedSet.size === 0) {
+        return allowMultiple ? sanitized : sanitized.slice(0, 1);
+      }
+      const filtered = sanitized.filter((value) => allowedSet.has(value));
+      if (filtered.length) {
+        return allowMultiple ? filtered : filtered.slice(0, 1);
+      }
+      const fallback = Array.from(allowedSet);
+      return allowMultiple ? fallback : fallback.slice(0, 1);
     };
     const sanitizedReceiptTypes = sanitizeSelectionList(
       config.posApiReceiptTypes,
       endpointReceiptTypes,
+      receiptTypesAllowMultiple,
     );
     const sanitizedPaymentMethods = sanitizeSelectionList(
       config.posApiPaymentMethods,
       endpointPaymentMethods,
+      paymentMethodsAllowMultiple,
     );
+    const sanitizeEndpointList = (list) =>
+      Array.isArray(list)
+        ? Array.from(
+            new Set(
+              list
+                .map((id) => (typeof id === 'string' ? id.trim() : ''))
+                .filter((id) => id),
+            ),
+          )
+        : [];
+    const sanitizedInfoEndpoints = sanitizeEndpointList(config.posApiInfoEndpointIds);
+    const sanitizedLookupEndpoints = sanitizeEndpointList(config.infoEndpoints);
+    if (!sanitizedLookupEndpoints.length) {
+      sanitizedLookupEndpoints.push(...sanitizedInfoEndpoints);
+    }
     const sanitizedFieldsFromPosApi = Array.isArray(config.fieldsFromPosApi)
       ? Array.from(
           new Set(
@@ -1329,6 +1394,9 @@ export default function PosTxnConfig() {
       posApiEndpointId: config.posApiEndpointId
         ? String(config.posApiEndpointId).trim()
         : '',
+      posApiType: config.posApiType ? String(config.posApiType).trim() : '',
+      posApiInfoEndpointIds: sanitizedInfoEndpoints,
+      infoEndpoints: sanitizedLookupEndpoints,
       posApiTypeField: config.posApiTypeField
         ? String(config.posApiTypeField).trim()
         : '',
@@ -1359,6 +1427,10 @@ export default function PosTxnConfig() {
         }
       },
     );
+    if (!saveCfg.posApiEndpointId) {
+      const defaultEndpoint = transactionEndpointOptions.find((opt) => opt?.defaultForForm);
+      if (defaultEndpoint) saveCfg.posApiEndpointId = defaultEndpoint.value;
+    }
     if (isDefault) {
       try {
         const resImport = await fetch(
@@ -2266,7 +2338,7 @@ export default function PosTxnConfig() {
         </section>
 
         <section style={sectionStyle}>
-          <h3 style={sectionTitleStyle}>POSAPI Integration</h3>
+          <h3 style={sectionTitleStyle}>POS API Integration</h3>
           <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <input
               type="checkbox"
@@ -2282,48 +2354,83 @@ export default function PosTxnConfig() {
           </label>
           {config.posApiEnabled && (
             <>
-              <div style={controlGroupStyle}>
-                <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
-                  <span style={{ fontWeight: 600 }}>POSAPI endpoint</span>
+              <label style={{ ...fieldColumnStyle }}>
+                <span style={{ fontWeight: 600 }}>Default POSAPI type</span>
+                <select
+                  value={config.posApiType}
+                  disabled={!config.posApiEnabled}
+                  onChange={(e) => setConfig((c) => ({ ...c, posApiType: e.target.value }))}
+                >
+                  <option value="">Use default from environment</option>
+                  {receiptTypeUniverse.map((type) => (
+                    <option key={`fallback-type-${type}`} value={type}>
+                      {formatPosApiTypeLabel(type)}
+                    </option>
+                  ))}
+                </select>
+                <small style={{ color: '#666' }}>
+                  Automatically switches to B2B when a customer TIN is provided and to B2C when a
+                  consumer number is present.
+                </small>
+              </label>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                  marginBottom: '0.5rem',
+                }}
+              >
+                <label style={{ ...fieldColumnStyle, flex: '1 1 240px' }}>
+                  <span style={{ fontWeight: 600 }}>Primary endpoint</span>
                   <select
                     value={config.posApiEndpointId}
+                    disabled={!config.posApiEnabled}
                     onChange={(e) =>
                       setConfig((c) => ({ ...c, posApiEndpointId: e.target.value }))
                     }
-                    disabled={!config.posApiEnabled}
                   >
-                    <option value="">-- select endpoint --</option>
+                    <option value="">Use registry default</option>
                     {transactionEndpointOptions.map((endpoint) => (
                       <option key={endpoint.value} value={endpoint.value}>
+                        {endpoint.label}
+                        {endpoint.defaultForForm ? ' (default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ ...fieldColumnStyle, flex: '1 1 240px' }}>
+                  <span style={{ fontWeight: 600 }}>Lookup endpoints</span>
+                  <select
+                    multiple
+                    value={config.posApiInfoEndpointIds}
+                    onChange={handleInfoEndpointChange}
+                    disabled={!config.posApiEnabled}
+                    size={Math.min(6, Math.max(3, infoEndpointOptions.length || 0))}
+                  >
+                    {infoEndpointOptions.map((endpoint) => (
+                      <option key={`info-${endpoint.value}`} value={endpoint.value}>
                         {endpoint.label}
                       </option>
                     ))}
                   </select>
                   <small style={{ color: '#666' }}>
-                    Endpoints are managed from POSAPI Admin. Choose one that matches the transaction
-                    type.
+                    Hold Ctrl (Cmd on macOS) to select multiple endpoints.
                   </small>
                 </label>
-                <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
-                  <span style={{ fontWeight: 600 }}>Receipt type column</span>
+                <label style={{ ...fieldColumnStyle, flex: '1 1 240px' }}>
+                  <span style={{ fontWeight: 600 }}>Type field override</span>
                   <input
                     type="text"
-                    list="posapi-type-field-options"
+                    placeholder="Column name"
                     value={config.posApiTypeField}
                     onChange={(e) =>
                       setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))
                     }
                     disabled={!config.posApiEnabled}
-                    placeholder="Header column or table.column"
                   />
-                  <datalist id="posapi-type-field-options">
-                    {allColumnOptions.map((col) => (
-                      <option key={`type-field-${col}`} value={col} />
-                    ))}
-                  </datalist>
                   <small style={{ color: '#666' }}>
-                    Optional override for the POSAPI type (e.g., B2C_RECEIPT) stored on the
-                    transaction.
+                    Optional column containing the POSAPI type (e.g., B2C_RECEIPT).
                   </small>
                 </label>
               </div>
@@ -2359,7 +2466,7 @@ export default function PosTxnConfig() {
                         posApiEnableReceiptItems: e.target.checked,
                       }))
                     }
-                    disabled={!receiptItemsSupported}
+                    disabled={!endpointSupportsItems || !endpointReceiptItemsEnabled}
                   />
                   <span>Enable receipt items</span>
                 </label>
@@ -2473,9 +2580,8 @@ export default function PosTxnConfig() {
               <div>
                 <strong>Receipt types</strong>
                 <p style={{ fontSize: '0.85rem', color: '#555' }}>
-                  {receiptTypesAllowMultiple
-                    ? 'Select the POSAPI receipt types this transaction can generate.'
-                    : 'Choose the single receipt type this transaction should send to POSAPI.'}
+                  Enable the POSAPI receipt types available for this form. Leave all selected to
+                  allow automatic detection.
                 </p>
                 <div
                   style={{
@@ -2510,9 +2616,7 @@ export default function PosTxnConfig() {
                 <div>
                   <strong>Payment methods</strong>
                   <p style={{ fontSize: '0.85rem', color: '#555' }}>
-                    {paymentMethodsAllowMultiple
-                      ? 'Choose every payment method that can be mixed within one transaction.'
-                      : 'Select the single payment method that this transaction should record.'}
+                    Select the payment methods that can be submitted through this transaction.
                   </p>
                   <div
                     style={{
@@ -2621,7 +2725,7 @@ export default function PosTxnConfig() {
                       disabled={!config.posApiEnabled}
                     />
                     <datalist id={listId}>
-                      {allColumnOptions.map((col) => (
+                      {columns.map((col) => (
                         <option key={`field-${field.key}-${col}`} value={col} />
                       ))}
                     </datalist>
@@ -2776,7 +2880,7 @@ export default function PosTxnConfig() {
                         disabled={!config.posApiEnabled}
                       />
                       <datalist id={listId}>
-                        {allColumnOptions.map((col) => (
+                        {columns.map((col) => (
                           <option key={`payment-${field.key}-${col}`} value={col} />
                         ))}
                       </datalist>
@@ -2818,7 +2922,7 @@ export default function PosTxnConfig() {
                         disabled={!config.posApiEnabled}
                       />
                       <datalist id={listId}>
-                        {allColumnOptions.map((col) => (
+                        {columns.map((col) => (
                           <option key={`receipt-${field.key}-${col}`} value={col} />
                         ))}
                       </datalist>
@@ -2910,7 +3014,7 @@ export default function PosTxnConfig() {
                                 disabled={!config.posApiEnabled}
                               />
                               <datalist id={listId}>
-                                {allColumnOptions.map((col) => (
+                                {columns.map((col) => (
                                   <option key={`service-receipt-${fieldKey}-${col}`} value={col} />
                                 ))}
                               </datalist>
@@ -3006,7 +3110,7 @@ export default function PosTxnConfig() {
                                 disabled={!config.posApiEnabled}
                               />
                               <datalist id={listId}>
-                                {allColumnOptions.map((col) => (
+                                {columns.map((col) => (
                                   <option key={`service-payment-${fieldKey}-${col}`} value={col} />
                                 ))}
                               </datalist>

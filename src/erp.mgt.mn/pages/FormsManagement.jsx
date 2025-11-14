@@ -1670,7 +1670,7 @@ export default function FormsManagement() {
             </section>
 
             <section style={sectionStyle}>
-              <h3 style={sectionTitleStyle}>POS API</h3>
+              <h3 style={sectionTitleStyle}>POS API Integration</h3>
               <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                 <input
                   type="checkbox"
@@ -1831,6 +1831,84 @@ export default function FormsManagement() {
                       <span>Enable payment methods</span>
                     </label>
                   </div>
+              {config.posApiEnabled && selectedEndpoint && (
+                <div
+                  style={{
+                    border: '1px solid #cbd5f5',
+                    background: '#f8fafc',
+                    borderRadius: '8px',
+                    padding: '0.75rem',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <strong>Endpoint capabilities</strong>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <span
+                      style={{
+                        ...BADGE_BASE_STYLE_BASE,
+                        background: supportsItems ? '#dcfce7' : '#fee2e2',
+                        color: supportsItems ? '#047857' : '#b91c1c',
+                      }}
+                    >
+                      {supportsItems ? 'Supports items' : 'Service only'}
+                    </span>
+                    {selectedEndpoint.supportsMultipleReceipts && (
+                      <span
+                        style={{
+                          ...BADGE_BASE_STYLE_BASE,
+                          background: '#ede9fe',
+                          color: '#5b21b6',
+                        }}
+                      >
+                        Multiple receipts
+                      </span>
+                    )}
+                    {selectedEndpoint.supportsMultiplePayments && (
+                      <span
+                        style={{
+                          ...BADGE_BASE_STYLE_BASE,
+                          background: '#cffafe',
+                          color: '#0e7490',
+                        }}
+                      >
+                        Multiple payments
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem' }}>
+                    <div>
+                      <div
+                        style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#475569' }}
+                      >
+                        Receipt types
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        {(selectedEndpoint.receiptTypes || []).map((type) => (
+                          <span key={`endpoint-receipt-${type}`}>
+                            {formatPosApiTypeLabelText(type)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div
+                        style={{ fontSize: '0.75rem', textTransform: 'uppercase', color: '#475569' }}
+                      >
+                        Payment methods
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                        {(selectedEndpoint.paymentMethods || []).map((method) => (
+                          <span key={`endpoint-payment-${method}`}>
+                            {PAYMENT_METHOD_LABELS_BASE[method] || method.replace(/_/g, ' ')}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               {receiptTypesFeatureEnabled && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div>
