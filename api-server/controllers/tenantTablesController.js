@@ -46,7 +46,14 @@ export async function getTenantTable(req, res, next) {
     if (!tableName) {
       return res.status(400).json({ message: 'table_name is required' });
     }
-    const table = await getTenantTableDb(tableName);
+    const rawCompanyId =
+      req.query?.companyId !== undefined && req.query?.companyId !== null && req.query?.companyId !== ''
+        ? Number(req.query.companyId)
+        : req.user?.companyId;
+    const companyId = Number.isFinite(Number(rawCompanyId))
+      ? Number(rawCompanyId)
+      : GLOBAL_COMPANY_ID;
+    const table = await getTenantTableDb(tableName, companyId);
     if (!table) {
       return res.status(404).json({ message: 'Table not found' });
     }
