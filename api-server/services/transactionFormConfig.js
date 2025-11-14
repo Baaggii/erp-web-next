@@ -416,12 +416,6 @@ function parseEntry(raw = {}) {
         .map((value) => (typeof value === 'string' ? value.trim() : ''))
         .filter((value) => value)
     : [];
-  const receiptTypesToggle = raw.posApiEnableReceiptTypes === false ? false : true;
-  const receiptItemsToggle = raw.posApiEnableReceiptItems === false ? false : true;
-  const receiptTaxTypesToggle =
-    raw.posApiEnableReceiptTaxTypes === false ? false : true;
-  const paymentMethodsToggle =
-    raw.posApiEnablePaymentMethods === false ? false : true;
   return {
     visibleFields: Array.isArray(raw.visibleFields)
       ? raw.visibleFields.map(String)
@@ -518,10 +512,6 @@ function parseEntry(raw = {}) {
     posApiInfoEndpointIds: infoEndpoints,
     posApiReceiptTypes: receiptTypes,
     posApiPaymentMethods: paymentMethods,
-    posApiEnableReceiptTypes: receiptTypesToggle,
-    posApiEnableReceiptItems: receiptItemsToggle,
-    posApiEnableReceiptTaxTypes: receiptTaxTypesToggle,
-    posApiEnablePaymentMethods: paymentMethodsToggle,
     fieldsFromPosApi: Array.isArray(raw.fieldsFromPosApi)
       ? raw.fieldsFromPosApi
           .map((value) => (typeof value === 'string' ? value.trim() : ''))
@@ -908,14 +898,6 @@ export async function setFormConfig(
           ),
         )
       : [],
-    posApiEnableReceiptTypes:
-      config.posApiEnableReceiptTypes === false ? false : true,
-    posApiEnableReceiptItems:
-      config.posApiEnableReceiptItems === false ? false : true,
-    posApiEnableReceiptTaxTypes:
-      config.posApiEnableReceiptTaxTypes === false ? false : true,
-    posApiEnablePaymentMethods:
-      config.posApiEnablePaymentMethods === false ? false : true,
     fieldsFromPosApi: Array.isArray(fieldsFromPosApi)
       ? Array.from(
           new Set(
