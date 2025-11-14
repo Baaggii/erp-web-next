@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   POS_API_FIELDS,
   POS_API_ITEM_FIELDS,
@@ -46,6 +46,7 @@ export default function PosApiIntegrationSection({
   receiptGroupMapping = {},
   paymentMethodMapping = {},
   onEnsureColumnsLoaded = () => {},
+  onPosApiOptionsChange = () => {},
 }) {
   const endpointCandidates = useMemo(() => {
     const list = [];
@@ -275,6 +276,28 @@ export default function PosApiIntegrationSection({
     if (filtered.length) return filtered;
     return endpointPaymentMethods;
   }, [endpointPaymentMethods, configuredPaymentMethods, paymentMethodsFeatureEnabled]);
+
+  const posApiOptionSnapshot = useMemo(
+    () => ({
+      transactionEndpointOptions,
+      endpointReceiptTypes,
+      endpointPaymentMethods,
+      receiptTypesAllowMultiple,
+      paymentMethodsAllowMultiple,
+    }),
+    [
+      transactionEndpointOptions,
+      endpointReceiptTypes,
+      endpointPaymentMethods,
+      receiptTypesAllowMultiple,
+      paymentMethodsAllowMultiple,
+    ],
+  );
+
+  useEffect(() => {
+    if (typeof onPosApiOptionsChange !== 'function') return;
+    onPosApiOptionsChange(posApiOptionSnapshot);
+  }, [onPosApiOptionsChange, posApiOptionSnapshot]);
 
   const topLevelFieldHints = useMemo(() => {
     const hints = selectedEndpoint?.mappingHints?.topLevelFields;
