@@ -343,6 +343,14 @@ export default function AsyncSearchSelect({
         more &&
         !signal?.aborted
       ) {
+        // When a search query is active and no matches were found in the
+        // current page, we fetch the next page locally. Because the previous
+        // options still contain the unfiltered first page, users would see the
+        // original items sitting above the upcoming matches. Clearing the
+        // options before continuing ensures that the results list only contains
+        // the matching items once they are loaded, regardless of which page
+        // they came from.
+        setOptions([]);
         const nextPage = p + 1;
         setPage(nextPage);
         return fetchPage(nextPage, q, true, signal, { skipRemoteSearch });
