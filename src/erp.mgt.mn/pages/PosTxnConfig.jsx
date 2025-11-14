@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useContext, useMemo, useRef } from 'react';
+import React, { useEffect, useState, useContext, useMemo, useRef, useCallback } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
@@ -1623,7 +1623,9 @@ export default function PosTxnConfig() {
                 </th>
               ))}
               <th>
-                <button onClick={addColumn}>Add</button>
+                <button type="button" onClick={handleAddColumn}>
+                  Add
+                </button>
               </th>
             </tr>
           </thead>
