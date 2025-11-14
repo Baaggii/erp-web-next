@@ -174,14 +174,12 @@ async function fetchTenantInfo(table) {
   }
 }
 
-async function fetchNestedLabelMap(nestedRel, { company, branch, department }) {
+async function fetchNestedLabelMap(nestedRel, { company }) {
   if (!nestedRel?.table || !nestedRel?.column) return {};
   const cacheKey = [
     nestedRel.table.toLowerCase(),
     nestedRel.column.toLowerCase(),
     company ?? '',
-    branch ?? '',
-    department ?? '',
   ].join('|');
   if (nestedLabelCache.has(cacheKey)) return nestedLabelCache.get(cacheKey);
 
@@ -200,10 +198,6 @@ async function fetchNestedLabelMap(nestedRel, { company, branch, department }) {
       if (!isShared) {
         if (tenantKeys.includes('company_id') && company != null)
           params.set('company_id', company);
-        if (tenantKeys.includes('branch_id') && branch != null)
-          params.set('branch_id', branch);
-        if (tenantKeys.includes('department_id') && department != null)
-          params.set('department_id', department);
       }
       const res = await fetch(
         `/api/tables/${encodeURIComponent(nestedRel.table)}?${params.toString()}`,
@@ -279,8 +273,6 @@ export async function buildOptionsForRows({
   searchColumn,
   labelFields = [],
   companyId,
-  branchId,
-  departmentId,
 }) {
   if (!Array.isArray(rows) || rows.length === 0) return [];
   const relationColumn = idField || searchColumn;
@@ -301,8 +293,6 @@ export async function buildOptionsForRows({
   );
   const nestedLookups = await getNestedLookups(table, lookupFields, {
     company: companyId,
-    branch: branchId,
-    department: departmentId,
   });
   const config = {
     idField: idField || relationColumn,
