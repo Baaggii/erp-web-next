@@ -17,6 +17,10 @@ const useIsomorphicLayoutEffect =
   typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 const PAGE_SIZE = 50;
+const toInputString = (val) => (val === null || val === undefined ? '' : String(val));
+const isEmptyInputValue = (val) => val === '' || val === null || val === undefined;
+const extractPrimitiveValue = (propValue) =>
+  typeof propValue === 'object' && propValue !== null ? propValue.value : propValue;
 
 export default function AsyncSearchSelect({
   table,
@@ -38,10 +42,9 @@ export default function AsyncSearchSelect({
 }) {
   const { company } = useContext(AuthContext);
   const effectiveCompanyId = companyId ?? company;
-  const initialVal =
-    typeof value === 'object' && value !== null ? value.value : value || '';
+  const initialVal = toInputString(extractPrimitiveValue(value));
   const initialLabel =
-    typeof value === 'object' && value !== null ? value.label || '' : '';
+    typeof value === 'object' && value !== null ? value.label ?? '' : '';
   const [input, setInput] = useState(initialVal);
   const [label, setLabel] = useState(initialLabel);
   const [options, setOptions] = useState([]);
@@ -403,14 +406,15 @@ export default function AsyncSearchSelect({
   }
 
   useEffect(() => {
+    const primitiveValue = extractPrimitiveValue(value);
     if (typeof value === 'object' && value !== null) {
-      setInput(value.value || '');
-      setLabel(value.label || '');
+      setInput(toInputString(primitiveValue));
+      setLabel(value.label ?? '');
     } else {
-      setInput(value || '');
-      if (!value) setLabel('');
+      setInput(toInputString(primitiveValue));
+      if (isEmptyInputValue(primitiveValue)) setLabel('');
     }
-    if (!value) {
+    if (isEmptyInputValue(primitiveValue)) {
       forcedLocalSearchRef.current = '';
     }
   }, [value]);
