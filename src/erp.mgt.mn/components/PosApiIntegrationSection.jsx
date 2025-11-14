@@ -223,18 +223,6 @@ export default function PosApiIntegrationSection({
     );
   }, [config.posApiReceiptTaxTypes, receiptTaxTypesFeatureEnabled, receiptTaxTypesAllowMultiple]);
 
-  const endpointReceiptTaxTypes = useMemo(() => {
-    if (!receiptTaxTypesFeatureEnabled) return [];
-    if (
-      selectedEndpoint &&
-      Array.isArray(selectedEndpoint.receiptTaxTypes) &&
-      selectedEndpoint.receiptTaxTypes.length
-    ) {
-      return selectedEndpoint.receiptTaxTypes.map((value) => String(value));
-    }
-    return DEFAULT_ENDPOINT_TAX_TYPES;
-  }, [selectedEndpoint, receiptTaxTypesFeatureEnabled]);
-
   const effectiveReceiptTypes = useMemo(() => {
     if (!receiptTypesFeatureEnabled) return [];
     return configuredReceiptTypes.length ? configuredReceiptTypes : endpointReceiptTypes;
@@ -254,6 +242,26 @@ export default function PosApiIntegrationSection({
   }, [endpointReceiptTypes, configuredReceiptTypes, receiptTypesFeatureEnabled]);
 
   const effectiveReceiptTaxTypes = useMemo(() => {
+    if (!receiptTaxTypesFeatureEnabled) return [];
+    return configuredReceiptTaxTypes.length
+      ? configuredReceiptTaxTypes
+      : endpointReceiptTaxTypes;
+  }, [configuredReceiptTaxTypes, endpointReceiptTaxTypes, receiptTaxTypesFeatureEnabled]);
+
+  const receiptTaxTypeUniverse = useMemo(() => {
+    if (!receiptTaxTypesFeatureEnabled) return [];
+    const allowed = new Set((endpointReceiptTaxTypes || []).filter(Boolean));
+    const combined = Array.from(
+      new Set([...endpointReceiptTaxTypes, ...configuredReceiptTaxTypes].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredReceiptTaxTypes.includes(value),
+    );
+    if (filtered.length) return filtered;
+    return endpointReceiptTaxTypes;
+  }, [endpointReceiptTaxTypes, configuredReceiptTaxTypes, receiptTaxTypesFeatureEnabled]);
+
+  const endpointReceiptTaxTypes = useMemo(() => {
     if (!receiptTaxTypesFeatureEnabled) return [];
     return configuredReceiptTaxTypes.length
       ? configuredReceiptTaxTypes
