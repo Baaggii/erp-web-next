@@ -394,7 +394,7 @@ function formatMetaDate(value) {
   return formatTimestamp(date);
 }
 
-function TableManagerInner({
+const TableManager = forwardRef(function TableManager({
   table,
   refreshId = 0,
   formConfig = null,
@@ -6593,11 +6593,7 @@ function TableManagerInner({
       </Modal>
     </div>
   );
-}
-
-TableManagerInner.displayName = 'TableManager';
-
-const ForwardedTableManager = forwardRef(TableManagerInner);
+});
 
 function propsEqual(prev, next) {
   return (
@@ -6610,4 +6606,4 @@ function propsEqual(prev, next) {
   );
 }
 
-export default memo(ForwardedTableManager, propsEqual);
+export default memo(TableManager, propsEqual);
