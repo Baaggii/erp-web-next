@@ -23,7 +23,7 @@ import {
   REQUIRED_BADGE_STYLE as REQUIRED_BADGE_STYLE_BASE,
   OPTIONAL_BADGE_STYLE as OPTIONAL_BADGE_STYLE_BASE,
   resolveFeatureToggle,
-  withEndpointMetadata,
+  withPosApiEndpointMetadata,
   formatPosApiTypeLabel,
   formatPosApiTypeLabelText,
 } from '../utils/posApiConfig.js';
