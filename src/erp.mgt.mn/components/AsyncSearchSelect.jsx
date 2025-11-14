@@ -61,7 +61,6 @@ export default function AsyncSearchSelect({
   const [remoteDisplayFields, setRemoteDisplayFields] = useState([]);
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
-  const optionsRef = useRef([]);
   const effectiveLabelFields = useMemo(() => {
     const set = new Set();
     const addField = (field) => {
@@ -243,16 +242,12 @@ export default function AsyncSearchSelect({
     });
   }, []);
 
-  useEffect(() => {
-    optionsRef.current = options;
-  }, [options]);
-
   async function fetchPage(
     p = 1,
     q = '',
     append = false,
     signal,
-    { skipRemoteSearch = false, accumulated = null } = {},
+    { skipRemoteSearch = false } = {},
   ) {
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
@@ -349,10 +344,7 @@ export default function AsyncSearchSelect({
       ) {
         const nextPage = p + 1;
         setPage(nextPage);
-        return fetchPage(nextPage, q, true, signal, {
-          skipRemoteSearch,
-          accumulated: combinedOptions,
-        });
+        return fetchPage(nextPage, q, true, signal, { skipRemoteSearch });
       }
       if (
         shouldUseRemoteSearch &&
@@ -362,14 +354,15 @@ export default function AsyncSearchSelect({
         !signal?.aborted
       ) {
         setPage(1);
-        return fetchPage(1, q, false, signal, {
-          skipRemoteSearch: true,
-          accumulated: [],
-        });
+        return fetchPage(1, q, false, signal, { skipRemoteSearch: true });
       }
-      if (!signal?.aborted) {
-        setOptions(() => normalizeOptions(combinedOptions));
-      }
+      setOptions((prev) => {
+        if (append) {
+          const base = Array.isArray(prev) ? prev : [];
+          return normalizeOptions([...base, ...filteredOpts]);
+        }
+        return normalizeOptions(opts);
+      });
     } catch (err) {
       if (err.name !== 'AbortError') setOptions([]);
     } finally {
