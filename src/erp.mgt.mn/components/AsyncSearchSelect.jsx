@@ -349,12 +349,13 @@ export default function AsyncSearchSelect({
         setPage(1);
         return fetchPage(1, q, false, signal, { skipRemoteSearch: true });
       }
+      const nextList = normalizedFilter ? filteredOpts : opts;
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
-          return normalizeOptions([...base, ...filteredOpts]);
+          return normalizeOptions([...base, ...nextList]);
         }
-        return normalizeOptions(opts);
+        return normalizeOptions(nextList);
       });
     } catch (err) {
       if (err.name !== 'AbortError') setOptions([]);
