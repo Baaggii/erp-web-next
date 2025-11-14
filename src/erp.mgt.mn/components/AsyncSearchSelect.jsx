@@ -45,6 +45,7 @@ export default function AsyncSearchSelect({
   const [input, setInput] = useState(initialVal);
   const [label, setLabel] = useState(initialLabel);
   const [options, setOptions] = useState([]);
+  const optionsRef = useRef([]);
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const [loading, setLoading] = useState(false);
@@ -61,6 +62,11 @@ export default function AsyncSearchSelect({
   const [remoteDisplayFields, setRemoteDisplayFields] = useState([]);
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
+  const forcedLocalSearchRef = useRef('');
+
+  useEffect(() => {
+    optionsRef.current = Array.isArray(options) ? options : [];
+  }, [options]);
   const effectiveLabelFields = useMemo(() => {
     const set = new Set();
     const addField = (field) => {
@@ -263,8 +269,15 @@ export default function AsyncSearchSelect({
       }
       const normalizedQuery = String(q || '').trim();
       const normalizedSearch = normalizedQuery.toLowerCase();
+      if (!normalizedSearch) {
+        forcedLocalSearchRef.current = '';
+      }
+      const forceLocalSearch =
+        normalizedSearch &&
+        forcedLocalSearchRef.current &&
+        forcedLocalSearchRef.current === normalizedSearch;
       const shouldUseRemoteSearch =
-        normalizedQuery && !skipRemoteSearch && cols.length > 0;
+        normalizedQuery && !skipRemoteSearch && !forceLocalSearch && cols.length > 0;
       if (shouldUseRemoteSearch) {
         params.set('search', normalizedQuery);
         params.set('searchColumns', cols.join(','));
@@ -346,16 +359,32 @@ export default function AsyncSearchSelect({
         !skipRemoteSearch &&
         !signal?.aborted
       ) {
+        forcedLocalSearchRef.current = normalizedSearch;
         setPage(1);
         return fetchPage(1, q, false, signal, { skipRemoteSearch: true });
       }
+      const nextList = normalizedFilter ? filteredOpts : opts;
+      const baseCount =
+        append && Array.isArray(optionsRef.current) ? optionsRef.current.length : 0;
+      const combinedCount = baseCount + nextList.length;
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
-          return normalizeOptions([...base, ...filteredOpts]);
+          return normalizeOptions([...base, ...nextList]);
         }
-        return normalizeOptions(opts);
+        return normalizeOptions(nextList);
       });
+      if (
+        forceLocalSearch &&
+        normalizedFilter &&
+        combinedCount < PAGE_SIZE &&
+        more &&
+        !signal?.aborted
+      ) {
+        const nextPage = p + 1;
+        setPage(nextPage);
+        await fetchPage(nextPage, q, true, signal, { skipRemoteSearch: true });
+      }
     } catch (err) {
       if (err.name !== 'AbortError') setOptions([]);
     } finally {
@@ -370,6 +399,9 @@ export default function AsyncSearchSelect({
     } else {
       setInput(value || '');
       if (!value) setLabel('');
+    }
+    if (!value) {
+      forcedLocalSearchRef.current = '';
     }
   }, [value]);
 
@@ -411,6 +443,10 @@ export default function AsyncSearchSelect({
         setRemoteDisplayFields([]);
       });
     return () => controller.abort();
+  }, [table]);
+
+  useEffect(() => {
+    forcedLocalSearchRef.current = '';
   }, [table]);
 
   useEffect(() => {
@@ -645,6 +681,7 @@ export default function AsyncSearchSelect({
         value={input}
         onChange={(e) => {
           pendingLookupRef.current = null;
+          forcedLocalSearchRef.current = '';
           setInput(e.target.value);
           setLabel('');
           onChange(e.target.value);
