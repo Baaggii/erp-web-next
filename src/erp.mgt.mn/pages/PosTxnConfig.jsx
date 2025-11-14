@@ -5,24 +5,147 @@ import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import {
-  POS_API_FIELDS as POS_API_FIELDS_BASE,
-  POS_API_ITEM_FIELDS as POS_API_ITEM_FIELDS_BASE,
-  POS_API_PAYMENT_FIELDS as POS_API_PAYMENT_FIELDS_BASE,
-  POS_API_RECEIPT_FIELDS as POS_API_RECEIPT_FIELDS_BASE,
-  SERVICE_RECEIPT_FIELDS as SERVICE_RECEIPT_FIELDS_BASE,
-  SERVICE_PAYMENT_FIELDS as SERVICE_PAYMENT_FIELDS_BASE,
-  PAYMENT_METHOD_LABELS as PAYMENT_METHOD_LABELS_BASE,
-  DEFAULT_ENDPOINT_RECEIPT_TYPES as DEFAULT_ENDPOINT_RECEIPT_TYPES_BASE,
-  DEFAULT_ENDPOINT_TAX_TYPES as DEFAULT_ENDPOINT_TAX_TYPES_BASE,
-  DEFAULT_ENDPOINT_PAYMENT_METHODS as DEFAULT_ENDPOINT_PAYMENT_METHODS_BASE,
-  BADGE_BASE_STYLE as BADGE_BASE_STYLE_BASE,
-  REQUIRED_BADGE_STYLE as REQUIRED_BADGE_STYLE_BASE,
-  OPTIONAL_BADGE_STYLE as OPTIONAL_BADGE_STYLE_BASE,
-  resolveFeatureToggle as resolvePosApiFeatureToggle,
-  withEndpointMetadata as withPosApiEndpointMetadata,
-  formatPosApiTypeLabel as formatPosApiTypeLabelText,
+  POS_API_FIELDS,
+  POS_API_ITEM_FIELDS,
+  POS_API_PAYMENT_FIELDS,
+  POS_API_RECEIPT_FIELDS,
+  SERVICE_RECEIPT_FIELDS,
+  SERVICE_PAYMENT_FIELDS,
+  PAYMENT_METHOD_LABELS,
+  DEFAULT_ENDPOINT_RECEIPT_TYPES,
+  DEFAULT_ENDPOINT_TAX_TYPES,
+  DEFAULT_ENDPOINT_PAYMENT_METHODS,
+  BADGE_BASE_STYLE,
+  REQUIRED_BADGE_STYLE,
+  OPTIONAL_BADGE_STYLE,
+  resolveFeatureToggle,
+  withEndpointMetadata,
+  formatPosApiTypeLabel,
 } from '../utils/posApiConfig.js';
 
+
+const REQUIRED_BADGE_STYLE = {
+  background: '#fee2e2',
+  color: '#b91c1c',
+};
+
+const OPTIONAL_BADGE_STYLE = {
+  background: '#e2e8f0',
+  color: '#475569',
+};
+
+function resolveFeatureToggle(value, supported, fallback = supported) {
+  if (!supported) return false;
+  if (typeof value === 'boolean') return value;
+  return fallback;
+}
+
+function parseFieldSource(value = '', primaryTableName = '') {
+  if (typeof value !== 'string') {
+    return { table: '', column: '', raw: value ? String(value) : '' };
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return { table: '', column: '', raw: '' };
+  const parts = trimmed.split('.');
+  if (parts.length > 1) {
+    const [first, ...rest] = parts;
+    if (/^[a-zA-Z0-9_]+$/.test(first)) {
+      const normalizedPrimary =
+        typeof primaryTableName === 'string' ? primaryTableName.trim() : '';
+      if (normalizedPrimary && first === normalizedPrimary) {
+        return { table: '', column: rest.join('.'), raw: trimmed };
+      }
+      return { table: first, column: rest.join('.'), raw: trimmed };
+    }
+  }
+  return { table: '', column: trimmed, raw: trimmed };
+}
+
+function buildFieldSource(tableName, columnName) {
+  const tablePart = typeof tableName === 'string' ? tableName.trim() : '';
+  const columnPart = typeof columnName === 'string' ? columnName.trim() : '';
+  if (!columnPart) return '';
+  if (!tablePart) return columnPart;
+  return `${tablePart}.${columnPart}`;
+}
+
+function normaliseEndpointUsage(value) {
+  return typeof value === 'string' && ['transaction', 'info', 'admin'].includes(value)
+    ? value
+    : 'transaction';
+}
+
+function normaliseEndpointList(list, fallback) {
+  const source = Array.isArray(list) ? list : fallback;
+  const cleaned = source
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+  const effective = cleaned.length > 0 ? cleaned : fallback;
+  return Array.from(new Set(effective));
+}
+
+function withEndpointMetadata(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const usage = normaliseEndpointUsage(endpoint.usage);
+  const isTransaction = usage === 'transaction';
+  const receiptTypesEnabled = isTransaction ? endpoint.enableReceiptTypes !== false : false;
+  const receiptTaxTypesEnabled = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
+  const paymentMethodsEnabled = isTransaction ? endpoint.enablePaymentMethods !== false : false;
+  const receiptItemsEnabled = isTransaction ? endpoint.enableReceiptItems !== false : false;
+  const allowMultipleReceiptTypes = receiptTypesEnabled
+    ? endpoint.allowMultipleReceiptTypes === true
+    : false;
+  const allowMultipleReceiptTaxTypes = receiptTaxTypesEnabled
+    ? endpoint.allowMultipleReceiptTaxTypes !== false
+    : false;
+  const allowMultiplePaymentMethods = paymentMethodsEnabled
+    ? endpoint.allowMultiplePaymentMethods !== false
+    : false;
+  const allowMultipleReceiptItems = receiptItemsEnabled
+    ? endpoint.allowMultipleReceiptItems !== false
+    : false;
+  const receiptTypes = receiptTypesEnabled
+    ? normaliseEndpointList(endpoint.receiptTypes, DEFAULT_ENDPOINT_RECEIPT_TYPES)
+    : [];
+  const receiptTaxTypes = receiptTaxTypesEnabled
+    ? normaliseEndpointList(endpoint.taxTypes || endpoint.receiptTaxTypes, DEFAULT_ENDPOINT_TAX_TYPES)
+    : [];
+  const paymentMethods = paymentMethodsEnabled
+    ? normaliseEndpointList(endpoint.paymentMethods, DEFAULT_ENDPOINT_PAYMENT_METHODS)
+    : [];
+  let supportsItems = false;
+  if (isTransaction) {
+    if (endpoint.supportsItems === false) {
+      supportsItems = false;
+    } else if (endpoint.supportsItems === true) {
+      supportsItems = true;
+    } else {
+      supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
+    }
+  }
+  if (!receiptItemsEnabled) {
+    supportsItems = false;
+  }
+  return {
+    ...endpoint,
+    usage,
+    defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
+    supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
+    supportsMultiplePayments: isTransaction ? Boolean(endpoint.supportsMultiplePayments) : false,
+    supportsItems,
+    enableReceiptTypes: receiptTypesEnabled,
+    allowMultipleReceiptTypes,
+    receiptTypes,
+    enableReceiptTaxTypes: receiptTaxTypesEnabled,
+    allowMultipleReceiptTaxTypes,
+    receiptTaxTypes,
+    enablePaymentMethods: paymentMethodsEnabled,
+    allowMultiplePaymentMethods,
+    paymentMethods,
+    enableReceiptItems: receiptItemsEnabled,
+    allowMultipleReceiptItems,
+  };
+}
 
 
 const emptyConfig = {
@@ -265,22 +388,22 @@ export default function PosTxnConfig() {
     endpointSupportsItems &&
     endpointReceiptItemsEnabled &&
     (hasItemSourceTables || itemMappingConfigured);
-  const receiptItemsToggleValue = resolvePosApiFeatureToggle(
+  const receiptItemsToggleValue = resolveFeatureToggle(
     config.posApiEnableReceiptItems,
     receiptItemsSupported,
     receiptItemsSupported,
   );
-  const receiptTypesToggleValue = resolvePosApiFeatureToggle(
+  const receiptTypesToggleValue = resolveFeatureToggle(
     config.posApiEnableReceiptTypes,
     endpointReceiptTypesEnabled,
     endpointReceiptTypesEnabled,
   );
-  const receiptTaxTypesToggleValue = resolvePosApiFeatureToggle(
+  const receiptTaxTypesToggleValue = resolveFeatureToggle(
     config.posApiEnableReceiptTaxTypes,
     endpointReceiptTaxTypesEnabled,
     endpointReceiptTaxTypesEnabled,
   );
-  const paymentMethodsToggleValue = resolvePosApiFeatureToggle(
+  const paymentMethodsToggleValue = resolveFeatureToggle(
     config.posApiEnablePaymentMethods,
     endpointPaymentMethodsEnabled,
     endpointPaymentMethodsEnabled,
