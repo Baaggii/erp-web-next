@@ -354,7 +354,7 @@ export default function AsyncSearchSelect({
           const base = Array.isArray(prev) ? prev : [];
           return normalizeOptions([...base, ...filteredOpts]);
         }
-        return normalizeOptions(filteredOpts);
+        return normalizeOptions(opts);
       });
     } catch (err) {
       if (err.name !== 'AbortError') setOptions([]);

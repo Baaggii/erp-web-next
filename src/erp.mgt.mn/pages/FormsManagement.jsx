@@ -8,6 +8,24 @@ import I18nContext from '../context/I18nContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Navigate } from 'react-router-dom';
+import {
+  POS_API_FIELDS,
+  POS_API_ITEM_FIELDS,
+  POS_API_PAYMENT_FIELDS,
+  POS_API_RECEIPT_FIELDS,
+  SERVICE_RECEIPT_FIELDS,
+  SERVICE_PAYMENT_FIELDS,
+  PAYMENT_METHOD_LABELS,
+  DEFAULT_ENDPOINT_RECEIPT_TYPES,
+  DEFAULT_ENDPOINT_TAX_TYPES,
+  DEFAULT_ENDPOINT_PAYMENT_METHODS,
+  BADGE_BASE_STYLE,
+  REQUIRED_BADGE_STYLE,
+  OPTIONAL_BADGE_STYLE,
+  resolveFeatureToggle,
+  withEndpointMetadata,
+  formatPosApiTypeLabel,
+} from '../utils/posApiConfig.js';
 
 const POS_API_FIELDS = [
   { key: 'totalAmount', label: 'Total amount' },
@@ -142,79 +160,6 @@ function normaliseEndpointList(list, fallback) {
   return Array.from(new Set(effective));
 }
 
-function withEndpointMetadata(endpoint) {
-  if (!endpoint || typeof endpoint !== 'object') return endpoint;
-  const usage = normaliseEndpointUsage(endpoint.usage);
-  const isTransaction = usage === 'transaction';
-  const receiptTypesEnabled = isTransaction ? endpoint.enableReceiptTypes !== false : false;
-  const receiptTaxTypesEnabled = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
-  const paymentMethodsEnabled = isTransaction ? endpoint.enablePaymentMethods !== false : false;
-  const receiptItemsEnabled = isTransaction ? endpoint.enableReceiptItems !== false : false;
-  const allowMultipleReceiptTypes = receiptTypesEnabled
-    ? endpoint.allowMultipleReceiptTypes !== false
-    : true;
-  const allowMultipleReceiptTaxTypes = receiptTaxTypesEnabled
-    ? endpoint.allowMultipleReceiptTaxTypes !== false
-    : true;
-  const allowMultiplePaymentMethods = paymentMethodsEnabled
-    ? endpoint.allowMultiplePaymentMethods !== false
-    : true;
-  const receiptTypes = receiptTypesEnabled
-    ? normaliseEndpointList(endpoint.receiptTypes, DEFAULT_ENDPOINT_RECEIPT_TYPES)
-    : [];
-  const receiptTaxTypes = receiptTaxTypesEnabled
-    ? normaliseEndpointList(endpoint.taxTypes || endpoint.receiptTaxTypes, DEFAULT_ENDPOINT_TAX_TYPES)
-    : [];
-  const paymentMethods = paymentMethodsEnabled
-    ? normaliseEndpointList(endpoint.paymentMethods, DEFAULT_ENDPOINT_PAYMENT_METHODS)
-    : [];
-  let supportsItems = false;
-  if (isTransaction) {
-    if (endpoint.supportsItems === false) {
-      supportsItems = false;
-    } else if (endpoint.supportsItems === true) {
-      supportsItems = true;
-    } else {
-      supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
-    }
-  }
-  if (!receiptItemsEnabled) {
-    supportsItems = false;
-  }
-  return {
-    ...endpoint,
-    usage,
-    defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
-    supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
-    supportsMultiplePayments: isTransaction ? Boolean(endpoint.supportsMultiplePayments) : false,
-    supportsItems,
-    enableReceiptTypes: receiptTypesEnabled,
-    allowMultipleReceiptTypes,
-    receiptTypes,
-    enableReceiptTaxTypes: receiptTaxTypesEnabled,
-    allowMultipleReceiptTaxTypes,
-    receiptTaxTypes,
-    enablePaymentMethods: paymentMethodsEnabled,
-    allowMultiplePaymentMethods,
-    paymentMethods,
-    enableReceiptItems: receiptItemsEnabled,
-    allowMultipleReceiptItems: receiptItemsEnabled
-      ? endpoint.allowMultipleReceiptItems !== false
-      : false,
-  };
-}
-
-function formatPosApiTypeLabel(type) {
-  if (!type) return '';
-  const lookup = {
-    B2C_RECEIPT: 'B2C Receipt',
-    B2B_RECEIPT: 'B2B Receipt',
-    B2C_INVOICE: 'B2C Invoice',
-    B2B_INVOICE: 'B2B Invoice',
-    STOCK_QR: 'Stock QR',
-  };
-  return lookup[type] || type.replace(/_/g, ' ');
-}
 
 function normalizeFormConfig(info = {}) {
   const toArray = (value) => (Array.isArray(value) ? [...value] : []);
@@ -2543,8 +2488,10 @@ export default function FormsManagement() {
                       })}
                     </div>
                   </div>
-                )}
-              </div>
+                  )}
+                </div>
+              </>
+            )}
             </section>
 
             <section style={sectionStyle}>
