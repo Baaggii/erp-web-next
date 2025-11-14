@@ -295,6 +295,24 @@ export default function PosApiIntegrationSection({
     return endpointPaymentMethods;
   }, [endpointPaymentMethods, configuredPaymentMethods, paymentMethodsFeatureEnabled]);
 
+  useEffect(() => {
+    if (typeof onPosApiOptionsChange !== 'function') return;
+    onPosApiOptionsChange({
+      transactionEndpointOptions,
+      endpointReceiptTypes,
+      endpointPaymentMethods,
+      receiptTypesAllowMultiple,
+      paymentMethodsAllowMultiple,
+    });
+  }, [
+    onPosApiOptionsChange,
+    transactionEndpointOptions,
+    endpointReceiptTypes,
+    endpointPaymentMethods,
+    receiptTypesAllowMultiple,
+    paymentMethodsAllowMultiple,
+  ]);
+
   const topLevelFieldHints = useMemo(() => {
     const hints = selectedEndpoint?.mappingHints?.topLevelFields;
     if (!Array.isArray(hints)) return {};
