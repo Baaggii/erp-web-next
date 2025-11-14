@@ -54,7 +54,7 @@ async function flushEffects() {
 if (!haveReact) {
   test('AsyncSearchSelect sends search parameters with queries', { skip: true }, () => {});
   test('AsyncSearchSelect fetches additional pages when needed', { skip: true }, () => {});
-  test('AsyncSearchSelect falls back to existing options when remote search is empty', { skip: true }, () => {});
+  test('AsyncSearchSelect hides stale options when remote search is empty', { skip: true }, () => {});
 } else {
   test('AsyncSearchSelect sends search parameters with queries', async (t) => {
     const restoreDom = setupDom();
@@ -64,6 +64,12 @@ if (!haveReact) {
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
       requests.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return {
+          ok: true,
+          json: async () => ({ idField: 'id', displayFields: ['name', 'sku'] }),
+        };
+      }
       if (url.startsWith('/api/tenant_tables/items')) {
         return { ok: true, json: async () => ({ tenantKeys: [] }) };
       }
@@ -166,7 +172,7 @@ if (!haveReact) {
     assert.ok(searchRequest, 'expected a fetch call with search parameters');
     const parsed = new URL(searchRequest, 'http://localhost');
     assert.equal(parsed.searchParams.get('search'), 'Alpha');
-    assert.equal(parsed.searchParams.get('searchColumns'), 'code,id,name');
+    assert.equal(parsed.searchParams.get('searchColumns'), 'code,id,name,sku');
 
     await act(async () => {
       root.unmount();
@@ -182,6 +188,12 @@ if (!haveReact) {
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
       requests.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return {
+          ok: true,
+          json: async () => ({ idField: 'id', displayFields: ['code'] }),
+        };
+      }
       if (url.startsWith('/api/tenant_tables/items')) {
         return { ok: true, json: async () => ({ tenantKeys: [] }) };
       }
@@ -292,7 +304,7 @@ if (!haveReact) {
     container.remove();
   });
 
-  test('AsyncSearchSelect falls back to existing options when remote search is empty', async (t) => {
+  test('AsyncSearchSelect hides stale options when remote search is empty', async (t) => {
     const restoreDom = setupDom();
     const origFetch = global.fetch;
     const requests = [];
@@ -300,6 +312,12 @@ if (!haveReact) {
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
       requests.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return {
+          ok: true,
+          json: async () => ({ idField: 'id', displayFields: [] }),
+        };
+      }
       if (url.startsWith('/api/tenant_tables/items')) {
         return { ok: true, json: async () => ({ tenantKeys: [] }) };
       }
@@ -388,8 +406,7 @@ if (!haveReact) {
     assert.equal(searchRequests.length, 1);
 
     const listItems = Array.from(container.querySelectorAll('li'));
-    assert.ok(listItems.length > 0, 'should display existing options');
-    assert.ok(listItems.some((li) => li.textContent.includes('Alpha')));
+    assert.equal(listItems.length, 0, 'should not display stale options');
 
     await act(async () => {
       root.unmount();
