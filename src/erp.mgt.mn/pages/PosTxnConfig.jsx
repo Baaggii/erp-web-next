@@ -4,55 +4,10 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import {
-  POS_API_FIELDS as POS_API_FIELDS_BASE,
-  POS_API_ITEM_FIELDS as POS_API_ITEM_FIELDS_BASE,
-  POS_API_PAYMENT_FIELDS as POS_API_PAYMENT_FIELDS_BASE,
-  POS_API_RECEIPT_FIELDS as POS_API_RECEIPT_FIELDS_BASE,
-  SERVICE_RECEIPT_FIELDS as SERVICE_RECEIPT_FIELDS_BASE,
-  SERVICE_PAYMENT_FIELDS as SERVICE_PAYMENT_FIELDS_BASE,
-  PAYMENT_METHOD_LABELS as PAYMENT_METHOD_LABELS_BASE,
-  DEFAULT_ENDPOINT_RECEIPT_TYPES as DEFAULT_ENDPOINT_RECEIPT_TYPES_BASE,
-  DEFAULT_ENDPOINT_TAX_TYPES as DEFAULT_ENDPOINT_TAX_TYPES_BASE,
-  DEFAULT_ENDPOINT_PAYMENT_METHODS as DEFAULT_ENDPOINT_PAYMENT_METHODS_BASE,
-  BADGE_BASE_STYLE as BADGE_BASE_STYLE_BASE,
-  REQUIRED_BADGE_STYLE as REQUIRED_BADGE_STYLE_BASE,
-  OPTIONAL_BADGE_STYLE as OPTIONAL_BADGE_STYLE_BASE,
-  resolveFeatureToggle,
-  withPosApiEndpointMetadata,
-  formatPosApiTypeLabel,
-  formatPosApiTypeLabelText,
-} from '../utils/posApiConfig.js';
+import { withPosApiEndpointMetadata } from '../utils/posApiConfig.js';
+import { parseFieldSource } from '../utils/posApiFieldSource.js';
+import PosApiIntegrationSection from '../components/PosApiIntegrationSection.jsx';
  
-
-function parseFieldSource(value = '', primaryTableName = '') {
-  if (typeof value !== 'string') {
-    return { table: '', column: '', raw: value ? String(value) : '' };
-  }
-  const trimmed = value.trim();
-  if (!trimmed) return { table: '', column: '', raw: '' };
-  const parts = trimmed.split('.');
-  if (parts.length > 1) {
-    const [first, ...rest] = parts;
-    if (/^[a-zA-Z0-9_]+$/.test(first)) {
-      const normalizedPrimary =
-        typeof primaryTableName === 'string' ? primaryTableName.trim() : '';
-      if (normalizedPrimary && first === normalizedPrimary) {
-        return { table: '', column: rest.join('.'), raw: trimmed };
-      }
-      return { table: first, column: rest.join('.'), raw: trimmed };
-    }
-  }
-  return { table: '', column: trimmed, raw: trimmed };
-}
-
-function buildFieldSource(tableName, columnName) {
-  const tablePart = typeof tableName === 'string' ? tableName.trim() : '';
-  const columnPart = typeof columnName === 'string' ? columnName.trim() : '';
-  if (!columnPart) return '';
-  if (!tablePart) return columnPart;
-  return `${tablePart}.${columnPart}`;
-}
 
 function normaliseEndpointUsage(value) {
   return typeof value === 'string' && ['transaction', 'info', 'admin'].includes(value)

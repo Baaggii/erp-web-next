@@ -356,7 +356,6 @@ export default function AsyncSearchSelect({
         more &&
         !signal?.aborted
       ) {
-        if (!canUpdateState()) return;
         // When a search query is active and no matches were found in the
         // current page, we fetch the next page locally. Because the previous
         // options still contain the unfiltered first page, users would see the
