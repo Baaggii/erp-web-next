@@ -4,238 +4,26 @@ import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
+import {
+  POS_API_FIELDS,
+  POS_API_ITEM_FIELDS,
+  POS_API_PAYMENT_FIELDS,
+  POS_API_RECEIPT_FIELDS,
+  SERVICE_RECEIPT_FIELDS,
+  SERVICE_PAYMENT_FIELDS,
+  PAYMENT_METHOD_LABELS,
+  DEFAULT_ENDPOINT_RECEIPT_TYPES,
+  DEFAULT_ENDPOINT_TAX_TYPES,
+  DEFAULT_ENDPOINT_PAYMENT_METHODS,
+  BADGE_BASE_STYLE,
+  REQUIRED_BADGE_STYLE,
+  OPTIONAL_BADGE_STYLE,
+  resolveFeatureToggle,
+  withEndpointMetadata,
+  formatPosApiTypeLabel,
+} from '../utils/posApiConfig.js';
 
-const POS_API_FIELDS = [
-  { key: 'totalAmount', label: 'Total amount' },
-  { key: 'totalVAT', label: 'Total VAT' },
-  { key: 'totalCityTax', label: 'Total city tax' },
-  { key: 'customerTin', label: 'Customer TIN' },
-  { key: 'consumerNo', label: 'Consumer number' },
-  { key: 'taxType', label: 'Tax type' },
-  { key: 'lotNo', label: 'Lot number (pharmacy)' },
-  { key: 'branchNo', label: 'Branch number' },
-  { key: 'posNo', label: 'POS number' },
-  { key: 'merchantTin', label: 'Merchant TIN override' },
-  { key: 'districtCode', label: 'District code' },
-  { key: 'itemsField', label: 'Items array column' },
-  { key: 'paymentsField', label: 'Payments array column' },
-  { key: 'receiptsField', label: 'Receipts array column' },
-  { key: 'paymentType', label: 'Default payment type column' },
-  { key: 'taxTypeField', label: 'Header tax type column' },
-  { key: 'classificationCodeField', label: 'Classification code column' },
-];
 
-const POS_API_ITEM_FIELDS = [
-  { key: 'name', label: 'Item name' },
-  { key: 'description', label: 'Item description' },
-  { key: 'qty', label: 'Quantity' },
-  { key: 'price', label: 'Unit price' },
-  { key: 'totalAmount', label: 'Line total amount' },
-  { key: 'totalVAT', label: 'Line VAT' },
-  { key: 'totalCityTax', label: 'Line city tax' },
-  { key: 'taxType', label: 'Line tax type' },
-  { key: 'classificationCode', label: 'Classification code' },
-  { key: 'taxProductCode', label: 'Tax product code' },
-  { key: 'barCode', label: 'Barcode' },
-  { key: 'measureUnit', label: 'Measure unit' },
-];
-
-const POS_API_PAYMENT_FIELDS = [
-  { key: 'type', label: 'Payment type' },
-  { key: 'paidAmount', label: 'Paid amount' },
-  { key: 'amount', label: 'Amount (legacy)' },
-  { key: 'status', label: 'Status' },
-  { key: 'currency', label: 'Currency' },
-  { key: 'method', label: 'Method' },
-  { key: 'reference', label: 'Reference number' },
-  { key: 'data.terminalID', label: 'Terminal ID' },
-  { key: 'data.rrn', label: 'RRN' },
-  { key: 'data.maskedCardNumber', label: 'Masked card number' },
-  { key: 'data.easy', label: 'Easy Bank flag' },
-];
-
-const POS_API_RECEIPT_FIELDS = [
-  { key: 'totalAmount', label: 'Receipt total amount' },
-  { key: 'totalVAT', label: 'Receipt total VAT' },
-  { key: 'totalCityTax', label: 'Receipt total city tax' },
-  { key: 'taxType', label: 'Receipt tax type' },
-  { key: 'items', label: 'Receipt items path' },
-  { key: 'payments', label: 'Receipt payments path' },
-  { key: 'description', label: 'Receipt description' },
-];
-
-const SERVICE_RECEIPT_FIELDS = [
-  { key: 'totalAmount', label: 'Total amount' },
-  { key: 'totalVAT', label: 'Total VAT' },
-  { key: 'totalCityTax', label: 'Total city tax' },
-  { key: 'taxType', label: 'Tax type override' },
-];
-
-const SERVICE_PAYMENT_FIELDS = [
-  { key: 'paidAmount', label: 'Paid amount' },
-  { key: 'amount', label: 'Amount (legacy)' },
-  { key: 'currency', label: 'Currency' },
-  { key: 'reference', label: 'Reference number' },
-];
-
-const PAYMENT_METHOD_LABELS = {
-  CASH: 'Cash',
-  PAYMENT_CARD: 'Payment card',
-  BANK_TRANSFER: 'Bank transfer',
-  MOBILE_WALLET: 'Mobile wallet',
-  EASY_BANK_CARD: 'Easy Bank card',
-  SERVICE_PAYMENT: 'Service payment',
-};
-
-const DEFAULT_ENDPOINT_RECEIPT_TYPES = [
-  'B2C_RECEIPT',
-  'B2B_RECEIPT',
-  'B2C_INVOICE',
-  'B2B_INVOICE',
-  'STOCK_QR',
-];
-
-const DEFAULT_ENDPOINT_TAX_TYPES = ['VAT_ABLE', 'VAT_FREE', 'VAT_ZERO', 'NO_VAT'];
-
-const DEFAULT_ENDPOINT_PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABELS);
-
-const BADGE_BASE_STYLE = {
-  borderRadius: '999px',
-  padding: '0.1rem 0.5rem',
-  fontSize: '0.7rem',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.03em',
-};
-
-const REQUIRED_BADGE_STYLE = {
-  background: '#fee2e2',
-  color: '#b91c1c',
-};
-
-const OPTIONAL_BADGE_STYLE = {
-  background: '#e2e8f0',
-  color: '#475569',
-};
-
-function parseFieldSource(value = '', primaryTableName = '') {
-  if (typeof value !== 'string') {
-    return { table: '', column: '', raw: value ? String(value) : '' };
-  }
-  const trimmed = value.trim();
-  if (!trimmed) return { table: '', column: '', raw: '' };
-  const parts = trimmed.split('.');
-  if (parts.length > 1) {
-    const [first, ...rest] = parts;
-    if (/^[a-zA-Z0-9_]+$/.test(first)) {
-      const normalizedPrimary =
-        typeof primaryTableName === 'string' ? primaryTableName.trim() : '';
-      if (normalizedPrimary && first === normalizedPrimary) {
-        return { table: '', column: rest.join('.'), raw: trimmed };
-      }
-      return { table: first, column: rest.join('.'), raw: trimmed };
-    }
-  }
-  return { table: '', column: trimmed, raw: trimmed };
-}
-
-function buildFieldSource(tableName, columnName) {
-  const tablePart = typeof tableName === 'string' ? tableName.trim() : '';
-  const columnPart = typeof columnName === 'string' ? columnName.trim() : '';
-  if (!columnPart) return '';
-  if (!tablePart) return columnPart;
-  return `${tablePart}.${columnPart}`;
-}
-
-function normaliseEndpointUsage(value) {
-  return typeof value === 'string' && ['transaction', 'info', 'admin'].includes(value)
-    ? value
-    : 'transaction';
-}
-
-function normaliseEndpointList(list, fallback) {
-  const source = Array.isArray(list) ? list : fallback;
-  const cleaned = source
-    .map((value) => (typeof value === 'string' ? value.trim() : ''))
-    .filter(Boolean);
-  const effective = cleaned.length > 0 ? cleaned : fallback;
-  return Array.from(new Set(effective));
-}
-
-function withEndpointMetadata(endpoint) {
-  if (!endpoint || typeof endpoint !== 'object') return endpoint;
-  const usage = normaliseEndpointUsage(endpoint.usage);
-  const isTransaction = usage === 'transaction';
-  const receiptTypesEnabled = isTransaction ? endpoint.enableReceiptTypes !== false : false;
-  const receiptTaxTypesEnabled = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
-  const paymentMethodsEnabled = isTransaction ? endpoint.enablePaymentMethods !== false : false;
-  const receiptItemsEnabled = isTransaction ? endpoint.enableReceiptItems !== false : false;
-  const allowMultipleReceiptTypes = receiptTypesEnabled
-    ? endpoint.allowMultipleReceiptTypes === true
-    : false;
-  const allowMultipleReceiptTaxTypes = receiptTaxTypesEnabled
-    ? endpoint.allowMultipleReceiptTaxTypes !== false
-    : false;
-  const allowMultiplePaymentMethods = paymentMethodsEnabled
-    ? endpoint.allowMultiplePaymentMethods !== false
-    : false;
-  const allowMultipleReceiptItems = receiptItemsEnabled
-    ? endpoint.allowMultipleReceiptItems !== false
-    : false;
-  const receiptTypes = receiptTypesEnabled
-    ? normaliseEndpointList(endpoint.receiptTypes, DEFAULT_ENDPOINT_RECEIPT_TYPES)
-    : [];
-  const receiptTaxTypes = receiptTaxTypesEnabled
-    ? normaliseEndpointList(endpoint.taxTypes || endpoint.receiptTaxTypes, DEFAULT_ENDPOINT_TAX_TYPES)
-    : [];
-  const paymentMethods = paymentMethodsEnabled
-    ? normaliseEndpointList(endpoint.paymentMethods, DEFAULT_ENDPOINT_PAYMENT_METHODS)
-    : [];
-  let supportsItems = false;
-  if (isTransaction) {
-    if (endpoint.supportsItems === false) {
-      supportsItems = false;
-    } else if (endpoint.supportsItems === true) {
-      supportsItems = true;
-    } else {
-      supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
-    }
-  }
-  if (!receiptItemsEnabled) {
-    supportsItems = false;
-  }
-  return {
-    ...endpoint,
-    usage,
-    defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
-    supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
-    supportsMultiplePayments: isTransaction ? Boolean(endpoint.supportsMultiplePayments) : false,
-    supportsItems,
-    enableReceiptTypes: receiptTypesEnabled,
-    allowMultipleReceiptTypes,
-    receiptTypes,
-    enableReceiptTaxTypes: receiptTaxTypesEnabled,
-    allowMultipleReceiptTaxTypes,
-    receiptTaxTypes,
-    enablePaymentMethods: paymentMethodsEnabled,
-    allowMultiplePaymentMethods,
-    paymentMethods,
-    enableReceiptItems: receiptItemsEnabled,
-    allowMultipleReceiptItems,
-  };
-}
-
-function formatPosApiTypeLabel(type) {
-  if (!type) return '';
-  const lookup = {
-    B2C_RECEIPT: 'B2C Receipt',
-    B2B_RECEIPT: 'B2B Receipt',
-    B2C_INVOICE: 'B2C Invoice',
-    B2B_INVOICE: 'B2B Invoice',
-    STOCK_QR: 'Stock QR',
-  };
-  return lookup[type] || type.replace(/_/g, ' ');
-}
 
 const emptyConfig = {
   label: '',
@@ -263,6 +51,10 @@ const emptyConfig = {
   posApiTypeField: '',
   posApiReceiptTypes: [],
   posApiPaymentMethods: [],
+  posApiEnableReceiptTypes: undefined,
+  posApiEnableReceiptItems: undefined,
+  posApiEnableReceiptTaxTypes: undefined,
+  posApiEnablePaymentMethods: undefined,
   fieldsFromPosApi: [],
   posApiMapping: {},
 };
@@ -456,17 +248,49 @@ export default function PosTxnConfig() {
     return false;
   }, [config.posApiMapping]);
 
-  const supportsItems = endpointSupportsItems && (hasItemSourceTables || itemMappingConfigured);
-
-  const receiptTypesFeatureEnabled = selectedEndpoint
+  const endpointReceiptItemsEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptItems !== false
+    : endpointSupportsItems;
+  const endpointReceiptTypesEnabled = selectedEndpoint
     ? selectedEndpoint.enableReceiptTypes !== false
     : true;
-  const receiptTaxTypesFeatureEnabled = selectedEndpoint
+  const endpointReceiptTaxTypesEnabled = selectedEndpoint
     ? selectedEndpoint.enableReceiptTaxTypes !== false
     : true;
-  const paymentMethodsFeatureEnabled = selectedEndpoint
+  const endpointPaymentMethodsEnabled = selectedEndpoint
     ? selectedEndpoint.enablePaymentMethods !== false
     : true;
+
+  const receiptItemsSupported =
+    endpointSupportsItems &&
+    endpointReceiptItemsEnabled &&
+    (hasItemSourceTables || itemMappingConfigured);
+  const receiptItemsToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptItems,
+    receiptItemsSupported,
+    receiptItemsSupported,
+  );
+  const receiptTypesToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptTypes,
+    endpointReceiptTypesEnabled,
+    endpointReceiptTypesEnabled,
+  );
+  const receiptTaxTypesToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptTaxTypes,
+    endpointReceiptTaxTypesEnabled,
+    endpointReceiptTaxTypesEnabled,
+  );
+  const paymentMethodsToggleValue = resolveFeatureToggle(
+    config.posApiEnablePaymentMethods,
+    endpointPaymentMethodsEnabled,
+    endpointPaymentMethodsEnabled,
+  );
+
+  const supportsItems = receiptItemsToggleValue;
+
+  const receiptTypesFeatureEnabled = config.posApiEnabled && receiptTypesToggleValue;
+  const receiptTaxTypesFeatureEnabled = config.posApiEnabled && receiptTaxTypesToggleValue;
+  const paymentMethodsFeatureEnabled = config.posApiEnabled && paymentMethodsToggleValue;
   const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
     ? selectedEndpoint?.allowMultipleReceiptTypes === true
     : false;
@@ -1452,6 +1276,15 @@ export default function PosTxnConfig() {
         ...config.tables,
       ],
     };
+    ['posApiEnableReceiptTypes', 'posApiEnableReceiptItems', 'posApiEnableReceiptTaxTypes', 'posApiEnablePaymentMethods'].forEach(
+      (key) => {
+        if (typeof saveCfg[key] === 'boolean') {
+          saveCfg[key] = Boolean(saveCfg[key]);
+        } else {
+          delete saveCfg[key];
+        }
+      },
+    );
     if (isDefault) {
       try {
         const resImport = await fetch(
@@ -2373,51 +2206,120 @@ export default function PosTxnConfig() {
             />
             <span>Enable POSAPI submission</span>
           </label>
-          <div style={controlGroupStyle}>
-            <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
-              <span style={{ fontWeight: 600 }}>POSAPI endpoint</span>
-              <select
-                value={config.posApiEndpointId}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, posApiEndpointId: e.target.value }))
-                }
-                disabled={!config.posApiEnabled}
+          {config.posApiEnabled && (
+            <>
+              <div style={controlGroupStyle}>
+                <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
+                  <span style={{ fontWeight: 600 }}>POSAPI endpoint</span>
+                  <select
+                    value={config.posApiEndpointId}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, posApiEndpointId: e.target.value }))
+                    }
+                    disabled={!config.posApiEnabled}
+                  >
+                    <option value="">-- select endpoint --</option>
+                    {transactionEndpointOptions.map((endpoint) => (
+                      <option key={endpoint.value} value={endpoint.value}>
+                        {endpoint.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ color: '#666' }}>
+                    Endpoints are managed from POSAPI Admin. Choose one that matches the transaction
+                    type.
+                  </small>
+                </label>
+                <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
+                  <span style={{ fontWeight: 600 }}>Receipt type column</span>
+                  <input
+                    type="text"
+                    list="posapi-type-field-options"
+                    value={config.posApiTypeField}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))
+                    }
+                    disabled={!config.posApiEnabled}
+                    placeholder="Header column or table.column"
+                  />
+                  <datalist id="posapi-type-field-options">
+                    {allColumnOptions.map((col) => (
+                      <option key={`type-field-${col}`} value={col} />
+                    ))}
+                  </datalist>
+                  <small style={{ color: '#666' }}>
+                    Optional override for the POSAPI type (e.g., B2C_RECEIPT) stored on the
+                    transaction.
+                  </small>
+                </label>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                  marginBottom: '1rem',
+                }}
               >
-                <option value="">-- select endpoint --</option>
-                {transactionEndpointOptions.map((endpoint) => (
-                  <option key={endpoint.value} value={endpoint.value}>
-                    {endpoint.label}
-                  </option>
-                ))}
-              </select>
-              <small style={{ color: '#666' }}>
-                Endpoints are managed from POSAPI Admin. Choose one that matches the transaction
-                type.
-              </small>
-            </label>
-            <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
-              <span style={{ fontWeight: 600 }}>Receipt type column</span>
-              <input
-                type="text"
-                list="posapi-type-field-options"
-                value={config.posApiTypeField}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))
-                }
-                disabled={!config.posApiEnabled}
-                placeholder="Header column or table.column"
-              />
-              <datalist id="posapi-type-field-options">
-                {allColumnOptions.map((col) => (
-                  <option key={`type-field-${col}`} value={col} />
-                ))}
-              </datalist>
-              <small style={{ color: '#666' }}>
-                Optional override for the POSAPI type (e.g., B2C_RECEIPT) stored on the
-                transaction.
-              </small>
-            </label>
-          </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={receiptTypesToggleValue}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnableReceiptTypes: e.target.checked,
+                      }))
+                    }
+                    disabled={!endpointReceiptTypesEnabled}
+                  />
+                  <span>Enable receipt types</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={receiptItemsToggleValue}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnableReceiptItems: e.target.checked,
+                      }))
+                    }
+                    disabled={!receiptItemsSupported}
+                  />
+                  <span>Enable receipt items</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={receiptTaxTypesToggleValue}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnableReceiptTaxTypes: e.target.checked,
+                      }))
+                    }
+                    disabled={!endpointReceiptTaxTypesEnabled}
+                  />
+                  <span>Enable receipt tax types</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={paymentMethodsToggleValue}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnablePaymentMethods: e.target.checked,
+                      }))
+                    }
+                    disabled={!endpointPaymentMethodsEnabled}
+                  />
+                  <span>Enable payment methods</span>
+                </label>
+              </div>
+            </>
+          )}
           {config.posApiEnabled && selectedEndpoint && (
             <div
               style={{
@@ -2490,7 +2392,7 @@ export default function PosTxnConfig() {
               </div>
             </div>
           )}
-          {config.posApiEnabled && receiptTypesFeatureEnabled && (
+          {receiptTypesFeatureEnabled && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div>
                 <strong>Receipt types</strong>
@@ -2846,7 +2748,7 @@ export default function PosTxnConfig() {
               </div>
             </div>
           </div>
-          {config.posApiEnabled && receiptTaxTypesFeatureEnabled && (
+          {receiptTaxTypesFeatureEnabled && (
             <div style={{ marginTop: '1rem' }}>
               <strong>{supportsItems ? 'Receipt group overrides' : 'Service receipt groups'}</strong>
               <p style={{ fontSize: '0.85rem', color: '#555' }}>
@@ -2939,7 +2841,7 @@ export default function PosTxnConfig() {
               </div>
             </div>
           )}
-          {config.posApiEnabled && paymentMethodsFeatureEnabled && (
+          {paymentMethodsFeatureEnabled && (
             <div style={{ marginTop: '1rem' }}>
               <strong>{supportsItems ? 'Payment method overrides' : 'Service payment methods'}</strong>
               <p style={{ fontSize: '0.85rem', color: '#555' }}>
