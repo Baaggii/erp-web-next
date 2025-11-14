@@ -129,51 +129,6 @@ export default function AsyncSearchSelect({
     [options],
   );
 
-  const findMatchingOptionIndex = useCallback(
-    (query) => {
-      const normalized = String(query || '').trim().toLowerCase();
-      if (!normalized) return -1;
-      let exactValueIndex = -1;
-      let exactLabelIndex = -1;
-      let partialIndex = -1;
-      options.forEach((opt, idx) => {
-        if (!opt || idx < 0) return;
-        const valueText = String(opt.value ?? '').trim().toLowerCase();
-        const labelText = String(opt.label ?? '').trim().toLowerCase();
-        if (exactValueIndex === -1 && valueText === normalized) {
-          exactValueIndex = idx;
-          return;
-        }
-        if (exactLabelIndex === -1 && labelText === normalized) {
-          exactLabelIndex = idx;
-        }
-        if (
-          partialIndex === -1 &&
-          (valueText.includes(normalized) || labelText.includes(normalized))
-        ) {
-          partialIndex = idx;
-        }
-      });
-      if (exactValueIndex >= 0) return exactValueIndex;
-      if (exactLabelIndex >= 0) return exactLabelIndex;
-      return partialIndex;
-    },
-    [options],
-  );
-
-  const scrollHighlightedOptionIntoView = useCallback((index) => {
-    if (index == null || index < 0) return;
-    const listNode = listRef.current;
-    if (!listNode || !listNode.children) return;
-    const optionNode = listNode.children[index];
-    if (!optionNode || typeof optionNode.scrollIntoView !== 'function') return;
-    const listRect = listNode.getBoundingClientRect();
-    const optionRect = optionNode.getBoundingClientRect();
-    if (optionRect.top < listRect.top || optionRect.bottom > listRect.bottom) {
-      optionNode.scrollIntoView({ block: 'nearest' });
-    }
-  }, []);
-
   const compareOptions = useCallback((a, b) => {
     const aIndex = a?.__index;
     const bIndex = b?.__index;
@@ -602,24 +557,6 @@ export default function AsyncSearchSelect({
     if (e.key !== 'Enter') return;
 
     const query = String(input || '').trim();
-    if (options.length > 0) {
-      const matchIndex = findMatchingOptionIndex(query);
-      if (matchIndex >= 0) {
-        e.preventDefault();
-        if (!show) setShow(true);
-        setHighlight(matchIndex);
-        const scrollIndex = matchIndex;
-        const scheduleScroll = () => scrollHighlightedOptionIntoView(scrollIndex);
-        if (typeof window !== 'undefined' && window.requestAnimationFrame) {
-          window.requestAnimationFrame(scheduleScroll);
-        } else {
-          setTimeout(scheduleScroll, 0);
-        }
-        actionRef.current = { type: 'highlight' };
-        return;
-      }
-    }
-
     if (loading || show === false) {
       actionRef.current = { type: 'enter', matched: 'pending', query };
       pendingLookupRef.current = {
@@ -782,11 +719,6 @@ export default function AsyncSearchSelect({
         onBlur={handleBlur}
         onKeyDown={(e) => {
           handleSelectKeyDown(e);
-          if (actionRef.current?.type === 'highlight') {
-            chosenRef.current = null;
-            actionRef.current = null;
-            return;
-          }
           if (actionRef.current?.type === 'enter') {
             if (actionRef.current.matched && actionRef.current.option) {
               e.selectedOption = actionRef.current.option;
