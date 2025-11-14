@@ -208,6 +208,13 @@ export default function FormsManagement() {
   };
 
   const [config, setConfig] = useState(() => normalizeFormConfig());
+  const [posApiOptionSnapshot, setPosApiOptionSnapshot] = useState({
+    transactionEndpointOptions: [],
+    endpointReceiptTypes: [],
+    endpointPaymentMethods: [],
+    receiptTypesAllowMultiple: true,
+    paymentMethodsAllowMultiple: true,
+  });
 
   const itemFieldMapping =
     config.posApiMapping &&
@@ -639,8 +646,14 @@ export default function FormsManagement() {
   }
 
   async function handleSave() {
-    if (!name) {
-      alert('Please enter transaction name');
+    const trimmedName = (name || '').trim();
+    const normalizedTable = (table || '').trim();
+    if (!trimmedName) {
+      addToast('Please enter transaction name', 'error');
+      return;
+    }
+    if (!normalizedTable) {
+      addToast('Please select table', 'error');
       return;
     }
     const normalizeMixedAccessList = (list = []) =>
@@ -669,6 +682,14 @@ export default function FormsManagement() {
             ),
           )
         : [];
+    const {
+      transactionEndpointOptions = [],
+      endpointReceiptTypes = [],
+      endpointPaymentMethods = [],
+      receiptTypesAllowMultiple = true,
+      paymentMethodsAllowMultiple = true,
+    } = posApiOptionSnapshot || {};
+
     const cfg = {
       ...config,
       moduleKey,
@@ -805,26 +826,42 @@ export default function FormsManagement() {
         return;
       }
     }
-    const res = await fetch('/api/transaction_forms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({
-        table,
-        name,
-        config: cfg,
-      }),
-    });
-    if (res.ok) {
+    try {
+      const res = await fetch('/api/transaction_forms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          table: normalizedTable,
+          name: trimmedName,
+          config: cfg,
+        }),
+      });
+      if (!res.ok) {
+        let message = 'Save failed';
+        try {
+          const data = await res.json();
+          message = data?.message || data?.error || message;
+        } catch {
+          try {
+            const text = await res.text();
+            message = text || message;
+          } catch {
+            // ignore
+          }
+        }
+        throw new Error(message);
+      }
       refreshTxnModules();
       refreshModules();
       addToast('Saved', 'success');
-      if (!names.includes(name)) setNames((n) => [...n, name]);
-      const key = `${table}::${name}`;
+      setName(trimmedName);
+      if (!names.includes(trimmedName)) setNames((n) => [...n, trimmedName]);
+      const key = `${normalizedTable}::${trimmedName}`;
       const info = {
         key,
-        name,
-        table,
+        name: trimmedName,
+        table: normalizedTable,
         moduleKey: cfg.moduleKey || '',
         config: cfg,
       };
@@ -839,8 +876,8 @@ export default function FormsManagement() {
       });
       setSelectedConfig(key);
       setIsDefault(false);
-    } else {
-      addToast('Save failed', 'error');
+    } catch (err) {
+      addToast(`Save failed: ${err.message}`, 'error');
     }
   }
 
@@ -1108,7 +1145,9 @@ export default function FormsManagement() {
               receiptGroupMapping={receiptGroupMapping}
               paymentMethodMapping={paymentMethodMapping}
               onEnsureColumnsLoaded={ensureColumnsLoaded}
+              onPosApiOptionsChange={setPosApiOptionSnapshot}
             />
+
             <section style={sectionStyle}>
               <h3 style={sectionTitleStyle}>Field Configuration</h3>
               <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>

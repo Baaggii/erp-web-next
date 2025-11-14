@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import {
   POS_API_FIELDS,
   POS_API_ITEM_FIELDS,
@@ -46,9 +46,8 @@ export default function PosApiIntegrationSection({
   receiptGroupMapping = {},
   paymentMethodMapping = {},
   onEnsureColumnsLoaded = () => {},
+  onPosApiOptionsChange = () => {},
 }) {
-  const posApiEnabled = Boolean(config.posApiEnabled);
-
   const endpointCandidates = useMemo(() => {
     const list = [];
     const addEndpoint = (endpoint, usageFallback = 'other') => {
@@ -184,10 +183,10 @@ export default function PosApiIntegrationSection({
     endpointPaymentMethodsEnabled,
   );
 
-  const receiptTypesFeatureEnabled = posApiEnabled && receiptTypesToggleValue;
-  const receiptTaxTypesFeatureEnabled = posApiEnabled && receiptTaxTypesToggleValue;
-  const paymentMethodsFeatureEnabled = posApiEnabled && paymentMethodsToggleValue;
-  const supportsItems = posApiEnabled && receiptItemsToggleValue;
+  const receiptTypesFeatureEnabled = config.posApiEnabled && receiptTypesToggleValue;
+  const receiptTaxTypesFeatureEnabled = config.posApiEnabled && receiptTaxTypesToggleValue;
+  const paymentMethodsFeatureEnabled = config.posApiEnabled && paymentMethodsToggleValue;
+  const supportsItems = receiptItemsToggleValue;
 
   const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
     ? selectedEndpoint?.allowMultipleReceiptTypes !== false
@@ -277,6 +276,24 @@ export default function PosApiIntegrationSection({
     if (filtered.length) return filtered;
     return endpointPaymentMethods;
   }, [endpointPaymentMethods, configuredPaymentMethods, paymentMethodsFeatureEnabled]);
+
+  useEffect(() => {
+    if (typeof onPosApiOptionsChange !== 'function') return;
+    onPosApiOptionsChange({
+      transactionEndpointOptions,
+      endpointReceiptTypes,
+      endpointPaymentMethods,
+      receiptTypesAllowMultiple,
+      paymentMethodsAllowMultiple,
+    });
+  }, [
+    onPosApiOptionsChange,
+    transactionEndpointOptions,
+    endpointReceiptTypes,
+    endpointPaymentMethods,
+    receiptTypesAllowMultiple,
+    paymentMethodsAllowMultiple,
+  ]);
 
   const topLevelFieldHints = useMemo(() => {
     const hints = selectedEndpoint?.mappingHints?.topLevelFields;
@@ -576,18 +593,18 @@ export default function PosApiIntegrationSection({
       <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
         <input
           type="checkbox"
-          checked={posApiEnabled}
+          checked={Boolean(config.posApiEnabled)}
           onChange={(e) => setConfig((c) => ({ ...c, posApiEnabled: e.target.checked }))}
         />
         <span>Enable POSAPI submission</span>
       </label>
-      {posApiEnabled && (
+      {config.posApiEnabled && (
         <>
           <label style={{ ...fieldColumnStyle }}>
             <span style={{ fontWeight: 600 }}>Default POSAPI type</span>
             <select
               value={config.posApiType}
-              disabled={!posApiEnabled}
+              disabled={!config.posApiEnabled}
               onChange={(e) => setConfig((c) => ({ ...c, posApiType: e.target.value }))}
             >
               <option value="">Use default from environment</option>
@@ -614,7 +631,7 @@ export default function PosApiIntegrationSection({
               <span style={{ fontWeight: 600 }}>Primary endpoint</span>
               <select
                 value={config.posApiEndpointId}
-                disabled={!posApiEnabled}
+                disabled={!config.posApiEnabled}
                 onChange={(e) => setConfig((c) => ({ ...c, posApiEndpointId: e.target.value }))}
               >
                 <option value="">Use registry default</option>
@@ -632,7 +649,7 @@ export default function PosApiIntegrationSection({
                 multiple
                 value={config.posApiInfoEndpointIds || []}
                 onChange={handleInfoEndpointChange}
-                disabled={!posApiEnabled}
+                disabled={!config.posApiEnabled}
                 style={{ minHeight: `${Math.max(3, infoEndpointOptions.length || 0)}rem` }}
               >
                 {infoEndpointOptions.map((endpoint) => (
@@ -652,7 +669,7 @@ export default function PosApiIntegrationSection({
                 placeholder="Column name"
                 value={config.posApiTypeField}
                 onChange={(e) => setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))}
-                disabled={!posApiEnabled}
+                disabled={!config.posApiEnabled}
               />
               <small style={{ color: '#666' }}>
                 Optional column containing the POSAPI type (e.g., B2C_RECEIPT).
@@ -677,7 +694,7 @@ export default function PosApiIntegrationSection({
                     posApiEnableReceiptTypes: e.target.checked,
                   }))
                 }
-                disabled={!posApiEnabled || !endpointReceiptTypesEnabled}
+                disabled={!endpointReceiptTypesEnabled}
               />
               <span>Enable receipt types</span>
             </label>
@@ -691,7 +708,7 @@ export default function PosApiIntegrationSection({
                     posApiEnableReceiptItems: e.target.checked,
                   }))
                 }
-                disabled={!posApiEnabled || !endpointSupportsItems || !endpointReceiptItemsEnabled}
+                disabled={!endpointSupportsItems || !endpointReceiptItemsEnabled}
               />
               <span>Enable receipt items</span>
             </label>
@@ -705,7 +722,7 @@ export default function PosApiIntegrationSection({
                     posApiEnableReceiptTaxTypes: e.target.checked,
                   }))
                 }
-                disabled={!posApiEnabled || !endpointReceiptTaxTypesEnabled}
+                disabled={!endpointReceiptTaxTypesEnabled}
               />
               <span>Enable receipt tax types</span>
             </label>
@@ -719,14 +736,14 @@ export default function PosApiIntegrationSection({
                     posApiEnablePaymentMethods: e.target.checked,
                   }))
                 }
-                disabled={!posApiEnabled || !endpointPaymentMethodsEnabled}
+                disabled={!endpointPaymentMethodsEnabled}
               />
               <span>Enable payment methods</span>
             </label>
           </div>
         </>
       )}
-      {posApiEnabled && selectedEndpoint && (
+      {config.posApiEnabled && selectedEndpoint && (
         <div
           style={{
             border: '1px solid #cbd5f5',
@@ -826,7 +843,7 @@ export default function PosApiIntegrationSection({
                       type={inputType}
                       checked={checked}
                       onChange={() => toggleReceiptTypeSelection(type)}
-                      disabled={!posApiEnabled}
+                      disabled={!config.posApiEnabled}
                     />
                     <span>{formatPosApiTypeLabelText(type)}</span>
                   </label>
@@ -861,7 +878,7 @@ export default function PosApiIntegrationSection({
                         type={inputType}
                         checked={checked}
                         onChange={() => togglePaymentMethodSelection(method)}
-                        disabled={!posApiEnabled}
+                        disabled={!config.posApiEnabled}
                       />
                       <span>{PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ')}</span>
                     </label>
@@ -872,8 +889,6 @@ export default function PosApiIntegrationSection({
           )}
         </div>
       )}
-      {posApiEnabled && (
-        <>
       <label
         style={{
           display: 'flex',
@@ -888,7 +903,7 @@ export default function PosApiIntegrationSection({
           value={fieldsFromPosApiText}
           onChange={(e) => handleFieldsFromPosApiChange(e.target.value)}
           placeholder={'id\nlottery\nqrData'}
-          disabled={!posApiEnabled}
+          disabled={!config.posApiEnabled}
           style={{ fontFamily: 'monospace', resize: 'vertical' }}
         />
         <small style={{ color: '#666' }}>
@@ -941,7 +956,7 @@ export default function PosApiIntegrationSection({
                   value={config.posApiMapping?.[field.key] || ''}
                   onChange={(e) => updatePosApiMapping(field.key, e.target.value)}
                   placeholder="Column name"
-                  disabled={!posApiEnabled}
+                  disabled={!config.posApiEnabled}
                 />
                 <datalist id={listId}>
                   {columnOptions.map((col) => (
@@ -1036,7 +1051,7 @@ export default function PosApiIntegrationSection({
                             const nextValue = buildFieldSource(nextTable, parsed.column);
                             updatePosApiNestedMapping('itemFields', field.key, nextValue);
                           }}
-                          disabled={!posApiEnabled}
+                          disabled={!config.posApiEnabled}
                           style={{ minWidth: '160px' }}
                         >
                           <option value="">{primaryTableLabel}</option>
@@ -1058,7 +1073,7 @@ export default function PosApiIntegrationSection({
                             )
                           }
                           placeholder="Column or path"
-                          disabled={!posApiEnabled}
+                          disabled={!config.posApiEnabled}
                           style={{ flex: '1 1 140px', minWidth: '140px' }}
                         />
                       </div>
@@ -1105,7 +1120,7 @@ export default function PosApiIntegrationSection({
                           updatePosApiNestedMapping('paymentFields', field.key, e.target.value)
                         }
                         placeholder="Column or path"
-                        disabled={!posApiEnabled}
+                        disabled={!config.posApiEnabled}
                       />
                       <datalist id={listId}>
                         {columnOptions.map((col) => (
@@ -1146,7 +1161,7 @@ export default function PosApiIntegrationSection({
                           updatePosApiNestedMapping('receiptFields', field.key, e.target.value)
                         }
                         placeholder="Column or path"
-                        disabled={!posApiEnabled}
+                        disabled={!config.posApiEnabled}
                       />
                       <datalist id={listId}>
                         {columnOptions.map((col) => (
@@ -1237,7 +1252,7 @@ export default function PosApiIntegrationSection({
                               value={groupValues[fieldKey] || ''}
                               onChange={(e) => updateReceiptGroupMapping(type, fieldKey, e.target.value)}
                               placeholder="Column or path"
-                              disabled={!posApiEnabled}
+                              disabled={!config.posApiEnabled}
                             />
                             <datalist id={listId}>
                               {columnOptions.map((col) => (
@@ -1331,7 +1346,7 @@ export default function PosApiIntegrationSection({
                               value={methodValues[fieldKey] || ''}
                               onChange={(e) => updatePaymentMethodMapping(method, fieldKey, e.target.value)}
                               placeholder="Column or path"
-                              disabled={!posApiEnabled}
+                              disabled={!config.posApiEnabled}
                             />
                             <datalist id={listId}>
                               {columnOptions.map((col) => (
@@ -1350,8 +1365,6 @@ export default function PosApiIntegrationSection({
           </div>
         )}
       </div>
-        </>
-      )}
     </section>
   );
 }
