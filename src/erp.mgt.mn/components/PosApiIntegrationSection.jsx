@@ -191,6 +191,9 @@ export default function PosApiIntegrationSection({
   const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
     ? selectedEndpoint?.allowMultipleReceiptTypes !== false
     : true;
+  const receiptTaxTypesAllowMultiple = receiptTaxTypesFeatureEnabled
+    ? selectedEndpoint?.allowMultipleReceiptTaxTypes !== false
+    : true;
   const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
     ? selectedEndpoint?.allowMultiplePaymentMethods !== false
     : true;
@@ -212,6 +215,14 @@ export default function PosApiIntegrationSection({
     return sanitizeSelectionList(config.posApiReceiptTypes, receiptTypesAllowMultiple);
   }, [config.posApiReceiptTypes, receiptTypesFeatureEnabled, receiptTypesAllowMultiple]);
 
+  const configuredReceiptTaxTypes = useMemo(() => {
+    if (!receiptTaxTypesFeatureEnabled) return [];
+    return sanitizeSelectionList(
+      config.posApiReceiptTaxTypes,
+      receiptTaxTypesAllowMultiple,
+    );
+  }, [config.posApiReceiptTaxTypes, receiptTaxTypesFeatureEnabled, receiptTaxTypesAllowMultiple]);
+
   const effectiveReceiptTypes = useMemo(() => {
     if (!receiptTypesFeatureEnabled) return [];
     return configuredReceiptTypes.length ? configuredReceiptTypes : endpointReceiptTypes;
@@ -229,6 +240,26 @@ export default function PosApiIntegrationSection({
     if (filtered.length) return filtered;
     return endpointReceiptTypes;
   }, [endpointReceiptTypes, configuredReceiptTypes, receiptTypesFeatureEnabled]);
+
+  const effectiveReceiptTaxTypes = useMemo(() => {
+    if (!receiptTaxTypesFeatureEnabled) return [];
+    return configuredReceiptTaxTypes.length
+      ? configuredReceiptTaxTypes
+      : endpointReceiptTaxTypes;
+  }, [configuredReceiptTaxTypes, endpointReceiptTaxTypes, receiptTaxTypesFeatureEnabled]);
+
+  const receiptTaxTypeUniverse = useMemo(() => {
+    if (!receiptTaxTypesFeatureEnabled) return [];
+    const allowed = new Set((endpointReceiptTaxTypes || []).filter(Boolean));
+    const combined = Array.from(
+      new Set([...endpointReceiptTaxTypes, ...configuredReceiptTaxTypes].filter((value) => value)),
+    );
+    const filtered = combined.filter(
+      (value) => allowed.has(value) || configuredReceiptTaxTypes.includes(value),
+    );
+    if (filtered.length) return filtered;
+    return endpointReceiptTaxTypes;
+  }, [endpointReceiptTaxTypes, configuredReceiptTaxTypes, receiptTaxTypesFeatureEnabled]);
 
   const endpointReceiptTaxTypes = useMemo(() => {
     if (!receiptTaxTypesFeatureEnabled) return [];
@@ -373,17 +404,21 @@ export default function PosApiIntegrationSection({
 
   const serviceReceiptGroupTypes = useMemo(() => {
     if (!receiptTaxTypesFeatureEnabled) return [];
+    const base = effectiveReceiptTaxTypes.length
+      ? effectiveReceiptTaxTypes
+      : endpointReceiptTaxTypes;
     const hintKeys = Object.keys(receiptGroupHints || {});
     const configuredKeys = Object.keys(receiptGroupMapping || {});
-    const combined = Array.from(
-      new Set([...endpointReceiptTaxTypes, ...hintKeys, ...configuredKeys]),
-    ).filter(Boolean);
+    const combined = Array.from(new Set([...base, ...hintKeys, ...configuredKeys])).filter(
+      Boolean,
+    );
     if (combined.length) return combined;
     return ['VAT_ABLE'];
   }, [
     receiptGroupHints,
     receiptGroupMapping,
     endpointReceiptTaxTypes,
+    effectiveReceiptTaxTypes,
     receiptTaxTypesFeatureEnabled,
   ]);
 
@@ -563,6 +598,33 @@ export default function PosApiIntegrationSection({
         (entry) => !endpointReceiptTypes.includes(entry),
       );
       return { ...c, posApiReceiptTypes: [...ordered, ...leftovers] };
+    });
+  };
+
+  const toggleReceiptTaxTypeSelection = (value) => {
+    if (!receiptTaxTypesFeatureEnabled) return;
+    const normalized = typeof value === 'string' ? value.trim() : '';
+    if (!normalized) return;
+    setConfig((c) => {
+      const current = Array.isArray(c.posApiReceiptTaxTypes)
+        ? c.posApiReceiptTaxTypes.filter((entry) => typeof entry === 'string' && entry.trim())
+        : [];
+      const selectedSet = new Set(current);
+      if (selectedSet.has(normalized)) {
+        selectedSet.delete(normalized);
+      } else {
+        if (receiptTaxTypesAllowMultiple) {
+          selectedSet.add(normalized);
+        } else {
+          selectedSet.clear();
+          selectedSet.add(normalized);
+        }
+      }
+      const ordered = endpointReceiptTaxTypes.filter((entry) => selectedSet.has(entry));
+      const leftovers = Array.from(selectedSet).filter(
+        (entry) => !endpointReceiptTaxTypes.includes(entry),
+      );
+      return { ...c, posApiReceiptTaxTypes: [...ordered, ...leftovers] };
     });
   };
 
@@ -897,6 +959,42 @@ export default function PosApiIntegrationSection({
               </div>
             </div>
           )}
+        </div>
+      )}
+      {receiptTaxTypesFeatureEnabled && (
+        <div style={{ marginTop: '1rem' }}>
+          <strong>Receipt tax types</strong>
+          <p style={{ fontSize: '0.85rem', color: '#555' }}>
+            Restrict the tax-type codes that can be assigned to generated receipts. Leave all
+            selected to allow automatic detection.
+          </p>
+          <div
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.75rem',
+              alignItems: 'flex-start',
+            }}
+          >
+            {receiptTaxTypeUniverse.map((taxType) => {
+              const checked = effectiveReceiptTaxTypes.includes(taxType);
+              const inputType = receiptTaxTypesAllowMultiple ? 'checkbox' : 'radio';
+              return (
+                <label
+                  key={`pos-receipt-tax-${taxType}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                >
+                  <input
+                    type={inputType}
+                    checked={checked}
+                    onChange={() => toggleReceiptTaxTypeSelection(taxType)}
+                    disabled={!config.posApiEnabled}
+                  />
+                  <span>{taxType.replace(/_/g, ' ')}</span>
+                </label>
+              );
+            })}
+          </div>
         </div>
       )}
       <label
