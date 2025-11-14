@@ -720,4 +720,106 @@ if (!haveReact) {
     });
     container.remove();
   });
+
+  test('AsyncSearchSelect keeps zero values intact while navigating', async (t) => {
+    const restoreDom = setupDom();
+    const origFetch = global.fetch;
+
+    global.fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return { ok: true, json: async () => ({ idField: 'id', displayFields: ['code'] }) };
+      }
+      if (url.startsWith('/api/tenant_tables/items')) {
+        return { ok: true, json: async () => ({ tenantKeys: [] }) };
+      }
+      if (url.startsWith('/api/tables/items?')) {
+        return { ok: true, json: async () => ({ rows: [], count: 0 }) };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    t.after(() => {
+      global.fetch = origFetch;
+      restoreDom();
+    });
+
+    const { default: AsyncSearchSelect } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/AsyncSearchSelect.jsx',
+      {
+        '../context/AuthContext.jsx': {
+          AuthContext: React.createContext({ company: 1 }),
+        },
+        '../utils/tenantKeys.js': { getTenantKeyList: () => [] },
+        '../utils/buildAsyncSelectOptions.js': {
+          buildOptionsForRows: async ({ rows, idField }) =>
+            rows.map((row) => ({ value: row[idField], label: String(row[idField]) })),
+        },
+        'react-dom': { createPortal: (node) => node },
+      },
+    );
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    const commonProps = {
+      table: 'items',
+      searchColumn: 'code',
+      searchColumns: ['code'],
+      labelFields: ['name'],
+      idField: 'id',
+      shouldFetch: false,
+      onChange: () => {},
+    };
+
+    await act(async () => {
+      root.render(React.createElement(AsyncSearchSelect, { ...commonProps, value: 0 }));
+    });
+
+    await flushEffects();
+    await flushEffects();
+
+    let input = container.querySelector('input');
+    assert.ok(input, 'input should render for zero check');
+    assert.equal(input.value, '0', 'zero prop should stay visible');
+
+    await act(async () => {
+      input.dispatchEvent(
+        new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }),
+      );
+    });
+
+    assert.equal(input.value, '0', 'pressing Enter should not clear zero value');
+
+    await act(async () => {
+      root.render(React.createElement(AsyncSearchSelect, { ...commonProps, value: '' }));
+    });
+
+    await flushEffects();
+    await flushEffects();
+
+    input = container.querySelector('input');
+    assert.equal(input.value, '', 'input should reset when value becomes empty');
+
+    input.value = '0';
+    await act(async () => {
+      input.dispatchEvent(new window.Event('input', { bubbles: true }));
+      input.dispatchEvent(new window.Event('change', { bubbles: true }));
+    });
+
+    await act(async () => {
+      root.render(React.createElement(AsyncSearchSelect, { ...commonProps, value: 0 }));
+    });
+
+    await flushEffects();
+    await flushEffects();
+
+    input = container.querySelector('input');
+    assert.equal(input.value, '0', 'parent normalization to number should keep zero visible');
+
+    await act(async () => {
+      root.unmount();
+    });
+    container.remove();
+  });
 }
