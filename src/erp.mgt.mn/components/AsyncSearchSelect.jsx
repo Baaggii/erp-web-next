@@ -18,6 +18,10 @@ const useIsomorphicLayoutEffect =
 
 const PAGE_SIZE = 50;
 
+const EXHAUSTIVE_SEARCH_OPTIONS = {
+  maxAutoPages: Infinity,
+};
+
 export default function AsyncSearchSelect({
   table,
   searchColumn,
@@ -227,111 +231,137 @@ export default function AsyncSearchSelect({
     });
   }, []);
 
-  async function fetchPage(p = 1, q = '', append = false, signal) {
+  async function fetchPage(
+    p = 1,
+    q = '',
+    append = false,
+    signal,
+    { exhaust = false } = {},
+  ) {
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
     setLoading(true);
     try {
-      const params = new URLSearchParams({ page: p, perPage: PAGE_SIZE });
-      const isShared =
-        tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
-      const keys = getTenantKeyList(tenantMeta);
-      if (!isShared) {
-        if (keys.includes('company_id') && effectiveCompanyId != null)
-          params.set('company_id', effectiveCompanyId);
-        if (keys.includes('branch_id') && branch != null)
-          params.set('branch_id', branch);
-        if (keys.includes('department_id') && department != null)
-          params.set('department_id', department);
-      }
-      if (q) {
-        params.set('search', q);
-        params.set('searchColumns', cols.join(','));
-      }
-      const res = await fetch(
-        `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
-        { credentials: 'include', signal },
-      );
-      const json = await res.json();
-      const rows = Array.isArray(json.rows) ? json.rows : [];
-      let opts;
-      try {
-        opts = await buildOptionsForRows({
-          table,
-          rows,
-          idField,
-          searchColumn,
-          labelFields,
-          companyId: effectiveCompanyId,
-          branchId: branch,
-          departmentId: department,
-        });
-      } catch {
-        const sortedFallbackRows = sortRowsByIndex(rows);
-        opts = sortedFallbackRows.map((r) => {
-          if (!r || typeof r !== 'object') return { value: undefined, label: '' };
-          const val = r[idField || searchColumn];
-          const parts = [];
-          if (val !== undefined) parts.push(val);
-          if (labelFields.length === 0) {
-            Object.entries(r).forEach(([k, v]) => {
-              if (k === idField || k === searchColumn) return;
-              if (v !== undefined && parts.length < 3) parts.push(v);
-            });
-          } else {
-            labelFields.forEach((f) => {
-              if (r[f] !== undefined) parts.push(r[f]);
-            });
-          }
-          const indexInfo = extractRowIndex(r);
-          return {
-            value: val,
-            label: parts.join(' - '),
-            ...(indexInfo
-              ? {
-                  __index: indexInfo.numeric
-                    ? indexInfo.sortValue
-                    : indexInfo.rawValue,
-                }
-              : {}),
-          };
-        });
-      }
       const normalizedQuery = String(q || '').trim().toLowerCase();
-      if (normalizedQuery) {
-        opts = filterOptionsByQuery(opts, normalizedQuery);
-      }
-      const totalCount = Number.isFinite(Number(json.count))
-        ? Number(json.count)
-        : null;
-      const more =
-        totalCount != null
-          ? p * PAGE_SIZE < totalCount
-          : rows.length >= PAGE_SIZE;
-      setHasMore(more);
-      if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
-        const nextPage = p + 1;
-        setPage(nextPage);
-        return fetchPage(nextPage, q, true, signal);
-      }
-      setOptions((prev) => {
-        if (append) {
-          const base = Array.isArray(prev) ? prev : [];
-          return normalizeOptions([...base, ...opts]);
+      let currentPage = p;
+      let shouldAppend = append;
+      let autoPages = 0;
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const params = new URLSearchParams({ page: currentPage, perPage: PAGE_SIZE });
+        const isShared = tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
+        const keys = getTenantKeyList(tenantMeta);
+        if (!isShared) {
+          if (keys.includes('company_id') && effectiveCompanyId != null)
+            params.set('company_id', effectiveCompanyId);
+          if (keys.includes('branch_id') && branch != null)
+            params.set('branch_id', branch);
+          if (keys.includes('department_id') && department != null)
+            params.set('department_id', department);
         }
-        if (
-          normalizedQuery &&
-          opts.length === 0 &&
-          Array.isArray(prev) &&
-          prev.length > 0
-        ) {
-          const fallback = filterOptionsByQuery(prev, normalizedQuery);
-          if (fallback.length > 0) {
-            return normalizeOptions(fallback);
+        if (q) {
+          params.set('search', q);
+          params.set('searchColumns', cols.join(','));
+        }
+        const res = await fetch(
+          `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
+          { credentials: 'include', signal },
+        );
+        const json = await res.json();
+        const rows = Array.isArray(json.rows) ? json.rows : [];
+        let opts;
+        try {
+          opts = await buildOptionsForRows({
+            table,
+            rows,
+            idField,
+            searchColumn,
+            labelFields,
+            companyId: effectiveCompanyId,
+            branchId: branch,
+            departmentId: department,
+          });
+        } catch {
+          const sortedFallbackRows = sortRowsByIndex(rows);
+          opts = sortedFallbackRows.map((r) => {
+            if (!r || typeof r !== 'object') return { value: undefined, label: '' };
+            const val = r[idField || searchColumn];
+            const parts = [];
+            if (val !== undefined) parts.push(val);
+            if (labelFields.length === 0) {
+              Object.entries(r).forEach(([k, v]) => {
+                if (k === idField || k === searchColumn) return;
+                if (v !== undefined && parts.length < 3) parts.push(v);
+              });
+            } else {
+              labelFields.forEach((f) => {
+                if (r[f] !== undefined) parts.push(r[f]);
+              });
+            }
+            const indexInfo = extractRowIndex(r);
+            return {
+              value: val,
+              label: parts.join(' - '),
+              ...(indexInfo
+                ? {
+                    __index: indexInfo.numeric
+                      ? indexInfo.sortValue
+                      : indexInfo.rawValue,
+                  }
+                : {}),
+            };
+          });
+        }
+        if (normalizedQuery) {
+          opts = filterOptionsByQuery(opts, normalizedQuery);
+        }
+        const totalCount = Number.isFinite(Number(json.count))
+          ? Number(json.count)
+          : null;
+        const more =
+          totalCount != null
+            ? currentPage * PAGE_SIZE < totalCount
+            : rows.length >= PAGE_SIZE;
+        setHasMore(more);
+        if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
+          currentPage += 1;
+          setPage(currentPage);
+          shouldAppend = true;
+          continue;
+        }
+        setOptions((prev) => {
+          if (shouldAppend) {
+            const base = Array.isArray(prev) ? prev : [];
+            return normalizeOptions([...base, ...opts]);
           }
+          if (
+            normalizedQuery &&
+            opts.length === 0 &&
+            Array.isArray(prev) &&
+            prev.length > 0
+          ) {
+            const fallback = filterOptionsByQuery(prev, normalizedQuery);
+            if (fallback.length > 0) {
+              return normalizeOptions(fallback);
+            }
+          }
+          return normalizeOptions(opts);
+        });
+
+        const shouldAutoExhaust =
+          exhaust &&
+          normalizedQuery &&
+          more &&
+          !signal?.aborted &&
+          autoPages < EXHAUSTIVE_SEARCH_OPTIONS.maxAutoPages;
+        if (!shouldAutoExhaust) {
+          break;
         }
-        return normalizeOptions(opts);
-      });
+        autoPages += 1;
+        currentPage += 1;
+        setPage(currentPage);
+        shouldAppend = true;
+      }
     } catch (err) {
       if (err.name !== 'AbortError') setOptions([]);
     } finally {
@@ -404,7 +434,8 @@ export default function AsyncSearchSelect({
     const controller = new AbortController();
     const q = String(input || '').trim();
     setPage(1);
-    fetchPage(1, q, false, controller.signal);
+    const shouldExhaust = q.trim().length > 0;
+    fetchPage(1, q, false, controller.signal, { exhaust: shouldExhaust });
     return () => controller.abort();
   }, [
     show,
