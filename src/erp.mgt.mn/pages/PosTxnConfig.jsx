@@ -62,7 +62,6 @@ const emptyConfig = {
   infoEndpoints: [],
   posApiTypeField: '',
   posApiReceiptTypes: [],
-  posApiReceiptTaxTypes: [],
   posApiPaymentMethods: [],
   posApiEnableReceiptTypes: undefined,
   posApiEnableReceiptItems: undefined,
@@ -934,11 +933,6 @@ export default function PosTxnConfig() {
       }
       loaded.posApiReceiptTypes = Array.isArray(loaded.posApiReceiptTypes)
         ? loaded.posApiReceiptTypes
-            .map((value) => (typeof value === 'string' ? value.trim() : ''))
-            .filter((value) => value)
-        : [];
-      loaded.posApiReceiptTaxTypes = Array.isArray(loaded.posApiReceiptTaxTypes)
-        ? loaded.posApiReceiptTaxTypes
             .map((value) => (typeof value === 'string' ? value.trim() : ''))
             .filter((value) => value)
         : [];
