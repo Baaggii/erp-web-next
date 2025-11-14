@@ -195,24 +195,6 @@ export default function PosApiIntegrationSection({
     ? selectedEndpoint?.allowMultiplePaymentMethods !== false
     : true;
 
-  useEffect(() => {
-    if (typeof onPosApiOptionsChange !== 'function') return;
-    onPosApiOptionsChange({
-      transactionEndpointOptions,
-      endpointReceiptTypes,
-      endpointPaymentMethods,
-      receiptTypesAllowMultiple,
-      paymentMethodsAllowMultiple,
-    });
-  }, [
-    onPosApiOptionsChange,
-    transactionEndpointOptions,
-    endpointReceiptTypes,
-    endpointPaymentMethods,
-    receiptTypesAllowMultiple,
-    paymentMethodsAllowMultiple,
-  ]);
-
   const endpointReceiptTypes = useMemo(() => {
     if (!receiptTypesFeatureEnabled) return [];
     if (
