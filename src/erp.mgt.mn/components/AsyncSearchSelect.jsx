@@ -61,6 +61,7 @@ export default function AsyncSearchSelect({
   const [remoteDisplayFields, setRemoteDisplayFields] = useState([]);
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
+  const forcedLocalSearchRef = useRef('');
   const effectiveLabelFields = useMemo(() => {
     const set = new Set();
     const addField = (field) => {
@@ -263,8 +264,15 @@ export default function AsyncSearchSelect({
       }
       const normalizedQuery = String(q || '').trim();
       const normalizedSearch = normalizedQuery.toLowerCase();
+      if (!normalizedSearch) {
+        forcedLocalSearchRef.current = '';
+      }
+      const forceLocalSearch =
+        normalizedSearch &&
+        forcedLocalSearchRef.current &&
+        forcedLocalSearchRef.current === normalizedSearch;
       const shouldUseRemoteSearch =
-        normalizedQuery && !skipRemoteSearch && cols.length > 0;
+        normalizedQuery && !skipRemoteSearch && !forceLocalSearch && cols.length > 0;
       if (shouldUseRemoteSearch) {
         params.set('search', normalizedQuery);
         params.set('searchColumns', cols.join(','));
@@ -335,6 +343,14 @@ export default function AsyncSearchSelect({
         more &&
         !signal?.aborted
       ) {
+        // When a search query is active and no matches were found in the
+        // current page, we fetch the next page locally. Because the previous
+        // options still contain the unfiltered first page, users would see the
+        // original items sitting above the upcoming matches. Clearing the
+        // options before continuing ensures that the results list only contains
+        // the matching items once they are loaded, regardless of which page
+        // they came from.
+        setOptions([]);
         const nextPage = p + 1;
         setPage(nextPage);
         return fetchPage(nextPage, q, true, signal, { skipRemoteSearch });
@@ -346,6 +362,7 @@ export default function AsyncSearchSelect({
         !skipRemoteSearch &&
         !signal?.aborted
       ) {
+        forcedLocalSearchRef.current = normalizedSearch;
         setPage(1);
         return fetchPage(1, q, false, signal, { skipRemoteSearch: true });
       }
@@ -371,6 +388,9 @@ export default function AsyncSearchSelect({
     } else {
       setInput(value || '');
       if (!value) setLabel('');
+    }
+    if (!value) {
+      forcedLocalSearchRef.current = '';
     }
   }, [value]);
 
@@ -412,6 +432,10 @@ export default function AsyncSearchSelect({
         setRemoteDisplayFields([]);
       });
     return () => controller.abort();
+  }, [table]);
+
+  useEffect(() => {
+    forcedLocalSearchRef.current = '';
   }, [table]);
 
   useEffect(() => {
@@ -646,6 +670,7 @@ export default function AsyncSearchSelect({
         value={input}
         onChange={(e) => {
           pendingLookupRef.current = null;
+          forcedLocalSearchRef.current = '';
           setInput(e.target.value);
           setLabel('');
           onChange(e.target.value);
