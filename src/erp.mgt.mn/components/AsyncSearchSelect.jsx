@@ -45,6 +45,7 @@ export default function AsyncSearchSelect({
   const [input, setInput] = useState(initialVal);
   const [label, setLabel] = useState(initialLabel);
   const [options, setOptions] = useState([]);
+  const optionsRef = useRef([]);
   const [show, setShow] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const [loading, setLoading] = useState(false);
@@ -366,6 +367,17 @@ export default function AsyncSearchSelect({
         }
         return normalizeOptions(nextList);
       });
+      if (
+        forceLocalSearch &&
+        normalizedFilter &&
+        combinedCount < PAGE_SIZE &&
+        more &&
+        !signal?.aborted
+      ) {
+        const nextPage = p + 1;
+        setPage(nextPage);
+        await fetchPage(nextPage, q, true, signal, { skipRemoteSearch: true });
+      }
     } catch (err) {
       if (err.name !== 'AbortError') setOptions([]);
     } finally {
