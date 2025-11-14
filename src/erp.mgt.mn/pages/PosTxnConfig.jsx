@@ -1002,6 +1002,267 @@ export default function PosTxnConfig() {
     }
   }
 
+  async function handleSave() {
+    const trimmedName = (name || '').trim();
+    if (!trimmedName) {
+      addToast('Please enter configuration name', 'error');
+      return;
+    }
+
+    const normalizedMasterForm =
+      typeof config.masterForm === 'string' ? config.masterForm.trim() : '';
+    const normalizedMasterTable =
+      (typeof config.masterTable === 'string' ? config.masterTable.trim() : '') ||
+      formToTable[normalizedMasterForm] ||
+      '';
+
+    const normalizeTableEntry = (entry = {}) => {
+      const form = typeof entry.form === 'string' ? entry.form.trim() : '';
+      const explicitTable = typeof entry.table === 'string' ? entry.table.trim() : '';
+      const resolvedTable = explicitTable || formToTable[form] || '';
+      return {
+        table: resolvedTable,
+        form,
+        type: entry.type === 'multi' ? 'multi' : 'single',
+        position: entry.position || 'upper_left',
+        view: entry.view || 'fitted',
+      };
+    };
+
+    const normalizedTables = config.tables.map((entry) => normalizeTableEntry(entry));
+    const tableOrder = [normalizedMasterTable, ...normalizedTables.map((t) => t.table)];
+
+    const normalizedCalcFields = config.calcFields.map((row, rowIdx) => {
+      const sourceCells = Array.isArray(row.cells) ? [...row.cells] : [];
+      while (sourceCells.length < tableOrder.length) {
+        sourceCells.push({ table: tableOrder[sourceCells.length], field: '', agg: '' });
+      }
+      const mappedCells = sourceCells.slice(0, tableOrder.length).map((cell, cellIdx) => ({
+        table: tableOrder[cellIdx] || '',
+        field: typeof cell?.field === 'string' ? cell.field : '',
+        agg: typeof cell?.agg === 'string' ? cell.agg : '',
+      }));
+      return {
+        name: row?.name || `Map${rowIdx + 1}`,
+        cells: mappedCells,
+      };
+    });
+
+    const normalizedPosFields = config.posFields.map((field, idx) => {
+      const parts = Array.isArray(field?.parts) && field.parts.length
+        ? field.parts
+        : [{ agg: '=', field: '', table: normalizedMasterTable }];
+      return {
+        name: field?.name || `PF${idx + 1}`,
+        parts: parts.map((part, partIdx) => ({
+          agg: typeof part?.agg === 'string' ? part.agg : partIdx === 0 ? '=' : '+',
+          field: typeof part?.field === 'string' ? part.field : '',
+          table:
+            (typeof part?.table === 'string' ? part.table : '') ||
+            normalizedMasterTable,
+        })),
+      };
+    });
+
+    const normalizeProcedureList = (list = []) =>
+      Array.isArray(list)
+        ? Array.from(
+            new Set(
+              list
+                .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+                .filter((entry) => entry),
+            ),
+          )
+        : [];
+
+    const normalizedStatusField = {
+      table: typeof config.statusField?.table === 'string' ? config.statusField.table : '',
+      field: typeof config.statusField?.field === 'string' ? config.statusField.field : '',
+      created:
+        typeof config.statusField?.created === 'string'
+          ? config.statusField.created
+          : '',
+      beforePost:
+        typeof config.statusField?.beforePost === 'string'
+          ? config.statusField.beforePost
+          : '',
+      posted:
+        typeof config.statusField?.posted === 'string' ? config.statusField.posted : '',
+    };
+
+    const cleanedConfig = {
+      ...config,
+      masterForm: normalizedMasterForm,
+      masterTable: normalizedMasterTable,
+      masterType: config.masterType === 'multi' ? 'multi' : 'single',
+      masterPosition: config.masterPosition || 'upper_left',
+      masterView: config.masterView || 'fitted',
+      tables: normalizedTables,
+      calcFields: normalizedCalcFields,
+      posFields: normalizedPosFields,
+      statusField: normalizedStatusField,
+      procedures: normalizeProcedureList(config.procedures),
+      temporaryProcedures: normalizeProcedureList(config.temporaryProcedures),
+    };
+
+    cleanedConfig.supportsTemporarySubmission = Boolean(
+      config.supportsTemporarySubmission ??
+        config.allowTemporarySubmission ??
+        false,
+    );
+    cleanedConfig.allowTemporarySubmission = cleanedConfig.supportsTemporarySubmission;
+
+    try {
+      const res = await fetch('/api/pos_txn_config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ name: trimmedName, config: cleanedConfig }),
+      });
+      if (!res.ok) throw new Error('Unable to save configuration');
+      refreshTxnModules();
+      refreshModules();
+      addToast('Saved', 'success');
+      setConfigs((prev) => ({ ...prev, [trimmedName]: cleanedConfig }));
+      setName(trimmedName);
+      setConfig(cleanedConfig);
+      setIsDefault(false);
+    } catch (err) {
+      addToast(`Save failed: ${err.message}`, 'error');
+    }
+  }
+
+  async function handleDelete() {
+    const trimmedName = (name || '').trim();
+    if (!trimmedName) return;
+    if (!window.confirm('Delete POS configuration?')) return;
+    try {
+      const res = await fetch(`/api/pos_txn_config?name=${encodeURIComponent(trimmedName)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('Unable to delete configuration');
+      addToast('Deleted', 'success');
+      setConfigs((prev) => {
+        const copy = { ...prev };
+        delete copy[trimmedName];
+        return copy;
+      });
+      setName('');
+      setConfig({ ...emptyConfig });
+    } catch (err) {
+      addToast(`Delete failed: ${err.message}`, 'error');
+    }
+  }
+
+  function addColumn() {
+    setConfig((c) => ({
+      ...c,
+      tables: [
+        ...c.tables,
+        { table: '', form: '', type: 'single', position: 'upper_left', view: 'fitted' },
+      ],
+      calcFields: c.calcFields.map((row) => ({
+        ...row,
+        cells: [...(row.cells || []), { table: '', field: '', agg: '' }],
+      })),
+    }));
+  }
+
+  function removeMaster() {
+    setConfig((c) => ({
+      ...c,
+      masterTable: '',
+      masterForm: '',
+      masterType: 'single',
+      masterPosition: 'upper_left',
+      masterView: 'fitted',
+      calcFields: c.calcFields.map((row) => ({
+        ...row,
+        cells: (row.cells || []).map((cell, idx) =>
+          idx === 0 ? { ...cell, table: '', field: '', agg: '' } : cell,
+        ),
+      })),
+      posFields: c.posFields.map((field) => ({
+        ...field,
+        parts: (field.parts || []).map((part, idx) =>
+          idx === 0 ? { ...part, agg: '=', table: '', field: '' } : part,
+        ),
+      })),
+      statusField: { ...c.statusField, table: '', field: '' },
+    }));
+  }
+
+  function removeColumn(idx) {
+    setConfig((c) => {
+      const removed = c.tables[idx];
+      const updatedTables = c.tables.filter((_, i) => i !== idx);
+      const updatedCalcFields = c.calcFields.map((row) => ({
+        ...row,
+        cells: (row.cells || []).filter((_, cellIdx) => cellIdx !== idx + 1),
+      }));
+      const statusField =
+        removed && removed.table && c.statusField?.table === removed.table
+          ? { ...c.statusField, table: '', field: '' }
+          : c.statusField;
+      return { ...c, tables: updatedTables, calcFields: updatedCalcFields, statusField };
+    });
+  }
+
+  function updateColumn(idx, key, value) {
+    const resolvedValue = typeof value === 'string' ? value : '';
+    const resolvedTableName =
+      key === 'form'
+        ? formToTable[resolvedValue.trim()] || ''
+        : key === 'table'
+          ? resolvedValue.trim()
+          : null;
+
+    setConfig((c) => {
+      const nextTables = c.tables.map((entry, i) => {
+        if (i !== idx) return entry;
+        if (key === 'form') {
+          return {
+            ...entry,
+            form: resolvedValue.trim(),
+            table: resolvedTableName || '',
+          };
+        }
+        if (key === 'type') {
+          return { ...entry, type: value === 'multi' ? 'multi' : 'single' };
+        }
+        if (key === 'position') {
+          return { ...entry, position: resolvedValue || 'upper_left' };
+        }
+        if (key === 'view') {
+          return { ...entry, view: resolvedValue || 'fitted' };
+        }
+        if (key === 'table') {
+          return { ...entry, table: resolvedTableName || '' };
+        }
+        return { ...entry, [key]: value };
+      });
+
+      const totalColumns = nextTables.length + 1;
+      const calcFields = c.calcFields.map((row) => {
+        const cells = Array.isArray(row.cells) ? [...row.cells] : [];
+        while (cells.length < totalColumns) {
+          cells.push({ table: '', field: '', agg: '' });
+        }
+        if (resolvedTableName !== null) {
+          cells[idx + 1] = { ...cells[idx + 1], table: resolvedTableName || '' };
+        }
+        return { ...row, cells };
+      });
+
+      return { ...c, tables: nextTables, calcFields };
+    });
+
+    if (resolvedTableName) {
+      ensureColumnsLoadedFor(resolvedTableName);
+    }
+  }
+
   function handleAddCalc() {
     setConfig((c) => ({
       ...c,
