@@ -383,10 +383,48 @@ export default function FormsManagement() {
     });
   }, [branches, branchCfg]);
 
+  const endpointCandidates = useMemo(() => {
+    const list = [];
+    const addEndpoint = (endpoint, usageFallback = 'other') => {
+      if (!endpoint) return;
+      const enriched = withPosApiEndpointMetadata(endpoint);
+      const id = typeof enriched?.id === 'string' ? enriched.id.trim() : '';
+      if (!id) return;
+      if (list.some((entry) => entry?.id === id)) return;
+      list.push({ ...enriched, usage: enriched?.usage || usageFallback });
+    };
+
+    if (Array.isArray(posApiEndpoints)) {
+      posApiEndpoints.forEach((endpoint) => addEndpoint(endpoint, endpoint?.usage || 'other'));
+    }
+
+    addEndpoint(config.posApiEndpointMeta, 'transaction');
+    if (config.posApiEndpointId) {
+      addEndpoint({ id: config.posApiEndpointId, usage: 'transaction' }, 'transaction');
+    }
+
+    const infoEndpointMeta = Array.isArray(config.posApiInfoEndpointMeta)
+      ? config.posApiInfoEndpointMeta
+      : [];
+    infoEndpointMeta.forEach((meta) => addEndpoint(meta, 'info'));
+
+    const infoEndpointIds = Array.isArray(config.posApiInfoEndpointIds)
+      ? config.posApiInfoEndpointIds
+      : [];
+    infoEndpointIds.forEach((id) => addEndpoint({ id, usage: 'info' }, 'info'));
+
+    return list;
+  }, [
+    posApiEndpoints,
+    config.posApiEndpointMeta,
+    config.posApiEndpointId,
+    config.posApiInfoEndpointMeta,
+    config.posApiInfoEndpointIds,
+  ]);
+
   const endpointOptionGroups = useMemo(() => {
     const base = { transaction: [], info: [], admin: [], other: [] };
-    if (!Array.isArray(posApiEndpoints)) return base;
-    posApiEndpoints.forEach((endpoint) => {
+    endpointCandidates.forEach((endpoint) => {
       if (!endpoint || typeof endpoint !== 'object') return;
       const id = typeof endpoint.id === 'string' ? endpoint.id.trim() : '';
       if (!id) return;
@@ -412,7 +450,7 @@ export default function FormsManagement() {
     base.info.sort((a, b) => a.label.localeCompare(b.label));
     base.admin.sort((a, b) => a.label.localeCompare(b.label));
     return base;
-  }, [posApiEndpoints]);
+  }, [endpointCandidates]);
 
   const transactionEndpointOptions = endpointOptionGroups.transaction;
   const infoEndpointOptions = endpointOptionGroups.info;
@@ -420,13 +458,13 @@ export default function FormsManagement() {
   const selectedEndpoint = useMemo(() => {
     let endpoint = null;
     if (config.posApiEndpointId) {
-      const match = posApiEndpoints.find(
+      const match = endpointCandidates.find(
         (candidate) => candidate?.id === config.posApiEndpointId,
       );
       if (match) endpoint = match;
     }
     if (!endpoint && config.posApiEndpointMeta) {
-      endpoint = config.posApiEndpointMeta;
+      endpoint = withPosApiEndpointMetadata(config.posApiEndpointMeta);
     }
     if (!endpoint) return null;
     const next = { ...endpoint };
@@ -439,7 +477,7 @@ export default function FormsManagement() {
     }
     return next;
   }, [
-    posApiEndpoints,
+    endpointCandidates,
     config.posApiEndpointId,
     config.posApiEndpointMeta,
     config.posApiMapping,

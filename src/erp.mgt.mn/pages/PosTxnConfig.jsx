@@ -231,8 +231,31 @@ export default function PosTxnConfig() {
     });
   }, [workplaces, workplaceCfg]);
 
+  const endpointCandidates = useMemo(() => {
+    const list = [];
+    const addEndpoint = (endpoint, usageFallback = 'other') => {
+      if (!endpoint) return;
+      const enriched = withPosApiEndpointMetadata(endpoint);
+      const id = typeof enriched?.id === 'string' ? enriched.id.trim() : '';
+      if (!id) return;
+      if (list.some((entry) => entry?.id === id)) return;
+      list.push({ ...enriched, usage: enriched?.usage || usageFallback });
+    };
+
+    if (Array.isArray(posApiEndpoints)) {
+      posApiEndpoints.forEach((endpoint) => addEndpoint(endpoint, endpoint?.usage || 'other'));
+    }
+
+    addEndpoint(config.posApiEndpointMeta, 'transaction');
+    if (config.posApiEndpointId) {
+      addEndpoint({ id: config.posApiEndpointId, usage: 'transaction' }, 'transaction');
+    }
+
+    return list;
+  }, [posApiEndpoints, config.posApiEndpointMeta, config.posApiEndpointId]);
+
   const transactionEndpointOptions = useMemo(() => {
-    return posApiEndpoints
+    return endpointCandidates
       .filter((endpoint) => endpoint && endpoint.usage === 'transaction')
       .map((endpoint) => ({
         value: endpoint.id,
@@ -240,12 +263,12 @@ export default function PosTxnConfig() {
         supportsItems: endpoint.supportsItems !== false,
       }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [posApiEndpoints]);
+  }, [endpointCandidates]);
 
   const selectedEndpoint = useMemo(() => {
     let endpoint = null;
     if (config.posApiEndpointId) {
-      endpoint = posApiEndpoints.find((ep) => ep?.id === config.posApiEndpointId) || null;
+      endpoint = endpointCandidates.find((ep) => ep?.id === config.posApiEndpointId) || null;
     }
     if (!endpoint && config.posApiEndpointMeta) {
       endpoint = withPosApiEndpointMetadata(config.posApiEndpointMeta);
@@ -254,9 +277,12 @@ export default function PosTxnConfig() {
       endpoint = { supportsItems: true };
     }
     return endpoint;
-  }, [posApiEndpoints, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
-
-  const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
+  }, [
+    endpointCandidates,
+    config.posApiEndpointId,
+    config.posApiEndpointMeta,
+    config.posApiMapping,
+  ]);
 
   const hasItemSourceTables = useMemo(() => {
     const master = typeof config.masterTable === 'string' ? config.masterTable.trim() : '';
