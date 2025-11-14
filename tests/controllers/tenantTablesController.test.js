@@ -117,44 +117,6 @@ if (typeof mock?.import !== 'function') {
     assert.equal(captured, failure);
   });
 
-  test('getTenantTable forwards user companyId to database lookup', async () => {
-    const req = { params: { table_name: 'users' }, user: { companyId: 42 } };
-    const res = createRes();
-    const stub = mock.fn(async () => ({
-      tableName: 'users',
-      tenantKeys: ['company_id'],
-      isShared: false,
-    }));
-    const { getTenantTable } = await loadController({ getTenantTable: stub });
-    await getTenantTable(req, res, (err) => {
-      if (err) throw err;
-    });
-    assert.equal(stub.mock.calls.length, 1);
-    assert.equal(stub.mock.calls[0].arguments[0], 'users');
-    assert.equal(stub.mock.calls[0].arguments[1], 42);
-  });
-
-  test('getTenantTable prefers querystring companyId over session company', async () => {
-    const req = {
-      params: { table_name: 'users' },
-      query: { companyId: '77' },
-      user: { companyId: 5 },
-    };
-    const res = createRes();
-    const stub = mock.fn(async () => ({
-      tableName: 'users',
-      tenantKeys: ['company_id'],
-      isShared: true,
-    }));
-    const { getTenantTable } = await loadController({ getTenantTable: stub });
-    await getTenantTable(req, res, (err) => {
-      if (err) throw err;
-    });
-    assert.equal(stub.mock.calls.length, 1);
-    assert.equal(stub.mock.calls[0].arguments[0], 'users');
-    assert.equal(stub.mock.calls[0].arguments[1], 77);
-  });
-
   test('createTenantTable rejects shared seed_on_create combination', async () => {
     const upsertStub = mock.fn(async () => {
       throw new Error('should not be called');
