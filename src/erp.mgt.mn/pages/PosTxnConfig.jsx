@@ -21,6 +21,7 @@ import {
   resolveFeatureToggle,
   withEndpointMetadata,
   formatPosApiTypeLabel,
+  formatPosApiTypeLabelText,
 } from '../utils/posApiConfig.js';
  
 
