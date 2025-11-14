@@ -201,6 +201,9 @@ function withEndpointMetadata(endpoint) {
       supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
     }
   }
+  if (!receiptItemsEnabled) {
+    supportsItems = false;
+  }
   return {
     ...endpoint,
     usage,
@@ -262,6 +265,10 @@ const emptyConfig = {
   posApiPaymentMethods: [],
   fieldsFromPosApi: [],
   posApiMapping: {},
+  posApiEnableReceiptTypes: true,
+  posApiEnableReceiptItems: true,
+  posApiEnableReceiptTaxTypes: true,
+  posApiEnablePaymentMethods: true,
 };
 
 export default function PosTxnConfig() {
@@ -453,21 +460,38 @@ export default function PosTxnConfig() {
     return false;
   }, [config.posApiMapping]);
 
-  const supportsItems = endpointSupportsItems && (hasItemSourceTables || itemMappingConfigured);
+  const formReceiptTypeToggle = config.posApiEnableReceiptTypes !== false;
+  const formReceiptTaxTypeToggle = config.posApiEnableReceiptTaxTypes !== false;
+  const formReceiptItemToggle = config.posApiEnableReceiptItems !== false;
+  const formPaymentMethodToggle = config.posApiEnablePaymentMethods !== false;
 
-  const receiptTypesFeatureEnabled = selectedEndpoint
+  const endpointReceiptItemsAvailable = endpointSupportsItems
+    ? selectedEndpoint
+      ? selectedEndpoint.enableReceiptItems !== false
+      : true
+    : false;
+  const receiptItemsFeatureEnabled = endpointReceiptItemsAvailable && formReceiptItemToggle;
+  const supportsItems =
+    receiptItemsFeatureEnabled && (hasItemSourceTables || itemMappingConfigured);
+
+  const endpointReceiptTypesEnabled = selectedEndpoint
     ? selectedEndpoint.enableReceiptTypes !== false
     : true;
-  const receiptTaxTypesFeatureEnabled = selectedEndpoint
+  const receiptTypesFeatureEnabled = endpointReceiptTypesEnabled && formReceiptTypeToggle;
+  const endpointReceiptTaxTypesEnabled = selectedEndpoint
     ? selectedEndpoint.enableReceiptTaxTypes !== false
     : true;
-  const paymentMethodsFeatureEnabled = selectedEndpoint
+  const receiptTaxTypesFeatureEnabled =
+    endpointReceiptTaxTypesEnabled && formReceiptTaxTypeToggle;
+  const endpointPaymentMethodsEnabled = selectedEndpoint
     ? selectedEndpoint.enablePaymentMethods !== false
     : true;
-  const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
+  const paymentMethodsFeatureEnabled =
+    endpointPaymentMethodsEnabled && formPaymentMethodToggle;
+  const receiptTypesAllowMultiple = endpointReceiptTypesEnabled
     ? selectedEndpoint?.allowMultipleReceiptTypes === true
     : false;
-  const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
+  const paymentMethodsAllowMultiple = endpointPaymentMethodsEnabled
     ? selectedEndpoint?.allowMultiplePaymentMethods !== false
     : true;
 
@@ -1078,6 +1102,14 @@ export default function PosTxnConfig() {
             .map((value) => (typeof value === 'string' ? value.trim() : ''))
             .filter((value) => value)
         : [];
+      loaded.posApiEnableReceiptTypes =
+        loaded.posApiEnableReceiptTypes === false ? false : true;
+      loaded.posApiEnableReceiptItems =
+        loaded.posApiEnableReceiptItems === false ? false : true;
+      loaded.posApiEnableReceiptTaxTypes =
+        loaded.posApiEnableReceiptTaxTypes === false ? false : true;
+      loaded.posApiEnablePaymentMethods =
+        loaded.posApiEnablePaymentMethods === false ? false : true;
       loaded.posApiMapping =
         loaded.posApiMapping &&
         typeof loaded.posApiMapping === 'object' &&
@@ -1406,6 +1438,7 @@ export default function PosTxnConfig() {
           ),
         )
       : [];
+    const normalizeFeatureToggle = (value) => (value === false ? false : true);
     const saveCfg = {
       ...config,
       allowedBranches: normalizeAccessForSave(config.allowedBranches),
@@ -1434,6 +1467,14 @@ export default function PosTxnConfig() {
       posApiReceiptTypes: sanitizedReceiptTypes,
       posApiPaymentMethods: sanitizedPaymentMethods,
       fieldsFromPosApi: sanitizedFieldsFromPosApi,
+      posApiEnableReceiptTypes: normalizeFeatureToggle(config.posApiEnableReceiptTypes),
+      posApiEnableReceiptItems: normalizeFeatureToggle(config.posApiEnableReceiptItems),
+      posApiEnableReceiptTaxTypes: normalizeFeatureToggle(
+        config.posApiEnableReceiptTaxTypes,
+      ),
+      posApiEnablePaymentMethods: normalizeFeatureToggle(
+        config.posApiEnablePaymentMethods,
+      ),
       posApiMapping:
         config.posApiMapping && typeof config.posApiMapping === 'object'
           ? config.posApiMapping
@@ -2370,51 +2411,118 @@ export default function PosTxnConfig() {
             />
             <span>Enable POSAPI submission</span>
           </label>
-          <div style={controlGroupStyle}>
-            <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
-              <span style={{ fontWeight: 600 }}>POSAPI endpoint</span>
-              <select
-                value={config.posApiEndpointId}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, posApiEndpointId: e.target.value }))
-                }
-                disabled={!config.posApiEnabled}
+          {config.posApiEnabled && (
+            <>
+              <div style={controlGroupStyle}>
+                <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
+                  <span style={{ fontWeight: 600 }}>POSAPI endpoint</span>
+                  <select
+                    value={config.posApiEndpointId}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, posApiEndpointId: e.target.value }))
+                    }
+                  >
+                    <option value="">-- select endpoint --</option>
+                    {transactionEndpointOptions.map((endpoint) => (
+                      <option key={endpoint.value} value={endpoint.value}>
+                        {endpoint.label}
+                      </option>
+                    ))}
+                  </select>
+                  <small style={{ color: '#666' }}>
+                    Endpoints are managed from POSAPI Admin. Choose one that matches the
+                    transaction type.
+                  </small>
+                </label>
+                <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
+                  <span style={{ fontWeight: 600 }}>Receipt type column</span>
+                  <input
+                    type="text"
+                    list="posapi-type-field-options"
+                    value={config.posApiTypeField}
+                    onChange={(e) =>
+                      setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))
+                    }
+                    placeholder="Header column or table.column"
+                  />
+                  <datalist id="posapi-type-field-options">
+                    {allColumnOptions.map((col) => (
+                      <option key={`type-field-${col}`} value={col} />
+                    ))}
+                  </datalist>
+                  <small style={{ color: '#666' }}>
+                    Optional override for the POSAPI type (e.g., B2C_RECEIPT) stored on the
+                    transaction.
+                  </small>
+                </label>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                  marginTop: '1rem',
+                }}
               >
-                <option value="">-- select endpoint --</option>
-                {transactionEndpointOptions.map((endpoint) => (
-                  <option key={endpoint.value} value={endpoint.value}>
-                    {endpoint.label}
-                  </option>
-                ))}
-              </select>
-              <small style={{ color: '#666' }}>
-                Endpoints are managed from POSAPI Admin. Choose one that matches the transaction
-                type.
-              </small>
-            </label>
-            <label style={{ ...fieldColumnStyle, flex: '1 1 260px' }}>
-              <span style={{ fontWeight: 600 }}>Receipt type column</span>
-              <input
-                type="text"
-                list="posapi-type-field-options"
-                value={config.posApiTypeField}
-                onChange={(e) =>
-                  setConfig((c) => ({ ...c, posApiTypeField: e.target.value }))
-                }
-                disabled={!config.posApiEnabled}
-                placeholder="Header column or table.column"
-              />
-              <datalist id="posapi-type-field-options">
-                {allColumnOptions.map((col) => (
-                  <option key={`type-field-${col}`} value={col} />
-                ))}
-              </datalist>
-              <small style={{ color: '#666' }}>
-                Optional override for the POSAPI type (e.g., B2C_RECEIPT) stored on the
-                transaction.
-              </small>
-            </label>
-          </div>
+                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={formReceiptTypeToggle && endpointReceiptTypesEnabled}
+                    disabled={!endpointReceiptTypesEnabled}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnableReceiptTypes: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Enable receipt types</span>
+                </label>
+                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={formReceiptItemToggle && endpointReceiptItemsAvailable}
+                    disabled={!endpointReceiptItemsAvailable}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnableReceiptItems: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Enable receipt items</span>
+                </label>
+                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={formReceiptTaxTypeToggle && endpointReceiptTaxTypesEnabled}
+                    disabled={!endpointReceiptTaxTypesEnabled}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnableReceiptTaxTypes: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Enable receipt tax types</span>
+                </label>
+                <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                  <input
+                    type="checkbox"
+                    checked={formPaymentMethodToggle && endpointPaymentMethodsEnabled}
+                    disabled={!endpointPaymentMethodsEnabled}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnablePaymentMethods: e.target.checked,
+                      }))
+                    }
+                  />
+                  <span>Enable payment methods</span>
+                </label>
+              </div>
+            </>
+          )}
           {config.posApiEnabled && selectedEndpoint && (
             <div
               style={{
