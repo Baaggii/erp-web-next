@@ -36,7 +36,7 @@ export default function AsyncSearchSelect({
   shouldFetch = true,
   ...rest
 }) {
-  const { company, branch, department } = useContext(AuthContext);
+  const { company } = useContext(AuthContext);
   const effectiveCompanyId = companyId ?? company;
   const initialVal =
     typeof value === 'object' && value !== null ? value.value : value || '';
@@ -239,10 +239,6 @@ export default function AsyncSearchSelect({
       if (!isShared) {
         if (keys.includes('company_id') && effectiveCompanyId != null)
           params.set('company_id', effectiveCompanyId);
-        if (keys.includes('branch_id') && branch != null)
-          params.set('branch_id', branch);
-        if (keys.includes('department_id') && department != null)
-          params.set('department_id', department);
       }
       if (q) {
         params.set('search', q);
@@ -263,8 +259,6 @@ export default function AsyncSearchSelect({
           searchColumn,
           labelFields,
           companyId: effectiveCompanyId,
-          branchId: branch,
-          departmentId: department,
         });
       } catch {
         const sortedFallbackRows = sortRowsByIndex(rows);
@@ -318,17 +312,6 @@ export default function AsyncSearchSelect({
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
           return normalizeOptions([...base, ...opts]);
-        }
-        if (
-          normalizedQuery &&
-          opts.length === 0 &&
-          Array.isArray(prev) &&
-          prev.length > 0
-        ) {
-          const fallback = filterOptionsByQuery(prev, normalizedQuery);
-          if (fallback.length > 0) {
-            return normalizeOptions(fallback);
-          }
         }
         return normalizeOptions(opts);
       });
@@ -393,8 +376,6 @@ export default function AsyncSearchSelect({
     effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
-    branch,
-    department,
     disabled,
     shouldFetch,
   ]);
@@ -414,8 +395,6 @@ export default function AsyncSearchSelect({
     effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
-    branch,
-    department,
   ]);
 
   useEffect(() => {

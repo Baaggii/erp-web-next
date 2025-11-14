@@ -54,7 +54,7 @@ async function flushEffects() {
 if (!haveReact) {
   test('AsyncSearchSelect sends search parameters with queries', { skip: true }, () => {});
   test('AsyncSearchSelect fetches additional pages when needed', { skip: true }, () => {});
-  test('AsyncSearchSelect falls back to existing options when remote search is empty', { skip: true }, () => {});
+  test('AsyncSearchSelect hides stale options when remote search is empty', { skip: true }, () => {});
 } else {
   test('AsyncSearchSelect sends search parameters with queries', async (t) => {
     const restoreDom = setupDom();
@@ -292,7 +292,7 @@ if (!haveReact) {
     container.remove();
   });
 
-  test('AsyncSearchSelect falls back to existing options when remote search is empty', async (t) => {
+  test('AsyncSearchSelect hides stale options when remote search is empty', async (t) => {
     const restoreDom = setupDom();
     const origFetch = global.fetch;
     const requests = [];
@@ -388,8 +388,7 @@ if (!haveReact) {
     assert.equal(searchRequests.length, 1);
 
     const listItems = Array.from(container.querySelectorAll('li'));
-    assert.ok(listItems.length > 0, 'should display existing options');
-    assert.ok(listItems.some((li) => li.textContent.includes('Alpha')));
+    assert.equal(listItems.length, 0, 'should not display stale options');
 
     await act(async () => {
       root.unmount();
