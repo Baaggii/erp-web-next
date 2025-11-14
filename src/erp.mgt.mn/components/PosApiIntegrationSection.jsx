@@ -1365,10 +1365,10 @@ export default function PosApiIntegrationSection({
               })}
             </div>
           </div>
-        )}
-        </>
-      )}
-      </div>
+          )}
+        </div>
+      </>
+    )}
     </section>
   );
 }
