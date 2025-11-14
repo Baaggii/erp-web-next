@@ -570,7 +570,9 @@ export default function AsyncSearchSelect({
     if (idx >= 0 && idx < options.length) {
       opt = options[idx];
     } else if (options.length > 0) {
-      opt = findBestOption(query, { allowPartial: false });
+      opt =
+        findBestOption(query, { allowPartial: false }) ||
+        findBestOption(query, { allowPartial: true });
     }
 
     if (opt == null) {
@@ -581,15 +583,7 @@ export default function AsyncSearchSelect({
     const optIndex = options.indexOf(opt);
     if (optIndex >= 0) setHighlight(optIndex);
     e.preventDefault();
-    onChange(opt.value, opt.label);
-    if (onSelect) onSelect(opt);
-    setInput(String(opt.value));
-    setLabel(opt.label || '');
-    if (internalRef.current) internalRef.current.value = String(opt.value);
-    e.target.value = String(opt.value);
-    e.selectedOption = opt;
-    chosenRef.current = opt;
-    actionRef.current = { type: 'enter', matched: true, option: opt };
+    actionRef.current = { type: 'enter', matched: true, option: opt, query };
     setShow(false);
   }
 
