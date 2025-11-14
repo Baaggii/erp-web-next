@@ -309,6 +309,11 @@ if (!haveReact) {
         items.some((node) => node.textContent.includes('Beta Bundle')),
         'expected dropdown to include the label text from display fields',
       );
+      assert.deepEqual(
+        items.map((node) => node.textContent.trim()),
+        ['Beta Bundle'],
+        'expected fallback filtering to keep only the matching option',
+      );
 
       await act(async () => {
         root.unmount();
