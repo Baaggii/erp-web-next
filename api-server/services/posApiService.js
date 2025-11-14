@@ -588,6 +588,43 @@ function appendLotNoToItems(items, lotNo) {
   });
 }
 
+function groupItemsByTaxType(items, fallbackTaxType = 'VAT_ABLE') {
+  if (!Array.isArray(items) || items.length === 0) return [];
+  const fallback = fallbackTaxType || 'VAT_ABLE';
+  const groups = new Map();
+  items.forEach((item) => {
+    if (!item || typeof item !== 'object') return;
+    const rawType = toStringValue(item.taxType || item.tax_type || '');
+    const type = rawType || fallback;
+    if (!groups.has(type)) {
+      groups.set(type, []);
+    }
+    groups.get(type).push(item);
+  });
+  if (groups.size <= 1) return [];
+  return Array.from(groups.entries()).map(([type, groupedItems]) => {
+    const totals = groupedItems.reduce(
+      (acc, entry) => {
+        const amount = toNumber(entry.totalAmount ?? entry.amount ?? entry.total);
+        if (amount !== null) acc.totalAmount += amount;
+        const vat = toNumber(entry.totalVAT ?? entry.vat);
+        if (vat !== null) acc.totalVAT += vat;
+        const city = toNumber(entry.totalCityTax ?? entry.cityTax);
+        if (city !== null) acc.totalCityTax += city;
+        return acc;
+      },
+      { totalAmount: 0, totalVAT: 0, totalCityTax: 0 },
+    );
+    return {
+      totalAmount: totals.totalAmount,
+      totalVAT: totals.totalVAT,
+      totalCityTax: totals.totalCityTax,
+      taxType: type,
+      items: groupedItems,
+    };
+  });
+}
+
 function normalizePaymentEntry(entry) {
   if (!entry || typeof entry !== 'object') return null;
   const next = { ...entry };
@@ -1220,6 +1257,13 @@ export async function buildReceiptFromDynamicTransaction(
 
   if (mappedReceipts.length) {
     receipts = mappedReceipts;
+  }
+
+  if (!receipts.length && items.length) {
+    const groupedReceipts = groupItemsByTaxType(items, taxType);
+    if (groupedReceipts.length) {
+      receipts = groupedReceipts;
+    }
   }
 
   if (!items.length && !receipts.length) {
