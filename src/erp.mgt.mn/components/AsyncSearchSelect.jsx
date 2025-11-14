@@ -253,11 +253,6 @@ export default function AsyncSearchSelect({
     if (!table || cols.length === 0) return;
     setLoading(true);
     try {
-      const baseResults = Array.isArray(accumulated)
-        ? accumulated
-        : append && Array.isArray(optionsRef.current)
-        ? optionsRef.current
-        : [];
       const params = new URLSearchParams({ page: p, perPage: PAGE_SIZE });
       const isShared =
         tenantMeta?.isShared ?? tenantMeta?.is_shared ?? false;
@@ -326,8 +321,6 @@ export default function AsyncSearchSelect({
       if (normalizedFilter) {
         filteredOpts = filterOptionsByQuery(opts, normalizedFilter);
       }
-      const combinedOptions =
-        baseResults.length > 0 ? [...baseResults, ...filteredOpts] : [...filteredOpts];
       const totalCount = Number.isFinite(Number(json.count))
         ? Number(json.count)
         : null;
