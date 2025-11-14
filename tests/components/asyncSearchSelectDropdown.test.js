@@ -577,15 +577,32 @@ if (!haveReact) {
 
       const searchRequests = requests.filter((url) => url.includes('search='));
       assert.equal(searchRequests.length, 1, 'remote search should only happen once');
+      const listAfterFallback = Array.from(container.querySelectorAll('li'));
+      assert.ok(listAfterFallback.some((li) => li.textContent.includes('Alpha Local')));
+
+      const list = container.querySelector('ul');
+      assert.ok(list, 'dropdown list should render');
+      Object.defineProperties(list, {
+        scrollTop: { value: 100, configurable: true, writable: true },
+        clientHeight: { value: 100, configurable: true, writable: true },
+        scrollHeight: { value: 100, configurable: true, writable: true },
+      });
+
+      await act(async () => {
+        list.dispatchEvent(new window.Event('scroll'));
+      });
+
+      await flushEffects();
+      await flushEffects();
+
       const page3Request = requests.find(
         (url) => url.includes('/api/tables/items?') && url.includes('page=3'),
       );
-      assert.ok(page3Request, 'expected a third page request while filling the dropdown');
+      assert.ok(page3Request, 'expected a third page request after scrolling');
       assert.ok(!page3Request.includes('search='), 'local pagination should omit search params');
 
-      const listItems = Array.from(container.querySelectorAll('li'));
-      assert.ok(listItems.some((li) => li.textContent.includes('Alpha Local')));
-      assert.ok(listItems.some((li) => li.textContent.includes('Alpha Remote')));
+      const listAfterScroll = Array.from(container.querySelectorAll('li'));
+      assert.ok(listAfterScroll.some((li) => li.textContent.includes('Alpha Remote')));
 
       await act(async () => {
         root.unmount();

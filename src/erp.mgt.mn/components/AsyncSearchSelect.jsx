@@ -63,10 +63,6 @@ export default function AsyncSearchSelect({
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
   const forcedLocalSearchRef = useRef('');
-
-  useEffect(() => {
-    optionsRef.current = Array.isArray(options) ? options : [];
-  }, [options]);
   const effectiveLabelFields = useMemo(() => {
     const set = new Set();
     const addField = (field) => {
@@ -364,9 +360,6 @@ export default function AsyncSearchSelect({
         return fetchPage(1, q, false, signal, { skipRemoteSearch: true });
       }
       const nextList = normalizedFilter ? filteredOpts : opts;
-      const baseCount =
-        append && Array.isArray(optionsRef.current) ? optionsRef.current.length : 0;
-      const combinedCount = baseCount + nextList.length;
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
