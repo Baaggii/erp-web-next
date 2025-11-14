@@ -47,6 +47,37 @@ export default function RowImageUploadModal({
     return buildImageName(row, list, columnCaseMap, company);
   }
 
+  function handleClipboardPaste(event) {
+    if (!visible) return;
+    const items = event.clipboardData?.items;
+    if (!items || !items.length) return;
+    const pastedFiles = [];
+    const timestamp = Date.now();
+    Array.from(items).forEach((item, idx) => {
+      if (!item || !item.type?.startsWith('image/')) return;
+      const file = item.getAsFile();
+      if (!file) return;
+      const ext = file.type?.split('/')?.[1] || 'png';
+      const safeName = `pasted_${timestamp}_${idx}.${ext}`;
+      let finalFile = file;
+      try {
+        finalFile = new File([file], safeName, { type: file.type || 'image/png' });
+      } catch {
+        try {
+          Object.defineProperty(finalFile, 'name', { value: safeName, configurable: true });
+        } catch {
+          /* ignore */
+        }
+      }
+      pastedFiles.push(finalFile);
+    });
+    if (!pastedFiles.length) return;
+    event.preventDefault();
+    setFiles((prev) => [...prev, ...pastedFiles]);
+    toast(t('pasted_image_detected', 'Image pasted from clipboard'), 'info');
+    handleUpload(pastedFiles);
+  }
+
   useEffect(() => {
     if (!visible) return;
     setFiles([]);
@@ -289,6 +320,19 @@ export default function RowImageUploadModal({
 
   return (
     <Modal visible={visible} title={t('upload_images', 'Upload Images')} onClose={onClose} width="auto">
+      <div
+        tabIndex={0}
+        onPaste={handleClipboardPaste}
+        style={{
+          border: '1px dashed #cbd5f5',
+          padding: '0.75rem',
+          marginBottom: '0.75rem',
+          borderRadius: '0.25rem',
+          background: '#f8fafc',
+        }}
+      >
+        {t('paste_image_hint', 'Click here and press Ctrl+V (or Cmd+V) to paste a screenshot from your clipboard.')}
+      </div>
       <div style={{ marginBottom: '0.5rem' }}>
         <input
           type="file"
