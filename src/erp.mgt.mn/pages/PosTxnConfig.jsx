@@ -23,108 +23,6 @@ import {
   formatPosApiTypeLabel,
 } from '../utils/posApiConfig.js';
 
-const POS_API_FIELDS = [
-  { key: 'totalAmount', label: 'Total amount' },
-  { key: 'totalVAT', label: 'Total VAT' },
-  { key: 'totalCityTax', label: 'Total city tax' },
-  { key: 'customerTin', label: 'Customer TIN' },
-  { key: 'consumerNo', label: 'Consumer number' },
-  { key: 'taxType', label: 'Tax type' },
-  { key: 'lotNo', label: 'Lot number (pharmacy)' },
-  { key: 'branchNo', label: 'Branch number' },
-  { key: 'posNo', label: 'POS number' },
-  { key: 'merchantTin', label: 'Merchant TIN override' },
-  { key: 'districtCode', label: 'District code' },
-  { key: 'itemsField', label: 'Items array column' },
-  { key: 'paymentsField', label: 'Payments array column' },
-  { key: 'receiptsField', label: 'Receipts array column' },
-  { key: 'paymentType', label: 'Default payment type column' },
-  { key: 'taxTypeField', label: 'Header tax type column' },
-  { key: 'classificationCodeField', label: 'Classification code column' },
-];
-
-const POS_API_ITEM_FIELDS = [
-  { key: 'name', label: 'Item name' },
-  { key: 'description', label: 'Item description' },
-  { key: 'qty', label: 'Quantity' },
-  { key: 'price', label: 'Unit price' },
-  { key: 'totalAmount', label: 'Line total amount' },
-  { key: 'totalVAT', label: 'Line VAT' },
-  { key: 'totalCityTax', label: 'Line city tax' },
-  { key: 'taxType', label: 'Line tax type' },
-  { key: 'classificationCode', label: 'Classification code' },
-  { key: 'taxProductCode', label: 'Tax product code' },
-  { key: 'barCode', label: 'Barcode' },
-  { key: 'measureUnit', label: 'Measure unit' },
-];
-
-const POS_API_PAYMENT_FIELDS = [
-  { key: 'type', label: 'Payment type' },
-  { key: 'paidAmount', label: 'Paid amount' },
-  { key: 'amount', label: 'Amount (legacy)' },
-  { key: 'status', label: 'Status' },
-  { key: 'currency', label: 'Currency' },
-  { key: 'method', label: 'Method' },
-  { key: 'reference', label: 'Reference number' },
-  { key: 'data.terminalID', label: 'Terminal ID' },
-  { key: 'data.rrn', label: 'RRN' },
-  { key: 'data.maskedCardNumber', label: 'Masked card number' },
-  { key: 'data.easy', label: 'Easy Bank flag' },
-];
-
-const POS_API_RECEIPT_FIELDS = [
-  { key: 'totalAmount', label: 'Receipt total amount' },
-  { key: 'totalVAT', label: 'Receipt total VAT' },
-  { key: 'totalCityTax', label: 'Receipt total city tax' },
-  { key: 'taxType', label: 'Receipt tax type' },
-  { key: 'items', label: 'Receipt items path' },
-  { key: 'payments', label: 'Receipt payments path' },
-  { key: 'description', label: 'Receipt description' },
-];
-
-const SERVICE_RECEIPT_FIELDS = [
-  { key: 'totalAmount', label: 'Total amount' },
-  { key: 'totalVAT', label: 'Total VAT' },
-  { key: 'totalCityTax', label: 'Total city tax' },
-  { key: 'taxType', label: 'Tax type override' },
-];
-
-const SERVICE_PAYMENT_FIELDS = [
-  { key: 'paidAmount', label: 'Paid amount' },
-  { key: 'amount', label: 'Amount (legacy)' },
-  { key: 'currency', label: 'Currency' },
-  { key: 'reference', label: 'Reference number' },
-];
-
-const PAYMENT_METHOD_LABELS = {
-  CASH: 'Cash',
-  PAYMENT_CARD: 'Payment card',
-  BANK_TRANSFER: 'Bank transfer',
-  MOBILE_WALLET: 'Mobile wallet',
-  EASY_BANK_CARD: 'Easy Bank card',
-  SERVICE_PAYMENT: 'Service payment',
-};
-
-const DEFAULT_ENDPOINT_RECEIPT_TYPES = [
-  'B2C_RECEIPT',
-  'B2B_RECEIPT',
-  'B2C_INVOICE',
-  'B2B_INVOICE',
-  'STOCK_QR',
-];
-
-const DEFAULT_ENDPOINT_TAX_TYPES = ['VAT_ABLE', 'VAT_FREE', 'VAT_ZERO', 'NO_VAT'];
-
-const DEFAULT_ENDPOINT_PAYMENT_METHODS = Object.keys(PAYMENT_METHOD_LABELS);
-
-const BADGE_BASE_STYLE = {
-  borderRadius: '999px',
-  padding: '0.1rem 0.5rem',
-  fontSize: '0.7rem',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.03em',
-};
 
 const REQUIRED_BADGE_STYLE = {
   background: '#fee2e2',
@@ -427,7 +325,7 @@ export default function PosTxnConfig() {
       endpoint = posApiEndpoints.find((ep) => ep?.id === config.posApiEndpointId) || null;
     }
     if (!endpoint && config.posApiEndpointMeta) {
-      endpoint = withEndpointMetadata(config.posApiEndpointMeta);
+      endpoint = withPosApiEndpointMetadata(config.posApiEndpointMeta);
     }
     if (!endpoint && config.posApiMapping && config.posApiMapping.itemFields) {
       endpoint = { supportsItems: true };
@@ -532,7 +430,7 @@ export default function PosTxnConfig() {
     ) {
       return selectedEndpoint.receiptTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_RECEIPT_TYPES;
+    return DEFAULT_ENDPOINT_RECEIPT_TYPES_BASE;
   }, [selectedEndpoint, receiptTypesFeatureEnabled]);
 
   const configuredReceiptTypes = useMemo(() => {
@@ -575,7 +473,7 @@ export default function PosTxnConfig() {
     ) {
       return selectedEndpoint.paymentMethods.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_PAYMENT_METHODS;
+    return DEFAULT_ENDPOINT_PAYMENT_METHODS_BASE;
   }, [selectedEndpoint, paymentMethodsFeatureEnabled]);
 
   const configuredPaymentMethods = useMemo(() => {
@@ -620,7 +518,7 @@ export default function PosTxnConfig() {
     ) {
       return selectedEndpoint.receiptTaxTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_TAX_TYPES;
+    return DEFAULT_ENDPOINT_TAX_TYPES_BASE;
   }, [selectedEndpoint, receiptTaxTypesFeatureEnabled]);
 
   const topLevelFieldHints = useMemo(() => {
@@ -734,8 +632,8 @@ export default function PosTxnConfig() {
   ]);
 
   const primaryPosApiFields = useMemo(() => {
-    if (supportsItems) return POS_API_FIELDS;
-    return POS_API_FIELDS.filter(
+    if (supportsItems) return POS_API_FIELDS_BASE;
+    return POS_API_FIELDS_BASE.filter(
       (field) => !['itemsField', 'paymentsField', 'receiptsField'].includes(field.key),
     );
   }, [supportsItems]);
@@ -844,7 +742,7 @@ export default function PosTxnConfig() {
       .then((res) => (res.ok ? res.json() : []))
       .then((data) => {
         if (Array.isArray(data)) {
-          setPosApiEndpoints(data.map(withEndpointMetadata));
+          setPosApiEndpoints(data.map(withPosApiEndpointMetadata));
         } else {
           setPosApiEndpoints([]);
         }
@@ -2561,7 +2459,7 @@ export default function PosTxnConfig() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                 <span
                   style={{
-                    ...BADGE_BASE_STYLE,
+                    ...BADGE_BASE_STYLE_BASE,
                     background: supportsItems ? '#dcfce7' : '#fee2e2',
                     color: supportsItems ? '#047857' : '#b91c1c',
                   }}
@@ -2571,7 +2469,7 @@ export default function PosTxnConfig() {
                 {selectedEndpoint.supportsMultipleReceipts && (
                   <span
                     style={{
-                      ...BADGE_BASE_STYLE,
+                      ...BADGE_BASE_STYLE_BASE,
                       background: '#ede9fe',
                       color: '#5b21b6',
                     }}
@@ -2582,7 +2480,7 @@ export default function PosTxnConfig() {
                 {selectedEndpoint.supportsMultiplePayments && (
                   <span
                     style={{
-                      ...BADGE_BASE_STYLE,
+                      ...BADGE_BASE_STYLE_BASE,
                       background: '#cffafe',
                       color: '#0e7490',
                     }}
@@ -2598,7 +2496,9 @@ export default function PosTxnConfig() {
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     {(selectedEndpoint.receiptTypes || []).map((type) => (
-                      <span key={`endpoint-receipt-${type}`}>{formatPosApiTypeLabel(type)}</span>
+                      <span key={`endpoint-receipt-${type}`}>
+                        {formatPosApiTypeLabelText(type)}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -2609,7 +2509,7 @@ export default function PosTxnConfig() {
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     {(selectedEndpoint.paymentMethods || []).map((method) => (
                       <span key={`endpoint-payment-${method}`}>
-                        {PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ')}
+                        {PAYMENT_METHOD_LABELS_BASE[method] || method.replace(/_/g, ' ')}
                       </span>
                     ))}
                   </div>
@@ -2649,7 +2549,7 @@ export default function PosTxnConfig() {
                           onChange={() => toggleReceiptTypeSelection(type)}
                           disabled={!config.posApiEnabled}
                         />
-                        <span>{formatPosApiTypeLabel(type)}</span>
+                        <span>{formatPosApiTypeLabelText(type)}</span>
                       </label>
                     );
                   })}
@@ -2672,7 +2572,7 @@ export default function PosTxnConfig() {
                     }}
                   >
                     {paymentMethodUniverse.map((method) => {
-                      const label = PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
+                      const label = PAYMENT_METHOD_LABELS_BASE[method] || method.replace(/_/g, ' ');
                       const checked = effectivePaymentMethods.includes(method);
                       const inputType = paymentMethodsAllowMultiple ? 'checkbox' : 'radio';
                       return (
@@ -2752,8 +2652,10 @@ export default function PosTxnConfig() {
                       {field.label}
                       <span
                         style={{
-                          ...BADGE_BASE_STYLE,
-                          ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                          ...BADGE_BASE_STYLE_BASE,
+                          ...(isRequired
+                            ? REQUIRED_BADGE_STYLE_BASE
+                            : OPTIONAL_BADGE_STYLE_BASE),
                         }}
                       >
                         {isRequired ? 'Required' : 'Optional'}
@@ -2792,7 +2694,7 @@ export default function PosTxnConfig() {
                     marginTop: '0.5rem',
                   }}
                 >
-                  {POS_API_ITEM_FIELDS.map((field) => {
+                  {POS_API_ITEM_FIELDS_BASE.map((field) => {
                     const rawValue = itemFieldMapping[field.key] || '';
                     const parsed = parseFieldSource(rawValue, config.masterTable);
                     const selectedTable = parsed.table;
@@ -2825,8 +2727,10 @@ export default function PosTxnConfig() {
                           {field.label}
                           <span
                             style={{
-                              ...BADGE_BASE_STYLE,
-                              ...(itemRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                              ...BADGE_BASE_STYLE_BASE,
+                              ...(itemRequired
+                                ? REQUIRED_BADGE_STYLE_BASE
+                                : OPTIONAL_BADGE_STYLE_BASE),
                             }}
                           >
                             {itemRequired ? 'Required' : 'Optional'}
@@ -2902,7 +2806,7 @@ export default function PosTxnConfig() {
                   marginTop: '0.5rem',
                 }}
               >
-                {POS_API_PAYMENT_FIELDS.map((field) => {
+                {POS_API_PAYMENT_FIELDS_BASE.map((field) => {
                   const listId = `posapi-payment-${field.key}-columns`;
                   return (
                     <label
@@ -2944,7 +2848,7 @@ export default function PosTxnConfig() {
                   marginTop: '0.5rem',
                 }}
               >
-                {POS_API_RECEIPT_FIELDS.map((field) => {
+                {POS_API_RECEIPT_FIELDS_BASE.map((field) => {
                   const listId = `posapi-receipt-${field.key}-columns`;
                   return (
                     <label
@@ -2984,7 +2888,7 @@ export default function PosTxnConfig() {
               <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
                 {serviceReceiptGroupTypes.map((type) => {
                   const hintMap = receiptGroupHints[type] || {};
-                  const baseFields = SERVICE_RECEIPT_FIELDS.map((entry) => entry.key);
+                  const baseFields = SERVICE_RECEIPT_FIELDS_BASE.map((entry) => entry.key);
                   const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
                   const groupValues =
                     receiptGroupMapping[type] && typeof receiptGroupMapping[type] === 'object'
@@ -3010,7 +2914,9 @@ export default function PosTxnConfig() {
                         }}
                       >
                         {combined.map((fieldKey) => {
-                          const descriptor = SERVICE_RECEIPT_FIELDS.find((entry) => entry.key === fieldKey);
+                          const descriptor = SERVICE_RECEIPT_FIELDS_BASE.find(
+                            (entry) => entry.key === fieldKey,
+                          );
                           const label = descriptor
                             ? descriptor.label
                             : fieldKey.replace(/([A-Z])/g, ' $1');
@@ -3035,8 +2941,10 @@ export default function PosTxnConfig() {
                                 {label}
                                 <span
                                   style={{
-                                    ...BADGE_BASE_STYLE,
-                                    ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                    ...BADGE_BASE_STYLE_BASE,
+                                    ...(isRequired
+                                      ? REQUIRED_BADGE_STYLE_BASE
+                                      : OPTIONAL_BADGE_STYLE_BASE),
                                   }}
                                 >
                                   {isRequired ? 'Required' : 'Optional'}
@@ -3077,13 +2985,13 @@ export default function PosTxnConfig() {
               <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
                 {servicePaymentMethodCodes.map((method) => {
                   const hintMap = paymentMethodHints[method] || {};
-                  const baseFields = SERVICE_PAYMENT_FIELDS.map((entry) => entry.key);
+                  const baseFields = SERVICE_PAYMENT_FIELDS_BASE.map((entry) => entry.key);
                   const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
                   const methodValues =
                     paymentMethodMapping[method] && typeof paymentMethodMapping[method] === 'object'
                       ? paymentMethodMapping[method]
                       : {};
-                  const label = PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
+                  const label = PAYMENT_METHOD_LABELS_BASE[method] || method.replace(/_/g, ' ');
                   return (
                     <div
                       key={`service-payment-${method}`}
@@ -3102,7 +3010,9 @@ export default function PosTxnConfig() {
                         }}
                       >
                         {combined.map((fieldKey) => {
-                          const descriptor = SERVICE_PAYMENT_FIELDS.find((entry) => entry.key === fieldKey);
+                          const descriptor = SERVICE_PAYMENT_FIELDS_BASE.find(
+                            (entry) => entry.key === fieldKey,
+                          );
                           const fieldLabel = descriptor
                             ? descriptor.label
                             : fieldKey.replace(/([A-Z])/g, ' $1');
@@ -3127,8 +3037,10 @@ export default function PosTxnConfig() {
                                 {fieldLabel}
                                 <span
                                   style={{
-                                    ...BADGE_BASE_STYLE,
-                                    ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                    ...BADGE_BASE_STYLE_BASE,
+                                    ...(isRequired
+                                      ? REQUIRED_BADGE_STYLE_BASE
+                                      : OPTIONAL_BADGE_STYLE_BASE),
                                   }}
                                 >
                                   {isRequired ? 'Required' : 'Optional'}

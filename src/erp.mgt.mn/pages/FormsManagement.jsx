@@ -494,7 +494,7 @@ export default function FormsManagement() {
         } else if (data && Array.isArray(data.endpoints)) {
           list = data.endpoints;
         }
-        setPosApiEndpoints(list.map(withEndpointMetadata));
+        setPosApiEndpoints(list.map(withPosApiEndpointMetadata));
       })
       .catch(() => setPosApiEndpoints([]));
   }, []);
@@ -632,7 +632,7 @@ export default function FormsManagement() {
     ) {
       return selectedEndpoint.receiptTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_RECEIPT_TYPES;
+    return DEFAULT_ENDPOINT_RECEIPT_TYPES_BASE;
   }, [selectedEndpoint, receiptTypesFeatureEnabled]);
 
   const configuredReceiptTypes = useMemo(() => {
@@ -675,7 +675,7 @@ export default function FormsManagement() {
     ) {
       return selectedEndpoint.receiptTaxTypes.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_TAX_TYPES;
+    return DEFAULT_ENDPOINT_TAX_TYPES_BASE;
   }, [selectedEndpoint, receiptTaxTypesFeatureEnabled]);
 
   const endpointPaymentMethods = useMemo(() => {
@@ -687,7 +687,7 @@ export default function FormsManagement() {
     ) {
       return selectedEndpoint.paymentMethods.map((value) => String(value));
     }
-    return DEFAULT_ENDPOINT_PAYMENT_METHODS;
+    return DEFAULT_ENDPOINT_PAYMENT_METHODS_BASE;
   }, [selectedEndpoint, paymentMethodsFeatureEnabled]);
 
   const configuredPaymentMethods = useMemo(() => {
@@ -834,8 +834,8 @@ export default function FormsManagement() {
   ]);
 
   const primaryPosApiFields = useMemo(() => {
-    if (supportsItems) return POS_API_FIELDS;
-    return POS_API_FIELDS.filter(
+    if (supportsItems) return POS_API_FIELDS_BASE;
+    return POS_API_FIELDS_BASE.filter(
       (field) => !['itemsField', 'paymentsField', 'receiptsField'].includes(field.key),
     );
   }, [supportsItems]);
@@ -1956,7 +1956,7 @@ export default function FormsManagement() {
                               onChange={() => toggleReceiptTypeSelection(type)}
                               disabled={!config.posApiEnabled}
                             />
-                            <span>{formatPosApiTypeLabel(type)}</span>
+                            <span>{formatPosApiTypeLabelText(type)}</span>
                           </label>
                         );
                       })}
@@ -1977,7 +1977,8 @@ export default function FormsManagement() {
                         }}
                       >
                         {paymentMethodUniverse.map((method) => {
-                          const label = PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
+                          const label =
+                            PAYMENT_METHOD_LABELS_BASE[method] || method.replace(/_/g, ' ');
                           const checked = effectivePaymentMethods.includes(method);
                           const inputType = paymentMethodsAllowMultiple ? 'checkbox' : 'radio';
                           return (
@@ -2055,8 +2056,10 @@ export default function FormsManagement() {
                           {field.label}
                           <span
                             style={{
-                              ...BADGE_BASE_STYLE,
-                              ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                              ...BADGE_BASE_STYLE_BASE,
+                              ...(isRequired
+                                ? REQUIRED_BADGE_STYLE_BASE
+                                : OPTIONAL_BADGE_STYLE_BASE),
                             }}
                           >
                             {isRequired ? 'Required' : 'Optional'}
@@ -2098,7 +2101,7 @@ export default function FormsManagement() {
                           marginTop: '0.5rem',
                         }}
                       >
-                        {POS_API_ITEM_FIELDS.map((field) => {
+                        {POS_API_ITEM_FIELDS_BASE.map((field) => {
                           const rawValue = itemFieldMapping[field.key] || '';
                           const parsed = parseFieldSource(rawValue, table);
                           const selectedTable = parsed.table;
@@ -2138,8 +2141,10 @@ export default function FormsManagement() {
                                 {field.label}
                                 <span
                                   style={{
-                                    ...BADGE_BASE_STYLE,
-                                    ...(itemRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                    ...BADGE_BASE_STYLE_BASE,
+                                    ...(itemRequired
+                                      ? REQUIRED_BADGE_STYLE_BASE
+                                      : OPTIONAL_BADGE_STYLE_BASE),
                                   }}
                                 >
                                   {itemRequired ? 'Required' : 'Optional'}
@@ -2218,7 +2223,7 @@ export default function FormsManagement() {
                           marginTop: '0.5rem',
                         }}
                       >
-                        {POS_API_PAYMENT_FIELDS.map((field) => {
+                        {POS_API_PAYMENT_FIELDS_BASE.map((field) => {
                           const listId = `posapi-payment-${field.key}-columns`;
                           return (
                             <label
@@ -2260,7 +2265,7 @@ export default function FormsManagement() {
                           marginTop: '0.5rem',
                         }}
                       >
-                        {POS_API_RECEIPT_FIELDS.map((field) => {
+                        {POS_API_RECEIPT_FIELDS_BASE.map((field) => {
                           const listId = `posapi-receipt-${field.key}-columns`;
                           return (
                             <label
@@ -2303,7 +2308,7 @@ export default function FormsManagement() {
                     <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
                       {serviceReceiptGroupTypes.map((type) => {
                       const hintMap = receiptGroupHints[type] || {};
-                      const baseFields = SERVICE_RECEIPT_FIELDS.map((entry) => entry.key);
+                      const baseFields = SERVICE_RECEIPT_FIELDS_BASE.map((entry) => entry.key);
                       const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
                       const groupValues =
                         receiptGroupMapping[type] && typeof receiptGroupMapping[type] === 'object'
@@ -2330,7 +2335,7 @@ export default function FormsManagement() {
                           >
                             {combined.map((fieldKey) => {
                               const descriptor =
-                                SERVICE_RECEIPT_FIELDS.find((entry) => entry.key === fieldKey);
+                                SERVICE_RECEIPT_FIELDS_BASE.find((entry) => entry.key === fieldKey);
                               const label = descriptor
                                 ? descriptor.label
                                 : fieldKey.replace(/([A-Z])/g, ' $1');
@@ -2355,8 +2360,10 @@ export default function FormsManagement() {
                                     {label}
                                     <span
                                       style={{
-                                        ...BADGE_BASE_STYLE,
-                                        ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                        ...BADGE_BASE_STYLE_BASE,
+                                        ...(isRequired
+                                          ? REQUIRED_BADGE_STYLE_BASE
+                                          : OPTIONAL_BADGE_STYLE_BASE),
                                       }}
                                     >
                                       {isRequired ? 'Required' : 'Optional'}
@@ -2403,13 +2410,14 @@ export default function FormsManagement() {
                     <div className="space-y-4" style={{ marginTop: '0.5rem' }}>
                       {servicePaymentMethodCodes.map((method) => {
                       const hintMap = paymentMethodHints[method] || {};
-                      const baseFields = SERVICE_PAYMENT_FIELDS.map((entry) => entry.key);
+                      const baseFields = SERVICE_PAYMENT_FIELDS_BASE.map((entry) => entry.key);
                       const combined = Array.from(new Set([...baseFields, ...Object.keys(hintMap)]));
                       const methodValues =
                         paymentMethodMapping[method] && typeof paymentMethodMapping[method] === 'object'
                           ? paymentMethodMapping[method]
                           : {};
-                      const label = PAYMENT_METHOD_LABELS[method] || method.replace(/_/g, ' ');
+                      const label =
+                        PAYMENT_METHOD_LABELS_BASE[method] || method.replace(/_/g, ' ');
                       return (
                         <div
                           key={`service-payment-${method}`}
@@ -2429,7 +2437,7 @@ export default function FormsManagement() {
                           >
                             {combined.map((fieldKey) => {
                               const descriptor =
-                                SERVICE_PAYMENT_FIELDS.find((entry) => entry.key === fieldKey);
+                                SERVICE_PAYMENT_FIELDS_BASE.find((entry) => entry.key === fieldKey);
                               const fieldLabel = descriptor
                                 ? descriptor.label
                                 : fieldKey.replace(/([A-Z])/g, ' $1');
@@ -2454,8 +2462,10 @@ export default function FormsManagement() {
                                     {fieldLabel}
                                     <span
                                       style={{
-                                        ...BADGE_BASE_STYLE,
-                                        ...(isRequired ? REQUIRED_BADGE_STYLE : OPTIONAL_BADGE_STYLE),
+                                        ...BADGE_BASE_STYLE_BASE,
+                                        ...(isRequired
+                                          ? REQUIRED_BADGE_STYLE_BASE
+                                          : OPTIONAL_BADGE_STYLE_BASE),
                                       }}
                                     >
                                       {isRequired ? 'Required' : 'Optional'}
