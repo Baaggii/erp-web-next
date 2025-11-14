@@ -242,7 +242,13 @@ export default function AsyncSearchSelect({
     });
   }, []);
 
-  async function fetchPage(p = 1, q = '', append = false, signal) {
+  async function fetchPage(
+    p = 1,
+    q = '',
+    append = false,
+    signal,
+    { skipRemoteSearch = false } = {},
+  ) {
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
     setLoading(true);
@@ -255,8 +261,12 @@ export default function AsyncSearchSelect({
         if (keys.includes('company_id') && effectiveCompanyId != null)
           params.set('company_id', effectiveCompanyId);
       }
-      if (q) {
-        params.set('search', q);
+      const normalizedQuery = String(q || '').trim();
+      const normalizedSearch = normalizedQuery.toLowerCase();
+      const shouldUseRemoteSearch =
+        normalizedQuery && !skipRemoteSearch && cols.length > 0;
+      if (shouldUseRemoteSearch) {
+        params.set('search', normalizedQuery);
         params.set('searchColumns', cols.join(','));
       }
       const res = await fetch(
@@ -306,9 +316,10 @@ export default function AsyncSearchSelect({
           };
         });
       }
-      const normalizedQuery = String(q || '').trim().toLowerCase();
-      if (normalizedQuery) {
-        opts = filterOptionsByQuery(opts, normalizedQuery);
+      let filteredOpts = opts;
+      const normalizedFilter = normalizedSearch;
+      if (normalizedFilter) {
+        filteredOpts = filterOptionsByQuery(opts, normalizedFilter);
       }
       const totalCount = Number.isFinite(Number(json.count))
         ? Number(json.count)
@@ -318,15 +329,30 @@ export default function AsyncSearchSelect({
           ? p * PAGE_SIZE < totalCount
           : rows.length >= PAGE_SIZE;
       setHasMore(more);
-      if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
+      if (
+        normalizedFilter &&
+        filteredOpts.length === 0 &&
+        more &&
+        !signal?.aborted
+      ) {
         const nextPage = p + 1;
         setPage(nextPage);
-        return fetchPage(nextPage, q, true, signal);
+        return fetchPage(nextPage, q, true, signal, { skipRemoteSearch });
+      }
+      if (
+        shouldUseRemoteSearch &&
+        normalizedFilter &&
+        filteredOpts.length === 0 &&
+        !skipRemoteSearch &&
+        !signal?.aborted
+      ) {
+        setPage(1);
+        return fetchPage(1, q, false, signal, { skipRemoteSearch: true });
       }
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
-          return normalizeOptions([...base, ...opts]);
+          return normalizeOptions([...base, ...filteredOpts]);
         }
         return normalizeOptions(opts);
       });
