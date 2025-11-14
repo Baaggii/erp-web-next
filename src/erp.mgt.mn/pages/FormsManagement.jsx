@@ -22,11 +22,11 @@ import {
   BADGE_BASE_STYLE as BADGE_BASE_STYLE_BASE,
   REQUIRED_BADGE_STYLE as REQUIRED_BADGE_STYLE_BASE,
   OPTIONAL_BADGE_STYLE as OPTIONAL_BADGE_STYLE_BASE,
-  withEndpointMetadata as withPosApiEndpointMetadata,
-  formatPosApiTypeLabel as formatPosApiTypeLabelText,
-  derivePosApiFeatureMatrix as derivePosApiFeatureMatrixBase,
+  resolveFeatureToggle,
+  withEndpointMetadata,
+  formatPosApiTypeLabel,
+  formatPosApiTypeLabelText,
 } from '../utils/posApiConfig.js';
-
 
 
 function normalizeFormConfig(info = {}) {
@@ -483,34 +483,51 @@ export default function FormsManagement() {
     config.posApiMapping,
   ]);
 
-  const hasConfiguredItemMapping =
-    config.posApiMapping &&
-    typeof config.posApiMapping === 'object' &&
-    (config.posApiMapping.itemFields || config.posApiMapping.itemsField);
+  const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
+  const endpointReceiptItemsEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptItems !== false
+    : endpointSupportsItems;
+  const endpointReceiptTypesEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptTypes !== false
+    : true;
+  const endpointReceiptTaxTypesEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptTaxTypes !== false
+    : true;
+  const endpointPaymentMethodsEnabled = selectedEndpoint
+    ? selectedEndpoint.enablePaymentMethods !== false
+    : true;
 
-  const featureMatrix = derivePosApiFeatureMatrixBase(config, selectedEndpoint, {
-    itemsSourceAvailable: true,
-    itemMappingConfigured: Boolean(hasConfiguredItemMapping),
-  });
-
-  const {
-    endpointSupportsItems,
+  const receiptItemsToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptItems,
+    endpointSupportsItems && endpointReceiptItemsEnabled,
     endpointReceiptItemsEnabled,
+  );
+  const receiptTypesToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptTypes,
     endpointReceiptTypesEnabled,
+    endpointReceiptTypesEnabled,
+  );
+  const receiptTaxTypesToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptTaxTypes,
     endpointReceiptTaxTypesEnabled,
+    endpointReceiptTaxTypesEnabled,
+  );
+  const paymentMethodsToggleValue = resolveFeatureToggle(
+    config.posApiEnablePaymentMethods,
     endpointPaymentMethodsEnabled,
-    receiptItemsToggleValue,
-    receiptTypesToggleValue,
-    receiptTaxTypesToggleValue,
-    paymentMethodsToggleValue,
-    receiptTypesFeatureEnabled,
-    receiptTaxTypesFeatureEnabled,
-    paymentMethodsFeatureEnabled,
-    receiptTypesAllowMultiple,
-    paymentMethodsAllowMultiple,
-  } = featureMatrix;
+    endpointPaymentMethodsEnabled,
+  );
 
   const supportsItems = receiptItemsToggleValue;
+  const receiptTypesFeatureEnabled = config.posApiEnabled && receiptTypesToggleValue;
+  const receiptTaxTypesFeatureEnabled = config.posApiEnabled && receiptTaxTypesToggleValue;
+  const paymentMethodsFeatureEnabled = config.posApiEnabled && paymentMethodsToggleValue;
+  const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
+    ? selectedEndpoint?.allowMultipleReceiptTypes !== false
+    : true;
+  const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
+    ? selectedEndpoint?.allowMultiplePaymentMethods !== false
+    : true;
 
   const endpointReceiptTypes = useMemo(() => {
     if (!receiptTypesFeatureEnabled) return [];
@@ -1676,7 +1693,7 @@ export default function FormsManagement() {
                       <option value="">Use default from environment</option>
                       {receiptTypeUniverse.map((type) => (
                         <option key={`fallback-type-${type}`} value={type}>
-                          {formatPosApiTypeLabelText(type)}
+                          {formatPosApiTypeLabel(type)}
                         </option>
                       ))}
                     </select>

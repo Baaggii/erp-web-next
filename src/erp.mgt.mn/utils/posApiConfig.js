@@ -111,84 +111,6 @@ export const OPTIONAL_BADGE_STYLE = {
   color: '#475569',
 };
 
-export function derivePosApiFeatureMatrix(
-  config = {},
-  endpoint = null,
-  options = {},
-) {
-  const { itemsSourceAvailable = true, itemMappingConfigured = false } = options || {};
-  const posApiEnabled = Boolean(config?.posApiEnabled);
-
-  const endpointSupportsItems = endpoint?.supportsItems === false ? false : true;
-  const endpointReceiptItemsEnabled = endpoint
-    ? endpoint.enableReceiptItems !== false
-    : endpointSupportsItems;
-  const endpointReceiptTypesEnabled = endpoint ? endpoint.enableReceiptTypes !== false : true;
-  const endpointReceiptTaxTypesEnabled = endpoint
-    ? endpoint.enableReceiptTaxTypes !== false
-    : true;
-  const endpointPaymentMethodsEnabled = endpoint
-    ? endpoint.enablePaymentMethods !== false
-    : true;
-
-  const receiptItemsSupported =
-    endpointSupportsItems &&
-    endpointReceiptItemsEnabled &&
-    (itemsSourceAvailable || itemMappingConfigured);
-
-  const receiptItemsToggleValue = resolveFeatureToggle(
-    config?.posApiEnableReceiptItems,
-    receiptItemsSupported,
-    receiptItemsSupported,
-  );
-  const receiptTypesToggleValue = resolveFeatureToggle(
-    config?.posApiEnableReceiptTypes,
-    endpointReceiptTypesEnabled,
-    endpointReceiptTypesEnabled,
-  );
-  const receiptTaxTypesToggleValue = resolveFeatureToggle(
-    config?.posApiEnableReceiptTaxTypes,
-    endpointReceiptTaxTypesEnabled,
-    endpointReceiptTaxTypesEnabled,
-  );
-  const paymentMethodsToggleValue = resolveFeatureToggle(
-    config?.posApiEnablePaymentMethods,
-    endpointPaymentMethodsEnabled,
-    endpointPaymentMethodsEnabled,
-  );
-
-  const receiptItemsFeatureEnabled = posApiEnabled && receiptItemsToggleValue;
-  const receiptTypesFeatureEnabled = posApiEnabled && receiptTypesToggleValue;
-  const receiptTaxTypesFeatureEnabled = posApiEnabled && receiptTaxTypesToggleValue;
-  const paymentMethodsFeatureEnabled = posApiEnabled && paymentMethodsToggleValue;
-
-  return {
-    endpointSupportsItems,
-    endpointReceiptItemsEnabled,
-    endpointReceiptTypesEnabled,
-    endpointReceiptTaxTypesEnabled,
-    endpointPaymentMethodsEnabled,
-    receiptItemsSupported,
-    receiptItemsToggleValue,
-    receiptTypesToggleValue,
-    receiptTaxTypesToggleValue,
-    paymentMethodsToggleValue,
-    receiptItemsFeatureEnabled,
-    receiptTypesFeatureEnabled,
-    receiptTaxTypesFeatureEnabled,
-    paymentMethodsFeatureEnabled,
-    receiptItemsAllowMultiple: receiptItemsFeatureEnabled
-      ? endpoint?.allowMultipleReceiptItems !== false
-      : true,
-    receiptTypesAllowMultiple: receiptTypesFeatureEnabled
-      ? endpoint?.allowMultipleReceiptTypes !== false
-      : true,
-    paymentMethodsAllowMultiple: paymentMethodsFeatureEnabled
-      ? endpoint?.allowMultiplePaymentMethods !== false
-      : true,
-  };
-}
-
 export function resolveFeatureToggle(value, supported, fallback = supported) {
   if (!supported) return false;
   if (typeof value === 'boolean') return value;
@@ -283,4 +205,8 @@ export function formatPosApiTypeLabel(type) {
     STOCK_QR: 'Stock QR Receipt',
   };
   return lookup[type] || type.replace(/_/g, ' ');
+}
+
+export function formatPosApiTypeLabelText(type) {
+  return formatPosApiTypeLabel(type);
 }

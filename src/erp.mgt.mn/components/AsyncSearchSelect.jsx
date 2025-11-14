@@ -36,7 +36,7 @@ export default function AsyncSearchSelect({
   shouldFetch = true,
   ...rest
 }) {
-  const { company, branch, department } = useContext(AuthContext);
+  const { company } = useContext(AuthContext);
   const effectiveCompanyId = companyId ?? company;
   const initialVal =
     typeof value === 'object' && value !== null ? value.value : value || '';
@@ -58,8 +58,25 @@ export default function AsyncSearchSelect({
   const chosenRef = useRef(null);
   const actionRef = useRef(null);
   const [tenantMeta, setTenantMeta] = useState(null);
+  const [remoteDisplayFields, setRemoteDisplayFields] = useState([]);
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
+  const effectiveLabelFields = useMemo(() => {
+    const set = new Set();
+    const addField = (field) => {
+      if (typeof field !== 'string') return;
+      const trimmed = field.trim();
+      if (!trimmed) return;
+      set.add(trimmed);
+    };
+    if (Array.isArray(labelFields) && labelFields.length > 0) {
+      labelFields.forEach(addField);
+    }
+    if (Array.isArray(remoteDisplayFields) && remoteDisplayFields.length > 0) {
+      remoteDisplayFields.forEach(addField);
+    }
+    return Array.from(set);
+  }, [labelFields, remoteDisplayFields]);
   const effectiveSearchColumns = useMemo(() => {
     const columnSet = new Set();
     const addColumn = (col) => {
@@ -76,11 +93,9 @@ export default function AsyncSearchSelect({
     if (typeof idField === 'string') {
       addColumn(idField);
     }
-    if (Array.isArray(labelFields)) {
-      labelFields.forEach(addColumn);
-    }
+    effectiveLabelFields.forEach(addColumn);
     return Array.from(columnSet);
-  }, [searchColumns, searchColumn, idField, labelFields]);
+  }, [searchColumns, searchColumn, idField, effectiveLabelFields]);
 
   const findBestOption = useCallback(
     (query, { allowPartial = true } = {}) => {
@@ -227,7 +242,13 @@ export default function AsyncSearchSelect({
     });
   }, []);
 
-  async function fetchPage(p = 1, q = '', append = false, signal) {
+  async function fetchPage(
+    p = 1,
+    q = '',
+    append = false,
+    signal,
+    { skipRemoteSearch = false } = {},
+  ) {
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
     setLoading(true);
@@ -239,13 +260,13 @@ export default function AsyncSearchSelect({
       if (!isShared) {
         if (keys.includes('company_id') && effectiveCompanyId != null)
           params.set('company_id', effectiveCompanyId);
-        if (keys.includes('branch_id') && branch != null)
-          params.set('branch_id', branch);
-        if (keys.includes('department_id') && department != null)
-          params.set('department_id', department);
       }
-      if (q) {
-        params.set('search', q);
+      const normalizedQuery = String(q || '').trim();
+      const normalizedSearch = normalizedQuery.toLowerCase();
+      const shouldUseRemoteSearch =
+        normalizedQuery && !skipRemoteSearch && cols.length > 0;
+      if (shouldUseRemoteSearch) {
+        params.set('search', normalizedQuery);
         params.set('searchColumns', cols.join(','));
       }
       const res = await fetch(
@@ -261,10 +282,8 @@ export default function AsyncSearchSelect({
           rows,
           idField,
           searchColumn,
-          labelFields,
+          labelFields: effectiveLabelFields,
           companyId: effectiveCompanyId,
-          branchId: branch,
-          departmentId: department,
         });
       } catch {
         const sortedFallbackRows = sortRowsByIndex(rows);
@@ -273,13 +292,13 @@ export default function AsyncSearchSelect({
           const val = r[idField || searchColumn];
           const parts = [];
           if (val !== undefined) parts.push(val);
-          if (labelFields.length === 0) {
+          if (effectiveLabelFields.length === 0) {
             Object.entries(r).forEach(([k, v]) => {
               if (k === idField || k === searchColumn) return;
               if (v !== undefined && parts.length < 3) parts.push(v);
             });
           } else {
-            labelFields.forEach((f) => {
+            effectiveLabelFields.forEach((f) => {
               if (r[f] !== undefined) parts.push(r[f]);
             });
           }
@@ -297,9 +316,10 @@ export default function AsyncSearchSelect({
           };
         });
       }
-      const normalizedQuery = String(q || '').trim().toLowerCase();
-      if (normalizedQuery) {
-        opts = filterOptionsByQuery(opts, normalizedQuery);
+      let filteredOpts = opts;
+      const normalizedFilter = normalizedSearch;
+      if (normalizedFilter) {
+        filteredOpts = filterOptionsByQuery(opts, normalizedFilter);
       }
       const totalCount = Number.isFinite(Number(json.count))
         ? Number(json.count)
@@ -309,26 +329,30 @@ export default function AsyncSearchSelect({
           ? p * PAGE_SIZE < totalCount
           : rows.length >= PAGE_SIZE;
       setHasMore(more);
-      if (normalizedQuery && opts.length === 0 && more && !signal?.aborted) {
+      if (
+        normalizedFilter &&
+        filteredOpts.length === 0 &&
+        more &&
+        !signal?.aborted
+      ) {
         const nextPage = p + 1;
         setPage(nextPage);
-        return fetchPage(nextPage, q, true, signal);
+        return fetchPage(nextPage, q, true, signal, { skipRemoteSearch });
+      }
+      if (
+        shouldUseRemoteSearch &&
+        normalizedFilter &&
+        filteredOpts.length === 0 &&
+        !skipRemoteSearch &&
+        !signal?.aborted
+      ) {
+        setPage(1);
+        return fetchPage(1, q, false, signal, { skipRemoteSearch: true });
       }
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
-          return normalizeOptions([...base, ...opts]);
-        }
-        if (
-          normalizedQuery &&
-          opts.length === 0 &&
-          Array.isArray(prev) &&
-          prev.length > 0
-        ) {
-          const fallback = filterOptionsByQuery(prev, normalizedQuery);
-          if (fallback.length > 0) {
-            return normalizeOptions(fallback);
-          }
+          return normalizeOptions([...base, ...filteredOpts]);
         }
         return normalizeOptions(opts);
       });
@@ -364,6 +388,32 @@ export default function AsyncSearchSelect({
   }, [options, show, input]);
 
   useEffect(() => {
+    setRemoteDisplayFields([]);
+    if (!table) return undefined;
+    const controller = new AbortController();
+    fetch(`/api/display_fields?table=${encodeURIComponent(table)}`, {
+      credentials: 'include',
+      signal: controller.signal,
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!data || typeof data !== 'object') {
+          setRemoteDisplayFields([]);
+          return;
+        }
+        const fields = Array.isArray(data.displayFields)
+          ? data.displayFields.filter((field) => typeof field === 'string' && field.trim())
+          : [];
+        setRemoteDisplayFields(fields.map((field) => field.trim()));
+      })
+      .catch((err) => {
+        if (err?.name === 'AbortError') return;
+        setRemoteDisplayFields([]);
+      });
+    return () => controller.abort();
+  }, [table]);
+
+  useEffect(() => {
     let canceled = false;
     setTenantMeta(null);
     if (!table) return;
@@ -393,8 +443,6 @@ export default function AsyncSearchSelect({
     effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
-    branch,
-    department,
     disabled,
     shouldFetch,
   ]);
@@ -414,8 +462,6 @@ export default function AsyncSearchSelect({
     effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
-    branch,
-    department,
   ]);
 
   useEffect(() => {

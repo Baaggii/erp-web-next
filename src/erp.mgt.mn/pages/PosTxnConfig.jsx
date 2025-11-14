@@ -18,10 +18,56 @@ import {
   BADGE_BASE_STYLE as BADGE_BASE_STYLE_BASE,
   REQUIRED_BADGE_STYLE as REQUIRED_BADGE_STYLE_BASE,
   OPTIONAL_BADGE_STYLE as OPTIONAL_BADGE_STYLE_BASE,
-  withEndpointMetadata as withPosApiEndpointMetadata,
-  formatPosApiTypeLabel as formatPosApiTypeLabelText,
-  derivePosApiFeatureMatrix as derivePosApiFeatureMatrixBase,
+  resolveFeatureToggle,
+  withEndpointMetadata,
+  formatPosApiTypeLabel,
+  formatPosApiTypeLabelText,
 } from '../utils/posApiConfig.js';
+ 
+
+function parseFieldSource(value = '', primaryTableName = '') {
+  if (typeof value !== 'string') {
+    return { table: '', column: '', raw: value ? String(value) : '' };
+  }
+  const trimmed = value.trim();
+  if (!trimmed) return { table: '', column: '', raw: '' };
+  const parts = trimmed.split('.');
+  if (parts.length > 1) {
+    const [first, ...rest] = parts;
+    if (/^[a-zA-Z0-9_]+$/.test(first)) {
+      const normalizedPrimary =
+        typeof primaryTableName === 'string' ? primaryTableName.trim() : '';
+      if (normalizedPrimary && first === normalizedPrimary) {
+        return { table: '', column: rest.join('.'), raw: trimmed };
+      }
+      return { table: first, column: rest.join('.'), raw: trimmed };
+    }
+  }
+  return { table: '', column: trimmed, raw: trimmed };
+}
+
+function buildFieldSource(tableName, columnName) {
+  const tablePart = typeof tableName === 'string' ? tableName.trim() : '';
+  const columnPart = typeof columnName === 'string' ? columnName.trim() : '';
+  if (!columnPart) return '';
+  if (!tablePart) return columnPart;
+  return `${tablePart}.${columnPart}`;
+}
+
+function normaliseEndpointUsage(value) {
+  return typeof value === 'string' && ['transaction', 'info', 'admin'].includes(value)
+    ? value
+    : 'transaction';
+}
+
+function normaliseEndpointList(list, fallback) {
+  const source = Array.isArray(list) ? list : fallback;
+  const cleaned = source
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean);
+  const effective = cleaned.length > 0 ? cleaned : fallback;
+  return Array.from(new Set(effective));
+}
 
 
 
@@ -274,28 +320,55 @@ export default function PosTxnConfig() {
     return false;
   }, [config.posApiMapping]);
 
-  const featureMatrix = derivePosApiFeatureMatrixBase(config, selectedEndpoint, {
-    itemsSourceAvailable: hasItemSourceTables,
-    itemMappingConfigured,
-  });
+  const endpointReceiptItemsEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptItems !== false
+    : endpointSupportsItems;
+  const endpointReceiptTypesEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptTypes !== false
+    : true;
+  const endpointReceiptTaxTypesEnabled = selectedEndpoint
+    ? selectedEndpoint.enableReceiptTaxTypes !== false
+    : true;
+  const endpointPaymentMethodsEnabled = selectedEndpoint
+    ? selectedEndpoint.enablePaymentMethods !== false
+    : true;
 
-  const {
-    endpointReceiptItemsEnabled,
+  const receiptItemsSupported =
+    endpointSupportsItems &&
+    endpointReceiptItemsEnabled &&
+    (hasItemSourceTables || itemMappingConfigured);
+  const receiptItemsToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptItems,
+    receiptItemsSupported,
+    receiptItemsSupported,
+  );
+  const receiptTypesToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptTypes,
     endpointReceiptTypesEnabled,
+    endpointReceiptTypesEnabled,
+  );
+  const receiptTaxTypesToggleValue = resolveFeatureToggle(
+    config.posApiEnableReceiptTaxTypes,
     endpointReceiptTaxTypesEnabled,
+    endpointReceiptTaxTypesEnabled,
+  );
+  const paymentMethodsToggleValue = resolveFeatureToggle(
+    config.posApiEnablePaymentMethods,
     endpointPaymentMethodsEnabled,
-    receiptItemsToggleValue,
-    receiptTypesToggleValue,
-    receiptTaxTypesToggleValue,
-    paymentMethodsToggleValue,
-    receiptTypesFeatureEnabled,
-    receiptTaxTypesFeatureEnabled,
-    paymentMethodsFeatureEnabled,
-    receiptTypesAllowMultiple,
-    paymentMethodsAllowMultiple,
-  } = featureMatrix;
+    endpointPaymentMethodsEnabled,
+  );
 
   const supportsItems = receiptItemsToggleValue;
+
+  const receiptTypesFeatureEnabled = config.posApiEnabled && receiptTypesToggleValue;
+  const receiptTaxTypesFeatureEnabled = config.posApiEnabled && receiptTaxTypesToggleValue;
+  const paymentMethodsFeatureEnabled = config.posApiEnabled && paymentMethodsToggleValue;
+  const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
+    ? selectedEndpoint?.allowMultipleReceiptTypes === true
+    : false;
+  const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
+    ? selectedEndpoint?.allowMultiplePaymentMethods !== false
+    : true;
 
   const endpointReceiptTypes = useMemo(() => {
     if (!receiptTypesFeatureEnabled) return [];
