@@ -186,7 +186,7 @@ export default function PosApiIntegrationSection({
   const receiptTypesFeatureEnabled = config.posApiEnabled && receiptTypesToggleValue;
   const receiptTaxTypesFeatureEnabled = config.posApiEnabled && receiptTaxTypesToggleValue;
   const paymentMethodsFeatureEnabled = config.posApiEnabled && paymentMethodsToggleValue;
-  const supportsItems = receiptItemsToggleValue;
+  const supportsItems = config.posApiEnabled && receiptItemsToggleValue;
 
   const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
     ? selectedEndpoint?.allowMultipleReceiptTypes !== false
