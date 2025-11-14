@@ -195,6 +195,24 @@ export default function PosApiIntegrationSection({
     ? selectedEndpoint?.allowMultiplePaymentMethods !== false
     : true;
 
+  useEffect(() => {
+    if (typeof onPosApiOptionsChange !== 'function') return;
+    onPosApiOptionsChange({
+      transactionEndpointOptions,
+      endpointReceiptTypes,
+      endpointPaymentMethods,
+      receiptTypesAllowMultiple,
+      paymentMethodsAllowMultiple,
+    });
+  }, [
+    onPosApiOptionsChange,
+    transactionEndpointOptions,
+    endpointReceiptTypes,
+    endpointPaymentMethods,
+    receiptTypesAllowMultiple,
+    paymentMethodsAllowMultiple,
+  ]);
+
   const endpointReceiptTypes = useMemo(() => {
     if (!receiptTypesFeatureEnabled) return [];
     if (
@@ -277,27 +295,23 @@ export default function PosApiIntegrationSection({
     return endpointPaymentMethods;
   }, [endpointPaymentMethods, configuredPaymentMethods, paymentMethodsFeatureEnabled]);
 
-  const posApiOptionSnapshot = useMemo(
-    () => ({
-      transactionEndpointOptions,
-      endpointReceiptTypes,
-      endpointPaymentMethods,
-      receiptTypesAllowMultiple,
-      paymentMethodsAllowMultiple,
-    }),
-    [
-      transactionEndpointOptions,
-      endpointReceiptTypes,
-      endpointPaymentMethods,
-      receiptTypesAllowMultiple,
-      paymentMethodsAllowMultiple,
-    ],
-  );
-
   useEffect(() => {
     if (typeof onPosApiOptionsChange !== 'function') return;
-    onPosApiOptionsChange(posApiOptionSnapshot);
-  }, [onPosApiOptionsChange, posApiOptionSnapshot]);
+    onPosApiOptionsChange({
+      transactionEndpointOptions,
+      endpointReceiptTypes,
+      endpointPaymentMethods,
+      receiptTypesAllowMultiple,
+      paymentMethodsAllowMultiple,
+    });
+  }, [
+    onPosApiOptionsChange,
+    transactionEndpointOptions,
+    endpointReceiptTypes,
+    endpointPaymentMethods,
+    receiptTypesAllowMultiple,
+    paymentMethodsAllowMultiple,
+  ]);
 
   const topLevelFieldHints = useMemo(() => {
     const hints = selectedEndpoint?.mappingHints?.topLevelFields;
