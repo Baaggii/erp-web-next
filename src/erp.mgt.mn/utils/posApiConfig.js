@@ -206,3 +206,7 @@ export function formatPosApiTypeLabel(type) {
   };
   return lookup[type] || type.replace(/_/g, ' ');
 }
+
+export function formatPosApiTypeLabelText(type) {
+  return formatPosApiTypeLabel(type);
+}

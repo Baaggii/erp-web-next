@@ -5,40 +5,25 @@ import { refreshModules } from '../hooks/useModules.js';
 import { AuthContext } from '../context/AuthContext.jsx';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import {
-  POS_API_FIELDS,
-  POS_API_ITEM_FIELDS,
-  POS_API_PAYMENT_FIELDS,
-  POS_API_RECEIPT_FIELDS,
-  SERVICE_RECEIPT_FIELDS,
-  SERVICE_PAYMENT_FIELDS,
-  PAYMENT_METHOD_LABELS,
-  DEFAULT_ENDPOINT_RECEIPT_TYPES,
-  DEFAULT_ENDPOINT_TAX_TYPES,
-  DEFAULT_ENDPOINT_PAYMENT_METHODS,
-  BADGE_BASE_STYLE,
-  REQUIRED_BADGE_STYLE,
-  OPTIONAL_BADGE_STYLE,
+  POS_API_FIELDS as POS_API_FIELDS_BASE,
+  POS_API_ITEM_FIELDS as POS_API_ITEM_FIELDS_BASE,
+  POS_API_PAYMENT_FIELDS as POS_API_PAYMENT_FIELDS_BASE,
+  POS_API_RECEIPT_FIELDS as POS_API_RECEIPT_FIELDS_BASE,
+  SERVICE_RECEIPT_FIELDS as SERVICE_RECEIPT_FIELDS_BASE,
+  SERVICE_PAYMENT_FIELDS as SERVICE_PAYMENT_FIELDS_BASE,
+  PAYMENT_METHOD_LABELS as PAYMENT_METHOD_LABELS_BASE,
+  DEFAULT_ENDPOINT_RECEIPT_TYPES as DEFAULT_ENDPOINT_RECEIPT_TYPES_BASE,
+  DEFAULT_ENDPOINT_TAX_TYPES as DEFAULT_ENDPOINT_TAX_TYPES_BASE,
+  DEFAULT_ENDPOINT_PAYMENT_METHODS as DEFAULT_ENDPOINT_PAYMENT_METHODS_BASE,
+  BADGE_BASE_STYLE as BADGE_BASE_STYLE_BASE,
+  REQUIRED_BADGE_STYLE as REQUIRED_BADGE_STYLE_BASE,
+  OPTIONAL_BADGE_STYLE as OPTIONAL_BADGE_STYLE_BASE,
   resolveFeatureToggle,
   withEndpointMetadata,
   formatPosApiTypeLabel,
+  formatPosApiTypeLabelText,
 } from '../utils/posApiConfig.js';
-
-
-const REQUIRED_BADGE_STYLE = {
-  background: '#fee2e2',
-  color: '#b91c1c',
-};
-
-const OPTIONAL_BADGE_STYLE = {
-  background: '#e2e8f0',
-  color: '#475569',
-};
-
-function resolveFeatureToggle(value, supported, fallback = supported) {
-  if (!supported) return false;
-  if (typeof value === 'boolean') return value;
-  return fallback;
-}
+ 
 
 function parseFieldSource(value = '', primaryTableName = '') {
   if (typeof value !== 'string') {
@@ -84,68 +69,6 @@ function normaliseEndpointList(list, fallback) {
   return Array.from(new Set(effective));
 }
 
-function withEndpointMetadata(endpoint) {
-  if (!endpoint || typeof endpoint !== 'object') return endpoint;
-  const usage = normaliseEndpointUsage(endpoint.usage);
-  const isTransaction = usage === 'transaction';
-  const receiptTypesEnabled = isTransaction ? endpoint.enableReceiptTypes !== false : false;
-  const receiptTaxTypesEnabled = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
-  const paymentMethodsEnabled = isTransaction ? endpoint.enablePaymentMethods !== false : false;
-  const receiptItemsEnabled = isTransaction ? endpoint.enableReceiptItems !== false : false;
-  const allowMultipleReceiptTypes = receiptTypesEnabled
-    ? endpoint.allowMultipleReceiptTypes === true
-    : false;
-  const allowMultipleReceiptTaxTypes = receiptTaxTypesEnabled
-    ? endpoint.allowMultipleReceiptTaxTypes !== false
-    : false;
-  const allowMultiplePaymentMethods = paymentMethodsEnabled
-    ? endpoint.allowMultiplePaymentMethods !== false
-    : false;
-  const allowMultipleReceiptItems = receiptItemsEnabled
-    ? endpoint.allowMultipleReceiptItems !== false
-    : false;
-  const receiptTypes = receiptTypesEnabled
-    ? normaliseEndpointList(endpoint.receiptTypes, DEFAULT_ENDPOINT_RECEIPT_TYPES)
-    : [];
-  const receiptTaxTypes = receiptTaxTypesEnabled
-    ? normaliseEndpointList(endpoint.taxTypes || endpoint.receiptTaxTypes, DEFAULT_ENDPOINT_TAX_TYPES)
-    : [];
-  const paymentMethods = paymentMethodsEnabled
-    ? normaliseEndpointList(endpoint.paymentMethods, DEFAULT_ENDPOINT_PAYMENT_METHODS)
-    : [];
-  let supportsItems = false;
-  if (isTransaction) {
-    if (endpoint.supportsItems === false) {
-      supportsItems = false;
-    } else if (endpoint.supportsItems === true) {
-      supportsItems = true;
-    } else {
-      supportsItems = endpoint.posApiType === 'STOCK_QR' ? false : true;
-    }
-  }
-  if (!receiptItemsEnabled) {
-    supportsItems = false;
-  }
-  return {
-    ...endpoint,
-    usage,
-    defaultForForm: isTransaction ? Boolean(endpoint.defaultForForm) : false,
-    supportsMultipleReceipts: isTransaction ? Boolean(endpoint.supportsMultipleReceipts) : false,
-    supportsMultiplePayments: isTransaction ? Boolean(endpoint.supportsMultiplePayments) : false,
-    supportsItems,
-    enableReceiptTypes: receiptTypesEnabled,
-    allowMultipleReceiptTypes,
-    receiptTypes,
-    enableReceiptTaxTypes: receiptTaxTypesEnabled,
-    allowMultipleReceiptTaxTypes,
-    receiptTaxTypes,
-    enablePaymentMethods: paymentMethodsEnabled,
-    allowMultiplePaymentMethods,
-    paymentMethods,
-    enableReceiptItems: receiptItemsEnabled,
-    allowMultipleReceiptItems,
-  };
-}
 
 
 const emptyConfig = {
