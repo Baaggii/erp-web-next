@@ -62,6 +62,11 @@ export default function AsyncSearchSelect({
   const [menuRect, setMenuRect] = useState(null);
   const pendingLookupRef = useRef(null);
   const forcedLocalSearchRef = useRef('');
+  const fetchRequestIdRef = useRef(0);
+  const beginFetchRequest = useCallback(() => {
+    fetchRequestIdRef.current += 1;
+    return fetchRequestIdRef.current;
+  }, []);
   const effectiveLabelFields = useMemo(() => {
     const set = new Set();
     const addField = (field) => {
@@ -248,11 +253,17 @@ export default function AsyncSearchSelect({
     q = '',
     append = false,
     signal,
-    { skipRemoteSearch = false } = {},
+    { skipRemoteSearch = false, requestId: providedRequestId } = {},
   ) {
+    const requestId =
+      typeof providedRequestId === 'number'
+        ? providedRequestId
+        : fetchRequestIdRef.current;
+    const canUpdateState = () =>
+      requestId === fetchRequestIdRef.current && !(signal?.aborted);
     const cols = effectiveSearchColumns;
     if (!table || cols.length === 0) return;
-    setLoading(true);
+    if (canUpdateState()) setLoading(true);
     try {
       const params = new URLSearchParams({ page: p, perPage: PAGE_SIZE });
       const isShared =
@@ -282,6 +293,7 @@ export default function AsyncSearchSelect({
         { credentials: 'include', signal },
       );
       const json = await res.json();
+      if (!canUpdateState()) return;
       const rows = Array.isArray(json.rows) ? json.rows : [];
       let opts;
       try {
@@ -336,6 +348,7 @@ export default function AsyncSearchSelect({
         totalCount != null
           ? p * PAGE_SIZE < totalCount
           : rows.length >= PAGE_SIZE;
+      if (!canUpdateState()) return;
       setHasMore(more);
       if (
         normalizedFilter &&
@@ -353,7 +366,10 @@ export default function AsyncSearchSelect({
         setOptions([]);
         const nextPage = p + 1;
         setPage(nextPage);
-        return fetchPage(nextPage, q, true, signal, { skipRemoteSearch });
+        return fetchPage(nextPage, q, true, signal, {
+          skipRemoteSearch,
+          requestId,
+        });
       }
       if (
         shouldUseRemoteSearch &&
@@ -362,11 +378,16 @@ export default function AsyncSearchSelect({
         !skipRemoteSearch &&
         !signal?.aborted
       ) {
+        if (!canUpdateState()) return;
         forcedLocalSearchRef.current = normalizedSearch;
         setPage(1);
-        return fetchPage(1, q, false, signal, { skipRemoteSearch: true });
+        return fetchPage(1, q, false, signal, {
+          skipRemoteSearch: true,
+          requestId,
+        });
       }
       const nextList = normalizedFilter ? filteredOpts : opts;
+      if (!canUpdateState()) return;
       setOptions((prev) => {
         if (append) {
           const base = Array.isArray(prev) ? prev : [];
@@ -375,9 +396,9 @@ export default function AsyncSearchSelect({
         return normalizeOptions(nextList);
       });
     } catch (err) {
-      if (err.name !== 'AbortError') setOptions([]);
+      if (err.name !== 'AbortError' && canUpdateState()) setOptions([]);
     } finally {
-      setLoading(false);
+      if (canUpdateState()) setLoading(false);
     }
   }
 
@@ -460,7 +481,8 @@ export default function AsyncSearchSelect({
   useEffect(() => {
     if (!shouldFetch || disabled || tenantMeta === null) return;
     const controller = new AbortController();
-    fetchPage(1, '', false, controller.signal);
+    const requestId = beginFetchRequest();
+    fetchPage(1, '', false, controller.signal, { requestId });
     setPage(1);
     return () => controller.abort();
   }, [
@@ -470,6 +492,7 @@ export default function AsyncSearchSelect({
     effectiveCompanyId,
     disabled,
     shouldFetch,
+    beginFetchRequest,
   ]);
 
   useEffect(() => {
@@ -477,7 +500,8 @@ export default function AsyncSearchSelect({
     const controller = new AbortController();
     const q = String(input || '').trim();
     setPage(1);
-    fetchPage(1, q, false, controller.signal);
+    const requestId = beginFetchRequest();
+    fetchPage(1, q, false, controller.signal, { requestId });
     return () => controller.abort();
   }, [
     show,
@@ -487,6 +511,7 @@ export default function AsyncSearchSelect({
     effectiveSearchColumns,
     tenantMeta,
     effectiveCompanyId,
+    beginFetchRequest,
   ]);
 
   useEffect(() => {
@@ -598,7 +623,11 @@ export default function AsyncSearchSelect({
                     const next = page + 1;
                     setPage(next);
                     const controller = new AbortController();
-                    fetchPage(next, q, true, controller.signal);
+                    const requestId =
+                      fetchRequestIdRef.current || beginFetchRequest();
+                    fetchPage(next, q, true, controller.signal, {
+                      requestId,
+                    });
                   }
                 }}
                 style={{
