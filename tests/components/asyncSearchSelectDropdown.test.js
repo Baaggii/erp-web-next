@@ -51,10 +51,12 @@ async function flushEffects() {
   });
 }
 
+const PAGE_SIZE = 50;
+
 if (!haveReact) {
   test('AsyncSearchSelect sends search parameters with queries', { skip: true }, () => {});
   test('AsyncSearchSelect fetches additional pages when needed', { skip: true }, () => {});
-  test('AsyncSearchSelect falls back to existing options when remote search is empty', { skip: true }, () => {});
+  test('AsyncSearchSelect hides stale options when remote search is empty', { skip: true }, () => {});
 } else {
   test('AsyncSearchSelect sends search parameters with queries', async (t) => {
     const restoreDom = setupDom();
@@ -64,6 +66,12 @@ if (!haveReact) {
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
       requests.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return {
+          ok: true,
+          json: async () => ({ idField: 'id', displayFields: ['name', 'sku'] }),
+        };
+      }
       if (url.startsWith('/api/tenant_tables/items')) {
         return { ok: true, json: async () => ({ tenantKeys: [] }) };
       }
@@ -166,13 +174,272 @@ if (!haveReact) {
     assert.ok(searchRequest, 'expected a fetch call with search parameters');
     const parsed = new URL(searchRequest, 'http://localhost');
     assert.equal(parsed.searchParams.get('search'), 'Alpha');
-    assert.equal(parsed.searchParams.get('searchColumns'), 'code,id,name');
+    assert.equal(parsed.searchParams.get('searchColumns'), 'code,id,name,sku');
 
     await act(async () => {
       root.unmount();
     });
     container.remove();
   });
+
+  test(
+    'AsyncSearchSelect falls back to client filtering when server search misses display labels',
+    async (t) => {
+      const restoreDom = setupDom();
+      const origFetch = global.fetch;
+      const requests = [];
+
+      const dataset = [
+        { id: 1, code: 'AA-001', description: 'Alpha Item' },
+        { id: 2, code: 'BB-002', description: 'Beta Bundle' },
+        { id: 3, code: 'CC-003', description: 'Gamma Pack' },
+      ];
+
+      global.fetch = async (input) => {
+        const url = typeof input === 'string' ? input : input?.url || '';
+        requests.push(url);
+        if (url.startsWith('/api/display_fields?table=items')) {
+          return {
+            ok: true,
+            json: async () => ({ idField: 'id', displayFields: ['code', 'description'] }),
+          };
+        }
+        if (url.startsWith('/api/tenant_tables/items')) {
+          return { ok: true, json: async () => ({ tenantKeys: [] }) };
+        }
+        if (url.startsWith('/api/tables/items?')) {
+          const parsed = new URL(url, 'http://localhost');
+          const search = parsed.searchParams.get('search') || '';
+          const page = Number(parsed.searchParams.get('page') || 1);
+          if (search) {
+            return {
+              ok: true,
+              json: async () => ({ rows: [], count: 0 }),
+            };
+          }
+          const start = (page - 1) * PAGE_SIZE;
+          const rows = dataset.slice(start, start + PAGE_SIZE);
+          return {
+            ok: true,
+            json: async () => ({ rows, count: dataset.length }),
+          };
+        }
+        return { ok: true, json: async () => ({}) };
+      };
+
+      t.after(() => {
+        global.fetch = origFetch;
+        restoreDom();
+      });
+
+      const { default: AsyncSearchSelect } = await t.mock.import(
+        '../../src/erp.mgt.mn/components/AsyncSearchSelect.jsx',
+        {
+          '../context/AuthContext.jsx': {
+            AuthContext: React.createContext({ company: 7 }),
+          },
+          '../utils/tenantKeys.js': { getTenantKeyList: () => [] },
+          '../utils/buildAsyncSelectOptions.js': {
+            buildOptionsForRows: async ({ rows, idField, labelFields }) =>
+              rows.map((row) => ({
+                value: row[idField],
+                label:
+                  labelFields
+                    .map((field) => row[field])
+                    .filter((part) => part != null && part !== '')
+                    .join(' - ') || String(row[idField]),
+              })),
+          },
+          'react-dom': { createPortal: (node) => node },
+        },
+      );
+
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const root = createRoot(container);
+
+      await act(async () => {
+        root.render(
+          React.createElement(AsyncSearchSelect, {
+            table: 'items',
+            searchColumn: 'code',
+            searchColumns: ['code'],
+            labelFields: ['description'],
+            idField: 'id',
+            value: '',
+          }),
+        );
+      });
+
+      await flushEffects();
+      await flushEffects();
+
+      requests.length = 0;
+
+      const input = container.querySelector('input');
+      assert.ok(input, 'input should be present');
+
+      await act(async () => {
+        input.dispatchEvent(new window.Event('focus', { bubbles: true }));
+      });
+
+      input.value = 'Beta';
+      await act(async () => {
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        input.dispatchEvent(new window.Event('change', { bubbles: true }));
+      });
+
+      await flushEffects();
+      await flushEffects();
+      await flushEffects();
+
+      const searchRequest = requests.find((url) => url.includes('search=Beta'));
+      assert.ok(searchRequest, 'expected remote search attempt');
+
+      const unfilteredRequests = requests.filter((url) =>
+        url.startsWith('/api/tables/items?') && !url.includes('search='),
+      );
+      assert.ok(
+        unfilteredRequests.length >= 1,
+        'expected fallback fetch without search parameters',
+      );
+
+      const items = Array.from(document.querySelectorAll('li'));
+      assert.ok(
+        items.some((node) => node.textContent.includes('Beta Bundle')),
+        'expected dropdown to include the label text from display fields',
+      );
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    },
+  );
+
+  test(
+    'AsyncSearchSelect removes stale options when fallback pagination finds matches later',
+    async (t) => {
+      const restoreDom = setupDom();
+      const origFetch = global.fetch;
+
+      const dataset = Array.from({ length: PAGE_SIZE * 2 }, (_, idx) => ({
+        id: idx + 1,
+        code: `CODE-${idx + 1}`,
+        description: idx === PAGE_SIZE ? 'Target Person' : `Item ${idx + 1}`,
+      }));
+
+      global.fetch = async (input) => {
+        const url = typeof input === 'string' ? input : input?.url || '';
+        if (url.startsWith('/api/display_fields?table=items')) {
+          return {
+            ok: true,
+            json: async () => ({ idField: 'id', displayFields: ['code', 'description'] }),
+          };
+        }
+        if (url.startsWith('/api/tenant_tables/items')) {
+          return { ok: true, json: async () => ({ tenantKeys: [] }) };
+        }
+        if (url.startsWith('/api/tables/items?')) {
+          const parsed = new URL(url, 'http://localhost');
+          const search = parsed.searchParams.get('search') || '';
+          const page = Number(parsed.searchParams.get('page') || 1);
+          if (search) {
+            return { ok: true, json: async () => ({ rows: [], count: 0 }) };
+          }
+          const start = (page - 1) * PAGE_SIZE;
+          return {
+            ok: true,
+            json: async () => ({
+              rows: dataset.slice(start, start + PAGE_SIZE),
+              count: dataset.length,
+            }),
+          };
+        }
+        return { ok: true, json: async () => ({}) };
+      };
+
+      t.after(() => {
+        global.fetch = origFetch;
+        restoreDom();
+      });
+
+      const { default: AsyncSearchSelect } = await t.mock.import(
+        '../../src/erp.mgt.mn/components/AsyncSearchSelect.jsx',
+        {
+          '../context/AuthContext.jsx': {
+            AuthContext: React.createContext({ company: 4 }),
+          },
+          '../utils/tenantKeys.js': { getTenantKeyList: () => [] },
+          '../utils/buildAsyncSelectOptions.js': {
+            buildOptionsForRows: async ({ rows, idField, labelFields }) =>
+              rows.map((row) => ({
+                value: row[idField],
+                label:
+                  labelFields
+                    .map((field) => row[field])
+                    .filter((part) => part != null && part !== '')
+                    .join(' - ') || String(row[idField]),
+              })),
+          },
+          'react-dom': { createPortal: (node) => node },
+        },
+      );
+
+      const container = document.createElement('div');
+      document.body.appendChild(container);
+      const root = createRoot(container);
+
+      await act(async () => {
+        root.render(
+          React.createElement(AsyncSearchSelect, {
+            table: 'items',
+            searchColumn: 'code',
+            searchColumns: ['code'],
+            labelFields: ['code', 'description'],
+            idField: 'id',
+            value: '',
+          }),
+        );
+      });
+
+      await flushEffects();
+      await flushEffects();
+
+      const input = container.querySelector('input');
+      assert.ok(input, 'input should exist');
+
+      await act(async () => {
+        input.dispatchEvent(new window.Event('focus', { bubbles: true }));
+      });
+
+      input.value = 'Target';
+      await act(async () => {
+        input.dispatchEvent(new window.Event('input', { bubbles: true }));
+        input.dispatchEvent(new window.Event('change', { bubbles: true }));
+      });
+
+      await flushEffects();
+      await flushEffects();
+      await flushEffects();
+
+      const items = Array.from(document.querySelectorAll('li'));
+      assert.equal(
+        items.length,
+        1,
+        'expected only the matching option to remain after fallback pagination',
+      );
+      assert.ok(
+        items[0].textContent.includes('Target Person'),
+        'expected dropdown to show the matching label',
+      );
+
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    },
+  );
 
   test('AsyncSearchSelect fetches additional pages when needed', async (t) => {
     const restoreDom = setupDom();
@@ -182,6 +449,12 @@ if (!haveReact) {
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
       requests.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return {
+          ok: true,
+          json: async () => ({ idField: 'id', displayFields: ['code'] }),
+        };
+      }
       if (url.startsWith('/api/tenant_tables/items')) {
         return { ok: true, json: async () => ({ tenantKeys: [] }) };
       }
@@ -292,7 +565,7 @@ if (!haveReact) {
     container.remove();
   });
 
-  test('AsyncSearchSelect falls back to existing options when remote search is empty', async (t) => {
+  test('AsyncSearchSelect hides stale options when remote search is empty', async (t) => {
     const restoreDom = setupDom();
     const origFetch = global.fetch;
     const requests = [];
@@ -300,6 +573,12 @@ if (!haveReact) {
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
       requests.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return {
+          ok: true,
+          json: async () => ({ idField: 'id', displayFields: [] }),
+        };
+      }
       if (url.startsWith('/api/tenant_tables/items')) {
         return { ok: true, json: async () => ({ tenantKeys: [] }) };
       }
@@ -388,8 +667,7 @@ if (!haveReact) {
     assert.equal(searchRequests.length, 1);
 
     const listItems = Array.from(container.querySelectorAll('li'));
-    assert.ok(listItems.length > 0, 'should display existing options');
-    assert.ok(listItems.some((li) => li.textContent.includes('Alpha')));
+    assert.equal(listItems.length, 0, 'should not display stale options');
 
     await act(async () => {
       root.unmount();
