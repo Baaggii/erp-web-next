@@ -743,6 +743,8 @@ export default function PosApiIntegrationSection({
           </div>
         </>
       )}
+      {config.posApiEnabled && (
+        <>
       {config.posApiEnabled && selectedEndpoint && (
         <div
           style={{
@@ -1364,6 +1366,8 @@ export default function PosApiIntegrationSection({
             </div>
           </div>
         )}
+        </>
+      )}
       </div>
     </section>
   );
