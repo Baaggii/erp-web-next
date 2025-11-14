@@ -64,6 +64,12 @@ if (!haveReact) {
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
       requests.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return {
+          ok: true,
+          json: async () => ({ idField: 'id', displayFields: ['name', 'sku'] }),
+        };
+      }
       if (url.startsWith('/api/tenant_tables/items')) {
         return { ok: true, json: async () => ({ tenantKeys: [] }) };
       }
@@ -166,7 +172,7 @@ if (!haveReact) {
     assert.ok(searchRequest, 'expected a fetch call with search parameters');
     const parsed = new URL(searchRequest, 'http://localhost');
     assert.equal(parsed.searchParams.get('search'), 'Alpha');
-    assert.equal(parsed.searchParams.get('searchColumns'), 'code,id,name');
+    assert.equal(parsed.searchParams.get('searchColumns'), 'code,id,name,sku');
 
     await act(async () => {
       root.unmount();
@@ -182,6 +188,12 @@ if (!haveReact) {
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
       requests.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return {
+          ok: true,
+          json: async () => ({ idField: 'id', displayFields: ['code'] }),
+        };
+      }
       if (url.startsWith('/api/tenant_tables/items')) {
         return { ok: true, json: async () => ({ tenantKeys: [] }) };
       }
@@ -300,6 +312,12 @@ if (!haveReact) {
     global.fetch = async (input) => {
       const url = typeof input === 'string' ? input : input?.url || '';
       requests.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return {
+          ok: true,
+          json: async () => ({ idField: 'id', displayFields: [] }),
+        };
+      }
       if (url.startsWith('/api/tenant_tables/items')) {
         return { ok: true, json: async () => ({ tenantKeys: [] }) };
       }
