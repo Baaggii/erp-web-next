@@ -208,6 +208,13 @@ export default function FormsManagement() {
   };
 
   const [config, setConfig] = useState(() => normalizeFormConfig());
+  const [posApiOptionSnapshot, setPosApiOptionSnapshot] = useState({
+    transactionEndpointOptions: [],
+    endpointReceiptTypes: [],
+    endpointPaymentMethods: [],
+    receiptTypesAllowMultiple: true,
+    paymentMethodsAllowMultiple: true,
+  });
 
   const itemFieldMapping =
     config.posApiMapping &&
@@ -675,6 +682,14 @@ export default function FormsManagement() {
             ),
           )
         : [];
+    const {
+      transactionEndpointOptions = [],
+      endpointReceiptTypes = [],
+      endpointPaymentMethods = [],
+      receiptTypesAllowMultiple = true,
+      paymentMethodsAllowMultiple = true,
+    } = posApiOptionSnapshot || {};
+
     const cfg = {
       ...config,
       moduleKey,
@@ -1130,6 +1145,7 @@ export default function FormsManagement() {
               receiptGroupMapping={receiptGroupMapping}
               paymentMethodMapping={paymentMethodMapping}
               onEnsureColumnsLoaded={ensureColumnsLoaded}
+              onPosApiOptionsChange={setPosApiOptionSnapshot}
             />
 
             <section style={sectionStyle}>
