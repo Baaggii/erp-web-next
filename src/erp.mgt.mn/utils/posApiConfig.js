@@ -195,6 +195,10 @@ export function withEndpointMetadata(endpoint) {
   };
 }
 
+export function withPosApiEndpointMetadata(endpoint) {
+  return withEndpointMetadata(endpoint);
+}
+
 export function formatPosApiTypeLabel(type) {
   if (!type) return '';
   const lookup = {

@@ -19,7 +19,7 @@ import {
   REQUIRED_BADGE_STYLE as REQUIRED_BADGE_STYLE_BASE,
   OPTIONAL_BADGE_STYLE as OPTIONAL_BADGE_STYLE_BASE,
   resolveFeatureToggle,
-  withEndpointMetadata,
+  withPosApiEndpointMetadata,
   formatPosApiTypeLabel,
   formatPosApiTypeLabelText,
 } from '../utils/posApiConfig.js';
@@ -283,6 +283,8 @@ export default function PosTxnConfig() {
     config.posApiEndpointMeta,
     config.posApiMapping,
   ]);
+
+  const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
 
   const hasItemSourceTables = useMemo(() => {
     const master = typeof config.masterTable === 'string' ? config.masterTable.trim() : '';
