@@ -236,6 +236,12 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   };
   const errors = [];
 
+  if (selectedEndpointIds.length > 0 && infoEndpoints.length === 0) {
+    const error = new Error('No POSAPI info endpoints matched the selected filters');
+    error.details = { ...summary, errors, durationMs: 0, timestamp: startedAt.toISOString() };
+    throw error;
+  }
+
   for (const endpoint of infoEndpoints) {
     try {
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
