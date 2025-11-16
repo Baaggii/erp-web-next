@@ -3948,41 +3948,6 @@ const TableManager = forwardRef(function TableManager({
         if (!entry) return;
         const temporaryId = getTemporaryId(entry);
         if (!temporaryId) return;
-
-        const entryTable =
-          entry?.table || entry?.tableName || entry?.table_name || entry?.formName;
-        const normalizedEntryTable = entryTable ? String(entryTable).toLowerCase() : '';
-        const normalizedCurrentTable = table ? String(table).toLowerCase() : '';
-
-        if (
-          normalizedEntryTable &&
-          normalizedCurrentTable &&
-          normalizedEntryTable !== normalizedCurrentTable
-        ) {
-          if (
-            typeof window !== 'undefined' &&
-            typeof window.showTemporaryTransactionsUI === 'function'
-          ) {
-            window.showTemporaryTransactionsUI({
-              scope: temporaryScope,
-              table: entryTable,
-              temporaryId,
-              id: temporaryId,
-              key: `temporary-promote-${temporaryId}-${Date.now()}`,
-            });
-            return;
-          }
-
-          addToast(
-            t(
-              'temporary_promotion_wrong_table',
-              'Open the corresponding transaction form to promote this entry.',
-            ),
-            'warning',
-          );
-          return;
-        }
-
         if (resetQueue) {
           setTemporaryPromotionQueue([]);
         }
@@ -3993,12 +3958,11 @@ const TableManager = forwardRef(function TableManager({
         setEditing(normalizedValues);
         setGridRows(sanitizedRows);
         setIsAdding(true);
-        setRequestType('temporary-promote');
-        setShowTemporaryModal(false);
+      setRequestType('temporary-promote');
+      setShowTemporaryModal(false);
         setShowForm(true);
       },
       [
-        addToast,
         buildTemporaryFormState,
         ensureColumnMeta,
         setEditing,
@@ -4006,12 +3970,9 @@ const TableManager = forwardRef(function TableManager({
         setIsAdding,
         setRequestType,
         setShowTemporaryModal,
-        setShowForm,
-        setTemporaryPromotionQueue,
-        table,
-        t,
-        temporaryScope,
-      ],
+      setShowForm,
+      setTemporaryPromotionQueue,
+    ],
     );
 
     const openTemporaryDraft = useCallback(
