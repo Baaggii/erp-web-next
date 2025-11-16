@@ -4,6 +4,22 @@ import { API_BASE } from '../utils/apiBase.js';
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 30;
 const SCOPES = ['created', 'review'];
+const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
+
+function readCachedTemporaryFilter() {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = window.localStorage.getItem(TEMPORARY_FILTER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.field && parsed.value !== undefined && parsed.value !== null) {
+      return { field: parsed.field, value: parsed.value };
+    }
+  } catch (err) {
+    console.error('Failed to read cached temporary transaction filter', err);
+  }
+  return null;
+}
 
 function createInitialCounts() {
   return {
@@ -112,7 +128,15 @@ export default function useTemporaryNotificationCounts(empid) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE}/transaction_temporaries/summary`, {
+      const params = new URLSearchParams();
+      const cachedFilter = readCachedTemporaryFilter();
+      if (cachedFilter?.field && cachedFilter?.value) {
+        params.set('transactionTypeField', cachedFilter.field);
+        params.set('transactionTypeValue', cachedFilter.value);
+      }
+      const res = await fetch(`${API_BASE}/transaction_temporaries/summary${
+        params.size > 0 ? `?${params.toString()}` : ''
+      }`, {
         credentials: 'include',
         skipLoader: true,
       });
@@ -185,6 +209,11 @@ export default function useTemporaryNotificationCounts(empid) {
   const fetchScopeEntries = useCallback(async (scope, limit = 5) => {
     if (!SCOPES.includes(scope)) return [];
     const params = new URLSearchParams({ scope });
+    const cachedFilter = readCachedTemporaryFilter();
+    if (cachedFilter?.field && cachedFilter?.value) {
+      params.set('transactionTypeField', cachedFilter.field);
+      params.set('transactionTypeValue', cachedFilter.value);
+    }
     try {
       const res = await fetch(`${API_BASE}/transaction_temporaries?${params.toString()}`, {
         credentials: 'include',
