@@ -514,36 +514,122 @@ export default function NotificationsPage() {
     [handleTemporarySeen, navigate],
   );
 
-  const renderRequestItem = (req, tab) => {
-    const created = req?.created_at || req?.createdAt;
-    const requester = req?.emp_name || req?.empid || req?.emp_id;
-    const summary = req?.request_reason || req?.notes || '';
+  const normalizeRequestDate = useCallback(
+    (date) => {
+      if (!date) {
+        return { key: 'unknown', label: t('temporary_date_unknown', 'Unknown'), value: 0 };
+      }
+      const parsed = new Date(date);
+      if (Number.isNaN(parsed.getTime())) {
+        const str = typeof date === 'string' ? date : '';
+        const match = str.match(/^(\d{4}-\d{2}-\d{2})/);
+        if (match) {
+          const label = match[1];
+          return { key: label, label, value: new Date(label).getTime() || 0 };
+        }
+        return { key: 'unknown', label: t('temporary_date_unknown', 'Unknown'), value: 0 };
+      }
+      const label = formatTimestamp(parsed).slice(0, 10);
+      return { key: label, label, value: parsed.getTime() };
+    },
+    [t],
+  );
+
+  const normalizeRequestType = (req) =>
+    req?.request_type ? req.request_type.replace(/_/g, ' ') : t('request', 'request');
+
+  const getRequester = (req) => req?.emp_name || req?.empid || req?.emp_id || '';
+
+  const getResponder = (req) =>
+    req?.response_empid || req?.responseEmpid || req?.response_emp_id || req?.responded_by || '';
+
+  const normalizeRequestStatus = (req, fallback) => {
+    const statusRaw = req?.status || req?.response_status || fallback;
+    return statusRaw ? String(statusRaw).trim().toLowerCase() : fallback || 'pending';
+  };
+
+  const groupRequests = useCallback(
+    (entries, { scope }) => {
+      if (!Array.isArray(entries) || !entries.length) return [];
+      const map = new Map();
+      entries.forEach((req) => {
+        if (!req) return;
+        const type = normalizeRequestType(req);
+        const requester = scope === 'response' ? getResponder(req) : getRequester(req);
+        const status = scope === 'response' ? normalizeRequestStatus(req, 'pending') : 'pending';
+        const dateValue =
+          scope === 'response'
+            ? req?.responded_at ||
+              req?.respondedAt ||
+              req?.updated_at ||
+              req?.updatedAt ||
+              req?.created_at
+            : req?.created_at || req?.createdAt;
+        const date = normalizeRequestDate(dateValue);
+        const table = req?.table_name || '';
+        const key = `${type}|${requester}|${date.key}|${status}|${table}`;
+        const existing = map.get(key) || {
+          type,
+          requester,
+          status,
+          date,
+          table,
+          entries: [],
+          latest: date.value,
+        };
+        existing.entries.push(req);
+        existing.latest = Math.max(existing.latest, date.value);
+        map.set(key, existing);
+      });
+      return Array.from(map.values()).sort((a, b) => b.latest - a.latest);
+    },
+    [normalizeRequestDate],
+  );
+
+  const renderGroupedRequest = (group, tab) => {
+    const primary = group.entries[0];
+    const summary = primary?.request_reason || primary?.notes || '';
     return (
-      <li key={req.request_id} style={styles.listItem}>
+      <li
+        key={`${tab}-${group.type}-${group.requester}-${group.date.key}-${group.status}-${group.table}`}
+        style={styles.listItem}
+      >
         <div style={styles.listBody}>
-          <div style={styles.listTitle}>
-            {req.request_type ? req.request_type.replace(/_/g, ' ') : 'request'}
+          <div style={styles.listTitleRow}>
+            <span style={styles.listTitle}>{group.type}</span>
+            <span style={styles.groupCountBadge}>
+              {t('notifications_group_count', 'Count')}: {group.entries.length}
+            </span>
           </div>
           <div style={styles.listMeta}>
-            {requester && (
+            {group.requester && (
               <span>
-                {t('notifications_requested_by', 'Requested by')}: {requester}
+                {t('notifications_requested_by', 'Requested by')}: {group.requester}
               </span>
             )}
-            {created && (
+            {group.date?.label && (
               <span>
-                {t('notifications_requested_at', 'Created')}: {formatTimestamp(created)}
+                {t('notifications_requested_at', 'Created')}: {group.date.label}
               </span>
             )}
-            {req.table_name && (
+            {group.table && (
               <span>
-                {t('notifications_table', 'Table')}: {req.table_name}
+                {t('notifications_table', 'Table')}: {group.table}
               </span>
+            )}
+          </div>
+          <div style={styles.listSummary}>
+            {t(
+              'notifications_group_summary',
+              '{{count}} transactions grouped by user, type, date, and status',
+              {
+                count: group.entries.length,
+              },
             )}
           </div>
           {summary && <div style={styles.listSummary}>{summary}</div>}
         </div>
-        <button style={styles.listAction} onClick={() => openRequest(req, tab)}>
+        <button style={styles.listAction} onClick={() => openRequest(primary, tab, group.status)}>
           {t('notifications_view_request', 'View request')}
         </button>
       </li>
@@ -568,48 +654,51 @@ export default function NotificationsPage() {
     return { ...base, backgroundColor: '#e5e7eb', color: '#374151' };
   }, []);
 
-  const renderResponseItem = (req) => {
-    const statusRaw = req?.status || req?.response_status;
-    const status = statusRaw ? String(statusRaw).trim().toLowerCase() : '';
-    const responded = req?.responded_at || req?.respondedAt;
-    const responder =
-      req?.response_empid || req?.responseEmpid || req?.response_emp_id || req?.responded_by;
-    const summary = req?.response_notes || req?.responseNotes;
-    const created = req?.created_at || req?.createdAt;
+  const renderGroupedResponse = (group) => {
+    const primary = group.entries[0];
+    const summary = primary?.response_notes || primary?.responseNotes || primary?.request_reason || '';
     return (
-      <li key={`${req.request_id}-${status || 'response'}`} style={styles.listItem}>
+      <li
+        key={`response-${group.type}-${group.requester}-${group.date.key}-${group.status}-${group.table}`}
+        style={styles.listItem}
+      >
         <div style={styles.listBody}>
           <div style={styles.listTitleRow}>
-            <span style={styles.listTitle}>
-              {req.request_type ? req.request_type.replace(/_/g, ' ') : 'request'}
+            <span style={styles.listTitle}>{group.type}</span>
+            {group.status && <span style={getStatusPillStyle(group.status)}>{group.status}</span>}
+            <span style={styles.groupCountBadge}>
+              {t('notifications_group_count', 'Count')}: {group.entries.length}
             </span>
-            {status && <span style={getStatusPillStyle(status)}>{status}</span>}
           </div>
           <div style={styles.listMeta}>
-            {responder && (
+            {group.requester && (
               <span>
-                {t('notifications_responder', 'Responder')}: {responder}
+                {t('notifications_responder', 'Responder')}: {group.requester}
               </span>
             )}
-            {responded && (
+            {group.date?.label && (
               <span>
-                {t('notifications_responded_at', 'Responded')}: {formatTimestamp(responded)}
+                {t('notifications_responded_at', 'Responded')}: {group.date.label}
               </span>
             )}
-            {!responded && created && (
+            {group.table && (
               <span>
-                {t('notifications_requested_at', 'Created')}: {formatTimestamp(created)}
+                {t('notifications_table', 'Table')}: {group.table}
               </span>
             )}
-            {req.table_name && (
-              <span>
-                {t('notifications_table', 'Table')}: {req.table_name}
-              </span>
+          </div>
+          <div style={styles.listSummary}>
+            {t(
+              'notifications_group_summary',
+              '{{count}} transactions grouped by user, type, date, and status',
+              {
+                count: group.entries.length,
+              },
             )}
           </div>
           {summary && <div style={styles.listSummary}>{summary}</div>}
         </div>
-        <button style={styles.listAction} onClick={() => openRequest(req, 'outgoing', status)}>
+        <button style={styles.listAction} onClick={() => openRequest(primary, 'outgoing', group.status)}>
           {t('notifications_view_request', 'View request')}
         </button>
       </li>
@@ -663,9 +752,39 @@ export default function NotificationsPage() {
     [combineResponses, reportState.responses],
   );
 
+  const reportIncomingGroups = useMemo(
+    () => groupRequests(reportState.incoming, { scope: 'request' }),
+    [groupRequests, reportState.incoming],
+  );
+
+  const reportOutgoingGroups = useMemo(
+    () => groupRequests(reportState.outgoing, { scope: 'request' }),
+    [groupRequests, reportState.outgoing],
+  );
+
+  const reportResponseGroups = useMemo(
+    () => groupRequests(reportResponses, { scope: 'response' }),
+    [groupRequests, reportResponses],
+  );
+
   const changeResponses = useMemo(
     () => combineResponses(changeState.responses),
     [combineResponses, changeState.responses],
+  );
+
+  const changeIncomingGroups = useMemo(
+    () => groupRequests(changeState.incoming, { scope: 'request' }),
+    [groupRequests, changeState.incoming],
+  );
+
+  const changeOutgoingGroups = useMemo(
+    () => groupRequests(changeState.outgoing, { scope: 'request' }),
+    [groupRequests, changeState.outgoing],
+  );
+
+  const changeResponseGroups = useMemo(
+    () => groupRequests(changeResponses, { scope: 'response' }),
+    [groupRequests, changeResponses],
   );
 
   const normalizeTemporaryStatus = useCallback(
@@ -848,11 +967,11 @@ export default function NotificationsPage() {
           <div style={styles.columnLayout}>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_incoming', 'Incoming')}</h3>
-              {reportState.incoming.length === 0 ? (
+              {reportIncomingGroups.length === 0 ? (
                 <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
               ) : (
                 <ul style={styles.list}>
-                  {reportState.incoming.map((req) => renderRequestItem(req, 'incoming'))}
+                  {reportIncomingGroups.map((group) => renderGroupedRequest(group, 'incoming'))}
                 </ul>
               )}
             </div>
@@ -862,11 +981,13 @@ export default function NotificationsPage() {
                 <h4 style={styles.subSectionTitle}>
                   {t('notifications_requests_section', 'Requests')}
                 </h4>
-                {reportState.outgoing.length === 0 ? (
+                {reportOutgoingGroups.length === 0 ? (
                   <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
                 ) : (
                   <ul style={styles.list}>
-                    {reportState.outgoing.map((req) => renderRequestItem(req, 'outgoing'))}
+                    {reportOutgoingGroups.map((group) =>
+                      renderGroupedRequest(group, 'outgoing'),
+                    )}
                   </ul>
                 )}
               </div>
@@ -874,11 +995,11 @@ export default function NotificationsPage() {
                 <h4 style={styles.subSectionTitle}>
                   {t('notifications_responses_section', 'Responses')}
                 </h4>
-                {reportResponses.length === 0 ? (
+                {reportResponseGroups.length === 0 ? (
                   <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
                 ) : (
                   <ul style={styles.list}>
-                    {reportResponses.map((req) => renderResponseItem(req))}
+                    {reportResponseGroups.map((group) => renderGroupedResponse(group))}
                   </ul>
                 )}
               </div>
@@ -915,11 +1036,11 @@ export default function NotificationsPage() {
           <div style={styles.columnLayout}>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_incoming', 'Incoming')}</h3>
-              {changeState.incoming.length === 0 ? (
+              {changeIncomingGroups.length === 0 ? (
                 <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
               ) : (
                 <ul style={styles.list}>
-                  {changeState.incoming.map((req) => renderRequestItem(req, 'incoming'))}
+                  {changeIncomingGroups.map((group) => renderGroupedRequest(group, 'incoming'))}
                 </ul>
               )}
             </div>
@@ -929,11 +1050,13 @@ export default function NotificationsPage() {
                 <h4 style={styles.subSectionTitle}>
                   {t('notifications_requests_section', 'Requests')}
                 </h4>
-                {changeState.outgoing.length === 0 ? (
+                {changeOutgoingGroups.length === 0 ? (
                   <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
                 ) : (
                   <ul style={styles.list}>
-                    {changeState.outgoing.map((req) => renderRequestItem(req, 'outgoing'))}
+                    {changeOutgoingGroups.map((group) =>
+                      renderGroupedRequest(group, 'outgoing'),
+                    )}
                   </ul>
                 )}
               </div>
@@ -941,11 +1064,11 @@ export default function NotificationsPage() {
                 <h4 style={styles.subSectionTitle}>
                   {t('notifications_responses_section', 'Responses')}
                 </h4>
-                {changeResponses.length === 0 ? (
+                {changeResponseGroups.length === 0 ? (
                   <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
                 ) : (
                   <ul style={styles.list}>
-                    {changeResponses.map((req) => renderResponseItem(req))}
+                    {changeResponseGroups.map((group) => renderGroupedResponse(group))}
                   </ul>
                 )}
               </div>
