@@ -84,13 +84,6 @@ const VALID_RECEIPT_TYPES = new Set(DEFAULT_RECEIPT_TYPES);
 const VALID_TAX_TYPES = new Set(DEFAULT_TAX_TYPES);
 const VALID_PAYMENT_METHODS = new Set(DEFAULT_PAYMENT_METHODS);
 const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
-const DEFAULT_INFO_TABLE_OPTIONS = [
-  { value: 'classification', label: 'Product classification' },
-  { value: 'tax_reason', label: 'VAT exemption reason' },
-  { value: 'district', label: 'District' },
-  { value: 'barcode_type', label: 'Barcode type' },
-  { value: 'payment_code', label: 'Payment code' },
-];
 
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
@@ -114,41 +107,6 @@ function sanitizeCodeList(list, fallback, allowedValues) {
   const effective = cleaned.length > 0 ? cleaned : fallbackCleaned;
   const deduped = Array.from(new Set(effective));
   return allowedSet ? deduped.filter((value) => allowedSet.has(value)) : deduped;
-}
-
-function formatTableLabel(table) {
-  if (!table || typeof table !== 'string') return '';
-  const pretty = table
-    .split('_')
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-  return pretty || table;
-}
-
-function buildTableOptions(list) {
-  if (!Array.isArray(list)) return [];
-  const seen = new Set();
-  return list
-    .map((value) => (typeof value === 'string' ? value.trim() : ''))
-    .filter(Boolean)
-    .filter((value) => {
-      if (seen.has(value)) return false;
-      seen.add(value);
-      return true;
-    })
-    .map((value) => ({
-      value,
-      label: formatTableLabel(value),
-    }));
-}
-
-function sanitizeTableSelection(list, options) {
-  const optionSet = Array.isArray(options) ? new Set(options.map((opt) => opt.value)) : null;
-  if (!Array.isArray(list)) return [];
-  return list
-    .map((value) => (typeof value === 'string' ? value.trim() : ''))
-    .filter((value) => value && (!optionSet || optionSet.has(value)));
 }
 
 function sanitizeTemplateMap(value, allowedValues) {
@@ -1213,16 +1171,6 @@ export default function PosApiAdmin() {
     });
   }, [infoSyncEndpointOptions]);
 
-  useEffect(() => {
-    setInfoSyncTables((prev) => {
-      const filtered = prev.filter((table) => infoSyncTableOptions.some((opt) => opt.value === table));
-      if (filtered.length !== prev.length) {
-        setInfoSyncSettings((settings) => ({ ...settings, tables: filtered }));
-      }
-      return filtered;
-    });
-  }, [infoSyncTableOptions]);
-
   const requestPreview = useMemo(() => {
     const text = (formState.requestSchemaText || '').trim();
     if (!text) return { state: 'empty', formatted: '', error: '' };
@@ -2251,17 +2199,11 @@ export default function PosApiAdmin() {
     try {
       setInfoSyncLoading(true);
       setInfoSyncError('');
-      const payload = {
-        ...infoSyncSettings,
-        usage: infoSyncUsage,
-        endpointIds: infoSyncEndpointIds,
-        tables: infoSyncTables,
-      };
       const res = await fetch(`${API_BASE}/posapi/reference-codes/settings`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(infoSyncSettings),
       });
       if (!res.ok) {
         throw new Error('Failed to save sync settings');
@@ -4734,6 +4676,9 @@ export default function PosApiAdmin() {
                   style={styles.input}
                 />
               </label>
+              <button type="button" style={styles.saveButton} onClick={saveInfoSettings} disabled={infoSyncLoading}>
+                {infoSyncLoading ? 'Saving…' : 'Save settings'}
+              </button>
             </div>
             <div style={styles.infoCard}>
               <h3 style={{ marginTop: 0 }}>Manual refresh</h3>
@@ -4816,11 +4761,6 @@ export default function PosApiAdmin() {
               </div>
             </div>
           </div>
-          <div style={styles.infoActions}>
-            <button type="button" style={styles.saveButton} onClick={saveInfoSettings} disabled={infoSyncLoading}>
-              {infoSyncLoading ? 'Saving…' : 'Save settings'}
-            </button>
-          </div>
           <div style={styles.logsCard}>
             <h3 style={{ marginTop: 0 }}>Synchronization log</h3>
             {infoSyncLogs.length === 0 && <p style={{ margin: 0 }}>No sync history yet.</p>}
@@ -4891,11 +4831,6 @@ const styles = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
     gap: '1rem',
     marginTop: '1rem',
-    marginBottom: '1rem',
-  },
-  infoActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
     marginBottom: '1rem',
   },
   infoCard: {
