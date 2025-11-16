@@ -635,168 +635,70 @@ export default function NotificationsPage() {
     [combineResponses, changeState.responses],
   );
 
-  const normalizeTemporaryEntry = useCallback((entry) => {
-    if (!entry) return null;
-    const statusRaw = entry?.status ? String(entry.status).trim().toLowerCase() : '';
-    const status = statusRaw || 'pending';
-    const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || entry?.updatedAt || entry?.updated_at;
-    const createdAt = entry?.createdAt || entry?.created_at;
-    const updatedAt = reviewedAt || createdAt;
-    return {
-      ...entry,
-      status,
-      createdAt,
-      reviewedAt,
-      updatedAt,
-      tableName: entry?.tableName || entry?.table_name || '',
-      formName: entry?.formName || entry?.form_name || '',
-      configName: entry?.configName || entry?.config_name || '',
-      moduleKey: entry?.moduleKey || entry?.module_key || '',
-    };
-  }, []);
-
-  const groupTemporaryEntries = useCallback(
-    (entries, scope) => {
-      if (!Array.isArray(entries) || entries.length === 0) return [];
-      const map = new Map();
-      entries.forEach((item) => {
-        const normalized = normalizeTemporaryEntry(item);
-        if (!normalized) return;
-        const label =
-          normalized.formLabel ||
-          normalized.formName ||
-          normalized.configName ||
-          normalized.tableName ||
-          t('temporary_unknown_label', 'Temporary entry');
-        const key = [scope, normalized.moduleKey, normalized.formName, normalized.tableName]
-          .filter(Boolean)
-          .join('::')
-          .toLowerCase();
-        const existing = map.get(key);
-        const baseCounts = { pending: 0, promoted: 0, rejected: 0 };
-        const counts = existing?.counts || baseCounts;
-        const statusKey = ['pending', 'promoted', 'rejected'].includes(normalized.status)
-          ? normalized.status
-          : 'pending';
-        counts[statusKey] = (counts[statusKey] || 0) + 1;
-        const updatedAt = new Date(normalized.updatedAt || 0).getTime();
-        const latestTime = Math.max(updatedAt, existing?.latestTime || 0);
-        const latestEntry = updatedAt >= (existing?.latestTime || 0)
-          ? normalized
-          : existing?.latestEntry || normalized;
-        map.set(key, {
-          key: key || `${scope}-${label}`,
-          label,
-          counts,
-          latestEntry,
-          latestTime,
-        });
-      });
-      return Array.from(map.values()).sort((a, b) => b.latestTime - a.latestTime);
-    },
-    [normalizeTemporaryEntry, t],
-  );
-
-  const temporaryGroups = useMemo(
-    () => ({
-      review: groupTemporaryEntries(temporaryState.review, 'review'),
-      created: groupTemporaryEntries(temporaryState.created, 'created'),
-    }),
-    [groupTemporaryEntries, temporaryState.created, temporaryState.review],
-  );
-
-  const renderTemporarySummary = useCallback(
-    (scope) => {
-      const counts =
-        scope === 'review' ? temporary?.counts?.review || {} : temporary?.counts?.created || {};
-      const pending = Number(counts.pendingCount ?? counts.count ?? 0);
-      const reviewed = Number(counts.reviewedCount ?? 0);
-      const total = Number(counts.totalCount ?? pending + reviewed);
-      if (!pending && !reviewed && !total) return null;
+    const renderTemporaryItem = (entry, scope) => {
+      const statusRaw = entry?.status ? String(entry.status).trim().toLowerCase() : '';
+      const isPending = statusRaw === 'pending' || statusRaw === '';
+      const statusLabel = isPending
+        ? t('temporary_pending_status', 'Pending')
+        : statusRaw === 'promoted'
+        ? t('temporary_promoted_short', 'Promoted')
+        : statusRaw === 'rejected'
+        ? t('temporary_rejected_short', 'Rejected')
+        : entry?.status || '-';
+      const statusColor = statusRaw === 'rejected'
+        ? '#b91c1c'
+        : statusRaw === 'promoted'
+        ? '#15803d'
+        : '#1f2937';
+      const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
+      const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || entry?.updatedAt || entry?.updated_at;
+      const reviewer = entry?.reviewedBy || entry?.reviewed_by || '';
       return (
-        <p style={styles.scopeSummary}>
-          {t('temporary_scope_summary', 'Pending {{pending}} · Reviewed {{reviewed}} · Total {{total}}', {
-            pending,
-            reviewed,
-            total,
-          })}
-        </p>
-      );
-    },
-    [t, temporary?.counts?.created, temporary?.counts?.review],
-  );
-
-  const renderTemporaryGroupItem = (group, scope) => {
-    const entry = group.latestEntry;
-    const isPending = (entry?.status || 'pending') === 'pending';
-    const statusLabel = isPending
-      ? t('temporary_pending_status', 'Pending')
-      : entry?.status === 'promoted'
-      ? t('temporary_promoted_short', 'Promoted')
-      : entry?.status === 'rejected'
-      ? t('temporary_rejected_short', 'Rejected')
-      : entry?.status || '-';
-    const statusColor = entry?.status === 'rejected'
-      ? '#b91c1c'
-      : entry?.status === 'promoted'
-      ? '#15803d'
-      : '#1f2937';
-    const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
-    const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || entry?.updatedAt || entry?.updated_at;
-    const reviewer = entry?.reviewedBy || entry?.reviewed_by || '';
-    return (
-      <li key={group.key} style={styles.listItem}>
-        <div style={styles.listBody}>
-          <div style={styles.listTitle}>{group.label}</div>
-          <div style={styles.listMeta}>
-            {entry?.createdBy && (
-              <span>
-                {t('notifications_created_by', 'Created by')}: {entry.createdBy}
-              </span>
-            )}
-            {entry?.createdAt && (
-              <span>
-                {t('notifications_created_at', 'Created')}: {formatTimestamp(entry.createdAt)}
-              </span>
-            )}
-            {statusLabel && (
-              <span style={{ color: statusColor }}>
-                {t('status', 'Status')}: {statusLabel}
-              </span>
-            )}
-            {!isPending && reviewedAt && (
-              <span>
-                {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
-              </span>
-            )}
-            {!isPending && reviewer && (
-              <span>
-                {t('temporary_reviewed_by', 'Reviewed by')}: {reviewer}
-              </span>
-            )}
-            <span>
-              {t('temporary_pending_status', 'Pending')}: {group.counts.pending || 0}
-            </span>
-            <span>
-              {t('temporary_promoted_short', 'Promoted')}: {group.counts.promoted || 0}
-            </span>
-            <span>
-              {t('temporary_rejected_short', 'Rejected')}: {group.counts.rejected || 0}
-            </span>
-          </div>
-          {!isPending && reviewNotes && (
-            <div style={styles.listSummaryNotes}>
-              <strong>{t('temporary_review_notes', 'Review notes')}:</strong>
-              <span style={styles.listSummaryNotesText}>{reviewNotes}</span>
+        <li key={`${scope}-${entry.id}`} style={styles.listItem}>
+          <div style={styles.listBody}>
+            <div style={styles.listTitle}>
+              {entry.formLabel || entry.formName || entry.tableName || entry.id}
             </div>
-          )}
-        </div>
-        <button style={styles.listAction} onClick={() => openTemporary(scope, entry)}>
-          {t('notifications_open_form', 'Open forms')}
-        </button>
-      </li>
-    );
-  };
+            <div style={styles.listMeta}>
+              {entry.createdBy && (
+                <span>
+                  {t('notifications_created_by', 'Created by')}: {entry.createdBy}
+                </span>
+              )}
+              {entry.createdAt && (
+                <span>
+                  {t('notifications_created_at', 'Created')}: {formatTimestamp(entry.createdAt)}
+                </span>
+              )}
+              {statusLabel && (
+                <span style={{ color: statusColor }}>
+                  {t('status', 'Status')}: {statusLabel}
+                </span>
+              )}
+              {!isPending && reviewedAt && (
+                <span>
+                  {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
+                </span>
+              )}
+              {!isPending && reviewer && (
+                <span>
+                  {t('temporary_reviewed_by', 'Reviewed by')}: {reviewer}
+                </span>
+              )}
+            </div>
+            {!isPending && reviewNotes && (
+              <div style={styles.listSummaryNotes}>
+                <strong>{t('temporary_review_notes', 'Review notes')}:</strong>
+                <span style={styles.listSummaryNotesText}>{reviewNotes}</span>
+              </div>
+            )}
+          </div>
+          <button style={styles.listAction} onClick={() => openTemporary(scope, entry)}>
+            {t('notifications_open_form', 'Open forms')}
+          </button>
+        </li>
+      );
+    };
 
   return (
     <div style={styles.page}>
@@ -974,41 +876,32 @@ export default function NotificationsPage() {
           <div style={styles.columnLayout}>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_review_queue', 'Review queue')}</h3>
-              {renderTemporarySummary('review')}
-              {temporaryGroups.review.length === 0 ? (
+              {temporaryState.review.length === 0 ? (
                 <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
               ) : (
                 <ul style={styles.list}>
-                  {temporaryGroups.review.map((group) => renderTemporaryGroupItem(group, 'review'))}
+                  {temporaryState.review.map((entry) => renderTemporaryItem(entry, 'review'))}
                 </ul>
               )}
               <button
                 style={styles.listAction}
-                onClick={() =>
-                  openTemporary('review', temporaryGroups.review[0]?.latestEntry || temporaryState.review[0])
-                }
+                onClick={() => openTemporary('review', temporaryState.review[0])}
               >
                 {t('notifications_open_review', 'Open review workspace')}
               </button>
             </div>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_my_drafts', 'My drafts')}</h3>
-              {renderTemporarySummary('created')}
-              {temporaryGroups.created.length === 0 ? (
+              {temporaryState.created.length === 0 ? (
                 <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
               ) : (
                 <ul style={styles.list}>
-                  {temporaryGroups.created.map((group) => renderTemporaryGroupItem(group, 'created'))}
+                  {temporaryState.created.map((entry) => renderTemporaryItem(entry, 'created'))}
                 </ul>
               )}
               <button
                 style={styles.listAction}
-                onClick={() =>
-                  openTemporary(
-                    'created',
-                    temporaryGroups.created[0]?.latestEntry || temporaryState.created[0],
-                  )
-                }
+                onClick={() => openTemporary('created', temporaryState.created[0])}
               >
                 {t('notifications_open_drafts', 'Open drafts workspace')}
               </button>
@@ -1082,33 +975,28 @@ const styles = {
     fontSize: '1rem',
     fontWeight: 600,
   },
-  scopeSummary: {
-    margin: 0,
-    color: '#4b5563',
-    fontSize: '0.9rem',
-  },
-  list: {
-    listStyle: 'none',
-    margin: 0,
-    padding: 0,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-  },
-  listSummaryNotes: {
-    marginTop: '0.5rem',
-    padding: '0.5rem',
-    backgroundColor: '#f9fafb',
-    borderRadius: '0.5rem',
-    fontSize: '0.85rem',
-    color: '#1f2937',
-    whiteSpace: 'pre-wrap',
-  },
-  listSummaryNotesText: {
-    display: 'block',
-    marginTop: '0.25rem',
-    whiteSpace: 'pre-wrap',
-  },
+    list: {
+      listStyle: 'none',
+      margin: 0,
+      padding: 0,
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '0.75rem',
+    },
+    listSummaryNotes: {
+      marginTop: '0.5rem',
+      padding: '0.5rem',
+      backgroundColor: '#f9fafb',
+      borderRadius: '0.5rem',
+      fontSize: '0.85rem',
+      color: '#1f2937',
+      whiteSpace: 'pre-wrap',
+    },
+    listSummaryNotesText: {
+      display: 'block',
+      marginTop: '0.25rem',
+      whiteSpace: 'pre-wrap',
+    },
   listItem: {
     display: 'flex',
     justifyContent: 'space-between',
