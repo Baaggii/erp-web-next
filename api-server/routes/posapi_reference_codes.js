@@ -41,9 +41,26 @@ router.post('/sync', requireAuth, async (req, res, next) => {
   try {
     const guard = await requireSystemSettings(req, res);
     if (!guard) return;
-    const result = await runReferenceCodeSync('manual');
+    const payload = req.body && typeof req.body === 'object' ? { ...req.body } : {};
+    if (Array.isArray(payload.endpointIds) && !payload.infoEndpoints) {
+      payload.infoEndpoints = [...payload.endpointIds];
+    }
+    if (Array.isArray(payload.infoEndpoints) && !payload.endpointIds) {
+      payload.endpointIds = [...payload.infoEndpoints];
+    }
+    const result = await runReferenceCodeSync('manual', payload);
     res.json(result);
   } catch (err) {
+    if (err?.details) {
+      res.status(502).json({ message: err.message || 'Failed to refresh reference codes', ...err.details });
+      return;
+    }
+    if (err instanceof ReferenceError || /infoEndpoints is not defined/i.test(err?.message || '')) {
+      res
+        .status(400)
+        .json({ message: 'Failed to refresh reference codes: invalid endpoint selection payload' });
+      return;
+    }
     next(err);
   }
 });
