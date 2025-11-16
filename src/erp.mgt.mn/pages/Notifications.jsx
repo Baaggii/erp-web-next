@@ -340,8 +340,8 @@ export default function NotificationsPage() {
     if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
     let cancelled = false;
     setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
-    const reviewPromise = temporaryFetchScopeEntries('review', SECTION_LIMIT);
-    const createdPromise = temporaryFetchScopeEntries('created', SECTION_LIMIT);
+    const reviewPromise = temporaryFetchScopeEntries('review', null);
+    const createdPromise = temporaryFetchScopeEntries('created', null);
     Promise.all([reviewPromise, createdPromise])
         .then(([review, created]) => {
           if (!cancelled) {
@@ -656,58 +656,6 @@ export default function NotificationsPage() {
     [t],
   );
 
-  const renderTemporaryItem = (entry, scope) => {
-    const { isPending, statusLabel, statusColor } = normalizeTemporaryStatus(entry);
-    const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
-    const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || entry?.updatedAt || entry?.updated_at;
-    const reviewer = entry?.reviewedBy || entry?.reviewed_by || '';
-    return (
-      <li key={`${scope}-${entry.id}`} style={styles.listItem}>
-        <div style={styles.listBody}>
-          <div style={styles.listTitle}>
-            {entry.formLabel || entry.formName || entry.tableName || entry.id}
-          </div>
-          <div style={styles.listMeta}>
-            {entry.createdBy && (
-              <span>
-                {t('notifications_created_by', 'Created by')}: {entry.createdBy}
-              </span>
-            )}
-            {entry.createdAt && (
-              <span>
-                {t('notifications_created_at', 'Created')}: {formatTimestamp(entry.createdAt)}
-              </span>
-            )}
-            {statusLabel && (
-              <span style={{ color: statusColor }}>
-                {t('status', 'Status')}: {statusLabel}
-              </span>
-            )}
-            {!isPending && reviewedAt && (
-              <span>
-                {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
-              </span>
-            )}
-            {!isPending && reviewer && (
-              <span>
-                {t('temporary_reviewed_by', 'Reviewed by')}: {reviewer}
-              </span>
-            )}
-          </div>
-          {!isPending && reviewNotes && (
-            <div style={styles.listSummaryNotes}>
-              <strong>{t('temporary_review_notes', 'Review notes')}:</strong>
-              <span style={styles.listSummaryNotesText}>{reviewNotes}</span>
-            </div>
-          )}
-        </div>
-        <button style={styles.listAction} onClick={() => openTemporary(scope, entry)}>
-          {t('notifications_open_form', 'Open forms')}
-        </button>
-      </li>
-    );
-  };
-
   const getTemporaryUser = useCallback(
     (entry) =>
       entry?.createdBy ||
@@ -819,10 +767,15 @@ export default function NotificationsPage() {
             </span>
           )}
         </div>
+        <div style={styles.listSummary}>
+          {t('notifications_group_summary', '{{count}} transactions grouped by user, type, date, and status', {
+            count: group.entries.length,
+          })}
+        </div>
       </div>
-      <ul style={styles.nestedList}>
-        {group.entries.map((entry) => renderTemporaryItem(entry, scope))}
-      </ul>
+      <button style={styles.listAction} onClick={() => openTemporary(scope, group.entries[0])}>
+        {t('notifications_open_group_forms', 'Open forms')}
+      </button>
     </li>
   );
 
