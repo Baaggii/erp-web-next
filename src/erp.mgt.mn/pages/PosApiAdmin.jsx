@@ -1112,6 +1112,7 @@ export default function PosApiAdmin() {
   const [infoSyncUsage, setInfoSyncUsage] = useState('all');
   const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
   const [infoSyncTables, setInfoSyncTables] = useState([]);
+  const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
 
@@ -1199,7 +1200,11 @@ export default function PosApiAdmin() {
 
   const infoSyncTableOptions = useMemo(() => {
     const seen = new Set();
-    const merged = [...DEFAULT_INFO_TABLE_OPTIONS, ...buildTableOptions(infoSyncSettings.tables)];
+    const merged = [
+      ...DEFAULT_INFO_TABLE_OPTIONS,
+      ...infoSyncTableOptionsBase,
+      ...buildTableOptions(infoSyncSettings.tables),
+    ];
     return merged
       .map((option) => {
         const value = option?.value;
@@ -1208,7 +1213,7 @@ export default function PosApiAdmin() {
         return { value, label: option.label || formatTableLabel(value) };
       })
       .filter(Boolean);
-  }, [infoSyncSettings.tables]);
+  }, [infoSyncSettings.tables, infoSyncTableOptionsBase]);
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
@@ -2014,30 +2019,47 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (activeTab !== 'info') return undefined;
+    const controller = new AbortController();
     let cancelled = false;
     async function loadInfoSync() {
       try {
         setInfoSyncLoading(true);
         setInfoSyncError('');
-        const res = await fetch(`${API_BASE}/posapi/reference-codes`, {
-          credentials: 'include',
-          skipLoader: true,
-        });
-        if (!res.ok) {
+        const [settingsRes, tablesRes] = await Promise.all([
+          fetch(`${API_BASE}/posapi/reference-codes`, {
+            credentials: 'include',
+            skipLoader: true,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE}/report_builder/tables`, {
+            credentials: 'include',
+            skipLoader: true,
+            signal: controller.signal,
+          }),
+        ]);
+        if (!settingsRes.ok) {
           throw new Error('Failed to load sync settings');
         }
-        const data = await res.json();
+        if (!tablesRes.ok) {
+          throw new Error('Failed to load database tables');
+        }
+        const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
         if (cancelled) return;
-        const usage = data.settings?.usage && VALID_USAGE_VALUES.has(data.settings.usage)
-          ? data.settings.usage
+        const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
+        setInfoSyncTableOptionsBase(tableOptions);
+        const usage = settingsData.settings?.usage && VALID_USAGE_VALUES.has(settingsData.settings.usage)
+          ? settingsData.settings.usage
           : 'all';
-        const endpointIds = Array.isArray(data.settings?.endpointIds)
-          ? data.settings.endpointIds.filter((value) => typeof value === 'string' && value)
+        const endpointIds = Array.isArray(settingsData.settings?.endpointIds)
+          ? settingsData.settings.endpointIds.filter((value) => typeof value === 'string' && value)
           : [];
-        const tables = sanitizeTableSelection(data.settings?.tables, DEFAULT_INFO_TABLE_OPTIONS);
+        const tables = sanitizeTableSelection(
+          settingsData.settings?.tables,
+          tableOptions.length > 0 ? tableOptions : DEFAULT_INFO_TABLE_OPTIONS,
+        );
         setInfoSyncSettings({
-          autoSyncEnabled: Boolean(data.settings?.autoSyncEnabled),
-          intervalMinutes: Number(data.settings?.intervalMinutes) || 720,
+          autoSyncEnabled: Boolean(settingsData.settings?.autoSyncEnabled),
+          intervalMinutes: Number(settingsData.settings?.intervalMinutes) || 720,
           usage,
           endpointIds,
           tables,
@@ -2045,7 +2067,7 @@ export default function PosApiAdmin() {
         setInfoSyncUsage(usage);
         setInfoSyncEndpointIds(endpointIds);
         setInfoSyncTables(tables);
-        setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
+        setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
       } catch (err) {
         if (!cancelled) {
           setInfoSyncError(err.message || 'Unable to load POSAPI information sync settings');
@@ -2060,6 +2082,7 @@ export default function PosApiAdmin() {
     loadInfoSync();
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [activeTab]);
 
