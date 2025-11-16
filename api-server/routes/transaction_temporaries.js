@@ -13,7 +13,11 @@ const router = express.Router();
 
 router.get('/summary', requireAuth, async (req, res, next) => {
   try {
-    const summary = await getTemporarySummary(req.user.empid, req.user.companyId);
+    const summary = await getTemporarySummary(req.user.empid, req.user.companyId, {
+      tableName: req.query.table || null,
+      transactionTypeField: req.query.transactionTypeField || null,
+      transactionTypeValue: req.query.transactionTypeValue || null,
+    });
     res.json(summary);
   } catch (err) {
     next(err);
@@ -22,7 +26,13 @@ router.get('/summary', requireAuth, async (req, res, next) => {
 
 router.get('/', requireAuth, async (req, res, next) => {
   try {
-    const { scope = 'created', table, status } = req.query;
+    const {
+      scope = 'created',
+      table,
+      status,
+      transactionTypeField = null,
+      transactionTypeValue = null,
+    } = req.query;
     const scopeParam = typeof scope === 'string' ? scope.trim().toLowerCase() : '';
     const normalizedScope = scopeParam === 'review' ? 'review' : 'created';
     const statusParam = typeof status === 'string' ? status.trim().toLowerCase() : '';
@@ -37,6 +47,8 @@ router.get('/', requireAuth, async (req, res, next) => {
       empId: req.user.empid,
       companyId: req.user.companyId,
       status: normalizedStatus,
+      transactionTypeField,
+      transactionTypeValue,
     });
     res.json({ rows: list });
   } catch (err) {
