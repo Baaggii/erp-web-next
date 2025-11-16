@@ -1128,6 +1128,23 @@ export default function PosApiAdmin() {
       .filter(Boolean);
   }, [endpoints, usageFilter]);
 
+  const infoSyncEndpointOptions = useMemo(() => {
+    const normalized = endpoints.map(withEndpointMetadata);
+    return normalized
+      .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
+      .filter((endpoint) => !infoSyncUsage || endpoint.usage === infoSyncUsage)
+      .map((endpoint) => ({
+        id: endpoint.id,
+        name: endpoint.name || endpoint.id,
+        method: endpoint.method,
+        path: endpoint.path,
+      }));
+  }, [endpoints, infoSyncUsage]);
+
+  useEffect(() => {
+    setInfoSyncEndpointIds((prev) => prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id)));
+  }, [infoSyncEndpointOptions]);
+
   const requestPreview = useMemo(() => {
     const text = (formState.requestSchemaText || '').trim();
     if (!text) return { state: 'empty', formatted: '', error: '' };
