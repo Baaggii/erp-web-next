@@ -3614,7 +3614,7 @@ const TableManager = forwardRef(function TableManager({
         if (options?.table !== undefined) {
           return Boolean(options.table);
         }
-        return targetScope !== 'review';
+        return Boolean(table);
       })();
 
       if (shouldFilterByTable && table) {

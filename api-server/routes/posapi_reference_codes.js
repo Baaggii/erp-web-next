@@ -41,16 +41,7 @@ router.post('/sync', requireAuth, async (req, res, next) => {
   try {
     const guard = await requireSystemSettings(req, res);
     if (!guard) return;
-    const rawEndpoints = req.body?.endpoints || req.body?.endpointIds || [];
-    const endpointIds = Array.isArray(rawEndpoints)
-      ? rawEndpoints.filter(Boolean)
-      : typeof rawEndpoints === 'string'
-        ? rawEndpoints.split(',').map((value) => value.trim()).filter(Boolean)
-        : [];
-    const result = await runReferenceCodeSync('manual', {
-      usage: req.body?.usage,
-      endpointIds,
-    });
+    const result = await runReferenceCodeSync('manual');
     res.json(result);
   } catch (err) {
     next(err);

@@ -1058,8 +1058,6 @@ export default function PosApiAdmin() {
   const [infoSyncError, setInfoSyncError] = useState('');
   const [infoSyncLoading, setInfoSyncLoading] = useState(false);
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
-  const [infoSyncUsageFilter, setInfoSyncUsageFilter] = useState('info');
-  const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
   const builderSyncRef = useRef(false);
 
   const groupedEndpoints = useMemo(() => {
@@ -1134,14 +1132,14 @@ export default function PosApiAdmin() {
     const normalized = endpoints.map(withEndpointMetadata);
     return normalized
       .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
-      .filter((endpoint) => !infoSyncUsageFilter || endpoint.usage === infoSyncUsageFilter)
+      .filter((endpoint) => !infoSyncUsage || endpoint.usage === infoSyncUsage)
       .map((endpoint) => ({
         id: endpoint.id,
         name: endpoint.name || endpoint.id,
         method: endpoint.method,
         path: endpoint.path,
       }));
-  }, [endpoints, infoSyncUsageFilter]);
+  }, [endpoints, infoSyncUsage]);
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id)));
@@ -2184,8 +2182,6 @@ export default function PosApiAdmin() {
       const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
         method: 'POST',
         credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usage: infoSyncUsageFilter, endpoints: infoSyncEndpointIds }),
       });
       if (!res.ok) {
         throw new Error('Failed to refresh reference codes');
@@ -4611,42 +4607,6 @@ export default function PosApiAdmin() {
             <div style={styles.infoCard}>
               <h3 style={{ marginTop: 0 }}>Manual refresh</h3>
               <p>Trigger the POSAPI lookup job and update reference codes immediately.</p>
-              <div style={styles.infoGrid}>
-                <label style={{ ...styles.label, minWidth: '180px' }}>
-                  Usage group
-                  <select
-                    value={infoSyncUsageFilter}
-                    onChange={(e) => setInfoSyncUsageFilter(e.target.value)}
-                    style={styles.input}
-                  >
-                    {USAGE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label style={{ ...styles.label, minWidth: '240px' }}>
-                  Endpoints to include
-                  <select
-                    multiple
-                    value={infoSyncEndpointIds}
-                    onChange={(e) =>
-                      setInfoSyncEndpointIds(Array.from(e.target.selectedOptions).map((opt) => opt.value))
-                    }
-                    style={{ ...styles.input, height: '140px' }}
-                  >
-                    {infoSyncEndpointOptions.map((endpoint) => (
-                      <option key={endpoint.id} value={endpoint.id}>
-                        {endpoint.name} ({endpoint.method}) {endpoint.path}
-                      </option>
-                    ))}
-                  </select>
-                  <span style={styles.checkboxHint}>
-                    Leave empty to sync all GET endpoints in the selected usage group.
-                  </span>
-                </label>
-              </div>
               <button
                 type="button"
                 onClick={handleManualSync}
