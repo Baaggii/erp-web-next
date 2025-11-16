@@ -2023,21 +2023,20 @@ export default function PosApiAdmin() {
       refreshInfoSyncLogsRef.current = () => Promise.resolve();
       return undefined;
     }
-
     const controller = new AbortController();
     let cancelled = false;
     let intervalId;
 
-    async function refreshInfoSyncLogs(signal = controller.signal) {
+    async function refreshInfoSyncLogs() {
       try {
         const res = await fetch(`${API_BASE}/posapi/reference-codes`, {
           credentials: 'include',
           skipLoader: true,
-          signal,
+          signal: controller.signal,
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (!cancelled && !signal?.aborted) {
+        if (!cancelled) {
           setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
         }
       } catch (err) {
@@ -2045,11 +2044,6 @@ export default function PosApiAdmin() {
         console.warn('Failed to refresh POSAPI info sync logs', err);
       }
     }
-
-    refreshInfoSyncLogsRef.current = () => {
-      const refreshController = new AbortController();
-      return refreshInfoSyncLogs(refreshController.signal);
-    };
 
     async function loadInfoSync() {
       try {
@@ -2110,13 +2104,11 @@ export default function PosApiAdmin() {
     }
 
     loadInfoSync();
-    refreshInfoSyncLogs();
     intervalId = window.setInterval(refreshInfoSyncLogs, 30000);
     return () => {
       cancelled = true;
       controller.abort();
       if (intervalId) window.clearInterval(intervalId);
-      refreshInfoSyncLogsRef.current = () => Promise.resolve();
     };
   }, [activeTab]);
 
