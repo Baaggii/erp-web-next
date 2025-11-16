@@ -11,9 +11,14 @@ const __dirname = path.dirname(__filename);
 const settingsPath = path.resolve(__dirname, '../../config/posApiInfoSync.json');
 const logPath = path.resolve(__dirname, '../../config/posApiInfoSyncLogs.json');
 
+const VALID_SYNC_USAGES = new Set(['transaction', 'info', 'admin', 'all']);
+
 const DEFAULT_SETTINGS = {
   autoSyncEnabled: false,
   intervalMinutes: 720,
+  usage: 'all',
+  endpointIds: [],
+  tables: [],
 };
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -47,6 +52,27 @@ export async function loadSyncSettings() {
   return {
     autoSyncEnabled: Boolean(settings.autoSyncEnabled),
     intervalMinutes,
+    usage: VALID_SYNC_USAGES.has(settings.usage) ? settings.usage : DEFAULT_SETTINGS.usage,
+    endpointIds: Array.isArray(settings.endpointIds)
+      ? Array.from(
+          new Set(
+            settings.endpointIds
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.endpointIds,
+    tables: Array.isArray(settings.tables)
+      ? Array.from(
+          new Set(
+            settings.tables
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.tables,
   };
 }
 
@@ -54,6 +80,27 @@ export async function saveSyncSettings(settings) {
   const sanitized = {
     autoSyncEnabled: Boolean(settings?.autoSyncEnabled),
     intervalMinutes: Math.max(5, Number(settings?.intervalMinutes) || DEFAULT_SETTINGS.intervalMinutes),
+    usage: VALID_SYNC_USAGES.has(settings?.usage) ? settings.usage : DEFAULT_SETTINGS.usage,
+    endpointIds: Array.isArray(settings?.endpointIds)
+      ? Array.from(
+          new Set(
+            settings.endpointIds
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.endpointIds,
+    tables: Array.isArray(settings?.tables)
+      ? Array.from(
+          new Set(
+            settings.tables
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.tables,
   };
   await writeJson(settingsPath, sanitized);
   return sanitized;
@@ -161,13 +208,21 @@ export async function runReferenceCodeSync(trigger = 'manual') {
     (ep) => normalizeUsage(ep.usage) === 'info' && String(ep.method || '').toUpperCase() === 'GET',
   );
 
-  const summary = { added: 0, updated: 0, deactivated: 0, totalTypes: 0 };
+  const summary = {
+    added: 0,
+    updated: 0,
+    deactivated: 0,
+    totalTypes: 0,
+    attempted: infoEndpoints.length,
+    successful: 0,
+  };
   const errors = [];
 
   for (const endpoint of infoEndpoints) {
     try {
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
       const codes = parseCodesFromEndpoint(endpoint.id, response);
+      summary.successful += 1;
       if (!codes.length) continue;
       const grouped = codes.reduce((acc, entry) => {
         if (!entry.code_type) return acc;
@@ -196,6 +251,14 @@ export async function runReferenceCodeSync(trigger = 'manual') {
     trigger,
   };
   await appendSyncLog(logEntry);
+
+  if (summary.successful === 0 && errors.length > 0) {
+    const errorMessage = `Failed to refresh reference codes: ${errors.length} endpoint(s) unreachable`;
+    const error = new Error(errorMessage);
+    error.details = { ...summary, errors, durationMs, timestamp: logEntry.timestamp };
+    throw error;
+  }
+
   return { ...summary, errors, durationMs, timestamp: logEntry.timestamp };
 }
 
