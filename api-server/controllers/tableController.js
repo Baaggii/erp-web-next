@@ -308,7 +308,8 @@ export async function deleteCustomTableRelation(req, res, next) {
 
 export async function getTableColumnsMeta(req, res, next) {
   try {
-    const cols = await listTableColumnMeta(req.params.table);
+    const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
+    const cols = await listTableColumnMeta(req.params.table, companyId);
     let candidateKey = [];
     try {
       candidateKey = await getPrimaryKeyColumns(req.params.table);

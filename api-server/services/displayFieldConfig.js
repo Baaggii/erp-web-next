@@ -27,7 +27,7 @@ export async function getDisplayFields(table, companyId = 0) {
   if (cfg[table]) return { config: cfg[table], isDefault };
 
   try {
-    const meta = await listTableColumnMeta(table);
+    const meta = await listTableColumnMeta(table, companyId);
     if (!Array.isArray(meta) || meta.length === 0) {
       return { config: { idField: null, displayFields: [] }, isDefault };
     }

@@ -95,3 +95,59 @@ test('listTableColumnMeta includes primary key ordinal when available', async ()
     },
   ]);
 });
+
+test('listTableColumnMeta reads company-specific header mappings', async () => {
+  const companyId = 5;
+  const companyDir = path.join(process.cwd(), 'config', String(companyId));
+  const companyFile = path.join(companyDir, 'headerMappings.json');
+
+  await fs.mkdir(companyDir, { recursive: true });
+  let originalContent;
+  let hadOriginal = false;
+  try {
+    originalContent = await fs.readFile(companyFile, 'utf8');
+    hadOriginal = true;
+  } catch {
+    hadOriginal = false;
+  }
+
+  await fs.writeFile(companyFile, JSON.stringify({ title: 'Company scoped title' }));
+
+  const restore = mockPool(async (sql) => {
+    if (sql.includes('information_schema.COLUMNS')) {
+      return [[
+        {
+          COLUMN_NAME: 'title',
+          COLUMN_KEY: '',
+          EXTRA: '',
+          PRIMARY_KEY_ORDINAL: null,
+          GENERATION_EXPRESSION: null,
+        },
+      ]];
+    }
+    if (sql.includes('table_column_labels')) {
+      return [[]];
+    }
+    return [[]];
+  });
+
+  const meta = await db.listTableColumnMeta('posts', companyId);
+  restore();
+
+  if (hadOriginal) {
+    await fs.writeFile(companyFile, originalContent);
+  } else {
+    await fs.rm(companyFile, { force: true });
+  }
+
+  assert.deepEqual(meta, [
+    {
+      name: 'title',
+      key: '',
+      extra: '',
+      label: 'Company scoped title',
+      generationExpression: null,
+      primaryKeyOrdinal: null,
+    },
+  ]);
+});
