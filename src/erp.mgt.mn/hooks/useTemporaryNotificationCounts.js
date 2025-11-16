@@ -30,6 +30,7 @@ function createInitialCounts() {
 
 export default function useTemporaryNotificationCounts(empid) {
   const [counts, setCounts] = useState(() => createInitialCounts());
+  const [activeTable, setActiveTable] = useState(null);
   const cfg = useGeneralConfig();
   const intervalSeconds =
     Number(
@@ -110,9 +111,19 @@ export default function useTemporaryNotificationCounts(empid) {
     [getSeenValue],
   );
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (tableOverride) => {
     try {
-      const res = await fetch(`${API_BASE}/transaction_temporaries/summary`, {
+      const tableName = (tableOverride ?? activeTable) || '';
+      const params = new URLSearchParams();
+      if (tableName) {
+        params.set('table', tableName);
+        params.set('table_name', tableName);
+      }
+      const search = params.toString();
+      const url = search
+        ? `${API_BASE}/transaction_temporaries/summary?${search}`
+        : `${API_BASE}/transaction_temporaries/summary`;
+      const res = await fetch(url, {
         credentials: 'include',
         skipLoader: true,
       });
@@ -122,7 +133,7 @@ export default function useTemporaryNotificationCounts(empid) {
     } catch {
       // Ignore errors but keep previous counts
     }
-  }, [evaluateCounts]);
+  }, [activeTable, evaluateCounts]);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,7 +142,14 @@ export default function useTemporaryNotificationCounts(empid) {
     };
     run();
 
-    const handler = () => {
+    const handler = (event) => {
+      const tableName = event?.detail?.table || event?.detail?.table_name;
+      if (typeof tableName === 'string' && tableName.trim()) {
+        const normalized = tableName.trim();
+        setActiveTable(normalized);
+        refresh(normalized);
+        return;
+      }
       refresh();
     };
 
@@ -185,6 +203,10 @@ export default function useTemporaryNotificationCounts(empid) {
   const fetchScopeEntries = useCallback(async (scope, limit = 5) => {
     if (!SCOPES.includes(scope)) return [];
     const params = new URLSearchParams({ scope });
+    if (activeTable) {
+      params.set('table', activeTable);
+      params.set('table_name', activeTable);
+    }
     try {
       const res = await fetch(`${API_BASE}/transaction_temporaries?${params.toString()}`, {
         credentials: 'include',
@@ -200,7 +222,7 @@ export default function useTemporaryNotificationCounts(empid) {
     } catch {
       return [];
     }
-  }, []);
+  }, [activeTable]);
 
   const hasNew = useMemo(
     () => SCOPES.some((scope) => counts[scope]?.hasNew),
