@@ -194,7 +194,7 @@ export default function useTemporaryNotificationCounts(empid) {
           ...prev,
           [scope]: {
             ...current,
-            count: current.pendingCount,
+            count: current.totalCount || current.count,
             newCount: 0,
             hasNew: false,
           },
