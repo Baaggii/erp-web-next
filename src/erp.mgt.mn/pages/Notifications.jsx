@@ -304,8 +304,8 @@ export default function NotificationsPage() {
     markWorkflowSeen('changeRequests', 'outgoing', ['accepted', 'declined']);
   }, [markWorkflowSeen]);
 
-  const temporaryReviewCount = Number(temporary?.counts?.review?.pendingCount) || 0;
-  const temporaryCreatedCount = Number(temporary?.counts?.created?.pendingCount) || 0;
+  const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
+  const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
   const sortTemporaryEntries = useCallback((entries, scope) => {
     if (!Array.isArray(entries)) return [];
