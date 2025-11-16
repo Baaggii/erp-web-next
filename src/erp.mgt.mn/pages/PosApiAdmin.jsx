@@ -2086,49 +2086,6 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  useEffect(() => {
-    if (activeTab !== 'info') return undefined;
-    let cancelled = false;
-    let inFlightController = null;
-
-    const refreshLogs = async () => {
-      try {
-        if (inFlightController) {
-          inFlightController.abort();
-        }
-        const controller = new AbortController();
-        inFlightController = controller;
-        const res = await fetch(`${API_BASE}/posapi/reference-codes`, {
-          credentials: 'include',
-          skipLoader: true,
-          signal: controller.signal,
-        });
-        if (!res.ok) return;
-        const data = await res.json();
-        if (cancelled) return;
-        if (Array.isArray(data.logs)) {
-          setInfoSyncLogs(data.logs);
-        }
-      } catch (err) {
-        if (cancelled) return;
-        if (err?.name !== 'AbortError') {
-          console.error('Failed to refresh POSAPI sync logs', err);
-        }
-      }
-    };
-
-    const intervalId = setInterval(refreshLogs, 15000);
-    refreshLogs();
-
-    return () => {
-      cancelled = true;
-      clearInterval(intervalId);
-      if (inFlightController) {
-        inFlightController.abort();
-      }
-    };
-  }, [activeTab]);
-
   function handleSelect(id) {
     setStatus('');
     setError('');
