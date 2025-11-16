@@ -635,7 +635,8 @@ export default function NotificationsPage() {
     [combineResponses, changeState.responses],
   );
 
-    const renderTemporaryItem = (entry, scope) => {
+  const normalizeTemporaryStatus = useCallback(
+    (entry) => {
       const statusRaw = entry?.status ? String(entry.status).trim().toLowerCase() : '';
       const isPending = statusRaw === 'pending' || statusRaw === '';
       const statusLabel = isPending
@@ -650,55 +651,180 @@ export default function NotificationsPage() {
         : statusRaw === 'promoted'
         ? '#15803d'
         : '#1f2937';
-      const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
-      const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || entry?.updatedAt || entry?.updated_at;
-      const reviewer = entry?.reviewedBy || entry?.reviewed_by || '';
-      return (
-        <li key={`${scope}-${entry.id}`} style={styles.listItem}>
-          <div style={styles.listBody}>
-            <div style={styles.listTitle}>
-              {entry.formLabel || entry.formName || entry.tableName || entry.id}
-            </div>
-            <div style={styles.listMeta}>
-              {entry.createdBy && (
-                <span>
-                  {t('notifications_created_by', 'Created by')}: {entry.createdBy}
-                </span>
-              )}
-              {entry.createdAt && (
-                <span>
-                  {t('notifications_created_at', 'Created')}: {formatTimestamp(entry.createdAt)}
-                </span>
-              )}
-              {statusLabel && (
-                <span style={{ color: statusColor }}>
-                  {t('status', 'Status')}: {statusLabel}
-                </span>
-              )}
-              {!isPending && reviewedAt && (
-                <span>
-                  {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
-                </span>
-              )}
-              {!isPending && reviewer && (
-                <span>
-                  {t('temporary_reviewed_by', 'Reviewed by')}: {reviewer}
-                </span>
-              )}
-            </div>
-            {!isPending && reviewNotes && (
-              <div style={styles.listSummaryNotes}>
-                <strong>{t('temporary_review_notes', 'Review notes')}:</strong>
-                <span style={styles.listSummaryNotesText}>{reviewNotes}</span>
-              </div>
+      return { statusRaw, isPending, statusLabel, statusColor };
+    },
+    [t],
+  );
+
+  const renderTemporaryItem = (entry, scope) => {
+    const { isPending, statusLabel, statusColor } = normalizeTemporaryStatus(entry);
+    const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
+    const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || entry?.updatedAt || entry?.updated_at;
+    const reviewer = entry?.reviewedBy || entry?.reviewed_by || '';
+    return (
+      <li key={`${scope}-${entry.id}`} style={styles.listItem}>
+        <div style={styles.listBody}>
+          <div style={styles.listTitle}>
+            {entry.formLabel || entry.formName || entry.tableName || entry.id}
+          </div>
+          <div style={styles.listMeta}>
+            {entry.createdBy && (
+              <span>
+                {t('notifications_created_by', 'Created by')}: {entry.createdBy}
+              </span>
+            )}
+            {entry.createdAt && (
+              <span>
+                {t('notifications_created_at', 'Created')}: {formatTimestamp(entry.createdAt)}
+              </span>
+            )}
+            {statusLabel && (
+              <span style={{ color: statusColor }}>
+                {t('status', 'Status')}: {statusLabel}
+              </span>
+            )}
+            {!isPending && reviewedAt && (
+              <span>
+                {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
+              </span>
+            )}
+            {!isPending && reviewer && (
+              <span>
+                {t('temporary_reviewed_by', 'Reviewed by')}: {reviewer}
+              </span>
             )}
           </div>
-          <button style={styles.listAction} onClick={() => openTemporary(scope, entry)}>
-            {t('notifications_open_form', 'Open forms')}
-          </button>
-        </li>
-      );
-    };
+          {!isPending && reviewNotes && (
+            <div style={styles.listSummaryNotes}>
+              <strong>{t('temporary_review_notes', 'Review notes')}:</strong>
+              <span style={styles.listSummaryNotesText}>{reviewNotes}</span>
+            </div>
+          )}
+        </div>
+        <button style={styles.listAction} onClick={() => openTemporary(scope, entry)}>
+          {t('notifications_open_form', 'Open forms')}
+        </button>
+      </li>
+    );
+  };
+
+  const getTemporaryUser = useCallback(
+    (entry) =>
+      entry?.createdBy ||
+      entry?.created_by ||
+      entry?.emp_name ||
+      entry?.empid ||
+      t('notifications_unknown_user', 'Unknown user'),
+    [t],
+  );
+
+  const getTemporaryTransactionType = useCallback(
+    (entry) =>
+      entry?.transactionType ||
+      entry?.transaction_type ||
+      entry?.formLabel ||
+      entry?.formName ||
+      entry?.tableName ||
+      entry?.moduleKey ||
+      entry?.module_key ||
+      t('notifications_unknown_type', 'Other transaction'),
+    [t],
+  );
+
+  const getTemporaryDate = useCallback(
+    (entry) => {
+      const rawDate =
+        entry?.createdAt || entry?.created_at || entry?.updatedAt || entry?.updated_at || null;
+      if (!rawDate) {
+        return { key: 'unknown-date', label: t('notifications_unknown_date', 'Unknown date'), value: 0 };
+      }
+      const dateObj = new Date(rawDate);
+      if (Number.isNaN(dateObj.getTime())) {
+        return { key: 'unknown-date', label: t('notifications_unknown_date', 'Unknown date'), value: 0 };
+      }
+      return {
+        key: dateObj.toISOString().slice(0, 10),
+        label: formatTimestamp(rawDate),
+        value: dateObj.getTime(),
+      };
+    },
+    [t],
+  );
+
+  const groupTemporaryEntries = useCallback(
+    (entries) => {
+      if (!Array.isArray(entries)) return [];
+      const map = new Map();
+      entries.forEach((entry) => {
+        const user = getTemporaryUser(entry);
+        const type = getTemporaryTransactionType(entry);
+        const dateInfo = getTemporaryDate(entry);
+        const { statusRaw, statusLabel, statusColor } = normalizeTemporaryStatus(entry);
+        const statusKey = statusRaw || 'pending';
+        const groupKey = `${user}|${type}|${dateInfo.key}|${statusKey}`;
+        const existing = map.get(groupKey) || {
+          user,
+          transactionType: type,
+          dateLabel: dateInfo.label,
+          dateKey: dateInfo.key,
+          statusLabel,
+          statusColor,
+          statusKey,
+          entries: [],
+          latest: dateInfo.value,
+        };
+        existing.entries.push(entry);
+        existing.latest = Math.max(existing.latest, dateInfo.value);
+        map.set(groupKey, existing);
+      });
+      return Array.from(map.values()).sort((a, b) => b.latest - a.latest);
+    },
+    [getTemporaryDate, getTemporaryTransactionType, getTemporaryUser, normalizeTemporaryStatus],
+  );
+
+  const groupedTemporary = useMemo(
+    () => ({
+      review: groupTemporaryEntries(temporaryState.review),
+      created: groupTemporaryEntries(temporaryState.created),
+    }),
+    [groupTemporaryEntries, temporaryState.created, temporaryState.review],
+  );
+
+  const renderTemporaryGroup = (group, scope) => (
+    <li
+      key={`${scope}-${group.statusKey}-${group.user}-${group.transactionType}-${group.dateKey}`}
+      style={styles.listItem}
+    >
+      <div style={styles.listBody}>
+        <div style={styles.listTitleRow}>
+          <span style={styles.listTitle}>{group.transactionType}</span>
+          <span style={styles.groupCountBadge}>
+            {t('notifications_group_count', 'Count')}: {group.entries.length}
+          </span>
+        </div>
+        <div style={styles.listMeta}>
+          {group.user && (
+            <span>
+              {t('notifications_created_by', 'Created by')}: {group.user}
+            </span>
+          )}
+          {group.dateLabel && (
+            <span>
+              {t('temporary_date', 'Date')}: {group.dateLabel}
+            </span>
+          )}
+          {group.statusLabel && (
+            <span style={{ color: group.statusColor }}>
+              {t('status', 'Status')}: {group.statusLabel}
+            </span>
+          )}
+        </div>
+      </div>
+      <ul style={styles.nestedList}>
+        {group.entries.map((entry) => renderTemporaryItem(entry, scope))}
+      </ul>
+    </li>
+  );
 
   return (
     <div style={styles.page}>
@@ -876,32 +1002,36 @@ export default function NotificationsPage() {
           <div style={styles.columnLayout}>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_review_queue', 'Review queue')}</h3>
-              {temporaryState.review.length === 0 ? (
+              {groupedTemporary.review.length === 0 ? (
                 <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
               ) : (
                 <ul style={styles.list}>
-                  {temporaryState.review.map((entry) => renderTemporaryItem(entry, 'review'))}
+                  {groupedTemporary.review.map((group) => renderTemporaryGroup(group, 'review'))}
                 </ul>
               )}
               <button
                 style={styles.listAction}
-                onClick={() => openTemporary('review', temporaryState.review[0])}
+                onClick={() =>
+                  openTemporary('review', groupedTemporary.review[0]?.entries?.[0])
+                }
               >
                 {t('notifications_open_review', 'Open review workspace')}
               </button>
             </div>
             <div style={styles.column}>
               <h3 style={styles.columnTitle}>{t('notifications_my_drafts', 'My drafts')}</h3>
-              {temporaryState.created.length === 0 ? (
+              {groupedTemporary.created.length === 0 ? (
                 <p style={styles.emptyText}>{t('notifications_none', 'No notifications')}</p>
               ) : (
                 <ul style={styles.list}>
-                  {temporaryState.created.map((entry) => renderTemporaryItem(entry, 'created'))}
+                  {groupedTemporary.created.map((group) => renderTemporaryGroup(group, 'created'))}
                 </ul>
               )}
               <button
                 style={styles.listAction}
-                onClick={() => openTemporary('created', temporaryState.created[0])}
+                onClick={() =>
+                  openTemporary('created', groupedTemporary.created[0]?.entries?.[0])
+                }
               >
                 {t('notifications_open_drafts', 'Open drafts workspace')}
               </button>
@@ -975,28 +1105,36 @@ const styles = {
     fontSize: '1rem',
     fontWeight: 600,
   },
-    list: {
-      listStyle: 'none',
-      margin: 0,
-      padding: 0,
-      display: 'flex',
-      flexDirection: 'column',
-      gap: '0.75rem',
-    },
-    listSummaryNotes: {
-      marginTop: '0.5rem',
-      padding: '0.5rem',
-      backgroundColor: '#f9fafb',
-      borderRadius: '0.5rem',
-      fontSize: '0.85rem',
-      color: '#1f2937',
-      whiteSpace: 'pre-wrap',
-    },
-    listSummaryNotesText: {
-      display: 'block',
-      marginTop: '0.25rem',
-      whiteSpace: 'pre-wrap',
-    },
+  list: {
+    listStyle: 'none',
+    margin: 0,
+    padding: 0,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  nestedList: {
+    listStyle: 'none',
+    margin: '0.5rem 0 0',
+    paddingLeft: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  listSummaryNotes: {
+    marginTop: '0.5rem',
+    padding: '0.5rem',
+    backgroundColor: '#f9fafb',
+    borderRadius: '0.5rem',
+    fontSize: '0.85rem',
+    color: '#1f2937',
+    whiteSpace: 'pre-wrap',
+  },
+  listSummaryNotesText: {
+    display: 'block',
+    marginTop: '0.25rem',
+    whiteSpace: 'pre-wrap',
+  },
   listItem: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -1028,6 +1166,14 @@ const styles = {
     gap: '0.75rem',
     color: '#4b5563',
     fontSize: '0.85rem',
+  },
+  groupCountBadge: {
+    backgroundColor: '#e5e7eb',
+    color: '#1f2937',
+    borderRadius: '9999px',
+    padding: '0.15rem 0.65rem',
+    fontSize: '0.85rem',
+    fontWeight: 600,
   },
   listSummary: {
     color: '#1f2937',
