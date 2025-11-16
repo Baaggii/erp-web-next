@@ -710,9 +710,6 @@ const TableManager = forwardRef(function TableManager({
       if (transactionTypeField && normalizedTypeFilter) {
         params.set('transactionTypeField', transactionTypeField);
         params.set('transactionTypeValue', normalizedTypeFilter);
-        cacheTemporaryFilter(transactionTypeField, normalizedTypeFilter);
-      } else {
-        cacheTemporaryFilter(null, null);
       }
 
       const res = await fetch(

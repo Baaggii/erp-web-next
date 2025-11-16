@@ -752,6 +752,16 @@ export default function NotificationsPage() {
     [groupTemporaryEntries, temporaryState.created, temporaryState.review],
   );
 
+  const temporaryReviewTotal = useMemo(
+    () => groupedTemporary.review.reduce((sum, group) => sum + group.entries.length, 0),
+    [groupedTemporary.review],
+  );
+
+  const temporaryCreatedTotal = useMemo(
+    () => groupedTemporary.created.reduce((sum, group) => sum + group.entries.length, 0),
+    [groupedTemporary.created],
+  );
+
   const renderTemporaryGroup = (group, scope) => (
     <li
       key={`${scope}-${group.statusKey}-${group.user}-${group.transactionType}-${group.dateKey}`}
@@ -937,8 +947,8 @@ export default function NotificationsPage() {
             <h2 style={styles.sectionTitle}>{t('notifications_temporary_heading', 'Temporary transactions')}</h2>
             <p style={styles.sectionSubtitle}>
               {t('notifications_temporary_summary', 'Review {{review}} · Drafts {{created}}', {
-                review: temporaryReviewCount || temporaryReviewTotal,
-                created: temporaryCreatedCount || temporaryCreatedTotal,
+                review: temporaryReviewTotal,
+                created: temporaryCreatedTotal,
               })}
             </p>
           </div>
