@@ -132,6 +132,59 @@ function extractPromotableValues(source) {
   return isPlainObject(current) ? current : null;
 }
 
+function normalizeTransactionTypeValue(value) {
+  if (value === undefined || value === null) return '';
+  const unwrapped = stripLabelWrappers(value);
+  if (
+    typeof unwrapped === 'string' ||
+    typeof unwrapped === 'number' ||
+    typeof unwrapped === 'boolean'
+  ) {
+    return String(unwrapped).trim().toLowerCase();
+  }
+  return '';
+}
+
+function normalizeFieldName(name) {
+  if (!name) return '';
+  return String(name).trim().toLowerCase();
+}
+
+function extractTransactionTypeValue(row, fieldName) {
+  const normalizedField = normalizeFieldName(fieldName);
+  if (!normalizedField) return undefined;
+  const sources = [
+    row?.values,
+    row?.cleanedValues,
+    row?.rawValues,
+    row?.payload?.values,
+    row?.payload?.cleanedValues,
+    row?.payload?.rawValues,
+  ];
+
+  for (const source of sources) {
+    if (!isPlainObject(source)) continue;
+    for (const [key, val] of Object.entries(source)) {
+      if (normalizeFieldName(key) === normalizedField) {
+        return stripLabelWrappers(val);
+      }
+    }
+  }
+  return undefined;
+}
+
+function filterRowsByTransactionType(rows, fieldName, value) {
+  const normalizedField = normalizeFieldName(fieldName);
+  const normalizedValue = normalizeTransactionTypeValue(value);
+  if (!normalizedField || !normalizedValue) return rows;
+  if (!Array.isArray(rows) || rows.length === 0) return rows;
+  return rows.filter((row) => {
+    const rowValue = extractTransactionTypeValue(row, normalizedField);
+    if (rowValue === undefined || rowValue === null) return false;
+    return normalizeTransactionTypeValue(rowValue) === normalizedValue;
+  });
+}
+
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
   if (!tableName || !values) return { values: {}, warnings: [] };
   if (!isPlainObject(values)) return { values: {}, warnings: [] };
@@ -527,6 +580,8 @@ export async function listTemporarySubmissions({
   empId,
   companyId,
   status,
+  transactionTypeField,
+  transactionTypeValue,
 }) {
   await ensureTemporaryTable();
   const normalizedEmp = normalizeEmpId(empId);
@@ -571,48 +626,50 @@ export async function listTemporarySubmissions({
     params,
   );
   const mapped = rows.map(mapTemporaryRow);
-  return enrichTemporaryMetadata(mapped, companyId);
+  const filtered = filterRowsByTransactionType(
+    mapped,
+    transactionTypeField,
+    transactionTypeValue,
+  );
+  return enrichTemporaryMetadata(filtered, companyId);
 }
 
-export async function getTemporarySummary(empId, companyId) {
+export async function getTemporarySummary(
+  empId,
+  companyId,
+  { tableName = null, transactionTypeField = null, transactionTypeValue = null } = {},
+) {
   await ensureTemporaryTable();
-  const normalizedEmp = normalizeEmpId(empId);
-  const [[created]] = await pool.query(
-    `SELECT
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
-        COUNT(*) AS total_cnt,
-        MAX(updated_at) AS latest_update
-       FROM \`${TEMP_TABLE}\`
-      WHERE created_by = ?
-        AND (company_id = ? OR company_id IS NULL)
-      LIMIT 1`,
-    [normalizedEmp, companyId ?? null],
-  );
-  const [[review]] = await pool.query(
-    `SELECT
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_cnt,
-        SUM(CASE WHEN status <> 'pending' THEN 1 ELSE 0 END) AS reviewed_cnt,
-        COUNT(*) AS total_cnt,
-        MAX(updated_at) AS latest_update
-       FROM \`${TEMP_TABLE}\`
-      WHERE plan_senior_empid = ?
-        AND (company_id = ? OR company_id IS NULL)
-      LIMIT 1`,
-    [normalizedEmp, companyId ?? null],
-  );
-  const createdPending = Number(created?.pending_cnt) || 0;
-  const reviewPending = Number(review?.pending_cnt) || 0;
+  const createdRows = await listTemporarySubmissions({
+    scope: 'created',
+    tableName,
+    empId,
+    companyId,
+    status: 'any',
+    transactionTypeField,
+    transactionTypeValue,
+  });
+  const reviewRows = await listTemporarySubmissions({
+    scope: 'review',
+    tableName,
+    empId,
+    companyId,
+    status: 'any',
+    transactionTypeField,
+    transactionTypeValue,
+  });
+  const createdPending = createdRows.filter((row) => row.status === 'pending').length;
+  const reviewPending = reviewRows.filter((row) => row.status === 'pending').length;
   return {
     createdPending,
     reviewPending,
-    createdReviewed: Number(created?.reviewed_cnt) || 0,
-    reviewReviewed: Number(review?.reviewed_cnt) || 0,
-    createdTotal: Number(created?.total_cnt) || 0,
-    reviewTotal: Number(review?.total_cnt) || 0,
-    createdLatestUpdate: created?.latest_update || null,
-    reviewLatestUpdate: review?.latest_update || null,
-    isReviewer: (Number(review?.total_cnt) || 0) > 0,
+    createdReviewed: createdRows.filter((row) => row.status !== 'pending').length,
+    reviewReviewed: reviewRows.filter((row) => row.status !== 'pending').length,
+    createdTotal: createdRows.length,
+    reviewTotal: reviewRows.length,
+    createdLatestUpdate: createdRows[0]?.updatedAt || null,
+    reviewLatestUpdate: reviewRows[0]?.updatedAt || null,
+    isReviewer: reviewRows.length > 0,
   };
 }
 
