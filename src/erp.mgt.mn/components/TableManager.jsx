@@ -685,32 +685,24 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     try {
-      const params = new URLSearchParams();
-      if (table) {
-        params.set('table', table);
-      }
-      const search = params.toString();
-      const url = search
-        ? `${API_BASE}/transaction_temporaries/summary?${search}`
-        : `${API_BASE}/transaction_temporaries/summary`;
-      const res = await fetch(url, {
-        credentials: 'include',
-      });
-      if (!res.ok) throw new Error('failed');
-      const data = await res.json();
-      setTemporarySummary(data);
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('transaction-temporary-refresh', {
-            detail: { source: 'forms', table },
-          }),
-        );
-      }
-      const reviewPending = Number(data?.reviewPending) || 0;
-      const preferredScope =
-        availableTemporaryScopes.includes('review') && reviewPending > 0
-          ? 'review'
-          : defaultTemporaryScope;
+        const res = await fetch(`${API_BASE}/transaction_temporaries/summary`, {
+          credentials: 'include',
+        });
+        if (!res.ok) throw new Error('failed');
+        const data = await res.json();
+        setTemporarySummary(data);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('transaction-temporary-refresh', {
+              detail: { source: 'forms', table },
+            }),
+          );
+        }
+        const reviewPending = Number(data?.reviewPending) || 0;
+        const preferredScope =
+          availableTemporaryScopes.includes('review') && reviewPending > 0
+            ? 'review'
+            : defaultTemporaryScope;
       setTemporaryScope((prev) => {
         if (!availableTemporaryScopes.includes(prev)) return preferredScope;
         if (
