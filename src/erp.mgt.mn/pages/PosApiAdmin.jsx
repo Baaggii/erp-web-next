@@ -2377,6 +2377,17 @@ export default function PosApiAdmin() {
     }
   }
 
+  function formatSyncErrors(log) {
+    if (!log || !Array.isArray(log.errors) || log.errors.length === 0) return '—';
+    return log.errors
+      .map((entry) => {
+        const endpoint = entry?.endpoint ? `${entry.endpoint}: ` : '';
+        const message = typeof entry === 'string' ? entry : entry?.message;
+        return `${endpoint}${message || 'Error'}`.trim();
+      })
+      .join('; ');
+  }
+
   async function handleStaticUpload(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -4900,6 +4911,7 @@ export default function PosApiAdmin() {
                     <th>Updated</th>
                     <th>Inactive</th>
                     <th>Trigger</th>
+                    <th>Error</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4911,6 +4923,7 @@ export default function PosApiAdmin() {
                       <td>{log.updated || 0}</td>
                       <td>{log.deactivated || 0}</td>
                       <td>{log.trigger || 'manual'}</td>
+                      <td>{formatSyncErrors(log)}</td>
                     </tr>
                   ))}
                 </tbody>

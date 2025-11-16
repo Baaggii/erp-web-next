@@ -30,6 +30,19 @@ function normalizeUsage(value) {
   return normalized || 'transaction';
 }
 
+function sanitizeIdList(list) {
+  return Array.isArray(list)
+    ? Array.from(
+        new Set(
+          list
+            .filter((value) => typeof value === 'string')
+            .map((value) => value.trim())
+            .filter(Boolean),
+        ),
+      )
+    : [];
+}
+
 async function readJson(filePath, fallback) {
   try {
     const raw = await fs.readFile(filePath, 'utf8');
@@ -201,11 +214,16 @@ function parseCodesFromEndpoint(endpointId, response) {
   return [];
 }
 
-export async function runReferenceCodeSync(trigger = 'manual') {
+export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   const startedAt = new Date();
+  const settings = await loadSyncSettings();
   const endpoints = await loadEndpoints();
-  const infoEndpoints = endpoints.filter(
-    (ep) => normalizeUsage(ep.usage) === 'info' && String(ep.method || '').toUpperCase() === 'GET',
+  const normalizedUsage = VALID_SYNC_USAGES.has(options.usage)
+    ? options.usage
+    : settings.usage || DEFAULT_SETTINGS.usage;
+  const desiredUsage = normalizeUsage(normalizedUsage);
+  const selectedEndpointIds = sanitizeIdList(
+    Object.prototype.hasOwnProperty.call(options, 'endpointIds') ? options.endpointIds : settings.endpointIds,
   );
 
   const summary = {

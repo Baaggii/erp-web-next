@@ -41,7 +41,8 @@ router.post('/sync', requireAuth, async (req, res, next) => {
   try {
     const guard = await requireSystemSettings(req, res);
     if (!guard) return;
-    const result = await runReferenceCodeSync('manual');
+    const payload = req.body && typeof req.body === 'object' ? req.body : {};
+    const result = await runReferenceCodeSync('manual', payload);
     res.json(result);
   } catch (err) {
     if (err?.details) {
