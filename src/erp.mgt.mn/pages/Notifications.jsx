@@ -340,10 +340,8 @@ export default function NotificationsPage() {
     if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
     let cancelled = false;
     setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
-    const reviewLimit = Math.max(SECTION_LIMIT, temporaryReviewCount || 0);
-    const createdLimit = Math.max(SECTION_LIMIT, temporaryCreatedCount || 0);
-    const reviewPromise = temporaryFetchScopeEntries('review', reviewLimit);
-    const createdPromise = temporaryFetchScopeEntries('created', createdLimit);
+    const reviewPromise = temporaryFetchScopeEntries('review', SECTION_LIMIT);
+    const createdPromise = temporaryFetchScopeEntries('created', SECTION_LIMIT);
     Promise.all([reviewPromise, createdPromise])
         .then(([review, created]) => {
           if (!cancelled) {
