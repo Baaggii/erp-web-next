@@ -3,7 +3,9 @@ import { useModules, refreshModules } from '../hooks/useModules.js';
 import { refreshTxnModules } from '../hooks/useTxnModules.js';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
-import useHeaderMappings from '../hooks/useHeaderMappings.js';
+import useHeaderMappings, {
+  clearHeaderMappingsCache,
+} from '../hooks/useHeaderMappings.js';
 import I18nContext from '../context/I18nContext.jsx';
 import { useToast } from '../context/ToastContext.jsx';
 import { AuthContext } from '../context/AuthContext.jsx';
@@ -155,10 +157,13 @@ export default function FormsManagement() {
   const [posApiEndpoints, setPosApiEndpoints] = useState([]);
   const [savedConfigs, setSavedConfigs] = useState([]);
   const [selectedConfig, setSelectedConfig] = useState('');
+  const [editLabels, setEditLabels] = useState(false);
+  const [labelEdits, setLabelEdits] = useState({});
   const loadingTablesRef = useRef(new Set());
   const generalConfig = useGeneralConfig();
   const modules = useModules();
   const procMap = useHeaderMappings(procedureOptions);
+  const columnHeaderMap = useHeaderMappings(columns);
   const [isDefault, setIsDefault] = useState(false);
   const hasAdmin =
     permissions?.permissions?.system_settings ||
@@ -166,6 +171,30 @@ export default function FormsManagement() {
   if (!hasAdmin) {
     return <Navigate to="/" replace />;
   }
+
+  const openLabelEditor = () => {
+    const map = {};
+    columns.forEach((c) => {
+      map[c] = columnHeaderMap[c] || '';
+    });
+    setLabelEdits(map);
+    setEditLabels(true);
+  };
+
+  const saveFieldLabels = () => {
+    fetch('/api/header_mappings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(labelEdits),
+    })
+      .then((res) => (res.ok ? res.json() : null))
+      .then(() => {
+        clearHeaderMappingsCache(columns);
+        setEditLabels(false);
+      })
+      .catch(() => setEditLabels(false));
+  };
   function getProcLabel(name) {
     return generalConfig.general?.procLabels?.[name] || procMap[name] || name;
   }
@@ -1149,12 +1178,25 @@ export default function FormsManagement() {
             />
 
             <section style={sectionStyle}>
-              <h3 style={sectionTitleStyle}>Field Configuration</h3>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.5rem',
+                }}
+              >
+                <h3 style={sectionTitleStyle}>Field Configuration</h3>
+                {generalConfig.general?.editLabelsEnabled && (
+                  <button onClick={openLabelEditor}>Edit Field Labels</button>
+                )}
+              </div>
               <div className="table-container overflow-x-auto" style={{ maxHeight: '70vh' }}>
                 <table style={{ borderCollapse: 'collapse', width: '100%' }}>
                   <thead className="sticky-header">
               <tr>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Field</th>
+                <th style={{ border: '1px solid #ccc', padding: '4px' }}>Label</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Visible</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Required</th>
                 <th style={{ border: '1px solid #ccc', padding: '4px' }}>Default</th>
@@ -1184,6 +1226,9 @@ export default function FormsManagement() {
                 <tr key={col}>
                   <td style={{ border: '1px solid #ccc', padding: '4px' }}>
                     {col != null ? col : ''}
+                  </td>
+                  <td style={{ border: '1px solid #ccc', padding: '4px' }}>
+                    {columnHeaderMap[col] || ''}
                   </td>
                   <td style={{ border: '1px solid #ccc', padding: '4px', textAlign: 'center' }}>
                     <input
@@ -1809,6 +1854,53 @@ export default function FormsManagement() {
                 <button onClick={handleSave}>Save Configuration</button>
               </div>
             </section>
+            {editLabels && (
+              <div
+                style={{
+                  position: 'fixed',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: 'rgba(0,0,0,0.4)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  zIndex: 1000,
+                }}
+              >
+                <div
+                  style={{
+                    backgroundColor: '#fff',
+                    padding: '1rem',
+                    borderRadius: '4px',
+                    maxHeight: '80vh',
+                    overflowY: 'auto',
+                    minWidth: '320px',
+                  }}
+                >
+                  <h3 style={{ marginTop: 0, marginBottom: '0.5rem' }}>Edit Field Labels</h3>
+                  {columns.map((c) => (
+                    <div key={c} style={{ marginBottom: '0.5rem' }}>
+                      <label style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                        <span style={{ minWidth: '120px' }}>{c}</span>
+                        <input
+                          value={labelEdits[c] || ''}
+                          onChange={(e) => setLabelEdits({ ...labelEdits, [c]: e.target.value })}
+                          style={{ flex: 1 }}
+                        />
+                      </label>
+                    </div>
+                  ))}
+                  <div style={{ textAlign: 'right', marginTop: '0.75rem' }}>
+                    <button onClick={() => setEditLabels(false)} style={{ marginRight: '0.5rem' }}>
+                      Cancel
+                    </button>
+                    <button onClick={saveFieldLabels}>Save</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
