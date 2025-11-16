@@ -208,13 +208,21 @@ export async function runReferenceCodeSync(trigger = 'manual') {
     (ep) => normalizeUsage(ep.usage) === 'info' && String(ep.method || '').toUpperCase() === 'GET',
   );
 
-  const summary = { added: 0, updated: 0, deactivated: 0, totalTypes: 0 };
+  const summary = {
+    added: 0,
+    updated: 0,
+    deactivated: 0,
+    totalTypes: 0,
+    attempted: infoEndpoints.length,
+    successful: 0,
+  };
   const errors = [];
 
   for (const endpoint of infoEndpoints) {
     try {
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
       const codes = parseCodesFromEndpoint(endpoint.id, response);
+      summary.successful += 1;
       if (!codes.length) continue;
       const grouped = codes.reduce((acc, entry) => {
         if (!entry.code_type) return acc;
@@ -243,6 +251,14 @@ export async function runReferenceCodeSync(trigger = 'manual') {
     trigger,
   };
   await appendSyncLog(logEntry);
+
+  if (summary.successful === 0 && errors.length > 0) {
+    const errorMessage = `Failed to refresh reference codes: ${errors.length} endpoint(s) unreachable`;
+    const error = new Error(errorMessage);
+    error.details = { ...summary, errors, durationMs, timestamp: logEntry.timestamp };
+    throw error;
+  }
+
   return { ...summary, errors, durationMs, timestamp: logEntry.timestamp };
 }
 

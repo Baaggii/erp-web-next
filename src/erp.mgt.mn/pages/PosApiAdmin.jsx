@@ -2347,7 +2347,16 @@ export default function PosApiAdmin() {
           : {}),
       });
       if (!res.ok) {
-        throw new Error('Failed to refresh reference codes');
+        let errorMessage = 'Failed to refresh reference codes';
+        try {
+          const errorBody = await res.json();
+          if (errorBody?.message) {
+            errorMessage = errorBody.message;
+          }
+        } catch (err) {
+          // ignore parse errors and fall back to default message
+        }
+        throw new Error(errorMessage);
       }
       const data = await res.json();
       const usageLabel = infoSyncUsage === 'all' ? 'all usages' : formatUsageLabel(infoSyncUsage);
