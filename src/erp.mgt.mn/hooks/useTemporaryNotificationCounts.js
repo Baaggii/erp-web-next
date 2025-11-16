@@ -12,16 +12,9 @@ function readCachedTemporaryFilter() {
     const raw = window.localStorage.getItem(TEMPORARY_FILTER_CACHE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    const hasField = parsed && parsed.field && parsed.value !== undefined && parsed.value !== null;
-    const hasTable = parsed && parsed.table !== undefined && parsed.table !== null;
-
-    if (!hasField && !hasTable) return null;
-
-    return {
-      field: hasField ? parsed.field : undefined,
-      value: hasField ? parsed.value : undefined,
-      table: hasTable ? String(parsed.table).trim() : undefined,
-    };
+    if (parsed && parsed.field && parsed.value !== undefined && parsed.value !== null) {
+      return { field: parsed.field, value: parsed.value };
+    }
   } catch (err) {
     console.error('Failed to read cached temporary transaction filter', err);
   }
@@ -139,9 +132,6 @@ export default function useTemporaryNotificationCounts(empid) {
       const cachedFilter = readCachedTemporaryFilter();
       const hasCachedValue =
         cachedFilter?.value !== undefined && cachedFilter?.value !== null && cachedFilter?.value !== '';
-      if (cachedFilter?.table) {
-        params.set('table', cachedFilter.table);
-      }
       if (cachedFilter?.field && hasCachedValue) {
         params.set('transactionTypeField', cachedFilter.field);
         params.set('transactionTypeValue', cachedFilter.value);
@@ -228,9 +218,6 @@ export default function useTemporaryNotificationCounts(empid) {
     const cachedFilter = readCachedTemporaryFilter();
     const hasCachedValue =
       cachedFilter?.value !== undefined && cachedFilter?.value !== null && cachedFilter?.value !== '';
-    if (cachedFilter?.table) {
-      params.set('table', cachedFilter.table);
-    }
     if (cachedFilter?.field && hasCachedValue) {
       params.set('transactionTypeField', cachedFilter.field);
       params.set('transactionTypeValue', cachedFilter.value);
