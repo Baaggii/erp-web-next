@@ -640,11 +640,20 @@ const TableManager = forwardRef(function TableManager({
     return scopes;
   }, [canCreateTemporary, canReviewTemporary]);
 
-  const defaultTemporaryScope = useMemo(() => {
-    if (availableTemporaryScopes.includes('created')) return 'created';
-    if (availableTemporaryScopes.length > 0) return availableTemporaryScopes[0];
-    return 'created';
-  }, [availableTemporaryScopes]);
+    const defaultTemporaryScope = useMemo(() => {
+      if (availableTemporaryScopes.includes('created')) return 'created';
+      if (availableTemporaryScopes.length > 0) return availableTemporaryScopes[0];
+      return 'created';
+    }, [availableTemporaryScopes]);
+
+    useEffect(() => {
+      setTemporarySummary(null);
+      setTemporaryList([]);
+      setTemporarySelection(new Set());
+      setTemporaryScope((prev) =>
+        availableTemporaryScopes.includes(prev) ? prev : defaultTemporaryScope,
+      );
+    }, [table, availableTemporaryScopes, defaultTemporaryScope]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -685,24 +694,34 @@ const TableManager = forwardRef(function TableManager({
       return;
     }
     try {
-        const res = await fetch(`${API_BASE}/transaction_temporaries/summary`, {
+      const params = new URLSearchParams();
+      if (table) {
+        params.set('table', table);
+      }
+
+      const res = await fetch(
+        `${API_BASE}/transaction_temporaries/summary${
+          params.size > 0 ? `?${params.toString()}` : ''
+        }`,
+        {
           credentials: 'include',
-        });
-        if (!res.ok) throw new Error('failed');
-        const data = await res.json();
-        setTemporarySummary(data);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(
-            new CustomEvent('transaction-temporary-refresh', {
-              detail: { source: 'forms', table },
-            }),
-          );
-        }
-        const reviewPending = Number(data?.reviewPending) || 0;
-        const preferredScope =
-          availableTemporaryScopes.includes('review') && reviewPending > 0
-            ? 'review'
-            : defaultTemporaryScope;
+        },
+      );
+      if (!res.ok) throw new Error('failed');
+      const data = await res.json();
+      setTemporarySummary(data);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(
+          new CustomEvent('transaction-temporary-refresh', {
+            detail: { source: 'forms', table },
+          }),
+        );
+      }
+      const reviewPending = Number(data?.reviewPending) || 0;
+      const preferredScope =
+        availableTemporaryScopes.includes('review') && reviewPending > 0
+          ? 'review'
+          : defaultTemporaryScope;
       setTemporaryScope((prev) => {
         if (!availableTemporaryScopes.includes(prev)) return preferredScope;
         if (
