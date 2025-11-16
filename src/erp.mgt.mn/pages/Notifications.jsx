@@ -22,6 +22,25 @@ function dedupeRequests(list) {
   });
 }
 
+function dedupeTemporaryEntries(list) {
+  const map = new Map();
+  list.forEach((entry) => {
+    if (!entry) return;
+    const key = String(
+      entry.id ??
+        entry.temporary_id ??
+        entry.temporaryId ??
+        entry.temporaryID ??
+        '',
+    ).trim();
+    if (!key) return;
+    if (!map.has(key)) {
+      map.set(key, entry);
+    }
+  });
+  return Array.from(map.values());
+}
+
 function createEmptyResponses() {
   return { accepted: [], declined: [] };
 }
@@ -349,16 +368,18 @@ export default function NotificationsPage() {
       status: 'any',
     });
     Promise.all([reviewPromise, createdPromise])
-        .then(([review, created]) => {
-          if (!cancelled) {
-            setTemporaryState({
-              loading: false,
-              error: '',
-              review: sortTemporaryEntries(review, 'review'),
-              created: sortTemporaryEntries(created, 'created'),
-            });
-          }
-        })
+      .then(([review, created]) => {
+        if (!cancelled) {
+          const uniqueReview = dedupeTemporaryEntries(review);
+          const uniqueCreated = dedupeTemporaryEntries(created);
+          setTemporaryState({
+            loading: false,
+            error: '',
+            review: sortTemporaryEntries(uniqueReview, 'review'),
+            created: sortTemporaryEntries(uniqueCreated, 'created'),
+          });
+        }
+      })
       .catch(() => {
         if (!cancelled)
           setTemporaryState({
