@@ -238,10 +238,7 @@ function buildTableOptions(tables) {
 function sanitizeTableSelection(selection, options) {
   const allowedValues = Array.isArray(options) ? options.map((option) => option.value) : [];
   const allowedSet = new Set(allowedValues.filter(Boolean));
-  let values = Array.isArray(selection) ? selection : [];
-  if (!Array.isArray(selection) && typeof selection === 'string') {
-    values = selection.split(',');
-  }
+  const values = Array.isArray(selection) ? selection : [];
   const normalized = values
     .map((entry) => {
       if (typeof entry === 'string') return entry.trim();
