@@ -658,6 +658,58 @@ export default function NotificationsPage() {
     [t],
   );
 
+  const renderTemporaryItem = (entry, scope) => {
+    const { isPending, statusLabel, statusColor } = normalizeTemporaryStatus(entry);
+    const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
+    const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || entry?.updatedAt || entry?.updated_at;
+    const reviewer = entry?.reviewedBy || entry?.reviewed_by || '';
+    return (
+      <li key={`${scope}-${entry.id}`} style={styles.listItem}>
+        <div style={styles.listBody}>
+          <div style={styles.listTitle}>
+            {entry.formLabel || entry.formName || entry.tableName || entry.id}
+          </div>
+          <div style={styles.listMeta}>
+            {entry.createdBy && (
+              <span>
+                {t('notifications_created_by', 'Created by')}: {entry.createdBy}
+              </span>
+            )}
+            {entry.createdAt && (
+              <span>
+                {t('notifications_created_at', 'Created')}: {formatTimestamp(entry.createdAt)}
+              </span>
+            )}
+            {statusLabel && (
+              <span style={{ color: statusColor }}>
+                {t('status', 'Status')}: {statusLabel}
+              </span>
+            )}
+            {!isPending && reviewedAt && (
+              <span>
+                {t('temporary_reviewed_at', 'Reviewed')}: {formatTimestamp(reviewedAt)}
+              </span>
+            )}
+            {!isPending && reviewer && (
+              <span>
+                {t('temporary_reviewed_by', 'Reviewed by')}: {reviewer}
+              </span>
+            )}
+          </div>
+          {!isPending && reviewNotes && (
+            <div style={styles.listSummaryNotes}>
+              <strong>{t('temporary_review_notes', 'Review notes')}:</strong>
+              <span style={styles.listSummaryNotesText}>{reviewNotes}</span>
+            </div>
+          )}
+        </div>
+        <button style={styles.listAction} onClick={() => openTemporary(scope, entry)}>
+          {t('notifications_open_form', 'Open forms')}
+        </button>
+      </li>
+    );
+  };
+
   const getTemporaryUser = useCallback(
     (entry) =>
       entry?.createdBy ||
@@ -769,12 +821,10 @@ export default function NotificationsPage() {
             </span>
           )}
         </div>
-        <p style={styles.listSummary}>
-          {t('notifications_temporary_group_summary', '{{count}} transactions grouped by user, type, date, status', {
-            count: group.entries.length,
-          })}
-        </p>
       </div>
+      <ul style={styles.nestedList}>
+        {group.entries.map((entry) => renderTemporaryItem(entry, scope))}
+      </ul>
     </li>
   );
 
@@ -1064,6 +1114,28 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.75rem',
+  },
+  nestedList: {
+    listStyle: 'none',
+    margin: '0.5rem 0 0',
+    paddingLeft: '1rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  listSummaryNotes: {
+    marginTop: '0.5rem',
+    padding: '0.5rem',
+    backgroundColor: '#f9fafb',
+    borderRadius: '0.5rem',
+    fontSize: '0.85rem',
+    color: '#1f2937',
+    whiteSpace: 'pre-wrap',
+  },
+  listSummaryNotesText: {
+    display: 'block',
+    marginTop: '0.25rem',
+    whiteSpace: 'pre-wrap',
   },
   listItem: {
     display: 'flex',
