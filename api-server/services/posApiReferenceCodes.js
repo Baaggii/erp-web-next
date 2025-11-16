@@ -66,7 +66,16 @@ export async function loadSyncSettings() {
     autoSyncEnabled: Boolean(settings.autoSyncEnabled),
     intervalMinutes,
     usage: VALID_SYNC_USAGES.has(settings.usage) ? settings.usage : DEFAULT_SETTINGS.usage,
-    endpointIds: sanitizeIdList(settings.endpointIds),
+    endpointIds: Array.isArray(settings.endpointIds)
+      ? Array.from(
+          new Set(
+            settings.endpointIds
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.endpointIds,
     tables: Array.isArray(settings.tables)
       ? Array.from(
           new Set(
@@ -85,7 +94,16 @@ export async function saveSyncSettings(settings) {
     autoSyncEnabled: Boolean(settings?.autoSyncEnabled),
     intervalMinutes: Math.max(5, Number(settings?.intervalMinutes) || DEFAULT_SETTINGS.intervalMinutes),
     usage: VALID_SYNC_USAGES.has(settings?.usage) ? settings.usage : DEFAULT_SETTINGS.usage,
-    endpointIds: sanitizeIdList(settings?.endpointIds) || DEFAULT_SETTINGS.endpointIds,
+    endpointIds: Array.isArray(settings?.endpointIds)
+      ? Array.from(
+          new Set(
+            settings.endpointIds
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.endpointIds,
     tables: Array.isArray(settings?.tables)
       ? Array.from(
           new Set(
@@ -207,11 +225,6 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   const selectedEndpointIds = sanitizeIdList(
     Object.prototype.hasOwnProperty.call(options, 'endpointIds') ? options.endpointIds : settings.endpointIds,
   );
-
-  const infoEndpoints = endpoints
-    .filter((ep) => normalizeUsage(ep.usage) === 'info' && String(ep.method || '').toUpperCase() === 'GET')
-    .filter((ep) => (desiredUsage === 'all' ? true : normalizeUsage(ep.usage) === desiredUsage))
-    .filter((ep) => (selectedEndpointIds.length === 0 ? true : selectedEndpointIds.includes(ep.id)));
 
   const summary = {
     added: 0,
