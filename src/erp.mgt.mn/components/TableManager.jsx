@@ -689,6 +689,12 @@ const TableManager = forwardRef(function TableManager({
       if (table) {
         params.set('table', table);
       }
+      const transactionTypeField = formConfig?.transactionTypeField || '';
+      const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
+      if (transactionTypeField && normalizedTypeFilter) {
+        params.set('transactionTypeField', transactionTypeField);
+        params.set('transactionTypeValue', normalizedTypeFilter);
+      }
 
       const res = await fetch(
         `${API_BASE}/transaction_temporaries/summary${
@@ -732,12 +738,14 @@ const TableManager = forwardRef(function TableManager({
           : defaultTemporaryScope,
       );
     }
-    }, [
-      formSupportsTemporary,
-      availableTemporaryScopes,
-      defaultTemporaryScope,
-      table,
-    ]);
+  }, [
+    formSupportsTemporary,
+    availableTemporaryScopes,
+    defaultTemporaryScope,
+    table,
+    formConfig?.transactionTypeField,
+    typeFilter,
+  ]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
@@ -3605,20 +3613,26 @@ const TableManager = forwardRef(function TableManager({
       if (!availableTemporaryScopes.includes(targetScope)) return;
       const params = new URLSearchParams();
       params.set('scope', targetScope);
+      const transactionTypeField = formConfig?.transactionTypeField || '';
+      const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
+      if (transactionTypeField && normalizedTypeFilter) {
+        params.set('transactionTypeField', transactionTypeField);
+        params.set('transactionTypeValue', normalizedTypeFilter);
+      }
 
-        const requestedStatus =
-          options?.status !== undefined
-            ? options.status
-            : targetScope === 'review'
-            ? 'pending'
-            : null;
-        const statusValue =
-          requestedStatus === null || requestedStatus === undefined
-            ? ''
-            : String(requestedStatus).trim();
-        if (statusValue) {
-          params.set('status', statusValue);
-        }
+      const requestedStatus =
+        options?.status !== undefined
+          ? options.status
+          : targetScope === 'review'
+          ? 'pending'
+          : null;
+      const statusValue =
+        requestedStatus === null || requestedStatus === undefined
+          ? ''
+          : String(requestedStatus).trim();
+      if (statusValue) {
+        params.set('status', statusValue);
+      }
 
       const shouldFilterByTable = (() => {
         if (options?.table !== undefined) {
@@ -3696,6 +3710,8 @@ const TableManager = forwardRef(function TableManager({
       availableTemporaryScopes,
       defaultTemporaryScope,
       temporarySummary,
+      formConfig?.transactionTypeField,
+      typeFilter,
     ],
   );
 
