@@ -1096,7 +1096,6 @@ export default function PosApiAdmin() {
     intervalMinutes: 720,
     usage: 'all',
     endpointIds: [],
-    tables: [],
   });
   const [infoSyncLogs, setInfoSyncLogs] = useState([]);
   const [infoSyncStatus, setInfoSyncStatus] = useState('');
@@ -1104,8 +1103,6 @@ export default function PosApiAdmin() {
   const [infoSyncLoading, setInfoSyncLoading] = useState(false);
   const [infoSyncUsage, setInfoSyncUsage] = useState('all');
   const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
-  const [infoSyncTableOptions, setInfoSyncTableOptions] = useState(DEFAULT_INFO_TABLE_OPTIONS);
-  const [infoSyncTables, setInfoSyncTables] = useState([]);
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
 
@@ -2015,23 +2012,14 @@ export default function PosApiAdmin() {
         const endpointIds = Array.isArray(data.settings?.endpointIds)
           ? data.settings.endpointIds.filter((value) => typeof value === 'string' && value)
           : [];
-        const availableTables = buildTableOptions(data.tables || data.availableTables || []);
-        const tableOptions = availableTables.length > 0 ? availableTables : DEFAULT_INFO_TABLE_OPTIONS;
-        const tables = sanitizeTableSelection(
-          Array.isArray(data.settings?.tables) ? data.settings.tables : data.settings?.tableNames,
-          tableOptions,
-        );
-        setInfoSyncTableOptions(tableOptions);
         setInfoSyncSettings({
           autoSyncEnabled: Boolean(data.settings?.autoSyncEnabled),
           intervalMinutes: Number(data.settings?.intervalMinutes) || 720,
           usage,
           endpointIds,
-          tables,
         });
         setInfoSyncUsage(usage);
         setInfoSyncEndpointIds(endpointIds);
-        setInfoSyncTables(tables);
         setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
       } catch (err) {
         if (!cancelled) {
@@ -2236,21 +2224,9 @@ export default function PosApiAdmin() {
     setInfoSyncSettings((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleInfoUsageChange(value) {
-    setInfoSyncUsage(value);
-    setInfoSyncSettings((prev) => ({ ...prev, usage: value }));
-  }
-
   function handleInfoEndpointSelection(event) {
     const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
     setInfoSyncEndpointIds(selected);
-    setInfoSyncSettings((prev) => ({ ...prev, endpointIds: selected }));
-  }
-
-  function handleInfoTableSelection(event) {
-    const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
-    setInfoSyncTables(selected);
-    setInfoSyncSettings((prev) => ({ ...prev, tables: selected }));
   }
 
   async function saveInfoSettings() {
@@ -2275,26 +2251,13 @@ export default function PosApiAdmin() {
       const saved = await res.json();
       const savedUsage = saved.usage && VALID_USAGE_VALUES.has(saved.usage)
         ? saved.usage
-        : payload.usage;
+        : infoSyncSettings.usage;
       const savedEndpointIds = Array.isArray(saved.endpointIds)
         ? saved.endpointIds.filter((value) => typeof value === 'string' && value)
-        : payload.endpointIds;
-      const savedTablesRaw = Array.isArray(saved.tables)
-        ? saved.tables
-        : Array.isArray(saved.tableNames)
-          ? saved.tableNames
-          : payload.tables;
-      const savedTables = sanitizeTableSelection(savedTablesRaw, infoSyncTableOptions);
-      setInfoSyncSettings((prev) => ({
-        ...prev,
-        ...saved,
-        usage: savedUsage,
-        endpointIds: savedEndpointIds,
-        tables: savedTables,
-      }));
+        : infoSyncEndpointIds;
+      setInfoSyncSettings((prev) => ({ ...prev, ...saved, usage: savedUsage, endpointIds: savedEndpointIds }));
       setInfoSyncUsage(savedUsage);
       setInfoSyncEndpointIds(savedEndpointIds);
-      setInfoSyncTables(savedTables);
       setInfoSyncStatus('Saved synchronization settings.');
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to save synchronization settings');
@@ -2315,9 +2278,6 @@ export default function PosApiAdmin() {
       if (infoSyncEndpointIds.length > 0) {
         payload.endpointIds = infoSyncEndpointIds;
       }
-      if (infoSyncTables.length > 0) {
-        payload.tables = infoSyncTables;
-      }
       const hasPayload = Object.keys(payload).length > 0;
       const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
         method: 'POST',
@@ -2335,9 +2295,8 @@ export default function PosApiAdmin() {
         infoSyncEndpointIds.length > 0
           ? `${infoSyncEndpointIds.length} endpoint(s)`
           : 'all endpoints';
-      const tableLabel = infoSyncTables.length > 0 ? `${infoSyncTables.length} table(s)` : 'all tables';
       setInfoSyncStatus(
-        `Synced reference codes (${usageLabel}, ${endpointLabel}, ${tableLabel}) – added ${data.added || 0}, updated ${
+        `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${data.added || 0}, updated ${
           data.updated || 0
         }, deactivated ${data.deactivated || 0}.`,
       );
@@ -4758,7 +4717,7 @@ export default function PosApiAdmin() {
                   Usage
                   <select
                     value={infoSyncUsage}
-                    onChange={(e) => handleInfoUsageChange(e.target.value)}
+                    onChange={(e) => setInfoSyncUsage(e.target.value)}
                     style={styles.input}
                   >
                     <option value="all">All usages</option>
@@ -4786,22 +4745,6 @@ export default function PosApiAdmin() {
                   <span style={styles.checkboxHint}>
                     Leave empty to include all endpoints in the selected usage.
                   </span>
-                </label>
-                <label style={{ ...styles.label, flex: 1 }}>
-                  Tables to sync
-                  <select
-                    multiple
-                    value={infoSyncTables}
-                    onChange={handleInfoTableSelection}
-                    style={{ ...styles.input, minHeight: '140px' }}
-                  >
-                    {infoSyncTableOptions.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span style={styles.checkboxHint}>Leave empty to update every table.</span>
                 </label>
               </div>
               <button
