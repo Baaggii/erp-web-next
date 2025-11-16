@@ -49,12 +49,6 @@ router.post('/sync', requireAuth, async (req, res, next) => {
       res.status(502).json({ message: err.message || 'Failed to refresh reference codes', ...err.details });
       return;
     }
-    if (err instanceof ReferenceError) {
-      res
-        .status(400)
-        .json({ message: 'Failed to refresh reference codes: invalid endpoint selection payload' });
-      return;
-    }
     next(err);
   }
 });
