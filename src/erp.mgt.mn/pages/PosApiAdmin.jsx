@@ -1115,6 +1115,7 @@ export default function PosApiAdmin() {
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
+  const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
 
   const groupedEndpoints = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
@@ -2018,9 +2019,38 @@ export default function PosApiAdmin() {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'info') return undefined;
+    if (activeTab !== 'info') {
+      refreshInfoSyncLogsRef.current = () => Promise.resolve();
+      return undefined;
+    }
+
     const controller = new AbortController();
     let cancelled = false;
+    let intervalId;
+
+    async function refreshInfoSyncLogs(signal = controller.signal) {
+      try {
+        const res = await fetch(`${API_BASE}/posapi/reference-codes`, {
+          credentials: 'include',
+          skipLoader: true,
+          signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && !signal?.aborted) {
+          setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
+        }
+      } catch (err) {
+        if (cancelled || err?.name === 'AbortError') return;
+        console.warn('Failed to refresh POSAPI info sync logs', err);
+      }
+    }
+
+    refreshInfoSyncLogsRef.current = () => {
+      const refreshController = new AbortController();
+      return refreshInfoSyncLogs(refreshController.signal);
+    };
+
     async function loadInfoSync() {
       try {
         setInfoSyncLoading(true);
@@ -2080,9 +2110,13 @@ export default function PosApiAdmin() {
     }
 
     loadInfoSync();
+    refreshInfoSyncLogs();
+    intervalId = window.setInterval(refreshInfoSyncLogs, 30000);
     return () => {
       cancelled = true;
       controller.abort();
+      if (intervalId) window.clearInterval(intervalId);
+      refreshInfoSyncLogsRef.current = () => Promise.resolve();
     };
   }, [activeTab]);
 
@@ -2369,7 +2403,7 @@ export default function PosApiAdmin() {
           data.updated || 0
         }, deactivated ${data.deactivated || 0}.`,
       );
-      setInfoSyncLogs((prev) => [{ timestamp: data.timestamp, ...data }, ...prev]);
+      await refreshInfoSyncLogsRef.current();
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to refresh reference codes');
     } finally {
@@ -4778,6 +4812,11 @@ export default function PosApiAdmin() {
                 />
                 Synchronize reference codes automatically
               </label>
+              <p style={styles.helpText}>
+                Automatic syncs run on the server according to the saved schedule even when no admin
+                users are online. The log table below updates whenever the tab is open or after a
+                manual refresh completes.
+              </p>
               <label style={{ ...styles.label, maxWidth: '260px' }}>
                 Repeat every (minutes)
                 <input
@@ -5009,6 +5048,11 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.25rem',
+  },
+  helpText: {
+    margin: '0.5rem 0 0.75rem',
+    fontSize: '0.9rem',
+    color: '#475569',
   },
   logsCard: {
     border: '1px solid #e2e8f0',
