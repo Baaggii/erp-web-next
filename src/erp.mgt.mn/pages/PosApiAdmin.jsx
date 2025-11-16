@@ -2021,6 +2021,26 @@ export default function PosApiAdmin() {
     if (activeTab !== 'info') return undefined;
     const controller = new AbortController();
     let cancelled = false;
+    let intervalId;
+
+    async function refreshInfoSyncLogs() {
+      try {
+        const res = await fetch(`${API_BASE}/posapi/reference-codes`, {
+          credentials: 'include',
+          skipLoader: true,
+          signal: controller.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled) {
+          setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
+        }
+      } catch (err) {
+        if (cancelled || err?.name === 'AbortError') return;
+        console.warn('Failed to refresh POSAPI info sync logs', err);
+      }
+    }
+
     async function loadInfoSync() {
       try {
         setInfoSyncLoading(true);
@@ -2080,9 +2100,11 @@ export default function PosApiAdmin() {
     }
 
     loadInfoSync();
+    intervalId = window.setInterval(refreshInfoSyncLogs, 30000);
     return () => {
       cancelled = true;
       controller.abort();
+      if (intervalId) window.clearInterval(intervalId);
     };
   }, [activeTab]);
 
