@@ -3874,14 +3874,11 @@ function Sidebar({ onOpen, open, isMobile }) {
 
   const map = {};
   modules.forEach((m) => {
-    const isPosApi = m.module_key === 'posapi_endpoints';
-    const hasSystemSettings =
-      perms?.permissions?.system_settings || perms?.system_settings;
     const formsDesc = isFormsDescendant(m);
     const isTxn = formsDesc && txnModules && txnModules.keys.has(m.module_key);
     if (formsDesc && !isTxn) return;
-    if (!m.show_in_sidebar && !isPosApi) return;
-    if (!isTxn && !(perms[m.module_key] || (isPosApi && hasSystemSettings))) return;
+    if (!m.show_in_sidebar) return;
+    if (!isTxn && !perms[m.module_key]) return;
     const label =
       generalConfig.general?.procLabels?.[m.module_key] ||
       headerMap[m.module_key] ||
