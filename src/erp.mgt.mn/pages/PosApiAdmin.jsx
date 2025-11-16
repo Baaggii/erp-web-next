@@ -1115,6 +1115,7 @@ export default function PosApiAdmin() {
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
+  const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
 
   const groupedEndpoints = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
@@ -2018,7 +2019,10 @@ export default function PosApiAdmin() {
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'info') return undefined;
+    if (activeTab !== 'info') {
+      refreshInfoSyncLogsRef.current = () => Promise.resolve();
+      return undefined;
+    }
     const controller = new AbortController();
     let cancelled = false;
     let intervalId;
@@ -2391,7 +2395,7 @@ export default function PosApiAdmin() {
           data.updated || 0
         }, deactivated ${data.deactivated || 0}.`,
       );
-      setInfoSyncLogs((prev) => [{ timestamp: data.timestamp, ...data }, ...prev]);
+      await refreshInfoSyncLogsRef.current();
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to refresh reference codes');
     } finally {
