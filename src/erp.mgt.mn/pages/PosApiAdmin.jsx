@@ -2172,15 +2172,9 @@ export default function PosApiAdmin() {
     setInfoSyncSettings((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleInfoUsageChange(value) {
-    setInfoSyncUsage(value);
-    setInfoSyncSettings((prev) => ({ ...prev, usage: value }));
-  }
-
   function handleInfoEndpointSelection(event) {
     const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
     setInfoSyncEndpointIds(selected);
-    setInfoSyncSettings((prev) => ({ ...prev, endpointIds: selected }));
   }
 
   async function saveInfoSettings() {
@@ -4668,7 +4662,7 @@ export default function PosApiAdmin() {
                   Usage
                   <select
                     value={infoSyncUsage}
-                    onChange={(e) => handleInfoUsageChange(e.target.value)}
+                    onChange={(e) => setInfoSyncUsage(e.target.value)}
                     style={styles.input}
                   >
                     <option value="all">All usages</option>
