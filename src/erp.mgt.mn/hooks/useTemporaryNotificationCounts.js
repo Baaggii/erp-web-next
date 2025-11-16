@@ -112,7 +112,7 @@ export default function useTemporaryNotificationCounts(empid) {
         const reviewedDelta = Math.max(0, reviewedCount - reviewedSeen);
         const newCount = pendingDelta + reviewedDelta;
         next[scope] = {
-          count: pendingCount,
+          count: totalCount,
           pendingCount,
           reviewedCount,
           totalCount,
