@@ -40,15 +40,27 @@ import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
-function cacheTemporaryFilter(field, value) {
+function cacheTemporaryFilter(field, value, table) {
   if (typeof window === 'undefined') return;
   try {
-    if (field && value !== undefined && value !== null && `${value}`.trim() !== '') {
-      const payload = { field: String(field), value };
-      window.localStorage.setItem(TEMPORARY_FILTER_CACHE_KEY, JSON.stringify(payload));
-    } else {
+    const hasField = field && value !== undefined && value !== null && `${value}`.trim() !== '';
+    const hasTable = table !== undefined && table !== null && `${table}`.trim() !== '';
+
+    if (!hasField && !hasTable) {
       window.localStorage.removeItem(TEMPORARY_FILTER_CACHE_KEY);
+      return;
     }
+
+    const payload = {};
+    if (hasField) {
+      payload.field = String(field);
+      payload.value = value;
+    }
+    if (hasTable) {
+      payload.table = String(table).trim();
+    }
+
+    window.localStorage.setItem(TEMPORARY_FILTER_CACHE_KEY, JSON.stringify(payload));
   } catch (err) {
     console.error('Failed to cache temporary transaction filter', err);
   }
@@ -698,10 +710,12 @@ const TableManager = forwardRef(function TableManager({
   const refreshTemporarySummary = useCallback(async () => {
     if (!formSupportsTemporary) {
       setTemporarySummary(null);
+      cacheTemporaryFilter(null, null, null);
       return;
     }
     try {
       const params = new URLSearchParams();
+      const normalizedTable = typeof table === 'string' ? table.trim() : table;
       if (table) {
         params.set('table', table);
       }
@@ -711,6 +725,8 @@ const TableManager = forwardRef(function TableManager({
         params.set('transactionTypeField', transactionTypeField);
         params.set('transactionTypeValue', normalizedTypeFilter);
       }
+
+      cacheTemporaryFilter(transactionTypeField, normalizedTypeFilter, normalizedTable);
 
       const res = await fetch(
         `${API_BASE}/transaction_temporaries/summary${
