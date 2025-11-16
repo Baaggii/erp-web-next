@@ -22,6 +22,13 @@ function dedupeRequests(list) {
   });
 }
 
+function getTemporaryTimestamp(entry) {
+  const reviewed = entry?.reviewed_at || entry?.reviewedAt;
+  const updated = entry?.updated_at || entry?.updatedAt;
+  const created = entry?.created_at || entry?.createdAt;
+  return new Date(reviewed || updated || created || 0).getTime();
+}
+
 function dedupeTemporaryEntries(list) {
   const map = new Map();
   list.forEach((entry) => {
@@ -31,10 +38,14 @@ function dedupeTemporaryEntries(list) {
         entry.temporary_id ??
         entry.temporaryId ??
         entry.temporaryID ??
+        entry.temporary_key ??
+        entry.temporaryKey ??
+        entry.key ??
         '',
     ).trim();
     if (!key) return;
-    if (!map.has(key)) {
+    const previous = map.get(key);
+    if (!previous || getTemporaryTimestamp(entry) >= getTemporaryTimestamp(previous)) {
       map.set(key, entry);
     }
   });
@@ -323,8 +334,10 @@ export default function NotificationsPage() {
     markWorkflowSeen('changeRequests', 'outgoing', ['accepted', 'declined']);
   }, [markWorkflowSeen]);
 
-  const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
-  const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
+  const temporaryReviewPending =
+    Number(temporary?.counts?.review?.pendingCount ?? temporary?.counts?.review?.count) || 0;
+  const temporaryCreatedPending =
+    Number(temporary?.counts?.created?.pendingCount ?? temporary?.counts?.created?.count) || 0;
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
   const sortTemporaryEntries = useCallback((entries, scope) => {
     if (!Array.isArray(entries)) return [];
@@ -394,8 +407,8 @@ export default function NotificationsPage() {
     };
   }, [
     t,
-    temporaryReviewCount,
-    temporaryCreatedCount,
+    temporaryReviewPending,
+    temporaryCreatedPending,
     temporaryFetchScopeEntries,
     sortTemporaryEntries,
   ]);
@@ -765,15 +778,14 @@ export default function NotificationsPage() {
     [groupTemporaryEntries, temporaryState.created, temporaryState.review],
   );
 
-  const temporaryReviewTotal = useMemo(
-    () => groupedTemporary.review.reduce((sum, group) => sum + group.entries.length, 0),
-    [groupedTemporary.review],
+  const temporaryBadgeCount = useMemo(
+    () => (temporaryReviewPending > 0 ? temporaryReviewPending : temporaryCreatedPending),
+    [temporaryCreatedPending, temporaryReviewPending],
   );
 
-  const temporaryCreatedTotal = useMemo(
-    () => groupedTemporary.created.reduce((sum, group) => sum + group.entries.length, 0),
-    [groupedTemporary.created],
-  );
+  const temporaryReviewTotal = temporaryReviewPending;
+
+  const temporaryCreatedTotal = temporaryCreatedPending;
 
   const renderTemporaryGroup = (group, scope) => (
     <li
@@ -958,12 +970,17 @@ export default function NotificationsPage() {
         <header style={styles.sectionHeader}>
           <div>
             <h2 style={styles.sectionTitle}>{t('notifications_temporary_heading', 'Temporary transactions')}</h2>
-            <p style={styles.sectionSubtitle}>
-              {t('notifications_temporary_summary', 'Review {{review}} · Drafts {{created}}', {
-                review: temporaryReviewTotal,
-                created: temporaryCreatedTotal,
-              })}
-            </p>
+            <div style={styles.sectionSubtitleRow}>
+              <p style={styles.sectionSubtitle}>
+                {t('notifications_temporary_summary', 'Review {{review}} · Drafts {{created}}', {
+                  review: temporaryReviewTotal,
+                  created: temporaryCreatedTotal,
+                })}
+              </p>
+              {temporaryBadgeCount > 0 && (
+                <span style={styles.temporaryBadge}>{temporaryBadgeCount}</span>
+              )}
+            </div>
           </div>
           <div style={styles.sectionActionsGroup}>
             <button
@@ -1065,6 +1082,20 @@ const styles = {
     margin: 0,
     color: '#4b5563',
     fontSize: '0.95rem',
+  },
+  sectionSubtitleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  temporaryBadge: {
+    background: '#2563eb',
+    color: '#fff',
+    borderRadius: '999px',
+    padding: '0 0.65rem',
+    fontSize: '0.8rem',
+    fontWeight: 600,
   },
   sectionAction: {
     backgroundColor: '#1f2937',
