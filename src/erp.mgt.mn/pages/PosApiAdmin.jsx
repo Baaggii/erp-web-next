@@ -84,6 +84,9 @@ const VALID_RECEIPT_TYPES = new Set(DEFAULT_RECEIPT_TYPES);
 const VALID_TAX_TYPES = new Set(DEFAULT_TAX_TYPES);
 const VALID_PAYMENT_METHODS = new Set(DEFAULT_PAYMENT_METHODS);
 const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
+const DEFAULT_INFO_TABLE_OPTIONS = [
+  { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
+];
 
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
@@ -202,6 +205,52 @@ function buildTemplateList(list, allowMultiple) {
     return sanitized.slice(0, 1);
   }
   return sanitized;
+}
+
+function formatTableLabel(value) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) return '';
+  return normalized
+    .split(/[_-]+/)
+    .filter(Boolean)
+    .map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+    .join(' ');
+}
+
+function buildTableOptions(tables) {
+  if (!Array.isArray(tables)) return [];
+  return tables
+    .map((table) => {
+      if (!table) return null;
+      if (typeof table === 'string') {
+        return { value: table, label: formatTableLabel(table) };
+      }
+      if (typeof table === 'object') {
+        const value = typeof table.value === 'string' ? table.value.trim() : '';
+        if (!value) return null;
+        return { value, label: table.label || formatTableLabel(value) };
+      }
+      return null;
+    })
+    .filter(Boolean);
+}
+
+function sanitizeTableSelection(selection, options) {
+  const allowedValues = Array.isArray(options) ? options.map((option) => option.value) : [];
+  const allowedSet = new Set(allowedValues.filter(Boolean));
+  const values = Array.isArray(selection) ? selection : [];
+  const normalized = values
+    .map((entry) => {
+      if (typeof entry === 'string') return entry.trim();
+      if (entry && typeof entry === 'object' && typeof entry.value === 'string') {
+        return entry.value.trim();
+      }
+      return '';
+    })
+    .filter(Boolean);
+  const unique = Array.from(new Set(normalized));
+  if (allowedSet.size === 0) return unique;
+  return unique.filter((value) => allowedSet.has(value));
 }
 
 function withEndpointMetadata(endpoint) {
@@ -1170,6 +1219,16 @@ export default function PosApiAdmin() {
       return filtered;
     });
   }, [infoSyncEndpointOptions]);
+
+  useEffect(() => {
+    setInfoSyncTables((prev) => {
+      const filtered = sanitizeTableSelection(prev, infoSyncTableOptions);
+      if (filtered.length !== prev.length) {
+        setInfoSyncSettings((settings) => ({ ...settings, tables: filtered }));
+      }
+      return filtered;
+    });
+  }, [infoSyncTableOptions]);
 
   const requestPreview = useMemo(() => {
     const text = (formState.requestSchemaText || '').trim();
@@ -2193,6 +2252,13 @@ export default function PosApiAdmin() {
   function handleInfoEndpointSelection(event) {
     const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
     setInfoSyncEndpointIds(selected);
+    updateInfoSetting('endpointIds', selected);
+  }
+
+  function handleInfoTableSelection(event) {
+    const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
+    setInfoSyncTables(selected);
+    updateInfoSetting('tables', selected);
   }
 
   async function saveInfoSettings() {
@@ -2245,6 +2311,9 @@ export default function PosApiAdmin() {
       }
       if (infoSyncEndpointIds.length > 0) {
         payload.endpointIds = infoSyncEndpointIds;
+      }
+      if (infoSyncTables.length > 0) {
+        payload.tables = infoSyncTables;
       }
       const hasPayload = Object.keys(payload).length > 0;
       const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
@@ -4676,9 +4745,6 @@ export default function PosApiAdmin() {
                   style={styles.input}
                 />
               </label>
-              <button type="button" style={styles.saveButton} onClick={saveInfoSettings} disabled={infoSyncLoading}>
-                {infoSyncLoading ? 'Saving…' : 'Save settings'}
-              </button>
             </div>
             <div style={styles.infoCard}>
               <h3 style={{ marginTop: 0 }}>Manual refresh</h3>
@@ -4688,7 +4754,10 @@ export default function PosApiAdmin() {
                   Usage
                   <select
                     value={infoSyncUsage}
-                    onChange={(e) => setInfoSyncUsage(e.target.value)}
+                    onChange={(e) => {
+                      setInfoSyncUsage(e.target.value);
+                      updateInfoSetting('usage', e.target.value);
+                    }}
                     style={styles.input}
                   >
                     <option value="all">All usages</option>
@@ -4713,8 +4782,28 @@ export default function PosApiAdmin() {
                       </option>
                     ))}
                   </select>
+                    <span style={styles.checkboxHint}>
+                      Leave empty to include all endpoints in the selected usage.
+                    </span>
+                  </label>
+              </div>
+              <div style={styles.inlineFields}>
+                <label style={{ ...styles.label, flex: 1 }}>
+                  Tables to update
+                  <select
+                    multiple
+                    value={infoSyncTables}
+                    onChange={handleInfoTableSelection}
+                    style={{ ...styles.input, minHeight: '140px' }}
+                  >
+                    {infoSyncTableOptions.map((table) => (
+                      <option key={table.value} value={table.value}>
+                        {table.label} ({table.value})
+                      </option>
+                    ))}
+                  </select>
                   <span style={styles.checkboxHint}>
-                    Leave empty to include all endpoints in the selected usage.
+                    Choose one or more tables to receive POSAPI synchronization updates.
                   </span>
                 </label>
               </div>
@@ -4760,6 +4849,11 @@ export default function PosApiAdmin() {
                 </label>
               </div>
             </div>
+          </div>
+          <div style={styles.infoActions}>
+            <button type="button" style={styles.saveButton} onClick={saveInfoSettings} disabled={infoSyncLoading}>
+              {infoSyncLoading ? 'Saving…' : 'Save synchronization settings'}
+            </button>
           </div>
           <div style={styles.logsCard}>
             <h3 style={{ marginTop: 0 }}>Synchronization log</h3>
@@ -4857,6 +4951,11 @@ const styles = {
     cursor: 'pointer',
     fontWeight: 600,
     marginTop: '0.75rem',
+  },
+  infoActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    marginBottom: '1rem',
   },
   infoMeta: {
     marginTop: '0.5rem',
