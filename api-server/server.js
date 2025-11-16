@@ -60,6 +60,7 @@ import tourRoutes from "./routes/tours.js";
 import manualTranslationsRoutes from "./routes/manual_translations.js";
 import posApiEndpointRoutes from "./routes/posapi_endpoints.js";
 import posApiProxyRoutes from "./routes/posapi_proxy.js";
+import posApiReferenceCodeRoutes from "./routes/posapi_reference_codes.js";
 
 // Polyfill for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -178,6 +179,7 @@ app.use("/api/user_activity_log", activityLogRoutes);
 app.use("/api/translations", translationRoutes);
 app.use("/api/posapi/endpoints", posApiEndpointRoutes);
 app.use("/api/posapi/proxy", posApiProxyRoutes);
+app.use("/api/posapi/reference-codes", posApiReferenceCodeRoutes);
 
 // Serve static React build and fallback to index.html
 const buildDir = path.resolve(__dirname, "../../../erp.mgt.mn");
