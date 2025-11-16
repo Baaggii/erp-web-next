@@ -38,6 +38,22 @@ import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 
+const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
+
+function cacheTemporaryFilter(field, value) {
+  if (typeof window === 'undefined') return;
+  try {
+    if (field && value !== undefined && value !== null && `${value}`.trim() !== '') {
+      const payload = { field: String(field), value };
+      window.localStorage.setItem(TEMPORARY_FILTER_CACHE_KEY, JSON.stringify(payload));
+    } else {
+      window.localStorage.removeItem(TEMPORARY_FILTER_CACHE_KEY);
+    }
+  } catch (err) {
+    console.error('Failed to cache temporary transaction filter', err);
+  }
+}
+
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
 }
@@ -689,6 +705,15 @@ const TableManager = forwardRef(function TableManager({
       if (table) {
         params.set('table', table);
       }
+      const transactionTypeField = formConfig?.transactionTypeField || '';
+      const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
+      if (transactionTypeField && normalizedTypeFilter) {
+        params.set('transactionTypeField', transactionTypeField);
+        params.set('transactionTypeValue', normalizedTypeFilter);
+        cacheTemporaryFilter(transactionTypeField, normalizedTypeFilter);
+      } else {
+        cacheTemporaryFilter(null, null);
+      }
 
       const res = await fetch(
         `${API_BASE}/transaction_temporaries/summary${
@@ -732,12 +757,14 @@ const TableManager = forwardRef(function TableManager({
           : defaultTemporaryScope,
       );
     }
-    }, [
-      formSupportsTemporary,
-      availableTemporaryScopes,
-      defaultTemporaryScope,
-      table,
-    ]);
+  }, [
+    formSupportsTemporary,
+    availableTemporaryScopes,
+    defaultTemporaryScope,
+    table,
+    formConfig?.transactionTypeField,
+    typeFilter,
+  ]);
 
   const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
@@ -3605,20 +3632,26 @@ const TableManager = forwardRef(function TableManager({
       if (!availableTemporaryScopes.includes(targetScope)) return;
       const params = new URLSearchParams();
       params.set('scope', targetScope);
+      const transactionTypeField = formConfig?.transactionTypeField || '';
+      const normalizedTypeFilter = typeof typeFilter === 'string' ? typeFilter.trim() : typeFilter;
+      if (transactionTypeField && normalizedTypeFilter) {
+        params.set('transactionTypeField', transactionTypeField);
+        params.set('transactionTypeValue', normalizedTypeFilter);
+      }
 
-        const requestedStatus =
-          options?.status !== undefined
-            ? options.status
-            : targetScope === 'review'
-            ? 'pending'
-            : null;
-        const statusValue =
-          requestedStatus === null || requestedStatus === undefined
-            ? ''
-            : String(requestedStatus).trim();
-        if (statusValue) {
-          params.set('status', statusValue);
-        }
+      const requestedStatus =
+        options?.status !== undefined
+          ? options.status
+          : targetScope === 'review'
+          ? 'pending'
+          : null;
+      const statusValue =
+        requestedStatus === null || requestedStatus === undefined
+          ? ''
+          : String(requestedStatus).trim();
+      if (statusValue) {
+        params.set('status', statusValue);
+      }
 
       const shouldFilterByTable = (() => {
         if (options?.table !== undefined) {
@@ -3696,6 +3729,8 @@ const TableManager = forwardRef(function TableManager({
       availableTemporaryScopes,
       defaultTemporaryScope,
       temporarySummary,
+      formConfig?.transactionTypeField,
+      typeFilter,
     ],
   );
 

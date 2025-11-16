@@ -340,8 +340,14 @@ export default function NotificationsPage() {
     if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
     let cancelled = false;
     setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
-    const reviewPromise = temporaryFetchScopeEntries('review', null);
-    const createdPromise = temporaryFetchScopeEntries('created', null);
+    const reviewPromise = temporaryFetchScopeEntries('review', {
+      limit: null,
+      status: 'pending',
+    });
+    const createdPromise = temporaryFetchScopeEntries('created', {
+      limit: null,
+      status: 'any',
+    });
     Promise.all([reviewPromise, createdPromise])
         .then(([review, created]) => {
           if (!cancelled) {
@@ -367,11 +373,11 @@ export default function NotificationsPage() {
     };
   }, [
     t,
-      temporaryReviewCount,
-      temporaryCreatedCount,
-      temporaryFetchScopeEntries,
-      sortTemporaryEntries,
-    ]);
+    temporaryReviewCount,
+    temporaryCreatedCount,
+    temporaryFetchScopeEntries,
+    sortTemporaryEntries,
+  ]);
 
   const reportPending = useMemo(() => {
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
@@ -399,6 +405,14 @@ export default function NotificationsPage() {
 
   const temporaryReviewNew = temporary?.counts?.review?.newCount || 0;
   const temporaryCreatedNew = temporary?.counts?.created?.newCount || 0;
+  const temporaryReviewTotal = useMemo(
+    () => groupedTemporary.review.reduce((sum, group) => sum + group.entries.length, 0),
+    [groupedTemporary.review],
+  );
+  const temporaryCreatedTotal = useMemo(
+    () => groupedTemporary.created.reduce((sum, group) => sum + group.entries.length, 0),
+    [groupedTemporary.created],
+  );
 
   const handleReportMarkRead = useCallback(() => {
     if (typeof markWorkflowSeen === 'function') markWorkflowSeen('report_approval');
@@ -923,8 +937,8 @@ export default function NotificationsPage() {
             <h2 style={styles.sectionTitle}>{t('notifications_temporary_heading', 'Temporary transactions')}</h2>
             <p style={styles.sectionSubtitle}>
               {t('notifications_temporary_summary', 'Review {{review}} · Drafts {{created}}', {
-                review: temporary?.counts?.review?.count || 0,
-                created: temporary?.counts?.created?.count || 0,
+                review: temporaryReviewCount || temporaryReviewTotal,
+                created: temporaryCreatedCount || temporaryCreatedTotal,
               })}
             </p>
           </div>
