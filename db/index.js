@@ -4809,7 +4809,7 @@ export async function saveTableColumnLabels(
   }
 }
 
-export async function listTableColumnMeta(tableName) {
+export async function listTableColumnMeta(tableName, companyId = 0) {
   const [rows] = await pool.query(
     `SELECT c.COLUMN_NAME,
             c.COLUMN_KEY,
@@ -4837,7 +4837,7 @@ export async function listTableColumnMeta(tableName) {
   try {
     const names = rows.map((r) => r.COLUMN_NAME);
     const { getMappings } = await import('../api-server/services/headerMappings.js');
-    headerMap = await getMappings(names);
+    headerMap = await getMappings(names, undefined, companyId);
   } catch {
     headerMap = {};
   }
