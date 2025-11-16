@@ -154,19 +154,12 @@ function parseCodesFromEndpoint(endpointId, response) {
   return [];
 }
 
-export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
+export async function runReferenceCodeSync(trigger = 'manual') {
   const startedAt = new Date();
-  const selectedUsage = options.usage ? normalizeUsage(options.usage) : 'info';
-  const endpointIdSet = Array.isArray(options.endpointIds)
-    ? new Set(options.endpointIds.map((id) => String(id)))
-    : new Set();
   const endpoints = await loadEndpoints();
-  const infoEndpoints = endpoints.filter((ep) => {
-    const usage = normalizeUsage(ep.usage);
-    if (selectedUsage && usage !== selectedUsage) return false;
-    if (endpointIdSet.size > 0 && !endpointIdSet.has(ep.id)) return false;
-    return String(ep.method || '').toUpperCase() === 'GET';
-  });
+  const infoEndpoints = endpoints.filter(
+    (ep) => normalizeUsage(ep.usage) === 'info' && String(ep.method || '').toUpperCase() === 'GET',
+  );
 
   const summary = { added: 0, updated: 0, deactivated: 0, totalTypes: 0 };
   const errors = [];
@@ -201,8 +194,6 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
     ...summary,
     errors,
     trigger,
-    usage: selectedUsage,
-    endpointIds: Array.from(endpointIdSet),
   };
   await appendSyncLog(logEntry);
   return { ...summary, errors, durationMs, timestamp: logEntry.timestamp };
