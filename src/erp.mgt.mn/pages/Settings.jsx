@@ -1,9 +1,11 @@
 // src/erp.mgt.mn/pages/Settings.jsx
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useMemo, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { Outlet, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
+import { useModules } from '../hooks/useModules.js';
+import { buildModulePath } from '../utils/modulePaths.js';
 
 export default function SettingsPage() {
   // Just render the nested route content. The left sidebar already
@@ -18,6 +20,11 @@ export function GeneralSettings() {
   const hasAdmin =
     permissions?.permissions?.system_settings ||
     session?.permissions?.system_settings;
+  const modules = useModules();
+  const posApiPath = useMemo(
+    () => buildModulePath(modules, 'posapi_endpoints'),
+    [modules],
+  );
   if (!perms) {
     return <p>{t('settings_loading_permissions', 'Уншиж байна…')}</p>;
   }
@@ -75,13 +82,15 @@ export function GeneralSettings() {
           </Link>
         </TooltipWrapper>
       </p>
-      <p style={{ marginTop: '0.5rem' }}>
-        <TooltipWrapper title={t('posapi_registry', { ns: 'tooltip', defaultValue: 'Manage POSAPI endpoint registry' })}>
-          <Link to="/settings/posapi-endpoints">
-            {t('settings_posapi_registry', 'POSAPI Endpoint Registry')}
-          </Link>
-        </TooltipWrapper>
-      </p>
+      {posApiPath && (
+        <p style={{ marginTop: '0.5rem' }}>
+          <TooltipWrapper title={t('posapi_registry', { ns: 'tooltip', defaultValue: 'Manage POSAPI endpoint registry' })}>
+            <Link to={posApiPath}>
+              {t('settings_posapi_registry', 'POSAPI Endpoint Registry')}
+            </Link>
+          </TooltipWrapper>
+        </p>
+      )}
     </div>
   );
 }
