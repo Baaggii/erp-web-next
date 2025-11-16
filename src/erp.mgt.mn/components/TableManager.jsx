@@ -38,22 +38,6 @@ import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
 
-const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
-
-function cacheTemporaryFilter(field, value) {
-  if (typeof window === 'undefined') return;
-  try {
-    if (field && value !== undefined && value !== null && `${value}`.trim() !== '') {
-      const payload = { field: String(field), value };
-      window.localStorage.setItem(TEMPORARY_FILTER_CACHE_KEY, JSON.stringify(payload));
-    } else {
-      window.localStorage.removeItem(TEMPORARY_FILTER_CACHE_KEY);
-    }
-  } catch (err) {
-    console.error('Failed to cache temporary transaction filter', err);
-  }
-}
-
 if (typeof window !== 'undefined' && typeof window.canPostTransactions === 'undefined') {
   window.canPostTransactions = false;
 }
