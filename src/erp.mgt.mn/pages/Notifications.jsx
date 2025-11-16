@@ -22,13 +22,6 @@ function dedupeRequests(list) {
   });
 }
 
-function getTemporaryTimestamp(entry) {
-  const reviewed = entry?.reviewed_at || entry?.reviewedAt;
-  const updated = entry?.updated_at || entry?.updatedAt;
-  const created = entry?.created_at || entry?.createdAt;
-  return new Date(reviewed || updated || created || 0).getTime();
-}
-
 function dedupeTemporaryEntries(list) {
   const map = new Map();
   list.forEach((entry) => {
@@ -38,14 +31,10 @@ function dedupeTemporaryEntries(list) {
         entry.temporary_id ??
         entry.temporaryId ??
         entry.temporaryID ??
-        entry.temporary_key ??
-        entry.temporaryKey ??
-        entry.key ??
         '',
     ).trim();
     if (!key) return;
-    const previous = map.get(key);
-    if (!previous || getTemporaryTimestamp(entry) >= getTemporaryTimestamp(previous)) {
+    if (!map.has(key)) {
       map.set(key, entry);
     }
   });

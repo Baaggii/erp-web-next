@@ -1,11 +1,9 @@
 // src/erp.mgt.mn/components/ERPLayout.jsx
-import React, { useContext, useEffect, useMemo } from 'react';
+import React, { useContext, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { logout } from '../hooks/useAuth.jsx';
 import { I18nContext } from '../context/I18nContext.jsx';
-import { useModules } from '../hooks/useModules.js';
-import { buildModulePath } from '../utils/modulePaths.js';
 
 /**
  * A desktop‐style “ERPLayout” with:
@@ -18,35 +16,21 @@ export default function ERPLayout() {
   const { t } = useContext(I18nContext);
   const navigate = useNavigate();
   const location = useLocation();
-  const modules = useModules();
-
-  const posApiPath = useMemo(
-    () => buildModulePath(modules, 'posapi_endpoints'),
-    [modules],
-  );
 
   useEffect(() => {
     if (window.erpDebug) console.warn('Mounted: Layout');
   }, []);
 
-  const titleMap = useMemo(() => {
-    const map = {
-      '/': t('dashboard', 'Dashboard'),
-      '/forms': t('forms', 'Forms'),
-      '/reports': t('reports', 'Reports'),
-      '/settings': t('settings', 'Settings'),
-      '/settings/users': t('users', 'Users'),
-      '/settings/role-permissions': t('rolePermissions', 'Role Permissions'),
-      '/settings/change-password': t('changePassword', 'Change Password'),
-    };
-
-    if (posApiPath) {
-      map[posApiPath] = t('posapiRegistry', 'POSAPI Registry');
-    }
-
-    return map;
-  }, [t, posApiPath]);
-
+  const titleMap = {
+    '/': t('dashboard', 'Dashboard'),
+    '/forms': t('forms', 'Forms'),
+    '/reports': t('reports', 'Reports'),
+    '/settings': t('settings', 'Settings'),
+    '/settings/users': t('users', 'Users'),
+    '/settings/role-permissions': t('rolePermissions', 'Role Permissions'),
+    '/settings/change-password': t('changePassword', 'Change Password'),
+    '/settings/posapi-endpoints': t('posapiRegistry', 'POSAPI Registry'),
+  };
   const windowTitle = titleMap[location.pathname] || t('erp', 'ERP');
 
   async function handleLogout() {
@@ -59,7 +43,7 @@ export default function ERPLayout() {
     <div style={styles.container}>
       <Header user={user} onLogout={handleLogout} />
       <div style={styles.body}>
-        <Sidebar posApiPath={posApiPath} />
+        <Sidebar />
         <MainWindow title={windowTitle}>
           <Outlet />
         </MainWindow>
@@ -117,7 +101,7 @@ function Header({ user, onLogout }) {
 }
 
 /** Left sidebar with “menu groups” and “pinned items” **/
-function Sidebar({ posApiPath }) {
+function Sidebar() {
   const { session, permissions } = useContext(AuthContext);
   const { t } = useContext(I18nContext);
   const hasAdmin =
@@ -158,15 +142,13 @@ function Sidebar({ posApiPath }) {
             <NavLink to="/settings/modules" className="menu-item" style={styles.menuItem}>
               {t('modules', 'Modules')}
             </NavLink>
-            {posApiPath && (
-              <NavLink
-                to={posApiPath}
-                className="menu-item"
-                style={styles.menuItem}
-              >
-                {t('posapiRegistry', 'POSAPI Registry')}
-              </NavLink>
-            )}
+            <NavLink
+              to="/settings/posapi-endpoints"
+              className="menu-item"
+              style={styles.menuItem}
+            >
+              {t('posapiRegistry', 'POSAPI Registry')}
+            </NavLink>
           </>
         )}
         <NavLink to="/settings/change-password" className="menu-item" style={styles.menuItem}>

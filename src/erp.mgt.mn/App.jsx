@@ -138,7 +138,6 @@ function AuthedApp() {
       edit_translations: <TranslationEditorPage />,
       user_manual_export: <UserManualExportPage />,
       report_access: <AllowedReportsConfigPage />,
-      posapi_endpoints: <PosApiAdminPage />,
     };
 
     modules.forEach((m) => {
@@ -199,6 +198,12 @@ function AuthedApp() {
         <Route path="/" element={<ERPLayout />}>
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="requests" element={<RequestsPage />} />
+          <Route element={<RequireAdmin />}>
+            <Route
+              path="settings/posapi-endpoints"
+              element={<PosApiAdminPage />}
+            />
+          </Route>
           {roots.map(renderRoute)}
         </Route>
         <Route
