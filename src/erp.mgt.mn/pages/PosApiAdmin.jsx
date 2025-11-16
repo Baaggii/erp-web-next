@@ -1057,6 +1057,8 @@ export default function PosApiAdmin() {
   const [infoSyncStatus, setInfoSyncStatus] = useState('');
   const [infoSyncError, setInfoSyncError] = useState('');
   const [infoSyncLoading, setInfoSyncLoading] = useState(false);
+  const [infoSyncUsage] = useState('');
+  const [, setInfoSyncEndpointIds] = useState([]);
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
 
