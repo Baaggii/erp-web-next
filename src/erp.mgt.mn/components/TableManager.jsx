@@ -640,11 +640,20 @@ const TableManager = forwardRef(function TableManager({
     return scopes;
   }, [canCreateTemporary, canReviewTemporary]);
 
-  const defaultTemporaryScope = useMemo(() => {
-    if (availableTemporaryScopes.includes('created')) return 'created';
-    if (availableTemporaryScopes.length > 0) return availableTemporaryScopes[0];
-    return 'created';
-  }, [availableTemporaryScopes]);
+    const defaultTemporaryScope = useMemo(() => {
+      if (availableTemporaryScopes.includes('created')) return 'created';
+      if (availableTemporaryScopes.length > 0) return availableTemporaryScopes[0];
+      return 'created';
+    }, [availableTemporaryScopes]);
+
+    useEffect(() => {
+      setTemporarySummary(null);
+      setTemporaryList([]);
+      setTemporarySelection(new Set());
+      setTemporaryScope((prev) =>
+        availableTemporaryScopes.includes(prev) ? prev : defaultTemporaryScope,
+      );
+    }, [table, availableTemporaryScopes, defaultTemporaryScope]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
