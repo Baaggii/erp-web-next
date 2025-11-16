@@ -14,8 +14,6 @@ const logPath = path.resolve(__dirname, '../../config/posApiInfoSyncLogs.json');
 const DEFAULT_SETTINGS = {
   autoSyncEnabled: false,
   intervalMinutes: 720,
-  usage: 'info',
-  endpointIds: [],
 };
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -25,12 +23,6 @@ function normalizeUsage(value) {
   if (normalized.includes('lookup')) return 'info';
   if (normalized.includes('info')) return 'info';
   return normalized || 'transaction';
-}
-
-function normalizeUsageSetting(value) {
-  if (!value) return 'info';
-  const normalized = normalizeUsage(value);
-  return normalized === 'transaction' || normalized === 'admin' ? normalized : 'info';
 }
 
 async function readJson(filePath, fallback) {
@@ -50,16 +42,11 @@ async function writeJson(filePath, value) {
 
 export async function loadSyncSettings() {
   const fileSettings = await readJson(settingsPath, {});
-  const fileEndpointIds = Array.isArray(fileSettings.endpointIds)
-    ? fileSettings.endpointIds.map((id) => String(id)).filter(Boolean)
-    : [];
-  const settings = { ...DEFAULT_SETTINGS, ...fileSettings, endpointIds: fileEndpointIds };
+  const settings = { ...DEFAULT_SETTINGS, ...fileSettings };
   const intervalMinutes = Number(settings.intervalMinutes) || DEFAULT_SETTINGS.intervalMinutes;
   return {
     autoSyncEnabled: Boolean(settings.autoSyncEnabled),
     intervalMinutes,
-    usage: normalizeUsageSetting(settings.usage),
-    endpointIds: settings.endpointIds,
   };
 }
 
@@ -67,10 +54,6 @@ export async function saveSyncSettings(settings) {
   const sanitized = {
     autoSyncEnabled: Boolean(settings?.autoSyncEnabled),
     intervalMinutes: Math.max(5, Number(settings?.intervalMinutes) || DEFAULT_SETTINGS.intervalMinutes),
-    usage: normalizeUsageSetting(settings?.usage),
-    endpointIds: Array.isArray(settings?.endpointIds)
-      ? settings.endpointIds.map((id) => String(id)).filter(Boolean)
-      : [],
   };
   await writeJson(settingsPath, sanitized);
   return sanitized;
@@ -171,20 +154,12 @@ function parseCodesFromEndpoint(endpointId, response) {
   return [];
 }
 
-export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
+export async function runReferenceCodeSync(trigger = 'manual') {
   const startedAt = new Date();
-  const selectedUsage =
-    options.usage && options.usage !== 'all' ? normalizeUsageSetting(options.usage) : null;
-  const endpointIdSet = Array.isArray(options.endpointIds)
-    ? new Set(options.endpointIds.map((id) => String(id)))
-    : new Set();
   const endpoints = await loadEndpoints();
-  const infoEndpoints = endpoints.filter((ep) => {
-    const usage = normalizeUsage(ep.usage);
-    if (selectedUsage && usage !== selectedUsage) return false;
-    if (endpointIdSet.size > 0 && !endpointIdSet.has(ep.id)) return false;
-    return String(ep.method || '').toUpperCase() === 'GET';
-  });
+  const infoEndpoints = endpoints.filter(
+    (ep) => normalizeUsage(ep.usage) === 'info' && String(ep.method || '').toUpperCase() === 'GET',
+  );
 
   const summary = { added: 0, updated: 0, deactivated: 0, totalTypes: 0 };
   const errors = [];
@@ -219,39 +194,34 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
     ...summary,
     errors,
     trigger,
-    usage: selectedUsage,
-    endpointIds: Array.from(endpointIdSet),
   };
   await appendSyncLog(logEntry);
   return { ...summary, errors, durationMs, timestamp: logEntry.timestamp };
 }
 
 let timer = null;
-let latestSettings = null;
 
-function scheduleNextRun(settings) {
+function scheduleNextRun(intervalMinutes) {
   if (timer) clearInterval(timer);
-  if (!settings.intervalMinutes || Number.isNaN(settings.intervalMinutes)) return;
+  if (!intervalMinutes || Number.isNaN(intervalMinutes)) return;
   timer = setInterval(() => {
-    runReferenceCodeSync('auto', latestSettings || settings).catch((err) =>
+    runReferenceCodeSync('auto').catch((err) =>
       console.error('POSAPI info sync failed', err.message || err),
     );
-  }, settings.intervalMinutes * 60 * 1000);
+  }, intervalMinutes * 60 * 1000);
 }
 
 export async function initialiseReferenceCodeSync() {
   const settings = await loadSyncSettings();
-  latestSettings = settings;
   if (settings.autoSyncEnabled) {
-    scheduleNextRun(settings);
+    scheduleNextRun(settings.intervalMinutes);
   }
   return settings;
 }
 
 export function updateSyncSchedule(settings) {
-  latestSettings = settings;
   if (settings.autoSyncEnabled) {
-    scheduleNextRun(settings);
+    scheduleNextRun(settings.intervalMinutes);
   } else if (timer) {
     clearInterval(timer);
   }
