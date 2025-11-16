@@ -1096,6 +1096,7 @@ export default function PosApiAdmin() {
     intervalMinutes: 720,
     usage: 'all',
     endpointIds: [],
+    tables: [],
   });
   const [infoSyncLogs, setInfoSyncLogs] = useState([]);
   const [infoSyncStatus, setInfoSyncStatus] = useState('');
@@ -1103,6 +1104,7 @@ export default function PosApiAdmin() {
   const [infoSyncLoading, setInfoSyncLoading] = useState(false);
   const [infoSyncUsage, setInfoSyncUsage] = useState('all');
   const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
+  const [infoSyncTables, setInfoSyncTables] = useState([]);
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
 
@@ -1187,6 +1189,19 @@ export default function PosApiAdmin() {
         usage: endpoint.usage,
       }));
   }, [endpoints, infoSyncUsage]);
+
+  const infoSyncTableOptions = useMemo(() => {
+    const seen = new Set();
+    const merged = [...DEFAULT_INFO_TABLE_OPTIONS, ...buildTableOptions(infoSyncSettings.tables)];
+    return merged
+      .map((option) => {
+        const value = option?.value;
+        if (!value || seen.has(value)) return null;
+        seen.add(value);
+        return { value, label: option.label || formatTableLabel(value) };
+      })
+      .filter(Boolean);
+  }, [infoSyncSettings.tables]);
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
@@ -2012,14 +2027,17 @@ export default function PosApiAdmin() {
         const endpointIds = Array.isArray(data.settings?.endpointIds)
           ? data.settings.endpointIds.filter((value) => typeof value === 'string' && value)
           : [];
+        const tables = sanitizeTableSelection(data.settings?.tables, DEFAULT_INFO_TABLE_OPTIONS);
         setInfoSyncSettings({
           autoSyncEnabled: Boolean(data.settings?.autoSyncEnabled),
           intervalMinutes: Number(data.settings?.intervalMinutes) || 720,
           usage,
           endpointIds,
+          tables,
         });
         setInfoSyncUsage(usage);
         setInfoSyncEndpointIds(endpointIds);
+        setInfoSyncTables(tables);
         setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
       } catch (err) {
         if (!cancelled) {
@@ -2255,9 +2273,17 @@ export default function PosApiAdmin() {
       const savedEndpointIds = Array.isArray(saved.endpointIds)
         ? saved.endpointIds.filter((value) => typeof value === 'string' && value)
         : infoSyncEndpointIds;
-      setInfoSyncSettings((prev) => ({ ...prev, ...saved, usage: savedUsage, endpointIds: savedEndpointIds }));
+      const savedTables = sanitizeTableSelection(saved.tables, infoSyncTableOptions);
+      setInfoSyncSettings((prev) => ({
+        ...prev,
+        ...saved,
+        usage: savedUsage,
+        endpointIds: savedEndpointIds,
+        tables: savedTables,
+      }));
       setInfoSyncUsage(savedUsage);
       setInfoSyncEndpointIds(savedEndpointIds);
+      setInfoSyncTables(savedTables);
       setInfoSyncStatus('Saved synchronization settings.');
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to save synchronization settings');
