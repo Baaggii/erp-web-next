@@ -307,69 +307,6 @@ export default function NotificationsPage() {
   const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
   const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
-  const groupTemporaryEntries = useCallback((entries) => {
-    if (!Array.isArray(entries)) return [];
-
-    const groups = new Map();
-    entries.forEach((entry) => {
-      if (!entry) return;
-
-      const createdBy =
-        entry.createdBy ||
-        entry.created_by ||
-        entry.emp_name ||
-        entry.empid ||
-        entry.emp_id ||
-        '';
-      const transactionName =
-        entry.tableName || entry.table_name || entry.formName || entry.form_name || entry.configName || entry.config_name || '';
-      const status = String(entry.status || 'pending').trim().toLowerCase() || 'pending';
-      const createdAt = entry.createdAt || entry.created_at || null;
-      const updatedAt =
-        entry.updatedAt ||
-        entry.updated_at ||
-        entry.reviewedAt ||
-        entry.reviewed_at ||
-        entry.createdAt ||
-        entry.created_at ||
-        null;
-
-      let dateKey = '';
-      if (createdAt instanceof Date) {
-        dateKey = createdAt.toISOString().slice(0, 10);
-      } else if (typeof createdAt === 'string') {
-        const match = createdAt.match(/^(\d{4}-\d{2}-\d{2})/);
-        if (match) {
-          dateKey = match[1];
-        }
-      }
-
-      const key = [
-        String(createdBy || '').trim().toLowerCase() || 'unknown',
-        String(transactionName || '').trim().toLowerCase() || 'unknown',
-        dateKey || 'unknown',
-        status,
-      ].join('|');
-
-      const normalizedEntry = {
-        ...entry,
-        createdBy,
-        createdAt,
-        status,
-        updatedAt,
-      };
-
-      const existing = groups.get(key);
-      const currentTime = new Date(updatedAt || 0).getTime();
-      const existingTime = new Date(existing?.updatedAt || 0).getTime();
-      if (!existing || currentTime > existingTime) {
-        groups.set(key, normalizedEntry);
-      }
-    });
-
-    return Array.from(groups.values());
-  }, []);
-
   const sortTemporaryEntries = useCallback((entries, scope) => {
     if (!Array.isArray(entries)) return [];
     const list = [...entries];
@@ -399,11 +336,6 @@ export default function NotificationsPage() {
     return list;
   }, []);
 
-  const normalizeTemporaryEntries = useCallback(
-    (entries, scope) => sortTemporaryEntries(groupTemporaryEntries(entries), scope),
-    [groupTemporaryEntries, sortTemporaryEntries],
-  );
-
   useEffect(() => {
     if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
     let cancelled = false;
@@ -411,16 +343,16 @@ export default function NotificationsPage() {
     const reviewPromise = temporaryFetchScopeEntries('review', SECTION_LIMIT);
     const createdPromise = temporaryFetchScopeEntries('created', SECTION_LIMIT);
     Promise.all([reviewPromise, createdPromise])
-      .then(([review, created]) => {
-        if (!cancelled) {
-          setTemporaryState({
-            loading: false,
-            error: '',
-            review: normalizeTemporaryEntries(review, 'review'),
-            created: normalizeTemporaryEntries(created, 'created'),
-          });
-        }
-      })
+        .then(([review, created]) => {
+          if (!cancelled) {
+            setTemporaryState({
+              loading: false,
+              error: '',
+              review: sortTemporaryEntries(review, 'review'),
+              created: sortTemporaryEntries(created, 'created'),
+            });
+          }
+        })
       .catch(() => {
         if (!cancelled)
           setTemporaryState({
@@ -435,11 +367,11 @@ export default function NotificationsPage() {
     };
   }, [
     t,
-    temporaryReviewCount,
-    temporaryCreatedCount,
-    temporaryFetchScopeEntries,
-    normalizeTemporaryEntries,
-  ]);
+      temporaryReviewCount,
+      temporaryCreatedCount,
+      temporaryFetchScopeEntries,
+      sortTemporaryEntries,
+    ]);
 
   const reportPending = useMemo(() => {
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
