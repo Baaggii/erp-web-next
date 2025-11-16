@@ -4804,6 +4804,11 @@ export default function PosApiAdmin() {
                 />
                 Synchronize reference codes automatically
               </label>
+              <p style={styles.helpText}>
+                Automatic syncs run on the server according to the saved schedule even when no admin
+                users are online. The log table below updates whenever the tab is open or after a
+                manual refresh completes.
+              </p>
               <label style={{ ...styles.label, maxWidth: '260px' }}>
                 Repeat every (minutes)
                 <input
@@ -5035,6 +5040,11 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.25rem',
+  },
+  helpText: {
+    margin: '0.5rem 0 0.75rem',
+    fontSize: '0.9rem',
+    color: '#475569',
   },
   logsCard: {
     border: '1px solid #e2e8f0',
