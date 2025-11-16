@@ -84,6 +84,13 @@ const VALID_RECEIPT_TYPES = new Set(DEFAULT_RECEIPT_TYPES);
 const VALID_TAX_TYPES = new Set(DEFAULT_TAX_TYPES);
 const VALID_PAYMENT_METHODS = new Set(DEFAULT_PAYMENT_METHODS);
 const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
+const DEFAULT_INFO_TABLE_OPTIONS = [
+  { value: 'classification', label: 'Product classification' },
+  { value: 'tax_reason', label: 'VAT exemption reason' },
+  { value: 'district', label: 'District' },
+  { value: 'barcode_type', label: 'Barcode type' },
+  { value: 'payment_code', label: 'Payment code' },
+];
 
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
@@ -107,6 +114,41 @@ function sanitizeCodeList(list, fallback, allowedValues) {
   const effective = cleaned.length > 0 ? cleaned : fallbackCleaned;
   const deduped = Array.from(new Set(effective));
   return allowedSet ? deduped.filter((value) => allowedSet.has(value)) : deduped;
+}
+
+function formatTableLabel(table) {
+  if (!table || typeof table !== 'string') return '';
+  const pretty = table
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+  return pretty || table;
+}
+
+function buildTableOptions(list) {
+  if (!Array.isArray(list)) return [];
+  const seen = new Set();
+  return list
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter(Boolean)
+    .filter((value) => {
+      if (seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    })
+    .map((value) => ({
+      value,
+      label: formatTableLabel(value),
+    }));
+}
+
+function sanitizeTableSelection(list, options) {
+  const optionSet = Array.isArray(options) ? new Set(options.map((opt) => opt.value)) : null;
+  if (!Array.isArray(list)) return [];
+  return list
+    .map((value) => (typeof value === 'string' ? value.trim() : ''))
+    .filter((value) => value && (!optionSet || optionSet.has(value)));
 }
 
 function sanitizeTemplateMap(value, allowedValues) {
@@ -1052,13 +1094,18 @@ export default function PosApiAdmin() {
   const [infoSyncSettings, setInfoSyncSettings] = useState({
     autoSyncEnabled: false,
     intervalMinutes: 720,
+    usage: 'all',
+    endpointIds: [],
+    tables: [],
   });
   const [infoSyncLogs, setInfoSyncLogs] = useState([]);
   const [infoSyncStatus, setInfoSyncStatus] = useState('');
   const [infoSyncError, setInfoSyncError] = useState('');
   const [infoSyncLoading, setInfoSyncLoading] = useState(false);
-  const [infoSyncUsage] = useState('');
-  const [, setInfoSyncEndpointIds] = useState([]);
+  const [infoSyncUsage, setInfoSyncUsage] = useState('all');
+  const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
+  const [infoSyncTableOptions, setInfoSyncTableOptions] = useState(DEFAULT_INFO_TABLE_OPTIONS);
+  const [infoSyncTables, setInfoSyncTables] = useState([]);
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
 
@@ -1134,18 +1181,35 @@ export default function PosApiAdmin() {
     const normalized = endpoints.map(withEndpointMetadata);
     return normalized
       .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
-      .filter((endpoint) => !infoSyncUsage || endpoint.usage === infoSyncUsage)
+      .filter((endpoint) => infoSyncUsage === 'all' || !infoSyncUsage || endpoint.usage === infoSyncUsage)
       .map((endpoint) => ({
         id: endpoint.id,
         name: endpoint.name || endpoint.id,
         method: endpoint.method,
         path: endpoint.path,
+        usage: endpoint.usage,
       }));
   }, [endpoints, infoSyncUsage]);
 
   useEffect(() => {
-    setInfoSyncEndpointIds((prev) => prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id)));
+    setInfoSyncEndpointIds((prev) => {
+      const filtered = prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id));
+      if (filtered.length !== prev.length) {
+        setInfoSyncSettings((settings) => ({ ...settings, endpointIds: filtered }));
+      }
+      return filtered;
+    });
   }, [infoSyncEndpointOptions]);
+
+  useEffect(() => {
+    setInfoSyncTables((prev) => {
+      const filtered = prev.filter((table) => infoSyncTableOptions.some((opt) => opt.value === table));
+      if (filtered.length !== prev.length) {
+        setInfoSyncSettings((settings) => ({ ...settings, tables: filtered }));
+      }
+      return filtered;
+    });
+  }, [infoSyncTableOptions]);
 
   const requestPreview = useMemo(() => {
     const text = (formState.requestSchemaText || '').trim();
@@ -1945,10 +2009,29 @@ export default function PosApiAdmin() {
         }
         const data = await res.json();
         if (cancelled) return;
+        const usage = data.settings?.usage && VALID_USAGE_VALUES.has(data.settings.usage)
+          ? data.settings.usage
+          : 'all';
+        const endpointIds = Array.isArray(data.settings?.endpointIds)
+          ? data.settings.endpointIds.filter((value) => typeof value === 'string' && value)
+          : [];
+        const availableTables = buildTableOptions(data.tables || data.availableTables || []);
+        const tableOptions = availableTables.length > 0 ? availableTables : DEFAULT_INFO_TABLE_OPTIONS;
+        const tables = sanitizeTableSelection(
+          Array.isArray(data.settings?.tables) ? data.settings.tables : data.settings?.tableNames,
+          tableOptions,
+        );
+        setInfoSyncTableOptions(tableOptions);
         setInfoSyncSettings({
           autoSyncEnabled: Boolean(data.settings?.autoSyncEnabled),
           intervalMinutes: Number(data.settings?.intervalMinutes) || 720,
+          usage,
+          endpointIds,
+          tables,
         });
+        setInfoSyncUsage(usage);
+        setInfoSyncEndpointIds(endpointIds);
+        setInfoSyncTables(tables);
         setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
       } catch (err) {
         if (!cancelled) {
@@ -2153,21 +2236,65 @@ export default function PosApiAdmin() {
     setInfoSyncSettings((prev) => ({ ...prev, [field]: value }));
   }
 
+  function handleInfoUsageChange(value) {
+    setInfoSyncUsage(value);
+    setInfoSyncSettings((prev) => ({ ...prev, usage: value }));
+  }
+
+  function handleInfoEndpointSelection(event) {
+    const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
+    setInfoSyncEndpointIds(selected);
+    setInfoSyncSettings((prev) => ({ ...prev, endpointIds: selected }));
+  }
+
+  function handleInfoTableSelection(event) {
+    const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
+    setInfoSyncTables(selected);
+    setInfoSyncSettings((prev) => ({ ...prev, tables: selected }));
+  }
+
   async function saveInfoSettings() {
     try {
       setInfoSyncLoading(true);
       setInfoSyncError('');
+      const payload = {
+        ...infoSyncSettings,
+        usage: infoSyncUsage,
+        endpointIds: infoSyncEndpointIds,
+        tables: infoSyncTables,
+      };
       const res = await fetch(`${API_BASE}/posapi/reference-codes/settings`, {
         method: 'PUT',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(infoSyncSettings),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         throw new Error('Failed to save sync settings');
       }
       const saved = await res.json();
-      setInfoSyncSettings(saved);
+      const savedUsage = saved.usage && VALID_USAGE_VALUES.has(saved.usage)
+        ? saved.usage
+        : payload.usage;
+      const savedEndpointIds = Array.isArray(saved.endpointIds)
+        ? saved.endpointIds.filter((value) => typeof value === 'string' && value)
+        : payload.endpointIds;
+      const savedTablesRaw = Array.isArray(saved.tables)
+        ? saved.tables
+        : Array.isArray(saved.tableNames)
+          ? saved.tableNames
+          : payload.tables;
+      const savedTables = sanitizeTableSelection(savedTablesRaw, infoSyncTableOptions);
+      setInfoSyncSettings((prev) => ({
+        ...prev,
+        ...saved,
+        usage: savedUsage,
+        endpointIds: savedEndpointIds,
+        tables: savedTables,
+      }));
+      setInfoSyncUsage(savedUsage);
+      setInfoSyncEndpointIds(savedEndpointIds);
+      setInfoSyncTables(savedTables);
       setInfoSyncStatus('Saved synchronization settings.');
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to save synchronization settings');
@@ -2181,18 +2308,38 @@ export default function PosApiAdmin() {
       setInfoSyncLoading(true);
       setInfoSyncError('');
       setInfoSyncStatus('');
+      const payload = {};
+      if (infoSyncUsage && infoSyncUsage !== 'all') {
+        payload.usage = infoSyncUsage;
+      }
+      if (infoSyncEndpointIds.length > 0) {
+        payload.endpointIds = infoSyncEndpointIds;
+      }
+      if (infoSyncTables.length > 0) {
+        payload.tables = infoSyncTables;
+      }
+      const hasPayload = Object.keys(payload).length > 0;
       const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
         method: 'POST',
         credentials: 'include',
+        ...(hasPayload
+          ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
+          : {}),
       });
       if (!res.ok) {
         throw new Error('Failed to refresh reference codes');
       }
       const data = await res.json();
+      const usageLabel = infoSyncUsage === 'all' ? 'all usages' : formatUsageLabel(infoSyncUsage);
+      const endpointLabel =
+        infoSyncEndpointIds.length > 0
+          ? `${infoSyncEndpointIds.length} endpoint(s)`
+          : 'all endpoints';
+      const tableLabel = infoSyncTables.length > 0 ? `${infoSyncTables.length} table(s)` : 'all tables';
       setInfoSyncStatus(
-        `Synced reference codes – added ${data.added || 0}, updated ${data.updated || 0}, deactivated ${
-          data.deactivated || 0
-        }.`,
+        `Synced reference codes (${usageLabel}, ${endpointLabel}, ${tableLabel}) – added ${data.added || 0}, updated ${
+          data.updated || 0
+        }, deactivated ${data.deactivated || 0}.`,
       );
       setInfoSyncLogs((prev) => [{ timestamp: data.timestamp, ...data }, ...prev]);
     } catch (err) {
@@ -4602,13 +4749,61 @@ export default function PosApiAdmin() {
                   style={styles.input}
                 />
               </label>
-              <button type="button" style={styles.saveButton} onClick={saveInfoSettings} disabled={infoSyncLoading}>
-                {infoSyncLoading ? 'Saving…' : 'Save settings'}
-              </button>
             </div>
             <div style={styles.infoCard}>
               <h3 style={{ marginTop: 0 }}>Manual refresh</h3>
               <p>Trigger the POSAPI lookup job and update reference codes immediately.</p>
+              <div style={styles.inlineFields}>
+                <label style={{ ...styles.label, flex: 1 }}>
+                  Usage
+                  <select
+                    value={infoSyncUsage}
+                    onChange={(e) => handleInfoUsageChange(e.target.value)}
+                    style={styles.input}
+                  >
+                    <option value="all">All usages</option>
+                    {USAGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ ...styles.label, flex: 1 }}>
+                  Endpoints to sync
+                  <select
+                    multiple
+                    value={infoSyncEndpointIds}
+                    onChange={handleInfoEndpointSelection}
+                    style={{ ...styles.input, minHeight: '140px' }}
+                  >
+                    {infoSyncEndpointOptions.map((endpoint) => (
+                      <option key={endpoint.id} value={endpoint.id}>
+                        {endpoint.name} – {endpoint.method} {endpoint.path} ({formatUsageLabel(endpoint.usage)})
+                      </option>
+                    ))}
+                  </select>
+                  <span style={styles.checkboxHint}>
+                    Leave empty to include all endpoints in the selected usage.
+                  </span>
+                </label>
+                <label style={{ ...styles.label, flex: 1 }}>
+                  Tables to sync
+                  <select
+                    multiple
+                    value={infoSyncTables}
+                    onChange={handleInfoTableSelection}
+                    style={{ ...styles.input, minHeight: '140px' }}
+                  >
+                    {infoSyncTableOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={styles.checkboxHint}>Leave empty to update every table.</span>
+                </label>
+              </div>
               <button
                 type="button"
                 onClick={handleManualSync}
@@ -4651,6 +4846,11 @@ export default function PosApiAdmin() {
                 </label>
               </div>
             </div>
+          </div>
+          <div style={styles.infoActions}>
+            <button type="button" style={styles.saveButton} onClick={saveInfoSettings} disabled={infoSyncLoading}>
+              {infoSyncLoading ? 'Saving…' : 'Save settings'}
+            </button>
           </div>
           <div style={styles.logsCard}>
             <h3 style={{ marginTop: 0 }}>Synchronization log</h3>
@@ -4722,6 +4922,11 @@ const styles = {
     gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
     gap: '1rem',
     marginTop: '1rem',
+    marginBottom: '1rem',
+  },
+  infoActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
     marginBottom: '1rem',
   },
   infoCard: {
