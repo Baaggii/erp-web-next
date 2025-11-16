@@ -6560,7 +6560,7 @@ const TableManager = forwardRef(function TableManager({
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   credentials: 'include',
-                  body: JSON.stringify({ mappings: labelEdits }),
+                  body: JSON.stringify(labelEdits),
                 });
                 const res = await fetch(`/api/tables/${encodeURIComponent(table)}/columns`, { credentials: 'include' });
                 if (res.ok) {
