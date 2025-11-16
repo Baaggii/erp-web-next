@@ -323,20 +323,8 @@ export default function NotificationsPage() {
     markWorkflowSeen('changeRequests', 'outgoing', ['accepted', 'declined']);
   }, [markWorkflowSeen]);
 
-  const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
-  const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
-  const temporaryReviewPending =
-    Number(
-      temporary?.counts?.review?.pendingCount ??
-        temporary?.counts?.review?.count ??
-        temporaryReviewCount,
-    ) || 0;
-  const temporaryCreatedPending =
-    Number(
-      temporary?.counts?.created?.pendingCount ??
-        temporary?.counts?.created?.count ??
-        temporaryCreatedCount,
-    ) || 0;
+  const temporaryReviewPending = Number(temporary?.counts?.review?.pendingCount) || 0;
+  const temporaryCreatedPending = Number(temporary?.counts?.created?.pendingCount) || 0;
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
   const sortTemporaryEntries = useCallback((entries, scope) => {
     if (!Array.isArray(entries)) return [];
@@ -406,8 +394,8 @@ export default function NotificationsPage() {
     };
   }, [
     t,
-    temporaryReviewCount,
-    temporaryCreatedCount,
+    temporaryReviewPending,
+    temporaryCreatedPending,
     temporaryFetchScopeEntries,
     sortTemporaryEntries,
   ]);
