@@ -1,0 +1,278 @@
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import multer from 'multer';
+import { pool } from '../../db/index.js';
+import { loadEndpoints } from './posApiRegistry.js';
+import { invokePosApiEndpoint } from './posApiService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const settingsPath = path.resolve(__dirname, '../../config/posApiInfoSync.json');
+const logPath = path.resolve(__dirname, '../../config/posApiInfoSyncLogs.json');
+
+const DEFAULT_SETTINGS = {
+  autoSyncEnabled: false,
+  intervalMinutes: 720,
+  usage: 'info',
+  endpointIds: [],
+};
+
+const upload = multer({ storage: multer.memoryStorage() });
+
+function normalizeUsage(value) {
+  const normalized = String(value || '').toLowerCase();
+  if (normalized.includes('lookup')) return 'info';
+  if (normalized.includes('info')) return 'info';
+  return normalized || 'transaction';
+}
+
+function normalizeUsageSetting(value) {
+  if (!value) return 'info';
+  const normalized = normalizeUsage(value);
+  return normalized === 'transaction' || normalized === 'admin' ? normalized : 'info';
+}
+
+async function readJson(filePath, fallback) {
+  try {
+    const raw = await fs.readFile(filePath, 'utf8');
+    return JSON.parse(raw);
+  } catch (err) {
+    if (err.code === 'ENOENT') return fallback;
+    throw err;
+  }
+}
+
+async function writeJson(filePath, value) {
+  await fs.mkdir(path.dirname(filePath), { recursive: true });
+  await fs.writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+export async function loadSyncSettings() {
+  const fileSettings = await readJson(settingsPath, {});
+  const fileEndpointIds = Array.isArray(fileSettings.endpointIds)
+    ? fileSettings.endpointIds.map((id) => String(id)).filter(Boolean)
+    : [];
+  const settings = { ...DEFAULT_SETTINGS, ...fileSettings, endpointIds: fileEndpointIds };
+  const intervalMinutes = Number(settings.intervalMinutes) || DEFAULT_SETTINGS.intervalMinutes;
+  return {
+    autoSyncEnabled: Boolean(settings.autoSyncEnabled),
+    intervalMinutes,
+    usage: normalizeUsageSetting(settings.usage),
+    endpointIds: settings.endpointIds,
+  };
+}
+
+export async function saveSyncSettings(settings) {
+  const sanitized = {
+    autoSyncEnabled: Boolean(settings?.autoSyncEnabled),
+    intervalMinutes: Math.max(5, Number(settings?.intervalMinutes) || DEFAULT_SETTINGS.intervalMinutes),
+    usage: normalizeUsageSetting(settings?.usage),
+    endpointIds: Array.isArray(settings?.endpointIds)
+      ? settings.endpointIds.map((id) => String(id)).filter(Boolean)
+      : [],
+  };
+  await writeJson(settingsPath, sanitized);
+  return sanitized;
+}
+
+export async function loadSyncLogs(limit = 50) {
+  const logs = await readJson(logPath, []);
+  if (!Array.isArray(logs)) return [];
+  const sorted = logs
+    .map((entry) => ({ ...entry }))
+    .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+  return limit > 0 ? sorted.slice(0, limit) : sorted;
+}
+
+async function appendSyncLog(entry) {
+  const logs = await readJson(logPath, []);
+  const next = Array.isArray(logs) ? logs : [];
+  next.push(entry);
+  const trimmed = next.slice(-200);
+  await writeJson(logPath, trimmed);
+}
+
+async function upsertReferenceCodes(codeType, codes) {
+  if (!codeType || !Array.isArray(codes)) return { added: 0, updated: 0, deactivated: 0 };
+  const normalizedCodes = codes
+    .map((entry) => ({
+      code: String(entry.code || '').trim(),
+      name: entry.name ? String(entry.name).trim() : null,
+    }))
+    .filter((entry) => entry.code);
+
+  if (!normalizedCodes.length) return { added: 0, updated: 0, deactivated: 0 };
+
+  const [existingRows] = await pool.query(
+    'SELECT id, code, is_active FROM ebarimt_reference_code WHERE code_type = ?',
+    [codeType],
+  );
+  const existingMap = new Map();
+  existingRows.forEach((row) => existingMap.set(row.code, row));
+
+  let added = 0;
+  let updated = 0;
+
+  for (const entry of normalizedCodes) {
+    const current = existingMap.get(entry.code);
+    if (!current) {
+      await pool.query(
+        `INSERT INTO ebarimt_reference_code (code_type, code, name, is_active)
+         VALUES (?, ?, ?, 1)`,
+        [codeType, entry.code, entry.name],
+      );
+      added += 1;
+    } else {
+      await pool.query(
+        `UPDATE ebarimt_reference_code
+         SET name = ?, is_active = 1
+         WHERE id = ?`,
+        [entry.name, current.id],
+      );
+      updated += 1;
+      existingMap.delete(entry.code);
+    }
+  }
+
+  const staleIds = Array.from(existingMap.values())
+    .filter((row) => row.is_active)
+    .map((row) => row.id);
+  let deactivated = 0;
+  if (staleIds.length) {
+    await pool.query(
+      `UPDATE ebarimt_reference_code
+       SET is_active = 0
+       WHERE id IN (${staleIds.map(() => '?').join(',')})`,
+      staleIds,
+    );
+    deactivated = staleIds.length;
+  }
+
+  return { added, updated, deactivated };
+}
+
+function parseCodesFromEndpoint(endpointId, response) {
+  if (!response || typeof response !== 'object') return [];
+  if (endpointId === 'getDistrictCodes' && Array.isArray(response.districts)) {
+    return response.districts.map((entry) => ({
+      code_type: 'district',
+      code: entry.code,
+      name: entry.name || entry.city,
+    }));
+  }
+  if (endpointId === 'getVatTaxTypes' && Array.isArray(response.vatTaxTypes)) {
+    return response.vatTaxTypes.map((entry) => ({
+      code_type: 'tax_reason',
+      code: entry.code,
+      name: entry.description,
+    }));
+  }
+  return [];
+}
+
+export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
+  const startedAt = new Date();
+  const selectedUsage =
+    options.usage && options.usage !== 'all' ? normalizeUsageSetting(options.usage) : null;
+  const endpointIdSet = Array.isArray(options.endpointIds)
+    ? new Set(options.endpointIds.map((id) => String(id)))
+    : new Set();
+  const endpoints = await loadEndpoints();
+  const infoEndpoints = endpoints.filter((ep) => {
+    const usage = normalizeUsage(ep.usage);
+    if (selectedUsage && usage !== selectedUsage) return false;
+    if (endpointIdSet.size > 0 && !endpointIdSet.has(ep.id)) return false;
+    return String(ep.method || '').toUpperCase() === 'GET';
+  });
+
+  const summary = { added: 0, updated: 0, deactivated: 0, totalTypes: 0 };
+  const errors = [];
+
+  for (const endpoint of infoEndpoints) {
+    try {
+      const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
+      const codes = parseCodesFromEndpoint(endpoint.id, response);
+      if (!codes.length) continue;
+      const grouped = codes.reduce((acc, entry) => {
+        if (!entry.code_type) return acc;
+        acc[entry.code_type] = acc[entry.code_type] || [];
+        acc[entry.code_type].push({ code: entry.code, name: entry.name });
+        return acc;
+      }, {});
+      for (const [codeType, list] of Object.entries(grouped)) {
+        summary.totalTypes += 1;
+        const result = await upsertReferenceCodes(codeType, list);
+        summary.added += result.added;
+        summary.updated += result.updated;
+        summary.deactivated += result.deactivated;
+      }
+    } catch (err) {
+      errors.push({ endpoint: endpoint.id, message: err.message });
+    }
+  }
+
+  const durationMs = Date.now() - startedAt.getTime();
+  const logEntry = {
+    timestamp: new Date().toISOString(),
+    durationMs,
+    ...summary,
+    errors,
+    trigger,
+    usage: selectedUsage,
+    endpointIds: Array.from(endpointIdSet),
+  };
+  await appendSyncLog(logEntry);
+  return { ...summary, errors, durationMs, timestamp: logEntry.timestamp };
+}
+
+let timer = null;
+let latestSettings = null;
+
+function scheduleNextRun(settings) {
+  if (timer) clearInterval(timer);
+  if (!settings.intervalMinutes || Number.isNaN(settings.intervalMinutes)) return;
+  timer = setInterval(() => {
+    runReferenceCodeSync('auto', latestSettings || settings).catch((err) =>
+      console.error('POSAPI info sync failed', err.message || err),
+    );
+  }, settings.intervalMinutes * 60 * 1000);
+}
+
+export async function initialiseReferenceCodeSync() {
+  const settings = await loadSyncSettings();
+  latestSettings = settings;
+  if (settings.autoSyncEnabled) {
+    scheduleNextRun(settings);
+  }
+  return settings;
+}
+
+export function updateSyncSchedule(settings) {
+  latestSettings = settings;
+  if (settings.autoSyncEnabled) {
+    scheduleNextRun(settings);
+  } else if (timer) {
+    clearInterval(timer);
+  }
+}
+
+export function getUploadMiddleware() {
+  return upload.single('file');
+}
+
+export async function importStaticCodes(codeType, content) {
+  if (!codeType) {
+    throw new Error('codeType is required');
+  }
+  const text = content.toString('utf8');
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const codes = lines
+    .map((line) => {
+      const [code, name] = line.split(/[,;\t]/);
+      return { code, name };
+    })
+    .filter((entry) => entry.code);
+  return upsertReferenceCodes(codeType, codes);
+}
+

@@ -1048,6 +1048,20 @@ export default function PosApiAdmin() {
   const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
   const [taxTypeListError, setTaxTypeListError] = useState('');
   const taxTypeInputDirtyRef = useRef(false);
+  const [activeTab, setActiveTab] = useState('endpoints');
+  const [infoSyncSettings, setInfoSyncSettings] = useState({
+    autoSyncEnabled: false,
+    intervalMinutes: 720,
+    usage: 'info',
+    endpointIds: [],
+  });
+  const [infoSyncLogs, setInfoSyncLogs] = useState([]);
+  const [infoSyncStatus, setInfoSyncStatus] = useState('');
+  const [infoSyncError, setInfoSyncError] = useState('');
+  const [infoSyncLoading, setInfoSyncLoading] = useState(false);
+  const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
+  const [infoSyncUsageFilter, setInfoSyncUsageFilter] = useState('info');
+  const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
   const builderSyncRef = useRef(false);
 
   const groupedEndpoints = useMemo(() => {
@@ -1117,6 +1131,23 @@ export default function PosApiAdmin() {
       })
       .filter(Boolean);
   }, [endpoints, usageFilter]);
+
+  const infoSyncEndpointOptions = useMemo(() => {
+    const normalized = endpoints.map(withEndpointMetadata);
+    return normalized
+      .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
+      .filter((endpoint) => !infoSyncUsageFilter || endpoint.usage === infoSyncUsageFilter)
+      .map((endpoint) => ({
+        id: endpoint.id,
+        name: endpoint.name || endpoint.id,
+        method: endpoint.method,
+        path: endpoint.path,
+      }));
+  }, [endpoints, infoSyncUsageFilter]);
+
+  useEffect(() => {
+    setInfoSyncEndpointIds((prev) => prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id)));
+  }, [infoSyncEndpointOptions]);
 
   const requestPreview = useMemo(() => {
     const text = (formState.requestSchemaText || '').trim();
@@ -1900,6 +1931,49 @@ export default function PosApiAdmin() {
     };
   }, []);
 
+  useEffect(() => {
+    if (activeTab !== 'info') return undefined;
+    let cancelled = false;
+    async function loadInfoSync() {
+      try {
+        setInfoSyncLoading(true);
+        setInfoSyncError('');
+        const res = await fetch(`${API_BASE}/posapi/reference-codes`, {
+          credentials: 'include',
+          skipLoader: true,
+        });
+        if (!res.ok) {
+          throw new Error('Failed to load sync settings');
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        const loadedSettings = {
+          autoSyncEnabled: Boolean(data.settings?.autoSyncEnabled),
+          intervalMinutes: Number(data.settings?.intervalMinutes) || 720,
+          usage: data.settings?.usage || 'info',
+          endpointIds: Array.isArray(data.settings?.endpointIds) ? data.settings.endpointIds : [],
+        };
+        setInfoSyncSettings(loadedSettings);
+        setInfoSyncUsageFilter(loadedSettings.usage);
+        setInfoSyncEndpointIds(loadedSettings.endpointIds);
+        setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
+      } catch (err) {
+        if (!cancelled) {
+          setInfoSyncError(err.message || 'Unable to load POSAPI information sync settings');
+        }
+      } finally {
+        if (!cancelled) {
+          setInfoSyncLoading(false);
+        }
+      }
+    }
+
+    loadInfoSync();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
   function handleSelect(id) {
     setStatus('');
     setError('');
@@ -2080,6 +2154,103 @@ export default function PosApiAdmin() {
 
   function resetTestState() {
     setTestState({ running: false, error: '', result: null });
+  }
+
+  function updateInfoSetting(field, value) {
+    setInfoSyncSettings((prev) => ({ ...prev, [field]: value }));
+  }
+
+  async function saveInfoSettings() {
+    try {
+      setInfoSyncLoading(true);
+      setInfoSyncError('');
+      const res = await fetch(`${API_BASE}/posapi/reference-codes/settings`, {
+        method: 'PUT',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...infoSyncSettings,
+          usage: infoSyncUsageFilter,
+          endpointIds: infoSyncEndpointIds,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to save sync settings');
+      }
+      const saved = await res.json();
+      setInfoSyncSettings({
+        autoSyncEnabled: Boolean(saved.autoSyncEnabled),
+        intervalMinutes: Number(saved.intervalMinutes) || infoSyncSettings.intervalMinutes,
+        usage: saved.usage || infoSyncUsageFilter,
+        endpointIds: Array.isArray(saved.endpointIds) ? saved.endpointIds : [],
+      });
+      setInfoSyncUsageFilter(saved.usage || infoSyncUsageFilter);
+      setInfoSyncEndpointIds(Array.isArray(saved.endpointIds) ? saved.endpointIds : infoSyncEndpointIds);
+      setInfoSyncStatus('Saved synchronization settings.');
+    } catch (err) {
+      setInfoSyncError(err.message || 'Unable to save synchronization settings');
+    } finally {
+      setInfoSyncLoading(false);
+    }
+  }
+
+  async function handleManualSync() {
+    try {
+      setInfoSyncLoading(true);
+      setInfoSyncError('');
+      setInfoSyncStatus('');
+      const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usage: infoSyncUsageFilter, endpoints: infoSyncEndpointIds }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to refresh reference codes');
+      }
+      const data = await res.json();
+      setInfoSyncStatus(
+        `Synced reference codes – added ${data.added || 0}, updated ${data.updated || 0}, deactivated ${
+          data.deactivated || 0
+        }.`,
+      );
+      setInfoSyncLogs((prev) => [{ timestamp: data.timestamp, ...data }, ...prev]);
+    } catch (err) {
+      setInfoSyncError(err.message || 'Unable to refresh reference codes');
+    } finally {
+      setInfoSyncLoading(false);
+    }
+  }
+
+  async function handleStaticUpload(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    try {
+      setInfoSyncLoading(true);
+      setInfoSyncError('');
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('codeType', infoUploadCodeType);
+      const res = await fetch(`${API_BASE}/posapi/reference-codes/upload`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      if (!res.ok) {
+        throw new Error('Failed to import CSV');
+      }
+      const data = await res.json();
+      setInfoSyncStatus(
+        `${data.message || 'Imported'} – added ${data.result?.added || 0}, updated ${
+          data.result?.updated || 0
+        }, deactivated ${data.result?.deactivated || 0}.`,
+      );
+    } catch (err) {
+      setInfoSyncError(err.message || 'Unable to import CSV');
+    } finally {
+      setInfoSyncLoading(false);
+      event.target.value = '';
+    }
   }
 
   function buildDefinition() {
@@ -2523,11 +2694,36 @@ export default function PosApiAdmin() {
   }
 
   return (
-    <div style={styles.container}>
-      <div style={styles.sidebar}>
-        <div style={styles.sidebarHeader}>
-          <h2 style={{ margin: 0 }}>POSAPI Endpoints</h2>
-          <button onClick={handleNew} style={styles.newButton}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+      <div style={styles.tabRow}>
+        <button
+          type="button"
+          style={{
+            ...styles.tabButton,
+            ...(activeTab === 'endpoints' ? styles.tabButtonActive : {}),
+          }}
+          onClick={() => setActiveTab('endpoints')}
+        >
+          Endpoints
+        </button>
+        <button
+          type="button"
+          style={{
+            ...styles.tabButton,
+            ...(activeTab === 'info' ? styles.tabButtonActive : {}),
+          }}
+          onClick={() => setActiveTab('info')}
+        >
+          POSAPI Information
+        </button>
+      </div>
+
+      {activeTab === 'endpoints' && (
+        <div style={styles.container}>
+          <div style={styles.sidebar}>
+            <div style={styles.sidebarHeader}>
+              <h2 style={{ margin: 0 }}>POSAPI Endpoints</h2>
+              <button onClick={handleNew} style={styles.newButton}>
             + New
           </button>
         </div>
@@ -2708,66 +2904,66 @@ export default function PosApiAdmin() {
           )}
         </div>
       </div>
-      <div style={styles.formContainer}>
-        {loading && (
-          <div style={styles.loadingOverlay}>
-            <div style={styles.loadingMessage}>Loading…</div>
-          </div>
-        )}
-        <h1>POSAPI Endpoint Registry</h1>
-        <p style={{ maxWidth: '720px' }}>
-          Manage the list of available POSAPI endpoints. Paste JSON samples
-          directly into the fields below or fetch them from a documentation URL.
-        </p>
-        {error && <div style={styles.error}>{error}</div>}
-        {status && <div style={styles.status}>{status}</div>}
-        {formState.usage === 'transaction' && (
-          <div style={styles.capabilitiesBox}>
-            <div style={styles.capabilitiesRow}>
-              <span style={styles.capabilitiesLabel}>Supports items</span>
-              <span
-                style={{
-                  ...badgeStyle(formSupportsItems ? '#15803d' : '#475569'),
-                  textTransform: 'none',
-                }}
-              >
-                {formSupportsItems ? 'Includes items' : 'Service only'}
-              </span>
-            </div>
-            <div style={styles.capabilitiesRow}>
-              <span style={styles.capabilitiesLabel}>Receipt types</span>
-              {formReceiptTypes.map((type) => (
-                <span
-                  key={`form-receipt-${type}`}
-                  style={{
-                    ...badgeStyle(TYPE_BADGES[type] || '#1f2937'),
-                    textTransform: 'none',
-                  }}
-                >
-                  {formatTypeLabel(type) || type}
-                </span>
-              ))}
-            </div>
-            <div style={styles.capabilitiesRow}>
-              <span style={styles.capabilitiesLabel}>Payment methods</span>
-              {formPaymentMethods.map((method) => (
-                <span
-                  key={`form-payment-${method}`}
-                  style={{
-                    ...badgeStyle(PAYMENT_BADGES[method] || '#475569'),
-                    textTransform: 'none',
-                  }}
-                >
-                  {method.replace(/_/g, ' ')}
-                </span>
-              ))}
-            </div>
-            {formState.notes && (
-              <div style={{ fontSize: '0.85rem', color: '#475569' }}>{formState.notes}</div>
+          <div style={styles.formContainer}>
+            {loading && (
+              <div style={styles.loadingOverlay}>
+                <div style={styles.loadingMessage}>Loading…</div>
+              </div>
             )}
-          </div>
-        )}
-        <div style={styles.formGrid}>
+            <h1>POSAPI Endpoint Registry</h1>
+            <p style={{ maxWidth: '720px' }}>
+              Manage the list of available POSAPI endpoints. Paste JSON samples
+              directly into the fields below or fetch them from a documentation URL.
+            </p>
+            {error && <div style={styles.error}>{error}</div>}
+            {status && <div style={styles.status}>{status}</div>}
+            {formState.usage === 'transaction' && (
+              <div style={styles.capabilitiesBox}>
+                <div style={styles.capabilitiesRow}>
+                  <span style={styles.capabilitiesLabel}>Supports items</span>
+                  <span
+                    style={{
+                      ...badgeStyle(formSupportsItems ? '#15803d' : '#475569'),
+                      textTransform: 'none',
+                    }}
+                  >
+                    {formSupportsItems ? 'Includes items' : 'Service only'}
+                  </span>
+                </div>
+                <div style={styles.capabilitiesRow}>
+                  <span style={styles.capabilitiesLabel}>Receipt types</span>
+                  {formReceiptTypes.map((type) => (
+                    <span
+                      key={`form-receipt-${type}`}
+                      style={{
+                        ...badgeStyle(TYPE_BADGES[type] || '#1f2937'),
+                        textTransform: 'none',
+                      }}
+                    >
+                      {formatTypeLabel(type) || type}
+                    </span>
+                  ))}
+                </div>
+                <div style={styles.capabilitiesRow}>
+                  <span style={styles.capabilitiesLabel}>Payment methods</span>
+                  {formPaymentMethods.map((method) => (
+                    <span
+                      key={`form-payment-${method}`}
+                      style={{
+                        ...badgeStyle(PAYMENT_BADGES[method] || '#475569'),
+                        textTransform: 'none',
+                      }}
+                    >
+                      {method.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
+                {formState.notes && (
+                  <div style={{ fontSize: '0.85rem', color: '#475569' }}>{formState.notes}</div>
+                )}
+              </div>
+            )}
+            <div style={styles.formGrid}>
           <label style={styles.label}>
             Endpoint ID
             <input
@@ -4393,15 +4589,244 @@ export default function PosApiAdmin() {
           </div>
         )}
       </div>
+        </div>
+      )}
+
+      {activeTab === 'info' && (
+        <div style={styles.infoContainer}>
+          <h1>POSAPI Information</h1>
+          <p style={{ maxWidth: '760px' }}>
+            Configure automated synchronization of POSAPI reference data and manually refresh or
+            upload static CSV lists such as classification and VAT exemption reasons.
+          </p>
+          {infoSyncError && <div style={styles.error}>{infoSyncError}</div>}
+          {infoSyncStatus && <div style={styles.status}>{infoSyncStatus}</div>}
+          <div style={styles.infoGrid}>
+            <div style={styles.infoCard}>
+              <h3 style={{ marginTop: 0 }}>Automation</h3>
+              <label style={styles.checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={infoSyncSettings.autoSyncEnabled}
+                  onChange={(e) => updateInfoSetting('autoSyncEnabled', e.target.checked)}
+                />
+                Synchronize reference codes automatically
+              </label>
+              <label style={{ ...styles.label, maxWidth: '260px' }}>
+                Repeat every (minutes)
+                <input
+                  type="number"
+                  min={5}
+                  value={infoSyncSettings.intervalMinutes}
+                  onChange={(e) => updateInfoSetting('intervalMinutes', Number(e.target.value))}
+                  style={styles.input}
+                />
+              </label>
+              <button type="button" style={styles.saveButton} onClick={saveInfoSettings} disabled={infoSyncLoading}>
+                {infoSyncLoading ? 'Saving…' : 'Save settings'}
+              </button>
+            </div>
+            <div style={styles.infoCard}>
+              <h3 style={{ marginTop: 0 }}>Manual refresh</h3>
+              <p>Trigger the POSAPI lookup job and update reference codes immediately.</p>
+              <div style={styles.infoGrid}>
+                <label style={{ ...styles.label, minWidth: '180px' }}>
+                  Usage group
+                  <select
+                    value={infoSyncUsageFilter}
+                    onChange={(e) => {
+                      setInfoSyncUsageFilter(e.target.value);
+                      setInfoSyncSettings((prev) => ({ ...prev, usage: e.target.value }));
+                    }}
+                    style={styles.input}
+                  >
+                    {USAGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label style={{ ...styles.label, minWidth: '240px' }}>
+                  Endpoints to include
+                  <select
+                    multiple
+                    value={infoSyncEndpointIds}
+                    onChange={(e) => {
+                      const values = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                      setInfoSyncEndpointIds(values);
+                      setInfoSyncSettings((prev) => ({ ...prev, endpointIds: values }));
+                    }}
+                    style={{ ...styles.input, height: '140px' }}
+                  >
+                    {infoSyncEndpointOptions.map((endpoint) => (
+                      <option key={endpoint.id} value={endpoint.id}>
+                        {endpoint.name} ({endpoint.method}) {endpoint.path}
+                      </option>
+                    ))}
+                  </select>
+                  <span style={styles.checkboxHint}>
+                    Leave empty to sync all GET endpoints in the selected usage group.
+                  </span>
+                </label>
+              </div>
+              <button
+                type="button"
+                onClick={handleManualSync}
+                style={styles.refreshButton}
+                disabled={infoSyncLoading}
+              >
+                {infoSyncLoading ? 'Refreshing…' : 'Refresh reference codes'}
+              </button>
+              {infoSyncLogs[0] && (
+                <div style={styles.infoMeta}>
+                  <div>Last sync: {new Date(infoSyncLogs[0].timestamp).toLocaleString()}</div>
+                  <div>
+                    Added {infoSyncLogs[0].added || 0}, updated {infoSyncLogs[0].updated || 0},
+                    deactivated {infoSyncLogs[0].deactivated || 0}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div style={styles.infoCard}>
+              <h3 style={{ marginTop: 0 }}>Upload static lists (CSV)</h3>
+              <p>Select the code type and upload a CSV with columns <code>code,name</code>.</p>
+              <div style={styles.inlineFields}>
+                <label style={{ ...styles.label, flex: 1 }}>
+                  Code type
+                  <select
+                    value={infoUploadCodeType}
+                    onChange={(e) => setInfoUploadCodeType(e.target.value)}
+                    style={styles.input}
+                  >
+                    <option value="classification">Product classification</option>
+                    <option value="tax_reason">VAT exemption reason</option>
+                    <option value="district">District</option>
+                    <option value="barcode_type">Barcode type</option>
+                    <option value="payment_code">Payment code</option>
+                  </select>
+                </label>
+                <label style={{ ...styles.label, flex: 1 }}>
+                  CSV file
+                  <input type="file" accept=".csv,text/csv" onChange={handleStaticUpload} style={styles.input} />
+                </label>
+              </div>
+            </div>
+          </div>
+          <div style={styles.logsCard}>
+            <h3 style={{ marginTop: 0 }}>Synchronization log</h3>
+            {infoSyncLogs.length === 0 && <p style={{ margin: 0 }}>No sync history yet.</p>}
+            {infoSyncLogs.length > 0 && (
+              <table style={styles.logTable}>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Duration (ms)</th>
+                    <th>Added</th>
+                    <th>Updated</th>
+                    <th>Inactive</th>
+                    <th>Trigger</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {infoSyncLogs.map((log, index) => (
+                    <tr key={`${log.timestamp}-${index}`}>
+                      <td>{new Date(log.timestamp).toLocaleString()}</td>
+                      <td>{log.durationMs || 0}</td>
+                      <td>{log.added || 0}</td>
+                      <td>{log.updated || 0}</td>
+                      <td>{log.deactivated || 0}</td>
+                      <td>{log.trigger || 'manual'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 const styles = {
+  tabRow: {
+    display: 'flex',
+    gap: '0.5rem',
+  },
+  tabButton: {
+    padding: '0.5rem 1rem',
+    borderRadius: '8px',
+    border: '1px solid #cbd5f5',
+    background: '#fff',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  tabButtonActive: {
+    background: '#1d4ed8',
+    color: '#fff',
+    borderColor: '#1d4ed8',
+  },
   container: {
     display: 'flex',
     gap: '1.5rem',
     alignItems: 'flex-start',
+  },
+  infoContainer: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '12px',
+    padding: '1.5rem',
+    background: '#fff',
+  },
+  infoGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    gap: '1rem',
+    marginTop: '1rem',
+    marginBottom: '1rem',
+  },
+  infoCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#f8fafc',
+  },
+  refreshButton: {
+    background: '#0ea5e9',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '0.6rem 1rem',
+    cursor: 'pointer',
+    fontWeight: 600,
+  },
+  saveButton: {
+    background: '#22c55e',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '0.6rem 1rem',
+    cursor: 'pointer',
+    fontWeight: 600,
+    marginTop: '0.75rem',
+  },
+  infoMeta: {
+    marginTop: '0.5rem',
+    fontSize: '0.9rem',
+    color: '#334155',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.25rem',
+  },
+  logsCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#fff',
+  },
+  logTable: {
+    width: '100%',
+    borderCollapse: 'collapse',
   },
   sidebar: {
     width: '280px',
