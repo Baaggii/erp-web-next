@@ -11,9 +11,14 @@ const __dirname = path.dirname(__filename);
 const settingsPath = path.resolve(__dirname, '../../config/posApiInfoSync.json');
 const logPath = path.resolve(__dirname, '../../config/posApiInfoSyncLogs.json');
 
+const VALID_SYNC_USAGES = new Set(['transaction', 'info', 'admin', 'all']);
+
 const DEFAULT_SETTINGS = {
   autoSyncEnabled: false,
   intervalMinutes: 720,
+  usage: 'all',
+  endpointIds: [],
+  tables: [],
 };
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -47,6 +52,27 @@ export async function loadSyncSettings() {
   return {
     autoSyncEnabled: Boolean(settings.autoSyncEnabled),
     intervalMinutes,
+    usage: VALID_SYNC_USAGES.has(settings.usage) ? settings.usage : DEFAULT_SETTINGS.usage,
+    endpointIds: Array.isArray(settings.endpointIds)
+      ? Array.from(
+          new Set(
+            settings.endpointIds
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.endpointIds,
+    tables: Array.isArray(settings.tables)
+      ? Array.from(
+          new Set(
+            settings.tables
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.tables,
   };
 }
 
@@ -54,6 +80,27 @@ export async function saveSyncSettings(settings) {
   const sanitized = {
     autoSyncEnabled: Boolean(settings?.autoSyncEnabled),
     intervalMinutes: Math.max(5, Number(settings?.intervalMinutes) || DEFAULT_SETTINGS.intervalMinutes),
+    usage: VALID_SYNC_USAGES.has(settings?.usage) ? settings.usage : DEFAULT_SETTINGS.usage,
+    endpointIds: Array.isArray(settings?.endpointIds)
+      ? Array.from(
+          new Set(
+            settings.endpointIds
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.endpointIds,
+    tables: Array.isArray(settings?.tables)
+      ? Array.from(
+          new Set(
+            settings.tables
+              .filter((value) => typeof value === 'string')
+              .map((value) => value.trim())
+              .filter(Boolean),
+          ),
+        )
+      : DEFAULT_SETTINGS.tables,
   };
   await writeJson(settingsPath, sanitized);
   return sanitized;
