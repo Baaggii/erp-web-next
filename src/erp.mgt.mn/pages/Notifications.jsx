@@ -405,6 +405,14 @@ export default function NotificationsPage() {
 
   const temporaryReviewNew = temporary?.counts?.review?.newCount || 0;
   const temporaryCreatedNew = temporary?.counts?.created?.newCount || 0;
+  const temporaryReviewTotal = useMemo(
+    () => groupedTemporary.review.reduce((sum, group) => sum + group.entries.length, 0),
+    [groupedTemporary.review],
+  );
+  const temporaryCreatedTotal = useMemo(
+    () => groupedTemporary.created.reduce((sum, group) => sum + group.entries.length, 0),
+    [groupedTemporary.created],
+  );
 
   const handleReportMarkRead = useCallback(() => {
     if (typeof markWorkflowSeen === 'function') markWorkflowSeen('report_approval');
