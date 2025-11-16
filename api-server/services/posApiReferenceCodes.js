@@ -225,6 +225,10 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   const selectedEndpointIds = sanitizeIdList(
     Object.prototype.hasOwnProperty.call(options, 'endpointIds') ? options.endpointIds : settings.endpointIds,
   );
+  const infoEndpoints = endpoints
+    .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
+    .filter((endpoint) => desiredUsage === 'all' || normalizeUsage(endpoint.usage) === desiredUsage)
+    .filter((endpoint) => selectedEndpointIds.length === 0 || selectedEndpointIds.includes(endpoint.id));
 
   const summary = {
     added: 0,
