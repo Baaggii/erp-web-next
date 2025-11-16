@@ -2036,7 +2036,7 @@ export default function PosApiAdmin() {
         });
         if (!res.ok) return;
         const data = await res.json();
-        if (!cancelled && !controller.signal.aborted) {
+        if (!cancelled) {
           setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
         }
       } catch (err) {
@@ -2044,8 +2044,6 @@ export default function PosApiAdmin() {
         console.warn('Failed to refresh POSAPI info sync logs', err);
       }
     }
-
-    refreshInfoSyncLogsRef.current = refreshInfoSyncLogs;
 
     async function loadInfoSync() {
       try {
@@ -2111,7 +2109,6 @@ export default function PosApiAdmin() {
       cancelled = true;
       controller.abort();
       if (intervalId) window.clearInterval(intervalId);
-      refreshInfoSyncLogsRef.current = () => Promise.resolve();
     };
   }, [activeTab]);
 

@@ -325,6 +325,18 @@ export default function NotificationsPage() {
 
   const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
   const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
+  const temporaryReviewPending =
+    Number(
+      temporary?.counts?.review?.pendingCount ??
+        temporary?.counts?.review?.count ??
+        temporaryReviewCount,
+    ) || 0;
+  const temporaryCreatedPending =
+    Number(
+      temporary?.counts?.created?.pendingCount ??
+        temporary?.counts?.created?.count ??
+        temporaryCreatedCount,
+    ) || 0;
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
   const sortTemporaryEntries = useCallback((entries, scope) => {
     if (!Array.isArray(entries)) return [];
@@ -765,15 +777,9 @@ export default function NotificationsPage() {
     [groupTemporaryEntries, temporaryState.created, temporaryState.review],
   );
 
-  const temporaryReviewTotal = useMemo(
-    () => groupedTemporary.review.reduce((sum, group) => sum + group.entries.length, 0),
-    [groupedTemporary.review],
-  );
+  const temporaryReviewTotal = temporaryReviewPending;
 
-  const temporaryCreatedTotal = useMemo(
-    () => groupedTemporary.created.reduce((sum, group) => sum + group.entries.length, 0),
-    [groupedTemporary.created],
-  );
+  const temporaryCreatedTotal = temporaryCreatedPending;
 
   const renderTemporaryGroup = (group, scope) => (
     <li
