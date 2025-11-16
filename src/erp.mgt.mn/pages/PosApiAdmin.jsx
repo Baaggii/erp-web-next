@@ -238,46 +238,16 @@ function buildTableOptions(tables) {
 function sanitizeTableSelection(selection, options) {
   const allowedValues = Array.isArray(options) ? options.map((option) => option.value) : [];
   const allowedSet = new Set(allowedValues.filter(Boolean));
-
-  function normalizeValue(raw) {
-    const trimmed = typeof raw === 'string' ? raw.trim() : '';
-    if (!trimmed) return '';
-
-    // Pull out the identifier when labels are saved like "Table name (table_value)".
-    const parenMatch = trimmed.match(/\(([^()]+)\)\s*$/);
-    if (parenMatch && parenMatch[1]) {
-      const candidate = parenMatch[1].trim();
-      if (!allowedSet.size || allowedSet.has(candidate)) {
-        return candidate;
-      }
-    }
-
-    // Fall back to any allowed value embedded within the label text.
-    if (allowedSet.size) {
-      for (const allowed of allowedSet) {
-        if (trimmed === allowed) return allowed;
-        if (trimmed.includes(allowed)) return allowed;
-      }
-    }
-
-    return trimmed;
-  }
-
-  let values = Array.isArray(selection) ? selection : [];
-  if (!Array.isArray(selection) && typeof selection === 'string') {
-    values = selection.split(',');
-  }
-
+  const values = Array.isArray(selection) ? selection : [];
   const normalized = values
     .map((entry) => {
-      if (typeof entry === 'string') return normalizeValue(entry);
+      if (typeof entry === 'string') return entry.trim();
       if (entry && typeof entry === 'object' && typeof entry.value === 'string') {
-        return normalizeValue(entry.value);
+        return entry.value.trim();
       }
       return '';
     })
     .filter(Boolean);
-
   const unique = Array.from(new Set(normalized));
   if (allowedSet.size === 0) return unique;
   return unique.filter((value) => allowedSet.has(value));
@@ -2366,6 +2336,9 @@ export default function PosApiAdmin() {
         payload.endpointIds = infoSyncEndpointIds;
         // Also include the legacy key to avoid backend reference errors if the alias is expected.
         payload.infoEndpoints = infoSyncEndpointIds;
+      }
+      if (infoSyncTables.length > 0) {
+        payload.tables = infoSyncTables;
       }
       if (infoSyncTables.length > 0) {
         payload.tables = infoSyncTables;

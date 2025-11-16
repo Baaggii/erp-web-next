@@ -304,8 +304,8 @@ export default function NotificationsPage() {
     markWorkflowSeen('changeRequests', 'outgoing', ['accepted', 'declined']);
   }, [markWorkflowSeen]);
 
-  const temporaryReviewCount = Number(temporary?.counts?.review?.count) || 0;
-  const temporaryCreatedCount = Number(temporary?.counts?.created?.count) || 0;
+  const temporaryReviewCount = Number(temporary?.counts?.review?.pendingCount) || 0;
+  const temporaryCreatedCount = Number(temporary?.counts?.created?.pendingCount) || 0;
   const temporaryFetchScopeEntries = temporary?.fetchScopeEntries;
   const sortTemporaryEntries = useCallback((entries, scope) => {
     if (!Array.isArray(entries)) return [];
@@ -340,8 +340,14 @@ export default function NotificationsPage() {
     if (typeof temporaryFetchScopeEntries !== 'function') return undefined;
     let cancelled = false;
     setTemporaryState((prev) => ({ ...prev, loading: true, error: '' }));
-    const reviewPromise = temporaryFetchScopeEntries('review', null);
-    const createdPromise = temporaryFetchScopeEntries('created', null);
+    const reviewPromise = temporaryFetchScopeEntries('review', {
+      limit: null,
+      status: 'pending',
+    });
+    const createdPromise = temporaryFetchScopeEntries('created', {
+      limit: null,
+      status: 'any',
+    });
     Promise.all([reviewPromise, createdPromise])
         .then(([review, created]) => {
           if (!cancelled) {
@@ -367,11 +373,11 @@ export default function NotificationsPage() {
     };
   }, [
     t,
-      temporaryReviewCount,
-      temporaryCreatedCount,
-      temporaryFetchScopeEntries,
-      sortTemporaryEntries,
-    ]);
+    temporaryReviewCount,
+    temporaryCreatedCount,
+    temporaryFetchScopeEntries,
+    sortTemporaryEntries,
+  ]);
 
   const reportPending = useMemo(() => {
     const incomingPending = workflows?.reportApproval?.incoming?.pending?.count || 0;
@@ -738,6 +744,16 @@ export default function NotificationsPage() {
     [groupTemporaryEntries, temporaryState.created, temporaryState.review],
   );
 
+  const temporaryReviewTotal = useMemo(
+    () => groupedTemporary.review.reduce((sum, group) => sum + group.entries.length, 0),
+    [groupedTemporary.review],
+  );
+
+  const temporaryCreatedTotal = useMemo(
+    () => groupedTemporary.created.reduce((sum, group) => sum + group.entries.length, 0),
+    [groupedTemporary.created],
+  );
+
   const renderTemporaryGroup = (group, scope) => (
     <li
       key={`${scope}-${group.statusKey}-${group.user}-${group.transactionType}-${group.dateKey}`}
@@ -923,8 +939,8 @@ export default function NotificationsPage() {
             <h2 style={styles.sectionTitle}>{t('notifications_temporary_heading', 'Temporary transactions')}</h2>
             <p style={styles.sectionSubtitle}>
               {t('notifications_temporary_summary', 'Review {{review}} · Drafts {{created}}', {
-                review: temporary?.counts?.review?.count || 0,
-                created: temporary?.counts?.created?.count || 0,
+                review: temporaryReviewTotal,
+                created: temporaryCreatedTotal,
               })}
             </p>
           </div>
