@@ -1052,6 +1052,8 @@ export default function PosApiAdmin() {
   const [infoSyncSettings, setInfoSyncSettings] = useState({
     autoSyncEnabled: false,
     intervalMinutes: 720,
+    usage: 'all',
+    endpointIds: [],
   });
   const [infoSyncLogs, setInfoSyncLogs] = useState([]);
   const [infoSyncStatus, setInfoSyncStatus] = useState('');
@@ -1145,7 +1147,13 @@ export default function PosApiAdmin() {
   }, [endpoints, infoSyncUsage]);
 
   useEffect(() => {
-    setInfoSyncEndpointIds((prev) => prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id)));
+    setInfoSyncEndpointIds((prev) => {
+      const filtered = prev.filter((id) => infoSyncEndpointOptions.some((ep) => ep.id === id));
+      if (filtered.length !== prev.length) {
+        setInfoSyncSettings((settings) => ({ ...settings, endpointIds: filtered }));
+      }
+      return filtered;
+    });
   }, [infoSyncEndpointOptions]);
 
   const requestPreview = useMemo(() => {
@@ -1946,10 +1954,20 @@ export default function PosApiAdmin() {
         }
         const data = await res.json();
         if (cancelled) return;
+        const usage = data.settings?.usage && VALID_USAGE_VALUES.has(data.settings.usage)
+          ? data.settings.usage
+          : 'all';
+        const endpointIds = Array.isArray(data.settings?.endpointIds)
+          ? data.settings.endpointIds.filter((value) => typeof value === 'string' && value)
+          : [];
         setInfoSyncSettings({
           autoSyncEnabled: Boolean(data.settings?.autoSyncEnabled),
           intervalMinutes: Number(data.settings?.intervalMinutes) || 720,
+          usage,
+          endpointIds,
         });
+        setInfoSyncUsage(usage);
+        setInfoSyncEndpointIds(endpointIds);
         setInfoSyncLogs(Array.isArray(data.logs) ? data.logs : []);
       } catch (err) {
         if (!cancelled) {
@@ -2173,7 +2191,15 @@ export default function PosApiAdmin() {
         throw new Error('Failed to save sync settings');
       }
       const saved = await res.json();
-      setInfoSyncSettings(saved);
+      const savedUsage = saved.usage && VALID_USAGE_VALUES.has(saved.usage)
+        ? saved.usage
+        : infoSyncSettings.usage;
+      const savedEndpointIds = Array.isArray(saved.endpointIds)
+        ? saved.endpointIds.filter((value) => typeof value === 'string' && value)
+        : infoSyncEndpointIds;
+      setInfoSyncSettings((prev) => ({ ...prev, ...saved, usage: savedUsage, endpointIds: savedEndpointIds }));
+      setInfoSyncUsage(savedUsage);
+      setInfoSyncEndpointIds(savedEndpointIds);
       setInfoSyncStatus('Saved synchronization settings.');
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to save synchronization settings');
