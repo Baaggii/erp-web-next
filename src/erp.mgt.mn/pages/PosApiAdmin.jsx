@@ -2334,6 +2334,11 @@ export default function PosApiAdmin() {
       }
       if (infoSyncEndpointIds.length > 0) {
         payload.endpointIds = infoSyncEndpointIds;
+        // Also include the legacy key to avoid backend reference errors if the alias is expected.
+        payload.infoEndpoints = infoSyncEndpointIds;
+      }
+      if (infoSyncTables.length > 0) {
+        payload.tables = infoSyncTables;
       }
       if (infoSyncTables.length > 0) {
         payload.tables = infoSyncTables;
