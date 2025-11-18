@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Nov 18, 2025 at 07:32 PM
+-- Generation Time: Nov 18, 2025 at 08:34 PM
 -- Server version: 8.0.43-cll-lve
 -- PHP Version: 8.4.14
 
@@ -889,7 +889,12 @@ CREATE TABLE `code_utility_rates` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL,
   `updated_by` varchar(50) DEFAULT NULL,
-  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `request_enabled` tinyint(1) DEFAULT '0',
+  `request_requires_income` tinyint(1) DEFAULT '0',
+  `request_requires_approval` tinyint(1) DEFAULT '0',
+  `approver_config` json DEFAULT NULL,
+  `print_template_id` bigint DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -1271,24 +1276,6 @@ CREATE TABLE `ebarimt_invoice_payment` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `ebarimt_merchant`
---
-
-CREATE TABLE `ebarimt_merchant` (
-  `id` int NOT NULL,
-  `company_id` int NOT NULL,
-  `merchant_tin` varchar(14) NOT NULL,
-  `branch_no` varchar(10) DEFAULT NULL,
-  `district_code` varchar(4) DEFAULT NULL,
-  `pos_no` varchar(10) NOT NULL,
-  `last_invoice_no` varchar(50) DEFAULT NULL,
-  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
-
--- --------------------------------------------------------
-
---
 -- Table structure for table `ebarimt_reference_code`
 --
 
@@ -1646,8 +1633,6 @@ CREATE TABLE `request_approvers` (
 
 CREATE TABLE `request_print_form` (
   `id` bigint NOT NULL,
-  `util_id` bigint NOT NULL,
-  `band_id` bigint NOT NULL,
   `template_path` varchar(255) NOT NULL,
   `description` varchar(255) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -5210,13 +5195,6 @@ ALTER TABLE `ebarimt_invoice_payment`
   ADD KEY `fk_invoice_payment` (`invoice_id`);
 
 --
--- Indexes for table `ebarimt_merchant`
---
-ALTER TABLE `ebarimt_merchant`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `fk_merchant_company` (`company_id`);
-
---
 -- Indexes for table `ebarimt_reference_code`
 --
 ALTER TABLE `ebarimt_reference_code`
@@ -5317,8 +5295,7 @@ ALTER TABLE `request_approvers`
 -- Indexes for table `request_print_form`
 --
 ALTER TABLE `request_print_form`
-  ADD PRIMARY KEY (`id`),
-  ADD KEY `fk_print_form_utility_band` (`util_id`,`band_id`);
+  ADD PRIMARY KEY (`id`);
 
 --
 -- Indexes for table `request_seen_counts`
@@ -5989,12 +5966,6 @@ ALTER TABLE `ebarimt_invoice_payment`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
--- AUTO_INCREMENT for table `ebarimt_merchant`
---
-ALTER TABLE `ebarimt_merchant`
-  MODIFY `id` int NOT NULL AUTO_INCREMENT;
-
---
 -- AUTO_INCREMENT for table `ebarimt_reference_code`
 --
 ALTER TABLE `ebarimt_reference_code`
@@ -6463,12 +6434,6 @@ ALTER TABLE `ebarimt_invoice_payment`
   ADD CONSTRAINT `fk_invoice_payment` FOREIGN KEY (`invoice_id`) REFERENCES `ebarimt_invoice` (`id`) ON DELETE CASCADE;
 
 --
--- Constraints for table `ebarimt_merchant`
---
-ALTER TABLE `ebarimt_merchant`
-  ADD CONSTRAINT `fk_merchant_company` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`);
-
---
 -- Constraints for table `merchant`
 --
 ALTER TABLE `merchant`
@@ -6485,12 +6450,6 @@ ALTER TABLE `modules`
 --
 ALTER TABLE `request_approvers`
   ADD CONSTRAINT `fk_request_approvers_request` FOREIGN KEY (`request_id`) REFERENCES `contractor_request` (`request_id`) ON DELETE CASCADE;
-
---
--- Constraints for table `request_print_form`
---
-ALTER TABLE `request_print_form`
-  ADD CONSTRAINT `fk_print_form_utility_band` FOREIGN KEY (`util_id`,`band_id`) REFERENCES `code_utility_rates` (`utility_id`, `band_id`);
 
 --
 -- Constraints for table `request_seen_counts`
