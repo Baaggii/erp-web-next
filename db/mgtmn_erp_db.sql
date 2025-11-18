@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Nov 14, 2025 at 06:08 PM
+-- Generation Time: Nov 18, 2025 at 07:32 PM
 -- Server version: 8.0.43-cll-lve
 -- PHP Version: 8.4.14
 
@@ -141,7 +141,10 @@ CREATE TABLE `code_bkodprim` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `deleted_at` timestamp NULL DEFAULT NULL
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `classification_code` varchar(10) DEFAULT NULL,
+  `tax_type` enum('VATABLE','VAT_FREE','VAT_ZERO') DEFAULT 'VATABLE',
+  `tax_reason_code` varchar(3) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -442,7 +445,10 @@ CREATE TABLE `code_incometype` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `deleted_at` timestamp NULL DEFAULT NULL
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `classification_code` varchar(10) DEFAULT NULL COMMENT 'POSAPI classification code',
+  `tax_type` enum('VATABLE','VAT_FREE','VAT_ZERO') DEFAULT 'VATABLE',
+  `tax_reason_code` varchar(3) DEFAULT NULL COMMENT 'Reason code for VAT‑free or zero‑rated services'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -509,7 +515,10 @@ CREATE TABLE `code_material` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `deleted_at` timestamp NULL DEFAULT NULL
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `classification_code` varchar(10) DEFAULT NULL,
+  `tax_type` enum('VATABLE','VAT_FREE','VAT_ZERO') DEFAULT 'VATABLE',
+  `tax_reason_code` varchar(3) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -1133,6 +1142,27 @@ CREATE TABLE `contract1` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `contractor_request`
+--
+
+CREATE TABLE `contractor_request` (
+  `request_id` bigint NOT NULL,
+  `contract_g_id` int NOT NULL,
+  `util_id` bigint NOT NULL,
+  `band_id` bigint NOT NULL,
+  `request_type` varchar(50) NOT NULL,
+  `description` text,
+  `requires_income` tinyint(1) DEFAULT '0',
+  `requires_approval` tinyint(1) DEFAULT '0',
+  `print_conditions` json DEFAULT NULL,
+  `status` enum('open','pending_income','pending_approval','ready_to_print','printed','closed') DEFAULT 'open',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `ebarimt_api_log`
 --
 
@@ -1177,10 +1207,6 @@ CREATE TABLE `ebarimt_customer` (
 CREATE TABLE `ebarimt_invoice` (
   `id` int NOT NULL,
   `invoice_no` varchar(50) NOT NULL,
-  `merchant_tin` varchar(14) NOT NULL,
-  `branch_no` varchar(10) DEFAULT NULL,
-  `district_code` varchar(4) DEFAULT NULL,
-  `pos_no` varchar(10) NOT NULL,
   `bill_id_suffix` varchar(6) DEFAULT NULL,
   `type` enum('B2C','B2B') NOT NULL DEFAULT 'B2C',
   `customer_tin` varchar(14) DEFAULT NULL,
@@ -1191,13 +1217,13 @@ CREATE TABLE `ebarimt_invoice` (
   `total_bonus` decimal(12,2) DEFAULT NULL,
   `receipt_date` datetime NOT NULL,
   `ebarimt_id` varchar(33) DEFAULT NULL,
-  `qr_data` text,
-  `lottery_no` varchar(20) DEFAULT NULL,
   `status` enum('PENDING','SENDING','REGISTERED','FAILED','CANCELLED') DEFAULT 'PENDING',
   `error_code` int DEFAULT NULL,
   `error_message` text,
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `merchant_id` int NOT NULL,
+  `ebarimt_date` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -1240,6 +1266,24 @@ CREATE TABLE `ebarimt_invoice_payment` (
   `amount` decimal(12,2) NOT NULL,
   `exchange_code` varchar(50) DEFAULT NULL,
   `payment_data_json` json DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `ebarimt_merchant`
+--
+
+CREATE TABLE `ebarimt_merchant` (
+  `id` int NOT NULL,
+  `company_id` int NOT NULL,
+  `merchant_tin` varchar(14) NOT NULL,
+  `branch_no` varchar(10) DEFAULT NULL,
+  `district_code` varchar(4) DEFAULT NULL,
+  `pos_no` varchar(10) NOT NULL,
+  `last_invoice_no` varchar(50) DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -1301,16 +1345,16 @@ CREATE TABLE `form_submissions` (
 -- (See below for the actual view)
 --
 CREATE TABLE `InventoryStockPerBranch` (
-`avg_cost` double(22,6)
+`company_id` int
 ,`branch_id` int
-,`company_id` int
-,`inventory_value` double
 ,`item_code` varchar(255)
-,`on_hand_qty` double(22,2)
 ,`pm_name` varchar(255)
 ,`total_in_qty` double(19,2)
-,`total_in_value` double(19,2)
 ,`total_out_qty` double(19,2)
+,`total_in_value` double(19,2)
+,`on_hand_qty` double(22,2)
+,`avg_cost` double(22,6)
+,`inventory_value` double
 );
 
 -- --------------------------------------------------------
@@ -1320,17 +1364,17 @@ CREATE TABLE `InventoryStockPerBranch` (
 -- (See below for the actual view)
 --
 CREATE TABLE `InventoryStockPerCompany` (
-`avg_cost` double(22,6)
-,`company_id` int
+`company_id` int
 ,`fifo_lifo_qty` double(19,2)
 ,`fifo_lifo_value` double(19,2)
-,`inventory_value` double
 ,`item_code` varchar(100)
-,`on_hand_qty` double(22,2)
 ,`pm_name` varchar(255)
 ,`total_in_qty` double(19,2)
-,`total_in_value` double(19,2)
 ,`total_out_qty` double(19,2)
+,`total_in_value` double(19,2)
+,`on_hand_qty` double(22,2)
+,`avg_cost` double(22,6)
+,`inventory_value` double
 );
 
 -- --------------------------------------------------------
@@ -1359,6 +1403,26 @@ CREATE TABLE `license_plans` (
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `merchant`
+--
+
+CREATE TABLE `merchant` (
+  `id` int NOT NULL,
+  `company_id` int NOT NULL,
+  `merchant_name` varchar(255) NOT NULL,
+  `tax_registration_no` varchar(14) NOT NULL,
+  `branch_no` varchar(10) DEFAULT NULL,
+  `district_code` varchar(4) DEFAULT NULL,
+  `pos_no` varchar(10) DEFAULT NULL,
+  `pos_registration_no` varchar(20) DEFAULT NULL,
+  `device_mac` varchar(17) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -1561,6 +1625,36 @@ CREATE TABLE `report_transaction_locks` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `request_approvers`
+--
+
+CREATE TABLE `request_approvers` (
+  `id` bigint NOT NULL,
+  `request_id` bigint NOT NULL,
+  `position_id` bigint NOT NULL,
+  `workplace_id` bigint NOT NULL,
+  `status` enum('pending','approved','declined') DEFAULT 'pending',
+  `approved_at` datetime DEFAULT NULL,
+  `approved_by` bigint DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `request_print_form`
+--
+
+CREATE TABLE `request_print_form` (
+  `id` bigint NOT NULL,
+  `util_id` bigint NOT NULL,
+  `band_id` bigint NOT NULL,
+  `template_path` varchar(255) NOT NULL,
+  `description` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `request_seen_counts`
 --
 
@@ -1679,6 +1773,7 @@ CREATE TABLE `tbl_bills` (
 CREATE TABLE `tbl_bill_lines` (
   `line_id` bigint NOT NULL,
   `bill_id` bigint DEFAULT NULL,
+  `request_id` bigint DEFAULT NULL,
   `bill_no` varchar(64) DEFAULT NULL,
   `contract_number` int DEFAULT NULL,
   `isnew_equipment` tinyint(1) DEFAULT '0',
@@ -3059,7 +3154,10 @@ CREATE TABLE `transactions_income` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  `deleted_at` timestamp NULL DEFAULT NULL
+  `deleted_at` timestamp NULL DEFAULT NULL,
+  `ebarimt_invoice_id` int DEFAULT NULL,
+  `request_id` bigint DEFAULT NULL,
+  `merchant_id` int DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
@@ -4529,15 +4627,15 @@ CREATE TABLE `transaction_temporaries` (
 -- (See below for the actual view)
 --
 CREATE TABLE `UnifiedInventoryCode` (
-`categories` int
+`cost_code` varchar(100)
 ,`cost` decimal(18,2)
-,`cost_code` varchar(100)
 ,`cost_date` date
-,`manufacturer_id` bigint
-,`pm_name` varchar(255)
-,`pm_unit_id` int
 ,`primary_code` varchar(100)
 ,`selling_code` varchar(100)
+,`pm_name` varchar(255)
+,`pm_unit_id` int
+,`categories` int
+,`manufacturer_id` bigint
 ,`source_table` varchar(13)
 );
 
@@ -4548,14 +4646,14 @@ CREATE TABLE `UnifiedInventoryCode` (
 -- (See below for the actual view)
 --
 CREATE TABLE `unified_lookup` (
-`categories` int
+`cost_code` varchar(100)
 ,`cost` decimal(18,2)
-,`cost_code` varchar(100)
-,`manufacturer_id` bigint
-,`pm_name` varchar(255)
-,`pm_unit_id` int
 ,`primary_code` varchar(100)
 ,`selling_code` varchar(100)
+,`pm_name` varchar(255)
+,`pm_unit_id` int
+,`categories` int
+,`manufacturer_id` bigint
 ,`source_table` varchar(13)
 );
 
@@ -4645,19 +4743,19 @@ CREATE TABLE `user_level_permissions` (
 -- (See below for the actual view)
 --
 CREATE TABLE `view_inventory_report_summary` (
-`calculated_closing_acc` double(22,2)
-,`closing_acc` double(19,2)
-,`closing_sub` double(19,2)
-,`decrease_acc` double(19,2)
-,`decrease_sub` double(19,2)
-,`diff_vs_actual_closing_sub` double(22,2)
-,`increase_acc` double(19,2)
-,`increase_sub` double(19,2)
-,`opening_acc` double(19,2)
-,`opening_sub` double(19,2)
+`primary_code` varchar(50)
 ,`pm_name` varchar(255)
 ,`pm_unit_id` int
-,`primary_code` varchar(50)
+,`opening_acc` double(19,2)
+,`opening_sub` double(19,2)
+,`increase_acc` double(19,2)
+,`increase_sub` double(19,2)
+,`decrease_acc` double(19,2)
+,`decrease_sub` double(19,2)
+,`closing_acc` double(19,2)
+,`closing_sub` double(19,2)
+,`calculated_closing_acc` double(22,2)
+,`diff_vs_actual_closing_sub` double(22,2)
 );
 
 -- --------------------------------------------------------
@@ -4667,63 +4765,63 @@ CREATE TABLE `view_inventory_report_summary` (
 -- (See below for the actual view)
 --
 CREATE TABLE `view_transactions_income` (
-`actime` date
-,`branch_id` int
+`id` int
+,`or_num` varchar(50)
+,`ortr_transbranch` int
+,`or_o_barimt` varchar(50)
 ,`company_id` int
-,`deviceid` varchar(50)
-,`devicename` varchar(50)
-,`id` int
-,`LOCATION` varchar(50)
-,`or_av_now` int
-,`or_av_time` varchar(50)
-,`or_bank` varchar(7)
-,`or_bar_suu` varchar(17)
-,`or_bcode` varchar(50)
+,`branch_id` int
+,`or_g_id` int
 ,`or_burtgel` int
 ,`or_chig` int
-,`or_date` date
-,`or_eb` int
-,`or_emp_receiver` varchar(10)
-,`or_g_id` int
-,`or_num` varchar(50)
-,`or_o_barimt` varchar(50)
-,`or_or` double(15,2)
-,`or_orderid` varchar(102)
-,`or_org_id` varchar(10)
-,`or_other_receiver` varchar(100)
-,`or_tailbar1` varchar(65)
 ,`or_torol` int
-,`or_tur_receiver` varchar(10)
 ,`or_type_id` int
-,`or_uglug_id` varchar(15)
+,`or_av_now` int
+,`or_av_time` varchar(50)
+,`or_date` date
+,`orcash_or_id` int
+,`or_or` double(15,2)
 ,`or_vallut_id` int
 ,`or_valut_choice` int
+,`or_bar_suu` varchar(17)
+,`or_bcode` varchar(50)
+,`or_orderid` varchar(102)
+,`or_tailbar1` varchar(65)
 ,`orBurtgel_rd` varchar(27)
-,`orcash_or_id` int
+,`or_eb` int
+,`or_bank` varchar(7)
+,`or_uglug_id` varchar(15)
+,`or_emp_receiver` varchar(10)
+,`or_tur_receiver` varchar(10)
+,`or_other_receiver` varchar(100)
+,`or_org_id` varchar(10)
+,`TRTYPENAME` varchar(100)
+,`trtype` varchar(4)
+,`TransType` int
 ,`ORGANIZATION` varchar(50)
-,`ortr_check_cause` varchar(500)
-,`ortr_check_date` date
-,`ortr_check_emp` varchar(10)
-,`ortr_checkyn` varchar(500)
+,`ROOMID` varchar(10)
+,`USERID` varchar(10)
+,`LOCATION` varchar(50)
+,`deviceid` varchar(50)
+,`devicename` varchar(50)
+,`rawdata` varchar(500)
+,`actime` date
+,`rectime` date
+,`ortr_state` int
+,`ortr_id` varchar(50)
 ,`ortr_confirm` int
 ,`ortr_confirm_date` date
 ,`ortr_confirm_emp` varchar(10)
-,`ortr_del_cause` varchar(500)
-,`ortr_del_date` date
-,`ortr_del_emp` varchar(10)
-,`ortr_edit_cause` varchar(500)
 ,`ortr_edit_date` date
 ,`ortr_edit_emp` varchar(10)
-,`ortr_id` varchar(50)
-,`ortr_state` int
-,`ortr_transbranch` int
-,`rawdata` varchar(500)
-,`rectime` date
-,`ROOMID` varchar(10)
-,`TransType` int
-,`trtype` varchar(4)
-,`TRTYPENAME` varchar(100)
-,`USERID` varchar(10)
+,`ortr_edit_cause` varchar(500)
+,`ortr_del_date` date
+,`ortr_del_emp` varchar(10)
+,`ortr_del_cause` varchar(500)
+,`ortr_check_date` date
+,`ortr_checkyn` varchar(500)
+,`ortr_check_emp` varchar(10)
+,`ortr_check_cause` varchar(500)
 );
 
 --
@@ -4992,9 +5090,9 @@ ALTER TABLE `code_utility_band`
 ALTER TABLE `code_utility_rates`
   ADD PRIMARY KEY (`rate_id`),
   ADD KEY `idx_rates_lookup` (`uchig_id`,`utility_id`,`band_id`,`effective_from`,`effective_to`),
-  ADD KEY `fk_rate_util_mig` (`utility_id`),
   ADD KEY `fk_rate_band_mig` (`band_id`),
-  ADD KEY `utorol_id` (`utorol_id`);
+  ADD KEY `utorol_id` (`utorol_id`),
+  ADD KEY `idx_code_utility_rates_util_band` (`utility_id`,`band_id`);
 
 --
 -- Indexes for table `code_valut`
@@ -5069,6 +5167,14 @@ ALTER TABLE `contract1`
   ADD UNIQUE KEY `uniq_114204cf` (`g_num`,`g_id`,`g_chig`,`g_torol`,`g_sq`,`g_start`,`g_end`,`company_id`,`branch_id`,`department_id`);
 
 --
+-- Indexes for table `contractor_request`
+--
+ALTER TABLE `contractor_request`
+  ADD PRIMARY KEY (`request_id`),
+  ADD KEY `fk_request_utility_band` (`util_id`,`band_id`),
+  ADD KEY `idx_contractor_request_contract` (`contract_g_id`);
+
+--
 -- Indexes for table `ebarimt_api_log`
 --
 ALTER TABLE `ebarimt_api_log`
@@ -5086,7 +5192,8 @@ ALTER TABLE `ebarimt_customer`
 --
 ALTER TABLE `ebarimt_invoice`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `invoice_no` (`invoice_no`);
+  ADD UNIQUE KEY `invoice_no` (`invoice_no`),
+  ADD KEY `fk_ebarimt_invoice_merchant` (`merchant_id`);
 
 --
 -- Indexes for table `ebarimt_invoice_item`
@@ -5101,6 +5208,13 @@ ALTER TABLE `ebarimt_invoice_item`
 ALTER TABLE `ebarimt_invoice_payment`
   ADD PRIMARY KEY (`id`),
   ADD KEY `fk_invoice_payment` (`invoice_id`);
+
+--
+-- Indexes for table `ebarimt_merchant`
+--
+ALTER TABLE `ebarimt_merchant`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_merchant_company` (`company_id`);
 
 --
 -- Indexes for table `ebarimt_reference_code`
@@ -5125,6 +5239,13 @@ ALTER TABLE `form_submissions`
 --
 ALTER TABLE `license_plans`
   ADD PRIMARY KEY (`id`);
+
+--
+-- Indexes for table `merchant`
+--
+ALTER TABLE `merchant`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `company_id` (`company_id`);
 
 --
 -- Indexes for table `modules`
@@ -5186,6 +5307,20 @@ ALTER TABLE `report_transaction_locks`
   ADD KEY `idx_report_locks_status` (`status`);
 
 --
+-- Indexes for table `request_approvers`
+--
+ALTER TABLE `request_approvers`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_request_approvers_request` (`request_id`);
+
+--
+-- Indexes for table `request_print_form`
+--
+ALTER TABLE `request_print_form`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `fk_print_form_utility_band` (`util_id`,`band_id`);
+
+--
 -- Indexes for table `request_seen_counts`
 --
 ALTER TABLE `request_seen_counts`
@@ -5236,7 +5371,8 @@ ALTER TABLE `tbl_bill_lines`
   ADD KEY `bill_id` (`bill_id`),
   ADD KEY `utility_id` (`utility_id`),
   ADD KEY `band_id` (`band_id`),
-  ADD KEY `unit` (`unit`);
+  ADD KEY `unit` (`unit`),
+  ADD KEY `fk_billlines_request` (`request_id`);
 
 --
 -- Indexes for table `tbl_contracter`
@@ -5406,7 +5542,10 @@ ALTER TABLE `transactions_income`
   ADD UNIQUE KEY `uniq_db40a088` (`or_num`,`ortr_transbranch`,`or_o_barimt`,`company_id`,`branch_id`),
   ADD KEY `company_id` (`company_id`),
   ADD KEY `TransType` (`TransType`),
-  ADD KEY `branch_id` (`branch_id`);
+  ADD KEY `branch_id` (`branch_id`),
+  ADD KEY `fk_transactions_income_invoice` (`ebarimt_invoice_id`),
+  ADD KEY `fk_income_request` (`request_id`),
+  ADD KEY `fk_transactions_income_merchant` (`merchant_id`);
 
 --
 -- Indexes for table `transactions_income_other`
@@ -5814,6 +5953,12 @@ ALTER TABLE `contract1`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `contractor_request`
+--
+ALTER TABLE `contractor_request`
+  MODIFY `request_id` bigint NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `ebarimt_api_log`
 --
 ALTER TABLE `ebarimt_api_log`
@@ -5844,6 +5989,12 @@ ALTER TABLE `ebarimt_invoice_payment`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `ebarimt_merchant`
+--
+ALTER TABLE `ebarimt_merchant`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `ebarimt_reference_code`
 --
 ALTER TABLE `ebarimt_reference_code`
@@ -5859,6 +6010,12 @@ ALTER TABLE `forms`
 -- AUTO_INCREMENT for table `form_submissions`
 --
 ALTER TABLE `form_submissions`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `merchant`
+--
+ALTER TABLE `merchant`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
@@ -5908,6 +6065,18 @@ ALTER TABLE `report_income_plan`
 --
 ALTER TABLE `report_transaction_locks`
   MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `request_approvers`
+--
+ALTER TABLE `request_approvers`
+  MODIFY `id` bigint NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `request_print_form`
+--
+ALTER TABLE `request_print_form`
+  MODIFY `id` bigint NOT NULL AUTO_INCREMENT;
 
 --
 -- AUTO_INCREMENT for table `role_default_modules`
@@ -6263,10 +6432,23 @@ ALTER TABLE `company_module_licenses`
   ADD CONSTRAINT `company_module_licenses_ibfk_3` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
 
 --
+-- Constraints for table `contractor_request`
+--
+ALTER TABLE `contractor_request`
+  ADD CONSTRAINT `fk_request_contract` FOREIGN KEY (`contract_g_id`) REFERENCES `transactions_contract` (`g_id`),
+  ADD CONSTRAINT `fk_request_utility_band` FOREIGN KEY (`util_id`,`band_id`) REFERENCES `code_utility_rates` (`utility_id`, `band_id`);
+
+--
 -- Constraints for table `ebarimt_api_log`
 --
 ALTER TABLE `ebarimt_api_log`
   ADD CONSTRAINT `fk_invoice_log` FOREIGN KEY (`invoice_id`) REFERENCES `ebarimt_invoice` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints for table `ebarimt_invoice`
+--
+ALTER TABLE `ebarimt_invoice`
+  ADD CONSTRAINT `fk_ebarimt_invoice_merchant` FOREIGN KEY (`merchant_id`) REFERENCES `merchant` (`id`);
 
 --
 -- Constraints for table `ebarimt_invoice_item`
@@ -6281,10 +6463,34 @@ ALTER TABLE `ebarimt_invoice_payment`
   ADD CONSTRAINT `fk_invoice_payment` FOREIGN KEY (`invoice_id`) REFERENCES `ebarimt_invoice` (`id`) ON DELETE CASCADE;
 
 --
+-- Constraints for table `ebarimt_merchant`
+--
+ALTER TABLE `ebarimt_merchant`
+  ADD CONSTRAINT `fk_merchant_company` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`);
+
+--
+-- Constraints for table `merchant`
+--
+ALTER TABLE `merchant`
+  ADD CONSTRAINT `merchant_ibfk_1` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`);
+
+--
 -- Constraints for table `modules`
 --
 ALTER TABLE `modules`
   ADD CONSTRAINT `fk_modules_parent` FOREIGN KEY (`parent_key`) REFERENCES `modules` (`module_key`);
+
+--
+-- Constraints for table `request_approvers`
+--
+ALTER TABLE `request_approvers`
+  ADD CONSTRAINT `fk_request_approvers_request` FOREIGN KEY (`request_id`) REFERENCES `contractor_request` (`request_id`) ON DELETE CASCADE;
+
+--
+-- Constraints for table `request_print_form`
+--
+ALTER TABLE `request_print_form`
+  ADD CONSTRAINT `fk_print_form_utility_band` FOREIGN KEY (`util_id`,`band_id`) REFERENCES `code_utility_rates` (`utility_id`, `band_id`);
 
 --
 -- Constraints for table `request_seen_counts`
@@ -6321,6 +6527,7 @@ ALTER TABLE `tbl_bills`
 -- Constraints for table `tbl_bill_lines`
 --
 ALTER TABLE `tbl_bill_lines`
+  ADD CONSTRAINT `fk_billlines_request` FOREIGN KEY (`request_id`) REFERENCES `contractor_request` (`request_id`) ON DELETE SET NULL,
   ADD CONSTRAINT `fk_bl_band` FOREIGN KEY (`band_id`) REFERENCES `code_band` (`band_id`),
   ADD CONSTRAINT `fk_bl_bill` FOREIGN KEY (`bill_id`) REFERENCES `tbl_bills` (`bill_id`),
   ADD CONSTRAINT `fk_bl_util` FOREIGN KEY (`utility_id`) REFERENCES `code_utility` (`utility_id`),
@@ -6380,6 +6587,9 @@ ALTER TABLE `transactions_expense`
 -- Constraints for table `transactions_income`
 --
 ALTER TABLE `transactions_income`
+  ADD CONSTRAINT `fk_income_request` FOREIGN KEY (`request_id`) REFERENCES `contractor_request` (`request_id`) ON DELETE SET NULL,
+  ADD CONSTRAINT `fk_transactions_income_invoice` FOREIGN KEY (`ebarimt_invoice_id`) REFERENCES `ebarimt_invoice` (`id`),
+  ADD CONSTRAINT `fk_transactions_income_merchant` FOREIGN KEY (`merchant_id`) REFERENCES `merchant` (`id`),
   ADD CONSTRAINT `transactions_income_ibfk_1` FOREIGN KEY (`company_id`) REFERENCES `companies` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_income_ibfk_2` FOREIGN KEY (`TransType`) REFERENCES `code_transaction` (`UITransType`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_income_ibfk_3` FOREIGN KEY (`branch_id`) REFERENCES `code_branches` (`branch_id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
