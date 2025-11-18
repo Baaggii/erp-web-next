@@ -1,8 +1,27 @@
+#!/usr/bin/env bash
+
+# Set defaults for test environment; override for production via env vars
+ERP_TARGET="${ERP_TARGET:-$HOME/erp.mgt.mn}"
+WEB_TARGET="${WEB_TARGET:-$HOME/public_html}"
+PM2_NAME="${PM2_NAME:-erp-app}"
+
+set -e  # stop on error
+
+echo "Building frontends…"
 rm -rf node_modules
 npm install -g npm@11.6.2
 npm run build:homepage
 npm run build:erp
-cp src/erp.mgt.mn/.htaccess ~/erp.mgt.mn/.htaccess
-cp src/homepage/.htaccess ~/public_html/.htaccess
+
+# Copy .htaccess or other static files (if needed)
+mkdir -p "$ERP_TARGET" "$WEB_TARGET"
+cp src/erp.mgt.mn/.htaccess "$ERP_TARGET/.htaccess"
+cp src/homepage/.htaccess "$WEB_TARGET/.htaccess"
+
+# Optionally prune dev dependencies
 # npm prune --omit=dev
-pm2 restart erp-app --update-env
+
+# Restart the appropriate PM2 process
+pm2 restart "$PM2_NAME" --update-env
+
+echo "Deployed ERP to $ERP_TARGET and homepage to $WEB_TARGET using process $PM2_NAME"
