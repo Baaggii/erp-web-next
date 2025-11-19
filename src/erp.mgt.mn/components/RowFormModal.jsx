@@ -354,30 +354,6 @@ const RowFormModal = function RowFormModal({
     [relationConfigMap],
   );
 
-  const relationLabelMap = React.useMemo(() => {
-    const map = {};
-    Object.entries(relations || {}).forEach(([key, options]) => {
-      if (!Array.isArray(options) || options.length === 0) return;
-      if (typeof key !== 'string') return;
-      const normalizedKey = columnCaseMap[key.toLowerCase()] || key;
-      if (!normalizedKey) return;
-      const lookup = {};
-      options.forEach((opt) => {
-        if (!opt || opt.value === undefined || opt.value === null) return;
-        let valueKey = null;
-        if (typeof opt.value === 'string' || typeof opt.value === 'number') {
-          valueKey = String(opt.value);
-        }
-        if (!valueKey) return;
-        lookup[valueKey] = opt.label ?? String(opt.value ?? '');
-      });
-      if (Object.keys(lookup).length > 0) {
-        map[normalizedKey] = lookup;
-      }
-    });
-    return map;
-  }, [relationsKey, columnCaseMapKey, columnCaseMap]);
-
   const displayIndex = React.useMemo(() => {
     const index = {};
     Object.entries(tableDisplayFields || {}).forEach(([tbl, cfg]) => {
@@ -2838,15 +2814,7 @@ const RowFormModal = function RowFormModal({
       const raw = isColumn ? formVals[c] : extraVals[c];
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
-      const valueKey =
-        val === undefined || val === null
-          ? null
-          : typeof val === 'string' || typeof val === 'number'
-          ? String(val)
-          : null;
-      if (valueKey && relationLabelMap[c]?.[valueKey] !== undefined) {
-        display = relationLabelMap[c][valueKey];
-      } else if (
+      if (
         relationConfigMap[c] &&
         val !== undefined &&
         relationData[c]?.[val]
