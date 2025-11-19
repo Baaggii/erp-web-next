@@ -737,6 +737,73 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [extraKeys]);
+
+  const resolveCombinationFilters = useCallback(
+    (column, overrideConfig = null) => {
+      if (!column) return null;
+      const config =
+        overrideConfig || relationConfigMap[column] || autoSelectConfigs[column];
+      const sourceField = config?.combinationSourceColumn;
+      const targetField = config?.combinationTargetColumn;
+      if (!sourceField || !targetField) return null;
+      const lowerSource = String(sourceField).toLowerCase();
+      const mappedSource = columnCaseMap[lowerSource] || sourceField;
+      let value = formVals[mappedSource];
+      if (value === undefined || value === null || value === '') {
+        const extraKey = extraKeyLookup[lowerSource];
+        if (extraKey !== undefined) {
+          value = extraVals?.[extraKey];
+        }
+      }
+      if (value === undefined || value === null || value === '') return null;
+      return { [targetField]: value };
+    },
+    [
+      autoSelectConfigs,
+      columnCaseMap,
+      extraKeyLookup,
+      extraVals,
+      formVals,
+      relationConfigMap,
+    ],
+  );
+
+  const filterRelationOptions = useCallback(
+    (column, options) => {
+      if (!Array.isArray(options) || options.length === 0) return options;
+      const filters = resolveCombinationFilters(column);
+      if (!filters) return options;
+      const config = relationConfigMap[column] || autoSelectConfigs[column];
+      const targetColumn = config?.combinationTargetColumn;
+      if (!targetColumn) return options;
+      const filterValue = filters[targetColumn];
+      if (filterValue === undefined || filterValue === null || filterValue === '') {
+        return options;
+      }
+      const columnRows = relationData[column];
+      if (!columnRows || typeof columnRows !== 'object') return options;
+      const normalizedFilter = String(filterValue);
+      return options.filter((opt) => {
+        if (!opt) return false;
+        const rawValue =
+          typeof opt.value === 'object' && opt.value !== null ? opt.value.value : opt.value;
+        const row = columnRows[rawValue];
+        if (!row || typeof row !== 'object') return false;
+        const targetValue = getRowValueCaseInsensitive(row, targetColumn);
+        if (targetValue === undefined || targetValue === null || targetValue === '') {
+          return false;
+        }
+        return String(targetValue) === normalizedFilter;
+      });
+    },
+    [
+      autoSelectConfigs,
+      getRowValueCaseInsensitive,
+      relationConfigMap,
+      relationData,
+      resolveCombinationFilters,
+    ],
+  );
   const getFieldDefaultFromRecord = useCallback(
     (fieldName) => {
       if (!fieldName) return '';
