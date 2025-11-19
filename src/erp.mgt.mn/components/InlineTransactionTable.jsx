@@ -22,6 +22,7 @@ import {
   extractArrayMetadata,
   createGeneratedColumnPipeline,
 } from '../utils/transactionValues.js';
+import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -539,9 +540,10 @@ function InlineTransactionTable(
       const targetField = config?.combinationTargetColumn;
       if (!sourceField || !targetField) return null;
       const mappedSource = columnCaseMap[String(sourceField).toLowerCase()] || sourceField;
-      const value =
+      const rawValue =
         getRowValueCaseInsensitive(rowObj, mappedSource) ??
         getRowValueCaseInsensitive(rowObj, sourceField);
+      const value = extractCombinationFilterValue(rawValue);
       if (value === undefined || value === null || value === '') return null;
       return { [targetField]: value };
     },

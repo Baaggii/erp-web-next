@@ -13,6 +13,7 @@ import {
   applyGeneratedColumnEvaluators,
   createGeneratedColumnEvaluator,
 } from '../utils/generatedColumns.js';
+import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
@@ -678,7 +679,8 @@ const RowFormModal = function RowFormModal({
       if (!sourceField || !targetField) return null;
       const mappedSource =
         columnCaseMap[String(sourceField).toLowerCase()] || sourceField;
-      const value = formVals[mappedSource];
+      const rawValue = formVals[mappedSource];
+      const value = extractCombinationFilterValue(rawValue);
       if (value === undefined || value === null || value === '') return null;
       return { [targetField]: value };
     },

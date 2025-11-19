@@ -286,7 +286,7 @@ if (!haveReact) {
             onCancel: () => {},
             onSubmit: () => {},
             columns: ['company_id', 'dept_id'],
-            row: { company_id: 'COMP-1' },
+            row: { company_id: { value: 'COMP-1', label: 'Acme Co' } },
             relationConfigs: {
               dept_id: {
                 table: 'departments',
@@ -418,7 +418,7 @@ if (!haveReact) {
             onCancel: () => {},
             onSubmit: () => {},
             columns: ['company_id', 'dept_id'],
-            row: { company_id: 'COMP-1' },
+            row: { company_id: { value: 'COMP-1', label: 'Acme Co' } },
             relations: {
               dept_id: [
                 { value: '1', label: 'North' },

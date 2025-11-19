@@ -988,7 +988,9 @@ if (typeof mock?.import !== 'function') {
       reactMock.render(InlineTransactionTable, {
         fields: ['company_id', 'dept_id'],
         labels: { company_id: 'Company', dept_id: 'Dept' },
-        rows: [{ company_id: 'COMP-1', dept_id: '' }],
+        rows: [
+          { company_id: { value: 'COMP-1', label: 'Acme Co' }, dept_id: '' },
+        ],
         disabledFields: [],
         defaultValues: {},
         onRowsChange: () => {},
@@ -1143,7 +1145,9 @@ if (typeof mock?.import !== 'function') {
         tableName: 'items',
         fields: ['company_id', 'dept_id'],
         labels: { company_id: 'Company', dept_id: 'Dept' },
-        rows: [{ company_id: 'COMP-1', dept_id: '' }],
+        rows: [
+          { company_id: { value: 'COMP-1', label: 'Acme Co' }, dept_id: '' },
+        ],
         disabledFields: [],
         defaultValues: {},
         onRowsChange: () => {},
