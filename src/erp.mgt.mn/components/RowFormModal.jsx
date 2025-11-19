@@ -24,6 +24,25 @@ const DEFAULT_RECEIPT_TYPES = [
   'STOCK_QR',
 ];
 
+function normalizeRelationOptionKey(value) {
+  if (value === undefined || value === null) return null;
+  if (typeof value === 'object') {
+    if (Object.prototype.hasOwnProperty.call(value, 'value')) {
+      return normalizeRelationOptionKey(value.value);
+    }
+    if (Object.prototype.hasOwnProperty.call(value, 'id')) {
+      return normalizeRelationOptionKey(value.id);
+    }
+    try {
+      return JSON.stringify(value);
+    } catch (err) {
+      console.warn('Failed to normalize relation option value', err);
+      return null;
+    }
+  }
+  return String(value);
+}
+
 const RowFormModal = function RowFormModal({
   visible,
   onCancel,
@@ -369,6 +388,44 @@ const RowFormModal = function RowFormModal({
   }, [tableDisplayFieldsKey]);
 
   const relationsKey = React.useMemo(() => JSON.stringify(relations || {}), [relations]);
+  const relationOptionLabelLookup = React.useMemo(() => {
+    const lookup = {};
+    Object.entries(relations || {}).forEach(([rawKey, options]) => {
+      if (!Array.isArray(options) || options.length === 0) return;
+      const canonicalKey = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
+      if (!canonicalKey) return;
+      const optionLabels = {};
+      options.forEach((opt) => {
+        if (!opt || typeof opt !== 'object') return;
+        const candidateValue =
+          opt.value !== undefined
+            ? opt.value
+            : opt.id !== undefined
+            ? opt.id
+            : opt.key !== undefined
+            ? opt.key
+            : undefined;
+        const normalizedValue = normalizeRelationOptionKey(candidateValue);
+        if (!normalizedValue) return;
+        const label =
+          typeof opt.label === 'string'
+            ? opt.label
+            : typeof opt.display === 'string'
+            ? opt.display
+            : typeof opt.name === 'string'
+            ? opt.name
+            : typeof opt.text === 'string'
+            ? opt.text
+            : undefined;
+        if (label === undefined) return;
+        optionLabels[normalizedValue] = label;
+      });
+      if (Object.keys(optionLabels).length === 0) return;
+      lookup[canonicalKey] = optionLabels;
+      lookup[canonicalKey.toLowerCase()] = optionLabels;
+    });
+    return lookup;
+  }, [relationsKey, columnCaseMapKey]);
 
   const tableRelationsConfig = React.useMemo(() => {
     if (!table) return {};
@@ -616,6 +673,60 @@ const RowFormModal = function RowFormModal({
     });
     return extras;
   });
+
+  const resolveCombinationFilters = useCallback(
+    (column, overrideConfig = null) => {
+      if (!column) return null;
+      const config =
+        overrideConfig || relationConfigMap[column] || autoSelectConfigs[column];
+      const sourceField = config?.combinationSourceColumn;
+      const targetField = config?.combinationTargetColumn;
+      if (!sourceField || !targetField) return null;
+      const mappedSource =
+        columnCaseMap[String(sourceField).toLowerCase()] || sourceField;
+      const value = formVals[mappedSource];
+      if (value === undefined || value === null || value === '') return null;
+      return { [targetField]: value };
+    },
+    [autoSelectConfigs, columnCaseMap, formVals, relationConfigMap],
+  );
+
+  const filterRelationOptions = useCallback(
+    (column, options) => {
+      if (!Array.isArray(options) || options.length === 0) return options;
+      const filters = resolveCombinationFilters(column);
+      if (!filters) return options;
+      const config = relationConfigMap[column] || autoSelectConfigs[column];
+      const targetColumn = config?.combinationTargetColumn;
+      if (!targetColumn) return options;
+      const filterValue = filters[targetColumn];
+      if (filterValue === undefined || filterValue === null || filterValue === '') {
+        return options;
+      }
+      const columnRows = relationData[column];
+      if (!columnRows || typeof columnRows !== 'object') return options;
+      const normalizedFilter = String(filterValue);
+      return options.filter((opt) => {
+        if (!opt) return false;
+        const rawValue =
+          typeof opt.value === 'object' && opt.value !== null ? opt.value.value : opt.value;
+        const row = columnRows[rawValue];
+        if (!row || typeof row !== 'object') return false;
+        const targetValue = getRowValueCaseInsensitive(row, targetColumn);
+        if (targetValue === undefined || targetValue === null || targetValue === '') {
+          return false;
+        }
+        return String(targetValue) === normalizedFilter;
+      });
+    },
+    [
+      autoSelectConfigs,
+      getRowValueCaseInsensitive,
+      relationConfigMap,
+      relationData,
+      resolveCombinationFilters,
+    ],
+  );
   const extraKeys = React.useMemo(() => Object.keys(extraVals || {}), [extraVals]);
   const extraKeyLookup = React.useMemo(() => {
     const map = {};
@@ -2895,7 +3006,19 @@ const RowFormModal = function RowFormModal({
       const raw = isColumn ? formVals[c] : extraVals[c];
       const val = typeof raw === 'object' && raw !== null ? raw.value : raw;
       let display = typeof raw === 'object' && raw !== null ? raw.label || val : val;
+      const normalizedValueKey = normalizeRelationOptionKey(val);
+      let resolvedOptionLabel = false;
+      const labelMap =
+        relationOptionLabelLookup[c] || relationOptionLabelLookup[String(c).toLowerCase()];
+      if (normalizedValueKey && labelMap) {
+        const optionLabel = labelMap[normalizedValueKey];
+        if (optionLabel !== undefined) {
+          display = optionLabel;
+          resolvedOptionLabel = true;
+        }
+      }
       if (
+        !resolvedOptionLabel &&
         relationConfigMap[c] &&
         val !== undefined &&
         relationData[c]?.[val]
@@ -2916,6 +3039,7 @@ const RowFormModal = function RowFormModal({
         });
         display = parts.join(' - ');
       } else if (
+        !resolvedOptionLabel &&
         viewSourceMap[c] &&
         val !== undefined &&
         relationData[c]?.[val]
@@ -2936,6 +3060,7 @@ const RowFormModal = function RowFormModal({
         });
         display = parts.join(' - ');
       } else if (
+        !resolvedOptionLabel &&
         autoSelectConfigs[c] &&
         val !== undefined &&
         relationData[c]?.[val]
