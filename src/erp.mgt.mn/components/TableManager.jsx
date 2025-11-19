@@ -790,20 +790,6 @@ const TableManager = forwardRef(function TableManager({
     [columnCaseMap, resolveCanonicalKey],
   );
 
-  const getRowValueCaseInsensitive = useCallback((row, column) => {
-    if (!row || typeof row !== 'object') return undefined;
-    if (column == null) return undefined;
-    if (Object.prototype.hasOwnProperty.call(row, column)) {
-      return row[column];
-    }
-    const target = String(column).toLowerCase();
-    const match = Object.keys(row).find((key) => key.toLowerCase() === target);
-    if (match) {
-      return row[match];
-    }
-    return undefined;
-  }, []);
-
   const normalizeTenantKey = useCallback(
     (alias, caseMap) => {
       if (alias == null) return null;
@@ -3993,7 +3979,6 @@ const TableManager = forwardRef(function TableManager({
         const normalizedValues = normalizeToCanonical(
           stripTemporaryLabelValue(baseValues || {}),
         );
-        const decoratedValues = decorateRecordWithRelations(normalizedValues);
 
         const rowSources = [
           entry?.payload?.gridRows,
@@ -4012,13 +3997,10 @@ const TableManager = forwardRef(function TableManager({
               return stripped ?? {};
             })
           : [];
-        const decoratedRows = sanitizedRows.map((row) =>
-          row && typeof row === 'object' ? decorateRecordWithRelations(row) : row,
-        );
 
-        return { values: decoratedValues, rows: decoratedRows };
+        return { values: normalizedValues, rows: sanitizedRows };
       },
-      [decorateRecordWithRelations, normalizeToCanonical],
+      [normalizeToCanonical],
     );
 
     const openTemporaryPromotion = useCallback(
@@ -4335,122 +4317,13 @@ const TableManager = forwardRef(function TableManager({
       relationOpts[c] = refData[c];
     }
   });
-  const relationOptionLabelLookup = useMemo(() => {
-    const map = {};
-    Object.entries(relationOpts).forEach(([col, opts]) => {
-      const lookup = {};
-      opts.forEach((o) => {
-        if (!o) return;
-        if (o.value !== undefined && o.value !== null) {
-          lookup[o.value] = o.label;
-          lookup[String(o.value)] = o.label;
-        }
-      });
-      map[col] = lookup;
-      map[String(col).toLowerCase()] = lookup;
+  const labelMap = {};
+  Object.entries(relationOpts).forEach(([col, opts]) => {
+    labelMap[col] = {};
+    opts.forEach((o) => {
+      labelMap[col][o.value] = o.label;
     });
-    return map;
-  }, [relationOpts]);
-
-  const findRelationRow = useCallback(
-    (column, rawValue) => {
-      if (rawValue === undefined || rawValue === null || rawValue === '') {
-        return null;
-      }
-      const columnRows = refRows[column] || refRows[String(column).toLowerCase()];
-      if (!columnRows || typeof columnRows !== 'object') return null;
-      if (Object.prototype.hasOwnProperty.call(columnRows, rawValue)) {
-        return columnRows[rawValue];
-      }
-      const stringKey = String(rawValue);
-      if (Object.prototype.hasOwnProperty.call(columnRows, stringKey)) {
-        return columnRows[stringKey];
-      }
-      const matchKey = Object.keys(columnRows).find(
-        (key) => String(key) === stringKey,
-      );
-      if (matchKey !== undefined) {
-        return columnRows[matchKey];
-      }
-      return null;
-    },
-    [refRows],
-  );
-
-  const getRelationDisplayLabel = useCallback(
-    (column, rawValue) => {
-      if (rawValue === undefined || rawValue === null || rawValue === '') {
-        return null;
-      }
-      const optionLookup =
-        relationOptionLabelLookup[column] ||
-        relationOptionLabelLookup[String(column).toLowerCase()];
-      if (optionLookup && optionLookup[rawValue] !== undefined) {
-        return optionLookup[rawValue];
-      }
-      const conf = relationConfigs[column];
-      if (!conf) return null;
-      const row = findRelationRow(column, rawValue);
-      if (!row) return null;
-      const parts = [];
-      const identifier = getRowValueCaseInsensitive(
-        row,
-        conf.idField || conf.column,
-      );
-      if (identifier !== undefined && identifier !== null && identifier !== '') {
-        parts.push(identifier);
-      }
-      (conf.displayFields || []).forEach((df) => {
-        const value = getRowValueCaseInsensitive(row, df);
-        if (value !== undefined && value !== null && value !== '') {
-          parts.push(value);
-        }
-      });
-      if (parts.length === 0) {
-        const fallback = optionLookup?.[String(rawValue)];
-        if (fallback) return fallback;
-        return String(rawValue);
-      }
-      return parts.join(' - ');
-    },
-    [
-      relationConfigs,
-      relationOptionLabelLookup,
-      findRelationRow,
-      getRowValueCaseInsensitive,
-    ],
-  );
-
-  const decorateRelationValue = useCallback(
-    (column, value) => {
-      if (value === undefined || value === null || value === '') return value;
-      if (typeof value === 'object') return value;
-      const label = getRelationDisplayLabel(column, value);
-      if (!label) return value;
-      return { value, label };
-    },
-    [getRelationDisplayLabel],
-  );
-
-  const decorateRecordWithRelations = useCallback(
-    (record) => {
-      if (!record || typeof record !== 'object') return record;
-      const next = { ...record };
-      Object.entries(record).forEach(([key, val]) => {
-        if (val === undefined || val === null) return;
-        if (typeof val === 'object') {
-          next[key] = val;
-          return;
-        }
-        const decorated = decorateRelationValue(key, val);
-        if (decorated !== undefined) {
-          next[key] = decorated;
-        }
-      });
-      return next;
-    },
-    [decorateRelationValue],
-  );
+  });
 
   const isPlainValueObject = useCallback(
     (value) =>
@@ -4611,21 +4484,13 @@ const TableManager = forwardRef(function TableManager({
     (column, rawValue) => {
       if (rawValue === undefined || rawValue === null || rawValue === '') return '—';
 
-      const hasRelationLookup = Boolean(
-        relationOpts[column] ||
-          relationConfigs[column] ||
-          relationOptionLabelLookup[column] ||
-          relationOptionLabelLookup[String(column).toLowerCase()],
-      );
+      const relation = relationOpts[column];
       const mapRelationValue = (value) => {
         const unwrapRelationValue = (input) => {
           if (Array.isArray(input)) {
             return input.map((item) => unwrapRelationValue(item));
           }
           if (isPlainValueObject(input)) {
-            if (Object.prototype.hasOwnProperty.call(input, 'label')) {
-              return input.label;
-            }
             if (Object.prototype.hasOwnProperty.call(input, 'value')) {
               return unwrapRelationValue(input.value);
             }
@@ -4642,16 +4507,13 @@ const TableManager = forwardRef(function TableManager({
           return input;
         };
 
-        if (!hasRelationLookup) {
+        if (!relation) {
           return stripTemporaryLabelValue(value);
         }
 
         const applyRelationLabel = (input) => {
           if (Array.isArray(input)) {
             return input.map((item) => applyRelationLabel(item));
-          }
-          if (isPlainValueObject(input) && input.label !== undefined) {
-            return input.label;
           }
           const normalized = unwrapRelationValue(input);
           const isLookupFriendly =
@@ -4661,8 +4523,8 @@ const TableManager = forwardRef(function TableManager({
               typeof normalized === 'number' ||
               typeof normalized === 'boolean');
           if (isLookupFriendly) {
-            const mapped = getRelationDisplayLabel(column, normalized);
-            if (mapped !== null && mapped !== undefined) {
+            const mapped = labelMap[column]?.[normalized];
+            if (mapped !== undefined) {
               return mapped;
             }
           }
@@ -4749,19 +4611,16 @@ const TableManager = forwardRef(function TableManager({
       return str;
     },
     [
-      currencyFmt,
       fieldTypeMap,
-      getRelationDisplayLabel,
-      isPlainValueObject,
+      labelMap,
       openTemporaryPreview,
       parseMaybeJson,
       placeholders,
-      relationConfigs,
       relationOpts,
-      relationOptionLabelLookup,
       t,
       temporaryValueButtonStyle,
       totalCurrencySet,
+      isPlainValueObject,
     ],
   );
 
