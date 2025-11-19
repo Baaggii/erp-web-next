@@ -822,4 +822,71 @@ if (!haveReact) {
     });
     container.remove();
   });
+
+  test('AsyncSearchSelect applies static filters to table requests', async (t) => {
+    const restoreDom = setupDom();
+    const origFetch = global.fetch;
+    const requested = [];
+
+    global.fetch = async (input) => {
+      const url = typeof input === 'string' ? input : input?.url || '';
+      requested.push(url);
+      if (url.startsWith('/api/display_fields?table=items')) {
+        return { ok: true, json: async () => ({}) };
+      }
+      if (url.startsWith('/api/tenant_tables/items')) {
+        return { ok: true, json: async () => ({ tenantKeys: [] }) };
+      }
+      if (url.startsWith('/api/tables/items?')) {
+        const parsed = new URL(url, 'http://localhost');
+        assert.equal(parsed.searchParams.get('company_id'), '100');
+        return {
+          ok: true,
+          json: async () => ({ rows: [], count: 0 }),
+        };
+      }
+      return { ok: true, json: async () => ({}) };
+    };
+
+    t.after(() => {
+      global.fetch = origFetch;
+      restoreDom();
+    });
+
+    const { default: AsyncSearchSelect } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/AsyncSearchSelect.jsx',
+      {
+        '../context/AuthContext.jsx': { AuthContext: React.createContext({ company: 11 }) },
+        '../utils/tenantKeys.js': { getTenantKeyList: () => [] },
+        '../utils/buildAsyncSelectOptions.js': { buildOptionsForRows: async () => [] },
+        'react-dom': { createPortal: (node) => node },
+      },
+    );
+
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        React.createElement(AsyncSearchSelect, {
+          table: 'items',
+          searchColumn: 'code',
+          searchColumns: ['code'],
+          idField: 'id',
+          value: '',
+          onChange: () => {},
+          filters: { company_id: '100' },
+        }),
+      );
+    });
+
+    await flushEffects();
+    assert.ok(
+      requested.some((url) => url.includes('/api/tables/items?')),
+      'expected table fetch to occur',
+    );
+
+    root.unmount();
+    document.body.removeChild(container);
+  });
 }

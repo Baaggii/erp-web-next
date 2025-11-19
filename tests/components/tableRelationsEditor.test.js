@@ -330,7 +330,12 @@ if (typeof mock?.import !== 'function') {
     if (key === '/api/tables/users/relations/custom/dept_id') {
       assert.equal(options.method, 'PUT');
       const body = JSON.parse(options.body);
-      assert.deepEqual(body, { targetTable: 'teams', targetColumn: 'lead_id' });
+      assert.deepEqual(body, {
+        targetTable: 'teams',
+        targetColumn: 'lead_id',
+        combinationSourceColumn: 'dept_id',
+        combinationTargetColumn: 'lead_id',
+      });
       saved = true;
       return {
         ok: true,
@@ -376,6 +381,13 @@ if (typeof mock?.import !== 'function') {
 
   let targetSelect = reactMock.findByTestId('relations-target-column');
   targetSelect.props.onChange({ target: { value: 'lead_id' } });
+
+  let comboSource = reactMock.findByTestId('relations-combo-source');
+  comboSource.props.onChange({ target: { value: 'dept_id' } });
+  await flushPromises();
+
+  let comboTarget = reactMock.findByTestId('relations-combo-target');
+  comboTarget.props.onChange({ target: { value: 'lead_id' } });
 
   const saveBtn = reactMock.findByTestId('relations-save');
   await saveBtn.props.onClick();
