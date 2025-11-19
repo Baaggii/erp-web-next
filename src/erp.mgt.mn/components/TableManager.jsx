@@ -885,17 +885,6 @@ const TableManager = forwardRef(function TableManager({
     });
     return evaluators;
   }, [columnMeta, columnCaseMap, resolveCanonicalKey]);
-  const generatedColumnEvaluatorsRef = useRef(generatedColumnEvaluators);
-  useEffect(() => {
-    generatedColumnEvaluatorsRef.current =
-      generatedColumnEvaluators && typeof generatedColumnEvaluators === 'object'
-        ? generatedColumnEvaluators
-        : {};
-  }, [generatedColumnEvaluators]);
-  const getGeneratedColumnEvaluators = useCallback(
-    () => generatedColumnEvaluatorsRef.current || {},
-    [],
-  );
 
   const viewSourceMap = useMemo(() => {
     const map = {};
@@ -2226,11 +2215,10 @@ const TableManager = forwardRef(function TableManager({
       defaults[formConfig.transactionTypeField] = formConfig.transactionTypeValue;
     }
     const initialRows = [{ ...baseRow, _saved: false }];
-    const evaluators = getGeneratedColumnEvaluators();
-    if (Object.keys(evaluators).length > 0) {
+    if (Object.keys(generatedColumnEvaluators).length > 0) {
       const { changed } = applyGeneratedColumnEvaluators({
         targetRows: initialRows,
-        evaluators,
+        evaluators: generatedColumnEvaluators,
         equals: valuesEqual,
       });
       if (changed && initialRows[0]) {
@@ -2710,14 +2698,13 @@ const TableManager = forwardRef(function TableManager({
           });
         }
       });
-      const evaluators = getGeneratedColumnEvaluators();
-      if (Object.keys(evaluators).length === 0) {
+      if (Object.keys(generatedColumnEvaluators).length === 0) {
         return next;
       }
       const workingRows = [{ ...next }];
       const { changed } = applyGeneratedColumnEvaluators({
         targetRows: workingRows,
-        evaluators,
+        evaluators: generatedColumnEvaluators,
         equals: valuesEqual,
       });
       return changed ? workingRows[0] : next;
