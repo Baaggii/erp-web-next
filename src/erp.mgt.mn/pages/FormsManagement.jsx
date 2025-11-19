@@ -71,6 +71,7 @@ function normalizeFormConfig(info = {}) {
     mainFields: toArray(info.mainFields),
     footerFields: toArray(info.footerFields),
     viewSource: toObject(info.viewSource),
+    isAllowedField: toString(info.isAllowedField),
     transactionTypeField: toString(info.transactionTypeField),
     transactionTypeValue: toString(info.transactionTypeValue),
     detectFields: toArray(info.detectFields),
@@ -1091,6 +1092,24 @@ export default function FormsManagement() {
                       }
                     >
                       <option value="">-- transaction type field --</option>
+                      {columns.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {columns.length > 0 && (
+                  <label style={fieldColumnStyle}>
+                    <span style={{ fontWeight: 600 }}>Allowed marker field</span>
+                    <select
+                      value={config.isAllowedField}
+                      onChange={(e) =>
+                        setConfig((c) => ({ ...c, isAllowedField: e.target.value }))
+                      }
+                    >
+                      <option value="">-- select field with is_allowed value --</option>
                       {columns.map((c) => (
                         <option key={c} value={c}>
                           {c}
