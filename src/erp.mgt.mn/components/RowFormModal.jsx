@@ -524,6 +524,25 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [columns]);
+  const filterRelationOptionsByCombination = React.useCallback(
+    (column, options) =>
+      filterOptionsByCombination({
+        column,
+        options,
+        combinationMap: combinationFilterMap,
+        rowValues: formVals,
+        columnByLowerMap,
+        relationRowsByColumn: relationData,
+        rowValueAccessor: getRowValueCaseInsensitive,
+      }),
+    [
+      combinationFilterMap,
+      formVals,
+      columnByLowerMap,
+      relationData,
+      getRowValueCaseInsensitive,
+    ],
+  );
   const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
   const defaultValuesKey = React.useMemo(
     () => JSON.stringify(defaultValues || {}),

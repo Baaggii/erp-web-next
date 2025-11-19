@@ -43,6 +43,9 @@ speed up loading when the images are viewed.
 - When debugging is enabled (`window.erpDebug = true`), the lookup displays
   temporary toast messages showing the generated SQL, parameters and returned
   row so you can verify the view integration.
+- **isAllowedField** – optional column that must contain `1` for the transaction
+  to be posted. The dynamic transaction workflow checks this field before
+  calling the configured procedure/trigger.
 - **transactionTypeField** – column used to store the transaction type code
 - **transactionTypeValue** – default transaction type code value
 - **detectFields** – columns used for automated detection
