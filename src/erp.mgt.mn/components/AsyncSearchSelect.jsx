@@ -38,6 +38,7 @@ export default function AsyncSearchSelect({
   inputStyle = {},
   companyId,
   shouldFetch = true,
+  filters = {},
   ...rest
 }) {
   const { company } = useContext(AuthContext);
@@ -66,6 +67,7 @@ export default function AsyncSearchSelect({
   const pendingLookupRef = useRef(null);
   const forcedLocalSearchRef = useRef('');
   const fetchRequestIdRef = useRef(0);
+  const filtersKey = useMemo(() => JSON.stringify(filters || {}), [filters]);
   const beginFetchRequest = useCallback(() => {
     fetchRequestIdRef.current += 1;
     return fetchRequestIdRef.current;
@@ -291,6 +293,10 @@ export default function AsyncSearchSelect({
         params.set('search', normalizedQuery);
         params.set('searchColumns', cols.join(','));
       }
+      Object.entries(filters || {}).forEach(([field, rawValue]) => {
+        if (rawValue === undefined || rawValue === null || rawValue === '') return;
+        params.set(field, rawValue);
+      });
       const res = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include', signal },
@@ -532,6 +538,7 @@ export default function AsyncSearchSelect({
     disabled,
     shouldFetch,
     beginFetchRequest,
+    filtersKey,
   ]);
 
   useEffect(() => {
@@ -551,6 +558,7 @@ export default function AsyncSearchSelect({
     tenantMeta,
     effectiveCompanyId,
     beginFetchRequest,
+    filtersKey,
   ]);
 
   useEffect(() => {

@@ -57,6 +57,19 @@ function normalizeCustomRelationsMap(relations) {
           if (Array.isArray(item.displayFields)) {
             normalizedEntry.displayFields = [...item.displayFields];
           }
+          const comboSource =
+            item.combinationSourceColumn ?? item.combination_source_column;
+          const comboTarget =
+            item.combinationTargetColumn ?? item.combination_target_column;
+          if (
+            typeof comboSource === 'string' &&
+            comboSource.trim() &&
+            typeof comboTarget === 'string' &&
+            comboTarget.trim()
+          ) {
+            normalizedEntry.combinationSourceColumn = comboSource.trim();
+            normalizedEntry.combinationTargetColumn = comboTarget.trim();
+          }
           return normalizedEntry;
         })
         .filter(Boolean);
@@ -71,6 +84,12 @@ function normalizeCustomRelationsMap(relations) {
           ...(entry.idField ? { idField: entry.idField } : {}),
           ...(Array.isArray(entry.displayFields)
             ? { displayFields: [...entry.displayFields] }
+            : {}),
+          ...(entry.combinationSourceColumn
+            ? { combinationSourceColumn: entry.combinationSourceColumn }
+            : {}),
+          ...(entry.combinationTargetColumn
+            ? { combinationTargetColumn: entry.combinationTargetColumn }
             : {}),
         },
       ];
@@ -95,6 +114,8 @@ export default function TableRelationsEditor({ table }) {
   const [saving, setSaving] = useState(false);
   const [deletingKey, setDeletingKey] = useState('');
   const [isDefaultConfig, setIsDefaultConfig] = useState(true);
+  const [combinationSource, setCombinationSource] = useState('');
+  const [combinationTarget, setCombinationTarget] = useState('');
 
   const sortedColumns = useMemo(() => [...columns].sort((a, b) => a.localeCompare(b)), [columns]);
   const sortedTables = useMemo(() => [...tables].sort((a, b) => a.localeCompare(b)), [tables]);
@@ -133,6 +154,8 @@ export default function TableRelationsEditor({ table }) {
       setSelectedRelationIndex(null);
       setTargetTable('');
       setTargetColumn('');
+      setCombinationSource('');
+      setCombinationTarget('');
       return;
     }
     setLoading(true);
@@ -174,6 +197,8 @@ export default function TableRelationsEditor({ table }) {
       setSelectedRelationIndex(null);
       setTargetTable('');
       setTargetColumn('');
+      setCombinationSource('');
+      setCombinationTarget('');
     } catch (err) {
       console.error('Failed to load table relations configuration', err);
       addToast(
@@ -241,6 +266,8 @@ export default function TableRelationsEditor({ table }) {
         setTargetTable(resolvedRelation.table);
         await ensureTargetColumns(resolvedRelation.table);
         setTargetColumn(resolvedRelation.column);
+        setCombinationSource(resolvedRelation.combinationSourceColumn || '');
+        setCombinationTarget(resolvedRelation.combinationTargetColumn || '');
         return;
       }
 
@@ -251,12 +278,16 @@ export default function TableRelationsEditor({ table }) {
         setTargetTable(tbl);
         await ensureTargetColumns(tbl);
         setTargetColumn(col);
+        setCombinationSource(relation.combinationSourceColumn || '');
+        setCombinationTarget(relation.combinationTargetColumn || '');
         return;
       }
 
       setSelectedRelationIndex(null);
       setTargetTable('');
       setTargetColumn('');
+      setCombinationSource('');
+      setCombinationTarget('');
     },
     [customRelations, ensureTargetColumns],
   );
@@ -300,6 +331,12 @@ export default function TableRelationsEditor({ table }) {
           body: JSON.stringify({
             targetTable,
             targetColumn,
+            ...(combinationSource && combinationTarget
+              ? {
+                  combinationSourceColumn: combinationSource,
+                  combinationTargetColumn: combinationTarget,
+                }
+              : {}),
             ...(editingExisting ? { index: selectedRelationIndex } : {}),
           }),
         },
@@ -321,7 +358,18 @@ export default function TableRelationsEditor({ table }) {
     } finally {
       setSaving(false);
     }
-  }, [addToast, loadData, selectedColumn, startEdit, table, targetColumn, targetTable]);
+  }, [
+    addToast,
+    combinationSource,
+    combinationTarget,
+    loadData,
+    selectedColumn,
+    selectedRelationIndex,
+    startEdit,
+    table,
+    targetColumn,
+    targetTable,
+  ]);
 
   const handleDelete = useCallback(
     async (column, relationIndex = null) => {
@@ -365,6 +413,8 @@ export default function TableRelationsEditor({ table }) {
     setSelectedRelationIndex(null);
     setTargetTable('');
     setTargetColumn('');
+    setCombinationSource('');
+    setCombinationTarget('');
   }, [selectedColumn]);
 
   return (
@@ -395,6 +445,8 @@ export default function TableRelationsEditor({ table }) {
                     <th>Target Table</th>
                     <th>Target Column</th>
                     <th>Source</th>
+                    <th>Combination Source</th>
+                    <th>Combination Target</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -417,6 +469,8 @@ export default function TableRelationsEditor({ table }) {
                         <td>{rel.REFERENCED_TABLE_NAME || '-'}</td>
                         <td>{rel.REFERENCED_COLUMN_NAME || '-'}</td>
                         <td>{rel.source === 'custom' ? 'Custom' : 'Database'}</td>
+                        <td>{rel.combinationSourceColumn || '-'}</td>
+                        <td>{rel.combinationTargetColumn || '-'}</td>
                         <td>
                           <button
                             type="button"
@@ -501,6 +555,40 @@ export default function TableRelationsEditor({ table }) {
                   <option value="">-- Select column --</option>
                   {currentTargetColumns.map((col) => (
                     <option key={col} value={col}>
+                      {col}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div style={{ marginBottom: '0.5rem' }}>
+              <label>
+                Combination Source Column (optional)
+                <select
+                  value={combinationSource}
+                  data-testid="relations-combo-source"
+                  onChange={(e) => setCombinationSource(e.target.value)}
+                >
+                  <option value="">-- None --</option>
+                  {sortedColumns.map((col) => (
+                    <option key={`source-${col}`} value={col}>
+                      {col}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div style={{ marginBottom: '0.5rem' }}>
+              <label>
+                Combination Target Column (optional)
+                <select
+                  value={combinationTarget}
+                  data-testid="relations-combo-target"
+                  onChange={(e) => setCombinationTarget(e.target.value)}
+                >
+                  <option value="">-- None --</option>
+                  {currentTargetColumns.map((col) => (
+                    <option key={`target-${col}`} value={col}>
                       {col}
                     </option>
                   ))}

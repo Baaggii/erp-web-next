@@ -241,6 +241,150 @@ if (!haveReact) {
     }
   });
 
+  test('RowFormModal passes combination filters to AsyncSearchSelect', async (t) => {
+    const origFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+    const selectProps = [];
+    const AsyncSearchSelectMock = (props) => {
+      selectProps.push(props);
+      return React.createElement('div', null, 'async');
+    };
+
+    const { default: RowFormModal } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/RowFormModal.jsx',
+      {
+        './AsyncSearchSelect.jsx': { default: AsyncSearchSelectMock },
+        './InlineTransactionTable.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './TooltipWrapper.jsx': { default: (p) => React.createElement('div', p) },
+        './Modal.jsx': { default: ({ children }) => React.createElement('div', null, children) },
+        '../context/AuthContext.jsx': {
+          AuthContext: React.createContext({
+            user: {},
+            company: 1,
+            branch: 1,
+            department: 1,
+            userSettings: {},
+          }),
+        },
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
+        '../utils/normalizeDateInput.js': { default: (v) => v },
+        '../utils/apiBase.js': { API_BASE: '' },
+        '../utils/callProcedure.js': { default: () => {} },
+      },
+    );
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(RowFormModal, {
+            visible: true,
+            onCancel: () => {},
+            onSubmit: () => {},
+            columns: ['company_id', 'dept_id'],
+            row: { company_id: 'COMP-1' },
+            relationConfigs: {
+              dept_id: {
+                table: 'departments',
+                column: 'id',
+                combinationSourceColumn: 'company_id',
+                combinationTargetColumn: 'company_id',
+              },
+            },
+            labels: { dept_id: 'Dept' },
+            fieldTypeMap: { company_id: 'string', dept_id: 'string' },
+          }),
+        );
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.ok(selectProps[0]);
+      assert.deepEqual(selectProps[0].filters, { company_id: 'COMP-1' });
+    } finally {
+      root.unmount();
+      global.fetch = origFetch;
+    }
+  });
+
+  test('RowFormModal filters relation select options using combination targets', async (t) => {
+    const origFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+    const { default: RowFormModal } = await t.mock.import(
+      '../../src/erp.mgt.mn/components/RowFormModal.jsx',
+      {
+        './AsyncSearchSelect.jsx': { default: () => React.createElement('div', null, 'async') },
+        './InlineTransactionTable.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './TooltipWrapper.jsx': { default: (p) => React.createElement('div', p) },
+        './Modal.jsx': { default: ({ children }) => React.createElement('div', null, children) },
+        '../context/AuthContext.jsx': {
+          AuthContext: React.createContext({
+            user: {},
+            company: 1,
+            branch: 1,
+            department: 1,
+            userSettings: {},
+          }),
+        },
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        '../utils/formatTimestamp.js': { default: () => '2024-05-01 12:34:56' },
+        '../utils/normalizeDateInput.js': { default: (v) => v },
+        '../utils/apiBase.js': { API_BASE: '' },
+        '../utils/callProcedure.js': { default: () => {} },
+      },
+    );
+
+    const container = document.createElement('div');
+    const root = createRoot(container);
+    try {
+      await act(async () => {
+        root.render(
+          React.createElement(RowFormModal, {
+            visible: true,
+            onCancel: () => {},
+            onSubmit: () => {},
+            columns: ['company_id', 'dept_id'],
+            row: { company_id: 'COMP-1' },
+            relations: {
+              dept_id: [
+                { value: '1', label: 'North' },
+                { value: '2', label: 'South' },
+              ],
+            },
+            relationData: {
+              dept_id: {
+                '1': { id: '1', company_id: 'COMP-1' },
+                '2': { id: '2', company_id: 'COMP-2' },
+              },
+            },
+            relationConfigs: {
+              dept_id: {
+                table: 'departments',
+                column: 'id',
+                combinationSourceColumn: 'company_id',
+                combinationTargetColumn: 'company_id',
+              },
+            },
+            labels: { dept_id: 'Dept' },
+            fieldTypeMap: { company_id: 'string', dept_id: 'string' },
+          }),
+        );
+      });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const select = container.querySelector('select');
+      assert.ok(select, 'expected relation select to render');
+      const values = Array.from(select.querySelectorAll('option')).map((opt) => opt.value);
+      assert.deepEqual(values, ['', '1']);
+    } finally {
+      root.unmount();
+      global.fetch = origFetch;
+    }
+  });
+
   test('RowFormModal shows relation idField value for disabled fields', async (t) => {
     const origFetch = global.fetch;
     global.fetch = async () => ({ ok: true, json: async () => ({}) });
