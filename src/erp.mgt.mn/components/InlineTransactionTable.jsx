@@ -390,6 +390,29 @@ function InlineTransactionTable(
     () => JSON.stringify(relationConfigMap || {}),
     [relationConfigMap],
   );
+  const relationLabelMap = React.useMemo(() => {
+    const map = {};
+    Object.entries(relations || {}).forEach(([key, options]) => {
+      if (!Array.isArray(options) || options.length === 0) return;
+      if (typeof key !== 'string') return;
+      const normalizedKey = columnCaseMap[key.toLowerCase()] || key;
+      if (!normalizedKey) return;
+      const lookup = {};
+      options.forEach((opt) => {
+        if (!opt || opt.value === undefined || opt.value === null) return;
+        let valueKey = null;
+        if (typeof opt.value === 'string' || typeof opt.value === 'number') {
+          valueKey = String(opt.value);
+        }
+        if (!valueKey) return;
+        lookup[valueKey] = opt.label ?? String(opt.value ?? '');
+      });
+      if (Object.keys(lookup).length > 0) {
+        map[normalizedKey] = lookup;
+      }
+    });
+    return map;
+  }, [relationsKey, columnCaseMapKey, columnCaseMap]);
 
   const displayIndex = React.useMemo(() => {
     const index = {};
@@ -2092,7 +2115,15 @@ function InlineTransactionTable(
     if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
-      if (
+      const valueKey =
+        rawVal === undefined || rawVal === null
+          ? null
+          : typeof rawVal === 'string' || typeof rawVal === 'number'
+          ? String(rawVal)
+          : null;
+      if (valueKey && relationLabelMap[f]?.[valueKey] !== undefined) {
+        display = relationLabelMap[f][valueKey];
+      } else if (
         relationConfigMap[f] &&
         rawVal !== undefined &&
         relationData[f]?.[rawVal]
