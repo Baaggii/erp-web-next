@@ -620,25 +620,6 @@ const RowFormModal = function RowFormModal({
     });
     return init;
   });
-  const filterRelationOptionsByCombination = React.useCallback(
-    (column, options) =>
-      filterOptionsByCombination({
-        column,
-        options,
-        combinationMap: combinationFilterMap,
-        rowValues: formVals,
-        columnByLowerMap,
-        relationRowsByColumn: relationData,
-        rowValueAccessor: getRowValueCaseInsensitive,
-      }),
-    [
-      combinationFilterMap,
-      formVals,
-      columnByLowerMap,
-      relationData,
-      getRowValueCaseInsensitive,
-    ],
-  );
   const [extraVals, setExtraVals] = useState(() => {
     const extras = {};
     Object.entries(row || {}).forEach(([k, v]) => {
