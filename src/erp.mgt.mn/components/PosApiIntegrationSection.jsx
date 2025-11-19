@@ -742,7 +742,7 @@ export default function PosApiIntegrationSection({
                 disabled={!config.posApiEnabled}
               />
               <small style={{ color: '#666' }}>
-                Optional column containing the POSAPI type (e.g., B2C_RECEIPT).
+                Optional column containing the POSAPI type (e.g., B2C).
               </small>
             </label>
           </div>

@@ -16,6 +16,11 @@ import {
   createColumnLookup,
 } from './posApiPersistence.js';
 import { parseLocalizedNumber } from '../../utils/parseLocalizedNumber.js';
+import {
+  saveEbarimtInvoiceSnapshot,
+  persistEbarimtInvoiceResponse,
+} from './ebarimtInvoiceStore.js';
+import { getMerchantById } from './merchantService.js';
 
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
@@ -1296,6 +1301,14 @@ export async function postPosTransactionWithEbarimt(
     throw err;
   }
 
+  const merchantId = record?.merchant_id ?? record?.merchantId ?? null;
+  const merchantInfo = merchantId ? await getMerchantById(merchantId) : null;
+  if (!merchantInfo) {
+    const err = new Error('Merchant information is required for POSAPI submissions');
+    err.status = 400;
+    throw err;
+  }
+
   const mapping = formCfg.posApiMapping || {};
   const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
@@ -1303,7 +1316,7 @@ export async function postPosTransactionWithEbarimt(
     record,
     mapping,
     receiptType,
-    { typeField: formCfg.posApiTypeField },
+    { typeField: formCfg.posApiTypeField, merchantInfo },
   );
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
@@ -1311,12 +1324,25 @@ export async function postPosTransactionWithEbarimt(
     throw err;
   }
 
+  const invoiceId = await saveEbarimtInvoiceSnapshot({
+    masterTable,
+    masterId,
+    record,
+    payload,
+    merchantInfo,
+  });
+
   const response = await sendReceipt(payload, { endpoint });
   await persistPosApiResponse(masterTable, masterId, response, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
   });
+  if (invoiceId) {
+    await persistEbarimtInvoiceResponse(invoiceId, response, {
+      fieldsFromPosApi: formCfg.fieldsFromPosApi,
+    });
+  }
 
-  return { id: masterId, posApi: { payload, response } };
+  return { id: masterId, ebarimtInvoiceId: invoiceId, posApi: { payload, response } };
 }
 
 export default postPosTransaction;

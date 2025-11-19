@@ -91,7 +91,7 @@ curl -X POST "https://api.ebarimt.mn/rest/receipt" \
     "merchantTin": "<merchant-tin>",
     "customerTin": "<customer-tin>",
     "consumerNo": "<consumer-id-or-phone>",
-    "type": "B2C_RECEIPT",
+    "type": "B2C",
     "taxType": "VAT_ABLE",
     "totalAmount": 110000,
     "totalVAT": 10000,

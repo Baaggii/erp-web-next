@@ -143,7 +143,7 @@ CREATE TABLE `code_bkodprim` (
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL,
   `classification_code` varchar(10) DEFAULT NULL,
-  `tax_type` enum('VATABLE','VAT_FREE','VAT_ZERO') DEFAULT 'VATABLE',
+  `tax_type` varchar(50) DEFAULT NULL,
   `tax_reason_code` varchar(3) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -447,7 +447,7 @@ CREATE TABLE `code_incometype` (
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL,
   `classification_code` varchar(10) DEFAULT NULL COMMENT 'POSAPI classification code',
-  `tax_type` enum('VATABLE','VAT_FREE','VAT_ZERO') DEFAULT 'VATABLE',
+  `tax_type` varchar(50) DEFAULT NULL,
   `tax_reason_code` varchar(3) DEFAULT NULL COMMENT 'Reason code for VAT‑free or zero‑rated services'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -517,7 +517,7 @@ CREATE TABLE `code_material` (
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL,
   `classification_code` varchar(10) DEFAULT NULL,
-  `tax_type` enum('VATABLE','VAT_FREE','VAT_ZERO') DEFAULT 'VATABLE',
+  `tax_type` varchar(50) DEFAULT NULL,
   `tax_reason_code` varchar(3) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -1213,7 +1213,7 @@ CREATE TABLE `ebarimt_invoice` (
   `id` int NOT NULL,
   `invoice_no` varchar(50) NOT NULL,
   `bill_id_suffix` varchar(6) DEFAULT NULL,
-  `type` enum('B2C','B2B') NOT NULL DEFAULT 'B2C',
+  `bill_type` enum('B2C','B2B_SALE','B2B_PURCHASE','STOCK_QR') NOT NULL DEFAULT 'B2C',
   `customer_tin` varchar(14) DEFAULT NULL,
   `consumer_no` varchar(20) DEFAULT NULL,
   `total_amount` decimal(12,2) NOT NULL,
@@ -1250,10 +1250,11 @@ CREATE TABLE `ebarimt_invoice_item` (
   `city_tax_amount` decimal(12,2) DEFAULT NULL,
   `bonus_amount` decimal(12,2) DEFAULT NULL,
   `barcode_text` varchar(50) DEFAULT NULL,
-  `barcode_type` enum('EAN13','CODE128','QRCODE','UNDEFINED') DEFAULT 'UNDEFINED',
+  `barcode_type` varchar(32) DEFAULT NULL,
   `classification_code` varchar(10) DEFAULT NULL,
   `tax_product_code` varchar(10) DEFAULT NULL,
-  `tax_type` enum('VAT_ABLE','VAT_FREE','VAT_ZERO') DEFAULT 'VAT_ABLE',
+  `tax_type` varchar(50) DEFAULT NULL,
+  `tax_reason_code` varchar(10) DEFAULT NULL,
   `item_data_json` json DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
@@ -1266,7 +1267,7 @@ CREATE TABLE `ebarimt_invoice_item` (
 CREATE TABLE `ebarimt_invoice_payment` (
   `id` int NOT NULL,
   `invoice_id` int DEFAULT NULL,
-  `payment_code` enum('CASH','PAYMENT_CARD','BANK_TRANSFER','MOBILE_WALLET') NOT NULL DEFAULT 'CASH',
+  `payment_code` varchar(50) NOT NULL DEFAULT 'CASH',
   `payment_status` enum('PAID','PAY','REVERSED','ERROR') DEFAULT 'PAID',
   `amount` decimal(12,2) NOT NULL,
   `exchange_code` varchar(50) DEFAULT NULL,
@@ -1281,7 +1282,7 @@ CREATE TABLE `ebarimt_invoice_payment` (
 
 CREATE TABLE `ebarimt_reference_code` (
   `id` int NOT NULL,
-  `code_type` enum('district','classification','tax_reason','barcode_type','payment_code') NOT NULL,
+  `code_type` varchar(32) NOT NULL,
   `code` varchar(50) NOT NULL,
   `name` varchar(255) DEFAULT NULL,
   `is_active` tinyint(1) DEFAULT '1',
@@ -4504,20 +4505,32 @@ CREATE TABLE `transactions_pos` (
   `id` int NOT NULL,
   `session_id` varchar(64) DEFAULT NULL,
   `company_id` int DEFAULT NULL,
+  `merchant_id` int DEFAULT NULL,
   `branch_id` int DEFAULT NULL,
   `department_id` int DEFAULT NULL,
   `emp_id` varchar(10) DEFAULT NULL,
   `pos_date` date DEFAULT NULL,
   `pos_time` datetime DEFAULT NULL,
   `order_id` varchar(64) DEFAULT NULL,
+  `customer_tin` varchar(20) DEFAULT NULL,
+  `customer_name` varchar(191) DEFAULT NULL,
+  `customer_status` varchar(64) DEFAULT NULL,
+  `customer_tin_valid` tinyint(1) DEFAULT NULL,
+  `consumer_no` varchar(32) DEFAULT NULL,
+  `tax_type` varchar(32) DEFAULT NULL,
+  `lot_no` varchar(64) DEFAULT NULL,
   `total_quantity` int DEFAULT NULL,
   `total_amount` decimal(18,2) DEFAULT NULL,
+  `vat_amount` decimal(18,2) DEFAULT NULL,
+  `city_tax` decimal(18,2) DEFAULT NULL,
   `total_discount` decimal(18,2) DEFAULT NULL,
   `cashback` decimal(18,0) DEFAULT NULL,
   `cashback_payment_type` int DEFAULT NULL,
   `payable_amount` decimal(18,0) DEFAULT NULL,
   `deposit_amount` decimal(18,0) DEFAULT NULL,
   `payment_type` int DEFAULT NULL,
+  `bill_id` varchar(64) DEFAULT NULL,
+  `ebarimt_invoice_id` int DEFAULT NULL,
   `remarks` text,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `status` int NOT NULL DEFAULT '1',
@@ -5584,7 +5597,9 @@ ALTER TABLE `transactions_pos`
   ADD KEY `department_id` (`department_id`),
   ADD KEY `status` (`status`),
   ADD KEY `payment_type` (`payment_type`),
-  ADD KEY `cashback_payment_type` (`cashback_payment_type`);
+  ADD KEY `cashback_payment_type` (`cashback_payment_type`),
+  ADD KEY `fk_transactions_pos_merchant` (`merchant_id`),
+  ADD KEY `fk_transactions_pos_invoice` (`ebarimt_invoice_id`);
 
 --
 -- Indexes for table `transactions_test`
@@ -6582,7 +6597,9 @@ ALTER TABLE `transactions_pos`
   ADD CONSTRAINT `transactions_pos_ibfk_3` FOREIGN KEY (`emp_id`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_5` FOREIGN KEY (`status`) REFERENCES `code_status` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_6` FOREIGN KEY (`payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_pos_ibfk_8` FOREIGN KEY (`cashback_payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `transactions_pos_ibfk_8` FOREIGN KEY (`cashback_payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `fk_transactions_pos_merchant` FOREIGN KEY (`merchant_id`) REFERENCES `merchant` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_transactions_pos_invoice` FOREIGN KEY (`ebarimt_invoice_id`) REFERENCES `ebarimt_invoice` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- Constraints for table `transactions_test_detail`
