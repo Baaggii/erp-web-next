@@ -524,49 +524,6 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [columns]);
-  const filterRelationOptionsByCombination = React.useCallback(
-    (column, options) =>
-      filterOptionsByCombination({
-        column,
-        options,
-        combinationMap: combinationFilterMap,
-        rowValues: formVals,
-        columnByLowerMap,
-        relationRowsByColumn: relationData,
-        rowValueAccessor: getRowValueCaseInsensitive,
-      }),
-    [
-      combinationFilterMap,
-      formVals,
-      columnByLowerMap,
-      relationData,
-      getRowValueCaseInsensitive,
-    ],
-  );
-  const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
-  const defaultValuesKey = React.useMemo(
-    () => JSON.stringify(defaultValues || {}),
-    [defaultValues],
-  );
-  const generatedColumnEvaluators = React.useMemo(() => {
-    const map = {};
-    if (!Array.isArray(tableColumns)) return map;
-    tableColumns.forEach((col) => {
-      if (!col || typeof col !== 'object') return;
-      const rawName = col.name;
-      const expr =
-        col.generationExpression ??
-        col.GENERATION_EXPRESSION ??
-        col.generation_expression ??
-        null;
-      if (!rawName || !expr) return;
-      const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
-      if (typeof key !== 'string') return;
-      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
-      if (evaluator) map[key] = evaluator;
-    });
-    return map;
-  }, [tableColumns, columnCaseMap, columnCaseMapKey]);
   const [formVals, setFormVals] = useState(() => {
     const init = {};
     const now = new Date();
@@ -639,6 +596,30 @@ const RowFormModal = function RowFormModal({
       getRowValueCaseInsensitive,
     ],
   );
+  const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
+  const defaultValuesKey = React.useMemo(
+    () => JSON.stringify(defaultValues || {}),
+    [defaultValues],
+  );
+  const generatedColumnEvaluators = React.useMemo(() => {
+    const map = {};
+    if (!Array.isArray(tableColumns)) return map;
+    tableColumns.forEach((col) => {
+      if (!col || typeof col !== 'object') return;
+      const rawName = col.name;
+      const expr =
+        col.generationExpression ??
+        col.GENERATION_EXPRESSION ??
+        col.generation_expression ??
+        null;
+      if (!rawName || !expr) return;
+      const key = columnCaseMap[String(rawName).toLowerCase()] || rawName;
+      if (typeof key !== 'string') return;
+      const evaluator = createGeneratedColumnEvaluator(expr, columnCaseMap);
+      if (evaluator) map[key] = evaluator;
+    });
+    return map;
+  }, [tableColumns, columnCaseMap, columnCaseMapKey]);
   const [extraVals, setExtraVals] = useState(() => {
     const extras = {};
     Object.entries(row || {}).forEach(([k, v]) => {
