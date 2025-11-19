@@ -25,6 +25,7 @@ import { getMerchantById } from './merchantService.js';
 const masterForeignKeyCache = new Map();
 const masterTableColumnsCache = new Map();
 const tableColumnNameMapCache = new Map();
+const tableSessionColumnCache = new Map();
 
 const arrayIndexPattern = /^(0|[1-9]\d*)$/;
 const SUPPORTED_CALC_AGGREGATORS = new Set(['SUM', 'AVG', 'COUNT', 'MIN', 'MAX']);
@@ -147,6 +148,28 @@ function extractArrayMetadata(value) {
   return hasMetadata ? metadata : null;
 }
 
+function normalizeRecordKeyLookup(record) {
+  const lookup = new Map();
+  if (!record || typeof record !== 'object') return lookup;
+  Object.keys(record).forEach((key) => {
+    if (typeof key !== 'string') return;
+    lookup.set(key.toLowerCase(), key);
+  });
+  return lookup;
+}
+
+function getRecordValue(record, key) {
+  if (!record || typeof record !== 'object') return undefined;
+  if (!key) return undefined;
+  if (Object.prototype.hasOwnProperty.call(record, key)) {
+    return record[key];
+  }
+  const lookup = normalizeRecordKeyLookup(record);
+  const normalized = String(key).toLowerCase();
+  const actual = lookup.get(normalized);
+  return actual ? record[actual] : undefined;
+}
+
 function assignArrayMetadata(target, source) {
   if (!Array.isArray(target) || !source || typeof source !== 'object') {
     return target;
@@ -177,6 +200,48 @@ async function persistPosApiResponse(table, id, response, options = {}) {
       id,
       error: err,
     });
+  }
+}
+
+async function findSessionColumnForTable(table) {
+  if (!table) return null;
+  if (tableSessionColumnCache.has(table)) {
+    return tableSessionColumnCache.get(table);
+  }
+  const candidates = [
+    'pos_session_id',
+    'session_id',
+    'sessionid',
+    'possessionid',
+    'pos_sessionid',
+  ];
+  try {
+    const [rows] = await pool.query(
+      `SELECT COLUMN_NAME
+         FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = ?`,
+      [table],
+    );
+    const available = new Set(
+      (rows || []).map((row) => row?.COLUMN_NAME?.toLowerCase()).filter(Boolean),
+    );
+    for (const candidate of candidates) {
+      const normalized = candidate.toLowerCase();
+      if (available.has(normalized)) {
+        tableSessionColumnCache.set(table, candidate);
+        return candidate;
+      }
+    }
+    tableSessionColumnCache.set(table, null);
+    return null;
+  } catch (err) {
+    console.error('Failed to inspect session column for POS transaction table', {
+      table,
+      error: err,
+    });
+    tableSessionColumnCache.set(table, null);
+    return null;
   }
 }
 
@@ -938,6 +1003,145 @@ async function upsertRow(conn, table, row) {
   return res.insertId && res.insertId !== 0 ? res.insertId : row.id;
 }
 
+async function loadInvoiceRecord(invoiceId) {
+  if (!invoiceId) return null;
+  const [rows] = await pool.query(
+    'SELECT * FROM `ebarimt_invoice` WHERE id = ? LIMIT 1',
+    [invoiceId],
+  );
+  return Array.isArray(rows) && rows[0] ? rows[0] : null;
+}
+
+function isInvoiceFinalized(invoice) {
+  if (!invoice || typeof invoice !== 'object') return false;
+  const status = String(invoice.status || '').trim().toUpperCase();
+  if (['SUCCESS', 'APPROVED', 'REGISTERED', 'ACTIVE'].includes(status)) {
+    return true;
+  }
+  if (invoice.ebarimt_id) return true;
+  return false;
+}
+
+async function linkInvoiceToIncomeRecords({ invoiceId, incomeRows, sessionId }) {
+  if (!invoiceId) return;
+  const columnSet = await getMasterTableColumnSet('transactions_income');
+  if (!columnSet || !columnSet.has('ebarimt_invoice_id')) return;
+  const ids = new Set();
+  (Array.isArray(incomeRows) ? incomeRows : []).forEach((row) => {
+    if (!row || typeof row !== 'object') return;
+    const value = row.id ?? row.ID;
+    if (value !== undefined && value !== null) {
+      ids.add(value);
+    }
+  });
+  try {
+    if (ids.size) {
+      await pool.query(
+        'UPDATE `transactions_income` SET `ebarimt_invoice_id` = ? WHERE `id` IN (?)',
+        [invoiceId, Array.from(ids)],
+      );
+      return;
+    }
+    if (!sessionId) return;
+    const sessionColumn = await findSessionColumnForTable('transactions_income');
+    if (!sessionColumn) return;
+    await pool.query(
+      'UPDATE `transactions_income` SET `ebarimt_invoice_id` = ? WHERE ?? = ?',
+      [invoiceId, sessionColumn, sessionId],
+    );
+  } catch (err) {
+    console.error('Failed to link ebarimt invoice to transactions_income', {
+      invoiceId,
+      sessionId,
+      error: err,
+    });
+  }
+}
+
+async function loadRelatedRows(tableName, options = {}) {
+  if (!tableName) return [];
+  const { sessionId, masterRecord, fkMap } = options;
+  if (!fkMap || !(fkMap instanceof Map)) return [];
+  const rows = [];
+  if (sessionId) {
+    const sessionColumn = await findSessionColumnForTable(tableName);
+    if (sessionColumn) {
+      const [sessionRows] = await pool.query(
+        'SELECT * FROM ?? WHERE ?? = ?',
+        [tableName, sessionColumn, sessionId],
+      );
+      if (Array.isArray(sessionRows) && sessionRows.length) {
+        return sessionRows;
+      }
+    }
+  }
+  const references = fkMap.get(tableName);
+  if (!Array.isArray(references) || references.length === 0) {
+    return rows;
+  }
+  for (const ref of references) {
+    if (!ref?.column || !ref?.referencedColumn) continue;
+    const masterValue = getRecordValue(masterRecord, ref.referencedColumn);
+    if (masterValue === undefined || masterValue === null) continue;
+    const [refRows] = await pool.query(
+      'SELECT * FROM ?? WHERE ?? = ?',
+      [tableName, ref.column, masterValue],
+    );
+    if (Array.isArray(refRows) && refRows.length) {
+      return refRows;
+    }
+  }
+  return rows;
+}
+
+function collectLayoutTables(layout, masterTable) {
+  const tables = [];
+  const seen = new Set();
+  if (masterTable) {
+    seen.add(masterTable);
+  }
+  (Array.isArray(layout?.tables) ? layout.tables : []).forEach((entry) => {
+    if (!entry || typeof entry !== 'object') return;
+    const tableName = typeof entry.table === 'string' ? entry.table.trim() : '';
+    if (!tableName || seen.has(tableName)) return;
+    seen.add(tableName);
+    tables.push({
+      name: tableName,
+      type: entry.type === 'multi' ? 'multi' : 'single',
+    });
+  });
+  return tables;
+}
+
+function resolveSessionId(record) {
+  const candidates = [
+    'pos_session_id',
+    'session_id',
+    'sessionid',
+    'session',
+  ];
+  for (const candidate of candidates) {
+    const value = getRecordValue(record, candidate);
+    if (value === undefined || value === null) continue;
+    const str = typeof value === 'string' ? value.trim() : value;
+    if (str !== '' && str !== null && str !== undefined) {
+      return str;
+    }
+  }
+  return null;
+}
+
+function ensureTransactionCompany(record, companyId) {
+  if (!companyId) return;
+  const column = getRecordValue(record, 'company_id');
+  if (column === undefined || column === null) return;
+  if (Number(column) !== Number(companyId)) {
+    const err = new Error('Transaction does not belong to the current company');
+    err.status = 403;
+    throw err;
+  }
+}
+
 export async function postPosTransaction(
   name,
   data,
@@ -1343,6 +1547,157 @@ export async function postPosTransactionWithEbarimt(
   }
 
   return { id: masterId, ebarimtInvoiceId: invoiceId, posApi: { payload, response } };
+}
+
+export async function issueSavedPosTransactionEbarimt(
+  name,
+  recordId,
+  companyId = 0,
+) {
+  const layoutName = typeof name === 'string' ? name.trim() : '';
+  if (!layoutName) {
+    const err = new Error('POS transaction layout name is required');
+    err.status = 400;
+    throw err;
+  }
+  if (recordId === undefined || recordId === null || `${recordId}`.trim() === '') {
+    const err = new Error('recordId is required');
+    err.status = 400;
+    throw err;
+  }
+
+  const { config: layout } = await getPosTransactionLayout(layoutName, companyId);
+  if (!layout) {
+    const err = new Error(
+      `POS transaction config not found for layout "${layoutName}"`,
+    );
+    err.status = 400;
+    throw err;
+  }
+
+  const masterTable = layout.masterTable || 'transactions_pos';
+  const masterForm = layout.masterForm || '';
+  if (!masterForm) {
+    const err = new Error('POSAPI form configuration is missing for this transaction');
+    err.status = 400;
+    throw err;
+  }
+
+  const { config: formCfg } = await getFormConfig(masterTable, masterForm, companyId);
+  if (!formCfg?.posApiEnabled) {
+    const err = new Error('POSAPI is not enabled for this transaction');
+    err.status = 400;
+    throw err;
+  }
+
+  const [rows] = await pool.query(
+    `SELECT * FROM \`${masterTable}\` WHERE id = ? LIMIT 1`,
+    [recordId],
+  );
+  const masterRecord = Array.isArray(rows) && rows[0] ? rows[0] : null;
+  if (!masterRecord) {
+    const err = new Error('Transaction not found');
+    err.status = 404;
+    throw err;
+  }
+
+  if (companyId) {
+    ensureTransactionCompany(masterRecord, companyId);
+  }
+
+  const merchantId = masterRecord?.merchant_id ?? masterRecord?.merchantId ?? null;
+  const merchantInfo = merchantId ? await getMerchantById(merchantId) : null;
+  if (!merchantInfo) {
+    const err = new Error('Merchant information is required for POSAPI submissions');
+    err.status = 400;
+    throw err;
+  }
+
+  const invoiceIdCandidate = masterRecord?.ebarimt_invoice_id ?? null;
+  if (invoiceIdCandidate) {
+    const invoiceRecord = await loadInvoiceRecord(invoiceIdCandidate);
+    if (isInvoiceFinalized(invoiceRecord)) {
+      const err = new Error('Ebarimt already issued for this transaction');
+      err.status = 409;
+      err.details = { invoiceId: invoiceIdCandidate };
+      throw err;
+    }
+  }
+
+  const sessionId = resolveSessionId(masterRecord);
+  const fkMap = await getMasterForeignKeyMap(pool, masterTable);
+  const tables = collectLayoutTables(layout, masterTable);
+  const aggregatedRecord = { ...masterRecord };
+  const incomeRows = [];
+  for (const tableEntry of tables) {
+    const relatedRows = await loadRelatedRows(tableEntry.name, {
+      sessionId,
+      masterRecord,
+      fkMap,
+    });
+    if (tableEntry.type === 'multi') {
+      aggregatedRecord[tableEntry.name] = relatedRows;
+    } else {
+      aggregatedRecord[tableEntry.name] = relatedRows[0] || null;
+    }
+    if (tableEntry.name === 'transactions_income') {
+      relatedRows.forEach((row) => incomeRows.push(row));
+    }
+  }
+
+  const mapping = formCfg.posApiMapping || {};
+  const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
+  const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
+  const payload = await buildReceiptFromDynamicTransaction(
+    aggregatedRecord,
+    mapping,
+    receiptType,
+    { typeField: formCfg.posApiTypeField, merchantInfo },
+  );
+  if (!payload) {
+    const err = new Error('POSAPI receipt payload could not be generated from the transaction');
+    err.status = 400;
+    throw err;
+  }
+
+  const invoiceId = await saveEbarimtInvoiceSnapshot({
+    masterTable,
+    masterId: recordId,
+    record: aggregatedRecord,
+    payload,
+    merchantInfo,
+  });
+
+  const response = await sendReceipt(payload, { endpoint });
+  await persistPosApiResponse(masterTable, recordId, response, {
+    fieldsFromPosApi: formCfg.fieldsFromPosApi,
+  });
+  if (invoiceId) {
+    await persistEbarimtInvoiceResponse(invoiceId, response, {
+      fieldsFromPosApi: formCfg.fieldsFromPosApi,
+    });
+    await linkInvoiceToIncomeRecords({
+      invoiceId,
+      incomeRows,
+      sessionId,
+    });
+  }
+
+  const invoiceRecord = invoiceId ? await loadInvoiceRecord(invoiceId) : null;
+  const status = invoiceRecord?.status ?? response?.status ?? null;
+  const billId =
+    invoiceRecord?.ebarimt_id ?? response?.billId ?? response?.billid ?? response?.receiptId ?? null;
+  const errorMessage = invoiceRecord?.error_message ?? response?.message ?? null;
+
+  return {
+    id: recordId,
+    ebarimtInvoiceId: invoiceId,
+    status,
+    billId,
+    errorMessage,
+    invoice: invoiceRecord,
+    posApi: { payload, response },
+  };
 }
 
 export default postPosTransaction;
