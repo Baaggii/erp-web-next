@@ -3976,8 +3976,8 @@ const TableManager = forwardRef(function TableManager({
           (candidate) =>
             candidate && typeof candidate === 'object' && !Array.isArray(candidate),
         );
-        const normalizedValues = hydrateRelationDisplayFields(
-          normalizeToCanonical(stripTemporaryLabelValue(baseValues || {})),
+        const normalizedValues = normalizeToCanonical(
+          stripTemporaryLabelValue(baseValues || {}),
         );
 
         const rowSources = [
@@ -3992,8 +3992,7 @@ const TableManager = forwardRef(function TableManager({
           ? baseRows.map((row) => {
               const stripped = stripTemporaryLabelValue(row);
               if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
-                const normalizedRow = normalizeToCanonical(stripped);
-                return hydrateRelationDisplayFields(normalizedRow);
+                return normalizeToCanonical(stripped);
               }
               return stripped ?? {};
             })
@@ -4001,7 +4000,7 @@ const TableManager = forwardRef(function TableManager({
 
         return { values: normalizedValues, rows: sanitizedRows };
       },
-      [hydrateRelationDisplayFields, normalizeToCanonical],
+      [normalizeToCanonical],
     );
 
     const openTemporaryPromotion = useCallback(
@@ -4356,62 +4355,6 @@ const TableManager = forwardRef(function TableManager({
     }
     return value;
   }, []);
-
-  const hydrateRelationDisplayFields = useCallback(
-    (source) => {
-      if (!source || typeof source !== 'object' || Array.isArray(source)) return source;
-      const configs = relationConfigs || {};
-      const rowsByField = refRows || {};
-      const unwrapSelectionValue = (value) => {
-        if (!value || typeof value !== 'object') return value;
-        if (Object.prototype.hasOwnProperty.call(value, 'value')) return value.value;
-        if (Object.prototype.hasOwnProperty.call(value, 'id')) return value.id;
-        if (Object.prototype.hasOwnProperty.call(value, 'key')) return value.key;
-        if (Object.prototype.hasOwnProperty.call(value, 'code')) return value.code;
-        return value;
-      };
-      let next = source;
-      let changed = false;
-      Object.entries(configs).forEach(([field, config]) => {
-        if (!config || !Array.isArray(config.displayFields) || config.displayFields.length === 0)
-          return;
-        const rawValue = source[field];
-        if (rawValue === undefined || rawValue === null || rawValue === '') return;
-        const relationRows = rowsByField[field];
-        if (!relationRows) return;
-        const normalizedValue = unwrapSelectionValue(rawValue);
-        const referenceRow = relationRows[normalizedValue];
-        if (!referenceRow || typeof referenceRow !== 'object') return;
-        const referenceKeyMap = {};
-        Object.keys(referenceRow).forEach((key) => {
-          referenceKeyMap[key.toLowerCase()] = key;
-        });
-        config.displayFields.forEach((fieldName) => {
-          if (typeof fieldName !== 'string') return;
-          const canonical = resolveCanonicalKey(fieldName);
-          if (!canonical) return;
-          if (
-            source[canonical] !== undefined &&
-            source[canonical] !== null &&
-            source[canonical] !== ''
-          ) {
-            return;
-          }
-          const referenceKey = referenceKeyMap[fieldName.toLowerCase()];
-          if (!referenceKey) return;
-          const referenceValue = referenceRow[referenceKey];
-          if (referenceValue === undefined || referenceValue === null) return;
-          if (next === source) {
-            next = { ...source };
-          }
-          next[canonical] = referenceValue;
-          changed = true;
-        });
-      });
-      return changed ? next : source;
-    },
-    [relationConfigs, refRows, resolveCanonicalKey],
-  );
 
   const stringifyPreviewCell = useCallback(
     (value) => {
@@ -6316,9 +6259,8 @@ const TableManager = forwardRef(function TableManager({
                       const normalizedValues = normalizeToCanonical(
                         stripTemporaryLabelValue(baseValues || {}),
                       );
-                      const displayValues = hydrateRelationDisplayFields(normalizedValues);
                       const detailColumnsSource =
-                        columns.length > 0 ? columns : Object.keys(displayValues || {});
+                        columns.length > 0 ? columns : Object.keys(normalizedValues || {});
                       const detailColumns = Array.from(
                         new Set((detailColumnsSource || []).filter(Boolean)),
                       );
@@ -6487,7 +6429,7 @@ const TableManager = forwardRef(function TableManager({
                                             fontSize: '0.75rem',
                                           }}
                                         >
-                                           {formatTemporaryFieldValue(col, displayValues[col])}
+                                          {formatTemporaryFieldValue(col, normalizedValues[col])}
                                         </td>
                                       ))}
                                     </tr>
