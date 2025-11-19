@@ -4325,6 +4325,48 @@ const TableManager = forwardRef(function TableManager({
     });
   });
 
+  const buildRelationLabelFromRows = useCallback(
+    (column, rawValue) => {
+      if (rawValue === undefined || rawValue === null || rawValue === '') return null;
+      const config = relationConfigs[column];
+      const rows = refRows[column];
+      if (!config || !rows) return null;
+      const direct = rows[rawValue];
+      const normalized = direct
+        ? direct
+        : rows[String(rawValue)] || rows[Number(rawValue)] || null;
+      if (!normalized || typeof normalized !== 'object') return null;
+      const parts = [];
+      const idField =
+        typeof config.idField === 'string' && config.idField.trim()
+          ? config.idField
+          : column;
+      const identifier = normalized[idField] ?? normalized[config.column];
+      if (identifier !== undefined && identifier !== null && identifier !== '') {
+        parts.push(identifier);
+      } else if (
+        rawValue !== undefined &&
+        rawValue !== null &&
+        rawValue !== ''
+      ) {
+        parts.push(rawValue);
+      }
+      (config.displayFields || []).forEach((field) => {
+        if (typeof field !== 'string') return;
+        const value = normalized[field];
+        if (value !== undefined && value !== null && value !== '') {
+          parts.push(value);
+        }
+      });
+      if (parts.length === 0) return null;
+      return parts
+        .filter((part) => part !== undefined && part !== null && part !== '')
+        .map((part) => (typeof part === 'string' ? part : String(part)))
+        .join(' - ');
+    },
+    [refRows, relationConfigs],
+  );
+
   const isPlainValueObject = useCallback(
     (value) =>
       Boolean(
@@ -4508,7 +4550,16 @@ const TableManager = forwardRef(function TableManager({
         };
 
         if (!relation) {
-          return stripTemporaryLabelValue(value);
+          const stripped = stripTemporaryLabelValue(value);
+          if (
+            stripped !== undefined &&
+            stripped !== null &&
+            stripped !== ''
+          ) {
+            const fallback = buildRelationLabelFromRows(column, stripped);
+            if (fallback) return fallback;
+          }
+          return stripped;
         }
 
         const applyRelationLabel = (input) => {
@@ -4526,6 +4577,10 @@ const TableManager = forwardRef(function TableManager({
             const mapped = labelMap[column]?.[normalized];
             if (mapped !== undefined) {
               return mapped;
+            }
+            const fallback = buildRelationLabelFromRows(column, normalized);
+            if (fallback) {
+              return fallback;
             }
           }
           return normalized;
@@ -4613,6 +4668,7 @@ const TableManager = forwardRef(function TableManager({
     [
       fieldTypeMap,
       labelMap,
+      buildRelationLabelFromRows,
       openTemporaryPreview,
       parseMaybeJson,
       placeholders,
