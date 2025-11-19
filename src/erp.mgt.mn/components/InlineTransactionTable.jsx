@@ -531,18 +531,6 @@ function InlineTransactionTable(
     return rowObj[match];
   }, []);
 
-  const normalizeCombinationValue = useCallback((value) => {
-    if (
-      value &&
-      typeof value === 'object' &&
-      !Array.isArray(value) &&
-      Object.prototype.hasOwnProperty.call(value, 'value')
-    ) {
-      return value.value;
-    }
-    return value;
-  }, []);
-
   const resolveCombinationFilters = useCallback(
     (rowObj, column, overrideConfig = null) => {
       if (!column) return null;
@@ -554,19 +542,10 @@ function InlineTransactionTable(
       const value =
         getRowValueCaseInsensitive(rowObj, mappedSource) ??
         getRowValueCaseInsensitive(rowObj, sourceField);
-      const normalizedValue = normalizeCombinationValue(value);
-      if (normalizedValue === undefined || normalizedValue === null || normalizedValue === '') {
-        return null;
-      }
-      return { [targetField]: normalizedValue };
+      if (value === undefined || value === null || value === '') return null;
+      return { [targetField]: value };
     },
-    [
-      relationConfigMap,
-      autoSelectConfigs,
-      columnCaseMap,
-      getRowValueCaseInsensitive,
-      normalizeCombinationValue,
-    ],
+    [relationConfigMap, autoSelectConfigs, columnCaseMap, getRowValueCaseInsensitive],
   );
 
   const filterRelationOptions = useCallback(
@@ -577,7 +556,7 @@ function InlineTransactionTable(
       const config = relationConfigMap[column] || autoSelectConfigs[column];
       const targetColumn = config?.combinationTargetColumn;
       if (!targetColumn) return options;
-      const filterValue = normalizeCombinationValue(filters[targetColumn]);
+      const filterValue = filters[targetColumn];
       if (filterValue === undefined || filterValue === null || filterValue === '') {
         return options;
       }
@@ -603,7 +582,6 @@ function InlineTransactionTable(
       relationData,
       resolveCombinationFilters,
       getRowValueCaseInsensitive,
-      normalizeCombinationValue,
     ],
   );
 
