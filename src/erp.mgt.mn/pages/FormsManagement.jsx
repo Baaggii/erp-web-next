@@ -507,7 +507,11 @@ export default function FormsManagement() {
           setViews(
             Array.isArray(data)
               ? viewPrefix
-                ? data.filter((v) => String(v).includes(viewPrefix))
+                ? data.filter((v) =>
+                    String(v)
+                      .toLowerCase()
+                      .includes(String(viewPrefix).toLowerCase()),
+                  )
                 : data
               : [],
           ),
