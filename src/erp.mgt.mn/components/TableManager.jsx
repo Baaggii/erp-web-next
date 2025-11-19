@@ -1757,6 +1757,12 @@ const TableManager = forwardRef(function TableManager({
           relationMap[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
+            ...(r.combinationSourceColumn
+              ? { combinationSourceColumn: r.combinationSourceColumn }
+              : {}),
+            ...(r.combinationTargetColumn
+              ? { combinationTargetColumn: r.combinationTargetColumn }
+              : {}),
           };
         });
         setRelations(relationMap);
