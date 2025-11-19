@@ -1335,6 +1335,10 @@ function ReportBuilderInner() {
     }
   }
 
+  function prepareViewSql(sql = '') {
+    return sql.replace(/:([A-Za-z0-9_]+)/g, '@$1');
+  }
+
   async function handlePostProc(sqlOverride, nameOverride) {
     if (sqlOverride && typeof sqlOverride.preventDefault === 'function') {
       sqlOverride = undefined;
