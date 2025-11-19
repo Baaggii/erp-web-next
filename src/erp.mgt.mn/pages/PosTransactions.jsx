@@ -1042,6 +1042,45 @@ export function shouldLoadRelations(formConfig, cols = []) {
   return hasView || hasForeignKey(cols);
 }
 
+export function buildRelationConfigEntry(relation, displayConfig = {}) {
+  if (!relation || typeof relation !== 'object') return null;
+  const table = relation.REFERENCED_TABLE_NAME;
+  const column = relation.REFERENCED_COLUMN_NAME;
+  if (!table || !column) return null;
+  const normalizedDisplayFields = Array.isArray(displayConfig?.displayFields)
+    ? displayConfig.displayFields
+    : [];
+  const normalizedRelationFields = Array.isArray(relation.displayFields)
+    ? relation.displayFields.filter((field) => typeof field === 'string')
+    : [];
+  const idFieldCandidate =
+    typeof relation.idField === 'string' && relation.idField.trim()
+      ? relation.idField.trim()
+      : displayConfig?.idField;
+  const entry = {
+    table,
+    column,
+    idField: idFieldCandidate || column,
+    displayFields:
+      normalizedRelationFields.length > 0
+        ? normalizedRelationFields
+        : normalizedDisplayFields,
+  };
+  const combinationSource =
+    typeof relation.combinationSourceColumn === 'string'
+      ? relation.combinationSourceColumn.trim()
+      : '';
+  const combinationTarget =
+    typeof relation.combinationTargetColumn === 'string'
+      ? relation.combinationTargetColumn.trim()
+      : '';
+  if (combinationSource && combinationTarget) {
+    entry.combinationSourceColumn = combinationSource;
+    entry.combinationTargetColumn = combinationTarget;
+  }
+  return entry;
+}
+
 export function applySessionIdToTables(
   values,
   sessionId,
@@ -1669,12 +1708,13 @@ export default function PosTransactionsPage() {
           });
           if (opts.length > 0) dataMap[r.COLUMN_NAME] = opts;
           if (Object.keys(rMap).length > 0) rowMap[r.COLUMN_NAME] = rMap;
-          cfgMap[r.COLUMN_NAME] = {
+          const relationConfig = buildRelationConfigEntry(r, cfg) || {
             table: refTbl,
             column: refCol,
             idField: cfg?.idField || refCol,
             displayFields: cfg?.displayFields || [],
           };
+          cfgMap[r.COLUMN_NAME] = relationConfig;
         }
       }
       return { dataMap, cfgMap, rowMap };
