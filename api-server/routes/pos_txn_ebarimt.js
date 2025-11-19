@@ -1,13 +1,27 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
-import { postPosTransactionWithEbarimt } from '../services/postPosTransaction.js';
+import {
+  issueSavedPosTransactionEbarimt,
+  postPosTransactionWithEbarimt,
+} from '../services/postPosTransaction.js';
 
 const router = express.Router();
 
 router.post('/', requireAuth, async (req, res, next) => {
   try {
     const companyId = Number(req.query.companyId ?? req.user.companyId);
-    const { name, data, session } = req.body;
+    const { name, data, session, recordId } = req.body || {};
+    const hasRecordId =
+      recordId !== undefined && recordId !== null && `${recordId}`.trim() !== '';
+    if (hasRecordId) {
+      const result = await issueSavedPosTransactionEbarimt(
+        name,
+        recordId,
+        companyId,
+      );
+      res.json(result);
+      return;
+    }
     if (!data) return res.status(400).json({ message: 'invalid data' });
     const info = { ...(session || {}), userId: req.user.id };
     const result = await postPosTransactionWithEbarimt(

@@ -156,6 +156,79 @@ function buildPosApiResponseSummary(response) {
   return parts.join('\n');
 }
 
+function normalizePreviewValue(value) {
+  if (value === undefined || value === null) return '';
+  const str = typeof value === 'string' ? value.trim() : String(value);
+  return str.trim();
+}
+
+function pickFirstNonEmpty(values = []) {
+  for (const value of values) {
+    const normalized = normalizePreviewValue(value);
+    if (normalized) return normalized;
+  }
+  return '';
+}
+
+function extractQrDataFromResponse(response, visited = new Set()) {
+  if (!response || typeof response !== 'object') return '';
+  if (visited.has(response)) return '';
+  visited.add(response);
+  const direct = pickFirstNonEmpty([
+    response.qrData,
+    response.qr_code,
+    response.qrCode,
+    response.qrdata,
+  ]);
+  if (direct) return direct;
+  const receipts = Array.isArray(response.receipts) ? response.receipts : [];
+  for (const receipt of receipts) {
+    const receiptQr = extractQrDataFromResponse(receipt, visited);
+    if (receiptQr) return receiptQr;
+  }
+  if (response.data && typeof response.data === 'object') {
+    const nested = extractQrDataFromResponse(response.data, visited);
+    if (nested) return nested;
+  }
+  return '';
+}
+
+function buildEbarimtPreviewData(result) {
+  if (!result || typeof result !== 'object') return null;
+  const response = result?.posApi?.response || {};
+  const invoice = result?.invoice || {};
+  const billId = pickFirstNonEmpty([
+    result.billId,
+    result.billid,
+    invoice.ebarimt_id,
+    invoice.bill_id,
+    response.billId,
+    response.billid,
+    response.receiptId,
+    response.receipt_id,
+    response.ebarimt_id,
+  ]);
+  const status = pickFirstNonEmpty([result.status, invoice.status, response.status]);
+  const invoiceNo = pickFirstNonEmpty([
+    invoice.invoice_no,
+    invoice.invoiceNo,
+    invoice.invoice_number,
+  ]);
+  const errorMessage = pickFirstNonEmpty([
+    result.errorMessage,
+    invoice.error_message,
+    response.message,
+    response.error,
+  ]);
+  const lottery = pickFirstNonEmpty([
+    response.lottery,
+    response.lotteryNo,
+    response.lottery_number,
+  ]);
+  const qrData = pickFirstNonEmpty([extractQrDataFromResponse(response)]);
+  return { billId, status, invoiceNo, errorMessage, qrData, lottery };
+}
+
 function buildPosApiToastMessage(title, data, summaryBuilder) {
   if (data === undefined || data === null) return '';
   const parts = [];
@@ -1375,6 +1448,9 @@ export default function PosTransactionsPage() {
   const [pendingList, setPendingList] = useState([]);
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [postedId, setPostedId] = useState(null);
+  const [isPostingEbarimt, setIsPostingEbarimt] = useState(false);
+  const [ebarimtPreview, setEbarimtPreview] = useState(null);
+  const [ebarimtQrImage, setEbarimtQrImage] = useState('');
   const canIssueEbarimt = Boolean(
     config?.masterTable &&
       memoFormConfigs[config.masterTable]?.posApiEnabled,
@@ -1393,6 +1469,22 @@ export default function PosTransactionsPage() {
     });
     return map;
   }, [config]);
+  const clearEbarimtPreview = useCallback(() => {
+    setEbarimtPreview(null);
+    setEbarimtQrImage('');
+  }, []);
+  useEffect(() => {
+    clearEbarimtPreview();
+  }, [name, pendingId, postedId, clearEbarimtPreview]);
+  useEffect(() => {
+    const qrValue = normalizePreviewValue(ebarimtPreview?.qrData);
+    if (!qrValue) {
+      setEbarimtQrImage('');
+      return;
+    }
+    const url = `https://quickchart.io/qr?size=220&margin=1&text=${encodeURIComponent(qrValue)}`;
+    setEbarimtQrImage(url);
+  }, [ebarimtPreview?.qrData]);
   const sessionFieldsKey = useMemo(() => {
     if (!sessionFields || sessionFields.length === 0) return '';
     return sessionFields
@@ -2559,6 +2651,8 @@ export default function PosTransactionsPage() {
 
   async function handleNew() {
     if (!config) return;
+    setPostedId(null);
+    clearEbarimtPreview();
     if ((pendingId || masterId) && hasData) {
       const save = window.confirm(
         'Save current transaction before starting new?',
@@ -2710,6 +2804,7 @@ export default function PosTransactionsPage() {
         setPendingId(sid);
         setValues(recalcTotals(cloneValuesForRecalc(next)));
         addToast('Saved', 'success');
+        setPostedId(null);
       } else {
         const msg = js.message || res.statusText;
         const field = parseErrorField(msg);
@@ -2722,6 +2817,8 @@ export default function PosTransactionsPage() {
 
   async function handleLoadPending() {
     if (!name) return;
+    setPostedId(null);
+    clearEbarimtPreview();
     const list = await fetch(
       `/api/pos_txn_pending?name=${encodeURIComponent(name)}`,
       { credentials: 'include' },
@@ -2749,6 +2846,8 @@ export default function PosTransactionsPage() {
       setPendingId(String(id).trim());
       setMasterId(rec.masterId || null);
       masterIdRef.current = rec.masterId || null;
+      setPostedId(rec.masterId || null);
+      clearEbarimtPreview();
       const masterSf = (sessionFields || []).find(
         (f) => f.table === config?.masterTable,
       );
@@ -2779,10 +2878,12 @@ export default function PosTransactionsPage() {
         return;
       }
       setPendingId(null);
+      setPostedId(null);
       setValues(recalcTotals(cloneValuesForRecalc({})));
       setMasterId(null);
       masterIdRef.current = null;
       setCurrentSessionId(null);
+      clearEbarimtPreview();
       addToast('Deleted', 'success');
     } catch (err) {
       addToast(`Delete failed: ${err.message}`, 'error');
@@ -2948,6 +3049,7 @@ export default function PosTransactionsPage() {
         }
       }
       setPendingId(null);
+      clearEbarimtPreview();
       if (js.id) setPostedId(js.id);
       if (
         config.statusField?.table &&
@@ -3057,18 +3159,25 @@ export default function PosTransactionsPage() {
   }
 
   async function handlePostEbarimt() {
-    const request = buildPostRequest();
-    if (!request) return;
+    if (!canIssueEbarimt) return;
+    if (!name) {
+      addToast('Select a POS layout before issuing Ebarimt.', 'error');
+      return;
+    }
+    if (!postedId) {
+      addToast('Post the transaction before issuing Ebarimt.', 'error');
+      return;
+    }
+    setIsPostingEbarimt(true);
     try {
-      const res = await fetch('/api/pos_txn_ebarimt', {
+      const res = await fetch('/api/pos-txn-ebarimt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(request.body),
+        body: JSON.stringify({ name, recordId: postedId }),
       });
       if (res.ok) {
         const js = await res.json().catch(() => ({}));
-        await request.afterSuccess(js);
         addToast('Posted & Ebarimt issued', 'success');
         if (generalConfig?.general?.ebarimtToastEnabled && js?.posApi) {
           const payloadMessage = buildPosApiToastMessage(
@@ -3088,18 +3197,76 @@ export default function PosTransactionsPage() {
             addToast(responseMessage, 'info');
           }
         }
+        const preview = buildEbarimtPreviewData(js);
+        if (preview) {
+          setEbarimtPreview(preview);
+        } else {
+          clearEbarimtPreview();
+        }
       } else {
         const js = await res.json().catch(() => ({}));
         const msg = js.message || res.statusText;
-        const field = parseErrorField(msg);
-        addToast(
-          `Ebarimt post failed: ${msg}${field ? ` (field ${field})` : ''}`,
-          'error',
-        );
+        addToast(`Ebarimt post failed: ${msg}`, 'error');
       }
     } catch (err) {
       addToast(`Ebarimt post failed: ${err.message}`, 'error');
+    } finally {
+      setIsPostingEbarimt(false);
     }
+  }
+
+  function handlePrintEbarimtPreview() {
+    if (!ebarimtPreview || !ebarimtQrImage) return;
+    const printWindow = window.open('', '_blank', 'width=420,height=640');
+    if (!printWindow) {
+      addToast('Unable to open print window', 'error');
+      return;
+    }
+    printWindow.document.open();
+    printWindow.document.write(
+      '<!DOCTYPE html><html><head><title>Ebarimt receipt</title></head>' +
+        '<body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; gap: 0.5rem; padding: 1rem;">' +
+        '</body></html>',
+    );
+    printWindow.document.close();
+    const { document: doc } = printWindow;
+    const createRow = (label, value) => {
+      if (!value) return null;
+      const row = doc.createElement('div');
+      row.textContent = `${label}: ${value}`;
+      return row;
+    };
+    const title = doc.createElement('h2');
+    title.textContent = 'Ebarimt receipt';
+    doc.body.appendChild(title);
+    const billRow = createRow('Bill ID', ebarimtPreview.billId || '-');
+    if (billRow) doc.body.appendChild(billRow);
+    if (ebarimtPreview.invoiceNo) {
+      const invoiceRow = createRow('Invoice No', ebarimtPreview.invoiceNo);
+      if (invoiceRow) doc.body.appendChild(invoiceRow);
+    }
+    if (ebarimtPreview.status) {
+      const statusRow = createRow('Status', ebarimtPreview.status);
+      if (statusRow) doc.body.appendChild(statusRow);
+    }
+    if (ebarimtPreview.lottery) {
+      const lotteryRow = createRow('Lottery', ebarimtPreview.lottery);
+      if (lotteryRow) doc.body.appendChild(lotteryRow);
+    }
+    if (ebarimtPreview.errorMessage) {
+      const messageRow = createRow('Message', ebarimtPreview.errorMessage);
+      if (messageRow) doc.body.appendChild(messageRow);
+    }
+    const img = doc.createElement('img');
+    img.src = ebarimtQrImage;
+    img.alt = 'Ebarimt QR code';
+    img.style.width = '260px';
+    img.style.height = '260px';
+    img.style.border = '1px solid #ccc';
+    img.style.padding = '0.5rem';
+    doc.body.appendChild(img);
+    printWindow.focus();
+    printWindow.print();
   }
 
   function startDrag(table, e) {
@@ -3162,9 +3329,9 @@ export default function PosTransactionsPage() {
               <button
                 onClick={handlePostEbarimt}
                 style={{ marginLeft: '0.5rem' }}
-                disabled={!name}
+                disabled={!name || !postedId || isPostingEbarimt}
               >
-                Ebarimt Post
+                {isPostingEbarimt ? 'Posting…' : 'Post to Ebarimt'}
               </button>
             )}
           </div>
@@ -3172,6 +3339,64 @@ export default function PosTransactionsPage() {
             <div style={{ marginBottom: '0.5rem' }}>
               {pendingId && <span style={{ marginRight: '1rem' }}>Pending ID: {pendingId}</span>}
               {postedId && <span>Posted ID: {postedId}</span>}
+            </div>
+          )}
+          {canIssueEbarimt && ebarimtPreview && (
+            <div
+              style={{
+                marginBottom: '0.5rem',
+                border: '1px solid #ccc',
+                borderRadius: '4px',
+                padding: '0.75rem',
+              }}
+            >
+              <div style={{ fontWeight: 'bold', marginBottom: '0.25rem' }}>
+                Latest Ebarimt
+              </div>
+              <div>Bill ID: {ebarimtPreview.billId || '-'}</div>
+              <div>Status: {ebarimtPreview.status || '-'}</div>
+              {ebarimtPreview.invoiceNo && <div>Invoice No: {ebarimtPreview.invoiceNo}</div>}
+              {ebarimtPreview.lottery && <div>Lottery: {ebarimtPreview.lottery}</div>}
+              {ebarimtPreview.errorMessage && (
+                <div style={{ color: '#a11' }}>
+                  Message: {ebarimtPreview.errorMessage}
+                </div>
+              )}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  marginTop: '0.5rem',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                }}
+              >
+                {ebarimtQrImage ? (
+                  <img
+                    src={ebarimtQrImage}
+                    alt="Ebarimt QR code"
+                    style={{
+                      width: '160px',
+                      height: '160px',
+                      border: '1px solid #ddd',
+                      padding: '0.25rem',
+                      background: '#fff',
+                    }}
+                  />
+                ) : (
+                  <span>No QR code available</span>
+                )}
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  {ebarimtQrImage && (
+                    <button type="button" onClick={handlePrintEbarimtPreview}>
+                      Print Ebarimt
+                    </button>
+                  )}
+                  <button type="button" onClick={clearEbarimtPreview}>
+                    Clear preview
+                  </button>
+                </div>
+              </div>
             </div>
           )}
           <div
