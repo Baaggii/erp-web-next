@@ -4069,7 +4069,8 @@ const TableManager = forwardRef(function TableManager({
           ? baseRows.map((row) => {
               const stripped = stripTemporaryLabelValue(row);
               if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
-                return normalizeToCanonical(stripped);
+                const canonical = normalizeToCanonical(stripped);
+                return populateRelationDisplayFields(canonical);
               }
               return stripped ?? {};
             })
@@ -6336,8 +6337,11 @@ const TableManager = forwardRef(function TableManager({
                       const normalizedValues = populateRelationDisplayFields(
                         normalizeToCanonical(stripTemporaryLabelValue(baseValues || {})),
                       );
+                      const normalizedValueKeys = Object.keys(normalizedValues || {});
                       const detailColumnsSource =
-                        columns.length > 0 ? columns : Object.keys(normalizedValues || {});
+                        columns.length > 0
+                          ? [...columns, ...normalizedValueKeys]
+                          : normalizedValueKeys;
                       const detailColumns = Array.from(
                         new Set((detailColumnsSource || []).filter(Boolean)),
                       );
