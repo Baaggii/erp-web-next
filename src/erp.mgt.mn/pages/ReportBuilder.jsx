@@ -1500,19 +1500,17 @@ function ReportBuilderInner() {
   }
 
   async function handlePostView(overrideSql) {
-    let rawSqlToPost = overrideSql || viewText || viewSql;
-    if (!rawSqlToPost && selectedView) {
-      rawSqlToPost = await handleLoadView(selectedView);
+    let sqlToPost = overrideSql || viewText || viewSql;
+    if (!sqlToPost && selectedView) {
+      sqlToPost = await handleLoadView(selectedView);
     }
-    if (!rawSqlToPost) return;
-    const finalSql = prepareViewSql(rawSqlToPost || '');
-    if (!finalSql) return;
+    if (!sqlToPost) return;
     if (!window.confirm('POST view to database?')) return;
     try {
       const res = await fetch('/api/report_builder/views', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: finalSql }),
+        body: JSON.stringify({ sql: sqlToPost }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -3234,12 +3232,6 @@ function ReportBuilderInner() {
         {(viewSql || viewText) && (
           <section style={{ marginTop: '1rem' }}>
             <h3>{t('reportBuilder.viewHeading', 'View')}</h3>
-            <p style={{ fontStyle: 'italic', marginBottom: '0.5rem' }}>
-              {t(
-                'reportBuilder.viewParamHint',
-                'Use :param placeholders (e.g., :utility_id); they will be posted as @param so MySQL accepts them.',
-              )}
-            </p>
             <div style={{ marginBottom: '0.5rem' }}>
               <button onClick={handlePostView}>
                 {t('reportBuilder.postView', 'POST View')}
