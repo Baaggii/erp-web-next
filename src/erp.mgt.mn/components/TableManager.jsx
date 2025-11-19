@@ -2619,6 +2619,77 @@ const TableManager = forwardRef(function TableManager({
     setCtxMenu({ x: e.clientX, y: e.clientY, value });
   }
 
+  const populateRelationDisplayFields = useCallback(
+    (values) => {
+      if (!values || typeof values !== 'object') return values || {};
+
+      const hasMeaningfulValue = (val) => {
+        if (val === undefined || val === null) return false;
+        if (typeof val === 'string') return val.trim().length > 0;
+        return true;
+      };
+
+      const getRelationRow = (fieldKey, value) => {
+        if (value === undefined || value === null) return null;
+        const map = refRows[fieldKey] || refRows[resolveCanonicalKey(fieldKey)];
+        if (!map || typeof map !== 'object') return null;
+        if (Object.prototype.hasOwnProperty.call(map, value)) return map[value];
+        if (typeof value === 'string') {
+          const trimmed = value.trim();
+          if (trimmed && Object.prototype.hasOwnProperty.call(map, trimmed)) {
+            return map[trimmed];
+          }
+        }
+        const stringValue = String(value);
+        if (Object.prototype.hasOwnProperty.call(map, stringValue)) {
+          return map[stringValue];
+        }
+        return null;
+      };
+
+      let hydrated = values;
+      const ensureHydrated = () => {
+        if (hydrated === values) {
+          hydrated = { ...values };
+        }
+      };
+
+      Object.entries(relationConfigs || {}).forEach(([rawField, config]) => {
+        if (!config || !Array.isArray(config.displayFields) || config.displayFields.length === 0) {
+          return;
+        }
+        const canonicalField = resolveCanonicalKey(rawField);
+        if (!canonicalField) return;
+        const relationValue =
+          hydrated === values ? values[canonicalField] : hydrated[canonicalField];
+        if (!hasMeaningfulValue(relationValue)) return;
+        const relationRow = getRelationRow(canonicalField, relationValue);
+        if (!relationRow || typeof relationRow !== 'object') return;
+        const rowKeyMap = {};
+        Object.keys(relationRow).forEach((key) => {
+          rowKeyMap[key.toLowerCase()] = key;
+        });
+        config.displayFields.forEach((displayField) => {
+          if (typeof displayField !== 'string' || !displayField.trim()) return;
+          const canonicalDisplay = resolveCanonicalKey(displayField);
+          if (!canonicalDisplay) return;
+          const currentValue =
+            hydrated === values ? values[canonicalDisplay] : hydrated[canonicalDisplay];
+          if (hasMeaningfulValue(currentValue)) return;
+          const lookupKey = rowKeyMap[displayField.toLowerCase()];
+          if (lookupKey && Object.prototype.hasOwnProperty.call(relationRow, lookupKey)) {
+            ensureHydrated();
+            hydrated[canonicalDisplay] = relationRow[lookupKey];
+          }
+        });
+      });
+
+      return hydrated;
+    },
+    [refRows, relationConfigs, resolveCanonicalKey],
+  );
+
+
   async function loadSearch(term, pg = 1) {
     const params = new URLSearchParams({ page: pg, pageSize: 20 });
     try {
@@ -3976,8 +4047,8 @@ const TableManager = forwardRef(function TableManager({
           (candidate) =>
             candidate && typeof candidate === 'object' && !Array.isArray(candidate),
         );
-        const normalizedValues = normalizeToCanonical(
-          stripTemporaryLabelValue(baseValues || {}),
+        const normalizedValues = populateRelationDisplayFields(
+          normalizeToCanonical(stripTemporaryLabelValue(baseValues || {})),
         );
 
         const rowSources = [
@@ -4000,7 +4071,7 @@ const TableManager = forwardRef(function TableManager({
 
         return { values: normalizedValues, rows: sanitizedRows };
       },
-      [normalizeToCanonical],
+      [normalizeToCanonical, populateRelationDisplayFields],
     );
 
     const openTemporaryPromotion = useCallback(
@@ -6256,8 +6327,8 @@ const TableManager = forwardRef(function TableManager({
                           typeof candidate === 'object' &&
                           !Array.isArray(candidate),
                       );
-                      const normalizedValues = normalizeToCanonical(
-                        stripTemporaryLabelValue(baseValues || {}),
+                      const normalizedValues = populateRelationDisplayFields(
+                        normalizeToCanonical(stripTemporaryLabelValue(baseValues || {})),
                       );
                       const detailColumnsSource =
                         columns.length > 0 ? columns : Object.keys(normalizedValues || {});
