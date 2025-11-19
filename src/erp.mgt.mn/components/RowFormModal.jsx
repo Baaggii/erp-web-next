@@ -14,7 +14,6 @@ import {
   createGeneratedColumnEvaluator,
 } from '../utils/generatedColumns.js';
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
-import extractOptionRelationValue from '../utils/extractOptionRelationValue.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
@@ -711,23 +710,17 @@ const RowFormModal = function RowFormModal({
         return hasCombination ? [] : options;
       }
       const columnRows = relationData[column];
-      const hasRowData = columnRows && typeof columnRows === 'object';
+      if (!columnRows || typeof columnRows !== 'object') return options;
       const normalizedFilter = String(filterValue);
       return options.filter((opt) => {
         if (!opt) return false;
         const rawValue =
           typeof opt.value === 'object' && opt.value !== null ? opt.value.value : opt.value;
-        const row = hasRowData ? columnRows?.[rawValue] : null;
-        let targetValue =
-          row && typeof row === 'object'
-            ? getRowValueCaseInsensitive(row, targetColumn)
-            : undefined;
+        const row = columnRows[rawValue];
+        if (!row || typeof row !== 'object') return false;
+        const targetValue = getRowValueCaseInsensitive(row, targetColumn);
         if (targetValue === undefined || targetValue === null || targetValue === '') {
-          const fallback = extractOptionRelationValue(opt, targetColumn);
-          if (fallback === undefined || fallback === null || fallback === '') {
-            return hasRowData ? false : true;
-          }
-          targetValue = fallback;
+          return false;
         }
         return String(targetValue) === normalizedFilter;
       });
