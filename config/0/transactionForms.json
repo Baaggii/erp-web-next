@@ -157,10 +157,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -356,10 +353,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -435,10 +429,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -658,10 +649,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -730,10 +718,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -797,10 +782,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -856,10 +838,7 @@
       },
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -923,10 +902,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -1062,10 +1038,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -1135,10 +1108,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -1210,10 +1180,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -1352,10 +1319,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -1469,10 +1433,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -1605,10 +1566,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -1768,10 +1726,7 @@
       ],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -1813,7 +1768,7 @@
         "TransType": "10001"
       },
       "posApiEnabled": true,
-      "posApiType": "B2C_RECEIPT",
+      "posApiType": "B2C",
       "posApiTypeField": "",
       "posApiEndpointId": "saveReceipt",
       "posApiInfoEndpointIds": [
@@ -1823,10 +1778,7 @@
         "getVatTaxTypes"
       ],
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -1836,9 +1788,7 @@
         "EASY_BANK_CARD"
       ],
       "fieldsFromPosApi": [
-        "receipts[].billId",
-        "receipts[].qrData",
-        "receipts[].lottery"
+        "receipts[].billId"
       ],
       "posApiMapping": {
         "totalAmount": "payable_amount",
@@ -2041,10 +1991,7 @@
       "procedures": [],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -2091,10 +2038,7 @@
       "procedures": [],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -2140,10 +2084,7 @@
       "procedures": [],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -2188,10 +2129,7 @@
       "procedures": [],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -2248,10 +2186,7 @@
       "procedures": [],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",
@@ -2299,10 +2234,7 @@
       "procedures": [],
       "posApiEndpointId": "saveReceipt",
       "posApiReceiptTypes": [
-        "B2C_RECEIPT",
-        "B2B_RECEIPT",
-        "B2C_INVOICE",
-        "B2B_INVOICE"
+        "B2C", "B2B_SALE", "B2B_PURCHASE"
       ],
       "posApiPaymentMethods": [
         "CASH",

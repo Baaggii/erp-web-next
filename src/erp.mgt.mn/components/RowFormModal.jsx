@@ -16,13 +16,7 @@ import {
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
-const DEFAULT_RECEIPT_TYPES = [
-  'B2C_RECEIPT',
-  'B2B_RECEIPT',
-  'B2C_INVOICE',
-  'B2B_INVOICE',
-  'STOCK_QR',
-];
+const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
 function normalizeRelationOptionKey(value) {
   if (value === undefined || value === null) return null;

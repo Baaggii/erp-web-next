@@ -4034,20 +4034,32 @@ CREATE TABLE `transactions_pos` (
   `id` int NOT NULL,
   `session_id` varchar(64) DEFAULT NULL,
   `company_id` int DEFAULT NULL,
+  `merchant_id` int DEFAULT NULL,
   `branch_id` int DEFAULT NULL,
   `department_id` int DEFAULT NULL,
   `emp_id` varchar(10) DEFAULT NULL,
   `pos_date` date DEFAULT NULL,
   `pos_time` datetime DEFAULT NULL,
   `order_id` varchar(64) DEFAULT NULL,
+  `customer_tin` varchar(20) DEFAULT NULL,
+  `customer_name` varchar(191) DEFAULT NULL,
+  `customer_status` varchar(64) DEFAULT NULL,
+  `customer_tin_valid` tinyint(1) DEFAULT NULL,
+  `consumer_no` varchar(32) DEFAULT NULL,
+  `tax_type` varchar(32) DEFAULT NULL,
+  `lot_no` varchar(64) DEFAULT NULL,
   `total_quantity` int DEFAULT NULL,
   `total_amount` decimal(18,2) DEFAULT NULL,
+  `vat_amount` decimal(18,2) DEFAULT NULL,
+  `city_tax` decimal(18,2) DEFAULT NULL,
   `total_discount` decimal(18,2) DEFAULT NULL,
   `cashback` decimal(18,0) DEFAULT NULL,
   `cashback_payment_type` int DEFAULT NULL,
   `payable_amount` decimal(18,0) DEFAULT NULL,
   `deposit_amount` decimal(18,0) DEFAULT NULL,
   `payment_type` int DEFAULT NULL,
+  `bill_id` varchar(64) DEFAULT NULL,
+  `ebarimt_invoice_id` int DEFAULT NULL,
   `remarks` text,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `status` int NOT NULL DEFAULT '1',
@@ -4899,7 +4911,9 @@ ALTER TABLE `transactions_pos`
   ADD KEY `department_id` (`department_id`),
   ADD KEY `status` (`status`),
   ADD KEY `payment_type` (`payment_type`),
-  ADD KEY `cashback_payment_type` (`cashback_payment_type`);
+  ADD KEY `cashback_payment_type` (`cashback_payment_type`),
+  ADD KEY `fk_transactions_pos_merchant` (`merchant_id`),
+  ADD KEY `fk_transactions_pos_invoice` (`ebarimt_invoice_id`);
 
 --
 -- Indexes for table `users`
@@ -5693,7 +5707,9 @@ ALTER TABLE `transactions_pos`
   ADD CONSTRAINT `transactions_pos_ibfk_3` FOREIGN KEY (`emp_id`) REFERENCES `tbl_employee` (`emp_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_5` FOREIGN KEY (`status`) REFERENCES `code_status` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_6` FOREIGN KEY (`payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
-  ADD CONSTRAINT `transactions_pos_ibfk_8` FOREIGN KEY (`cashback_payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+  ADD CONSTRAINT `transactions_pos_ibfk_8` FOREIGN KEY (`cashback_payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
+  ADD CONSTRAINT `fk_transactions_pos_merchant` FOREIGN KEY (`merchant_id`) REFERENCES `merchant` (`id`) ON DELETE SET NULL ON UPDATE CASCADE,
+  ADD CONSTRAINT `fk_transactions_pos_invoice` FOREIGN KEY (`ebarimt_invoice_id`) REFERENCES `ebarimt_invoice` (`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
 --
 -- Constraints for table `users`

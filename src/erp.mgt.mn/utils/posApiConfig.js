@@ -81,10 +81,9 @@ export const PAYMENT_METHOD_LABELS = {
 };
 
 export const DEFAULT_ENDPOINT_RECEIPT_TYPES = [
-  'B2C_RECEIPT',
-  'B2B_RECEIPT',
-  'B2C_INVOICE',
-  'B2B_INVOICE',
+  'B2C',
+  'B2B_SALE',
+  'B2B_PURCHASE',
   'STOCK_QR',
 ];
 
@@ -202,10 +201,9 @@ export function withPosApiEndpointMetadata(endpoint) {
 export function formatPosApiTypeLabel(type) {
   if (!type) return '';
   const lookup = {
-    B2C_RECEIPT: 'B2C Receipt',
-    B2B_RECEIPT: 'B2B Receipt',
-    B2C_INVOICE: 'B2C Invoice',
-    B2B_INVOICE: 'B2B Invoice',
+    B2C: 'B2C Receipt',
+    B2B_SALE: 'B2B Sale Invoice',
+    B2B_PURCHASE: 'B2B Purchase Invoice',
     STOCK_QR: 'Stock QR Receipt',
   };
   return lookup[type] || type.replace(/_/g, ' ');

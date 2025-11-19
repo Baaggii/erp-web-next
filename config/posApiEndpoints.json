@@ -6,18 +6,14 @@
     "method": "POST",
     "path": "/rest/receipt",
     "parameters": [],
-    "posApiType": "B2C_RECEIPT",
+    "posApiType": "B2C",
     "usage": "transaction",
     "defaultForForm": true,
     "supportsItems": true,
     "supportsMultipleReceipts": true,
     "supportsMultiplePayments": true,
     "receiptTypes": [
-      "B2C_RECEIPT",
-      "B2B_RECEIPT",
-      "B2C_INVOICE",
-      "B2B_INVOICE",
-      "STOCK_QR"
+      "B2C", "B2B_SALE", "B2B_PURCHASE", "STOCK_QR"
     ],
     "paymentMethods": [
       "CASH",
@@ -33,7 +29,7 @@
         "branchNo": "001",
         "posNo": "001",
         "merchantTin": "37900846788",
-        "type": "B2C_RECEIPT",
+        "type": "B2C",
         "taxType": "VAT_ABLE",
         "consumerNo": "10038071",
         "customerTin": null,
@@ -124,7 +120,7 @@
       {
         "field": "type",
         "required": true,
-        "description": "POSAPI payload type (B2C_RECEIPT, B2B_RECEIPT, B2C_INVOICE, B2B_INVOICE, STOCK_QR)."
+        "description": "POSAPI payload type (B2C, B2B_SALE, B2B_PURCHASE, STOCK_QR)."
       },
       {
         "field": "taxType",
@@ -242,7 +238,7 @@
       }
     ],
     "fieldDescriptions": {
-      "type": "POSAPI payload type (B2C_RECEIPT, B2B_RECEIPT, B2C_INVOICE, B2B_INVOICE, STOCK_QR).",
+      "type": "POSAPI payload type (B2C, B2B_SALE, B2B_PURCHASE, STOCK_QR).",
       "taxType": "Overall tax category for the header (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT).",
       "branchNo": "Three digit branch identifier issued with the licence.",
       "posNo": "POS terminal identifier registered with the tax authority.",
@@ -275,7 +271,7 @@
         {
           "field": "type",
           "required": true,
-          "description": "POSAPI document type column (B2C_RECEIPT, B2B_RECEIPT, B2C_INVOICE, B2B_INVOICE, STOCK_QR)."
+          "description": "POSAPI document type column (B2C, B2B_SALE, B2C, B2B_SALE, STOCK_QR)."
         },
         {
           "field": "totalAmount",

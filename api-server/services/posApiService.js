@@ -1,6 +1,7 @@
 import { getSettings } from '../../db/index.js';
 import { getEndpointById, loadEndpoints } from './posApiRegistry.js';
 import { createColumnLookup } from './posApiPersistence.js';
+import { resolveReferenceCodeValue } from './referenceCodeLookup.js';
 
 function trimEndSlash(url) {
   if (!url) return '';
@@ -570,6 +571,17 @@ function normalizeItemEntry(item, options = {}) {
   if (!next.taxType && options.defaultTaxType) {
     next.taxType = options.defaultTaxType;
   }
+  const taxReasonCandidate = item.taxReasonCode ?? item.tax_reason_code;
+  if (taxReasonCandidate !== undefined) {
+    const reasonValue = toStringValue(taxReasonCandidate);
+    if (reasonValue) next.taxReasonCode = reasonValue;
+  }
+  const barcodeTypeCandidate =
+    item.barcodeType ?? item.barCodeType ?? item.barcode_type;
+  if (barcodeTypeCandidate !== undefined) {
+    const barcodeValue = toStringValue(barcodeTypeCandidate);
+    if (barcodeValue) next.barcodeType = barcodeValue;
+  }
   return next;
 }
 
@@ -648,6 +660,82 @@ function normalizePaymentEntry(entry) {
     if (parsedPaidAmount !== null) next.amount = parsedPaidAmount;
   }
   return next;
+}
+
+async function normalizeItemReferenceCodes(item) {
+  if (!item || typeof item !== 'object') return item;
+  const next = { ...item };
+  if (next.classificationCode) {
+    const resolvedClassification = await resolveReferenceCodeValue(
+      'classification',
+      next.classificationCode,
+    );
+    if (resolvedClassification?.code) next.classificationCode = resolvedClassification.code;
+  }
+  if (next.taxType) {
+    const resolvedTaxType = await resolveReferenceCodeValue('tax_type', next.taxType);
+    if (resolvedTaxType?.code) next.taxType = resolvedTaxType.code;
+  }
+  if (next.taxReasonCode) {
+    const resolvedReason = await resolveReferenceCodeValue(
+      'tax_reason',
+      next.taxReasonCode,
+    );
+    if (resolvedReason?.code) next.taxReasonCode = resolvedReason.code;
+  }
+  if (next.barcodeType) {
+    const resolvedBarcode = await resolveReferenceCodeValue(
+      'barcode_type',
+      next.barcodeType,
+    );
+    if (resolvedBarcode?.code) next.barcodeType = resolvedBarcode.code;
+  }
+  return next;
+}
+
+async function normalizeReceiptsWithReferenceCodes(receipts) {
+  if (!Array.isArray(receipts) || receipts.length === 0) return receipts || [];
+  const normalized = [];
+  for (const receipt of receipts) {
+    if (!receipt || typeof receipt !== 'object') {
+      normalized.push(receipt);
+      continue;
+    }
+    if (!Array.isArray(receipt.items) || receipt.items.length === 0) {
+      normalized.push(receipt);
+      continue;
+    }
+    const normalizedItems = [];
+    for (const item of receipt.items) {
+      normalizedItems.push(await normalizeItemReferenceCodes(item));
+    }
+    normalized.push({ ...receipt, items: normalizedItems });
+  }
+  return normalized;
+}
+
+async function normalizePaymentsWithReferenceCodes(payments) {
+  if (!Array.isArray(payments) || payments.length === 0) return payments || [];
+  const normalized = [];
+  for (const payment of payments) {
+    if (!payment || typeof payment !== 'object') {
+      normalized.push(payment);
+      continue;
+    }
+    const next = { ...payment };
+    const resolved = await resolveReferenceCodeValue(
+      'payment_code',
+      next.type ?? next.code ?? next.method,
+    );
+    if (resolved?.code) {
+      next.type = resolved.code;
+      next.code = resolved.code;
+    } else if (!next.type) {
+      next.type = 'CASH';
+    }
+    normalized.push(next);
+  }
+  return normalized;
 }
 
 function normalizeReceiptEntry(entry, options = {}) {
@@ -738,11 +826,18 @@ function normalizeReceiptEntry(entry, options = {}) {
 }
 
 const POSAPI_TYPE_VALUES = new Set([
-  'B2C_RECEIPT',
-  'B2B_RECEIPT',
-  'B2C_INVOICE',
-  'B2B_INVOICE',
+  'B2C',
+  'B2B_SALE',
+  'B2B_PURCHASE',
   'STOCK_QR',
+]);
+
+const LEGACY_RECEIPT_TYPE_ALIASES = new Map([
+  ['B2C_RECEIPT', 'B2C'],
+  ['B2C_INVOICE', 'B2C'],
+  ['B2B_RECEIPT', 'B2B_SALE'],
+  ['B2B_INVOICE', 'B2B_SALE'],
+  ['B2B', 'B2B_SALE'],
 ]);
 
 function normalizeReceiptTypeValue(value) {
@@ -751,6 +846,9 @@ function normalizeReceiptTypeValue(value) {
   const normalized = str.trim().toUpperCase().replace(/[\s-]+/g, '_');
   if (POSAPI_TYPE_VALUES.has(normalized)) {
     return normalized;
+  }
+  if (LEGACY_RECEIPT_TYPE_ALIASES.has(normalized)) {
+    return LEGACY_RECEIPT_TYPE_ALIASES.get(normalized);
   }
   return '';
 }
@@ -891,15 +989,17 @@ function resolveReceiptType({
     return 'STOCK_QR';
   }
 
-  const flavor = detectDocumentFlavor({ mapping, record, columnLookup });
-
-  if (customerTin) return `B2B_${flavor}`;
-  if (consumerNo) return `B2C_${flavor}`;
+  if (customerTin) return 'B2B_SALE';
+  if (consumerNo) return 'B2C';
 
   const envType = normalizeReceiptTypeValue(process.env.POSAPI_RECEIPT_TYPE);
   if (envType) return envType;
 
-  return flavor === 'INVOICE' ? 'B2C_INVOICE' : 'B2C_RECEIPT';
+  const flavor = detectDocumentFlavor({ mapping, record, columnLookup });
+  if (flavor === 'INVOICE' && customerTin) {
+    return 'B2B_SALE';
+  }
+  return 'B2C';
 }
 
 function applyAdditionalMappings(
@@ -1028,6 +1128,7 @@ export async function buildReceiptFromDynamicTransaction(
   if (!record || typeof record !== 'object') return null;
   const normalizedMapping = normalizeMapping(mapping);
   const columnLookup = createColumnLookup(record);
+  const merchantInfo = options.merchantInfo || null;
   const receiptGroupMapping =
     normalizedMapping[RECEIPT_GROUP_MAPPING_KEY] || {};
   const paymentMethodMapping =
@@ -1083,15 +1184,28 @@ export async function buildReceiptFromDynamicTransaction(
   );
 
   const branchNo =
+    toStringValue(
+      merchantInfo?.branch_no ?? merchantInfo?.branchNo ?? merchantInfo?.branch,
+    ) ||
     toStringValue(getColumnValue(columnLookup, record, normalizedMapping.branchNo)) ||
     toStringValue(readEnvVar('POSAPI_BRANCH_NO'));
   const merchantTin =
+    toStringValue(
+      merchantInfo?.tax_registration_no ??
+        merchantInfo?.merchant_tin ??
+        merchantInfo?.taxRegistrationNo ??
+        merchantInfo?.tin,
+    ) ||
     toStringValue(getColumnValue(columnLookup, record, normalizedMapping.merchantTin)) ||
     toStringValue(readEnvVar('POSAPI_MERCHANT_TIN'));
   const posNo =
+    toStringValue(
+      merchantInfo?.pos_no ?? merchantInfo?.pos_registration_no ?? merchantInfo?.posNo,
+    ) ||
     toStringValue(getColumnValue(columnLookup, record, normalizedMapping.posNo)) ||
     toStringValue(readEnvVar('POSAPI_POS_NO'));
   const districtCode =
+    toStringValue(merchantInfo?.district_code ?? merchantInfo?.districtCode) ||
     toStringValue(getColumnValue(columnLookup, record, normalizedMapping.districtCode)) ||
     toStringValue(readEnvVar('POSAPI_DISTRICT_CODE'));
 
@@ -1411,7 +1525,7 @@ export async function buildReceiptFromDynamicTransaction(
     inventoryFlagField: options.inventoryFlagField,
   });
 
-  const receiptsPayload = receipts.length
+  let receiptsPayload = receipts.length
     ? receipts.map((receipt) => {
         if (!receipt || typeof receipt !== 'object') return receipt;
         if (!receipt.taxType && taxType) {
@@ -1428,6 +1542,10 @@ export async function buildReceiptFromDynamicTransaction(
           items: items.length ? items : [],
         },
       ];
+
+  receiptsPayload = await normalizeReceiptsWithReferenceCodes(receiptsPayload);
+  const normalizedPayments = await normalizePaymentsWithReferenceCodes(payments);
+  payments = normalizedPayments;
 
   const payload = {
     branchNo,

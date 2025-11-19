@@ -15,6 +15,11 @@ import {
   createColumnLookup,
 } from './posApiPersistence.js';
 import { logUserAction } from './userActivityLog.js';
+import {
+  saveEbarimtInvoiceSnapshot,
+  persistEbarimtInvoiceResponse,
+} from './ebarimtInvoiceStore.js';
+import { getMerchantById } from './merchantService.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
@@ -869,16 +874,30 @@ export async function promoteTemporarySubmission(
               );
             }
           }
+          const merchantId = masterRecord?.merchant_id ?? masterRecord?.merchantId ?? null;
+          const merchantInfo = merchantId ? await getMerchantById(merchantId) : null;
+          if (!merchantInfo) {
+            throw new Error('Merchant information is required for POSAPI submissions');
+          }
           const receiptType =
             formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
           const payload = await buildReceiptFromDynamicTransaction(
             masterRecord,
             mapping,
             receiptType,
-            { typeField: formCfg.posApiTypeField },
+            { typeField: formCfg.posApiTypeField, merchantInfo },
           );
           if (payload) {
             try {
+              const invoiceId = insertedId
+                ? await saveEbarimtInvoiceSnapshot({
+                    masterTable: row.table_name,
+                    masterId: insertedId,
+                    record: masterRecord,
+                    payload,
+                    merchantInfo,
+                  })
+                : null;
               const posApiResponse = await sendReceipt(payload, { endpoint });
               if (posApiResponse && insertedId) {
                 const columnNames = Array.isArray(columns)
@@ -909,6 +928,11 @@ export async function promoteTemporarySubmission(
                       error: updateErr,
                     });
                   }
+                }
+                if (invoiceId) {
+                  await persistEbarimtInvoiceResponse(invoiceId, posApiResponse, {
+                    fieldsFromPosApi: formCfg.fieldsFromPosApi,
+                  });
                 }
               }
             } catch (posErr) {

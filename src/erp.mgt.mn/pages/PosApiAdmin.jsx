@@ -2,10 +2,9 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 
 const POSAPI_TYPES = [
-  { value: 'B2C_RECEIPT', label: 'B2C receipt' },
-  { value: 'B2B_RECEIPT', label: 'B2B receipt' },
-  { value: 'B2C_INVOICE', label: 'B2C invoice' },
-  { value: 'B2B_INVOICE', label: 'B2B invoice' },
+  { value: 'B2C', label: 'B2C receipt' },
+  { value: 'B2B_SALE', label: 'B2B sale invoice' },
+  { value: 'B2B_PURCHASE', label: 'B2B purchase invoice' },
   { value: 'STOCK_QR', label: 'Stock QR' },
 ];
 
@@ -52,10 +51,9 @@ const METHOD_BADGES = {
 };
 
 const TYPE_BADGES = {
-  B2C_RECEIPT: '#1d4ed8',
-  B2B_RECEIPT: '#0f172a',
-  B2C_INVOICE: '#4f46e5',
-  B2B_INVOICE: '#7c3aed',
+  B2C: '#1d4ed8',
+  B2B_SALE: '#0f172a',
+  B2B_PURCHASE: '#7c3aed',
   STOCK_QR: '#0ea5e9',
 };
 
@@ -403,7 +401,7 @@ const TAX_TYPE_DESCRIPTIONS = {
 };
 
 const RECEIPT_SAMPLE_PAYLOADS = {
-  B2C_RECEIPT: createReceiptTemplate('B2C_RECEIPT', {
+  B2C: createReceiptTemplate('B2C', {
     branchNo: '001',
     posNo: 'A01',
     merchantTin: '12345678901',
@@ -457,7 +455,7 @@ const RECEIPT_SAMPLE_PAYLOADS = {
       },
     ],
   }),
-  B2B_RECEIPT: createReceiptTemplate('B2B_RECEIPT', {
+  B2B_SALE: createReceiptTemplate('B2B_SALE', {
     branchNo: '002',
     posNo: 'B15',
     merchantTin: '12345678901',
@@ -491,11 +489,11 @@ const RECEIPT_SAMPLE_PAYLOADS = {
       { type: 'BANK_TRANSFER', amount: 1280000 },
     ],
   }),
-  B2C_INVOICE: createReceiptTemplate('B2C_INVOICE', {
+  B2B_PURCHASE: createReceiptTemplate('B2B_PURCHASE', {
     branchNo: '001',
     posNo: 'A01',
     merchantTin: '12345678901',
-    consumerNo: '88119922',
+    customerTin: '88119922',
     invoiceNo: 'INV-2024-0152',
     invoiceDate: '2024-07-01',
     dueDate: '2024-07-10',
@@ -541,7 +539,7 @@ const RECEIPT_SAMPLE_PAYLOADS = {
       { type: 'PAYMENT_CARD', amount: 225000, data: { cardIssuer: 'Mastercard', last4: '4455' } },
     ],
   }),
-  B2B_INVOICE: createReceiptTemplate('B2B_INVOICE', {
+  B2B_SALE: createReceiptTemplate('B2B_SALE', {
     branchNo: '005',
     posNo: 'INV-01',
     merchantTin: '12345678901',
@@ -700,10 +698,9 @@ function createStockQrTemplate() {
 
 function resolveTemplate(type) {
   switch (type) {
-    case 'B2C_RECEIPT':
-    case 'B2B_RECEIPT':
-    case 'B2C_INVOICE':
-    case 'B2B_INVOICE':
+    case 'B2C':
+    case 'B2B_SALE':
+    case 'B2B_PURCHASE':
       return createReceiptTemplate(type);
     case 'STOCK_QR':
       return createStockQrTemplate();
@@ -2256,7 +2253,7 @@ export default function PosApiAdmin() {
     }
     try {
       const parsed = JSON.parse(trimmed);
-      const targetType = parsed?.type || formState.posApiType || 'B2C_RECEIPT';
+      const targetType = parsed?.type || formState.posApiType || 'B2C';
       resetTestState();
       updateRequestBuilder(() => normaliseBuilderForType(parsed, targetType, supportsItems));
       const nextReceiptTypes = Array.isArray(formState.receiptTypes)
@@ -2507,7 +2504,7 @@ export default function PosApiAdmin() {
 
     if (
       formState.posApiType &&
-      ['B2C_RECEIPT', 'B2B_RECEIPT', 'B2C_INVOICE', 'B2B_INVOICE', 'STOCK_QR'].includes(formState.posApiType)
+      ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'].includes(formState.posApiType)
     ) {
       Object.entries(PAYMENT_FIELD_DESCRIPTIONS).forEach(([key, value]) => {
         if (!fieldDescriptions[key]) {
@@ -3352,7 +3349,7 @@ export default function PosApiAdmin() {
                             onChange={(e) =>
                               handleTemplateTextChange('receiptTypeTemplates', code, e.target.value)
                             }
-                            placeholder="{\n  &quot;type&quot;: &quot;B2C_RECEIPT&quot;,\n  &quot;totalAmount&quot;: 0\n}"
+                            placeholder="{\n  &quot;type&quot;: &quot;B2C&quot;,\n  &quot;totalAmount&quot;: 0\n}"
                           />
                         </div>
                       ))}
@@ -3835,7 +3832,7 @@ export default function PosApiAdmin() {
                           value={sampleImportText}
                           onChange={(e) => setSampleImportText(e.target.value)}
                           style={styles.sampleTextarea}
-                          placeholder={`{\n  "type": "B2C_RECEIPT",\n  "receipts": []\n}`}
+                          placeholder={`{\n  "type": "B2C",\n  "receipts": []\n}`}
                           rows={6}
                         />
                       </label>

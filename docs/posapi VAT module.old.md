@@ -106,7 +106,7 @@ customerTin for B2B invoices or consumerNo (civil ID/telephone) for B2C receipts
 
 totalAmount, totalVAT, totalCityTax: gross totals including taxes.
 
-type: B2C_RECEIPT, B2C_INVOICE or B2B_INVOICE depending on whether the buyer requires a VAT invoice.
+type: B2C, B2C or B2B_SALE depending on whether the buyer requires a VAT invoice.
 
 taxType: classification of VAT applicability (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT etc.).
 
@@ -168,7 +168,7 @@ Many ERP implementations no longer have a dedicated “POS transactions” modul
 
 posApiEnabled (boolean): set to true to indicate that saving this transaction should trigger a call to the POSAPI /rest/receipt endpoint. Set to false (or omit the property) if the form does not produce an e‑receipt.
 
-posApiType (string, optional): specify which type of receipt to emit (B2C_RECEIPT, B2C_INVOICE or B2B_INVOICE). If omitted, the default type from your environment settings is used.
+posApiType (string, optional): specify which type of receipt to emit (B2C, B2C or B2B_SALE). If omitted, the default type from your environment settings is used.
 
 posApiMapping (object): defines how POSAPI fields map to columns in the form’s table. Each key corresponds to a POSAPI field (such as totalAmount, totalVAT, totalCityTax, customerTin or consumerNo), and the value is the name of the column in your table from which to retrieve the data. For example:
 
@@ -187,7 +187,7 @@ For example, a sales income form definition might look like this:
 {
 "sales_income_form": {
 "posApiEnabled": true,
-"posApiType": "B2C_RECEIPT",
+"posApiType": "B2C",
 "posApiMapping": {
 "totalAmount": "total_price",
 "totalVAT": "vat_amount",

@@ -180,15 +180,11 @@ export function computePosApiUpdates(columnLookup, response, options = {}) {
 
   const firstReceipt = Array.isArray(response.receipts) ? response.receipts[0] : null;
 
-  if (response.lottery !== undefined) pushEntry('lottery', response.lottery);
-  if (response.qrData !== undefined) pushEntry('qrData', response.qrData);
   if (response.status !== undefined) pushEntry('status', response.status);
   if (response.id !== undefined) pushEntry('id', response.id);
   if (response.billId !== undefined) pushEntry('billId', response.billId);
 
   if (firstReceipt && typeof firstReceipt === 'object') {
-    if (firstReceipt.lottery !== undefined) pushEntry('lottery', firstReceipt.lottery);
-    if (firstReceipt.qrData !== undefined) pushEntry('qrData', firstReceipt.qrData);
     if (firstReceipt.billId !== undefined) pushEntry('billId', firstReceipt.billId);
     if (firstReceipt.id !== undefined) pushEntry('receiptId', firstReceipt.id);
     if (firstReceipt.status !== undefined) pushEntry('receiptStatus', firstReceipt.status);
