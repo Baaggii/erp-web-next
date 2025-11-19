@@ -387,6 +387,19 @@ function InlineTransactionTable(
     });
     return map;
   }, [relationConfigsKey, columnCaseMapKey]);
+  const relationLabelLookup = React.useMemo(() => {
+    const lookup = {};
+    Object.entries(relations || {}).forEach(([rawKey, options]) => {
+      const mapped = columnCaseMap[String(rawKey).toLowerCase()] || rawKey;
+      if (!mapped || !Array.isArray(options)) return;
+      lookup[mapped] = {};
+      options.forEach((opt) => {
+        if (!opt || opt.value === undefined) return;
+        lookup[mapped][opt.value] = opt.label;
+      });
+    });
+    return lookup;
+  }, [relationsKey, columnCaseMapKey]);
   const relationConfigMapKey = React.useMemo(
     () => JSON.stringify(relationConfigMap || {}),
     [relationConfigMap],
@@ -2180,7 +2193,13 @@ function InlineTransactionTable(
     if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
-      if (
+      const lookupLabel =
+        rawVal !== undefined && rawVal !== null
+          ? relationLabelLookup[f]?.[rawVal]
+          : null;
+      if (lookupLabel) {
+        display = lookupLabel;
+      } else if (
         relationConfigMap[f] &&
         rawVal !== undefined &&
         relationData[f]?.[rawVal]
