@@ -455,40 +455,6 @@ const RECEIPT_SAMPLE_PAYLOADS = {
       },
     ],
   }),
-  B2B_SALE: createReceiptTemplate('B2B_SALE', {
-    branchNo: '002',
-    posNo: 'B15',
-    merchantTin: '12345678901',
-    customerTin: '8889990001',
-    totalAmount: 1280000,
-    totalVAT: 116363,
-    totalCityTax: 0,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 1280000,
-        totalVAT: 116363,
-        totalCityTax: 0,
-        items: [
-          {
-            name: 'Office chair',
-            barCode: '5901234123457',
-            barCodeType: 'EAN_13',
-            classificationCode: '9401300',
-            measureUnit: 'PCS',
-            qty: 4,
-            price: 320000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: 'CHAIR-2024-04',
-          },
-        ],
-      },
-    ],
-    payments: [
-      { type: 'BANK_TRANSFER', amount: 1280000 },
-    ],
-  }),
   B2B_PURCHASE: createReceiptTemplate('B2B_PURCHASE', {
     branchNo: '001',
     posNo: 'A01',
