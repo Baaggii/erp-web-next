@@ -1260,6 +1260,12 @@ const TableManager = forwardRef(function TableManager({
             ...(Array.isArray(mapping.displayFields)
               ? { displayFields: mapping.displayFields }
               : {}),
+            ...(mapping.combinationSourceColumn
+              ? { combinationSourceColumn: mapping.combinationSourceColumn }
+              : {}),
+            ...(mapping.combinationTargetColumn
+              ? { combinationTargetColumn: mapping.combinationTargetColumn }
+              : {}),
           });
         });
       });
@@ -1434,6 +1440,12 @@ const TableManager = forwardRef(function TableManager({
           relMap[lower] = {
             table: entry.REFERENCED_TABLE_NAME,
             column: entry.REFERENCED_COLUMN_NAME,
+            ...(entry.combinationSourceColumn
+              ? { combinationSourceColumn: entry.combinationSourceColumn }
+              : {}),
+            ...(entry.combinationTargetColumn
+              ? { combinationTargetColumn: entry.combinationTargetColumn }
+              : {}),
           };
         });
         relationCache[cacheKey] = relMap;
@@ -1677,6 +1689,12 @@ const TableManager = forwardRef(function TableManager({
             : {}),
           ...(Array.isArray(normalizedCfg.indexFields)
             ? { indexFields: normalizedCfg.indexFields }
+            : {}),
+          ...(rel.combinationSourceColumn
+            ? { combinationSourceColumn: rel.combinationSourceColumn }
+            : {}),
+          ...(rel.combinationTargetColumn
+            ? { combinationTargetColumn: rel.combinationTargetColumn }
             : {}),
         },
         options,

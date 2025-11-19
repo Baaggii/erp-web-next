@@ -27,6 +27,10 @@ function normalizeRelation(relation = {}) {
   const targetColumn = relation.column ?? relation.targetColumn;
   const idField = relation.idField ?? relation.id_field;
   const displayFields = relation.displayFields ?? relation.display_fields;
+  const combinationSource =
+    relation.combinationSourceColumn ?? relation.combination_source_column;
+  const combinationTarget =
+    relation.combinationTargetColumn ?? relation.combination_target_column;
 
   const tableStr = typeof targetTable === 'string' ? targetTable.trim() : '';
   const columnStr = typeof targetColumn === 'string' ? targetColumn.trim() : '';
@@ -43,6 +47,14 @@ function normalizeRelation(relation = {}) {
   }
   if (Array.isArray(displayFields)) {
     normalized.displayFields = displayFields.map((f) => String(f));
+  }
+  const sourceStr =
+    typeof combinationSource === 'string' ? combinationSource.trim() : '';
+  const targetStr =
+    typeof combinationTarget === 'string' ? combinationTarget.trim() : '';
+  if (sourceStr && targetStr) {
+    normalized.combinationSourceColumn = sourceStr;
+    normalized.combinationTargetColumn = targetStr;
   }
   return normalized;
 }
@@ -101,6 +113,18 @@ function findRelationIndex(list, match = {}) {
         ? match.displayFields.join('|')
         : '';
       if (relFields !== matchFields) return false;
+    }
+    if (
+      match.combinationSourceColumn &&
+      rel.combinationSourceColumn !== match.combinationSourceColumn
+    ) {
+      return false;
+    }
+    if (
+      match.combinationTargetColumn &&
+      rel.combinationTargetColumn !== match.combinationTargetColumn
+    ) {
+      return false;
     }
     return true;
   });
