@@ -23,6 +23,7 @@ import {
   createGeneratedColumnPipeline,
 } from '../utils/transactionValues.js';
 import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
+import extractOptionRelationValue from '../utils/extractOptionRelationValue.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -573,17 +574,23 @@ function InlineTransactionTable(
         return hasCombination ? [] : options;
       }
       const columnRows = relationData[column];
-      if (!columnRows || typeof columnRows !== 'object') return options;
+      const hasRowData = columnRows && typeof columnRows === 'object';
       const normalizedFilter = String(filterValue);
       return options.filter((opt) => {
         if (!opt) return false;
         const rawValue =
           typeof opt.value === 'object' && opt.value !== null ? opt.value.value : opt.value;
-        const row = columnRows?.[rawValue];
-        if (!row || typeof row !== 'object') return false;
-        const targetValue = getRowValueCaseInsensitive(row, targetColumn);
+        const row = hasRowData ? columnRows?.[rawValue] : null;
+        let targetValue =
+          row && typeof row === 'object'
+            ? getRowValueCaseInsensitive(row, targetColumn)
+            : undefined;
         if (targetValue === undefined || targetValue === null || targetValue === '') {
-          return false;
+          const fallback = extractOptionRelationValue(opt, targetColumn);
+          if (fallback === undefined || fallback === null || fallback === '') {
+            return hasRowData ? false : true;
+          }
+          targetValue = fallback;
         }
         return String(targetValue) === normalizedFilter;
       });
