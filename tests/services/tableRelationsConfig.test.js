@@ -102,27 +102,6 @@ await test('saveCustomRelation appends additional entries for the same column', 
   await restore();
 });
 
-await test('saveCustomRelation stores combination filters', async () => {
-  const { file, restore } = await withTempConfig(15);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, '{}');
-  await saveCustomRelation(
-    'rates',
-    'band_id',
-    {
-      table: 'code_utility_rates',
-      column: 'band_id',
-      combination: [{ sourceField: 'util_id', targetField: 'utility_id' }],
-    },
-    15,
-  );
-  const json = JSON.parse(await fs.readFile(file, 'utf8'));
-  assert.deepEqual(json.rates.band_id[0].combination, [
-    { sourceField: 'util_id', targetField: 'utility_id' },
-  ]);
-  await restore();
-});
-
 await test('update and remove custom relations by index', async () => {
   const { file, restore } = await withTempConfig(13);
   await fs.mkdir(path.dirname(file), { recursive: true });

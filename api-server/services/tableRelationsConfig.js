@@ -27,9 +27,6 @@ function normalizeRelation(relation = {}) {
   const targetColumn = relation.column ?? relation.targetColumn;
   const idField = relation.idField ?? relation.id_field;
   const displayFields = relation.displayFields ?? relation.display_fields;
-  const combination = normalizeCombinationList(
-    relation.combination ?? relation.combinationFields ?? relation.combination_fields,
-  );
 
   const tableStr = typeof targetTable === 'string' ? targetTable.trim() : '';
   const columnStr = typeof targetColumn === 'string' ? targetColumn.trim() : '';
@@ -46,9 +43,6 @@ function normalizeRelation(relation = {}) {
   }
   if (Array.isArray(displayFields)) {
     normalized.displayFields = displayFields.map((f) => String(f));
-  }
-  if (combination.length > 0) {
-    normalized.combination = combination;
   }
   return normalized;
 }
@@ -108,66 +102,14 @@ function findRelationIndex(list, match = {}) {
         : '';
       if (relFields !== matchFields) return false;
     }
-    if (match.combination) {
-      const normalizedMatch = normalizeCombinationList(match.combination);
-      const normalizedRel = normalizeCombinationList(rel.combination);
-      if (normalizedMatch.length !== normalizedRel.length) return false;
-      const relKey = JSON.stringify(normalizedRel);
-      const matchKey = JSON.stringify(normalizedMatch);
-      if (relKey !== matchKey) return false;
-    }
     return true;
   });
 }
 
-function normalizeCombinationList(raw) {
-  if (!raw) return [];
-  const list = Array.isArray(raw) ? raw : [raw];
-  return list
-    .map((entry) => {
-      if (!entry || typeof entry !== 'object') return null;
-      const source =
-        typeof entry.sourceField === 'string'
-          ? entry.sourceField
-          : typeof entry.source === 'string'
-          ? entry.source
-          : typeof entry.source_column === 'string'
-          ? entry.source_column
-          : typeof entry.sourceColumn === 'string'
-          ? entry.sourceColumn
-          : null;
-      const target =
-        typeof entry.targetField === 'string'
-          ? entry.targetField
-          : typeof entry.target === 'string'
-          ? entry.target
-          : typeof entry.target_column === 'string'
-          ? entry.target_column
-          : typeof entry.targetColumn === 'string'
-          ? entry.targetColumn
-          : null;
-      const sourceField = typeof source === 'string' ? source.trim() : '';
-      const targetField = typeof target === 'string' ? target.trim() : '';
-      if (!sourceField || !targetField) return null;
-      return { sourceField, targetField };
-    })
-    .filter(Boolean);
-}
-
-function cloneRelationEntry(rel) {
-  if (!rel || typeof rel !== 'object') return rel;
-  const cloned = { ...rel };
-  if (Array.isArray(rel.displayFields)) {
-    cloned.displayFields = [...rel.displayFields];
-  }
-  if (Array.isArray(rel.combination)) {
-    cloned.combination = rel.combination.map((pair) => ({ ...pair }));
-  }
-  return cloned;
-}
-
 function cloneRelations(relations) {
-  return Array.isArray(relations) ? relations.map((rel) => cloneRelationEntry(rel)).filter(Boolean) : [];
+  return Array.isArray(relations)
+    ? relations.map((rel) => (rel ? { ...rel } : rel)).filter(Boolean)
+    : [];
 }
 
 function normalizeConfig(config) {

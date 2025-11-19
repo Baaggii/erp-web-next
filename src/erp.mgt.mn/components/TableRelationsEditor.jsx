@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useToast } from '../context/ToastContext.jsx';
 import { useTranslation } from 'react-i18next';
-import { normalizeCombinationPairs } from '../utils/relationCombination.js';
 
 function normalizeColumns(list) {
   if (!Array.isArray(list)) return [];
@@ -58,12 +57,6 @@ function normalizeCustomRelationsMap(relations) {
           if (Array.isArray(item.displayFields)) {
             normalizedEntry.displayFields = [...item.displayFields];
           }
-          const combos = normalizeCombinationPairs(
-            item.combination ?? item.combinationFields ?? [],
-          );
-          if (combos.length > 0) {
-            normalizedEntry.combination = combos;
-          }
           return normalizedEntry;
         })
         .filter(Boolean);
@@ -71,9 +64,6 @@ function normalizeCustomRelationsMap(relations) {
         result[column] = normalized;
       }
     } else if (entry && typeof entry === 'object' && entry.table && entry.column) {
-      const combos = normalizeCombinationPairs(
-        entry.combination ?? entry.combinationFields ?? [],
-      );
       result[column] = [
         {
           table: entry.table,
@@ -82,7 +72,6 @@ function normalizeCustomRelationsMap(relations) {
           ...(Array.isArray(entry.displayFields)
             ? { displayFields: [...entry.displayFields] }
             : {}),
-          ...(combos.length > 0 ? { combination: combos } : {}),
         },
       ];
     }
@@ -106,7 +95,6 @@ export default function TableRelationsEditor({ table }) {
   const [saving, setSaving] = useState(false);
   const [deletingKey, setDeletingKey] = useState('');
   const [isDefaultConfig, setIsDefaultConfig] = useState(true);
-  const [combinationPairs, setCombinationPairs] = useState([]);
 
   const sortedColumns = useMemo(() => [...columns].sort((a, b) => a.localeCompare(b)), [columns]);
   const sortedTables = useMemo(() => [...tables].sort((a, b) => a.localeCompare(b)), [tables]);
@@ -145,7 +133,6 @@ export default function TableRelationsEditor({ table }) {
       setSelectedRelationIndex(null);
       setTargetTable('');
       setTargetColumn('');
-      setCombinationPairs([]);
       return;
     }
     setLoading(true);
@@ -187,7 +174,6 @@ export default function TableRelationsEditor({ table }) {
       setSelectedRelationIndex(null);
       setTargetTable('');
       setTargetColumn('');
-      setCombinationPairs([]);
     } catch (err) {
       console.error('Failed to load table relations configuration', err);
       addToast(
@@ -226,17 +212,6 @@ export default function TableRelationsEditor({ table }) {
     [addToast, targetColumnsCache],
   );
 
-  const hydrateCombinationPairs = useCallback((source) => {
-    if (!source) {
-      setCombinationPairs([]);
-      return;
-    }
-    const normalized = normalizeCombinationPairs(
-      source.combination ?? source.combinationFields ?? [],
-    );
-    setCombinationPairs(normalized);
-  }, []);
-
   const startEdit = useCallback(
     async (column, relation = null, relationIndex = null) => {
       setSelectedColumn(column);
@@ -244,7 +219,6 @@ export default function TableRelationsEditor({ table }) {
         setSelectedRelationIndex(null);
         setTargetTable('');
         setTargetColumn('');
-        setCombinationPairs([]);
         return;
       }
 
@@ -262,12 +236,6 @@ export default function TableRelationsEditor({ table }) {
         resolvedRelation = list[resolvedIndex] ?? null;
       }
 
-      if (resolvedRelation) {
-        hydrateCombinationPairs(resolvedRelation);
-      } else {
-        hydrateCombinationPairs(null);
-      }
-
       if (resolvedRelation && resolvedRelation.table && resolvedRelation.column) {
         setSelectedRelationIndex(resolvedIndex);
         setTargetTable(resolvedRelation.table);
@@ -283,35 +251,23 @@ export default function TableRelationsEditor({ table }) {
         setTargetTable(tbl);
         await ensureTargetColumns(tbl);
         setTargetColumn(col);
-        hydrateCombinationPairs(relation);
         return;
       }
 
       setSelectedRelationIndex(null);
       setTargetTable('');
       setTargetColumn('');
-      setCombinationPairs([]);
     },
-    [customRelations, ensureTargetColumns, hydrateCombinationPairs],
+    [customRelations, ensureTargetColumns],
   );
 
   const handleTargetTableChange = useCallback(
     async (value) => {
       setTargetTable(value);
       setTargetColumn('');
-      let available = [];
       if (value) {
-        available = await ensureTargetColumns(value);
+        await ensureTargetColumns(value);
       }
-      setCombinationPairs((prev) =>
-        prev.map((pair) => {
-          if (!value) return { ...pair, targetField: '' };
-          if (pair.targetField && !available.includes(pair.targetField)) {
-            return { ...pair, targetField: '' };
-          }
-          return pair;
-        }),
-      );
     },
     [ensureTargetColumns],
   );
@@ -333,12 +289,6 @@ export default function TableRelationsEditor({ table }) {
     try {
       const currentColumn = selectedColumn;
       const editingExisting = Number.isInteger(selectedRelationIndex);
-      const normalizedCombos = combinationPairs
-        .map((pair) => ({
-          sourceField: pair?.sourceField?.trim(),
-          targetField: pair?.targetField?.trim(),
-        }))
-        .filter((pair) => pair.sourceField && pair.targetField);
       const res = await fetch(
         `/api/tables/${encodeURIComponent(table)}/relations/custom/${encodeURIComponent(
           selectedColumn,
@@ -351,7 +301,6 @@ export default function TableRelationsEditor({ table }) {
             targetTable,
             targetColumn,
             ...(editingExisting ? { index: selectedRelationIndex } : {}),
-            ...(normalizedCombos.length > 0 ? { combinationFields: normalizedCombos } : {}),
           }),
         },
       );
@@ -372,17 +321,7 @@ export default function TableRelationsEditor({ table }) {
     } finally {
       setSaving(false);
     }
-  }, [
-    addToast,
-    combinationPairs,
-    loadData,
-    selectedColumn,
-    selectedRelationIndex,
-    startEdit,
-    table,
-    targetColumn,
-    targetTable,
-  ]);
+  }, [addToast, loadData, selectedColumn, startEdit, table, targetColumn, targetTable]);
 
   const handleDelete = useCallback(
     async (column, relationIndex = null) => {
@@ -426,22 +365,7 @@ export default function TableRelationsEditor({ table }) {
     setSelectedRelationIndex(null);
     setTargetTable('');
     setTargetColumn('');
-    setCombinationPairs([]);
   }, [selectedColumn]);
-
-  const addCombinationPair = useCallback(() => {
-    setCombinationPairs((prev) => [...prev, { sourceField: '', targetField: '' }]);
-  }, []);
-
-  const updateCombinationPair = useCallback((index, updates) => {
-    setCombinationPairs((prev) =>
-      prev.map((pair, idx) => (idx === index ? { ...pair, ...updates } : pair)),
-    );
-  }, []);
-
-  const removeCombinationPair = useCallback((index) => {
-    setCombinationPairs((prev) => prev.filter((_, idx) => idx !== index));
-  }, []);
 
   return (
     <div className="table-relations-editor">
@@ -582,91 +506,6 @@ export default function TableRelationsEditor({ table }) {
                   ))}
                 </select>
               </label>
-            </div>
-            <div
-              style={{
-                marginBottom: '0.75rem',
-                backgroundColor: '#f9fafb',
-                padding: '0.5rem',
-                borderRadius: '0.5rem',
-              }}
-            >
-              <div style={{ fontWeight: 600 }}>Combination Filters (optional)</div>
-              <p style={{ fontSize: '0.85rem', color: '#555', margin: '0.35rem 0' }}>
-                Use these when the available values for the target column depend on other
-                source fields in the same form.
-              </p>
-              {combinationPairs.length === 0 ? (
-                <p
-                  data-testid="relations-combo-empty"
-                  style={{ fontSize: '0.85rem', color: '#6b7280', margin: '0.35rem 0' }}
-                >
-                  No combination filters configured.
-                </p>
-              ) : (
-                combinationPairs.map((pair, idx) => (
-                  <div
-                    key={`combo-${idx}`}
-                    style={{
-                      display: 'flex',
-                      gap: '0.5rem',
-                      flexWrap: 'wrap',
-                      marginBottom: '0.5rem',
-                      alignItems: 'flex-end',
-                    }}
-                  >
-                    <label style={{ flex: '1 1 200px' }}>
-                      Combination Source Field
-                      <select
-                        value={pair.sourceField}
-                        data-testid={`relations-combo-source-${idx}`}
-                        onChange={(e) =>
-                          updateCombinationPair(idx, { sourceField: e.target.value })
-                        }
-                      >
-                        <option value="">-- Select column --</option>
-                        {sortedColumns.map((col) => (
-                          <option key={`${idx}-src-${col}`} value={col}>
-                            {col}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label style={{ flex: '1 1 200px' }}>
-                      Combination Target Field
-                      <select
-                        value={pair.targetField}
-                        data-testid={`relations-combo-target-${idx}`}
-                        onChange={(e) =>
-                          updateCombinationPair(idx, { targetField: e.target.value })
-                        }
-                      >
-                        <option value="">-- Select column --</option>
-                        {currentTargetColumns.map((col) => (
-                          <option key={`${idx}-tgt-${col}`} value={col}>
-                            {col}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      data-testid={`relations-combo-remove-${idx}`}
-                      onClick={() => removeCombinationPair(idx)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))
-              )}
-              <button
-                type="button"
-                data-testid="relations-combo-add"
-                onClick={addCombinationPair}
-                disabled={!selectedColumn || !targetTable}
-              >
-                Add Combination Filter
-              </button>
             </div>
             {selectionHint && (
               <p
