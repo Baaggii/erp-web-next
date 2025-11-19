@@ -758,6 +758,48 @@ export async function promoteTemporarySubmission(
       throw err;
     }
 
+    const formName = row.form_name || row.config_name || null;
+    let formCfg = null;
+    if (formName) {
+      try {
+        const { config } = await getFormConfig(
+          row.table_name,
+          formName,
+          row.company_id,
+        );
+        formCfg = config || null;
+      } catch (cfgErr) {
+        console.error('Failed to load transaction form config', {
+          table: row.table_name,
+          formName,
+          error: cfgErr,
+        });
+      }
+    }
+
+    const allowedField =
+      typeof formCfg?.isAllowedField === 'string'
+        ? formCfg.isAllowedField.trim()
+        : '';
+    if (allowedField) {
+      const matchKey = Object.keys(sanitizedValues).find(
+        (key) => key && key.trim().toLowerCase() === allowedField.toLowerCase(),
+      );
+      const allowedValue = matchKey ? sanitizedValues[matchKey] : undefined;
+      const isAllowed =
+        allowedValue === 1 ||
+        allowedValue === true ||
+        (typeof allowedValue === 'string' && allowedValue.trim() === '1') ||
+        String(allowedValue ?? '').trim() === '1';
+      if (!isAllowed) {
+        const err = new Error(
+          `Transaction not allowed: ${matchKey || allowedField} must equal 1`,
+        );
+        err.status = 403;
+        throw err;
+      }
+    }
+
     const fallbackCreator = normalizeEmpId(row.created_by);
     if (fallbackCreator) {
       const hasCreatedByColumn = Array.isArray(columns)
@@ -801,15 +843,9 @@ export async function promoteTemporarySubmission(
     );
     const insertedId = inserted?.id ?? null;
     const promotedId = insertedId ? String(insertedId) : null;
-    const formName = row.form_name || row.config_name || null;
-    if (formName) {
+    if (formName && formCfg) {
       try {
-        const { config: formCfg } = await getFormConfig(
-          row.table_name,
-          formName,
-          row.company_id,
-        );
-        if (formCfg?.posApiEnabled) {
+        if (formCfg.posApiEnabled) {
           const mapping = formCfg.posApiMapping || {};
           const endpoint = await resolvePosApiEndpoint(formCfg.posApiEndpointId);
           let masterRecord = { ...sanitizedValues };
