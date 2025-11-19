@@ -91,6 +91,7 @@ function ReportBuilderInner() {
   const [currentUnionIndex, setCurrentUnionIndex] = usePerTabState(0, activeTab);
   const [selectSql, setSelectSql] = usePerTabState('', activeTab);
   const [viewSql, setViewSql] = usePerTabState('', activeTab);
+  const [viewText, setViewText] = usePerTabState('', activeTab);
   const [procSql, setProcSql] = usePerTabState('', activeTab);
   const [error, setError] = usePerTabState('', activeTab);
   const [savedReports, setSavedReports] = usePerTabState(() => [], activeTab);
@@ -1284,6 +1285,7 @@ function ReportBuilderInner() {
 
   function handleGenerateView() {
     setViewSql('');
+    setViewText('');
     try {
       const { report } = buildDefinition();
       const sql = buildReportSql(report);
@@ -1296,9 +1298,11 @@ function ReportBuilderInner() {
       }${procName}`;
       const view = `CREATE OR REPLACE VIEW ${viewName} AS\n${sql};`;
       setViewSql(view);
+      setViewText(view);
       setError('');
     } catch (err) {
       setViewSql('');
+      setViewText('');
       setError(err.message);
     }
   }
@@ -1329,6 +1333,10 @@ function ReportBuilderInner() {
       setProcSql('');
       setError(err.message);
     }
+  }
+
+  function prepareViewSql(sql = '') {
+    return sql.replace(/:([A-Za-z0-9_]+)/g, '@$1');
   }
 
   async function handlePostProc(sqlOverride, nameOverride) {
@@ -1450,14 +1458,64 @@ function ReportBuilderInner() {
     }
   }
 
-  async function handlePostView() {
-    if (!viewSql) return;
+  function handleParseViewSql() {
+    let sql = viewText || viewSql || '';
+    let baseName;
+    let newName;
+    const nameMatch = sql.match(
+      /CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+`?([^`\s]+)`?/i,
+    );
+    if (nameMatch) {
+      const basePrefix = generalConfig?.general?.reportViewPrefix || '';
+      baseName = nameMatch[1];
+      if (!isCodeTab) {
+        if (
+          basePrefix &&
+          baseName.toLowerCase().startsWith(basePrefix.toLowerCase())
+        ) {
+          baseName = baseName.slice(basePrefix.length);
+        }
+        baseName = baseName.replace(/^\d+_/, '');
+        newName = `${basePrefix}${company}_${baseName}`;
+      } else {
+        newName = baseName;
+      }
+      sql = sql.replace(
+        /(CREATE\s+(?:OR\s+REPLACE\s+)?VIEW\s+)`?[^`\s]+`?/i,
+        `$1\`${newName}\``,
+      );
+      setProcName((prev) => prev || baseName);
+    }
+    setViewText(sql);
+    setViewSql(sql);
+    return { sql, baseName, newName };
+  }
+
+  async function handleReplaceView() {
+    const { sql, newName } = handleParseViewSql();
+    if (!sql || !newName) return;
+    if (!window.confirm(`Replace view ${newName}?`)) return;
+    const dropSql = `DROP VIEW IF EXISTS \`${newName}\`;\n${sql}`;
+    await handlePostView(dropSql);
+  }
+
+  async function handlePostView(overrideSql) {
+    if (overrideSql && typeof overrideSql.preventDefault === 'function') {
+      overrideSql = undefined;
+    }
+    let rawSqlToPost = overrideSql || viewText || viewSql;
+    if (!rawSqlToPost && selectedView) {
+      rawSqlToPost = await handleLoadView(selectedView);
+    }
+    if (!rawSqlToPost) return;
+    const finalSql = prepareViewSql(rawSqlToPost || '');
+    if (!finalSql) return;
     if (!window.confirm('POST view to database?')) return;
     try {
       const res = await fetch('/api/report_builder/views', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: viewSql }),
+        body: JSON.stringify({ sql: finalSql }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -1478,11 +1536,12 @@ function ReportBuilderInner() {
     }
   }
 
-  async function handleLoadView() {
-    if (!selectedView) return;
+  async function handleLoadView(name = selectedView) {
+    const target = name || selectedView;
+    if (!target) return '';
     try {
       const res = await fetch(
-        `/api/report_builder/views/${encodeURIComponent(selectedView)}`,
+        `/api/report_builder/views/${encodeURIComponent(target)}`,
       );
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -1490,11 +1549,14 @@ function ReportBuilderInner() {
       }
       const data = await res.json();
       setViewSql(data.sql || '');
+      setViewText(data.sql || '');
       setError('');
       addToast('View loaded', 'success');
+      return data.sql || '';
     } catch (err) {
       console.error(err);
       addToast(err.message || 'Failed to load view', 'error');
+      return '';
     }
   }
 
@@ -1512,6 +1574,7 @@ function ReportBuilderInner() {
       }
       await refreshViewList();
       setViewSql('');
+      setViewText('');
       addToast('View deleted', 'success');
     } catch (err) {
       console.error(err);
@@ -3171,12 +3234,41 @@ function ReportBuilderInner() {
           </section>
         )}
 
-        {viewSql && (
+        {(viewSql || viewText) && (
           <section style={{ marginTop: '1rem' }}>
-            <h3>{t('reportBuilder.viewHeading', 'View')}</h3>
-            <button onClick={handlePostView}>
-              {t('reportBuilder.postView', 'POST View')}
-            </button>
+              <h3>{t('reportBuilder.viewHeading', 'View')}</h3>
+            <p style={{ fontStyle: 'italic', marginBottom: '0.5rem' }}>
+              {t(
+                'reportBuilder.viewParamHint',
+                'Use :param placeholders (e.g., :utility_id); they will be posted as @param so MySQL accepts them. If multiple tables have the same column names, add aliases (SELECT t1.id AS t1_id, t2.id AS t2_id).',
+              )}
+            </p>
+            <div style={{ marginBottom: '0.5rem' }}>
+              <button onClick={handlePostView}>
+                {t('reportBuilder.postView', 'POST View')}
+              </button>
+              <button
+                onClick={handleParseViewSql}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {t('reportBuilder.parseViewSql', 'Parse View SQL')}
+              </button>
+              <button
+                onClick={handleReplaceView}
+                style={{ marginLeft: '0.5rem' }}
+              >
+                {t('reportBuilder.replaceView', 'Replace View')}
+              </button>
+            </div>
+            <textarea
+              value={viewText || viewSql}
+              onChange={(e) => {
+                setViewText(e.target.value);
+                setViewSql(e.target.value);
+              }}
+              rows={8}
+              style={{ width: '100%' }}
+            />
           </section>
         )}
 
