@@ -90,6 +90,40 @@ export async function getTableRows(req, res, next) {
   }
 }
 
+function normalizeCombinationInput(raw) {
+  if (!raw) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  return list
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const source =
+        typeof entry.sourceField === 'string'
+          ? entry.sourceField
+          : typeof entry.source === 'string'
+          ? entry.source
+          : typeof entry.source_column === 'string'
+          ? entry.source_column
+          : typeof entry.sourceColumn === 'string'
+          ? entry.sourceColumn
+          : null;
+      const target =
+        typeof entry.targetField === 'string'
+          ? entry.targetField
+          : typeof entry.target === 'string'
+          ? entry.target
+          : typeof entry.target_column === 'string'
+          ? entry.target_column
+          : typeof entry.targetColumn === 'string'
+          ? entry.targetColumn
+          : null;
+      const sourceField = typeof source === 'string' ? source.trim() : '';
+      const targetField = typeof target === 'string' ? target.trim() : '';
+      if (!sourceField || !targetField) return null;
+      return { sourceField, targetField };
+    })
+    .filter(Boolean);
+}
+
 export async function getTableRelations(req, res, next) {
   try {
     const companyId = Number(req.query.companyId ?? req.user?.companyId ?? 0);
@@ -122,6 +156,9 @@ export async function getTableRelations(req, res, next) {
             ...(relation.idField ? { idField: relation.idField } : {}),
             ...(Array.isArray(relation.displayFields)
               ? { displayFields: relation.displayFields }
+              : {}),
+            ...(Array.isArray(relation.combination) && relation.combination.length > 0
+              ? { combination: relation.combination }
               : {}),
           });
         });
@@ -191,7 +228,16 @@ export async function saveCustomTableRelation(req, res, next) {
     if (!targetColumn) {
       return res.status(400).json({ message: 'targetColumn is required' });
     }
-    const relationInput = { table: targetTable, column: targetColumn, idField, displayFields };
+    const combination = normalizeCombinationInput(
+      req.body?.combinationFields ?? req.body?.combination,
+    );
+    const relationInput = {
+      table: targetTable,
+      column: targetColumn,
+      idField,
+      displayFields,
+      ...(combination.length > 0 ? { combination } : {}),
+    };
     const rawIndex = req.body?.index;
     const rawMatch = req.body?.match;
     const index =
