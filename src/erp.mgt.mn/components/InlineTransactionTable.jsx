@@ -483,6 +483,20 @@ function InlineTransactionTable(
       if ((!target.displayFields || target.displayFields.length === 0) && srcDisplay.length > 0) {
         target.displayFields = srcDisplay;
       }
+      if (
+        !target.combinationSourceColumn &&
+        typeof source.combinationSourceColumn === 'string' &&
+        source.combinationSourceColumn.trim()
+      ) {
+        target.combinationSourceColumn = source.combinationSourceColumn;
+      }
+      if (
+        !target.combinationTargetColumn &&
+        typeof source.combinationTargetColumn === 'string' &&
+        source.combinationTargetColumn.trim()
+      ) {
+        target.combinationTargetColumn = source.combinationTargetColumn;
+      }
     };
 
     Object.entries(columnCaseMap || {}).forEach(([lower, column]) => {
@@ -508,6 +522,90 @@ function InlineTransactionTable(
 
     return map;
   }, [columnCaseMapKey, relatedColumns, relationConfigMapKey, tableRelationsKey, displayIndex]);
+
+  const getRowValueCaseInsensitive = useCallback((rowObj, key) => {
+    if (!rowObj || !key) return undefined;
+    const lowerKey = String(key).toLowerCase();
+    const match = Object.keys(rowObj).find((k) => String(k).toLowerCase() === lowerKey);
+    if (match === undefined) return undefined;
+    return rowObj[match];
+  }, []);
+
+  const normalizeCombinationValue = useCallback((value) => {
+    if (
+      value &&
+      typeof value === 'object' &&
+      !Array.isArray(value) &&
+      Object.prototype.hasOwnProperty.call(value, 'value')
+    ) {
+      return value.value;
+    }
+    return value;
+  }, []);
+
+  const resolveCombinationFilters = useCallback(
+    (rowObj, column, overrideConfig = null) => {
+      if (!column) return null;
+      const config = overrideConfig || relationConfigMap[column] || autoSelectConfigs[column];
+      const sourceField = config?.combinationSourceColumn;
+      const targetField = config?.combinationTargetColumn;
+      if (!sourceField || !targetField) return null;
+      const mappedSource = columnCaseMap[String(sourceField).toLowerCase()] || sourceField;
+      const value =
+        getRowValueCaseInsensitive(rowObj, mappedSource) ??
+        getRowValueCaseInsensitive(rowObj, sourceField);
+      const normalizedValue = normalizeCombinationValue(value);
+      if (normalizedValue === undefined || normalizedValue === null || normalizedValue === '') {
+        return null;
+      }
+      return { [targetField]: normalizedValue };
+    },
+    [
+      relationConfigMap,
+      autoSelectConfigs,
+      columnCaseMap,
+      getRowValueCaseInsensitive,
+      normalizeCombinationValue,
+    ],
+  );
+
+  const filterRelationOptions = useCallback(
+    (rowObj, column, options) => {
+      if (!Array.isArray(options) || options.length === 0) return options;
+      const filters = resolveCombinationFilters(rowObj, column);
+      if (!filters) return options;
+      const config = relationConfigMap[column] || autoSelectConfigs[column];
+      const targetColumn = config?.combinationTargetColumn;
+      if (!targetColumn) return options;
+      const filterValue = normalizeCombinationValue(filters[targetColumn]);
+      if (filterValue === undefined || filterValue === null || filterValue === '') {
+        return options;
+      }
+      const columnRows = relationData[column];
+      if (!columnRows || typeof columnRows !== 'object') return options;
+      const normalizedFilter = String(filterValue);
+      return options.filter((opt) => {
+        if (!opt) return false;
+        const rawValue =
+          typeof opt.value === 'object' && opt.value !== null ? opt.value.value : opt.value;
+        const row = columnRows?.[rawValue];
+        if (!row || typeof row !== 'object') return false;
+        const targetValue = getRowValueCaseInsensitive(row, targetColumn);
+        if (targetValue === undefined || targetValue === null || targetValue === '') {
+          return false;
+        }
+        return String(targetValue) === normalizedFilter;
+      });
+    },
+    [
+      relationConfigMap,
+      autoSelectConfigs,
+      relationData,
+      resolveCombinationFilters,
+      getRowValueCaseInsensitive,
+      normalizeCombinationValue,
+    ],
+  );
 
   const combinedViewSource = React.useMemo(() => {
     const map = { ...viewSourceMap };
@@ -2182,11 +2280,13 @@ function InlineTransactionTable(
           className={invalid ? 'border-red-500 bg-red-100' : ''}
           inputStyle={inputStyle}
           companyId={company}
+          filters={resolveCombinationFilters(rows[idx], f, conf) || undefined}
         />
       );
     }
     if (Array.isArray(relations[f])) {
       const inputVal = typeof val === 'object' ? val.value : val;
+      const filteredOptions = filterRelationOptions(rows[idx], f, relations[f]);
       return (
         <select
           className={`w-full border px-1 ${invalid ? 'border-red-500 bg-red-100' : ''}`}
@@ -2199,7 +2299,7 @@ function InlineTransactionTable(
           title={typeof val === 'object' ? val.label || val.value : val}
         >
           <option value="">-- select --</option>
-          {relations[f].map((opt) => (
+          {filteredOptions.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
@@ -2231,6 +2331,7 @@ function InlineTransactionTable(
           className={invalid ? 'border-red-500 bg-red-100' : ''}
           inputStyle={inputStyle}
           companyId={company}
+          filters={resolveCombinationFilters(rows[idx], f) || undefined}
         />
       );
     }
@@ -2255,6 +2356,7 @@ function InlineTransactionTable(
           className={invalid ? 'border-red-500 bg-red-100' : ''}
           inputStyle={inputStyle}
           companyId={company}
+          filters={resolveCombinationFilters(rows[idx], f) || undefined}
         />
       );
     }
