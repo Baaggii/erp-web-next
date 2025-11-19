@@ -4486,15 +4486,52 @@ const TableManager = forwardRef(function TableManager({
 
       const relation = relationOpts[column];
       const mapRelationValue = (value) => {
-        if (!relation) return value;
-        if (Array.isArray(value)) {
-          return value.map((item) => {
-            const mapped = labelMap[column]?.[item];
-            return mapped !== undefined ? mapped : item;
-          });
+        const unwrapRelationValue = (input) => {
+          if (Array.isArray(input)) {
+            return input.map((item) => unwrapRelationValue(item));
+          }
+          if (isPlainValueObject(input)) {
+            if (Object.prototype.hasOwnProperty.call(input, 'value')) {
+              return unwrapRelationValue(input.value);
+            }
+            if (Object.prototype.hasOwnProperty.call(input, 'id')) {
+              return unwrapRelationValue(input.id);
+            }
+            if (Object.prototype.hasOwnProperty.call(input, 'key')) {
+              return unwrapRelationValue(input.key);
+            }
+            if (Object.prototype.hasOwnProperty.call(input, 'code')) {
+              return unwrapRelationValue(input.code);
+            }
+          }
+          return input;
+        };
+
+        if (!relation) {
+          return stripTemporaryLabelValue(value);
         }
-        const mapped = labelMap[column]?.[value];
-        return mapped !== undefined ? mapped : value;
+
+        const applyRelationLabel = (input) => {
+          if (Array.isArray(input)) {
+            return input.map((item) => applyRelationLabel(item));
+          }
+          const normalized = unwrapRelationValue(input);
+          const isLookupFriendly =
+            normalized !== undefined &&
+            normalized !== null &&
+            (typeof normalized === 'string' ||
+              typeof normalized === 'number' ||
+              typeof normalized === 'boolean');
+          if (isLookupFriendly) {
+            const mapped = labelMap[column]?.[normalized];
+            if (mapped !== undefined) {
+              return mapped;
+            }
+          }
+          return normalized;
+        };
+
+        return applyRelationLabel(value);
       };
 
       let value = parseMaybeJson(rawValue);
@@ -6207,18 +6244,21 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const valueSources = [
-                        entry?.values,
                         entry?.cleanedValues,
+                        entry?.payload?.cleanedValues,
                         entry?.payload?.values,
+                        entry?.values,
                         entry?.rawValues,
                       ];
-                      const firstStructured = valueSources.find(
+                      const baseValues = valueSources.find(
                         (candidate) =>
                           candidate &&
                           typeof candidate === 'object' &&
                           !Array.isArray(candidate),
                       );
-                      const normalizedValues = normalizeToCanonical(firstStructured || {});
+                      const normalizedValues = normalizeToCanonical(
+                        stripTemporaryLabelValue(baseValues || {}),
+                      );
                       const detailColumnsSource =
                         columns.length > 0 ? columns : Object.keys(normalizedValues || {});
                       const detailColumns = Array.from(
