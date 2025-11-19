@@ -691,17 +691,27 @@ const RowFormModal = function RowFormModal({
     [autoSelectConfigs, columnCaseMap, formVals, relationConfigMap],
   );
 
+  const isCombinationFilterReady = (hasCombination, targetColumn, filters) => {
+    if (!hasCombination) return true;
+    if (!targetColumn || !filters) return false;
+    const value = filters[targetColumn];
+    return !(value === undefined || value === null || value === '');
+  };
+
   const filterRelationOptions = useCallback(
     (column, options) => {
       if (!Array.isArray(options) || options.length === 0) return options;
-      const filters = resolveCombinationFilters(column);
-      if (!filters) return options;
       const config = relationConfigMap[column] || autoSelectConfigs[column];
+      const hasCombination = Boolean(
+        config?.combinationSourceColumn && config?.combinationTargetColumn,
+      );
+      const filters = resolveCombinationFilters(column);
+      if (!filters) return hasCombination ? [] : options;
       const targetColumn = config?.combinationTargetColumn;
-      if (!targetColumn) return options;
+      if (!targetColumn) return hasCombination ? [] : options;
       const filterValue = filters[targetColumn];
       if (filterValue === undefined || filterValue === null || filterValue === '') {
-        return options;
+        return hasCombination ? [] : options;
       }
       const columnRows = relationData[column];
       if (!columnRows || typeof columnRows !== 'object') return options;
@@ -3045,132 +3055,170 @@ const RowFormModal = function RowFormModal({
     }
 
     const control = relationConfigMap[c] ? (
-      formVisible && (
-        <AsyncSearchSelect
-          title={tip}
-          table={relationConfigMap[c].table}
-          searchColumn={relationConfigMap[c].idField || relationConfigMap[c].column}
-          searchColumns={[
-            relationConfigMap[c].idField || relationConfigMap[c].column,
-            ...(relationConfigMap[c].displayFields || []),
-          ]}
-          labelFields={relationConfigMap[c].displayFields || []}
-          value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-          onChange={(val) => {
-            notifyAutoResetGuardOnEdit(c);
-            setFormValuesWithGenerated((prev) => {
-              if (valuesEqual(prev[c], val)) return prev;
-              return { ...prev, [c]: val };
-            });
-            setErrors((er) => ({ ...er, [c]: undefined }));
-          }}
-          onSelect={(opt) => {
-            const el = inputRefs.current[c];
-            if (el) {
-              const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-              handleKeyDown(fake, c);
-            }
-          }}
-          disabled={disabled}
-          onKeyDown={(e) => handleKeyDown(e, c)}
-          onFocus={(e) => {
-            e.target.select();
-            handleFocusField(c);
-            e.target.style.width = 'auto';
-            const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-            e.target.style.width = `${Math.max(boxWidth, w)}px`;
-          }}
-          inputRef={(el) => (inputRefs.current[c] = el)}
-          inputStyle={inputStyle}
-          companyId={company}
-          filters={resolveCombinationFilters(c, relationConfigMap[c]) || undefined}
-        />
-      )
+      (() => {
+        const conf = relationConfigMap[c];
+        const comboFilters = resolveCombinationFilters(c, conf);
+        const hasCombination = Boolean(
+          conf?.combinationSourceColumn && conf?.combinationTargetColumn,
+        );
+        const combinationReady = isCombinationFilterReady(
+          hasCombination,
+          conf?.combinationTargetColumn,
+          comboFilters,
+        );
+        return (
+          formVisible && (
+            <AsyncSearchSelect
+              title={tip}
+              table={conf.table}
+              searchColumn={conf.idField || conf.column}
+              searchColumns={[conf.idField || conf.column, ...(conf.displayFields || [])]}
+              labelFields={conf.displayFields || []}
+              value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+              onChange={(val) => {
+                notifyAutoResetGuardOnEdit(c);
+                setFormValuesWithGenerated((prev) => {
+                  if (valuesEqual(prev[c], val)) return prev;
+                  return { ...prev, [c]: val };
+                });
+                setErrors((er) => ({ ...er, [c]: undefined }));
+              }}
+              onSelect={(opt) => {
+                const el = inputRefs.current[c];
+                if (el) {
+                  const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+                  handleKeyDown(fake, c);
+                }
+              }}
+              disabled={disabled}
+              onKeyDown={(e) => handleKeyDown(e, c)}
+              onFocus={(e) => {
+                e.target.select();
+                handleFocusField(c);
+                e.target.style.width = 'auto';
+                const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+                e.target.style.width = `${Math.max(boxWidth, w)}px`;
+              }}
+              inputRef={(el) => (inputRefs.current[c] = el)}
+              inputStyle={inputStyle}
+              companyId={company}
+              filters={comboFilters || undefined}
+              shouldFetch={combinationReady}
+            />
+          )
+        );
+      })()
     ) : viewSourceMap[c] && !Array.isArray(relations[c]) ? (
-      formVisible && (
-        <AsyncSearchSelect
-          title={tip}
-          table={viewSourceMap[c]}
-          searchColumn={viewDisplays[viewSourceMap[c]]?.idField || c}
-          searchColumns={[
-            viewDisplays[viewSourceMap[c]]?.idField || c,
-            ...(viewDisplays[viewSourceMap[c]]?.displayFields || []),
-          ]}
-          labelFields={viewDisplays[viewSourceMap[c]]?.displayFields || []}
-          idField={viewDisplays[viewSourceMap[c]]?.idField || c}
-          value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-          onChange={(val) => {
-            notifyAutoResetGuardOnEdit(c);
-            setFormValuesWithGenerated((prev) => {
-              if (valuesEqual(prev[c], val)) return prev;
-              return { ...prev, [c]: val };
-            });
-            setErrors((er) => ({ ...er, [c]: undefined }));
-          }}
-          onSelect={(opt) => {
-            const el = inputRefs.current[c];
-            if (el) {
-              const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-              handleKeyDown(fake, c);
-            }
-          }}
-          disabled={disabled}
-          onKeyDown={(e) => handleKeyDown(e, c)}
-          onFocus={(e) => {
-            e.target.select();
-            handleFocusField(c);
-            e.target.style.width = 'auto';
-            const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-            e.target.style.width = `${Math.max(boxWidth, w)}px`;
-          }}
-          inputRef={(el) => (inputRefs.current[c] = el)}
-          inputStyle={inputStyle}
-          companyId={company}
-        />
-      )
+      (() => {
+        const view = viewSourceMap[c];
+        const cfg = viewDisplays[view] || {};
+        const comboFilters = resolveCombinationFilters(c, cfg);
+        const hasCombination = Boolean(
+          cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
+        );
+        const combinationReady = isCombinationFilterReady(
+          hasCombination,
+          cfg?.combinationTargetColumn,
+          comboFilters,
+        );
+        return (
+          formVisible && (
+            <AsyncSearchSelect
+              title={tip}
+              table={view}
+              searchColumn={cfg.idField || c}
+              searchColumns={[cfg.idField || c, ...(cfg.displayFields || [])]}
+              labelFields={cfg.displayFields || []}
+              idField={cfg.idField || c}
+              value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+              onChange={(val) => {
+                notifyAutoResetGuardOnEdit(c);
+                setFormValuesWithGenerated((prev) => {
+                  if (valuesEqual(prev[c], val)) return prev;
+                  return { ...prev, [c]: val };
+                });
+                setErrors((er) => ({ ...er, [c]: undefined }));
+              }}
+              onSelect={(opt) => {
+                const el = inputRefs.current[c];
+                if (el) {
+                  const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+                  handleKeyDown(fake, c);
+                }
+              }}
+              disabled={disabled}
+              onKeyDown={(e) => handleKeyDown(e, c)}
+              onFocus={(e) => {
+                e.target.select();
+                handleFocusField(c);
+                e.target.style.width = 'auto';
+                const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+                e.target.style.width = `${Math.max(boxWidth, w)}px`;
+              }}
+              inputRef={(el) => (inputRefs.current[c] = el)}
+              inputStyle={inputStyle}
+              companyId={company}
+              filters={comboFilters || undefined}
+              shouldFetch={combinationReady}
+            />
+          )
+        );
+      })()
     ) : autoSelectConfigs[c] && !Array.isArray(relations[c]) ? (
-      formVisible && (
-        <AsyncSearchSelect
-          title={tip}
-          table={autoSelectConfigs[c].table}
-          searchColumn={autoSelectConfigs[c].idField}
-          searchColumns={[
-            autoSelectConfigs[c].idField,
-            ...(autoSelectConfigs[c].displayFields || []),
-          ]}
-          labelFields={autoSelectConfigs[c].displayFields || []}
-          idField={autoSelectConfigs[c].idField}
-          value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
-          onChange={(val) => {
-            notifyAutoResetGuardOnEdit(c);
-            setFormValuesWithGenerated((prev) => {
-              if (valuesEqual(prev[c], val)) return prev;
-              return { ...prev, [c]: val };
-            });
-            setErrors((er) => ({ ...er, [c]: undefined }));
-          }}
-          onSelect={(opt) => {
-            const el = inputRefs.current[c];
-            if (el) {
-              const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
-              handleKeyDown(fake, c);
-            }
-          }}
-          disabled={disabled}
-          onKeyDown={(e) => handleKeyDown(e, c)}
-          onFocus={(e) => {
-            e.target.select();
-            handleFocusField(c);
-            e.target.style.width = 'auto';
-            const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
-            e.target.style.width = `${Math.max(boxWidth, w)}px`;
-          }}
-          inputRef={(el) => (inputRefs.current[c] = el)}
-          inputStyle={inputStyle}
-          companyId={company}
-          filters={resolveCombinationFilters(c) || undefined}
-        />
-      )
+      (() => {
+        const cfg = autoSelectConfigs[c];
+        const comboFilters = resolveCombinationFilters(c);
+        const hasCombination = Boolean(
+          cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
+        );
+        const combinationReady = isCombinationFilterReady(
+          hasCombination,
+          cfg?.combinationTargetColumn,
+          comboFilters,
+        );
+        return (
+          formVisible && (
+            <AsyncSearchSelect
+              title={tip}
+              table={cfg.table}
+              searchColumn={cfg.idField}
+              searchColumns={[cfg.idField, ...(cfg.displayFields || [])]}
+              labelFields={cfg.displayFields || []}
+              idField={cfg.idField}
+              value={typeof formVals[c] === 'object' ? formVals[c].value : formVals[c]}
+              onChange={(val) => {
+                notifyAutoResetGuardOnEdit(c);
+                setFormValuesWithGenerated((prev) => {
+                  if (valuesEqual(prev[c], val)) return prev;
+                  return { ...prev, [c]: val };
+                });
+                setErrors((er) => ({ ...er, [c]: undefined }));
+              }}
+              onSelect={(opt) => {
+                const el = inputRefs.current[c];
+                if (el) {
+                  const fake = { key: 'Enter', preventDefault: () => {}, target: el, selectedOption: opt };
+                  handleKeyDown(fake, c);
+                }
+              }}
+              disabled={disabled}
+              onKeyDown={(e) => handleKeyDown(e, c)}
+              onFocus={(e) => {
+                e.target.select();
+                handleFocusField(c);
+                e.target.style.width = 'auto';
+                const w = Math.min(e.target.scrollWidth + 2, boxMaxWidth);
+                e.target.style.width = `${Math.max(boxWidth, w)}px`;
+              }}
+              inputRef={(el) => (inputRefs.current[c] = el)}
+              inputStyle={inputStyle}
+              companyId={company}
+              filters={comboFilters || undefined}
+              shouldFetch={combinationReady}
+            />
+          )
+        );
+      })()
     ) : Array.isArray(relations[c]) ? (
       (() => {
         const filteredOptions = filterRelationOptions(c, relations[c]);

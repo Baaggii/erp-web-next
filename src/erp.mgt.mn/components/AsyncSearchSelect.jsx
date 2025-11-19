@@ -524,6 +524,13 @@ export default function AsyncSearchSelect({
   }, [table]);
 
   useEffect(() => {
+    if (shouldFetch) return;
+    setOptions([]);
+    setHasMore(false);
+    setLoading(false);
+  }, [shouldFetch]);
+
+  useEffect(() => {
     if (!shouldFetch || disabled || tenantMeta === null) return;
     const controller = new AbortController();
     const requestId = beginFetchRequest();
