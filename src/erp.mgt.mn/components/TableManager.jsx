@@ -37,6 +37,7 @@ import {
 import { isPlainRecord } from '../utils/transactionValues.js';
 import { extractRowIndex, sortRowsByIndex } from '../utils/sortRowsByIndex.js';
 import { resolveDisabledFieldState } from './tableManagerDisabledFields.js';
+import { normalizeCombinationPairs } from '../utils/relationCombination.js';
 
 const TEMPORARY_FILTER_CACHE_KEY = 'temporary-transaction-filter';
 
@@ -1615,6 +1616,10 @@ const TableManager = forwardRef(function TableManager({
           normalizedCfg.indexFields = deduped;
         }
       }
+      const combinationPairs = normalizeCombinationPairs(rel.combination);
+      if (combinationPairs.length > 0) {
+        normalizedCfg.combination = combinationPairs;
+      }
 
       const rows = await fetchTableRows(rel.table, tenantInfo);
       if (canceled) return null;
@@ -1740,6 +1745,10 @@ const TableManager = forwardRef(function TableManager({
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
           };
+          const combos = normalizeCombinationPairs(r.combination ?? r.combinationFields ?? []);
+          if (combos.length > 0) {
+            relationMap[key].combination = combos;
+          }
         });
         setRelations(relationMap);
 
@@ -1767,7 +1776,12 @@ const TableManager = forwardRef(function TableManager({
             rowMap[column] = columnRows;
           }
           if (config) {
-            cfgMap[column] = config;
+            cfgMap[column] = {
+              ...config,
+              ...(Array.isArray(config.combination)
+                ? { combination: config.combination.map((pair) => ({ ...pair })) }
+                : {}),
+            };
           }
         });
 
@@ -1789,7 +1803,12 @@ const TableManager = forwardRef(function TableManager({
 
         aliasEntries.forEach(({ alias, source, config }) => {
           if (!cfgMap[alias]) {
-            cfgMap[alias] = { ...config };
+            cfgMap[alias] = {
+              ...config,
+              ...(Array.isArray(config.combination)
+                ? { combination: config.combination.map((pair) => ({ ...pair })) }
+                : {}),
+            };
           }
           if (dataMap[source] && !dataMap[alias]) {
             dataMap[alias] = dataMap[source];
@@ -1823,7 +1842,12 @@ const TableManager = forwardRef(function TableManager({
         const remap = {};
         Object.entries(cfgMap).forEach(([k, v]) => {
           const key = resolveCanonicalKey(k);
-          remap[key] = v;
+          remap[key] = {
+            ...v,
+            ...(Array.isArray(v?.combination)
+              ? { combination: v.combination.map((pair) => ({ ...pair })) }
+              : {}),
+          };
         });
         setRelationConfigs(remap);
       } catch (err) {

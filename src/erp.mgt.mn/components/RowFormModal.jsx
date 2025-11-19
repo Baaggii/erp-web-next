@@ -15,6 +15,10 @@ import {
 } from '../utils/generatedColumns.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
+import {
+  normalizeCombinationPairs,
+  filterOptionsByCombination,
+} from '../utils/relationCombination.js';
 
 const DEFAULT_RECEIPT_TYPES = [
   'B2C_RECEIPT',
@@ -353,6 +357,18 @@ const RowFormModal = function RowFormModal({
     () => JSON.stringify(relationConfigMap || {}),
     [relationConfigMap],
   );
+  const combinationFilterMap = React.useMemo(() => {
+    const map = {};
+    Object.entries(relationConfigMap || {}).forEach(([column, config]) => {
+      const combos = normalizeCombinationPairs(
+        config?.combination ?? config?.combinationFields ?? [],
+      );
+      if (combos.length > 0) {
+        map[column] = combos;
+      }
+    });
+    return map;
+  }, [relationConfigMapKey]);
 
   const displayIndex = React.useMemo(() => {
     const index = {};
@@ -508,6 +524,25 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [columns]);
+  const filterRelationOptionsByCombination = React.useCallback(
+    (column, options) =>
+      filterOptionsByCombination({
+        column,
+        options,
+        combinationMap: combinationFilterMap,
+        rowValues: formVals,
+        columnByLowerMap,
+        relationRowsByColumn: relationData,
+        rowValueAccessor: getRowValueCaseInsensitive,
+      }),
+    [
+      combinationFilterMap,
+      formVals,
+      columnByLowerMap,
+      relationData,
+      getRowValueCaseInsensitive,
+    ],
+  );
   const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
   const defaultValuesKey = React.useMemo(
     () => JSON.stringify(defaultValues || {}),
@@ -3031,32 +3066,37 @@ const RowFormModal = function RowFormModal({
         />
       )
     ) : Array.isArray(relations[c]) ? (
-      <select
-        title={tip}
-        ref={(el) => (inputRefs.current[c] = el)}
-        value={formVals[c]}
-        onFocus={() => handleFocusField(c)}
-        onChange={(e) => {
-          notifyAutoResetGuardOnEdit(c);
-          const value = e.target.value;
-          setFormValuesWithGenerated((prev) => {
-            if (prev[c] === value) return prev;
-            return { ...prev, [c]: value };
-          });
-          setErrors((er) => ({ ...er, [c]: undefined }));
-        }}
-        onKeyDown={(e) => handleKeyDown(e, c)}
-        disabled={disabled}
-        className={inputClass}
-        style={inputStyle}
-      >
-        <option value="">-- select --</option>
-        {relations[c].map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
+      (() => {
+        const selectOptions = filterRelationOptionsByCombination(c, relations[c]) || [];
+        return (
+          <select
+            title={tip}
+            ref={(el) => (inputRefs.current[c] = el)}
+            value={formVals[c]}
+            onFocus={() => handleFocusField(c)}
+            onChange={(e) => {
+              notifyAutoResetGuardOnEdit(c);
+              const value = e.target.value;
+              setFormValuesWithGenerated((prev) => {
+                if (prev[c] === value) return prev;
+                return { ...prev, [c]: value };
+              });
+              setErrors((er) => ({ ...er, [c]: undefined }));
+            }}
+            onKeyDown={(e) => handleKeyDown(e, c)}
+            disabled={disabled}
+            className={inputClass}
+            style={inputStyle}
+          >
+            <option value="">-- select --</option>
+            {selectOptions.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        );
+      })()
     ) : (
       <input
         title={tip}
