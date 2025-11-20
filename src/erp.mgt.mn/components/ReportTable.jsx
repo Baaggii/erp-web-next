@@ -63,7 +63,7 @@ export default function ReportTable({
   fieldTypeMap = {},
   onSnapshotReady,
 }) {
-  const { user, branch, department } = useContext(AuthContext);
+  const { user, company } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -389,8 +389,7 @@ export default function ReportTable({
       extraConditions,
       session: {
         empid: user?.empid,
-        branch_id: branch,
-        department_id: department,
+        company_id: company,
       },
     };
     setTxnInfo({ loading: true, col, value, data: [], sql: '', displayFields: [] });

@@ -1458,12 +1458,7 @@ const TableManager = forwardRef(function TableManager({
 
     const fetchTableRows = (tableName, tenantInfo) => {
       if (!tableName) return Promise.resolve([]);
-      const cacheKey = [
-        tableName.toLowerCase(),
-        company ?? '',
-        branch ?? '',
-        department ?? '',
-      ].join('|');
+      const cacheKey = [tableName.toLowerCase(), company ?? ''].join('|');
       if (tableRowsCache.has(cacheKey)) return tableRowsCache.get(cacheKey);
       const promise = (async () => {
         const info = tenantInfo || (await fetchTenantInfo(tableName));
@@ -1474,14 +1469,8 @@ const TableManager = forwardRef(function TableManager({
         const rows = [];
         while (!canceled) {
           const params = new URLSearchParams({ page, perPage });
-          if (!isShared) {
-            if (tenantKeys.includes('company_id') && company != null)
-              params.set('company_id', company);
-            if (tenantKeys.includes('branch_id') && branch != null)
-              params.set('branch_id', branch);
-            if (tenantKeys.includes('department_id') && department != null)
-              params.set('department_id', department);
-          }
+          if (!isShared && tenantKeys.includes('company_id') && company != null)
+            params.set('company_id', company);
           let res;
           try {
             res = await fetch(
@@ -2294,32 +2283,6 @@ const TableManager = forwardRef(function TableManager({
           companyKey,
         );
       }
-      if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
-        const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
-        const rowBranchId =
-          branchKey != null ? normalizedRow[branchKey] : normalizedRow.branch_id;
-        appendTenantParam(
-          params,
-          'branch_id',
-          localCaseMap,
-          rowBranchId,
-          branchKey,
-        );
-      }
-      if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
-        const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
-        const rowDepartmentId =
-          departmentKey != null
-            ? normalizedRow[departmentKey]
-            : normalizedRow.department_id;
-        appendTenantParam(
-          params,
-          'department_id',
-          localCaseMap,
-          rowDepartmentId,
-          departmentKey,
-        );
-      }
     }
     if (txnToastEnabled) {
       const paramEntries = Array.from(params.entries());
@@ -2547,32 +2510,6 @@ const TableManager = forwardRef(function TableManager({
               localCaseMap,
               rowCompanyId,
               companyKey,
-            );
-          }
-          if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
-            const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
-            const rowBranchId =
-              branchKey != null ? normalizedRow[branchKey] : normalizedRow.branch_id;
-            appendTenantParam(
-              params,
-              'branch_id',
-              localCaseMap,
-              rowBranchId,
-              branchKey,
-            );
-          }
-          if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
-            const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
-            const rowDepartmentId =
-              departmentKey != null
-                ? normalizedRow[departmentKey]
-                : normalizedRow.department_id;
-            appendTenantParam(
-              params,
-              'department_id',
-              localCaseMap,
-              rowDepartmentId,
-              departmentKey,
             );
           }
         }
@@ -3317,8 +3254,6 @@ const TableManager = forwardRef(function TableManager({
     const submittedAt = new Date().toISOString();
     const baseTenant = {
       company_id: company ?? null,
-      branch_id: branch ?? null,
-      department_id: department ?? null,
     };
     const baseRequest = {
       table,
