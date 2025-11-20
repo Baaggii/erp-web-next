@@ -2610,8 +2610,12 @@ const TableManager = forwardRef(function TableManager({
         if (!hasMeaningfulValue(relationValue)) return;
         const relationRow = getRelationRow(canonicalField, relationValue);
         if (!relationRow || typeof relationRow !== 'object') return;
+        const relationRowWithDisplays = populateRelationDisplayFields(
+          relationRow,
+          seen,
+        );
         const rowKeyMap = {};
-        Object.keys(relationRow).forEach((key) => {
+        Object.keys(relationRowWithDisplays).forEach((key) => {
           rowKeyMap[key.toLowerCase()] = key;
         });
         config.displayFields.forEach((displayField) => {
@@ -2622,9 +2626,12 @@ const TableManager = forwardRef(function TableManager({
             hydrated === values ? values[canonicalDisplay] : hydrated[canonicalDisplay];
           if (hasMeaningfulValue(currentValue)) return;
           const lookupKey = rowKeyMap[displayField.toLowerCase()];
-          if (lookupKey && Object.prototype.hasOwnProperty.call(relationRow, lookupKey)) {
+          if (
+            lookupKey &&
+            Object.prototype.hasOwnProperty.call(relationRowWithDisplays, lookupKey)
+          ) {
             ensureHydrated();
-            hydrated[canonicalDisplay] = relationRow[lookupKey];
+            hydrated[canonicalDisplay] = relationRowWithDisplays[lookupKey];
           }
         });
       });
