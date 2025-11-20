@@ -2563,7 +2563,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const populateRelationDisplayFields = useCallback(
-    (values) => {
+    function populateRelationDisplayFields(values, seen = new WeakSet()) {
       if (!values || typeof values !== 'object') return values || {};
 
       const hasMeaningfulValue = (val) => {
@@ -2574,18 +2574,20 @@ const TableManager = forwardRef(function TableManager({
 
       const getRelationRow = (fieldKey, value) => {
         if (value === undefined || value === null) return null;
+        const relationId = resolveScopeId(value);
         const map = refRows[fieldKey] || refRows[resolveCanonicalKey(fieldKey)];
         if (!map || typeof map !== 'object') return null;
-        if (Object.prototype.hasOwnProperty.call(map, value)) return map[value];
-        if (typeof value === 'string') {
-          const trimmed = value.trim();
-          if (trimmed && Object.prototype.hasOwnProperty.call(map, trimmed)) {
-            return map[trimmed];
+        if (relationId !== undefined && relationId !== null) {
+          if (Object.prototype.hasOwnProperty.call(map, relationId)) {
+            return map[relationId];
           }
-        }
-        const stringValue = String(value);
-        if (Object.prototype.hasOwnProperty.call(map, stringValue)) {
-          return map[stringValue];
+          const strRelationId = String(relationId).trim();
+          if (
+            strRelationId &&
+            Object.prototype.hasOwnProperty.call(map, strRelationId)
+          ) {
+            return map[strRelationId];
+          }
         }
         return null;
       };
@@ -2625,6 +2627,30 @@ const TableManager = forwardRef(function TableManager({
             hydrated[canonicalDisplay] = relationRow[lookupKey];
           }
         });
+      });
+
+      Object.entries(hydrated).forEach(([key, val]) => {
+        if (Array.isArray(val)) {
+          const mapped = val.map((item) => {
+            if (!item || typeof item !== 'object') return item;
+            if (seen.has(item)) return item;
+            seen.add(item);
+            return populateRelationDisplayFields(item, seen);
+          });
+          const hasChanges = mapped.some((item, idx) => !Object.is(item, val[idx]));
+          if (hasChanges) {
+            ensureHydrated();
+            hydrated[key] = mapped;
+          }
+        } else if (val && typeof val === 'object') {
+          if (seen.has(val)) return;
+          seen.add(val);
+          const nested = populateRelationDisplayFields(val, seen);
+          if (!Object.is(nested, val)) {
+            ensureHydrated();
+            hydrated[key] = nested;
+          }
+        }
       });
 
       return hydrated;
