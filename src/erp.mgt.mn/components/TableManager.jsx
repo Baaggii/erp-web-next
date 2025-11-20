@@ -2563,7 +2563,7 @@ const TableManager = forwardRef(function TableManager({
   }
 
   const populateRelationDisplayFields = useCallback(
-    (values) => {
+    function populateRelationDisplayFields(values, seen = new WeakSet()) {
       if (!values || typeof values !== 'object') return values || {};
 
       const hasMeaningfulValue = (val) => {
@@ -2625,6 +2625,30 @@ const TableManager = forwardRef(function TableManager({
             hydrated[canonicalDisplay] = relationRow[lookupKey];
           }
         });
+      });
+
+      Object.entries(hydrated).forEach(([key, val]) => {
+        if (Array.isArray(val)) {
+          const mapped = val.map((item) => {
+            if (!item || typeof item !== 'object') return item;
+            if (seen.has(item)) return item;
+            seen.add(item);
+            return populateRelationDisplayFields(item, seen);
+          });
+          const hasChanges = mapped.some((item, idx) => !Object.is(item, val[idx]));
+          if (hasChanges) {
+            ensureHydrated();
+            hydrated[key] = mapped;
+          }
+        } else if (val && typeof val === 'object') {
+          if (seen.has(val)) return;
+          seen.add(val);
+          const nested = populateRelationDisplayFields(val, seen);
+          if (!Object.is(nested, val)) {
+            ensureHydrated();
+            hydrated[key] = nested;
+          }
+        }
       });
 
       return hydrated;
