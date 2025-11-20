@@ -1685,6 +1685,9 @@ const TableManager = forwardRef(function TableManager({
           ...(rel.combinationTargetColumn
             ? { combinationTargetColumn: rel.combinationTargetColumn }
             : {}),
+          ...(Object.keys(nestedDisplayLookups || {}).length > 0
+            ? { nestedLookups: nestedDisplayLookups }
+            : {}),
         },
         options,
         rows: optionRows,
@@ -2669,6 +2672,35 @@ const TableManager = forwardRef(function TableManager({
     [relationConfigs, resolveCanonicalKey],
   );
 
+  const resolveRelationDisplayValue = useCallback(
+    function resolveRelationDisplayValue(row, displayField, config, rowKeyMap) {
+      if (!row || typeof displayField !== 'string' || displayField.trim().length === 0)
+        return undefined;
+      const keyMap = rowKeyMap
+        ? rowKeyMap
+        : Object.keys(row || {}).reduce((acc, key) => {
+            acc[key.toLowerCase()] = key;
+            return acc;
+          }, {});
+      const lookupKey = keyMap[displayField.toLowerCase()];
+      if (!lookupKey) return undefined;
+      let displayValue = row[lookupKey];
+      if (displayValue === undefined || displayValue === null) return undefined;
+      const nestedLookup = config?.nestedLookups?.[displayField.toLowerCase()];
+      if (nestedLookup) {
+        const mapped =
+          nestedLookup[displayValue] !== undefined
+            ? nestedLookup[displayValue]
+            : nestedLookup[String(displayValue)];
+        if (mapped !== undefined) {
+          displayValue = mapped;
+        }
+      }
+      return displayValue;
+    },
+    [],
+  );
+
   const populateRelationDisplayFields = useCallback(
     function populateRelationDisplayFields(values, seen = new WeakSet()) {
       if (!values || typeof values !== 'object') return values || {};
@@ -2728,11 +2760,15 @@ const TableManager = forwardRef(function TableManager({
           const currentValue =
             hydrated === values ? values[canonicalDisplay] : hydrated[canonicalDisplay];
           if (hasMeaningfulValue(currentValue)) return;
-          const lookupKey = rowKeyMap[displayField.toLowerCase()];
-          if (lookupKey && Object.prototype.hasOwnProperty.call(relationRow, lookupKey)) {
-            ensureHydrated();
-            hydrated[canonicalDisplay] = relationRow[lookupKey];
-          }
+          const displayValue = resolveRelationDisplayValue(
+            relationRow,
+            displayField,
+            config,
+            rowKeyMap,
+          );
+          if (!hasMeaningfulValue(displayValue)) return;
+          ensureHydrated();
+          hydrated[canonicalDisplay] = displayValue;
         });
       });
 
@@ -2762,7 +2798,7 @@ const TableManager = forwardRef(function TableManager({
 
       return hydrated;
     },
-    [refRows, relationConfigs, resolveCanonicalKey],
+    [refRows, relationConfigs, resolveCanonicalKey, resolveRelationDisplayValue],
   );
 
   const mergeDisplayFallbacks = useCallback(
@@ -2897,9 +2933,9 @@ const TableManager = forwardRef(function TableManager({
           });
           conf.displayFields.forEach((df) => {
             const key = resolveCanonicalKey(df);
-            const rk = rowKeyMap[df.toLowerCase()];
-            if (key && rk && row[rk] !== undefined) {
-              next[key] = row[rk];
+            const displayValue = resolveRelationDisplayValue(row, df, conf, rowKeyMap);
+            if (key && displayValue !== undefined) {
+              next[key] = displayValue;
             }
           });
         }
@@ -6463,22 +6499,7 @@ const TableManager = forwardRef(function TableManager({
                       const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
-                      const valueSources = [
-                        entry?.cleanedValues,
-                        entry?.payload?.cleanedValues,
-                        entry?.payload?.values,
-                        entry?.values,
-                        entry?.rawValues,
-                      ];
-                      const baseValues = valueSources.find(
-                        (candidate) =>
-                          candidate &&
-                          typeof candidate === 'object' &&
-                          !Array.isArray(candidate),
-                      );
-                      const normalizedValues = populateRelationDisplayFields(
-                        normalizeToCanonical(stripTemporaryLabelValue(baseValues || {})),
-                      );
+                      const { values: normalizedValues } = buildTemporaryFormState(entry);
                       const normalizedValueKeys = Object.keys(normalizedValues || {});
                       const detailColumnsSource =
                         columns.length > 0
