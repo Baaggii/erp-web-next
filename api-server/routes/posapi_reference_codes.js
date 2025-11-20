@@ -4,6 +4,7 @@ import { getEmploymentSession } from '../../db/index.js';
 import {
   getUploadMiddleware,
   importStaticCodes,
+  importStaticCodesFromXlsx,
   initialiseReferenceCodeSync,
   loadSyncLogs,
   loadSyncSettings,
@@ -81,6 +82,30 @@ router.post('/upload', requireAuth, getUploadMiddleware(), async (req, res, next
     const result = await importStaticCodes(codeType, req.file.buffer);
     res.json({ message: 'Imported reference codes', result });
   } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/import-xlsx', requireAuth, getUploadMiddleware(), async (req, res, next) => {
+  try {
+    const guard = await requireSystemSettings(req, res);
+    if (!guard) return;
+    const codeType = String(req.body?.codeType || '').trim();
+    if (!codeType) {
+      res.status(400).json({ message: 'codeType is required' });
+      return;
+    }
+    if (!req.file || !req.file.buffer) {
+      res.status(400).json({ message: 'Excel file is required' });
+      return;
+    }
+    const result = await importStaticCodesFromXlsx(codeType, req.file.buffer);
+    res.json({ message: 'Imported reference codes from Excel', result });
+  } catch (err) {
+    if (err?.statusCode) {
+      res.status(err.statusCode).json({ message: err.message || 'Invalid Excel file' });
+      return;
+    }
     next(err);
   }
 });
