@@ -2765,6 +2765,71 @@ const TableManager = forwardRef(function TableManager({
     [refRows, relationConfigs, resolveCanonicalKey],
   );
 
+  const mergeDisplayFallbacks = useCallback(
+    function mergeDisplayFallbacks(primary, fallback, seen = new WeakSet()) {
+      const hasMeaningfulValue = (val) => {
+        if (val === undefined || val === null) return false;
+        if (typeof val === 'string') return val.trim().length > 0;
+        return true;
+      };
+
+      if (primary === fallback) return primary;
+      if (!fallback || typeof fallback !== 'object') {
+        return primary ?? fallback;
+      }
+      if (fallback instanceof Date) return primary ?? fallback;
+      if (typeof File !== 'undefined' && fallback instanceof File) return primary;
+      if (typeof Blob !== 'undefined' && fallback instanceof Blob) return primary;
+
+      if (Array.isArray(primary) || Array.isArray(fallback)) {
+        const primaryArr = Array.isArray(primary) ? primary : [];
+        const fallbackArr = Array.isArray(fallback) ? fallback : [];
+        const maxLength = Math.max(primaryArr.length, fallbackArr.length);
+        let merged = primaryArr;
+        for (let i = 0; i < maxLength; i += 1) {
+          const next = mergeDisplayFallbacks(primaryArr[i], fallbackArr[i], seen);
+          if (!Object.is(next, primaryArr[i])) {
+            if (merged === primaryArr) merged = [...primaryArr];
+            merged[i] = next;
+          }
+        }
+        return merged;
+      }
+
+      if (!primary || typeof primary !== 'object') {
+        return hasMeaningfulValue(primary) ? primary : fallback;
+      }
+
+      if (seen.has(fallback)) return primary;
+      seen.add(fallback);
+
+      let merged = primary;
+      Object.entries(fallback).forEach(([key, fallbackVal]) => {
+        const primaryVal = primary[key];
+        if (!hasMeaningfulValue(primaryVal) && hasMeaningfulValue(fallbackVal)) {
+          if (merged === primary) merged = { ...primary };
+          merged[key] = fallbackVal;
+          return;
+        }
+        if (
+          primaryVal &&
+          typeof primaryVal === 'object' &&
+          fallbackVal &&
+          typeof fallbackVal === 'object'
+        ) {
+          const nested = mergeDisplayFallbacks(primaryVal, fallbackVal, seen);
+          if (!Object.is(nested, primaryVal)) {
+            if (merged === primary) merged = { ...primary };
+            merged[key] = nested;
+          }
+        }
+      });
+
+      return merged;
+    },
+    [],
+  );
+
 
   async function loadSearch(term, pg = 1) {
     const params = new URLSearchParams({ page: pg, pageSize: 20 });
@@ -4121,13 +4186,11 @@ const TableManager = forwardRef(function TableManager({
           (candidate) =>
             candidate && typeof candidate === 'object' && !Array.isArray(candidate),
         );
+        const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
         const normalizedValues = populateRelationDisplayFields(
-          normalizeToCanonical(
-            stripTemporaryLabelValue(
-              hydrateDisplayFromWrappedRelations(baseValues || {}),
-            ),
-          ),
+          normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
         );
+        const mergedValues = mergeDisplayFallbacks(normalizedValues, hydratedValues);
 
         const rowSources = [
           entry?.payload?.gridRows,
@@ -4139,21 +4202,22 @@ const TableManager = forwardRef(function TableManager({
         const baseRows = rowSources.find((rows) => Array.isArray(rows));
         const sanitizedRows = Array.isArray(baseRows)
           ? baseRows.map((row) => {
-              const stripped = stripTemporaryLabelValue(
-                hydrateDisplayFromWrappedRelations(row),
-              );
+              const hydratedRow = hydrateDisplayFromWrappedRelations(row);
+              const stripped = stripTemporaryLabelValue(hydratedRow);
               if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
                 const canonical = normalizeToCanonical(stripped);
-                return populateRelationDisplayFields(canonical);
+                const populated = populateRelationDisplayFields(canonical);
+                return mergeDisplayFallbacks(populated, hydratedRow);
               }
               return stripped ?? {};
             })
           : [];
 
-        return { values: normalizedValues, rows: sanitizedRows };
+        return { values: mergedValues, rows: sanitizedRows };
       },
       [
         hydrateDisplayFromWrappedRelations,
+        mergeDisplayFallbacks,
         normalizeToCanonical,
         populateRelationDisplayFields,
       ],
