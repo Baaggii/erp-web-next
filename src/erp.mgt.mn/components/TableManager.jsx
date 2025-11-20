@@ -2562,6 +2562,113 @@ const TableManager = forwardRef(function TableManager({
     setCtxMenu({ x: e.clientX, y: e.clientY, value });
   }
 
+  const hydrateDisplayFromWrappedRelations = useCallback(
+    function hydrateDisplayFromWrappedRelations(values, seen = new WeakSet()) {
+      if (!values || typeof values !== 'object') return values || {};
+      if (seen.has(values)) return values;
+      seen.add(values);
+
+      const hasMeaningfulValue = (val) => {
+        if (val === undefined || val === null) return false;
+        if (typeof val === 'string') return val.trim().length > 0;
+        return true;
+      };
+
+      const collectWrapperDisplay = (val) => {
+        if (val === undefined || val === null) return null;
+        if (Array.isArray(val)) {
+          for (const item of val) {
+            const display = collectWrapperDisplay(item);
+            if (display) return display;
+          }
+          return null;
+        }
+        if (val && typeof val === 'object') {
+          const displayEntries = {};
+          Object.entries(val).forEach(([k, v]) => {
+            if (k === 'value') return;
+            if (v !== undefined && v !== null) {
+              displayEntries[k] = v;
+            }
+          });
+          if (Object.keys(displayEntries).length > 0) return displayEntries;
+          if (Object.prototype.hasOwnProperty.call(val, 'value')) {
+            return collectWrapperDisplay(val.value);
+          }
+        }
+        return null;
+      };
+
+      let hydrated = values;
+      const ensureHydrated = () => {
+        if (hydrated === values) {
+          hydrated = { ...values };
+        }
+      };
+
+      Object.entries(relationConfigs || {}).forEach(([rawField, config]) => {
+        if (!config || !Array.isArray(config.displayFields) || config.displayFields.length === 0) {
+          return;
+        }
+        const canonicalField = resolveCanonicalKey(rawField);
+        if (!canonicalField) return;
+        const relationValue =
+          hydrated === values ? values[canonicalField] : hydrated[canonicalField];
+        if (!hasMeaningfulValue(relationValue)) return;
+        const wrapperDisplay = collectWrapperDisplay(relationValue);
+        if (!wrapperDisplay) return;
+
+        const wrapperKeyMap = {};
+        Object.entries(wrapperDisplay).forEach(([k, v]) => {
+          wrapperKeyMap[k.toLowerCase()] = v;
+        });
+
+        config.displayFields.forEach((displayField) => {
+          if (typeof displayField !== 'string' || !displayField.trim()) return;
+          const canonicalDisplay = resolveCanonicalKey(displayField);
+          if (!canonicalDisplay) return;
+          const currentValue =
+            hydrated === values ? values[canonicalDisplay] : hydrated[canonicalDisplay];
+          if (hasMeaningfulValue(currentValue)) return;
+          const displayLookup =
+            wrapperKeyMap[displayField.toLowerCase()] ||
+            wrapperKeyMap[canonicalDisplay.toLowerCase()] ||
+            wrapperKeyMap.label ||
+            wrapperKeyMap.name ||
+            wrapperKeyMap.title ||
+            wrapperKeyMap.text;
+          if (displayLookup !== undefined) {
+            ensureHydrated();
+            hydrated[canonicalDisplay] = displayLookup;
+          }
+        });
+      });
+
+      Object.entries(hydrated).forEach(([key, val]) => {
+        if (Array.isArray(val)) {
+          const mapped = val.map((item) => {
+            if (!item || typeof item !== 'object') return item;
+            return hydrateDisplayFromWrappedRelations(item, seen);
+          });
+          const hasChanges = mapped.some((item, idx) => !Object.is(item, val[idx]));
+          if (hasChanges) {
+            ensureHydrated();
+            hydrated[key] = mapped;
+          }
+        } else if (val && typeof val === 'object') {
+          const nested = hydrateDisplayFromWrappedRelations(val, seen);
+          if (!Object.is(nested, val)) {
+            ensureHydrated();
+            hydrated[key] = nested;
+          }
+        }
+      });
+
+      return hydrated;
+    },
+    [relationConfigs, resolveCanonicalKey],
+  );
+
   const populateRelationDisplayFields = useCallback(
     function populateRelationDisplayFields(values, seen = new WeakSet()) {
       if (!values || typeof values !== 'object') return values || {};
@@ -4015,7 +4122,11 @@ const TableManager = forwardRef(function TableManager({
             candidate && typeof candidate === 'object' && !Array.isArray(candidate),
         );
         const normalizedValues = populateRelationDisplayFields(
-          normalizeToCanonical(stripTemporaryLabelValue(baseValues || {})),
+          normalizeToCanonical(
+            stripTemporaryLabelValue(
+              hydrateDisplayFromWrappedRelations(baseValues || {}),
+            ),
+          ),
         );
 
         const rowSources = [
@@ -4028,7 +4139,9 @@ const TableManager = forwardRef(function TableManager({
         const baseRows = rowSources.find((rows) => Array.isArray(rows));
         const sanitizedRows = Array.isArray(baseRows)
           ? baseRows.map((row) => {
-              const stripped = stripTemporaryLabelValue(row);
+              const stripped = stripTemporaryLabelValue(
+                hydrateDisplayFromWrappedRelations(row),
+              );
               if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
                 const canonical = normalizeToCanonical(stripped);
                 return populateRelationDisplayFields(canonical);
@@ -4039,7 +4152,11 @@ const TableManager = forwardRef(function TableManager({
 
         return { values: normalizedValues, rows: sanitizedRows };
       },
-      [normalizeToCanonical, populateRelationDisplayFields],
+      [
+        hydrateDisplayFromWrappedRelations,
+        normalizeToCanonical,
+        populateRelationDisplayFields,
+      ],
     );
 
     const openTemporaryPromotion = useCallback(
