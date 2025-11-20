@@ -2380,19 +2380,38 @@ export default function PosApiAdmin() {
   async function handleStaticUpload(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
+    const fileName = (file.name || '').toLowerCase();
+    const mime = (file.type || '').toLowerCase();
+    const isExcel = fileName.endsWith('.xlsx') || mime.includes('sheet');
+    const isCsv = fileName.endsWith('.csv') || mime.includes('csv');
+    if (!isExcel && !isCsv) {
+      setInfoSyncError('Please upload a CSV or Excel (.xlsx) file');
+      event.target.value = '';
+      return;
+    }
     try {
       setInfoSyncLoading(true);
       setInfoSyncError('');
       const formData = new FormData();
       formData.append('file', file);
       formData.append('codeType', infoUploadCodeType);
-      const res = await fetch(`${API_BASE}/posapi/reference-codes/upload`, {
+      const endpoint = isExcel ? 'import-xlsx' : 'upload';
+      const res = await fetch(`${API_BASE}/posapi/reference-codes/${endpoint}`, {
         method: 'POST',
         credentials: 'include',
         body: formData,
       });
       if (!res.ok) {
-        throw new Error('Failed to import CSV');
+        let errorMessage = isExcel ? 'Failed to import Excel file' : 'Failed to import CSV';
+        try {
+          const errorBody = await res.json();
+          if (errorBody?.message) {
+            errorMessage = errorBody.message;
+          }
+        } catch (err) {
+          // ignore parse errors and fall back to default message
+        }
+        throw new Error(errorMessage);
       }
       const data = await res.json();
       setInfoSyncStatus(
@@ -2401,7 +2420,7 @@ export default function PosApiAdmin() {
         }, deactivated ${data.result?.deactivated || 0}.`,
       );
     } catch (err) {
-      setInfoSyncError(err.message || 'Unable to import CSV');
+      setInfoSyncError(err.message || 'Unable to import file');
     } finally {
       setInfoSyncLoading(false);
       event.target.value = '';
@@ -4863,8 +4882,11 @@ export default function PosApiAdmin() {
               )}
             </div>
             <div style={styles.infoCard}>
-              <h3 style={{ marginTop: 0 }}>Upload static lists (CSV)</h3>
-              <p>Select the code type and upload a CSV with columns <code>code,name</code>.</p>
+              <h3 style={{ marginTop: 0 }}>Upload static lists (CSV or Excel)</h3>
+              <p>
+                Select the code type and upload a CSV or Excel (.xlsx) file with columns
+                <code>code,name</code>.
+              </p>
               <div style={styles.inlineFields}>
                 <label style={{ ...styles.label, flex: 1 }}>
                   Code type
@@ -4881,8 +4903,13 @@ export default function PosApiAdmin() {
                   </select>
                 </label>
                 <label style={{ ...styles.label, flex: 1 }}>
-                  CSV file
-                  <input type="file" accept=".csv,text/csv" onChange={handleStaticUpload} style={styles.input} />
+                  CSV or Excel file
+                  <input
+                    type="file"
+                    accept=".csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx"
+                    onChange={handleStaticUpload}
+                    style={styles.input}
+                  />
                 </label>
               </div>
             </div>

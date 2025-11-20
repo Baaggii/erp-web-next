@@ -5,6 +5,7 @@ import multer from 'multer';
 import { pool } from '../../db/index.js';
 import { loadEndpoints } from './posApiRegistry.js';
 import { invokePosApiEndpoint } from './posApiService.js';
+import XLSX from 'xlsx';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +23,68 @@ const DEFAULT_SETTINGS = {
 };
 
 const upload = multer({ storage: multer.memoryStorage() });
+
+function normalizeHeaderName(value) {
+  return String(value || '')
+    .replace(/([a-z])([A-Z])/g, '$1_$2')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function extractCodesFromWorksheet(worksheet) {
+  const rowsAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
+  if (!Array.isArray(rowsAsArrays) || rowsAsArrays.length === 0) {
+    const error = new Error('Excel file is empty or unreadable');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalizedHeader = (rowsAsArrays[0] || []).map((cell) => normalizeHeaderName(cell));
+  const headerIncludesCodes = normalizedHeader.includes('code_id') && normalizedHeader.includes('code_name');
+
+  const headers = headerIncludesCodes
+    ? normalizedHeader
+    : ['code_id', 'code_name', 'parent_code_id', 'parent_code_name'];
+  const dataRows = headerIncludesCodes ? rowsAsArrays.slice(1) : rowsAsArrays;
+
+  let skipped = 0;
+  const codes = dataRows
+    .map((cells) => {
+      const normalizedRow = headers.reduce((acc, header, index) => {
+        if (!header) return acc;
+        const value = Array.isArray(cells) ? cells[index] : undefined;
+        acc[header] = value;
+        return acc;
+      }, {});
+
+      const code = String(normalizedRow.code_id || '').trim();
+      const name = String(normalizedRow.code_name || '').trim();
+      if (!code || !name) {
+        skipped += 1;
+        return null;
+      }
+      return {
+        code,
+        name,
+        parentCode: normalizedRow.parent_code_id
+          ? String(normalizedRow.parent_code_id).trim()
+          : undefined,
+        parentName: normalizedRow.parent_code_name
+          ? String(normalizedRow.parent_code_name).trim()
+          : undefined,
+      };
+    })
+    .filter(Boolean);
+
+  if (!codes.length) {
+    const error = new Error('Excel file must include code_id and code_name columns with values');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  return { codes, skipped };
+}
 
 function normalizeUsage(value) {
   const normalized = String(value || '').toLowerCase();
@@ -329,5 +392,22 @@ export async function importStaticCodes(codeType, content) {
     })
     .filter((entry) => entry.code);
   return upsertReferenceCodes(codeType, codes);
+}
+
+export async function importStaticCodesFromXlsx(codeType, content) {
+  if (!codeType) {
+    throw new Error('codeType is required');
+  }
+  const workbook = XLSX.read(content, { type: 'buffer' });
+  const [firstSheetName] = workbook.SheetNames;
+  const worksheet = firstSheetName ? workbook.Sheets[firstSheetName] : null;
+  if (!worksheet) {
+    const error = new Error('No worksheet found in Excel file');
+    error.statusCode = 400;
+    throw error;
+  }
+  const { codes, skipped } = extractCodesFromWorksheet(worksheet);
+  const result = await upsertReferenceCodes(codeType, codes);
+  return { ...result, skipped };
 }
 
