@@ -32,32 +32,32 @@ function normalizeHeaderName(value) {
     .replace(/^_+|_+$/g, '');
 }
 
+function parseWorksheetHeaders(worksheet) {
+  const [headerRow] = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false }) || [];
+  return new Set(
+    (Array.isArray(headerRow) ? headerRow : [])
+      .map((cell) => normalizeHeaderName(cell))
+      .filter(Boolean),
+  );
+}
+
 function extractCodesFromWorksheet(worksheet) {
-  const rowsAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false });
-  if (!Array.isArray(rowsAsArrays) || rowsAsArrays.length === 0) {
-    const error = new Error('Excel file is empty or unreadable');
+  const headers = parseWorksheetHeaders(worksheet);
+  if (!headers.has('code_id') || !headers.has('code_name')) {
+    const error = new Error('Excel file must include code_id and code_name columns');
     error.statusCode = 400;
     throw error;
   }
 
-  const normalizedHeader = (rowsAsArrays[0] || []).map((cell) => normalizeHeaderName(cell));
-  const headerIncludesCodes = normalizedHeader.includes('code_id') && normalizedHeader.includes('code_name');
-
-  const headers = headerIncludesCodes
-    ? normalizedHeader
-    : ['code_id', 'code_name', 'parent_code_id', 'parent_code_name'];
-  const dataRows = headerIncludesCodes ? rowsAsArrays.slice(1) : rowsAsArrays;
-
+  const rows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
   let skipped = 0;
-  const codes = dataRows
-    .map((cells) => {
-      const normalizedRow = headers.reduce((acc, header, index) => {
-        if (!header) return acc;
-        const value = Array.isArray(cells) ? cells[index] : undefined;
-        acc[header] = value;
+  const codes = rows
+    .map((row) => {
+      const normalizedRow = Object.entries(row).reduce((acc, [key, value]) => {
+        const normalizedKey = normalizeHeaderName(key);
+        if (normalizedKey) acc[normalizedKey] = value;
         return acc;
       }, {});
-
       const code = String(normalizedRow.code_id || '').trim();
       const name = String(normalizedRow.code_name || '').trim();
       if (!code || !name) {
@@ -67,21 +67,11 @@ function extractCodesFromWorksheet(worksheet) {
       return {
         code,
         name,
-        parentCode: normalizedRow.parent_code_id
-          ? String(normalizedRow.parent_code_id).trim()
-          : undefined,
-        parentName: normalizedRow.parent_code_name
-          ? String(normalizedRow.parent_code_name).trim()
-          : undefined,
+        parentCode: normalizedRow.parent_code_id ? String(normalizedRow.parent_code_id).trim() : undefined,
+        parentName: normalizedRow.parent_code_name ? String(normalizedRow.parent_code_name).trim() : undefined,
       };
     })
     .filter(Boolean);
-
-  if (!codes.length) {
-    const error = new Error('Excel file must include code_id and code_name columns with values');
-    error.statusCode = 400;
-    throw error;
-  }
 
   return { codes, skipped };
 }
