@@ -2574,18 +2574,20 @@ const TableManager = forwardRef(function TableManager({
 
       const getRelationRow = (fieldKey, value) => {
         if (value === undefined || value === null) return null;
+        const relationId = resolveScopeId(value);
         const map = refRows[fieldKey] || refRows[resolveCanonicalKey(fieldKey)];
         if (!map || typeof map !== 'object') return null;
-        if (Object.prototype.hasOwnProperty.call(map, value)) return map[value];
-        if (typeof value === 'string') {
-          const trimmed = value.trim();
-          if (trimmed && Object.prototype.hasOwnProperty.call(map, trimmed)) {
-            return map[trimmed];
+        if (relationId !== undefined && relationId !== null) {
+          if (Object.prototype.hasOwnProperty.call(map, relationId)) {
+            return map[relationId];
           }
-        }
-        const stringValue = String(value);
-        if (Object.prototype.hasOwnProperty.call(map, stringValue)) {
-          return map[stringValue];
+          const strRelationId = String(relationId).trim();
+          if (
+            strRelationId &&
+            Object.prototype.hasOwnProperty.call(map, strRelationId)
+          ) {
+            return map[strRelationId];
+          }
         }
         return null;
       };
