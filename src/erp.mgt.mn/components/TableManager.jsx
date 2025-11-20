@@ -6463,22 +6463,7 @@ const TableManager = forwardRef(function TableManager({
                       const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
-                      const valueSources = [
-                        entry?.cleanedValues,
-                        entry?.payload?.cleanedValues,
-                        entry?.payload?.values,
-                        entry?.values,
-                        entry?.rawValues,
-                      ];
-                      const baseValues = valueSources.find(
-                        (candidate) =>
-                          candidate &&
-                          typeof candidate === 'object' &&
-                          !Array.isArray(candidate),
-                      );
-                      const normalizedValues = populateRelationDisplayFields(
-                        normalizeToCanonical(stripTemporaryLabelValue(baseValues || {})),
-                      );
+                      const { values: normalizedValues } = buildTemporaryFormState(entry);
                       const normalizedValueKeys = Object.keys(normalizedValues || {});
                       const detailColumnsSource =
                         columns.length > 0
