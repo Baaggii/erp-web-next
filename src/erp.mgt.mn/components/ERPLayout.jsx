@@ -1546,6 +1546,9 @@ export default function ERPLayout() {
         method: 'GET',
         credentials: 'include',
         signal,
+        // Skip the global loader so a slow or unreachable tours endpoint
+        // does not dim the active tab on startup.
+        skipLoader: true,
       });
       if (!res.ok) {
         throw new Error(`Failed to load tour definition (${res.status})`);
