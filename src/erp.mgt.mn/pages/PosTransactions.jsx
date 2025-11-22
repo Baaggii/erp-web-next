@@ -1140,16 +1140,16 @@ export function buildRelationConfigEntry(relation, displayConfig = {}) {
         : normalizedDisplayFields,
   };
   const combinationSource =
-    relation.combinationSourceColumn ?? relation.combination_source_column;
+    typeof relation.combinationSourceColumn === 'string'
+      ? relation.combinationSourceColumn.trim()
+      : '';
   const combinationTarget =
-    relation.combinationTargetColumn ?? relation.combination_target_column;
-  const normalizedComboSource =
-    typeof combinationSource === 'string' ? combinationSource.trim() : '';
-  const normalizedComboTarget =
-    typeof combinationTarget === 'string' ? combinationTarget.trim() : '';
-  if (normalizedComboSource && normalizedComboTarget) {
-    entry.combinationSourceColumn = normalizedComboSource;
-    entry.combinationTargetColumn = normalizedComboTarget;
+    typeof relation.combinationTargetColumn === 'string'
+      ? relation.combinationTargetColumn.trim()
+      : '';
+  if (combinationSource && combinationTarget) {
+    entry.combinationSourceColumn = combinationSource;
+    entry.combinationTargetColumn = combinationTarget;
   }
   return entry;
 }

@@ -56,30 +56,6 @@ if (typeof mock.import !== 'function') {
     });
   });
 
-  test('buildRelationConfigEntry keeps snake_case combination metadata', async () => {
-    const { buildRelationConfigEntry } = await mock.import(
-      '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
-      {},
-    );
-
-    const relation = {
-      REFERENCED_TABLE_NAME: 'departments',
-      REFERENCED_COLUMN_NAME: 'id',
-      combination_source_column: 'company_id',
-      combination_target_column: 'company_id',
-    };
-    const displayConfig = { idField: 'id', displayFields: ['code'] };
-    const entry = buildRelationConfigEntry(relation, displayConfig);
-    assert.deepEqual(entry, {
-      table: 'departments',
-      column: 'id',
-      idField: 'id',
-      displayFields: ['code'],
-      combinationSourceColumn: 'company_id',
-      combinationTargetColumn: 'company_id',
-    });
-  });
-
   test('applySessionIdToTables helper', async () => {
     const { applySessionIdToTables } = await mock.import(
       '../../src/erp.mgt.mn/pages/PosTransactions.jsx',
