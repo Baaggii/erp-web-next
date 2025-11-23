@@ -55,6 +55,25 @@ function toStringValue(value) {
 
 let cachedBaseUrl = '';
 let cachedBaseUrlLoaded = false;
+const tokenCache = new Map();
+
+function cacheToken(endpointId, token, expiresInSeconds) {
+  if (!endpointId || !token) return;
+  const ttl = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? expiresInSeconds : 300;
+  const expiresAt = Date.now() + ttl * 1000 - 30000;
+  tokenCache.set(endpointId, { token, expiresAt });
+}
+
+function getCachedToken(endpointId) {
+  if (!endpointId) return null;
+  const entry = tokenCache.get(endpointId);
+  if (!entry || !entry.token) return null;
+  if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+    tokenCache.delete(endpointId);
+    return null;
+  }
+  return entry.token;
+}
 
 export async function getPosApiBaseUrl() {
   if (cachedBaseUrlLoaded && cachedBaseUrl) {
@@ -1038,34 +1057,81 @@ export async function resolvePosApiEndpoint(endpointId) {
   return fallback;
 }
 
-async function posApiFetch(path, { method = 'GET', body, token, headers, baseUrl } = {}) {
+async function resolveAuthEndpoint(authEndpointId) {
+  if (authEndpointId) {
+    const endpoint = await getEndpointById(authEndpointId);
+    if (endpoint && endpoint.posApiType === 'AUTH') return endpoint;
+  }
+  const endpoints = await loadEndpoints();
+  return endpoints.find((entry) => entry?.posApiType === 'AUTH') || null;
+}
+
+function resolveTestServerUrl(definition, environment = 'staging') {
+  if (!definition || typeof definition !== 'object') return '';
+  const trimmedEnv = environment === 'production' ? 'production' : 'staging';
+  const prodUrl = toStringValue(definition.testServerUrlProduction || '');
+  const stagingUrl = toStringValue(definition.testServerUrl || '');
+  if (trimmedEnv === 'production') return prodUrl || stagingUrl;
+  return stagingUrl || prodUrl;
+}
+
+async function posApiFetch(path, { method = 'GET', body, token, headers, baseUrl, debug } = {}) {
   const resolvedBaseUrl = baseUrl ? trimEndSlash(baseUrl) : await getPosApiBaseUrl();
   const url = `${resolvedBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
   const fetchFn = await getFetch();
   const res = await fetchFn(url, {
     method,
     headers: {
+      Accept: 'application/json, text/plain;q=0.9, */*;q=0.5',
       ...(headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body,
   });
+
+  const rawText = await res.text();
+  const contentType = res.headers.get('content-type') || '';
+  let parsedBody = rawText;
+  if (contentType.includes('application/json')) {
+    try {
+      parsedBody = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      parsedBody = rawText;
+    }
+  }
+
   if (!res.ok) {
-    const text = await res.text();
     const err = new Error(
-      `POSAPI request failed with status ${res.status}: ${text || res.statusText}`,
+      `POSAPI request failed with status ${res.status}: ${rawText || res.statusText}`,
     );
     err.status = res.status;
+    err.responseBody = parsedBody;
     throw err;
   }
-  const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    return res.json();
+
+  if (debug) {
+    const headerEntries = {};
+    res.headers.forEach((value, key) => {
+      headerEntries[key] = value;
+    });
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      headers: headerEntries,
+      bodyText: rawText,
+      bodyJson: typeof parsedBody === 'object' ? parsedBody : null,
+      url,
+    };
   }
-  return res.text();
+
+  return parsedBody;
 }
 
-export async function getPosApiToken() {
+async function fetchEnvPosApiToken() {
+  const cached = getCachedToken('ENV_FALLBACK');
+  if (cached) return cached;
+
   const requiredEnv = [
     'POSAPI_AUTH_URL',
     'POSAPI_AUTH_REALM',
@@ -1116,7 +1182,73 @@ export async function getPosApiToken() {
   if (!json?.access_token) {
     throw new Error('POSAPI token response missing access_token');
   }
+  const expiresIn = toNumber(json.expires_in || json.expiresIn) || 300;
+  cacheToken('ENV_FALLBACK', json.access_token, expiresIn);
   return json.access_token;
+}
+
+async function fetchTokenFromAuthEndpoint(authEndpoint, { baseUrl, payload } = {}) {
+  if (!authEndpoint?.id) return fetchEnvPosApiToken();
+  const cached = getCachedToken(authEndpoint.id);
+  if (cached) return cached;
+
+  const requestPayload =
+    payload && typeof payload === 'object'
+      ? payload
+      : authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object'
+        ? authEndpoint.requestBody.schema
+        : {};
+  let targetBaseUrl = toStringValue(baseUrl);
+  if (!targetBaseUrl) {
+    try {
+      targetBaseUrl = await getPosApiBaseUrl();
+    } catch {
+      targetBaseUrl = '';
+    }
+  }
+  if (!targetBaseUrl) {
+    targetBaseUrl = resolveTestServerUrl(authEndpoint);
+  }
+  if (!targetBaseUrl) {
+    targetBaseUrl = await getPosApiBaseUrl();
+  }
+  const result = await invokePosApiEndpoint(authEndpoint.id, requestPayload, {
+    endpoint: authEndpoint,
+    baseUrl: targetBaseUrl,
+    debug: true,
+    skipAuth: true,
+  });
+  const response = result?.response?.bodyJson || result?.response?.bodyText || result?.response;
+  const parsed =
+    typeof response === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(response);
+          } catch {
+            return {};
+          }
+        })()
+      : response;
+  const token = parsed?.access_token || parsed?.id_token;
+  if (!token) {
+    throw new Error('Authentication endpoint did not return an access_token');
+  }
+  const expiresIn = toNumber(parsed?.expires_in || parsed?.expiresIn) || 300;
+  cacheToken(authEndpoint.id, token, expiresIn);
+  return token;
+}
+
+export async function getPosApiToken(options = {}) {
+  const optionBag = options && typeof options === 'object' ? options : {};
+  const authEndpointId = optionBag.authEndpointId || null;
+  const authEndpoint = await resolveAuthEndpoint(authEndpointId);
+  if (authEndpoint) {
+    return fetchTokenFromAuthEndpoint(authEndpoint, {
+      baseUrl: optionBag.baseUrl,
+      payload: optionBag.authPayload,
+    });
+  }
+  return fetchEnvPosApiToken();
 }
 
 export async function buildReceiptFromDynamicTransaction(
@@ -1606,7 +1738,16 @@ export async function buildReceiptFromDynamicTransaction(
 export async function invokePosApiEndpoint(endpointId, payload = {}, options = {}) {
   const optionBag =
     options && typeof options === 'object' ? options : { headers: {}, endpoint: null };
-  const { headers: optionHeaders, endpoint: endpointOverride, baseUrl, debug } = optionBag;
+  const {
+    headers: optionHeaders,
+    endpoint: endpointOverride,
+    baseUrl,
+    debug,
+    authEndpointId,
+    authPayload,
+    environment,
+    skipAuth,
+  } = optionBag;
   const endpoint = endpointOverride || (await resolvePosApiEndpoint(endpointId));
   const method = (endpoint?.method || 'GET').toUpperCase();
   let path = (endpoint?.path || '/').trim() || '/';
@@ -1655,22 +1796,43 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
   const headers = { ...(optionHeaders || {}) };
   let body;
   if (bodyPayload !== undefined && method !== 'GET' && method !== 'HEAD') {
-    if (!headers['Content-Type']) {
-      headers['Content-Type'] = 'application/json';
+    if (endpoint?.posApiType === 'AUTH') {
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      const paramsForm = new URLSearchParams();
+      Object.entries(bodyPayload || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        paramsForm.set(key, String(value));
+      });
+      body = paramsForm.toString();
+    } else {
+      if (!headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+      body = JSON.stringify(bodyPayload);
     }
-    body = JSON.stringify(bodyPayload);
   }
 
-  const requestBaseUrl = baseUrl || (await getPosApiBaseUrl());
+  const requestBaseUrl = baseUrl || resolveTestServerUrl(endpoint, environment) || (await getPosApiBaseUrl());
   const requestUrl = `${trimEndSlash(requestBaseUrl)}${path.startsWith('/') ? path : `/${path}`}`;
+
+  let token = null;
+  if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
+    const effectiveAuthEndpointId = authEndpointId || endpoint?.authEndpointId || null;
+    token = await getPosApiToken({
+      authEndpointId: effectiveAuthEndpointId,
+      baseUrl: requestBaseUrl,
+      authPayload,
+    });
+  }
 
   try {
     const response = await posApiFetch(path, {
       method,
       body,
-      token: await getPosApiToken(),
+      token,
       headers,
-      baseUrl,
+      baseUrl: requestBaseUrl,
+      debug,
     });
     if (debug) {
       return {
@@ -1704,7 +1866,7 @@ export async function sendReceipt(payload, options = {}) {
   const endpoint = options.endpoint || (await resolvePosApiEndpoint(options.endpointId));
   const method = (endpoint?.method || 'POST').toUpperCase();
   const path = endpoint?.path || '/rest/receipt';
-  const token = await getPosApiToken();
+  const token = await getPosApiToken({ authEndpointId: endpoint?.authEndpointId });
   const headers = { ...(options.headers || {}) };
   if (method !== 'GET' && method !== 'HEAD') {
     headers['Content-Type'] = headers['Content-Type'] || 'application/json';

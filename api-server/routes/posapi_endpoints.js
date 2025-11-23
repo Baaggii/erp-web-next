@@ -1,10 +1,15 @@
 import express from 'express';
+import multer from 'multer';
 import { requireAuth } from '../middlewares/auth.js';
 import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
 import { invokePosApiEndpoint } from '../services/posApiService.js';
 import { getEmploymentSession } from '../../db/index.js';
 
 const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 10 },
+});
 
 async function requireSystemSettings(req, res) {
   const companyId = Number(req.query.companyId ?? req.user.companyId);
@@ -41,6 +46,42 @@ router.put('/', requireAuth, async (req, res, next) => {
     const sanitized = JSON.parse(JSON.stringify(payload));
     const saved = await saveEndpoints(sanitized);
     res.json(saved);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/import/parse', requireAuth, upload.array('files'), async (req, res, next) => {
+  try {
+    const guard = await requireSystemSettings(req, res);
+    if (!guard) return;
+    const files = Array.isArray(req.files) ? req.files : [];
+    if (files.length === 0) {
+      res.status(400).json({ message: 'At least one specification file is required' });
+      return;
+    }
+
+    const allOperations = [];
+    for (const file of files) {
+      try {
+        const text = file.buffer.toString('utf8');
+        const parsed = parseApiSpecText(text);
+        const openApiOps = extractOperationsFromOpenApi(parsed);
+        const postmanOps = extractOperationsFromPostman(parsed);
+        allOperations.push(...openApiOps, ...postmanOps);
+      } catch (err) {
+        res.status(400).json({ message: `Failed to parse ${file.originalname}: ${err.message}` });
+        return;
+      }
+    }
+
+    if (!allOperations.length) {
+      res.status(400).json({ message: 'No operations were found in the supplied files' });
+      return;
+    }
+
+    const merged = mergeOperations(allOperations);
+    res.json({ operations: merged });
   } catch (err) {
     next(err);
   }
@@ -111,6 +152,309 @@ function buildTestUrl(definition) {
   }
 
   return { method, url };
+}
+
+function parseScalarValue(text) {
+  if (text === 'null') return null;
+  if (text === 'true') return true;
+  if (text === 'false') return false;
+  const asNumber = Number(text);
+  if (!Number.isNaN(asNumber) && text.trim() !== '') {
+    return asNumber;
+  }
+  if (
+    (text.startsWith('{') && text.endsWith('}')) ||
+    (text.startsWith('[') && text.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      // ignore
+    }
+  }
+  return text;
+}
+
+function parseLooseYaml(text) {
+  const lines = text.replace(/\t/g, '  ').split(/\r?\n/);
+  const filtered = lines
+    .map((line) => line.replace(/#.*$/, ''))
+    .map((line) => ({ indent: line.match(/^ */)[0].length, content: line.trim() }))
+    .filter((line) => line.content);
+
+  function walk(startIndex, expectedIndent) {
+    let index = startIndex;
+    let result = null;
+    while (index < filtered.length) {
+      const { indent, content } = filtered[index];
+      if (indent < expectedIndent) break;
+      if (indent > expectedIndent) {
+        index += 1;
+        continue;
+      }
+
+      if (content.startsWith('- ')) {
+        if (!Array.isArray(result)) result = [];
+        const valuePart = content.slice(2).trim();
+        if (!valuePart) {
+          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
+          result.push(child);
+          index = nextIndex;
+          continue;
+        }
+        if (valuePart.includes(':') && !valuePart.startsWith('{') && !valuePart.startsWith('[')) {
+          const [keyPart, rest] = valuePart.split(/:(.*)/);
+          const base = {};
+          if (rest && rest.trim()) {
+            base[keyPart.trim()] = parseScalarValue(rest.trim());
+          }
+          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
+          result.push({ ...base, ...(child && typeof child === 'object' ? child : {}) });
+          index = nextIndex;
+          continue;
+        }
+        result.push(parseScalarValue(valuePart));
+        index += 1;
+        continue;
+      }
+
+      if (content.includes(':')) {
+        if (!result || Array.isArray(result)) {
+          if (result === null) result = {};
+        }
+        const [keyPart, rest] = content.split(/:(.*)/);
+        const key = keyPart.trim();
+        const remaining = (rest || '').trim();
+        if (!remaining) {
+          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
+          result[key] = child;
+          index = nextIndex;
+          continue;
+        }
+        result[key] = parseScalarValue(remaining);
+        index += 1;
+        continue;
+      }
+
+      index += 1;
+    }
+    return [result, index];
+  }
+
+  const [parsed] = walk(0, filtered[0]?.indent ?? 0);
+  return parsed;
+}
+
+function parseApiSpecText(text) {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error('Specification file is empty');
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // fall through to YAML parsing
+  }
+  const parsed = parseLooseYaml(trimmed);
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Unable to parse the supplied specification file');
+  }
+  return parsed;
+}
+
+function normalizeParametersFromSpec(params) {
+  const list = Array.isArray(params) ? params : [];
+  const deduped = [];
+  const seen = new Set();
+  list.forEach((param) => {
+    if (!param || typeof param !== 'object') return;
+    const name = typeof param.name === 'string' ? param.name.trim() : '';
+    const loc = typeof param.in === 'string' ? param.in.trim() : '';
+    if (!name || !loc) return;
+    const key = `${name}:${loc}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push({
+      name,
+      in: loc,
+      required: Boolean(param.required),
+      description: param.description || '',
+      example: param.example ?? param.default ?? (param.examples && Object.values(param.examples)[0]?.value),
+    });
+  });
+  return deduped;
+}
+
+function extractRequestExample(requestBody) {
+  if (!requestBody || typeof requestBody !== 'object') return undefined;
+  const content = requestBody.content || {};
+  const mediaType =
+    content['application/json'] || content['*/*'] || Object.values(content)[0] || null;
+  if (!mediaType) return undefined;
+  if (mediaType.example !== undefined) return mediaType.example;
+  if (mediaType.examples) {
+    const first = Object.values(mediaType.examples).find((entry) => entry && entry.value !== undefined);
+    if (first) return first.value;
+  }
+  if (mediaType.schema && typeof mediaType.schema === 'object') {
+    if (mediaType.schema.example !== undefined) return mediaType.schema.example;
+    if (mediaType.schema.default !== undefined) return mediaType.schema.default;
+  }
+  return undefined;
+}
+
+function inferPosApiTypeFromHints(tags = [], path = '', summary = '') {
+  const text = `${tags.join(' ')} ${path} ${summary}`.toLowerCase();
+  if (text.includes('auth')) return 'AUTH';
+  if (text.includes('stock') || text.includes('qr')) return 'STOCK_QR';
+  if (text.includes('purchase')) return 'B2B_PURCHASE';
+  if (text.includes('sale') || text.includes('invoice') || text.includes('b2b')) return 'B2B_SALE';
+  if (text.includes('b2c') || text.includes('receipt')) return 'B2C';
+  return '';
+}
+
+function extractOperationsFromOpenApi(spec) {
+  if (!spec || typeof spec !== 'object') return [];
+  const paths = spec.paths && typeof spec.paths === 'object' ? spec.paths : {};
+  const serverUrl =
+    Array.isArray(spec.servers) && spec.servers.length && spec.servers[0]?.url
+      ? spec.servers[0].url
+      : '';
+  const entries = [];
+  Object.entries(paths).forEach(([path, definition]) => {
+    if (!definition || typeof definition !== 'object') return;
+    const sharedParams = normalizeParametersFromSpec(definition.parameters);
+    Object.entries(definition).forEach(([methodKey, operation]) => {
+      const method = methodKey.toUpperCase();
+      if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return;
+      const op = operation && typeof operation === 'object' ? operation : {};
+      const opParams = normalizeParametersFromSpec([...(op.parameters || []), ...sharedParams]);
+      const example = extractRequestExample(op.requestBody);
+      const idSource = op.operationId || `${method}-${path}`;
+      const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
+      entries.push({
+        id: id || `${method}-${entries.length + 1}`,
+        name: op.summary || op.operationId || `${method} ${path}`,
+        method,
+        path,
+        summary: op.summary || op.description || '',
+        parameters: opParams,
+        requestExample: example,
+        posApiType: inferPosApiTypeFromHints(op.tags || [], path, op.summary || op.description || ''),
+        serverUrl,
+        tags: Array.isArray(op.tags) ? op.tags : [],
+      });
+    });
+  });
+  return entries;
+}
+
+function parsePostmanUrl(urlObj) {
+  if (!urlObj) return { path: '/', query: [], baseUrl: '' };
+  if (typeof urlObj === 'string') {
+    const urlString = urlObj.startsWith('http') ? urlObj : `https://placeholder.local${urlObj}`;
+    try {
+      const parsed = new URL(urlString);
+      const path = parsed.pathname || '/';
+      const query = [];
+      parsed.searchParams.forEach((value, key) => {
+        query.push({ name: key, in: 'query', value });
+      });
+      const baseUrl = `${parsed.protocol}//${parsed.host}`;
+      return { path, query, baseUrl };
+    } catch {
+      return { path: '/', query: [], baseUrl: '' };
+    }
+  }
+  const pathParts = Array.isArray(urlObj.path) ? urlObj.path : [];
+  const rawPath = `/${pathParts.join('/')}`;
+  const normalizedPath = rawPath.replace(/\/:([\w-]+)/g, '/{$1}').replace(/{{\s*([\w-]+)\s*}}/g, '{$1}');
+  const query = Array.isArray(urlObj.query)
+    ? urlObj.query.map((entry) => ({ name: entry.key, in: 'query', example: entry.value }))
+    : [];
+  const host = Array.isArray(urlObj.host) ? urlObj.host.join('.') : '';
+  const protocol = Array.isArray(urlObj.protocol) ? urlObj.protocol[0] : urlObj.protocol;
+  const baseUrl = host ? `${protocol || 'https'}://${host}` : '';
+  return { path: normalizedPath || '/', query, baseUrl };
+}
+
+function extractOperationsFromPostman(spec) {
+  const items = spec?.item;
+  if (!Array.isArray(items)) return [];
+  const entries = [];
+
+  function walk(list, folderTags = []) {
+    list.forEach((item) => {
+      if (item?.item) {
+        walk(item.item, [...folderTags, item.name || '']);
+        return;
+      }
+      if (!item?.request) return;
+      const method = (item.request.method || 'GET').toUpperCase();
+      const { path, query, baseUrl } = parsePostmanUrl(item.request.url || '/');
+      const body = item.request.body;
+      let requestExample;
+      if (body?.mode === 'raw' && typeof body.raw === 'string') {
+        try {
+          requestExample = JSON.parse(body.raw);
+        } catch {
+          requestExample = body.raw;
+        }
+      }
+      const parameters = normalizeParametersFromSpec(query);
+      const idSource = `${method}-${path}`;
+      const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
+      entries.push({
+        id: id || `${method}-${entries.length + 1}`,
+        name: item.name || `${method} ${path}`,
+        method,
+        path,
+        summary: item.request.description || '',
+        parameters,
+        requestExample,
+        posApiType: inferPosApiTypeFromHints(folderTags, path, item.request.description || ''),
+        serverUrl: baseUrl,
+        tags: folderTags,
+      });
+    });
+  }
+
+  walk(items, []);
+  return entries;
+}
+
+function scoreOperation(operation) {
+  if (!operation) return 0;
+  const example = operation.requestExample;
+  let exampleScore = 0;
+  if (example !== undefined && example !== null) {
+    try {
+      exampleScore = JSON.stringify(example).length;
+    } catch {
+      exampleScore = String(example).length;
+    }
+  }
+  const summaryScore = (operation.summary || '').length;
+  return exampleScore + summaryScore;
+}
+
+function mergeOperations(operations) {
+  const merged = new Map();
+  operations.forEach((operation) => {
+    if (!operation?.method || !operation?.path) return;
+    const key = `${operation.method}:${operation.path}`;
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, operation);
+      return;
+    }
+    const existingScore = scoreOperation(existing);
+    const candidateScore = scoreOperation(operation);
+    if (candidateScore > existingScore) {
+      merged.set(key, { ...existing, ...operation });
+    } else if (candidateScore === existingScore && !existing.requestExample && operation.requestExample) {
+      merged.set(key, { ...existing, requestExample: operation.requestExample });
+    }
+  });
+  return Array.from(merged.values());
 }
 
 router.post('/fetch-doc', requireAuth, async (req, res, next) => {
@@ -243,61 +587,56 @@ router.post('/test', requireAuth, async (req, res, next) => {
       return;
     }
 
-    let requestBody = undefined;
+    const environment = req.body?.environment === 'production' ? 'production' : 'staging';
+    const testBaseUrl =
+      environment === 'production'
+        ? definition.testServerUrlProduction || definition.testServerUrl
+        : definition.testServerUrl || definition.testServerUrlProduction;
+    if (!testBaseUrl || typeof testBaseUrl !== 'string') {
+      res.status(400).json({ message: 'Test server URL is required' });
+      return;
+    }
+
+    const payload = {};
+    const params = Array.isArray(definition.parameters) ? definition.parameters : [];
+    params.forEach((param) => {
+      if (!param?.name) return;
+      const value = coerceParamValue(param);
+      if (value !== '') {
+        payload[param.name] = value;
+      }
+    });
     if (definition.requestBody && typeof definition.requestBody === 'object') {
       const schema = definition.requestBody.schema;
       if (schema !== undefined && schema !== null && definition.method !== 'GET') {
-        requestBody = schema;
+        payload.body = schema;
       }
     }
 
-    const { method, url } = buildTestUrl(definition);
+    const selectedAuthEndpoint =
+      typeof req.body?.authEndpointId === 'string' && req.body.authEndpointId.trim()
+        ? req.body.authEndpointId.trim()
+        : typeof definition.authEndpointId === 'string'
+          ? definition.authEndpointId
+          : '';
 
-    const headers = new Headers({ Accept: 'application/json, text/plain;q=0.9, */*;q=0.5' });
-    let body;
-    if (requestBody !== undefined && requestBody !== null && method !== 'GET' && method !== 'HEAD') {
-      headers.set('Content-Type', 'application/json');
-      body = JSON.stringify(requestBody);
-    }
-
-    let response;
     try {
-      response = await fetch(url, { method, headers, body });
+      const result = await invokePosApiEndpoint(definition.id || 'draftEndpoint', payload, {
+        endpoint: definition,
+        baseUrl: testBaseUrl,
+        debug: true,
+        authEndpointId: selectedAuthEndpoint,
+        environment,
+      });
+      res.json(result);
     } catch (err) {
-      res
-        .status(502)
-        .json({ message: err?.message || 'Failed to reach the POSAPI test server' });
-      return;
+      if (err?.status) {
+        res.status(err.status).json({ message: err.message, request: err.request || null });
+      } else {
+        next(err);
+      }
     }
-    const text = await response.text();
-    let parsed;
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = null;
-    }
-
-    res.json({
-      request: {
-        method,
-        url: url.toString(),
-        headers: sanitizeHeaders(headers),
-        body: requestBody ?? null,
-      },
-      response: {
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        headers: sanitizeHeaders(response.headers),
-        bodyText: text,
-        bodyJson: parsed,
-      },
-    });
   } catch (err) {
-    if (err?.message === 'Test server URL is required') {
-      res.status(400).json({ message: err.message });
-      return;
-    }
     next(err);
   }
 });
@@ -309,6 +648,8 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
     const endpoint = req.body?.endpoint;
     const payload = req.body?.payload;
     const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
+    const authEndpointId =
+      typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
     if (!endpoint || typeof endpoint !== 'object') {
       res.status(400).json({ message: 'endpoint object is required' });
       return;
@@ -339,6 +680,7 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
         endpoint: sanitized,
         baseUrl: baseUrl || undefined,
         debug: true,
+        authEndpointId,
       });
       res.json({
         ok: true,
