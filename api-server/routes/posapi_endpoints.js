@@ -1,5 +1,6 @@
 import express from 'express';
 import multer from 'multer';
+import { parseYaml } from '../utils/yaml.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
 import { invokePosApiEndpoint } from '../services/posApiService.js';
@@ -73,19 +74,29 @@ router.post('/import/parse', requireAuth, upload.array('files'), async (req, res
     }
 
     const allOperations = [];
+    const openApiSpecs = [];
     for (const file of files) {
       try {
         const text = file.buffer.toString('utf8');
         const parsed = parseApiSpecText(text);
         const sourceName = file.originalname || 'specification';
         const isBundled = /bundle|bundled|resolved|inline/i.test(sourceName);
-        const openApiOps = extractOperationsFromOpenApi(parsed, { sourceName, isBundled });
+        const openApiCandidate = parsed?.paths && typeof parsed.paths === 'object';
+        if (openApiCandidate) {
+          openApiSpecs.push({ spec: parsed, meta: { sourceName, isBundled } });
+        }
         const postmanOps = extractOperationsFromPostman(parsed, { sourceName, isBundled });
-        allOperations.push(...openApiOps, ...postmanOps);
+        allOperations.push(...postmanOps);
       } catch (err) {
         res.status(400).json({ message: `Failed to parse ${file.originalname}: ${err.message}` });
         return;
       }
+    }
+
+    if (openApiSpecs.length > 0) {
+      const { spec: mergedSpec, metaLookup } = mergeOpenApiSpecs(openApiSpecs);
+      const openApiOps = extractOperationsFromOpenApi(mergedSpec, { sourceName: 'Merged specs' }, metaLookup);
+      allOperations.push(...openApiOps);
     }
 
     if (!allOperations.length) {
@@ -167,110 +178,83 @@ function buildTestUrl(definition) {
   return { method, url };
 }
 
-function parseScalarValue(text) {
-  if (text === 'null') return null;
-  if (text === 'true') return true;
-  if (text === 'false') return false;
-  const asNumber = Number(text);
-  if (!Number.isNaN(asNumber) && text.trim() !== '') {
-    return asNumber;
-  }
-  if (
-    (text.startsWith('{') && text.endsWith('}')) ||
-    (text.startsWith('[') && text.endsWith(']'))
-  ) {
-    try {
-      return JSON.parse(text);
-    } catch {
-      // ignore
-    }
-  }
-  return text;
-}
-
-function parseLooseYaml(text) {
-  const lines = text.replace(/\t/g, '  ').split(/\r?\n/);
-  const filtered = lines
-    .map((line) => line.replace(/#.*$/, ''))
-    .map((line) => ({ indent: line.match(/^ */)[0].length, content: line.trim() }))
-    .filter((line) => line.content);
-
-  function walk(startIndex, expectedIndent) {
-    let index = startIndex;
-    let result = null;
-    while (index < filtered.length) {
-      const { indent, content } = filtered[index];
-      if (indent < expectedIndent) break;
-      if (indent > expectedIndent) {
-        index += 1;
-        continue;
-      }
-
-      if (content.startsWith('- ')) {
-        if (!Array.isArray(result)) result = [];
-        const valuePart = content.slice(2).trim();
-        if (!valuePart) {
-          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
-          result.push(child);
-          index = nextIndex;
-          continue;
-        }
-        if (valuePart.includes(':') && !valuePart.startsWith('{') && !valuePart.startsWith('[')) {
-          const [keyPart, rest] = valuePart.split(/:(.*)/);
-          const base = {};
-          if (rest && rest.trim()) {
-            base[keyPart.trim()] = parseScalarValue(rest.trim());
-          }
-          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
-          result.push({ ...base, ...(child && typeof child === 'object' ? child : {}) });
-          index = nextIndex;
-          continue;
-        }
-        result.push(parseScalarValue(valuePart));
-        index += 1;
-        continue;
-      }
-
-      if (content.includes(':')) {
-        if (!result || Array.isArray(result)) {
-          if (result === null) result = {};
-        }
-        const [keyPart, rest] = content.split(/:(.*)/);
-        const key = keyPart.trim();
-        const remaining = (rest || '').trim();
-        if (!remaining) {
-          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
-          result[key] = child;
-          index = nextIndex;
-          continue;
-        }
-        result[key] = parseScalarValue(remaining);
-        index += 1;
-        continue;
-      }
-
-      index += 1;
-    }
-    return [result, index];
-  }
-
-  const [parsed] = walk(0, filtered[0]?.indent ?? 0);
-  return parsed;
-}
-
 function parseApiSpecText(text) {
   const trimmed = text.trim();
   if (!trimmed) throw new Error('Specification file is empty');
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    // fall through to YAML parsing
+  return parseYaml(trimmed);
+}
+
+function mergeOperationNode(existing, incoming, meta) {
+  if (!incoming || typeof incoming !== 'object') return existing;
+  if (!existing) {
+    return {
+      operation: incoming,
+      isBundled: Boolean(meta?.isBundled),
+      sourceNames: new Set(meta?.sourceName ? [meta.sourceName] : []),
+    };
   }
-  const parsed = parseLooseYaml(trimmed);
-  if (!parsed || typeof parsed !== 'object') {
-    throw new Error('Unable to parse the supplied specification file');
+  const preferBundled = meta?.isBundled && !existing.isBundled;
+  const keepExistingBundled = existing.isBundled && !meta?.isBundled;
+  const mergedSources = new Set(existing.sourceNames || []);
+  if (meta?.sourceName) mergedSources.add(meta.sourceName);
+  if (preferBundled) {
+    const next = { ...incoming };
+    if (!next.summary && existing.operation?.summary) next.summary = existing.operation.summary;
+    if (!next.description && existing.operation?.description) next.description = existing.operation.description;
+    return { operation: next, isBundled: true, sourceNames: mergedSources };
   }
-  return parsed;
+  if (keepExistingBundled) {
+    const existingOp = { ...existing.operation };
+    if (!existingOp.summary && incoming.summary) existingOp.summary = incoming.summary;
+    if (!existingOp.description && incoming.description) existingOp.description = incoming.description;
+    return { ...existing, operation: existingOp, sourceNames: mergedSources };
+  }
+  const winner = { ...existing.operation };
+  if (!winner.summary && incoming.summary) winner.summary = incoming.summary;
+  if (!winner.description && incoming.description) winner.description = incoming.description;
+  return { operation: winner, isBundled: existing.isBundled || Boolean(meta?.isBundled), sourceNames: mergedSources };
+}
+
+function mergeOpenApiSpecs(specEntries) {
+  const mergedPaths = {};
+  const metaLookup = {};
+  let mergedServers = [];
+  specEntries.forEach(({ spec, meta }) => {
+    if (Array.isArray(spec?.servers) && mergedServers.length === 0) {
+      mergedServers = spec.servers;
+    }
+    const paths = spec?.paths && typeof spec.paths === 'object' ? spec.paths : {};
+    Object.entries(paths).forEach(([path, pathDef]) => {
+      if (!mergedPaths[path]) mergedPaths[path] = {};
+      const existingPathParams = Array.isArray(mergedPaths[path].parameters)
+        ? mergedPaths[path].parameters
+        : [];
+      const incomingPathParams = Array.isArray(pathDef.parameters) ? pathDef.parameters : [];
+      const combinedParams = mergePathParameters(existingPathParams, incomingPathParams);
+      if (combinedParams.length) {
+        mergedPaths[path].parameters = combinedParams;
+      }
+      Object.entries(pathDef).forEach(([methodKey, op]) => {
+        const method = methodKey.toLowerCase();
+        if (!['get', 'post', 'put', 'delete', 'patch'].includes(method)) return;
+        const key = `${method.toUpperCase()}:${path}`;
+        const merged = mergeOperationNode(metaLookup[key], op, meta);
+        metaLookup[key] = merged;
+        mergedPaths[path][method] = merged.operation;
+      });
+    });
+  });
+  const [base] = specEntries;
+  return {
+    spec: {
+      ...(base?.spec || {}),
+      servers: mergedServers,
+      paths: mergedPaths,
+    },
+    metaLookup: Object.fromEntries(
+      Object.entries(metaLookup).map(([key, value]) => [key, { ...value, sourceNames: Array.from(value.sourceNames || []) }]),
+    ),
+  };
 }
 
 function normalizeParametersFromSpec(params) {
@@ -296,6 +280,24 @@ function normalizeParametersFromSpec(params) {
   return deduped;
 }
 
+function mergePathParameters(...paramGroups) {
+  const merged = [];
+  const seen = new Set();
+  paramGroups
+    .flat()
+    .filter(Boolean)
+    .forEach((param) => {
+      const name = typeof param?.name === 'string' ? param.name.trim() : '';
+      const loc = typeof param?.in === 'string' ? param.in.trim() : '';
+      if (!name || !loc) return;
+      const key = `${name}:${loc}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      merged.push(param);
+    });
+  return merged;
+}
+
 function extractRequestExample(requestBody) {
   if (!requestBody || typeof requestBody !== 'object') return undefined;
   const content = requestBody.content || {};
@@ -315,22 +317,34 @@ function extractRequestExample(requestBody) {
 }
 
 function classifyPosApiType(tags = [], path = '', summary = '') {
+  const normalizedPath = path.toLowerCase();
   const text = `${tags.join(' ')} ${path} ${summary}`.toLowerCase();
-  if (path.includes('/protocol/openid-connect/token') || /auth|token/.test(text)) {
+  if (normalizedPath.includes('/protocol/openid-connect/token') || /\bauth|token\b/.test(text)) {
     return 'AUTH';
   }
-  if (path.includes('/api/info') || text.includes('info') || text.includes('lookup')) {
+  if (
+    normalizedPath.includes('/rest/info') ||
+    normalizedPath.includes('/rest/senddata') ||
+    normalizedPath.includes('/rest/bankaccounts') ||
+    normalizedPath.includes('/api/info/check') ||
+    /lookup|info|reference/.test(text)
+  ) {
     return 'LOOKUP';
   }
-  if (text.includes('stock') || text.includes('qr')) return 'STOCK_QR';
-  if (path.includes('/rest/')) {
-    if (text.includes('b2b') || text.includes('sale') || text.includes('invoice')) return 'B2B_SALE';
-    if (text.includes('purchase')) return 'B2B_PURCHASE';
-    return 'B2C';
+  if (
+    normalizedPath.includes('/api/tpi/receipt/saveoprmerchants') ||
+    normalizedPath.includes('setposreceiptdtlbyproductowner') ||
+    /registration/.test(text)
+  ) {
+    return 'REGISTRATION';
   }
-  if (text.includes('purchase')) return 'B2B_PURCHASE';
-  if (text.includes('sale') || text.includes('invoice') || text.includes('b2b')) return 'B2B_SALE';
-  if (text.includes('b2c') || text.includes('receipt') || text.includes('transaction')) return 'B2C';
+  if (
+    normalizedPath.includes('/rest/receipt') ||
+    /posapi|receipt|transaction|sale/.test(text)
+  ) {
+    return 'TRANSACTION';
+  }
+  if (text.includes('stock') || text.includes('qr')) return 'STOCK_QR';
   return '';
 }
 
@@ -344,6 +358,13 @@ function extractRequestSchema(requestBody) {
   const schema = media.schema && typeof media.schema === 'object' ? media.schema : undefined;
   const description = requestBody.description || media.description || '';
   return { schema, description, contentType: hitType };
+}
+
+function mapCategoryToType(category, fallback = '') {
+  if (category === 'AUTH' || category === 'LOOKUP') return category;
+  if (category === 'TRANSACTION') return fallback || 'B2C';
+  if (category === 'REGISTRATION') return fallback || 'REGISTRATION';
+  return fallback;
 }
 
 function extractResponseSchema(responses) {
@@ -420,6 +441,117 @@ function collectFieldsFromSchema(schema, { pathPrefix = '', required = [] } = {}
   });
 }
 
+function hasComplexComposition(node, depth = 0) {
+  if (!node || typeof node !== 'object' || depth > 5) return false;
+  if (node.anyOf || node.oneOf) return true;
+  if (typeof node.$ref === 'string' && node.$ref && !node.$ref.startsWith('#/')) return true;
+  return Object.values(node).some((value) => hasComplexComposition(value, depth + 1));
+}
+
+function buildRequestDetails(schema, contentType) {
+  if (!schema || typeof schema !== 'object') {
+    return { requestFields: [], flags: {}, enums: {}, hasComplexity: false };
+  }
+  const fields = [];
+  const enums = { receiptTypes: [], taxTypes: [] };
+  const flags = { supportsMultipleReceipts: false, supportsItems: false, supportsMultiplePayments: false };
+
+  const walk = (node, pathPrefix, requiredSet = new Set()) => {
+    if (!node || typeof node !== 'object') return;
+    const nodeType = node.type || (node.properties ? 'object' : node.items ? 'array' : undefined);
+    if (nodeType === 'object') {
+      const props = node.properties && typeof node.properties === 'object' ? node.properties : {};
+      const requiredForNode = new Set(Array.isArray(node.required) ? node.required : []);
+      Object.entries(props).forEach(([key, child]) => {
+        const childPath = pathPrefix ? `${pathPrefix}.${key}` : key;
+        const isRequired = requiredForNode.has(key) || requiredSet.has(key);
+        walk(child, childPath, requiredForNode);
+        const childType = child?.type || (child?.properties ? 'object' : child?.items ? 'array' : undefined);
+        if (childType !== 'object' && childType !== 'array') {
+          const entry = { field: childPath, required: isRequired };
+          if (child?.description) entry.description = child.description;
+          fields.push(entry);
+        }
+        const enumsForChild = pickEnumValues(child);
+        if (enumsForChild.length && /tax/.test(key)) enums.taxTypes.push(...enumsForChild);
+        if (enumsForChild.length && /type/.test(key) && /receipt/i.test(childPath)) {
+          enums.receiptTypes.push(...enumsForChild);
+        }
+      });
+      return;
+    }
+    if (nodeType === 'array') {
+      const arrayPath = pathPrefix ? `${pathPrefix}[]` : '[]';
+      if (/receipts?$/i.test(pathPrefix)) {
+        flags.supportsMultipleReceipts = true;
+      }
+      if (/payments$/i.test(pathPrefix)) {
+        flags.supportsMultiplePayments = true;
+      }
+      if (/items$/i.test(pathPrefix)) {
+        flags.supportsItems = true;
+      }
+      const entry = { field: arrayPath, required: requiredSet.size > 0 };
+      if (node?.description) entry.description = node.description;
+      fields.push(entry);
+      walk(node.items, arrayPath, new Set(Array.isArray(node.items?.required) ? node.items.required : []));
+      return;
+    }
+    if (pathPrefix) {
+      const entry = { field: pathPrefix, required: requiredSet.size > 0 };
+      if (node?.description) entry.description = node.description;
+      fields.push(entry);
+    }
+  };
+
+  const rootRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
+  walk(schema, '', rootRequired);
+
+  const requestFields = dedupeFieldEntries(fields);
+  enums.receiptTypes = sanitizeCodes(enums.receiptTypes, DEFAULT_RECEIPT_TYPES);
+  enums.taxTypes = sanitizeCodes(enums.taxTypes, DEFAULT_TAX_TYPES);
+
+  const hasComplexity = hasComplexComposition(schema);
+  return { requestFields, flags, enums, hasComplexity };
+}
+
+function buildResponseDetails(schema) {
+  if (!schema || typeof schema !== 'object') return { responseFields: [], hasComplexity: false };
+  const fields = [];
+  const topLevelRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
+  const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+
+  Object.entries(properties).forEach(([key, node]) => {
+    const isRequired = topLevelRequired.has(key);
+    const nodeType = node?.type || (node?.properties ? 'object' : node?.items ? 'array' : undefined);
+    if (nodeType === 'array' && node?.items?.properties) {
+      const itemRequired = new Set(Array.isArray(node.items.required) ? node.items.required : []);
+      Object.entries(node.items.properties).forEach(([childKey, childNode]) => {
+        const path = `${key}[].${childKey}`;
+        const entry = { field: path, required: isRequired || itemRequired.has(childKey) };
+        if (childNode?.description) entry.description = childNode.description;
+        fields.push(entry);
+      });
+      return;
+    }
+    if (nodeType === 'object' && node?.properties) {
+      const nestedRequired = new Set(Array.isArray(node.required) ? node.required : []);
+      Object.entries(node.properties).forEach(([childKey, childNode]) => {
+        const path = `${key}.${childKey}`;
+        const entry = { field: path, required: isRequired || nestedRequired.has(childKey) };
+        if (childNode?.description) entry.description = childNode.description;
+        fields.push(entry);
+      });
+      return;
+    }
+    const entry = { field: key, required: isRequired };
+    if (node?.description) entry.description = node.description;
+    fields.push(entry);
+  });
+
+  return { responseFields: dedupeFieldEntries(fields), hasComplexity: hasComplexComposition(schema) };
+}
+
 function dedupeFieldEntries(fields) {
   const seen = new Map();
   fields.forEach((entry) => {
@@ -459,12 +591,18 @@ function sanitizeCodes(values, allowed = []) {
   return Array.from(new Set(cleaned));
 }
 
-function pickTestServerUrl(operation, specServers) {
+function pickTestServers(operation, specServers) {
   const opServers = Array.isArray(operation?.servers) ? operation.servers : [];
-  const servers = [...opServers, ...(Array.isArray(specServers) ? specServers : [])];
-  const staging = servers.find((server) => typeof server?.url === 'string' && /test|staging/i.test(server.url));
-  const first = servers.find((server) => typeof server?.url === 'string');
-  return staging?.url || first?.url || '';
+  const servers = [...opServers, ...(Array.isArray(specServers) ? specServers : [])].filter(
+    (server) => typeof server?.url === 'string' && server.url.trim(),
+  );
+  const staging = servers.find((server) => /staging|dev|test/i.test(server.url));
+  const productionCandidate = servers.find((server) => server !== staging);
+  const fallback = servers[0];
+  return {
+    testServerUrl: staging?.url || fallback?.url || '',
+    testServerUrlProduction: productionCandidate?.url || servers[1]?.url || '',
+  };
 }
 
 function deriveReceiptTypes(requestSchema, example) {
@@ -548,7 +686,25 @@ function buildFormFields(requestSchema) {
   });
 }
 
-function extractOperationsFromOpenApi(spec, meta = {}) {
+function buildFormEncodedExample(requestSchema) {
+  const properties = requestSchema?.properties && typeof requestSchema.properties === 'object'
+    ? requestSchema.properties
+    : {};
+  const required = new Set(Array.isArray(requestSchema?.required) ? requestSchema.required : []);
+  const pairs = Object.entries(properties).map(([key, value]) => {
+    const sample = value?.example ?? value?.default ?? (Array.isArray(value?.enum) ? value.enum[0] : '');
+    if (sample !== undefined && sample !== null && sample !== '') {
+      return `${key}=${sample}`;
+    }
+    if (required.has(key)) {
+      return `${key}=`;
+    }
+    return null;
+  }).filter(Boolean);
+  return pairs.join('&');
+}
+
+function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
   if (!spec || typeof spec !== 'object') return [];
   const paths = spec.paths && typeof spec.paths === 'object' ? spec.paths : {};
   const specServers = Array.isArray(spec.servers) ? spec.servers : [];
@@ -567,31 +723,38 @@ function extractOperationsFromOpenApi(spec, meta = {}) {
       const { schema: responseSchema, description: responseDescription } =
         extractResponseSchema(op.responses);
       const isFormUrlEncoded = contentType === 'application/x-www-form-urlencoded';
-      const requestExample = isFormUrlEncoded ? undefined : example;
-      const requestFieldsRaw = isFormUrlEncoded
-        ? buildFormFields(requestSchema)
-        : collectFieldsFromSchema(requestSchema, {
-          required: requestSchema?.required,
-        });
-      const responseFields = dedupeFieldEntries(
-        collectFieldsFromSchema(responseSchema, {
-          required: responseSchema?.required,
-        }),
-      );
-      const requestFields = dedupeFieldEntries(requestFieldsRaw);
+      const formFields = isFormUrlEncoded ? buildFormFields(requestSchema) : undefined;
+      const requestExample = isFormUrlEncoded ? buildFormEncodedExample(requestSchema) : example;
+      const requestDetails = buildRequestDetails(requestSchema, contentType);
+      const responseDetails = buildResponseDetails(responseSchema);
+      const requestFields = isFormUrlEncoded ? formFields : requestDetails.requestFields;
+      const responseFields = responseDetails.responseFields;
       const posHints = requestSchema ? analysePosApiRequest(requestSchema, requestExample) : {};
       const idSource = op.operationId || `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
-      const inferredPosApiType = classifyPosApiType(op.tags || [], path, op.summary || op.description || '');
-      const posApiType = posHints.posApiType || inferredPosApiType;
+      const inferredCategory = classifyPosApiType(op.tags || [], path, op.summary || op.description || '');
+      const inferredPosApiType = mapCategoryToType(inferredCategory, posHints.posApiType);
+      const metaKey = `${method}:${path}`;
       const validationIssues = [];
-      if (!posApiType) {
+      if (!inferredPosApiType) {
         validationIssues.push('POSAPI type could not be determined automatically.');
       }
       if (requestFields.length === 0 && !requestSchema) {
         validationIssues.push('Request schema missing – please review required fields.');
       }
-      const testServerUrl = pickTestServerUrl(op, specServers);
+      const serverSelection = pickTestServers(op, specServers);
+      const hasPartialSchema = requestDetails.hasComplexity || responseDetails.hasComplexity;
+      if (hasPartialSchema) {
+        validationIssues.push('Some schemas use advanced composition (anyOf/oneOf/$ref) and were partially parsed.');
+      }
+      const resolvedReceiptTypes = (posHints.receiptTypes && posHints.receiptTypes.length
+        ? posHints.receiptTypes
+        : requestDetails.enums.receiptTypes)
+        || [];
+      const resolvedTaxTypes = (posHints.taxTypes && posHints.taxTypes.length
+        ? posHints.taxTypes
+        : requestDetails.enums.taxTypes)
+        || [];
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: op.summary || op.operationId || `${method} ${path}`,
@@ -600,36 +763,47 @@ function extractOperationsFromOpenApi(spec, meta = {}) {
         summary: op.summary || op.description || '',
         parameters: opParams,
         requestExample,
-        posApiType,
-        serverUrl: testServerUrl || '',
+        posApiType: inferredPosApiType,
+        posApiCategory: inferredCategory || inferredPosApiType,
+        serverUrl: serverSelection.testServerUrl || '',
         tags: Array.isArray(op.tags) ? op.tags : [],
         requestBody: requestSchema ? { schema: requestSchema, description: requestDescription } : undefined,
         responseBody: responseSchema ? { schema: responseSchema, description: responseDescription } : undefined,
         requestFields,
         responseFields,
-        ...(Array.isArray(posHints.receiptTypes) && posHints.receiptTypes.length
-          ? { receiptTypes: posHints.receiptTypes }
+        ...(Array.isArray(resolvedReceiptTypes) && resolvedReceiptTypes.length
+          ? { receiptTypes: resolvedReceiptTypes }
           : {}),
-        ...(Array.isArray(posHints.taxTypes) && posHints.taxTypes.length ? { taxTypes: posHints.taxTypes } : {}),
+        ...(Array.isArray(resolvedTaxTypes) && resolvedTaxTypes.length ? { taxTypes: resolvedTaxTypes } : {}),
         ...(Array.isArray(posHints.paymentMethods) && posHints.paymentMethods.length
           ? { paymentMethods: posHints.paymentMethods }
           : {}),
         ...(posHints.supportsItems !== undefined ? { supportsItems: posHints.supportsItems } : {}),
-        ...(posHints.supportsMultipleReceipts !== undefined
-          ? { supportsMultipleReceipts: posHints.supportsMultipleReceipts }
+        ...(requestDetails.flags.supportsMultipleReceipts !== undefined
+          ? { supportsMultipleReceipts: requestDetails.flags.supportsMultipleReceipts }
           : {}),
-        ...(posHints.supportsMultiplePayments !== undefined
-          ? { supportsMultiplePayments: posHints.supportsMultiplePayments }
+        ...(requestDetails.flags.supportsMultiplePayments !== undefined
+          ? { supportsMultiplePayments: requestDetails.flags.supportsMultiplePayments }
           : {}),
-        ...(testServerUrl
+        ...(requestDetails.flags.supportsItems !== undefined ? { supportsItems: requestDetails.flags.supportsItems } : {}),
+        ...(serverSelection.testServerUrl
           ? {
-            testServerUrl,
+            testServerUrl: serverSelection.testServerUrl,
+            testServerUrlProduction: serverSelection.testServerUrlProduction,
             testable: true,
           }
           : {}),
-        validation: validationIssues.length ? { state: 'incomplete', issues: validationIssues } : { state: 'ok' },
-        sourceName: meta.sourceName || '',
-        isBundled: Boolean(meta.isBundled),
+        validation: validationIssues.length
+          ? { state: hasPartialSchema ? 'partial' : 'incomplete', issues: validationIssues }
+          : { state: 'ok' },
+        ...(hasPartialSchema
+          ? { parseWarnings: ['Some schema elements could not be expanded automatically.'], rawSchemas: {
+            request: requestSchema,
+            response: responseSchema,
+          } }
+          : {}),
+        sourceName: metaLookup?.[metaKey]?.sourceNames?.join(', ') || meta.sourceName || '',
+        isBundled: metaLookup?.[metaKey]?.isBundled ?? Boolean(meta.isBundled),
       });
     });
   });
