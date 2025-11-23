@@ -1038,6 +1038,286 @@ function validateEndpoint(endpoint, existingIds, originalId) {
   }
 }
 
+function parseScalarValue(text) {
+  if (text === 'null') return null;
+  if (text === 'true') return true;
+  if (text === 'false') return false;
+  const asNumber = Number(text);
+  if (!Number.isNaN(asNumber) && text.trim() !== '') {
+    return asNumber;
+  }
+  if (
+    (text.startsWith('{') && text.endsWith('}')) ||
+    (text.startsWith('[') && text.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      // ignore
+    }
+  }
+  return text;
+}
+
+function parseLooseYaml(text) {
+  const lines = text.replace(/\t/g, '  ').split(/\r?\n/);
+  const filtered = lines
+    .map((line) => line.replace(/#.*$/, ''))
+    .map((line) => ({ indent: line.match(/^ */)[0].length, content: line.trim() }))
+    .filter((line) => line.content);
+
+  function walk(startIndex, expectedIndent) {
+    let index = startIndex;
+    let result = null;
+    while (index < filtered.length) {
+      const { indent, content } = filtered[index];
+      if (indent < expectedIndent) break;
+      if (indent > expectedIndent) {
+        index += 1;
+        continue;
+      }
+
+      if (content.startsWith('- ')) {
+        if (!Array.isArray(result)) result = [];
+        const valuePart = content.slice(2).trim();
+        if (!valuePart) {
+          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
+          result.push(child);
+          index = nextIndex;
+          continue;
+        }
+        if (valuePart.includes(':') && !valuePart.startsWith('{') && !valuePart.startsWith('[')) {
+          const [keyPart, rest] = valuePart.split(/:(.*)/);
+          const base = {};
+          if (rest && rest.trim()) {
+            base[keyPart.trim()] = parseScalarValue(rest.trim());
+          }
+          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
+          result.push({ ...base, ...(child && typeof child === 'object' ? child : {}) });
+          index = nextIndex;
+          continue;
+        }
+        result.push(parseScalarValue(valuePart));
+        index += 1;
+        continue;
+      }
+
+      if (content.includes(':')) {
+        if (!result || Array.isArray(result)) {
+          if (result === null) result = {};
+        }
+        const [keyPart, rest] = content.split(/:(.*)/);
+        const key = keyPart.trim();
+        const remaining = (rest || '').trim();
+        if (!remaining) {
+          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
+          result[key] = child;
+          index = nextIndex;
+          continue;
+        }
+        result[key] = parseScalarValue(remaining);
+        index += 1;
+        continue;
+      }
+
+      index += 1;
+    }
+    return [result, index];
+  }
+
+  const [parsed] = walk(0, filtered[0]?.indent ?? 0);
+  return parsed;
+}
+
+function parseApiSpecText(text) {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error('Specification file is empty');
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // fall through to YAML parsing
+  }
+  const parsed = parseLooseYaml(trimmed);
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Unable to parse the supplied specification file');
+  }
+  return parsed;
+}
+
+function normalizeParametersFromSpec(params) {
+  const list = Array.isArray(params) ? params : [];
+  const deduped = [];
+  const seen = new Set();
+  list.forEach((param) => {
+    if (!param || typeof param !== 'object') return;
+    const name = typeof param.name === 'string' ? param.name.trim() : '';
+    const loc = typeof param.in === 'string' ? param.in.trim() : '';
+    if (!name || !loc) return;
+    const key = `${name}:${loc}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push({
+      name,
+      in: loc,
+      required: Boolean(param.required),
+      description: param.description || '',
+      example:
+        param.example ?? param.default ?? (param.examples && Object.values(param.examples)[0]?.value),
+    });
+  });
+  return deduped;
+}
+
+function extractRequestExample(requestBody) {
+  if (!requestBody || typeof requestBody !== 'object') return undefined;
+  const content = requestBody.content || {};
+  const mediaType =
+    content['application/json'] || content['*/*'] || Object.values(content)[0] || null;
+  if (!mediaType) return undefined;
+  if (mediaType.example !== undefined) return mediaType.example;
+  if (mediaType.examples) {
+    const first = Object.values(mediaType.examples).find((entry) => entry && entry.value !== undefined);
+    if (first) return first.value;
+  }
+  if (mediaType.schema && typeof mediaType.schema === 'object') {
+    if (mediaType.schema.example !== undefined) return mediaType.schema.example;
+    if (mediaType.schema.default !== undefined) return mediaType.schema.default;
+  }
+  return undefined;
+}
+
+function inferPosApiTypeFromHints(tags = [], path = '', summary = '') {
+  const text = `${tags.join(' ')} ${path} ${summary}`.toLowerCase();
+  if (text.includes('stock') || text.includes('qr')) return 'STOCK_QR';
+  if (text.includes('purchase')) return 'B2B_PURCHASE';
+  if (text.includes('sale') || text.includes('invoice') || text.includes('b2b')) return 'B2B_SALE';
+  if (text.includes('b2c') || text.includes('receipt')) return 'B2C';
+  return '';
+}
+
+function extractOperationsFromOpenApi(spec) {
+  if (!spec || typeof spec !== 'object') return [];
+  const paths = spec.paths && typeof spec.paths === 'object' ? spec.paths : {};
+  const serverUrl =
+    Array.isArray(spec.servers) && spec.servers.length && spec.servers[0]?.url
+      ? spec.servers[0].url
+      : '';
+  const entries = [];
+  Object.entries(paths).forEach(([path, definition]) => {
+    if (!definition || typeof definition !== 'object') return;
+    const sharedParams = normalizeParametersFromSpec(definition.parameters);
+    Object.entries(definition).forEach(([methodKey, operation]) => {
+      const method = methodKey.toUpperCase();
+      if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return;
+      const op = operation && typeof operation === 'object' ? operation : {};
+      const opParams = normalizeParametersFromSpec([...(op.parameters || []), ...sharedParams]);
+      const example = extractRequestExample(op.requestBody);
+      const idSource = op.operationId || `${method}-${path}`;
+      const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
+      entries.push({
+        id: id || `${method}-${entries.length + 1}`,
+        name: op.summary || op.operationId || `${method} ${path}`,
+        method,
+        path,
+        summary: op.summary || op.description || '',
+        parameters: opParams,
+        requestExample: example,
+        posApiType: inferPosApiTypeFromHints(op.tags || [], path, op.summary || op.description || ''),
+        serverUrl,
+        tags: Array.isArray(op.tags) ? op.tags : [],
+      });
+    });
+  });
+  return entries;
+}
+
+function parsePostmanUrl(urlObj) {
+  if (!urlObj) return { path: '/', query: [], baseUrl: '' };
+  if (typeof urlObj === 'string') {
+    const urlString = urlObj.startsWith('http') ? urlObj : `https://placeholder.local${urlObj}`;
+    try {
+      const parsed = new URL(urlString);
+      const path = parsed.pathname || '/';
+      const query = [];
+      parsed.searchParams.forEach((value, key) => {
+        query.push({ name: key, in: 'query', value });
+      });
+      const baseUrl = `${parsed.protocol}//${parsed.host}`;
+      return { path, query, baseUrl };
+    } catch {
+      return { path: '/', query: [], baseUrl: '' };
+    }
+  }
+  const pathParts = Array.isArray(urlObj.path) ? urlObj.path : [];
+  const rawPath = `/${pathParts.join('/')}`;
+  const normalizedPath = rawPath.replace(/\/:([\w-]+)/g, '/{$1}').replace(/{{\s*([\w-]+)\s*}}/g, '{$1}');
+  const query = Array.isArray(urlObj.query)
+    ? urlObj.query.map((entry) => ({ name: entry.key, in: 'query', example: entry.value }))
+    : [];
+  const host = Array.isArray(urlObj.host) ? urlObj.host.join('.') : '';
+  const protocol = Array.isArray(urlObj.protocol) ? urlObj.protocol[0] : urlObj.protocol;
+  const baseUrl = host ? `${protocol || 'https'}://${host}` : '';
+  return { path: normalizedPath || '/', query, baseUrl };
+}
+
+function extractOperationsFromPostman(spec) {
+  const items = spec?.item;
+  if (!Array.isArray(items)) return [];
+  const entries = [];
+
+  function walk(list, folderTags = []) {
+    list.forEach((item) => {
+      if (item?.item) {
+        walk(item.item, [...folderTags, item.name || '']);
+        return;
+      }
+      if (!item?.request) return;
+      const method = (item.request.method || 'GET').toUpperCase();
+      const { path, query, baseUrl } = parsePostmanUrl(item.request.url || '/');
+      const body = item.request.body;
+      let requestExample;
+      if (body?.mode === 'raw' && typeof body.raw === 'string') {
+        try {
+          requestExample = JSON.parse(body.raw);
+        } catch {
+          requestExample = body.raw;
+        }
+      }
+      const parameters = normalizeParametersFromSpec(query);
+      const idSource = `${method}-${path}`;
+      const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
+      entries.push({
+        id: id || `${method}-${entries.length + 1}`,
+        name: item.name || `${method} ${path}`,
+        method,
+        path,
+        summary: item.request.description || '',
+        parameters,
+        requestExample,
+        posApiType: inferPosApiTypeFromHints(folderTags, path, item.request.description || ''),
+        serverUrl: baseUrl,
+        tags: folderTags,
+      });
+    });
+  }
+
+  walk(items, []);
+  return entries;
+}
+
+function buildDraftParameterDefaults(parameters) {
+  const values = {};
+  parameters.forEach((param) => {
+    if (!param?.name) return;
+    const candidates = [param.example, param.default, param.sample];
+    const hit = candidates.find((val) => val !== undefined && val !== null);
+    if (hit !== undefined && hit !== null) {
+      values[param.name] = hit;
+    }
+  });
+  return values;
+}
+
 export default function PosApiAdmin() {
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
@@ -1055,6 +1335,17 @@ export default function PosApiAdmin() {
   const [requestBuilderError, setRequestBuilderError] = useState('');
   const [sampleImportText, setSampleImportText] = useState('');
   const [sampleImportError, setSampleImportError] = useState('');
+  const [importSpecText, setImportSpecText] = useState('');
+  const [importDrafts, setImportDrafts] = useState([]);
+  const [importError, setImportError] = useState('');
+  const [importStatus, setImportStatus] = useState('');
+  const [selectedImportId, setSelectedImportId] = useState('');
+  const [importTestValues, setImportTestValues] = useState({});
+  const [importRequestBody, setImportRequestBody] = useState('');
+  const [importTestResult, setImportTestResult] = useState(null);
+  const [importTestRunning, setImportTestRunning] = useState(false);
+  const [importTestError, setImportTestError] = useState('');
+  const [importBaseUrl, setImportBaseUrl] = useState('');
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
   const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
@@ -1147,6 +1438,11 @@ export default function PosApiAdmin() {
       })
       .filter(Boolean);
   }, [endpoints, usageFilter]);
+
+  const activeImportDraft = useMemo(
+    () => importDrafts.find((entry) => entry.id === selectedImportId) || importDrafts[0] || null,
+    [importDrafts, selectedImportId],
+  );
 
   const infoSyncEndpointOptions = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
@@ -2253,6 +2549,149 @@ export default function PosApiAdmin() {
     reader.readAsText(file);
   }
 
+  function resetImportTestState() {
+    setImportTestResult(null);
+    setImportTestError('');
+    setImportTestRunning(false);
+  }
+
+  function prepareDraftDefaults(draft) {
+    if (!draft) return;
+    setSelectedImportId(draft.id || '');
+    setImportTestValues(buildDraftParameterDefaults(draft.parameters || []));
+    if (draft.requestExample !== undefined) {
+      try {
+        setImportRequestBody(JSON.stringify(draft.requestExample, null, 2));
+      } catch {
+        setImportRequestBody(String(draft.requestExample));
+      }
+    } else {
+      setImportRequestBody('');
+    }
+    if (draft.serverUrl) {
+      setImportBaseUrl((prev) => prev || draft.serverUrl);
+    }
+    resetImportTestState();
+  }
+
+  function applyImportedSpec(text) {
+    try {
+      const parsed = parseApiSpecText(text);
+      const openApiOps = extractOperationsFromOpenApi(parsed);
+      const postmanOps = extractOperationsFromPostman(parsed);
+      const operations = [...openApiOps, ...postmanOps];
+      if (!operations.length) {
+        throw new Error('No operations were found in the supplied file.');
+      }
+      setImportDrafts(operations);
+      setImportError('');
+      setImportStatus(`Found ${operations.length} operations. Select one to test.`);
+      const first = operations[0];
+      prepareDraftDefaults(first);
+      setImportSpecText(text);
+    } catch (err) {
+      setImportError(err.message || 'Failed to parse the supplied file.');
+      setImportDrafts([]);
+      setImportStatus('');
+      resetImportTestState();
+    }
+  }
+
+  function handleImportFileChange(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === 'string' ? reader.result : '';
+      applyImportedSpec(text);
+    };
+    reader.onerror = () => {
+      setImportError('Failed to read the selected file.');
+    };
+    reader.readAsText(file);
+  }
+
+  function handleParseImportText() {
+    if (!importSpecText.trim()) {
+      setImportError('Paste an OpenAPI YAML/JSON or Postman collection first.');
+      return;
+    }
+    applyImportedSpec(importSpecText);
+  }
+
+  function handleSelectImportDraft(draftId) {
+    const draft = importDrafts.find((entry) => entry.id === draftId);
+    if (!draft) return;
+    prepareDraftDefaults(draft);
+  }
+
+  async function handleTestImportDraft() {
+    if (!activeImportDraft) {
+      setImportTestError('Select an imported operation to test.');
+      return;
+    }
+    let parsedBody;
+    if (importRequestBody.trim()) {
+      try {
+        parsedBody = JSON.parse(importRequestBody);
+      } catch (err) {
+        setImportTestError(err.message || 'Request body must be valid JSON.');
+        return;
+      }
+    }
+    resetImportTestState();
+    setImportTestRunning(true);
+    try {
+      const res = await fetch(`${API_BASE}/posapi/endpoints/import/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          endpoint: {
+            id: activeImportDraft.id,
+            name: activeImportDraft.name,
+            method: activeImportDraft.method,
+            path: activeImportDraft.path,
+            parameters: activeImportDraft.parameters || [],
+            posApiType: activeImportDraft.posApiType,
+          },
+          payload: { params: importTestValues, body: parsedBody },
+          baseUrl: importBaseUrl.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || 'Test request failed.');
+      }
+      setImportTestResult(data);
+      setImportStatus('Test call completed. Review the response below.');
+    } catch (err) {
+      setImportTestError(err.message || 'Failed to call the imported endpoint.');
+    } finally {
+      setImportTestRunning(false);
+    }
+  }
+
+  function handleLoadDraftIntoForm() {
+    if (!activeImportDraft) return;
+    const paramsText = toPrettyJson(activeImportDraft.parameters || [], '[]');
+    const requestBodyText = importRequestBody.trim();
+    setSelectedId('');
+    setFormState({
+      ...EMPTY_ENDPOINT,
+      id: activeImportDraft.id || '',
+      name: activeImportDraft.name || '',
+      method: activeImportDraft.method || 'GET',
+      path: activeImportDraft.path || '/',
+      parametersText: paramsText,
+      posApiType: activeImportDraft.posApiType || '',
+      usage: 'info',
+      requestSchemaText: requestBodyText || '',
+    });
+    setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
+    setActiveTab('endpoints');
+  }
+
   function resetTestState() {
     setTestState({ running: false, error: '', result: null });
   }
@@ -3091,6 +3530,166 @@ export default function PosApiAdmin() {
             </p>
             {error && <div style={styles.error}>{error}</div>}
             {status && <div style={styles.status}>{status}</div>}
+            <details open style={styles.detailSection}>
+              <summary style={styles.detailSummary}>Import &amp; test from OpenAPI/collection</summary>
+              <div style={styles.detailBody}>
+                <p style={styles.sectionHelp}>
+                  Upload a government-supplied OpenAPI/Swagger YAML, JSON file or a Postman
+                  collection. We will extract the available operations so you can test them
+                  against your staging POSAPI URL before adding them to the registry.
+                </p>
+                <div style={styles.importUploadRow}>
+                  <label style={styles.sampleFileLabel}>
+                    <span>Upload specification file</span>
+                    <input
+                      type="file"
+                      accept=".yaml,.yml,.json,application/json,text/yaml,text/x-yaml"
+                      onChange={handleImportFileChange}
+                      style={styles.sampleFileInput}
+                    />
+                  </label>
+                  <div style={styles.importTextColumn}>
+                    <textarea
+                      style={styles.importTextArea}
+                      placeholder="Paste OpenAPI YAML/JSON or Postman collection JSON"
+                      value={importSpecText}
+                      onChange={(e) => setImportSpecText(e.target.value)}
+                      rows={4}
+                    />
+                    <button type="button" onClick={handleParseImportText} style={styles.smallButton}>
+                      Parse pasted text
+                    </button>
+                  </div>
+                </div>
+                {importError && <div style={styles.error}>{importError}</div>}
+                {importStatus && <div style={styles.status}>{importStatus}</div>}
+                {importDrafts.length > 0 && (
+                  <div style={styles.importGrid}>
+                    <div style={styles.importDraftList}>
+                      {importDrafts.map((draft) => {
+                        const methodColor = METHOD_BADGES[draft.method] || '#94a3b8';
+                        const typeLabel = draft.posApiType ? formatTypeLabel(draft.posApiType) : '';
+                        return (
+                          <button
+                            key={draft.id}
+                            type="button"
+                            onClick={() => handleSelectImportDraft(draft.id)}
+                            style={{
+                              ...styles.importDraftButton,
+                              ...(activeImportDraft?.id === draft.id ? styles.importDraftButtonActive : {}),
+                            }}
+                          >
+                            <div style={styles.importDraftTitle}>{draft.name || draft.id}</div>
+                            <div style={styles.badgeStack}>
+                              <span style={badgeStyle(methodColor)}>{draft.method}</span>
+                              {typeLabel && (
+                                <span
+                                  style={{ ...badgeStyle(TYPE_BADGES[draft.posApiType] || '#1f2937'), textTransform: 'none' }}
+                                >
+                                  {typeLabel}
+                                </span>
+                              )}
+                            </div>
+                            <div style={styles.importDraftPath}>{draft.path}</div>
+                            {draft.summary && (
+                              <div style={styles.importDraftSummary}>{draft.summary}</div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {activeImportDraft && (
+                      <div style={styles.importDraftPanel}>
+                        <div style={styles.importDraftHeader}>
+                          <div>
+                            <div style={styles.importDraftHeading}>
+                              {activeImportDraft.name || activeImportDraft.id}
+                            </div>
+                            <div style={styles.importDraftPath}>{activeImportDraft.path}</div>
+                            {activeImportDraft.summary && (
+                              <div style={styles.importDraftSummary}>{activeImportDraft.summary}</div>
+                            )}
+                          </div>
+                          <button type="button" onClick={handleLoadDraftIntoForm} style={styles.smallButton}>
+                            Load into editor
+                          </button>
+                        </div>
+                        <div style={styles.importFieldRow}>
+                          <label style={styles.label}>
+                            Staging base URL
+                            <input
+                              type="text"
+                              value={importBaseUrl}
+                              onChange={(e) => setImportBaseUrl(e.target.value)}
+                              placeholder="https://posapi-test.tax.gov.mn"
+                              style={styles.input}
+                            />
+                          </label>
+                        </div>
+                        <div style={styles.importFieldRow}>
+                          <div style={styles.importParamsHeader}>Parameters</div>
+                          {(activeImportDraft.parameters || []).length === 0 && (
+                            <div style={styles.sectionHelp}>No query or path parameters defined.</div>
+                          )}
+                          <div style={styles.importParamGrid}>
+                            {(activeImportDraft.parameters || []).map((param) => (
+                              <label key={`${activeImportDraft.id}-${param.name}`} style={styles.label}>
+                                {param.name}
+                                <input
+                                  type="text"
+                                  value={importTestValues[param.name] ?? ''}
+                                  onChange={(e) =>
+                                    setImportTestValues((prev) => ({ ...prev, [param.name]: e.target.value }))
+                                  }
+                                  placeholder={param.description || param.example || ''}
+                                  style={styles.input}
+                                />
+                                <div style={styles.paramMeta}>
+                                  {param.in} {param.required ? '• required' : ''}
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                        <div style={styles.importFieldRow}>
+                          <div style={styles.importParamsHeader}>Request body</div>
+                          <textarea
+                            style={styles.sampleTextarea}
+                            placeholder="Optional JSON body for testing"
+                            value={importRequestBody}
+                            onChange={(e) => setImportRequestBody(e.target.value)}
+                            rows={6}
+                          />
+                        </div>
+                        <div style={styles.importActionsRow}>
+                          <button
+                            type="button"
+                            onClick={handleTestImportDraft}
+                            style={styles.smallButton}
+                            disabled={importTestRunning}
+                          >
+                            {importTestRunning ? 'Testing…' : 'Call staging endpoint'}
+                          </button>
+                          {importTestError && <div style={styles.previewErrorBox}>{importTestError}</div>}
+                        </div>
+                        {importTestResult && (
+                          <div style={styles.importResultBox}>
+                            <div style={styles.importResultTitle}>Request</div>
+                            <pre style={styles.samplePre}>{
+                              JSON.stringify(importTestResult.request || {}, null, 2)
+                            }</pre>
+                            <div style={styles.importResultTitle}>Response</div>
+                            <pre style={styles.samplePre}>{
+                              JSON.stringify(importTestResult.response || {}, null, 2)
+                            }</pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </details>
             {formState.usage === 'transaction' && (
               <div style={styles.capabilitiesBox}>
                 <div style={styles.capabilitiesRow}>
@@ -5330,6 +5929,116 @@ const styles = {
     flexWrap: 'wrap',
     gap: '0.75rem',
     alignItems: 'center',
+  },
+  importUploadRow: {
+    display: 'grid',
+    gridTemplateColumns: '220px 1fr',
+    gap: '1rem',
+    alignItems: 'start',
+    marginTop: '0.5rem',
+  },
+  importTextColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  importTextArea: {
+    width: '100%',
+    borderRadius: '6px',
+    border: '1px solid #cbd5f5',
+    padding: '0.75rem',
+    fontFamily: 'inherit',
+    resize: 'vertical',
+  },
+  importGrid: {
+    display: 'grid',
+    gridTemplateColumns: '260px 1fr',
+    gap: '1rem',
+    marginTop: '1rem',
+  },
+  importDraftList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  importDraftButton: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem',
+    background: '#fff',
+    textAlign: 'left',
+    cursor: 'pointer',
+  },
+  importDraftButtonActive: {
+    borderColor: '#2563eb',
+    boxShadow: '0 0 0 2px rgba(37,99,235,0.15)',
+  },
+  importDraftTitle: {
+    fontWeight: 700,
+    marginBottom: '0.25rem',
+  },
+  importDraftPath: {
+    fontSize: '0.85rem',
+    color: '#334155',
+    wordBreak: 'break-all',
+  },
+  importDraftSummary: {
+    fontSize: '0.85rem',
+    color: '#475569',
+    marginTop: '0.25rem',
+  },
+  importDraftPanel: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#f8fafc',
+  },
+  importDraftHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '0.75rem',
+    marginBottom: '0.75rem',
+  },
+  importDraftHeading: {
+    fontSize: '1.1rem',
+    margin: 0,
+  },
+  importFieldRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    marginBottom: '0.75rem',
+  },
+  importParamsHeader: {
+    fontWeight: 700,
+    color: '#0f172a',
+  },
+  importParamGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '0.75rem',
+  },
+  paramMeta: {
+    fontSize: '0.8rem',
+    color: '#475569',
+  },
+  importActionsRow: {
+    display: 'flex',
+    gap: '0.75rem',
+    alignItems: 'center',
+    marginTop: '0.5rem',
+  },
+  importResultBox: {
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem',
+    marginTop: '0.5rem',
+  },
+  importResultTitle: {
+    fontWeight: 700,
+    marginBottom: '0.25rem',
   },
   sampleFileLabel: {
     display: 'inline-flex',
