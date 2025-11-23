@@ -1,6 +1,11 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { tenantConfigPath, getConfigPath } from '../utils/configPaths.js';
+import {
+  tenantConfigPath,
+  tenantConfigRoot,
+  getConfigBasePath,
+  getConfigPath,
+} from '../utils/configPaths.js';
 
 const defaults = {
   forms: {
@@ -76,6 +81,16 @@ function coerceBoolean(value, fallback = false) {
   return fallback;
 }
 
+function withSystemInfo(config, companyId) {
+  return {
+    ...config,
+    system: {
+      configBasePath: getConfigBasePath(),
+      tenantFolder: tenantConfigRoot(companyId),
+    },
+  };
+}
+
 async function readConfig(companyId = 0) {
   const { path: filePath, isDefault } = await getConfigPath(
     'generalConfig.json',
@@ -114,16 +129,17 @@ async function readConfig(companyId = 0) {
       result.general.workplaceFetchToastEnabled,
       defaults.general.workplaceFetchToastEnabled,
     );
-    return { config: result, isDefault };
+    return { config: withSystemInfo(result, companyId), isDefault };
   } catch {
-    return { config: { ...defaults }, isDefault: true };
+    return { config: withSystemInfo({ ...defaults }, companyId), isDefault: true };
   }
 }
 
 async function writeConfig(cfg, companyId = 0) {
+  const { system, ...persistable } = cfg;
   const filePath = tenantConfigPath('generalConfig.json', companyId);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
-  await fs.writeFile(filePath, JSON.stringify(cfg, null, 2));
+  await fs.writeFile(filePath, JSON.stringify(persistable, null, 2));
 }
 
 export async function getGeneralConfig(companyId = 0) {

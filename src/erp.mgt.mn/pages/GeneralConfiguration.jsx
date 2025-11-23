@@ -50,6 +50,13 @@ export default function GeneralConfiguration() {
   }
 
   async function handleSave() {
+    if (tab === 'system') {
+      addToast(
+        'System paths are controlled by the server configuration.',
+        'info',
+      );
+      return;
+    }
     setSaving(true);
     try {
       if (isDefault) {
@@ -120,6 +127,7 @@ export default function GeneralConfiguration() {
   if (!cfg) return <p>{t('loading', 'Loading…')}</p>;
 
   const active = cfg?.[tab] || {};
+  const canSave = tab !== 'system';
 
   return (
     <div>
@@ -159,6 +167,14 @@ export default function GeneralConfiguration() {
             Images
           </button>
         </TooltipWrapper>
+        <TooltipWrapper title={t('tab_system', { ns: 'tooltip', defaultValue: 'Server paths and configuration' })}>
+          <button
+            className={`tab-button ${tab === 'system' ? 'active' : ''}`}
+            onClick={() => setTab('system')}
+          >
+            System
+          </button>
+        </TooltipWrapper>
       </div>
       <div style={{ marginBottom: '0.5rem' }}>
         <button onClick={() => setTab('forms')} disabled={tab === 'forms'}>
@@ -172,6 +188,9 @@ export default function GeneralConfiguration() {
         </button>
         <button onClick={() => setTab('images')} disabled={tab === 'images'} style={{ marginLeft: '0.5rem' }}>
           Images
+        </button>
+        <button onClick={() => setTab('system')} disabled={tab === 'system'} style={{ marginLeft: '0.5rem' }}>
+          System
         </button>
       </div>
       {tab === 'forms' || tab === 'pos' ? (
@@ -328,6 +347,39 @@ export default function GeneralConfiguration() {
             </TooltipWrapper>
           </div>
         </>
+      ) : tab === 'system' ? (
+        <div>
+          <p>
+            Configuration and tenant data are grouped under a single folder per
+            company. Set the <code>CONFIG_BASE_PATH</code> environment variable
+            on the server to change where these files are stored.
+          </p>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Config base path{' '}
+              <input
+                type="text"
+                value={cfg?.system?.configBasePath || ''}
+                readOnly
+              />
+            </label>
+          </div>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <label>
+              Tenant folder{' '}
+              <input
+                type="text"
+                value={cfg?.system?.tenantFolder || ''}
+                readOnly
+              />
+            </label>
+          </div>
+          <p>
+            To move the application, copy the tenant folder to the new server
+            and point <code>CONFIG_BASE_PATH</code> (or <code>CONFIG_ROOT</code>)
+            to its parent directory.
+          </p>
+        </div>
       ) : (
         <>
           <div style={{ marginBottom: '0.5rem' }}>
@@ -706,8 +758,8 @@ export default function GeneralConfiguration() {
         <button onClick={handleImport} style={{ marginRight: '0.5rem' }}>
           Import Defaults
         </button>
-        <button onClick={handleSave} disabled={saving}>
-          Save
+        <button onClick={handleSave} disabled={saving || !canSave}>
+          {canSave ? 'Save' : 'Managed by server'}
         </button>
       </div>
     </div>
