@@ -1,6 +1,7 @@
 import express from 'express';
 import { requireAuth } from '../middlewares/auth.js';
 import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
+import { invokePosApiEndpoint } from '../services/posApiService.js';
 import { getEmploymentSession } from '../../db/index.js';
 
 const router = express.Router();
@@ -297,6 +298,64 @@ router.post('/test', requireAuth, async (req, res, next) => {
       res.status(400).json({ message: err.message });
       return;
     }
+    next(err);
+  }
+});
+
+router.post('/import/test', requireAuth, async (req, res, next) => {
+  try {
+    const guard = await requireSystemSettings(req, res);
+    if (!guard) return;
+    const endpoint = req.body?.endpoint;
+    const payload = req.body?.payload;
+    const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
+    if (!endpoint || typeof endpoint !== 'object') {
+      res.status(400).json({ message: 'endpoint object is required' });
+      return;
+    }
+    const sanitized = {
+      id: endpoint.id || 'draftEndpoint',
+      name: endpoint.name || endpoint.id || 'Draft endpoint',
+      method: (endpoint.method || 'GET').toUpperCase(),
+      path: endpoint.path || '/',
+      parameters: Array.isArray(endpoint.parameters)
+        ? endpoint.parameters.filter(Boolean)
+        : [],
+      posApiType: endpoint.posApiType || undefined,
+    };
+    const inputPayload = payload && typeof payload === 'object' ? payload : {};
+    const paramsBag = inputPayload.params && typeof inputPayload.params === 'object'
+      ? inputPayload.params
+      : {};
+    const bodyPayload =
+      inputPayload.body === undefined || inputPayload.body === null ? undefined : inputPayload.body;
+    const combinedPayload = { ...paramsBag };
+    if (bodyPayload !== undefined) {
+      combinedPayload.body = bodyPayload;
+    }
+
+    try {
+      const result = await invokePosApiEndpoint(sanitized.id, combinedPayload, {
+        endpoint: sanitized,
+        baseUrl: baseUrl || undefined,
+        debug: true,
+      });
+      res.json({
+        ok: true,
+        request: result.request,
+        response: result.response,
+        endpoint: sanitized,
+      });
+    } catch (err) {
+      const status = err?.status || 502;
+      res
+        .status(status)
+        .json({
+          message: err?.message || 'Failed to invoke POSAPI endpoint',
+          request: err?.request || null,
+        });
+    }
+  } catch (err) {
     next(err);
   }
 });

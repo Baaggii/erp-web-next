@@ -1038,9 +1038,9 @@ export async function resolvePosApiEndpoint(endpointId) {
   return fallback;
 }
 
-async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) {
-  const baseUrl = await getPosApiBaseUrl();
-  const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+async function posApiFetch(path, { method = 'GET', body, token, headers, baseUrl } = {}) {
+  const resolvedBaseUrl = baseUrl ? trimEndSlash(baseUrl) : await getPosApiBaseUrl();
+  const url = `${resolvedBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
   const fetchFn = await getFetch();
   const res = await fetchFn(url, {
     method,
@@ -1606,7 +1606,8 @@ export async function buildReceiptFromDynamicTransaction(
 export async function invokePosApiEndpoint(endpointId, payload = {}, options = {}) {
   const optionBag =
     options && typeof options === 'object' ? options : { headers: {}, endpoint: null };
-  const endpoint = optionBag.endpoint || (await resolvePosApiEndpoint(endpointId));
+  const { headers: optionHeaders, endpoint: endpointOverride, baseUrl, debug } = optionBag;
+  const endpoint = endpointOverride || (await resolvePosApiEndpoint(endpointId));
   const method = (endpoint?.method || 'GET').toUpperCase();
   let path = (endpoint?.path || '/').trim() || '/';
   const params = Array.isArray(endpoint?.parameters) ? endpoint.parameters : [];
@@ -1651,7 +1652,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
     bodyPayload = restPayload;
   }
 
-  const headers = { ...(optionBag.headers || {}) };
+  const headers = { ...(optionHeaders || {}) };
   let body;
   if (bodyPayload !== undefined && method !== 'GET' && method !== 'HEAD') {
     if (!headers['Content-Type']) {
@@ -1660,12 +1661,40 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
     body = JSON.stringify(bodyPayload);
   }
 
-  return posApiFetch(path, {
-    method,
-    body,
-    token: await getPosApiToken(),
-    headers,
-  });
+  const requestBaseUrl = baseUrl || (await getPosApiBaseUrl());
+  const requestUrl = `${trimEndSlash(requestBaseUrl)}${path.startsWith('/') ? path : `/${path}`}`;
+
+  try {
+    const response = await posApiFetch(path, {
+      method,
+      body,
+      token: await getPosApiToken(),
+      headers,
+      baseUrl,
+    });
+    if (debug) {
+      return {
+        response,
+        request: {
+          method,
+          url: requestUrl,
+          headers,
+          body: bodyPayload ?? null,
+        },
+      };
+    }
+    return response;
+  } catch (err) {
+    if (debug) {
+      err.request = {
+        method,
+        url: requestUrl,
+        headers,
+        body: bodyPayload ?? null,
+      };
+    }
+    throw err;
+  }
 }
 
 export async function sendReceipt(payload, options = {}) {
