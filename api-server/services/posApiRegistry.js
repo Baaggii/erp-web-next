@@ -1,6 +1,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { loadSettings } from './posApiSettings.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,33 @@ function ensureArray(data) {
   return data;
 }
 
+function mergeEndpointSettings(endpoint, settings) {
+  if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const settingsId = typeof endpoint.settingsId === 'string' ? endpoint.settingsId : null;
+  if (!settingsId || !settings || typeof settings !== 'object') return endpoint;
+  const matched = settings[settingsId];
+  if (!matched || typeof matched !== 'object') return endpoint;
+  const allowedKeys = [
+    'supportsItems',
+    'supportsMultipleReceipts',
+    'supportsMultiplePayments',
+    'receiptTypes',
+    'paymentMethods',
+    'receiptTypeDescriptions',
+    'paymentMethodDescriptions',
+    'taxTypeDescriptions',
+    'paymentMethodFields',
+  ];
+  const merged = { ...matched, ...endpoint };
+  const filtered = { ...endpoint };
+  allowedKeys.forEach((key) => {
+    if (merged[key] !== undefined) {
+      filtered[key] = merged[key];
+    }
+  });
+  return filtered;
+}
+
 export async function loadEndpoints(options = {}) {
   const { forceReload = false } = options || {};
   try {
@@ -29,9 +57,10 @@ export async function loadEndpoints(options = {}) {
     }
     const raw = await fs.readFile(endpointsFilePath, 'utf8');
     const parsed = ensureArray(raw.trim() ? JSON.parse(raw) : []);
-    cachedEndpoints = parsed;
+    const settings = await loadSettings({ forceReload });
+    cachedEndpoints = parsed.map((endpoint) => mergeEndpointSettings(endpoint, settings));
     cachedMtimeMs = stat.mtimeMs;
-    return clone(parsed);
+    return clone(cachedEndpoints);
   } catch (err) {
     if (err.code === 'ENOENT') {
       cachedEndpoints = [];

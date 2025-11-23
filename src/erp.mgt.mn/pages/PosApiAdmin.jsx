@@ -362,6 +362,7 @@ const EMPTY_ENDPOINT = {
   docUrl: '',
   posApiType: '',
   usage: 'transaction',
+  settingsId: '',
   defaultForForm: false,
   supportsMultipleReceipts: false,
   supportsMultiplePayments: false,
@@ -2881,15 +2882,6 @@ export default function PosApiAdmin() {
       formState.responseSchemaText,
       {},
     );
-    const fieldDescriptions = parseJsonInput(
-      'Field descriptions',
-      formState.fieldDescriptionsText,
-      {},
-    );
-    if (fieldDescriptions && typeof fieldDescriptions !== 'object') {
-      throw new Error('Field descriptions must be a JSON object');
-    }
-
     const requestFieldsRaw = parseJsonInput(
       'Request field hints',
       formState.requestFieldsText,
@@ -2906,35 +2898,6 @@ export default function PosApiAdmin() {
     );
     if (!Array.isArray(responseFields)) {
       throw new Error('Response field hints must be a JSON array');
-    }
-
-    const topLevelFields = parseJsonInput(
-      'Top-level mapping hints',
-      formState.topLevelFieldsText,
-      [],
-    );
-    if (!Array.isArray(topLevelFields)) {
-      throw new Error('Top-level mapping hints must be a JSON array');
-    }
-
-    const nestedPaths = parseJsonInput(
-      'Nested mapping paths',
-      formState.nestedPathsText,
-      {},
-    );
-    if (nestedPaths && typeof nestedPaths !== 'object') {
-      throw new Error('Nested mapping paths must be a JSON object');
-    }
-
-    if (
-      formState.posApiType &&
-      ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'].includes(formState.posApiType)
-    ) {
-      Object.entries(PAYMENT_FIELD_DESCRIPTIONS).forEach(([key, value]) => {
-        if (!fieldDescriptions[key]) {
-          fieldDescriptions[key] = value;
-        }
-      });
     }
 
     if (requestSchema && typeof requestSchema === 'object' && formState.posApiType) {
@@ -2985,6 +2948,8 @@ export default function PosApiAdmin() {
     const receiptItemTemplates = receiptItemsEnabled
       ? buildTemplateList(formState.receiptItemTemplates, allowMultipleReceiptItems)
       : [];
+    const settingsId = usage === 'transaction' ? 'defaultTransaction' : '';
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -2994,6 +2959,7 @@ export default function PosApiAdmin() {
       posApiType: formState.posApiType || '',
       usage,
       defaultForForm: isTransaction ? Boolean(formState.defaultForForm) : false,
+      ...(settingsId ? { settingsId } : {}),
       supportsMultipleReceipts: isTransaction ? Boolean(formState.supportsMultipleReceipts) : false,
       supportsMultiplePayments: isTransaction ? Boolean(formState.supportsMultiplePayments) : false,
       supportsItems: isTransaction ? Boolean(formState.supportsItems) : false,
@@ -3029,22 +2995,17 @@ export default function PosApiAdmin() {
         schema: responseSchema,
         description: formState.responseDescription || '',
       },
-      fieldDescriptions: fieldDescriptions || {},
       requestFields: sanitizedRequestFields,
       responseFields,
-      mappingHints: {},
       testable: Boolean(formState.testable),
       testServerUrl: formState.testServerUrl.trim(),
     };
 
-    if (topLevelFields.length > 0) {
-      endpoint.mappingHints.topLevelFields = topLevelFields;
-    }
-    if (nestedPaths && Object.keys(nestedPaths).length > 0) {
-      endpoint.mappingHints.nestedPaths = nestedPaths;
-    }
-    if (Object.keys(endpoint.mappingHints).length === 0) {
-      delete endpoint.mappingHints;
+    if (settingsId) {
+      delete endpoint.supportsMultipleReceipts;
+      delete endpoint.supportsMultiplePayments;
+      delete endpoint.receiptTypes;
+      delete endpoint.paymentMethods;
     }
 
     const existingIds = new Set(endpoints.map((ep) => ep.id));

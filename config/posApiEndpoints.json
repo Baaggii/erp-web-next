@@ -8,21 +8,9 @@
     "parameters": [],
     "posApiType": "B2C",
     "usage": "transaction",
+    "settingsId": "defaultTransaction",
     "defaultForForm": true,
     "supportsItems": true,
-    "supportsMultipleReceipts": true,
-    "supportsMultiplePayments": true,
-    "receiptTypes": [
-      "B2C", "B2B_SALE", "B2B_PURCHASE", "STOCK_QR"
-    ],
-    "paymentMethods": [
-      "CASH",
-      "PAYMENT_CARD",
-      "BANK_TRANSFER",
-      "MOBILE_WALLET",
-      "EASY_BANK_CARD",
-      "SERVICE_PAYMENT"
-    ],
     "notes": "Handles goods and service transactions. Include item rows for goods or leave the items array empty for service-only receipts.",
     "requestBody": {
       "schema": {
@@ -237,355 +225,6 @@
         "description": "List of receipt numbers assigned per tax authority rules."
       }
     ],
-    "fieldDescriptions": {
-      "type": "POSAPI payload type (B2C, B2B_SALE, B2B_PURCHASE, STOCK_QR).",
-      "taxType": "Overall tax category for the header (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT).",
-      "branchNo": "Three digit branch identifier issued with the licence.",
-      "posNo": "POS terminal identifier registered with the tax authority.",
-      "merchantTin": "Registered TIN of the merchant submitting the receipt.",
-      "consumerNo": "Citizen registry or phone number for B2C receipts.",
-      "customerTin": "Buyer TIN for B2B receipts.",
-      "totalAmount": "Total invoice amount including tax.",
-      "totalVAT": "VAT amount for the transaction when taxType is VAT_ABLE.",
-      "totalCityTax": "City tax amount when applicable to VAT_ABLE receipts.",
-      "receipts": "Groups of line items organised by POSAPI tax type.",
-      "receipts[].taxType": "Tax type for this group (VAT_ABLE, VAT_FREE, VAT_ZERO, NO_VAT).",
-      "receipts[].totalAmount": "Amount for this tax group including tax.",
-      "receipts[].totalVAT": "VAT total for this group when taxType is VAT_ABLE.",
-      "receipts[].items": "Line items with product and tax information for this group.",
-      "receipts[].items[].classificationCode": "Unified product/service classification code.",
-      "receipts[].items[].taxProductCode": "Reason code for VAT_FREE/VAT_ZERO items.",
-      "payments": "Breakdown of how the receipt or invoice was paid.",
-      "payments[].type": "Payment method code (type/code). Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD, SERVICE_PAYMENT.",
-      "payments[].status": "Payment status (PAID, PENDING, CANCELLED).",
-      "payments[].paidAmount": "Amount paid with the selected payment method. Also accepted as amount in legacy payloads.",
-      "payments[].amount": "Legacy alias for paidAmount.",
-      "payments[].data": "Card metadata envelope when submitting PAYMENT_CARD entries.",
-      "payments[].data.terminalID": "Card terminal identifier provided by the bank.",
-      "payments[].data.rrn": "Retrieval reference number returned by the acquiring bank.",
-      "payments[].data.maskedCardNumber": "Masked primary account number used for settlement.",
-      "payments[].data.easy": "Boolean flag indicating whether Easy Bank card auto-confirmation applies."
-    },
-    "mappingHints": {
-      "topLevelFields": [
-        {
-          "field": "type",
-          "required": true,
-          "description": "POSAPI document type column (B2C, B2B_SALE, B2C, B2B_SALE, STOCK_QR)."
-        },
-        {
-          "field": "totalAmount",
-          "required": true,
-          "description": "Total invoice amount including taxes."
-        },
-        {
-          "field": "totalVAT",
-          "required": true,
-          "description": "Total VAT amount for VAT_ABLE transactions."
-        },
-        {
-          "field": "totalCityTax",
-          "required": false,
-          "description": "City tax amount for VAT_ABLE receipts when applicable."
-        },
-        {
-          "field": "taxType",
-          "required": true,
-          "description": "Overall tax type for the receipt payload."
-        },
-        {
-          "field": "branchNo",
-          "required": true,
-          "description": "Three digit branch identifier issued with the licence."
-        },
-        {
-          "field": "posNo",
-          "required": true,
-          "description": "Registered POS terminal identifier."
-        },
-        {
-          "field": "merchantTin",
-          "required": true,
-          "description": "Registered TIN of the merchant submitting the receipt."
-        },
-        {
-          "field": "consumerNo",
-          "required": false,
-          "description": "Citizen registry or phone number for B2C receipts."
-        },
-        {
-          "field": "customerTin",
-          "required": false,
-          "description": "Buyer TIN for B2B receipts."
-        }
-      ],
-      "itemFields": [
-        {
-          "field": "name",
-          "required": true,
-          "description": "Item name printed on the receipt."
-        },
-        {
-          "field": "qty",
-          "required": true,
-          "description": "Quantity sold for the line item."
-        },
-        {
-          "field": "price",
-          "required": true,
-          "description": "Unit price of the item before tax."
-        },
-        {
-          "field": "totalAmount",
-          "required": true,
-          "description": "Extended amount for the line item including tax."
-        },
-        {
-          "field": "totalVAT",
-          "required": false,
-          "description": "VAT portion attributed to the line item."
-        },
-        {
-          "field": "totalCityTax",
-          "required": false,
-          "description": "City tax portion attributed to the line item."
-        },
-        {
-          "field": "taxType",
-          "required": false,
-          "description": "Specific tax type override for the item when different from the header."
-        },
-        {
-          "field": "classificationCode",
-          "required": true,
-          "description": "Unified classification code for the good."
-        },
-        {
-          "field": "taxProductCode",
-          "required": false,
-          "description": "Tax product or exemption reason code when required by POSAPI."
-        },
-        {
-          "field": "barCode",
-          "required": false,
-          "description": "Barcode identifier for the item."
-        },
-        {
-          "field": "measureUnit",
-          "required": false,
-          "description": "Measurement unit for the item quantity."
-        }
-      ],
-      "receiptGroups": [
-        {
-          "type": "VAT_ABLE",
-          "fields": [
-            {
-              "field": "totalAmount",
-              "required": true,
-              "description": "Total amount for VAT-able sales."
-            },
-            {
-              "field": "totalVAT",
-              "required": true,
-              "description": "VAT amount for VAT-able sales."
-            },
-            {
-              "field": "totalCityTax",
-              "required": false,
-              "description": "City tax amount associated with the VAT-able group."
-            },
-            {
-              "field": "taxType",
-              "required": false,
-              "description": "Override tax type when the column provides it."
-            }
-          ]
-        },
-        {
-          "type": "VAT_FREE",
-          "fields": [
-            {
-              "field": "totalAmount",
-              "required": false,
-              "description": "Total amount for VAT-free sales."
-            },
-            {
-              "field": "taxType",
-              "required": false,
-              "description": "Optional override for the VAT-free tax type."
-            }
-          ]
-        },
-        {
-          "type": "VAT_ZERO",
-          "fields": [
-            {
-              "field": "totalAmount",
-              "required": false,
-              "description": "Total amount for VAT zero-rated sales."
-            },
-            {
-              "field": "taxType",
-              "required": false,
-              "description": "Optional override for the zero-rated tax type."
-            }
-          ]
-        },
-        {
-          "type": "NO_VAT",
-          "fields": [
-            {
-              "field": "totalAmount",
-              "required": false,
-              "description": "Total amount for non-VAT sales."
-            },
-            {
-              "field": "taxType",
-              "required": false,
-              "description": "Optional override for the non-VAT tax type."
-            }
-          ]
-        }
-      ],
-      "paymentMethods": [
-        {
-          "method": "CASH",
-          "fields": [
-            {
-              "field": "paidAmount",
-              "required": true,
-              "description": "Cash amount paid."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Payment status flag for audit tracking."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Status flag for the bank transfer."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Wallet payment status."
-            },
-            {
-              "field": "reference",
-              "required": false,
-              "description": "Optional cash payment reference or slip number."
-            }
-          ]
-        },
-        {
-          "method": "PAYMENT_CARD",
-          "fields": [
-            {
-              "field": "paidAmount",
-              "required": true,
-              "description": "Card payment amount."
-            },
-            {
-              "field": "status",
-              "required": true,
-              "description": "Card payment status (PAID is required for settlement)."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Wallet payment status."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Card authorisation or reference number."
-            },
-            {
-              "field": "data.terminalID",
-              "required": false,
-              "description": "Terminal identifier supplied by the acquiring bank."
-            },
-            {
-              "field": "data.rrn",
-              "required": false,
-              "description": "Retrieval reference number returned with the card transaction."
-            },
-            {
-              "field": "data.maskedCardNumber",
-              "required": false,
-              "description": "Masked card number printed on the receipt."
-            },
-            {
-              "field": "data.easy",
-              "required": false,
-              "description": "Flag indicating Easy Bank auto-confirmation."
-            }
-          ]
-        },
-        {
-          "method": "BANK_TRANSFER",
-          "fields": [
-            {
-              "field": "paidAmount",
-              "required": false,
-              "description": "Amount settled by bank transfer."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Status flag for the bank transfer."
-            },
-            {
-              "field": "reference",
-              "required": false,
-              "description": "Bank transaction reference."
-            }
-          ]
-        },
-        {
-          "method": "MOBILE_WALLET",
-          "fields": [
-            {
-              "field": "paidAmount",
-              "required": false,
-              "description": "Amount charged to the mobile wallet."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Wallet payment status."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Wallet transaction reference."
-            }
-          ]
-        },
-        {
-          "method": "EASY_BANK_CARD",
-          "fields": [
-            {
-              "field": "paidAmount",
-              "required": false,
-              "description": "Amount paid with Easy Bank card."
-            },
-            {
-              "field": "status",
-              "required": false,
-              "description": "Reference for the Easy Bank card payment."
-            }
-          ]
-        }
-      ],
-      "nestedPaths": {
-        "receipts": "receipts",
-        "items": "receipts[].items",
-        "payments": "payments"
-      }
-    },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"
   },
@@ -637,11 +276,6 @@
         "description": "Tax authority status for the entity (e.g., ACTIVE)."
       }
     ],
-    "fieldDescriptions": {
-      "valid": "Boolean flag indicating if the TIN is valid.",
-      "name": "Registered entity name when available.",
-      "status": "Tax authority status for the entity (e.g., ACTIVE)."
-    },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"
   },
@@ -730,14 +364,6 @@
         "description": "Date the receipt was created or queued."
       }
     ],
-    "fieldDescriptions": {
-      "status": "Execution status returned by POSAPI.",
-      "receipts": "List of receipts that are pending on the POSAPI server.",
-      "receipts[].billId": "Queued receipt identifier.",
-      "receipts[].status": "POSAPI queue status such as QUEUED or SENT.",
-      "receipts[].amount": "Total amount of the queued receipt.",
-      "receipts[].createdDate": "Date the receipt was created or queued."
-    },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"
   },
@@ -784,12 +410,6 @@
         "description": "City or province that owns the district."
       }
     ],
-    "fieldDescriptions": {
-      "districts": "Array of available district codes.",
-      "districts[].code": "District code used when registering receipts.",
-      "districts[].name": "Human-readable district name.",
-      "districts[].city": "City or province that owns the district."
-    },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"
   },
@@ -831,11 +451,6 @@
         "description": "Description of when the tax type is used."
       }
     ],
-    "fieldDescriptions": {
-      "vatTaxTypes": "Array of supported VAT tax type codes.",
-      "vatTaxTypes[].code": "Tax type identifier returned by POSAPI.",
-      "vatTaxTypes[].description": "Description of when the tax type is used."
-    },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"
   },
@@ -882,12 +497,6 @@
         "description": "Currency code for the account (e.g., MNT)."
       }
     ],
-    "fieldDescriptions": {
-      "bankAccounts": "List of bank accounts configured in POSAPI.",
-      "bankAccounts[].bankName": "Bank name for the configured account.",
-      "bankAccounts[].accountNo": "Account number registered with the tax authority.",
-      "bankAccounts[].currency": "Currency code for the account (e.g., MNT)."
-    },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"
   },
@@ -934,12 +543,6 @@
         "description": "Physical address recorded for the branch."
       }
     ],
-    "fieldDescriptions": {
-      "branches": "Array of branches registered in POSAPI.",
-      "branches[].branchNo": "Branch number issued with the licence.",
-      "branches[].name": "Branch display name.",
-      "branches[].address": "Physical address recorded for the branch."
-    },
     "testable": true,
     "testServerUrl": "https://posapi-test.tax.gov.mn"
   }

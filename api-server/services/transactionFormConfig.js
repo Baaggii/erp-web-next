@@ -56,50 +56,104 @@ function sanitizeMappingHintField(field) {
   };
 }
 
-function sanitizeMappingHints(hints) {
-  if (!hints || typeof hints !== 'object') return null;
+function deriveFieldDescriptions(requestFields, responseFields) {
+  const descriptions = {};
+  const addDescriptions = (fields = []) => {
+    fields.forEach((entry) => {
+      const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
+      if (!field || typeof entry.description !== 'string') return;
+      if (!descriptions[field]) {
+        descriptions[field] = entry.description;
+      }
+    });
+  };
+  addDescriptions(requestFields);
+  addDescriptions(responseFields);
+  return descriptions;
+}
+
+function deriveMappingHints(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return undefined;
+  const requestFields = Array.isArray(endpoint.requestFields) ? endpoint.requestFields : [];
   const result = {};
-  if (Array.isArray(hints.topLevelFields)) {
-    const fields = hints.topLevelFields
-      .map((entry) => sanitizeMappingHintField(entry))
-      .filter(Boolean);
-    if (fields.length) result.topLevelFields = fields;
+
+  const topLevelFields = [];
+  const receiptFields = [];
+  const itemFields = [];
+
+  requestFields.forEach((entry) => {
+    const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!field) return;
+    const base = {
+      field,
+      required: Boolean(entry.required),
+      ...(typeof entry.description === 'string' ? { description: entry.description } : {}),
+    };
+    if (field.startsWith('receipts[].items[].')) {
+      itemFields.push({ ...base, field: field.replace('receipts[].items[].', '') });
+      return;
+    }
+    if (field.startsWith('receipts[].')) {
+      receiptFields.push({ ...base, field: field.replace('receipts[].', '') });
+      return;
+    }
+    topLevelFields.push(base);
+  });
+
+  if (topLevelFields.length) {
+    result.topLevelFields = topLevelFields;
   }
-  if (Array.isArray(hints.receiptGroups)) {
-    const groups = hints.receiptGroups
-      .map((group) => {
-        const type = typeof group?.type === 'string' ? group.type.trim() : '';
-        if (!type) return null;
-        const fields = Array.isArray(group.fields)
-          ? group.fields.map((entry) => sanitizeMappingHintField(entry)).filter(Boolean)
-          : [];
-        return { type, fields };
-      })
-      .filter(Boolean);
-    if (groups.length) result.receiptGroups = groups;
+
+  if (itemFields.length) {
+    result.itemFields = itemFields;
   }
-  if (Array.isArray(hints.paymentMethods)) {
-    const methods = hints.paymentMethods
-      .map((method) => {
-        const code = typeof method?.method === 'string' ? method.method.trim() : '';
-        if (!code) return null;
-        const fields = Array.isArray(method.fields)
-          ? method.fields.map((entry) => sanitizeMappingHintField(entry)).filter(Boolean)
-          : [];
-        return { method: code, fields };
-      })
-      .filter(Boolean);
-    if (methods.length) result.paymentMethods = methods;
-  }
-  if (hints.nestedPaths && typeof hints.nestedPaths === 'object') {
-    const entries = Object.entries(hints.nestedPaths)
-      .filter(([key, val]) => typeof key === 'string' && typeof val === 'string' && key && val)
-      .map(([key, val]) => [key, val]);
-    if (entries.length) {
-      result.nestedPaths = Object.fromEntries(entries);
+
+  if (receiptFields.length) {
+    const types = Array.isArray(endpoint.receiptTypes) ? endpoint.receiptTypes : [];
+    if (types.length) {
+      result.receiptGroups = types.map((type) => ({ type, fields: receiptFields }));
     }
   }
-  return Object.keys(result).length ? result : null;
+
+  if (endpoint.paymentMethodFields && typeof endpoint.paymentMethodFields === 'object') {
+    const entries = Object.entries(endpoint.paymentMethodFields)
+      .map(([method, fields]) => {
+        if (typeof method !== 'string') return null;
+        const mappedFields = Array.isArray(fields)
+          ? fields
+              .map((field) => {
+                if (!field || typeof field !== 'object') return null;
+                const key = typeof field.field === 'string' ? field.field.trim() : '';
+                if (!key) return null;
+                return {
+                  field: key,
+                  required: Boolean(field.required),
+                  ...(typeof field.description === 'string' ? { description: field.description } : {}),
+                };
+              })
+              .filter(Boolean)
+          : [];
+        if (!mappedFields.length) return null;
+        return { method, fields: mappedFields };
+      })
+      .filter(Boolean);
+    if (entries.length) {
+      result.paymentMethods = entries;
+    }
+  }
+
+  const hasReceiptContent = requestFields.some((entry) => typeof entry?.field === 'string' && entry.field.includes('receipts'));
+  const hasPaymentContent = requestFields.some(
+    (entry) => typeof entry?.field === 'string' && entry.field.includes('payments'),
+  );
+  if (hasReceiptContent || hasPaymentContent) {
+    result.nestedPaths = {
+      ...(hasReceiptContent ? { receipts: 'receipts', items: 'receipts[].items' } : {}),
+      ...(hasPaymentContent ? { payments: 'payments' } : {}),
+    };
+  }
+
+  return Object.keys(result).length ? result : undefined;
 }
 
 function normalizeInfoEndpointMappingList(source, mode) {
@@ -308,15 +362,33 @@ function sanitizeEndpointForClient(endpoint) {
     supportsMultiplePayments: Boolean(endpoint.supportsMultiplePayments),
     receiptTypes,
     paymentMethods,
-    mappingHints: sanitizeMappingHints(endpoint.mappingHints),
+    mappingHints: undefined,
   };
 
   const requestFields = sanitizeFieldList(endpoint.requestFields);
   if (requestFields.length) sanitized.requestFields = requestFields;
   const responseFields = sanitizeFieldList(endpoint.responseFields);
   if (responseFields.length) sanitized.responseFields = responseFields;
-  if (endpoint.fieldDescriptions && typeof endpoint.fieldDescriptions === 'object') {
-    sanitized.fieldDescriptions = endpoint.fieldDescriptions;
+  const derivedDescriptions = deriveFieldDescriptions(requestFields, responseFields);
+  if (Object.keys(derivedDescriptions).length) {
+    sanitized.fieldDescriptions = derivedDescriptions;
+  }
+  const derivedHints = deriveMappingHints({ ...sanitized, receiptTypes: endpoint.receiptTypes });
+  if (derivedHints) {
+    sanitized.mappingHints = derivedHints;
+  }
+
+  if (endpoint.receiptTypeDescriptions) {
+    sanitized.receiptTypeDescriptions = endpoint.receiptTypeDescriptions;
+  }
+  if (endpoint.paymentMethodDescriptions) {
+    sanitized.paymentMethodDescriptions = endpoint.paymentMethodDescriptions;
+  }
+  if (endpoint.taxTypeDescriptions) {
+    sanitized.taxTypeDescriptions = endpoint.taxTypeDescriptions;
+  }
+  if (endpoint.paymentMethodFields) {
+    sanitized.paymentMethodFields = endpoint.paymentMethodFields;
   }
 
   return sanitized;
