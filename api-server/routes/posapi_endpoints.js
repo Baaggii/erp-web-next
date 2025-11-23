@@ -66,8 +66,10 @@ router.post('/import/parse', requireAuth, upload.array('files'), async (req, res
       try {
         const text = file.buffer.toString('utf8');
         const parsed = parseApiSpecText(text);
-        const openApiOps = extractOperationsFromOpenApi(parsed);
-        const postmanOps = extractOperationsFromPostman(parsed);
+        const sourceName = file.originalname || 'specification';
+        const isBundled = /bundle|bundled|resolved|inline/i.test(sourceName);
+        const openApiOps = extractOperationsFromOpenApi(parsed, { sourceName, isBundled });
+        const postmanOps = extractOperationsFromPostman(parsed, { sourceName, isBundled });
         allOperations.push(...openApiOps, ...postmanOps);
       } catch (err) {
         res.status(400).json({ message: `Failed to parse ${file.originalname}: ${err.message}` });
@@ -301,17 +303,102 @@ function extractRequestExample(requestBody) {
   return undefined;
 }
 
-function inferPosApiTypeFromHints(tags = [], path = '', summary = '') {
+function classifyPosApiType(tags = [], path = '', summary = '') {
   const text = `${tags.join(' ')} ${path} ${summary}`.toLowerCase();
-  if (text.includes('auth')) return 'AUTH';
+  if (path.includes('/protocol/openid-connect/token') || /auth|token/.test(text)) {
+    return 'AUTH';
+  }
+  if (path.includes('/api/info') || text.includes('info') || text.includes('lookup')) {
+    return 'LOOKUP';
+  }
   if (text.includes('stock') || text.includes('qr')) return 'STOCK_QR';
+  if (path.includes('/rest/')) {
+    if (text.includes('b2b') || text.includes('sale') || text.includes('invoice')) return 'B2B_SALE';
+    if (text.includes('purchase')) return 'B2B_PURCHASE';
+    return 'B2C';
+  }
   if (text.includes('purchase')) return 'B2B_PURCHASE';
   if (text.includes('sale') || text.includes('invoice') || text.includes('b2b')) return 'B2B_SALE';
-  if (text.includes('b2c') || text.includes('receipt')) return 'B2C';
+  if (text.includes('b2c') || text.includes('receipt') || text.includes('transaction')) return 'B2C';
   return '';
 }
 
-function extractOperationsFromOpenApi(spec) {
+function extractRequestSchema(requestBody) {
+  if (!requestBody || typeof requestBody !== 'object') return { schema: undefined, description: '', contentType: '' };
+  const content = requestBody.content || {};
+  const priorityTypes = ['application/x-www-form-urlencoded', 'application/json', '*/*'];
+  const hitType = priorityTypes.find((type) => content[type]) || Object.keys(content)[0];
+  if (!hitType) return { schema: undefined, description: '', contentType: '' };
+  const media = content[hitType] || {};
+  const schema = media.schema && typeof media.schema === 'object' ? media.schema : undefined;
+  const description = requestBody.description || media.description || '';
+  return { schema, description, contentType: hitType };
+}
+
+function extractResponseSchema(responses) {
+  if (!responses || typeof responses !== 'object') return { schema: undefined, description: '' };
+  const entries = Object.entries(responses);
+  const success = entries.find(([code]) => /^2/.test(code));
+  const fallback = entries[0];
+  const target = success || fallback;
+  if (!target) return { schema: undefined, description: '' };
+  const [, response] = target;
+  if (!response || typeof response !== 'object') return { schema: undefined, description: '' };
+  const content = response.content || {};
+  const media = content['application/json'] || content['*/*'] || Object.values(content)[0] || {};
+  const schema = media.schema && typeof media.schema === 'object' ? media.schema : undefined;
+  const description = response.description || media.description || '';
+  return { schema, description };
+}
+
+function collectFieldsFromSchema(schema, { pathPrefix = '', required = [] } = {}) {
+  const fields = [];
+  const requiredSet = new Set(Array.isArray(required) ? required : []);
+  const pushField = (fieldPath, node, isRequired) => {
+    if (!fieldPath) return;
+    const entry = { field: fieldPath, required: Boolean(isRequired) };
+    if (node && typeof node.description === 'string' && node.description.trim()) {
+      entry.description = node.description.trim();
+    }
+    fields.push(entry);
+  };
+
+  const walk = (node, currentPath, inheritedRequired = new Set()) => {
+    if (!node || typeof node !== 'object') return;
+    const nodeType = node.type || (node.properties ? 'object' : node.items ? 'array' : undefined);
+    if (nodeType === 'object') {
+      const props = node.properties && typeof node.properties === 'object' ? node.properties : {};
+      const requiredForNode = new Set(Array.isArray(node.required) ? node.required : []);
+      Object.entries(props).forEach(([key, child]) => {
+        const fieldPath = currentPath ? `${currentPath}.${key}` : key;
+        const isRequired = requiredForNode.has(key) || inheritedRequired.has(key);
+        pushField(fieldPath, child, isRequired);
+        walk(child, fieldPath, requiredForNode);
+      });
+      return;
+    }
+    if (nodeType === 'array') {
+      const arrayPath = currentPath ? `${currentPath}[]` : '[]';
+      pushField(arrayPath, node, inheritedRequired.size > 0);
+      walk(node.items, arrayPath, new Set(Array.isArray(node.items?.required) ? node.items.required : []));
+      return;
+    }
+    if (currentPath) {
+      pushField(currentPath, node, inheritedRequired.size > 0);
+    }
+  };
+
+  walk(schema, pathPrefix, requiredSet);
+  const seen = new Set();
+  return fields.filter((entry) => {
+    if (!entry?.field) return false;
+    if (seen.has(entry.field)) return false;
+    seen.add(entry.field);
+    return true;
+  });
+}
+
+function extractOperationsFromOpenApi(spec, meta = {}) {
   if (!spec || typeof spec !== 'object') return [];
   const paths = spec.paths && typeof spec.paths === 'object' ? spec.paths : {};
   const serverUrl =
@@ -328,8 +415,27 @@ function extractOperationsFromOpenApi(spec) {
       const op = operation && typeof operation === 'object' ? operation : {};
       const opParams = normalizeParametersFromSpec([...(op.parameters || []), ...sharedParams]);
       const example = extractRequestExample(op.requestBody);
+      const { schema: requestSchema, description: requestDescription, contentType } =
+        extractRequestSchema(op.requestBody);
+      const { schema: responseSchema, description: responseDescription } =
+        extractResponseSchema(op.responses);
+      const requestFields = collectFieldsFromSchema(requestSchema, {
+        required: requestSchema?.required,
+        pathPrefix: contentType === 'application/x-www-form-urlencoded' ? '' : '',
+      });
+      const responseFields = collectFieldsFromSchema(responseSchema, {
+        required: responseSchema?.required,
+      });
       const idSource = op.operationId || `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
+      const posApiType = classifyPosApiType(op.tags || [], path, op.summary || op.description || '');
+      const validationIssues = [];
+      if (!posApiType) {
+        validationIssues.push('POSAPI type could not be determined automatically.');
+      }
+      if (requestFields.length === 0 && !requestSchema) {
+        validationIssues.push('Request schema missing – please review required fields.');
+      }
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: op.summary || op.operationId || `${method} ${path}`,
@@ -338,9 +444,16 @@ function extractOperationsFromOpenApi(spec) {
         summary: op.summary || op.description || '',
         parameters: opParams,
         requestExample: example,
-        posApiType: inferPosApiTypeFromHints(op.tags || [], path, op.summary || op.description || ''),
+        posApiType,
         serverUrl,
         tags: Array.isArray(op.tags) ? op.tags : [],
+        requestBody: requestSchema ? { schema: requestSchema, description: requestDescription } : undefined,
+        responseBody: responseSchema ? { schema: responseSchema, description: responseDescription } : undefined,
+        requestFields,
+        responseFields,
+        validation: validationIssues.length ? { state: 'incomplete', issues: validationIssues } : { state: 'ok' },
+        sourceName: meta.sourceName || '',
+        isBundled: Boolean(meta.isBundled),
       });
     });
   });
@@ -376,7 +489,7 @@ function parsePostmanUrl(urlObj) {
   return { path: normalizedPath || '/', query, baseUrl };
 }
 
-function extractOperationsFromPostman(spec) {
+function extractOperationsFromPostman(spec, meta = {}) {
   const items = spec?.item;
   if (!Array.isArray(items)) return [];
   const entries = [];
@@ -402,6 +515,7 @@ function extractOperationsFromPostman(spec) {
       const parameters = normalizeParametersFromSpec(query);
       const idSource = `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
+      const posApiType = classifyPosApiType(folderTags, path, item.request.description || '');
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: item.name || `${method} ${path}`,
@@ -410,9 +524,15 @@ function extractOperationsFromPostman(spec) {
         summary: item.request.description || '',
         parameters,
         requestExample,
-        posApiType: inferPosApiTypeFromHints(folderTags, path, item.request.description || ''),
+        posApiType,
         serverUrl: baseUrl,
         tags: folderTags,
+        validation: posApiType ? { state: 'ok' } : {
+          state: 'incomplete',
+          issues: ['POSAPI type could not be determined automatically.'],
+        },
+        sourceName: meta.sourceName || '',
+        isBundled: Boolean(meta.isBundled),
       });
     });
   }
@@ -446,8 +566,27 @@ function mergeOperations(operations) {
       merged.set(key, operation);
       return;
     }
+    const preferBundled = operation.isBundled && !existing.isBundled;
+    const keepExistingBundled = existing.isBundled && !operation.isBundled;
     const existingScore = scoreOperation(existing);
     const candidateScore = scoreOperation(operation);
+    if (preferBundled) {
+      const summaryFromOriginal = existing.summary && existing.summary !== operation.summary
+        ? existing.summary
+        : '';
+      merged.set(key, {
+        ...existing,
+        ...operation,
+        ...(summaryFromOriginal ? { summaryFromOriginal } : {}),
+      });
+      return;
+    }
+    if (keepExistingBundled) {
+      if (operation.summary && operation.summary !== existing.summary && !existing.summaryFromOriginal) {
+        merged.set(key, { ...existing, summaryFromOriginal: operation.summary });
+      }
+      return;
+    }
     if (candidateScore > existingScore) {
       merged.set(key, { ...existing, ...operation });
     } else if (candidateScore === existingScore && !existing.requestExample && operation.requestExample) {
