@@ -1817,9 +1817,8 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
 
   let token = null;
   if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
-    const effectiveAuthEndpointId = authEndpointId || endpoint?.authEndpointId || null;
     token = await getPosApiToken({
-      authEndpointId: effectiveAuthEndpointId,
+      authEndpointId,
       baseUrl: requestBaseUrl,
       authPayload,
     });
