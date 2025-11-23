@@ -126,6 +126,22 @@ function normalizeFormConfig(info = {}) {
       typeof info.posApiEnablePaymentMethods === 'boolean'
         ? info.posApiEnablePaymentMethods
         : undefined,
+    posApiAllowMultipleReceiptTypes:
+      typeof info.posApiAllowMultipleReceiptTypes === 'boolean'
+        ? info.posApiAllowMultipleReceiptTypes
+        : undefined,
+    posApiAllowMultipleReceiptItems:
+      typeof info.posApiAllowMultipleReceiptItems === 'boolean'
+        ? info.posApiAllowMultipleReceiptItems
+        : undefined,
+    posApiAllowMultipleReceiptTaxTypes:
+      typeof info.posApiAllowMultipleReceiptTaxTypes === 'boolean'
+        ? info.posApiAllowMultipleReceiptTaxTypes
+        : undefined,
+    posApiAllowMultiplePaymentMethods:
+      typeof info.posApiAllowMultiplePaymentMethods === 'boolean'
+        ? info.posApiAllowMultiplePaymentMethods
+        : undefined,
     fieldsFromPosApi: toArray(info.fieldsFromPosApi).map((v) =>
       typeof v === 'string' ? v : String(v),
     ),
@@ -724,6 +740,19 @@ export default function FormsManagement() {
       paymentMethodsAllowMultiple = true,
     } = posApiOptionSnapshot || {};
 
+    const allowMultipleReceiptTypes =
+      typeof config.posApiAllowMultipleReceiptTypes === 'boolean'
+        ? config.posApiAllowMultipleReceiptTypes
+        : receiptTypesAllowMultiple;
+    const allowMultipleReceiptTaxTypes =
+      typeof config.posApiAllowMultipleReceiptTaxTypes === 'boolean'
+        ? config.posApiAllowMultipleReceiptTaxTypes
+        : true;
+    const allowMultiplePaymentMethods =
+      typeof config.posApiAllowMultiplePaymentMethods === 'boolean'
+        ? config.posApiAllowMultiplePaymentMethods
+        : paymentMethodsAllowMultiple;
+
     const cfg = {
       ...config,
       moduleKey,
@@ -747,15 +776,22 @@ export default function FormsManagement() {
         ? String(config.transactionTypeValue)
         : '',
     };
-    ['posApiEnableReceiptTypes', 'posApiEnableReceiptItems', 'posApiEnableReceiptTaxTypes', 'posApiEnablePaymentMethods'].forEach(
-      (key) => {
-        if (typeof cfg[key] === 'boolean') {
-          cfg[key] = Boolean(cfg[key]);
-        } else {
-          delete cfg[key];
-        }
-      },
-    );
+    [
+      'posApiEnableReceiptTypes',
+      'posApiEnableReceiptItems',
+      'posApiEnableReceiptTaxTypes',
+      'posApiEnablePaymentMethods',
+      'posApiAllowMultipleReceiptTypes',
+      'posApiAllowMultipleReceiptItems',
+      'posApiAllowMultipleReceiptTaxTypes',
+      'posApiAllowMultiplePaymentMethods',
+    ].forEach((key) => {
+      if (typeof cfg[key] === 'boolean') {
+        cfg[key] = Boolean(cfg[key]);
+      } else {
+        delete cfg[key];
+      }
+    });
     cfg.posApiEndpointId = cfg.posApiEndpointId
       ? String(cfg.posApiEndpointId).trim()
       : '';
@@ -813,13 +849,23 @@ export default function FormsManagement() {
     cfg.posApiReceiptTypes = sanitizeSelectionList(
       config.posApiReceiptTypes,
       endpointReceiptTypes,
-      receiptTypesAllowMultiple,
+      allowMultipleReceiptTypes,
     );
     cfg.posApiPaymentMethods = sanitizeSelectionList(
       config.posApiPaymentMethods,
       endpointPaymentMethods,
-      paymentMethodsAllowMultiple,
+      allowMultiplePaymentMethods,
     );
+    if (Array.isArray(cfg.posApiReceiptTaxTypes)) {
+      const normalized = cfg.posApiReceiptTaxTypes
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter(Boolean);
+      cfg.posApiReceiptTaxTypes = allowMultipleReceiptTaxTypes
+        ? normalized
+        : normalized.slice(0, 1);
+    } else {
+      delete cfg.posApiReceiptTaxTypes;
+    }
     cfg.fieldsFromPosApi = Array.isArray(cfg.fieldsFromPosApi)
       ? Array.from(
           new Set(
