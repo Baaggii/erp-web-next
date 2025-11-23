@@ -9,7 +9,8 @@ const POSAPI_TYPES = [
 ];
 
 const AUTH_POSAPI_TYPE = { value: 'AUTH', label: 'Authentication / Token' };
-const POSAPI_TYPES_WITH_AUTH = [...POSAPI_TYPES, AUTH_POSAPI_TYPE];
+const LOOKUP_POSAPI_TYPE = { value: 'LOOKUP', label: 'Lookup / Information' };
+const POSAPI_TYPES_WITH_AUTH = [...POSAPI_TYPES, LOOKUP_POSAPI_TYPE, AUTH_POSAPI_TYPE];
 
 const TAX_TYPES = [
   { value: 'VAT_ABLE', label: 'VAT-able' },
@@ -59,6 +60,7 @@ const TYPE_BADGES = {
   B2B_PURCHASE: '#7c3aed',
   STOCK_QR: '#0ea5e9',
   AUTH: '#047857',
+  LOOKUP: '#0ea5e9',
 };
 
 const TAX_PRODUCT_OPTIONS = [
@@ -282,7 +284,11 @@ function sanitizeTableSelection(selection, options) {
 
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
-  const usage = endpoint.posApiType === 'AUTH' ? 'admin' : normalizeUsage(endpoint.usage);
+  const usage = endpoint.posApiType === 'AUTH'
+    ? 'admin'
+    : endpoint.posApiType === 'LOOKUP'
+      ? 'info'
+      : normalizeUsage(endpoint.usage);
   const isTransaction = usage === 'transaction';
   const enableReceiptTypes = isTransaction ? endpoint.enableReceiptTypes !== false : false;
   const enableReceiptTaxTypes = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
@@ -1250,11 +1256,21 @@ function extractRequestExample(requestBody) {
 
 function inferPosApiTypeFromHints(tags = [], path = '', summary = '') {
   const text = `${tags.join(' ')} ${path} ${summary}`.toLowerCase();
-  if (text.includes('auth')) return 'AUTH';
+  if (path.includes('/protocol/openid-connect/token') || /auth|token/.test(text)) {
+    return 'AUTH';
+  }
+  if (path.includes('/api/info') || text.includes('info') || text.includes('lookup')) {
+    return 'LOOKUP';
+  }
   if (text.includes('stock') || text.includes('qr')) return 'STOCK_QR';
+  if (path.includes('/rest/')) {
+    if (text.includes('b2b') || text.includes('sale') || text.includes('invoice')) return 'B2B_SALE';
+    if (text.includes('purchase')) return 'B2B_PURCHASE';
+    return 'B2C';
+  }
   if (text.includes('purchase')) return 'B2B_PURCHASE';
   if (text.includes('sale') || text.includes('invoice') || text.includes('b2b')) return 'B2B_SALE';
-  if (text.includes('b2c') || text.includes('receipt')) return 'B2C';
+  if (text.includes('b2c') || text.includes('receipt') || text.includes('transaction')) return 'B2C';
   return '';
 }
 
@@ -1846,14 +1862,32 @@ export default function PosApiAdmin() {
   };
 
   const handleTypeChange = (type) => {
+    const nextUsage = type === 'AUTH' ? 'admin' : type === 'LOOKUP' ? 'info' : formState.usage;
+    const isTransactionType = nextUsage === 'transaction';
     setFormState((prev) => ({
       ...prev,
       posApiType: type,
-      usage: type === 'AUTH' ? 'admin' : prev.usage,
-      supportsItems: type === 'AUTH' ? false : prev.supportsItems,
-      supportsMultiplePayments: type === 'AUTH' ? false : prev.supportsMultiplePayments,
+      usage: nextUsage,
+      supportsItems: isTransactionType ? prev.supportsItems : false,
+      supportsMultiplePayments: isTransactionType ? prev.supportsMultiplePayments : false,
+      supportsMultipleReceipts: isTransactionType ? prev.supportsMultipleReceipts : false,
+      enableReceiptTypes: isTransactionType ? prev.enableReceiptTypes : false,
+      enableReceiptTaxTypes: isTransactionType ? prev.enableReceiptTaxTypes : false,
+      enablePaymentMethods: isTransactionType ? prev.enablePaymentMethods : false,
+      enableReceiptItems: isTransactionType ? prev.enableReceiptItems : false,
+      allowMultiplePaymentMethods: isTransactionType ? prev.allowMultiplePaymentMethods : false,
+      allowMultipleReceiptTypes: isTransactionType ? prev.allowMultipleReceiptTypes : false,
+      allowMultipleReceiptTaxTypes: isTransactionType ? prev.allowMultipleReceiptTaxTypes : false,
+      allowMultipleReceiptItems: isTransactionType ? prev.allowMultipleReceiptItems : false,
+      requestSchemaText: isTransactionType ? prev.requestSchemaText : '{}',
+      requestFieldsText: isTransactionType ? prev.requestFieldsText : '[]',
     }));
-    if (!type || type === 'AUTH') return;
+    if (!isTransactionType) {
+      setRequestBuilder(null);
+      setRequestBuilderError('');
+      return;
+    }
+    if (!type) return;
     updateRequestBuilder((prev) => normaliseBuilderForType(prev, type, supportsItems, supportsMultiplePayments));
   };
 
@@ -2807,7 +2841,15 @@ export default function PosApiAdmin() {
   function handleLoadDraftIntoForm() {
     if (!activeImportDraft) return;
     const paramsText = toPrettyJson(activeImportDraft.parameters || [], '[]');
-    const requestBodyText = importRequestBody.trim();
+    const requestBodyText = toPrettyJson(activeImportDraft.requestBody?.schema, importRequestBody.trim() || '{}');
+    const responseBodyText = toPrettyJson(activeImportDraft.responseBody?.schema, '{}');
+    const requestFieldsText = toPrettyJson(activeImportDraft.requestFields, '[]');
+    const responseFieldsText = toPrettyJson(activeImportDraft.responseFields, '[]');
+    const inferredUsage = activeImportDraft.posApiType === 'AUTH'
+      ? 'admin'
+      : activeImportDraft.posApiType === 'LOOKUP'
+        ? 'info'
+        : 'transaction';
     setSelectedId('');
     setFormState({
       ...EMPTY_ENDPOINT,
@@ -2817,8 +2859,16 @@ export default function PosApiAdmin() {
       path: activeImportDraft.path || '/',
       parametersText: paramsText,
       posApiType: activeImportDraft.posApiType || '',
-      usage: 'info',
+      usage: inferredUsage,
       requestSchemaText: requestBodyText || '',
+      responseSchemaText: responseBodyText,
+      requestFieldsText,
+      responseFieldsText,
+      supportsItems: inferredUsage === 'transaction',
+      enableReceiptTypes: inferredUsage === 'transaction',
+      enableReceiptTaxTypes: inferredUsage === 'transaction',
+      enablePaymentMethods: inferredUsage === 'transaction',
+      enableReceiptItems: inferredUsage === 'transaction',
     });
     setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
     setActiveTab('endpoints');
@@ -3729,20 +3779,25 @@ export default function PosApiAdmin() {
                     </div>
                     {activeImportDraft && (
                       <div style={styles.importDraftPanel}>
-                        <div style={styles.importDraftHeader}>
-                          <div>
-                            <div style={styles.importDraftHeading}>
-                              {activeImportDraft.name || activeImportDraft.id}
+                          <div style={styles.importDraftHeader}>
+                            <div>
+                              <div style={styles.importDraftHeading}>
+                                {activeImportDraft.name || activeImportDraft.id}
+                              </div>
+                              <div style={styles.importDraftPath}>{activeImportDraft.path}</div>
+                              {activeImportDraft.summary && (
+                                <div style={styles.importDraftSummary}>{activeImportDraft.summary}</div>
+                              )}
+                              {activeImportDraft.validation?.state === 'incomplete' && (
+                                <div style={styles.previewErrorBox}>
+                                  This draft is incomplete. {activeImportDraft.validation.issues?.join(' ') || ''}
+                                </div>
+                              )}
                             </div>
-                            <div style={styles.importDraftPath}>{activeImportDraft.path}</div>
-                            {activeImportDraft.summary && (
-                              <div style={styles.importDraftSummary}>{activeImportDraft.summary}</div>
-                            )}
+                            <button type="button" onClick={handleLoadDraftIntoForm} style={styles.smallButton}>
+                              Load into editor
+                            </button>
                           </div>
-                          <button type="button" onClick={handleLoadDraftIntoForm} style={styles.smallButton}>
-                            Load into editor
-                          </button>
-                        </div>
                         <div style={styles.importFieldRow}>
                           <label style={styles.label}>
                             Staging base URL
