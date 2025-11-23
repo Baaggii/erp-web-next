@@ -85,6 +85,7 @@ const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
 const DEFAULT_INFO_TABLE_OPTIONS = [
   { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
 ];
+const BASE_COMPLEX_REQUEST_SCHEMA = createReceiptTemplate('B2C');
 
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
@@ -164,6 +165,10 @@ function sanitizeTemplateMap(value, allowedValues) {
   return normalized;
 }
 
+function hasObjectEntries(value) {
+  return Boolean(value && typeof value === 'object' && Object.keys(value).length > 0);
+}
+
 function sanitizeTemplateList(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -203,6 +208,26 @@ function buildTemplateList(list, allowMultiple) {
     return sanitized.slice(0, 1);
   }
   return sanitized;
+}
+
+function buildDefaultRequestSchema(type, supportsItems = true, supportsMultiplePayments = true) {
+  const normalizedType = type || 'B2C';
+  return normaliseBuilderForType(BASE_COMPLEX_REQUEST_SCHEMA, normalizedType, supportsItems, supportsMultiplePayments);
+}
+
+function applySchemaFeatureFlags(schema, supportsItems = true, supportsMultiplePayments = true) {
+  const working = deepClone(schema) || {};
+  if (!supportsItems && Array.isArray(working.receipts)) {
+    working.receipts = working.receipts.map((receipt) => {
+      if (!receipt || typeof receipt !== 'object') return receipt;
+      const { items, ...rest } = receipt;
+      return rest;
+    });
+  }
+  if (!supportsMultiplePayments) {
+    delete working.payments;
+  }
+  return working;
 }
 
 function formatTableLabel(value) {
@@ -351,7 +376,7 @@ const EMPTY_ENDPOINT = {
   path: '',
   parametersText: '[]',
   requestDescription: '',
-  requestSchemaText: '{}',
+  requestSchemaText: JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
   responseDescription: '',
   responseSchemaText: '{}',
   fieldDescriptionsText: '{}',
@@ -754,7 +779,7 @@ function createStockItem() {
   };
 }
 
-function normaliseBuilderForType(builder, type, withItems = true) {
+function normaliseBuilderForType(builder, type, withItems = true, withPayments = true) {
   const template = resolveTemplate(type);
   const base = typeof builder === 'object' && builder !== null ? deepClone(builder) : {};
   const next = { ...template, ...base, type };
@@ -801,15 +826,19 @@ function normaliseBuilderForType(builder, type, withItems = true) {
         return { ...receipt, items };
       });
     }
-    const payments = Array.isArray(base?.payments) && base.payments.length > 0
-      ? base.payments
-      : template.payments;
-    next.payments = deepClone(payments) || template.payments || [
-      {
-        type: 'CASH',
-        amount: next.totalAmount || 0,
-      },
-    ];
+    if (withPayments) {
+      const payments = Array.isArray(base?.payments) && base.payments.length > 0
+        ? base.payments
+        : template.payments;
+      next.payments = deepClone(payments) || template.payments || [
+        {
+          type: 'CASH',
+          amount: next.totalAmount || 0,
+        },
+      ];
+    } else {
+      delete next.payments;
+    }
     next.totalAmount = base?.totalAmount ?? template.totalAmount;
     next.totalVAT = base?.totalVAT ?? template.totalVAT;
     next.totalCityTax = base?.totalCityTax ?? template.totalCityTax;
@@ -891,6 +920,14 @@ function createFormState(definition) {
     ? definition.usage
     : 'transaction';
   const isTransaction = rawUsage === 'transaction';
+  const supportsItems = isTransaction
+    ? definition.supportsItems !== undefined
+      ? Boolean(definition.supportsItems)
+      : definition.posApiType === 'STOCK_QR'
+        ? false
+        : true
+    : false;
+  const supportsMultiplePayments = isTransaction ? Boolean(definition.supportsMultiplePayments) : false;
   const resolvedReceiptTypes = Array.isArray(definition.receiptTypes)
     ? definition.receiptTypes.slice()
     : [];
@@ -916,10 +953,14 @@ function createFormState(definition) {
       };
     });
   };
-  const receiptTypesEnabled = isTransaction ? definition.enableReceiptTypes !== false : false;
-  const receiptTaxTypesEnabled = isTransaction ? definition.enableReceiptTaxTypes !== false : false;
-  const paymentMethodsEnabled = isTransaction ? definition.enablePaymentMethods !== false : false;
-  const receiptItemsEnabled = isTransaction ? definition.enableReceiptItems !== false : false;
+  const receiptTypesEnabled = isTransaction ? supportsItems && definition.enableReceiptTypes !== false : false;
+  const receiptTaxTypesEnabled = isTransaction
+    ? supportsItems && definition.enableReceiptTaxTypes !== false
+    : false;
+  const paymentMethodsEnabled = isTransaction
+    ? supportsMultiplePayments && definition.enablePaymentMethods !== false
+    : false;
+  const receiptItemsEnabled = isTransaction ? supportsItems && definition.enableReceiptItems !== false : false;
   const allowMultipleReceiptTypes = receiptTypesEnabled
     ? definition.allowMultipleReceiptTypes !== false
     : false;
@@ -950,6 +991,19 @@ function createFormState(definition) {
         return list;
       })()
     : [];
+  const baseRequestSchema = isTransaction
+    ? buildDefaultRequestSchema(
+        definition.posApiType || definition.requestBody?.schema?.type || 'B2C',
+        supportsItems,
+        supportsMultiplePayments,
+      )
+    : {};
+  const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
+  const requestSchema = hasRequestSchema ? definition.requestBody.schema : baseRequestSchema;
+  const requestSchemaFallback = isTransaction
+    ? JSON.stringify(baseRequestSchema, null, 2)
+    : '{}';
+
   return {
     id: definition.id || '',
     name: definition.name || '',
@@ -958,7 +1012,7 @@ function createFormState(definition) {
     path: definition.path || '',
     parametersText: toPrettyJson(definition.parameters, '[]'),
     requestDescription: definition.requestBody?.description || '',
-    requestSchemaText: toPrettyJson(definition.requestBody?.schema, '{}'),
+    requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
     responseDescription: definition.responseBody?.description || '',
     responseSchemaText: toPrettyJson(definition.responseBody?.schema, '{}'),
     fieldDescriptionsText: toPrettyJson(definition.fieldDescriptions, '{}'),
@@ -971,14 +1025,8 @@ function createFormState(definition) {
     usage: rawUsage,
     defaultForForm: isTransaction ? Boolean(definition.defaultForForm) : false,
     supportsMultipleReceipts: isTransaction ? Boolean(definition.supportsMultipleReceipts) : false,
-    supportsMultiplePayments: isTransaction ? Boolean(definition.supportsMultiplePayments) : false,
-    supportsItems: isTransaction
-      ? definition.supportsItems !== undefined
-        ? Boolean(definition.supportsItems)
-        : definition.posApiType === 'STOCK_QR'
-          ? false
-          : true
-      : false,
+    supportsMultiplePayments,
+    supportsItems,
     enableReceiptTypes: receiptTypesEnabled,
     allowMultipleReceiptTypes,
     receiptTypeTemplates,
@@ -1519,10 +1567,14 @@ export default function PosApiAdmin() {
   }, [formState.responseSchemaText]);
 
   const isTransactionUsage = formState.usage === 'transaction';
-  const receiptTypesEnabled = isTransactionUsage && formState.enableReceiptTypes !== false;
-  const receiptTaxTypesEnabled = isTransactionUsage && formState.enableReceiptTaxTypes !== false;
-  const paymentMethodsEnabled = isTransactionUsage && formState.enablePaymentMethods !== false;
-  const receiptItemsEnabled = isTransactionUsage && formState.enableReceiptItems !== false;
+  const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
+  const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
+  const receiptTypesEnabled = isTransactionUsage && supportsItems && formState.enableReceiptTypes !== false;
+  const receiptTaxTypesEnabled = isTransactionUsage && supportsItems && formState.enableReceiptTaxTypes !== false;
+  const paymentMethodsEnabled = isTransactionUsage
+    ? supportsMultiplePayments && formState.enablePaymentMethods !== false
+    : false;
+  const receiptItemsEnabled = isTransactionUsage && supportsItems && formState.enableReceiptItems !== false;
 
   const formReceiptTypes = useMemo(() => {
     if (!receiptTypesEnabled) return [];
@@ -1548,7 +1600,7 @@ export default function PosApiAdmin() {
     return DEFAULT_PAYMENT_METHODS;
   }, [formState.paymentMethods, paymentMethodsEnabled]);
 
-  const formSupportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
+  const formSupportsItems = supportsItems;
 
   const requestFieldHints = useMemo(
     () =>
@@ -1568,7 +1620,6 @@ export default function PosApiAdmin() {
     [formState.responseFieldsText],
   );
 
-  const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
     : [];
@@ -1614,7 +1665,6 @@ export default function PosApiAdmin() {
   }, [paymentMethodsEnabled, selectedPaymentMethods]);
 
   const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
-  const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
   const receiptTypeOptions = receiptTypesEnabled && formReceiptTypes.length > 0
     ? POSAPI_TYPES.filter((type) => formReceiptTypes.includes(type.value))
     : POSAPI_TYPES;
@@ -1771,7 +1821,7 @@ export default function PosApiAdmin() {
   const handleTypeChange = (type) => {
     setFormState((prev) => ({ ...prev, posApiType: type }));
     if (!type) return;
-    updateRequestBuilder((prev) => normaliseBuilderForType(prev, type, supportsItems));
+    updateRequestBuilder((prev) => normaliseBuilderForType(prev, type, supportsItems, supportsMultiplePayments));
   };
 
   const handleBuilderFieldChange = (field, value) => {
@@ -2211,12 +2261,15 @@ export default function PosApiAdmin() {
   }, [requestBuilder]);
 
   const paymentsBalanced = useMemo(() => {
+    if (!supportsMultiplePayments) return true;
     const totalAmount = Number(requestBuilder?.totalAmount || 0);
     return Math.abs(paymentsTotal - totalAmount) < 0.01;
-  }, [paymentsTotal, requestBuilder]);
+  }, [paymentsTotal, requestBuilder, supportsMultiplePayments]);
 
   const isReceiptType = formState.posApiType && formState.posApiType !== 'STOCK_QR';
   const isStockType = formState.posApiType === 'STOCK_QR';
+  const receiptBuilderEnabled = isReceiptType && supportsItems;
+  const paymentBuilderEnabled = isReceiptType && supportsMultiplePayments;
 
   useEffect(() => {
     if (!formState.posApiType) return;
@@ -2224,7 +2277,12 @@ export default function PosApiAdmin() {
       if (!prev || prev.type === formState.posApiType) {
         return prev;
       }
-      const next = normaliseBuilderForType(prev, formState.posApiType, supportsItems);
+      const next = normaliseBuilderForType(
+        prev,
+        formState.posApiType,
+        supportsItems,
+        supportsMultiplePayments,
+      );
       builderSyncRef.current = true;
       setFormState((prevState) => ({
         ...prevState,
@@ -2232,7 +2290,7 @@ export default function PosApiAdmin() {
       }));
       return next;
     });
-  }, [formState.posApiType, supportsItems]);
+  }, [formState.posApiType, supportsItems, supportsMultiplePayments]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2422,6 +2480,10 @@ export default function PosApiAdmin() {
         next.supportsMultipleReceipts = false;
         next.enableReceiptItems = false;
       }
+      if (field === 'supportsMultiplePayments' && value === false) {
+        next.enablePaymentMethods = false;
+        next.paymentMethods = [];
+      }
       if (field === 'enableReceiptTypes' && value === true) {
         if (!Array.isArray(next.receiptTypes) || next.receiptTypes.length === 0) {
           next.receiptTypes = DEFAULT_RECEIPT_TYPES.slice(
@@ -2488,7 +2550,7 @@ export default function PosApiAdmin() {
       posApiType: type,
       receiptTypes: nextReceiptTypes,
     }));
-    updateRequestBuilder(() => normaliseBuilderForType(cloned, type, supportsItems));
+    updateRequestBuilder(() => normaliseBuilderForType(cloned, type, supportsItems, supportsMultiplePayments));
     setStatus(`Loaded ${formatTypeLabel(type)} sample payload into the builder.`);
     setSampleImportError('');
   }
@@ -2518,7 +2580,12 @@ export default function PosApiAdmin() {
       const parsed = JSON.parse(trimmed);
       const targetType = parsed?.type || formState.posApiType || 'B2C';
       resetTestState();
-      updateRequestBuilder(() => normaliseBuilderForType(parsed, targetType, supportsItems));
+      updateRequestBuilder(() => normaliseBuilderForType(
+        parsed,
+        targetType,
+        supportsItems,
+        supportsMultiplePayments,
+      ));
       const nextReceiptTypes = Array.isArray(formState.receiptTypes)
         ? Array.from(new Set([...formState.receiptTypes, targetType]))
         : [targetType];
@@ -2872,7 +2939,7 @@ export default function PosApiAdmin() {
     if (!Array.isArray(parameters)) {
       throw new Error('Parameters must be a JSON array');
     }
-    const requestSchema = parseJsonInput(
+    let requestSchema = parseJsonInput(
       'Request body schema',
       formState.requestSchemaText,
       {},
@@ -2900,10 +2967,6 @@ export default function PosApiAdmin() {
       throw new Error('Response field hints must be a JSON array');
     }
 
-    if (requestSchema && typeof requestSchema === 'object' && formState.posApiType) {
-      requestSchema.type = formState.posApiType;
-    }
-
     const sanitizedRequestFields = requestFieldsRaw.map((entry) => {
       const normalized = normalizeHintEntry(entry);
       if (!normalized.field) {
@@ -2920,10 +2983,16 @@ export default function PosApiAdmin() {
       ? formState.usage
       : 'transaction';
     const isTransaction = usage === 'transaction';
-    const receiptTypesEnabled = isTransaction && formState.enableReceiptTypes !== false;
-    const receiptTaxTypesEnabled = isTransaction && formState.enableReceiptTaxTypes !== false;
-    const paymentMethodsEnabled = isTransaction && formState.enablePaymentMethods !== false;
-    const receiptItemsEnabled = isTransaction && formState.enableReceiptItems !== false;
+    const supportsItems = isTransaction ? formState.supportsItems !== false : false;
+    const supportsMultiplePayments = isTransaction ? Boolean(formState.supportsMultiplePayments) : false;
+    const receiptTypesEnabled = isTransaction && supportsItems && formState.enableReceiptTypes !== false;
+    const receiptTaxTypesEnabled = isTransaction
+      ? supportsItems && formState.enableReceiptTaxTypes !== false
+      : false;
+    const paymentMethodsEnabled = isTransaction
+      ? supportsMultiplePayments && formState.enablePaymentMethods !== false
+      : false;
+    const receiptItemsEnabled = isTransaction && supportsItems && formState.enableReceiptItems !== false;
     const allowMultipleReceiptItems = receiptItemsEnabled
       ? Boolean(formState.allowMultipleReceiptItems)
       : false;
@@ -2950,6 +3019,21 @@ export default function PosApiAdmin() {
       : [];
     const settingsId = usage === 'transaction' ? 'defaultTransaction' : '';
 
+    if (requestSchema && typeof requestSchema === 'object' && formState.posApiType) {
+      requestSchema.type = formState.posApiType;
+    }
+    if (isTransaction) {
+      const targetType = requestSchema?.type || formState.posApiType || 'B2C';
+      const fallbackSchema = buildDefaultRequestSchema(
+        targetType,
+        supportsItems,
+        supportsMultiplePayments,
+      );
+      requestSchema = hasObjectEntries(requestSchema)
+        ? applySchemaFeatureFlags(requestSchema, supportsItems, supportsMultiplePayments)
+        : fallbackSchema;
+    }
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -2961,8 +3045,8 @@ export default function PosApiAdmin() {
       defaultForForm: isTransaction ? Boolean(formState.defaultForForm) : false,
       ...(settingsId ? { settingsId } : {}),
       supportsMultipleReceipts: isTransaction ? Boolean(formState.supportsMultipleReceipts) : false,
-      supportsMultiplePayments: isTransaction ? Boolean(formState.supportsMultiplePayments) : false,
-      supportsItems: isTransaction ? Boolean(formState.supportsItems) : false,
+      supportsMultiplePayments,
+      supportsItems,
       enableReceiptTypes: receiptTypesEnabled,
       allowMultipleReceiptTypes: receiptTypesEnabled
         ? Boolean(formState.allowMultipleReceiptTypes)
@@ -3827,7 +3911,7 @@ export default function PosApiAdmin() {
               ))}
             </select>
           </label>
-          {isTransactionUsage && (
+          {isTransactionUsage && supportsItems && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
                 <label style={styles.checkboxLabel}>
@@ -3910,7 +3994,7 @@ export default function PosApiAdmin() {
               )}
             </div>
           )}
-          {isTransactionUsage && (
+          {isTransactionUsage && supportsItems && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
                 <label style={styles.checkboxLabel}>
@@ -3975,7 +4059,7 @@ export default function PosApiAdmin() {
               )}
             </div>
           )}
-          {isTransactionUsage && (
+          {isTransactionUsage && supportsItems && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
                 <label style={styles.checkboxLabel}>
@@ -4078,7 +4162,7 @@ export default function PosApiAdmin() {
               )}
             </div>
           )}
-          {isTransactionUsage && (
+          {isTransactionUsage && supportsMultiplePayments && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
                 <label style={styles.checkboxLabel}>
@@ -4321,7 +4405,7 @@ export default function PosApiAdmin() {
                 </div>
               </details>
 
-              {formState.usage === 'transaction' && (
+              {formState.usage === 'transaction' && receiptBuilderEnabled && (
                 <details open style={styles.detailSection}>
                   <summary style={styles.detailSummary}>Receipt &amp; invoice samples</summary>
                   <div style={styles.detailBody}>
@@ -4401,7 +4485,7 @@ export default function PosApiAdmin() {
                 </details>
               )}
 
-              {isReceiptType && receiptItemsEnabled && (
+              {receiptBuilderEnabled && receiptItemsEnabled && (
                 <details open style={styles.detailSection}>
                   <summary style={styles.detailSummary}>Receipts by tax type</summary>
                   <div style={styles.detailBody}>
@@ -4694,7 +4778,14 @@ export default function PosApiAdmin() {
                 </details>
               )}
 
-              {isReceiptType && (
+              {isReceiptType && !receiptBuilderEnabled && (
+                <div style={styles.toggleStateHelper}>
+                  Receipt groups and items are disabled for this endpoint. Enable "Includes receipt items" to
+                  configure receipt details.
+                </div>
+              )}
+
+              {paymentBuilderEnabled && (
                 <details open style={styles.detailSection}>
                   <summary style={styles.detailSummary}>Payments</summary>
                   <div style={styles.detailBody}>
@@ -4809,6 +4900,13 @@ export default function PosApiAdmin() {
                     </button>
                   </div>
                 </details>
+              )}
+
+              {isReceiptType && !paymentBuilderEnabled && (
+                <div style={styles.toggleStateHelper}>
+                  Payment inputs are hidden for this endpoint. Enable "Supports multiple payment methods" to
+                  configure payment details.
+                </div>
               )}
 
               {isStockType && (
