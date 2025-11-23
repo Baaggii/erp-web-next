@@ -5,6 +5,17 @@ import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
 import { invokePosApiEndpoint } from '../services/posApiService.js';
 import { getEmploymentSession } from '../../db/index.js';
 
+const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
+const DEFAULT_TAX_TYPES = ['VAT_ABLE', 'VAT_FREE', 'VAT_ZERO', 'NO_VAT'];
+const DEFAULT_PAYMENT_METHODS = [
+  'CASH',
+  'PAYMENT_CARD',
+  'BANK_TRANSFER',
+  'MOBILE_WALLET',
+  'EASY_BANK_CARD',
+  'SERVICE_PAYMENT',
+];
+
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -372,6 +383,17 @@ function collectFieldsFromSchema(schema, { pathPrefix = '', required = [] } = {}
       Object.entries(props).forEach(([key, child]) => {
         const fieldPath = currentPath ? `${currentPath}.${key}` : key;
         const isRequired = requiredForNode.has(key) || inheritedRequired.has(key);
+        const childType = child?.type || (child?.properties ? 'object' : child?.items ? 'array' : undefined);
+        if (childType === 'array') {
+          const arrayPath = `${fieldPath}[]`;
+          pushField(arrayPath, child, isRequired);
+          walk(
+            child.items,
+            arrayPath,
+            new Set(Array.isArray(child.items?.required) ? child.items.required : []),
+          );
+          return;
+        }
         pushField(fieldPath, child, isRequired);
         walk(child, fieldPath, requiredForNode);
       });
@@ -398,13 +420,138 @@ function collectFieldsFromSchema(schema, { pathPrefix = '', required = [] } = {}
   });
 }
 
+function dedupeFieldEntries(fields) {
+  const seen = new Map();
+  fields.forEach((entry) => {
+    if (!entry?.field) return;
+    const normalized = entry.field.replace(/\[\]$/, '');
+    const current = seen.get(normalized);
+    const candidateScore = entry.field.split('.').length + (entry.field.endsWith('[]') ? 0.5 : 0);
+    const currentScore = current
+      ? current.field.split('.').length + (current.field.endsWith('[]') ? 0.5 : 0)
+      : -1;
+    if (!current || candidateScore >= currentScore) {
+      seen.set(normalized, entry);
+    }
+  });
+  return Array.from(seen.values());
+}
+
+function pickEnumValues(node) {
+  if (!node || typeof node !== 'object') return [];
+  if (Array.isArray(node.enum)) return node.enum.slice();
+  if (Array.isArray(node.oneOf)) {
+    const values = node.oneOf
+      .map((option) => (option && option.const !== undefined ? option.const : option?.enum?.[0]))
+      .filter((value) => value !== undefined);
+    if (values.length) return values;
+  }
+  return [];
+}
+
+function sanitizeCodes(values, allowed = []) {
+  const allowedSet = new Set(allowed);
+  const cleaned = Array.isArray(values)
+    ? values
+        .map((value) => (typeof value === 'string' ? value.trim() : ''))
+        .filter((value) => value && (allowed.length === 0 || allowedSet.has(value)))
+    : [];
+  return Array.from(new Set(cleaned));
+}
+
+function pickTestServerUrl(operation, specServers) {
+  const opServers = Array.isArray(operation?.servers) ? operation.servers : [];
+  const servers = [...opServers, ...(Array.isArray(specServers) ? specServers : [])];
+  const staging = servers.find((server) => typeof server?.url === 'string' && /test|staging/i.test(server.url));
+  const first = servers.find((server) => typeof server?.url === 'string');
+  return staging?.url || first?.url || '';
+}
+
+function deriveReceiptTypes(requestSchema, example) {
+  const typeNode = requestSchema?.properties?.type;
+  const fromEnum = pickEnumValues(typeNode);
+  const fromExamples = [typeNode?.example, typeNode?.default, example?.type]
+    .flat()
+    .filter((value) => value !== undefined && value !== null);
+  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples, DEFAULT_RECEIPT_TYPES);
+  return candidates;
+}
+
+function deriveTaxTypes(requestSchema, example) {
+  const taxNode = requestSchema?.properties?.taxType;
+  const fromEnum = pickEnumValues(taxNode);
+  const fromExamples = [taxNode?.example, taxNode?.default, example?.taxType]
+    .flat()
+    .filter((value) => value !== undefined && value !== null);
+  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples, DEFAULT_TAX_TYPES);
+  return candidates;
+}
+
+function derivePaymentMethods(requestSchema, example) {
+  const paymentCodeNode = requestSchema?.properties?.payments?.items?.properties?.code;
+  const fromEnum = pickEnumValues(paymentCodeNode);
+  const fromExampleArray = Array.isArray(example?.payments)
+    ? example.payments.map((payment) => payment?.code)
+    : [];
+  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExampleArray, DEFAULT_PAYMENT_METHODS);
+  return candidates;
+}
+
+function analysePosApiRequest(requestSchema, example) {
+  const receiptsNode = requestSchema?.properties?.receipts;
+  const paymentsNode = requestSchema?.properties?.payments;
+  const receiptTypes = deriveReceiptTypes(requestSchema, example);
+  const taxTypes = deriveTaxTypes(requestSchema, example);
+  const paymentMethods = derivePaymentMethods(requestSchema, example);
+
+  const receiptsFromExample = Array.isArray(example?.receipts) ? example.receipts : [];
+  const paymentsFromExample = Array.isArray(example?.payments) ? example.payments : [];
+
+  const supportsMultipleReceipts = receiptsNode
+    ? receiptsFromExample.length > 1 || receiptsFromExample.length === 0
+    : false;
+  const supportsItems = Boolean(
+    receiptsNode?.items?.properties?.items || receiptsFromExample.some((receipt) => Array.isArray(receipt?.items)),
+  );
+  const supportsMultiplePayments = paymentsNode ? paymentsFromExample.length > 1 : false;
+
+  const resolvedReceiptTypes = receiptTypes.length ? receiptTypes : receiptsNode ? DEFAULT_RECEIPT_TYPES : [];
+  const resolvedTaxTypes = taxTypes.length ? taxTypes : receiptsNode ? DEFAULT_TAX_TYPES : [];
+  const resolvedPaymentMethods = paymentMethods.length
+    ? paymentMethods
+    : paymentsNode
+      ? DEFAULT_PAYMENT_METHODS
+      : [];
+
+  return {
+    receiptTypes: resolvedReceiptTypes,
+    taxTypes: resolvedTaxTypes,
+    paymentMethods: resolvedPaymentMethods,
+    supportsItems,
+    supportsMultipleReceipts,
+    supportsMultiplePayments,
+    posApiType: resolvedReceiptTypes[0] || '',
+  };
+}
+
+function buildFormFields(requestSchema) {
+  const properties = requestSchema?.properties && typeof requestSchema.properties === 'object'
+    ? requestSchema.properties
+    : {};
+  const required = new Set(Array.isArray(requestSchema?.required) ? requestSchema.required : []);
+  return Object.entries(properties).map(([key, value]) => {
+    const entry = { field: key, required: required.has(key) };
+    if (value && typeof value.description === 'string' && value.description.trim()) {
+      entry.description = value.description.trim();
+    }
+    return entry;
+  });
+}
+
 function extractOperationsFromOpenApi(spec, meta = {}) {
   if (!spec || typeof spec !== 'object') return [];
   const paths = spec.paths && typeof spec.paths === 'object' ? spec.paths : {};
-  const serverUrl =
-    Array.isArray(spec.servers) && spec.servers.length && spec.servers[0]?.url
-      ? spec.servers[0].url
-      : '';
+  const specServers = Array.isArray(spec.servers) ? spec.servers : [];
   const entries = [];
   Object.entries(paths).forEach(([path, definition]) => {
     if (!definition || typeof definition !== 'object') return;
@@ -419,16 +566,24 @@ function extractOperationsFromOpenApi(spec, meta = {}) {
         extractRequestSchema(op.requestBody);
       const { schema: responseSchema, description: responseDescription } =
         extractResponseSchema(op.responses);
-      const requestFields = collectFieldsFromSchema(requestSchema, {
-        required: requestSchema?.required,
-        pathPrefix: contentType === 'application/x-www-form-urlencoded' ? '' : '',
-      });
-      const responseFields = collectFieldsFromSchema(responseSchema, {
-        required: responseSchema?.required,
-      });
+      const isFormUrlEncoded = contentType === 'application/x-www-form-urlencoded';
+      const requestExample = isFormUrlEncoded ? undefined : example;
+      const requestFieldsRaw = isFormUrlEncoded
+        ? buildFormFields(requestSchema)
+        : collectFieldsFromSchema(requestSchema, {
+          required: requestSchema?.required,
+        });
+      const responseFields = dedupeFieldEntries(
+        collectFieldsFromSchema(responseSchema, {
+          required: responseSchema?.required,
+        }),
+      );
+      const requestFields = dedupeFieldEntries(requestFieldsRaw);
+      const posHints = requestSchema ? analysePosApiRequest(requestSchema, requestExample) : {};
       const idSource = op.operationId || `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
-      const posApiType = classifyPosApiType(op.tags || [], path, op.summary || op.description || '');
+      const inferredPosApiType = classifyPosApiType(op.tags || [], path, op.summary || op.description || '');
+      const posApiType = posHints.posApiType || inferredPosApiType;
       const validationIssues = [];
       if (!posApiType) {
         validationIssues.push('POSAPI type could not be determined automatically.');
@@ -436,6 +591,7 @@ function extractOperationsFromOpenApi(spec, meta = {}) {
       if (requestFields.length === 0 && !requestSchema) {
         validationIssues.push('Request schema missing – please review required fields.');
       }
+      const testServerUrl = pickTestServerUrl(op, specServers);
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: op.summary || op.operationId || `${method} ${path}`,
@@ -443,14 +599,34 @@ function extractOperationsFromOpenApi(spec, meta = {}) {
         path,
         summary: op.summary || op.description || '',
         parameters: opParams,
-        requestExample: example,
+        requestExample,
         posApiType,
-        serverUrl,
+        serverUrl: testServerUrl || '',
         tags: Array.isArray(op.tags) ? op.tags : [],
         requestBody: requestSchema ? { schema: requestSchema, description: requestDescription } : undefined,
         responseBody: responseSchema ? { schema: responseSchema, description: responseDescription } : undefined,
         requestFields,
         responseFields,
+        ...(Array.isArray(posHints.receiptTypes) && posHints.receiptTypes.length
+          ? { receiptTypes: posHints.receiptTypes }
+          : {}),
+        ...(Array.isArray(posHints.taxTypes) && posHints.taxTypes.length ? { taxTypes: posHints.taxTypes } : {}),
+        ...(Array.isArray(posHints.paymentMethods) && posHints.paymentMethods.length
+          ? { paymentMethods: posHints.paymentMethods }
+          : {}),
+        ...(posHints.supportsItems !== undefined ? { supportsItems: posHints.supportsItems } : {}),
+        ...(posHints.supportsMultipleReceipts !== undefined
+          ? { supportsMultipleReceipts: posHints.supportsMultipleReceipts }
+          : {}),
+        ...(posHints.supportsMultiplePayments !== undefined
+          ? { supportsMultiplePayments: posHints.supportsMultiplePayments }
+          : {}),
+        ...(testServerUrl
+          ? {
+            testServerUrl,
+            testable: true,
+          }
+          : {}),
         validation: validationIssues.length ? { state: 'incomplete', issues: validationIssues } : { state: 'ok' },
         sourceName: meta.sourceName || '',
         isBundled: Boolean(meta.isBundled),
