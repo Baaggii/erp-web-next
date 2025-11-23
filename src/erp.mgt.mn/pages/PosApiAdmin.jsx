@@ -8,6 +8,9 @@ const POSAPI_TYPES = [
   { value: 'STOCK_QR', label: 'Stock QR' },
 ];
 
+const AUTH_POSAPI_TYPE = { value: 'AUTH', label: 'Authentication / Token' };
+const POSAPI_TYPES_WITH_AUTH = [...POSAPI_TYPES, AUTH_POSAPI_TYPE];
+
 const TAX_TYPES = [
   { value: 'VAT_ABLE', label: 'VAT-able' },
   { value: 'VAT_FREE', label: 'VAT-free' },
@@ -55,6 +58,7 @@ const TYPE_BADGES = {
   B2B_SALE: '#0f172a',
   B2B_PURCHASE: '#7c3aed',
   STOCK_QR: '#0ea5e9',
+  AUTH: '#047857',
 };
 
 const TAX_PRODUCT_OPTIONS = [
@@ -278,7 +282,7 @@ function sanitizeTableSelection(selection, options) {
 
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
-  const usage = normalizeUsage(endpoint.usage);
+  const usage = endpoint.posApiType === 'AUTH' ? 'admin' : normalizeUsage(endpoint.usage);
   const isTransaction = usage === 'transaction';
   const enableReceiptTypes = isTransaction ? endpoint.enableReceiptTypes !== false : false;
   const enableReceiptTaxTypes = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
@@ -352,6 +356,10 @@ function withEndpointMetadata(endpoint) {
     taxTypes,
     paymentMethods,
     notes: typeof endpoint.notes === 'string' ? endpoint.notes : '',
+    testServerUrlProduction: typeof endpoint.testServerUrlProduction === 'string'
+      ? endpoint.testServerUrlProduction
+      : '',
+    authEndpointId: typeof endpoint.authEndpointId === 'string' ? endpoint.authEndpointId : '',
   };
 }
 
@@ -384,6 +392,8 @@ const EMPTY_ENDPOINT = {
   responseFieldsText: '[]',
   testable: false,
   testServerUrl: '',
+  testServerUrlProduction: '',
+  authEndpointId: '',
   docUrl: '',
   posApiType: '',
   usage: 'transaction',
@@ -850,7 +860,7 @@ function normaliseBuilderForType(builder, type, withItems = true, withPayments =
 
 function formatTypeLabel(type) {
   if (!type) return '';
-  const hit = POSAPI_TYPES.find((opt) => opt.value === type);
+  const hit = POSAPI_TYPES_WITH_AUTH.find((opt) => opt.value === type);
   return hit ? hit.label : type;
 }
 
@@ -916,9 +926,10 @@ function normalizeHintEntry(entry) {
 
 function createFormState(definition) {
   if (!definition) return { ...EMPTY_ENDPOINT };
-  const rawUsage = definition.usage && VALID_USAGE_VALUES.has(definition.usage)
+  const declaredUsage = definition.usage && VALID_USAGE_VALUES.has(definition.usage)
     ? definition.usage
     : 'transaction';
+  const rawUsage = definition.posApiType === 'AUTH' ? 'admin' : declaredUsage;
   const isTransaction = rawUsage === 'transaction';
   const supportsItems = isTransaction
     ? definition.supportsItems !== undefined
@@ -1020,6 +1031,8 @@ function createFormState(definition) {
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     testable: Boolean(definition.testable),
     testServerUrl: definition.testServerUrl || '',
+    testServerUrlProduction: definition.testServerUrlProduction || '',
+    authEndpointId: definition.authEndpointId || '',
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
     usage: rawUsage,
@@ -1237,6 +1250,7 @@ function extractRequestExample(requestBody) {
 
 function inferPosApiTypeFromHints(tags = [], path = '', summary = '') {
   const text = `${tags.join(' ')} ${path} ${summary}`.toLowerCase();
+  if (text.includes('auth')) return 'AUTH';
   if (text.includes('stock') || text.includes('qr')) return 'STOCK_QR';
   if (text.includes('purchase')) return 'B2B_PURCHASE';
   if (text.includes('sale') || text.includes('invoice') || text.includes('b2b')) return 'B2B_SALE';
@@ -1376,6 +1390,7 @@ export default function PosApiAdmin() {
   const [status, setStatus] = useState('');
   const [usageFilter, setUsageFilter] = useState('all');
   const [testState, setTestState] = useState({ running: false, error: '', result: null });
+  const [testEnvironment, setTestEnvironment] = useState('staging');
   const [docExamples, setDocExamples] = useState([]);
   const [selectedDocBlock, setSelectedDocBlock] = useState('');
   const [docFieldDescriptions, setDocFieldDescriptions] = useState({});
@@ -1389,6 +1404,7 @@ export default function PosApiAdmin() {
   const [importError, setImportError] = useState('');
   const [importStatus, setImportStatus] = useState('');
   const [selectedImportId, setSelectedImportId] = useState('');
+  const [importAuthEndpointId, setImportAuthEndpointId] = useState('');
   const [importTestValues, setImportTestValues] = useState({});
   const [importRequestBody, setImportRequestBody] = useState('');
   const [importTestResult, setImportTestResult] = useState(null);
@@ -1664,6 +1680,17 @@ export default function PosApiAdmin() {
     return PAYMENT_TYPES.filter((payment) => unique.includes(payment.value));
   }, [paymentMethodsEnabled, selectedPaymentMethods]);
 
+  const authEndpointOptions = useMemo(
+    () => endpoints.filter((endpoint) => endpoint?.posApiType === 'AUTH'),
+    [endpoints],
+  );
+
+  const resolvedTestServerUrl = ((testEnvironment === 'production'
+    ? formState.testServerUrlProduction || formState.testServerUrl
+    : formState.testServerUrl || formState.testServerUrlProduction
+  ) || '').trim();
+  const hasTestServerUrl = Boolean(resolvedTestServerUrl);
+
   const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
   const receiptTypeOptions = receiptTypesEnabled && formReceiptTypes.length > 0
     ? POSAPI_TYPES.filter((type) => formReceiptTypes.includes(type.value))
@@ -1819,8 +1846,14 @@ export default function PosApiAdmin() {
   };
 
   const handleTypeChange = (type) => {
-    setFormState((prev) => ({ ...prev, posApiType: type }));
-    if (!type) return;
+    setFormState((prev) => ({
+      ...prev,
+      posApiType: type,
+      usage: type === 'AUTH' ? 'admin' : prev.usage,
+      supportsItems: type === 'AUTH' ? false : prev.supportsItems,
+      supportsMultiplePayments: type === 'AUTH' ? false : prev.supportsMultiplePayments,
+    }));
+    if (!type || type === 'AUTH') return;
     updateRequestBuilder((prev) => normaliseBuilderForType(prev, type, supportsItems, supportsMultiplePayments));
   };
 
@@ -2293,6 +2326,15 @@ export default function PosApiAdmin() {
   }, [formState.posApiType, supportsItems, supportsMultiplePayments]);
 
   useEffect(() => {
+    if (!formState.authEndpointId && authEndpointOptions.length > 0) {
+      setFormState((prev) => ({ ...prev, authEndpointId: prev.authEndpointId || authEndpointOptions[0].id }));
+    }
+    if (!importAuthEndpointId && authEndpointOptions.length > 0) {
+      setImportAuthEndpointId(authEndpointOptions[0].id || '');
+    }
+  }, [authEndpointOptions, formState.authEndpointId, importAuthEndpointId]);
+
+  useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
 
@@ -2316,6 +2358,8 @@ export default function PosApiAdmin() {
         if (normalized.length > 0) {
           setSelectedId(normalized[0].id);
           setFormState(createFormState(normalized[0]));
+          setTestEnvironment('staging');
+          setImportAuthEndpointId(normalized[0].authEndpointId || '');
         }
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -2443,6 +2487,8 @@ export default function PosApiAdmin() {
     setSelectedId(id);
     const definition = endpoints.find((ep) => ep.id === id);
     setFormState(createFormState(definition));
+    setTestEnvironment('staging');
+    setImportAuthEndpointId(definition?.authEndpointId || '');
   }
 
   function handleChange(field, value) {
@@ -2639,44 +2685,61 @@ export default function PosApiAdmin() {
     if (draft.serverUrl) {
       setImportBaseUrl((prev) => prev || draft.serverUrl);
     }
+    if (!importAuthEndpointId && formState.authEndpointId) {
+      setImportAuthEndpointId(formState.authEndpointId);
+    }
     resetImportTestState();
   }
 
-  function applyImportedSpec(text) {
+  async function applyImportedSpec({ files = [], inlineText = '' }) {
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const trimmedText = (inlineText || '').trim();
+    if (normalizedFiles.length === 0 && !trimmedText) {
+      setImportError('Upload or paste an OpenAPI/Postman specification first.');
+      return;
+    }
     try {
-      const parsed = parseApiSpecText(text);
-      const openApiOps = extractOperationsFromOpenApi(parsed);
-      const postmanOps = extractOperationsFromPostman(parsed);
-      const operations = [...openApiOps, ...postmanOps];
+      setImportError('');
+      setImportStatus('Parsing specification files…');
+      resetImportTestState();
+      const formData = new FormData();
+      normalizedFiles.forEach((file) => formData.append('files', file));
+      if (trimmedText) {
+        formData.append('files', new Blob([trimmedText], { type: 'text/plain' }), 'pasted-spec.yaml');
+      }
+      const res = await fetch(`${API_BASE}/posapi/endpoints/import/parse`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || 'Failed to parse the supplied file(s).');
+      }
+      const data = await res.json();
+      const operations = Array.isArray(data?.operations) ? data.operations : [];
       if (!operations.length) {
-        throw new Error('No operations were found in the supplied file.');
+        throw new Error('No operations were found in the supplied files.');
       }
       setImportDrafts(operations);
-      setImportError('');
-      setImportStatus(`Found ${operations.length} operations. Select one to test.`);
+      const fileCount = normalizedFiles.length + (trimmedText ? 1 : 0);
+      setImportStatus(`Found ${operations.length} operations from ${fileCount} file(s). Select one to test.`);
       const first = operations[0];
       prepareDraftDefaults(first);
-      setImportSpecText(text);
+      setImportSpecText(trimmedText);
     } catch (err) {
-      setImportError(err.message || 'Failed to parse the supplied file.');
+      setImportError(err.message || 'Failed to parse the supplied files.');
       setImportDrafts([]);
       setImportStatus('');
       resetImportTestState();
     }
   }
 
-  function handleImportFileChange(event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = typeof reader.result === 'string' ? reader.result : '';
-      applyImportedSpec(text);
-    };
-    reader.onerror = () => {
-      setImportError('Failed to read the selected file.');
-    };
-    reader.readAsText(file);
+  async function handleImportFileChange(event) {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    if (!files.length) return;
+    await applyImportedSpec({ files });
+    event.target.value = '';
   }
 
   function handleParseImportText() {
@@ -2684,7 +2747,7 @@ export default function PosApiAdmin() {
       setImportError('Paste an OpenAPI YAML/JSON or Postman collection first.');
       return;
     }
-    applyImportedSpec(importSpecText);
+    applyImportedSpec({ inlineText: importSpecText });
   }
 
   function handleSelectImportDraft(draftId) {
@@ -2725,6 +2788,7 @@ export default function PosApiAdmin() {
           },
           payload: { params: importTestValues, body: parsedBody },
           baseUrl: importBaseUrl.trim() || undefined,
+          authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
         }),
       });
       const data = await res.json();
@@ -2979,9 +3043,11 @@ export default function PosApiAdmin() {
       };
     });
 
-    const usage = VALID_USAGE_VALUES.has(formState.usage)
-      ? formState.usage
-      : 'transaction';
+    const usage = formState.posApiType === 'AUTH'
+      ? 'admin'
+      : VALID_USAGE_VALUES.has(formState.usage)
+        ? formState.usage
+        : 'transaction';
     const isTransaction = usage === 'transaction';
     const supportsItems = isTransaction ? formState.supportsItems !== false : false;
     const supportsMultiplePayments = isTransaction ? Boolean(formState.supportsMultiplePayments) : false;
@@ -3083,6 +3149,8 @@ export default function PosApiAdmin() {
       responseFields,
       testable: Boolean(formState.testable),
       testServerUrl: formState.testServerUrl.trim(),
+      testServerUrlProduction: formState.testServerUrlProduction.trim(),
+      authEndpointId: formState.authEndpointId || '',
     };
 
     if (settingsId) {
@@ -3295,6 +3363,8 @@ export default function PosApiAdmin() {
     setDocFieldDescriptions({});
     setSampleImportText('');
     setSampleImportError('');
+    setTestEnvironment('staging');
+    setImportAuthEndpointId('');
   }
 
   async function handleTest() {
@@ -3312,13 +3382,15 @@ export default function PosApiAdmin() {
       setTestState({ running: false, error: 'Enable the testable checkbox to run tests.', result: null });
       return;
     }
-    if (!definition.testServerUrl) {
+    const selectedTestUrl = resolvedTestServerUrl;
+
+    if (!selectedTestUrl) {
       setTestState({ running: false, error: 'Test server URL is required for testing.', result: null });
       return;
     }
 
     const confirmed = window.confirm(
-      `Run a test request against ${definition.testServerUrl}? This will use the sample data shown above.`,
+      `Run a test request against ${selectedTestUrl}? This will use the sample data shown above.`,
     );
     if (!confirmed) return;
 
@@ -3328,7 +3400,11 @@ export default function PosApiAdmin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ endpoint: definition }),
+        body: JSON.stringify({
+          endpoint: definition,
+          environment: testEnvironment,
+          authEndpointId: formState.authEndpointId || '',
+        }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -3589,6 +3665,7 @@ export default function PosApiAdmin() {
                     <input
                       type="file"
                       accept=".yaml,.yml,.json,application/json,text/yaml,text/x-yaml"
+                      multiple
                       onChange={handleImportFileChange}
                       style={styles.sampleFileInput}
                     />
@@ -3669,6 +3746,24 @@ export default function PosApiAdmin() {
                               placeholder="https://posapi-test.tax.gov.mn"
                               style={styles.input}
                             />
+                          </label>
+                          <label style={styles.label}>
+                            Token endpoint
+                            <select
+                              value={importAuthEndpointId}
+                              onChange={(e) => setImportAuthEndpointId(e.target.value)}
+                              style={styles.input}
+                            >
+                              <option value="">Use editor selection</option>
+                              {authEndpointOptions.map((endpoint) => (
+                                <option key={`import-auth-${endpoint.id}`} value={endpoint.id}>
+                                  {endpoint.name || endpoint.id}
+                                </option>
+                              ))}
+                            </select>
+                            <span style={styles.fieldHelp}>
+                              Choose which AUTH endpoint to call before testing this imported request.
+                            </span>
                           </label>
                         </div>
                         <div style={styles.importFieldRow}>
@@ -3904,7 +3999,7 @@ export default function PosApiAdmin() {
               style={styles.input}
             >
               <option value="">Select a type…</option>
-              {POSAPI_TYPES.map((type) => (
+              {POSAPI_TYPES_WITH_AUTH.map((type) => (
                 <option key={type.value} value={type.value}>
                   {type.label}
                 </option>
@@ -5213,7 +5308,7 @@ export default function PosApiAdmin() {
         </label>
         <div style={styles.inlineFields}>
           <label style={{ ...styles.label, flex: 1 }}>
-            Test server URL
+            Staging test server URL
             <input
               type="text"
               value={formState.testServerUrl}
@@ -5222,14 +5317,72 @@ export default function PosApiAdmin() {
               placeholder="https://posapi-test.tax.gov.mn"
             />
           </label>
-          <label style={{ ...styles.checkboxLabel, marginTop: '1.5rem' }}>
+          <label style={{ ...styles.label, flex: 1 }}>
+            Production test server URL
             <input
-              type="checkbox"
-              checked={formState.testable}
-              onChange={(e) => handleChange('testable', e.target.checked)}
+              type="text"
+              value={formState.testServerUrlProduction}
+              onChange={(e) => handleChange('testServerUrlProduction', e.target.value)}
+              style={styles.input}
+              placeholder="https://posapi.tax.gov.mn"
             />
-            Testable endpoint
           </label>
+        </div>
+        <div style={styles.inlineFields}>
+          <label style={{ ...styles.label, flex: 1 }}>
+            Token endpoint
+            <select
+              value={formState.authEndpointId}
+              onChange={(e) => handleChange('authEndpointId', e.target.value)}
+              style={styles.input}
+            >
+              <option value="">Select an AUTH endpoint…</option>
+              {authEndpointOptions.map((endpoint) => (
+                <option key={endpoint.id} value={endpoint.id}>
+                  {endpoint.name || endpoint.id}
+                </option>
+              ))}
+            </select>
+            <span style={styles.fieldHelp}>
+              Used by the test harness to fetch a bearer token before calling the endpoint.
+            </span>
+          </label>
+          <div style={{ ...styles.label, flex: 1 }}>
+            <div style={styles.radioRow}>
+              <span>Test environment</span>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name="testEnvironment"
+                  value="staging"
+                  checked={testEnvironment === 'staging'}
+                  onChange={(e) => setTestEnvironment(e.target.value)}
+                />
+                Staging
+              </label>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name="testEnvironment"
+                  value="production"
+                  checked={testEnvironment === 'production'}
+                  onChange={(e) => setTestEnvironment(e.target.value)}
+                />
+                Production
+              </label>
+              <label style={{ ...styles.checkboxLabel, marginLeft: 'auto' }}>
+                <input
+                  type="checkbox"
+                  checked={formState.testable}
+                  onChange={(e) => handleChange('testable', e.target.checked)}
+                />
+                Testable endpoint
+              </label>
+            </div>
+            <div style={styles.fieldHelp}>
+              Selected URL: {resolvedTestServerUrl || 'Not set'}
+            </div>
+          </div>
         </div>
 
         <div style={styles.previewSection}>
@@ -5347,7 +5500,7 @@ export default function PosApiAdmin() {
               loading ||
               testState.running ||
               !formState.testable ||
-              !formState.testServerUrl.trim()
+              !hasTestServerUrl
             }
             style={styles.testButton}
           >
@@ -6457,6 +6610,23 @@ const styles = {
   checkboxHint: {
     fontSize: '0.75rem',
     color: '#64748b',
+  },
+  fieldHelp: {
+    display: 'block',
+    fontSize: '0.82rem',
+    color: '#475569',
+    marginTop: '0.25rem',
+  },
+  radioRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+  },
+  radioLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    fontWeight: 600,
   },
   docFetcher: {
     marginTop: '1.5rem',

@@ -1,5 +1,77 @@
 [
   {
+    "id": "posapiAuth",
+    "name": "POSAPI Authentication",
+    "category": "Authentication",
+    "method": "POST",
+    "path": "/auth/realms/posapi/protocol/openid-connect/token",
+    "parameters": [],
+    "posApiType": "AUTH",
+    "usage": "admin",
+    "testable": true,
+    "testServerUrl": "https://posapi-test.tax.gov.mn",
+    "testServerUrlProduction": "https://posapi.tax.gov.mn",
+    "requestBody": {
+      "schema": {
+        "grant_type": "password",
+        "client_id": "POSAPI_CLIENT_ID",
+        "username": "demo@example.com",
+        "password": "your-password"
+      },
+      "description": "Request an OAuth2 access token to authorise POSAPI test calls."
+    },
+    "responseBody": {
+      "schema": {
+        "access_token": "string",
+        "refresh_token": "string",
+        "expires_in": 3600
+      },
+      "description": "Bearer token payload returned by the POSAPI authentication endpoint."
+    },
+    "requestFields": [
+      {
+        "field": "grant_type",
+        "required": true,
+        "description": "OAuth grant type (password)."
+      },
+      {
+        "field": "client_id",
+        "required": true,
+        "description": "Registered POSAPI client identifier."
+      },
+      {
+        "field": "username",
+        "required": true,
+        "description": "Service username used for POSAPI authentication."
+      },
+      {
+        "field": "password",
+        "required": true,
+        "description": "Service password used for POSAPI authentication."
+      }
+    ],
+    "responseFields": [
+      {
+        "field": "access_token",
+        "required": true,
+        "description": "Bearer token to include in Authorization headers."
+      },
+      {
+        "field": "expires_in",
+        "required": true,
+        "description": "Token lifetime in seconds."
+      },
+      {
+        "field": "refresh_token",
+        "required": false,
+        "description": "Refresh token used to obtain a new access token."
+      }
+    ],
+    "supportsItems": false,
+    "supportsMultiplePayments": false,
+    "notes": "Authentication endpoint imported from the government auth specification."
+  },
+  {
     "id": "saveReceipt",
     "name": "Save B2C/B2B Receipt",
     "category": "Receipts & Invoices",
