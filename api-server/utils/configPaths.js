@@ -1,9 +1,33 @@
 import { promises as fs } from 'fs';
 import { existsSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+function resolveConfigBasePath() {
+  const fromEnv = process.env.CONFIG_BASE_PATH || process.env.CONFIG_ROOT;
+  if (fromEnv) {
+    return path.isAbsolute(fromEnv)
+      ? fromEnv
+      : path.resolve(process.cwd(), fromEnv);
+  }
+  return path.resolve(__dirname, '../..', 'config');
+}
+
+const CONFIG_BASE_PATH = resolveConfigBasePath();
+
+export function getConfigBasePath() {
+  return CONFIG_BASE_PATH;
+}
+
+export function tenantConfigRoot(companyId = 0) {
+  return path.join(CONFIG_BASE_PATH, String(companyId));
+}
 
 export function tenantConfigPath(file, companyId = 0) {
-  return path.join(process.cwd(), 'config', String(companyId), file);
+  return path.join(tenantConfigRoot(companyId), file);
 }
 
 export async function getConfigPath(file, companyId = 0) {
