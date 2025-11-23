@@ -3160,8 +3160,12 @@ export default function PosApiAdmin() {
       delete endpoint.paymentMethods;
     }
 
-    const existingIds = new Set(endpoints.map((ep) => ep.id));
-    validateEndpoint(endpoint, existingIds, selectedId);
+    const existingIds = new Set(
+      endpoints
+        .filter((ep) => ep?.id && ep.id !== selectedId && ep.id !== endpoint.id)
+        .map((ep) => ep.id),
+    );
+    validateEndpoint(endpoint, existingIds, selectedId || endpoint.id);
 
     return endpoint;
   }
@@ -3174,8 +3178,11 @@ export default function PosApiAdmin() {
       resetTestState();
       const definition = buildDefinition();
       const preparedDefinition = withEndpointMetadata(definition);
-      const updated = endpoints.some((ep) => ep.id === selectedId)
-        ? endpoints.map((ep) => (ep.id === selectedId ? preparedDefinition : ep))
+      const replacementIndex = endpoints.findIndex(
+        (ep) => ep.id === selectedId || ep.id === preparedDefinition.id,
+      );
+      const updated = replacementIndex >= 0
+        ? endpoints.map((ep, index) => (index === replacementIndex ? preparedDefinition : ep))
         : [...endpoints, preparedDefinition];
 
       let normalized = updated.map(withEndpointMetadata);

@@ -1865,7 +1865,7 @@ export async function sendReceipt(payload, options = {}) {
   const endpoint = options.endpoint || (await resolvePosApiEndpoint(options.endpointId));
   const method = (endpoint?.method || 'POST').toUpperCase();
   const path = endpoint?.path || '/rest/receipt';
-  const token = await getPosApiToken();
+  const token = await getPosApiToken({ authEndpointId: endpoint?.authEndpointId });
   const headers = { ...(options.headers || {}) };
   if (method !== 'GET' && method !== 'HEAD') {
     headers['Content-Type'] = headers['Content-Type'] || 'application/json';
