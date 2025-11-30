@@ -1,0 +1,375 @@
+{
+	"info": {
+		"_postman_id": "80610b96-e4d1-4482-a6d3-cdc095b4786a",
+		"name": "ИБАРИМТ нэвтрэлт",
+		"description": "> Нэгдсэн нэвтрэлтийн системийн API\r\n",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50289897",
+		"_collection_link": "https://baaggiii-7271699.postman.co/workspace/d63a1c60-c52a-4563-8b5d-414b12bae27c/collection/50289897-80610b96-e4d1-4482-a6d3-cdc095b4786a?action=share&source=collection_link&creator=50289897"
+	},
+	"item": [
+		{
+			"name": "protocol",
+			"item": [
+				{
+					"name": "openid-connect",
+					"item": [
+						{
+							"name": "token",
+							"item": [
+								{
+									"name": "Token авах",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/x-www-form-urlencoded"
+											},
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "urlencoded",
+											"urlencoded": [
+												{
+													"key": "grant_type",
+													"value": "string"
+												},
+												{
+													"key": "client_id",
+													"value": "string",
+													"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+												},
+												{
+													"key": "username",
+													"value": "string",
+													"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+												},
+												{
+													"key": "password",
+													"value": "string",
+													"description": "Нууц үг"
+												}
+											]
+										},
+										"url": {
+											"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+											"protocol": "https",
+											"host": [
+												"st",
+												"auth",
+												"itc",
+												"gov",
+												"mn"
+											],
+											"path": [
+												"auth",
+												"realms",
+												"Staging",
+												"protocol",
+												"openid-connect",
+												"token"
+											]
+										},
+										"description": "> Token авах хэсгийн танилцуулга\r\n\r\n<!-- theme: warning -->\r\n> Сервисийн хариу амжилттай бол зөвхөн `access_token` ийг авч ашиглана уу"
+									},
+									"response": [
+										{
+											"name": "Хүсэлтийн жишээ",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "string"
+														},
+														{
+															"key": "client_id",
+															"value": "string",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "string",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "string",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"access_token\": \"string\",\n  \"expires_in\": \"string\",\n  \"refresh_expires_in\": \"string\",\n  \"refresh_token\": \"string\",\n  \"token_type\": \"string\",\n  \"not-before-policy\": \"string\",\n  \"session_state\": \"string\",\n  \"scope\": \"string\"\n}"
+										},
+										{
+											"name": "Хялбар бүртгэлийн токен авах",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "string"
+														},
+														{
+															"key": "client_id",
+															"value": "string",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "string",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "string",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"access_token\": \"string\",\n  \"expires_in\": \"string\",\n  \"refresh_expires_in\": \"string\",\n  \"refresh_token\": \"string\",\n  \"token_type\": \"string\",\n  \"not-before-policy\": \"string\",\n  \"session_state\": \"string\",\n  \"scope\": \"string\"\n}"
+										},
+										{
+											"name": "Серисийн хариуны жишээ",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "string"
+														},
+														{
+															"key": "client_id",
+															"value": "string",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "string",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "string",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "Unauthorized",
+											"code": 401,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"error\": \"invalid_client\",\n  \"error_description\": \"Invalid client or Invalid client credentials\"\n}"
+										},
+										{
+											"name": "Нэвтрэх нэр эсвэл нууц үг буруу үеийн жишээ",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "string"
+														},
+														{
+															"key": "client_id",
+															"value": "string",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "string",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "string",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "Unauthorized",
+											"code": 401,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"error\": \"invalid_grant\",\n  \"error_description\": \"Invalid user credentials\"\n}"
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "/"
+		}
+	]
+}
