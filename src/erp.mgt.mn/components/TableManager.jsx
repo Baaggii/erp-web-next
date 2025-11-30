@@ -763,7 +763,63 @@ const TableManager = forwardRef(function TableManager({
     typeFilter,
   ]);
 
-  const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
+  const resolvedColumnNames = useMemo(() => {
+    const configuredTenantFields = [
+      ...companyIdFields,
+      ...branchIdFields,
+      ...departmentIdFields,
+      ...userIdFields,
+    ];
+
+    const configFieldList = (() => {
+      const keys = new Set();
+      if (!formConfig) return [];
+      walkEditableFieldValues(formConfig, (value) => {
+        keys.add(String(value));
+      });
+      return Array.from(keys);
+    })();
+
+    const visibleList = Array.isArray(formConfig?.visibleFields)
+      ? formConfig.visibleFields
+      : [];
+
+    const defaultKeys =
+      formConfig?.defaultValues &&
+      typeof formConfig.defaultValues === 'object' &&
+      !Array.isArray(formConfig.defaultValues)
+        ? Object.keys(formConfig.defaultValues)
+        : [];
+
+    const initialList = (() => {
+      if (columnMeta.length > 0) return columnMeta.map((c) => c.name);
+      if (rows[0]) return Object.keys(rows[0]);
+      if (visibleList.length > 0) return visibleList;
+      if (defaultKeys.length > 0) return defaultKeys;
+      return [];
+    })();
+
+    const merged = new Set([
+      ...initialList,
+      ...visibleList,
+      ...defaultKeys,
+      ...configuredTenantFields,
+      ...configFieldList,
+    ]);
+    return Array.from(merged);
+  }, [
+    columnMeta,
+    rows,
+    formConfig?.visibleFields,
+    formConfig?.defaultValues,
+    companyIdFields,
+    branchIdFields,
+    departmentIdFields,
+    userIdFields,
+    formConfig,
+  ]);
+
+  const validCols = useMemo(() => new Set(resolvedColumnNames), [resolvedColumnNames]);
   const columnCaseMap = useMemo(
     () => buildColumnCaseMap(columnMeta),
     [columnMeta],
@@ -2174,7 +2230,12 @@ const TableManager = forwardRef(function TableManager({
 
   async function openAdd() {
     const meta = await ensureColumnMeta();
-    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+    const cols =
+      Array.isArray(meta) && meta.length > 0
+        ? meta
+        : columnMeta.length > 0
+        ? columnMeta
+        : resolvedColumnNames.map((name) => ({ name }));
     const defaults = {};
     const baseRow = {};
     cols.forEach((c) => {
@@ -4469,12 +4530,7 @@ const TableManager = forwardRef(function TableManager({
 
   if (!table) return null;
 
-  const allColumns =
-    columnMeta.length > 0
-      ? columnMeta.map((c) => c.name)
-      : rows[0]
-      ? Object.keys(rows[0])
-      : [];
+  const allColumns = resolvedColumnNames;
 
   const ordered = formConfig?.visibleFields?.length
     ? allColumns.filter((c) => formConfig.visibleFields.includes(c))
