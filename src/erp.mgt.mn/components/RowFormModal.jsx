@@ -2263,35 +2263,14 @@ const RowFormModal = function RowFormModal({
     const aggregatedChanges = {};
     let stateChanged = false;
 
-    const lookupCaseInsensitive = (source, key) => {
-      if (!source || !key) return undefined;
-      const lower = String(key).toLowerCase();
-      const match = Object.keys(source).find((k) => k.toLowerCase() === lower);
-      return match === undefined ? undefined : source[match];
-    };
-
     const getVal = (name) => {
       const key = normalizeColumn(name) || name;
-      const lowerKey = typeof key === 'string' ? key.toLowerCase() : '';
       const match = columns.find((c) => c.toLowerCase() === String(key).toLowerCase());
       let val = match ? workingFormVals[match] : workingFormVals[key];
       if (val === undefined) {
         const extraKey = match || key;
         val = workingExtraVals[extraKey];
         if (val === undefined && extraKey !== key) val = workingExtraVals[key];
-      }
-      if (val === undefined) {
-        val = lookupCaseInsensitive(defaultValues, key);
-      }
-      if (val === undefined) {
-        val = getRowValueCaseInsensitive(row, key);
-      }
-      if ((val === undefined || val === null || val === '') && autoFillSession) {
-        if (userIdLowerSet.has(lowerKey) && user?.empid) val = user.empid;
-        else if (branchIdLowerSet.has(lowerKey) && branch !== undefined) val = branch;
-        else if (departmentIdLowerSet.has(lowerKey) && department !== undefined)
-          val = department;
-        else if (companyIdLowerSet.has(lowerKey) && company !== undefined) val = company;
       }
       if (val && typeof val === 'object' && 'value' in val) {
         val = val.value;
