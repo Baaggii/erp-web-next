@@ -763,22 +763,7 @@ const TableManager = forwardRef(function TableManager({
     typeFilter,
   ]);
 
-  const resolvedColumnNames = useMemo(() => {
-    if (columnMeta.length > 0) return columnMeta.map((c) => c.name);
-    if (rows[0]) return Object.keys(rows[0]);
-    if (Array.isArray(formConfig?.visibleFields) && formConfig.visibleFields.length > 0)
-      return formConfig.visibleFields;
-    if (
-      formConfig?.defaultValues &&
-      typeof formConfig.defaultValues === 'object' &&
-      !Array.isArray(formConfig.defaultValues)
-    ) {
-      return Object.keys(formConfig.defaultValues);
-    }
-    return [];
-  }, [columnMeta, rows, formConfig?.visibleFields, formConfig?.defaultValues]);
-
-  const validCols = useMemo(() => new Set(resolvedColumnNames), [resolvedColumnNames]);
+  const validCols = useMemo(() => new Set(columnMeta.map((c) => c.name)), [columnMeta]);
   const columnCaseMap = useMemo(
     () => buildColumnCaseMap(columnMeta),
     [columnMeta],
@@ -4484,7 +4469,12 @@ const TableManager = forwardRef(function TableManager({
 
   if (!table) return null;
 
-  const allColumns = resolvedColumnNames;
+  const allColumns =
+    columnMeta.length > 0
+      ? columnMeta.map((c) => c.name)
+      : rows[0]
+      ? Object.keys(rows[0])
+      : [];
 
   const ordered = formConfig?.visibleFields?.length
     ? allColumns.filter((c) => formConfig.visibleFields.includes(c))
