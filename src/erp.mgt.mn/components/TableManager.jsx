@@ -764,60 +764,19 @@ const TableManager = forwardRef(function TableManager({
   ]);
 
   const resolvedColumnNames = useMemo(() => {
-    const configuredTenantFields = [
-      ...companyIdFields,
-      ...branchIdFields,
-      ...departmentIdFields,
-      ...userIdFields,
-    ];
-
-    const configFieldList = (() => {
-      const keys = new Set();
-      if (!formConfig) return [];
-      walkEditableFieldValues(formConfig, (value) => {
-        keys.add(String(value));
-      });
-      return Array.from(keys);
-    })();
-
-    const visibleList = Array.isArray(formConfig?.visibleFields)
-      ? formConfig.visibleFields
-      : [];
-
-    const defaultKeys =
+    if (columnMeta.length > 0) return columnMeta.map((c) => c.name);
+    if (rows[0]) return Object.keys(rows[0]);
+    if (Array.isArray(formConfig?.visibleFields) && formConfig.visibleFields.length > 0)
+      return formConfig.visibleFields;
+    if (
       formConfig?.defaultValues &&
       typeof formConfig.defaultValues === 'object' &&
       !Array.isArray(formConfig.defaultValues)
-        ? Object.keys(formConfig.defaultValues)
-        : [];
-
-    const initialList = (() => {
-      if (columnMeta.length > 0) return columnMeta.map((c) => c.name);
-      if (rows[0]) return Object.keys(rows[0]);
-      if (visibleList.length > 0) return visibleList;
-      if (defaultKeys.length > 0) return defaultKeys;
-      return [];
-    })();
-
-    const merged = new Set([
-      ...initialList,
-      ...visibleList,
-      ...defaultKeys,
-      ...configuredTenantFields,
-      ...configFieldList,
-    ]);
-    return Array.from(merged);
-  }, [
-    columnMeta,
-    rows,
-    formConfig?.visibleFields,
-    formConfig?.defaultValues,
-    companyIdFields,
-    branchIdFields,
-    departmentIdFields,
-    userIdFields,
-    formConfig,
-  ]);
+    ) {
+      return Object.keys(formConfig.defaultValues);
+    }
+    return [];
+  }, [columnMeta, rows, formConfig?.visibleFields, formConfig?.defaultValues]);
 
   const validCols = useMemo(() => new Set(resolvedColumnNames), [resolvedColumnNames]);
   const columnCaseMap = useMemo(
