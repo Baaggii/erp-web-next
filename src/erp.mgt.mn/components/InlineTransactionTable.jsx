@@ -1426,14 +1426,7 @@ function InlineTransactionTable(
           if (p === '$branchId') return branch;
           if (p === '$companyId') return company;
           if (p === '$employeeId') return user?.empid;
-          if (p === '$date') {
-            const configuredDateField = dateField?.[0];
-            const dateValue = configuredDateField ? getVal(configuredDateField) : undefined;
-            if (dateValue !== undefined && dateValue !== null && dateValue !== '') {
-              return dateValue;
-            }
-            return formatTimestamp(new Date()).slice(0, 10);
-          }
+          if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
           return getVal(p);
         };
 
