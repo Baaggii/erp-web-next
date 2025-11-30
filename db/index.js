@@ -6716,61 +6716,8 @@ export async function getReportApprovalRecord(requestId, conn = pool) {
   };
 }
 
-function normalizeSessionAssignments(sessionVars = {}, fallbackCompanyId) {
-  const normalized = [];
-  const rawEntries = { ...(sessionVars || {}) };
-  if (fallbackCompanyId !== undefined && fallbackCompanyId !== null) {
-    if (!Object.prototype.hasOwnProperty.call(rawEntries, 'company_id')) {
-      rawEntries.company_id = fallbackCompanyId;
-    }
-    if (!Object.prototype.hasOwnProperty.call(rawEntries, 'companyId')) {
-      rawEntries.companyId = fallbackCompanyId;
-    }
-  }
-  for (const [rawKey, rawValue] of Object.entries(rawEntries)) {
-    if (rawKey === undefined || rawKey === null) continue;
-    const cleanedKey = String(rawKey)
-      .trim()
-      .replace(/[^A-Za-z0-9_]/g, '_')
-      .replace(/_+/g, '_')
-      .replace(/^_+|_+$/g, '')
-      .toLowerCase();
-    if (!cleanedKey) continue;
-    const name = `@session_${cleanedKey}`;
-    normalized.push({ name, value: rawValue ?? null });
-  }
-  return normalized;
-}
-
-async function applySessionVars(conn, sessionVars = {}, fallbackCompanyId) {
-  const assignments = normalizeSessionAssignments(sessionVars, fallbackCompanyId);
-  if (!assignments.length) return assignments;
-  const setSql = 'SET ' + assignments.map(({ name }) => `${name} = ?`).join(', ');
-  const setValues = assignments.map(({ value }) => value);
-  await conn.query(setSql, setValues);
-  return assignments;
-}
-
-async function clearSessionVars(conn, assignments = []) {
-  if (!Array.isArray(assignments) || assignments.length === 0) return;
-  const resetSql = 'SET ' + assignments.map(({ name }) => `${name} = NULL`).join(', ');
-  try {
-    await conn.query(resetSql);
-  } catch {}
-}
-
-export async function callStoredProcedure(
-  name,
-  params = [],
-  aliases = [],
-  options = {},
-) {
+export async function callStoredProcedure(name, params = [], aliases = []) {
   const conn = await pool.getConnection();
-  const assignments = await applySessionVars(
-    conn,
-    options?.sessionVars || {},
-    options?.companyId,
-  );
   try {
     const callParts = [];
     const callArgs = [];
@@ -6810,7 +6757,6 @@ export async function callStoredProcedure(
 
     return first;
   } finally {
-    await clearSessionVars(conn, assignments);
     conn.release();
   }
 }
@@ -6828,11 +6774,6 @@ export async function getProcedureLockCandidates(
     resolveAlternateSnapshotRow,
   } = options || {};
   const conn = await pool.getConnection();
-  const assignments = await applySessionVars(
-    conn,
-    options?.sessionVars || {},
-    companyId,
-  );
   const candidates = new Map();
 
   const candidateVariables = [
@@ -7486,7 +7427,6 @@ export async function getProcedureLockCandidates(
 
     return flatCandidates;
   } finally {
-    await clearSessionVars(conn, assignments);
     conn.release();
   }
 }
