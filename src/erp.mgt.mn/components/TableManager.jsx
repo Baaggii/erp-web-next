@@ -2189,7 +2189,12 @@ const TableManager = forwardRef(function TableManager({
 
   async function openAdd() {
     const meta = await ensureColumnMeta();
-    const cols = Array.isArray(meta) && meta.length > 0 ? meta : columnMeta;
+    const cols =
+      Array.isArray(meta) && meta.length > 0
+        ? meta
+        : columnMeta.length > 0
+        ? columnMeta
+        : resolvedColumnNames.map((name) => ({ name }));
     const defaults = {};
     const baseRow = {};
     cols.forEach((c) => {
