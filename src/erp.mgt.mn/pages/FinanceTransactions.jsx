@@ -417,7 +417,7 @@ useEffect(() => {
       null;
     const query = params.toString();
     const url = `/api/transaction_forms${query ? `?${query}` : ''}`;
-    fetch(url, { credentials: 'include' })
+    fetch(url, { credentials: 'include', skipLoader: true })
       .then((res) => {
         if (!res.ok) {
           addToast('Failed to load transaction forms', 'error');
@@ -500,7 +500,7 @@ useEffect(() => {
     let canceled = false;
     fetch(
       `/api/transaction_forms?table=${encodeURIComponent(table)}&name=${encodeURIComponent(name)}`,
-      { credentials: 'include' }
+      { credentials: 'include', skipLoader: true },
     )
       .then((res) => {
         if (canceled) return null;
