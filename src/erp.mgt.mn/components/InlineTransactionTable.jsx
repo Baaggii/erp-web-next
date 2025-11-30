@@ -1421,12 +1421,41 @@ function InlineTransactionTable(
           return val;
         };
 
+        const hasValue = (val) => {
+          if (val === undefined || val === null) return false;
+          if (typeof val === 'string' && val.trim() === '') return false;
+          return true;
+        };
+
+        const getFieldValue = (list) => {
+          if (!Array.isArray(list)) return undefined;
+          for (const field of list) {
+            const value = getVal(field);
+            if (hasValue(value)) return value;
+          }
+          return undefined;
+        };
+
         const getParam = (p) => {
           if (p === '$current') return getVal(normalizedTarget);
-          if (p === '$branchId') return branch;
-          if (p === '$companyId') return company;
-          if (p === '$employeeId') return user?.empid;
-          if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
+          if (p === '$branchId') {
+            const branchValue = getFieldValue(branchIdFields);
+            return hasValue(branchValue) ? branchValue : branch;
+          }
+          if (p === '$companyId') {
+            const companyValue = getFieldValue(companyIdFields);
+            return hasValue(companyValue) ? companyValue : company;
+          }
+          if (p === '$employeeId') {
+            const employeeValue = getFieldValue(userIdFields);
+            return hasValue(employeeValue) ? employeeValue : user?.empid;
+          }
+          if (p === '$date') {
+            const dateValue = getFieldValue(dateField);
+            return hasValue(dateValue)
+              ? dateValue
+              : formatTimestamp(new Date()).slice(0, 10);
+          }
           return getVal(p);
         };
 
