@@ -1426,19 +1426,7 @@ function InlineTransactionTable(
           if (p === '$branchId') return branch;
           if (p === '$companyId') return company;
           if (p === '$employeeId') return user?.empid;
-          if (p === '$date') {
-            // Prefer the row's date value when available so stored procedures and
-            // triggers receive the same effective date the user sees (including
-            // auto-filled defaults). Fall back to today's date to preserve the
-            // existing behaviour when no date field exists.
-            const dateFieldName = dateField?.[0];
-            const value = dateFieldName ? getVal(dateFieldName) : null;
-            const normalized = normalizeDateInput(
-              value ?? formatTimestamp(new Date()).slice(0, 10),
-              'YYYY-MM-DD',
-            );
-            return normalized;
-          }
+          if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
           return getVal(p);
         };
 
