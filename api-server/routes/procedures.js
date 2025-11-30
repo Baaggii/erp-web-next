@@ -11,6 +11,24 @@ import { listPermittedProcedures } from '../utils/reportProcedures.js';
 
 const router = express.Router();
 
+function buildSessionVars(req, companyId) {
+  const sessionVars = {
+    company_id: companyId,
+    companyId,
+    empid: req.user?.empid,
+    user_id: req.user?.id,
+  };
+  const branchId = req.query?.branchId ?? req.body?.branchId;
+  const departmentId = req.query?.departmentId ?? req.body?.departmentId;
+  if (branchId !== undefined && branchId !== null && branchId !== '') {
+    sessionVars.branch_id = branchId;
+  }
+  if (departmentId !== undefined && departmentId !== null && departmentId !== '') {
+    sessionVars.department_id = departmentId;
+  }
+  return sessionVars;
+}
+
 router.get('/', requireAuth, async (req, res, next) => {
   try {
     const { prefix = '', branchId, departmentId } = req.query;
@@ -63,11 +81,12 @@ router.post('/locks', requireAuth, async (req, res, next) => {
     const allowed = new Set(procedures.map((p) => p.name));
     if (!allowed.has(name))
       return res.status(403).json({ message: 'Procedure not allowed' });
+    const sessionVars = buildSessionVars(req, companyId);
     const lockCandidates = await getProcedureLockCandidates(
       name,
       Array.isArray(params) ? params : [],
       Array.isArray(aliases) ? aliases : [],
-      { companyId },
+      { companyId, sessionVars },
     );
     res.json({ lockCandidates });
   } catch (err) {
@@ -89,10 +108,12 @@ router.post('/', requireAuth, async (req, res, next) => {
     const allowed = new Set(procedures.map((p) => p.name));
     if (!allowed.has(name))
       return res.status(403).json({ message: 'Procedure not allowed' });
+    const sessionVars = buildSessionVars(req, companyId);
     const row = await callStoredProcedure(
       name,
       Array.isArray(params) ? params : [],
       Array.isArray(aliases) ? aliases : [],
+      { sessionVars, companyId },
     );
     res.json({ row });
   } catch (err) {
@@ -123,6 +144,10 @@ router.post('/raw', requireAuth, async (req, res, next) => {
     const allowed = new Set(procedures.map((p) => p.name));
     if (!allowed.has(name))
       return res.status(403).json({ message: 'Procedure not allowed' });
+    const sessionVars = {
+      ...buildSessionVars(req, companyId),
+      ...(session || {}),
+    };
     const { rows, sql, original, file, displayFields } = await getProcedureRawRows(
       name,
       params || {},
@@ -130,7 +155,7 @@ router.post('/raw', requireAuth, async (req, res, next) => {
       groupField,
       groupValue,
       Array.isArray(extraConditions) ? extraConditions : [],
-      { ...(session || {}), empid: req.user?.empid },
+      sessionVars,
     );
     res.json({ rows, sql, original, file, displayFields });
   } catch (err) {
