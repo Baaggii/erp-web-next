@@ -2349,12 +2349,37 @@ const RowFormModal = function RowFormModal({
             .filter(Boolean),
         );
 
+        let cachedReferenceDate = null;
+        const resolveReferenceDate = () => {
+          if (cachedReferenceDate) return cachedReferenceDate;
+          const dateFieldName = Array.isArray(dateField) ? dateField[0] : null;
+          const rawDate = dateFieldName ? getVal(dateFieldName) : null;
+          const parsed = rawDate ? new Date(rawDate) : null;
+          cachedReferenceDate =
+            parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date();
+          return cachedReferenceDate;
+        };
+
         const getParam = (p) => {
           if (p === '$current') return getVal(normalizedTarget);
           if (p === '$branchId') return branch;
           if (p === '$companyId') return company;
           if (p === '$employeeId') return user?.empid;
-          if (p === '$date') return formatTimestamp(new Date()).slice(0, 10);
+          if (p === '$date')
+            return formatTimestamp(resolveReferenceDate()).slice(0, 10);
+          if (typeof p === 'string') {
+            const lower = p.toLowerCase();
+            if (lower === 'v_year' || lower === 'p_year' || lower === 'year') {
+              return resolveReferenceDate().getFullYear();
+            }
+            if (
+              lower === 'v_month' ||
+              lower === 'p_month' ||
+              lower === 'month'
+            ) {
+              return resolveReferenceDate().getMonth() + 1;
+            }
+          }
           return getVal(p);
         };
 
