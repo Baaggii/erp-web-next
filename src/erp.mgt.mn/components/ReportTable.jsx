@@ -604,8 +604,20 @@ export default function ReportTable({
         )}
       </div>
       <div
-        className="table-container overflow-x-auto"
-        style={{ maxWidth: '100%', overflowX: 'auto' }}
+        className="table-container overflow-auto"
+        style={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: '100%',
+          height: '70vh',
+          overflowX: 'auto',
+          overflowY: 'auto',
+          border: '1px solid #d1d5db',
+          borderRadius: '0.5rem',
+          background: '#fff',
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+          scrollbarGutter: 'stable both-edges',
+        }}
       >
         <table
           className="table-manager"
