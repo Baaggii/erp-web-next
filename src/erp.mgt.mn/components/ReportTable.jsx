@@ -605,7 +605,7 @@ export default function ReportTable({
       </div>
       <div
         className="table-container overflow-x-auto"
-        style={{ maxWidth: '100%', width: '100%', overflowX: 'auto' }}
+        style={{ maxWidth: '100%', overflowX: 'auto' }}
       >
         <table
           className="table-manager"
