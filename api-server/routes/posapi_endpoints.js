@@ -1161,6 +1161,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
     }
 
     const payload = {};
+    const bodyOverride = req.body?.body;
     const params = Array.isArray(definition.parameters) ? definition.parameters : [];
     params.forEach((param) => {
       if (!param?.name) return;
@@ -1169,7 +1170,11 @@ router.post('/test', requireAuth, async (req, res, next) => {
         payload[param.name] = value;
       }
     });
-    if (definition.requestBody && typeof definition.requestBody === 'object') {
+    if (bodyOverride !== undefined) {
+      payload.body = bodyOverride;
+    } else if (definition.requestExample !== undefined && definition.method !== 'GET') {
+      payload.body = definition.requestExample;
+    } else if (definition.requestBody && typeof definition.requestBody === 'object') {
       const schema = definition.requestBody.schema;
       if (schema !== undefined && schema !== null && definition.method !== 'GET') {
         payload.body = schema;
