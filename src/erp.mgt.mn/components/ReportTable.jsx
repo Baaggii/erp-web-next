@@ -209,15 +209,6 @@ export default function ReportTable({
     return map;
   }, [columns, sorted, placeholders]);
 
-  const tablePixelWidth = useMemo(() => {
-    const minimumWidth = columns.length * ch(12);
-    const calculatedWidth = columns.reduce(
-      (sum, col) => sum + (columnWidths[col] || ch(12)),
-      0,
-    );
-    return `${Math.max(calculatedWidth, minimumWidth)}px`;
-  }, [columns, columnWidths]);
-
   useEffect(() => {
     setFrozenColumns((prev) => {
       if (prev > columns.length) return columns.length;
@@ -614,14 +605,7 @@ export default function ReportTable({
       </div>
       <div
         className="table-container overflow-x-auto"
-        style={{
-          width: '100%',
-          maxWidth: '100%',
-          maxHeight: '70vh',
-          overflowX: 'auto',
-          overflowY: 'auto',
-          position: 'relative',
-        }}
+        style={{ maxWidth: '100%', overflowX: 'auto' }}
       >
         <table
           className="table-manager"
