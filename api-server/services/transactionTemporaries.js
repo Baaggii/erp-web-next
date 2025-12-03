@@ -837,16 +837,41 @@ export async function promoteTemporarySubmission(
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
     };
-    const inserted = await insertTableRow(
-      row.table_name,
-      sanitizedValues,
-      undefined,
-      undefined,
-      false,
-      normalizedReviewer,
-      { conn, mutationContext },
-    );
-    const insertedId = inserted?.id ?? null;
+    let insertedId = null;
+    try {
+      const inserted = await insertTableRow(
+        row.table_name,
+        sanitizedValues,
+        undefined,
+        undefined,
+        false,
+        normalizedReviewer,
+        { conn, mutationContext },
+      );
+      insertedId = inserted?.id ?? null;
+    } catch (insertErr) {
+      const message = insertErr?.message || '';
+      const dynamicSqlError =
+        insertErr?.code === 'ER_SP_NO_DYNAMIC_SQL' ||
+        /dynamic sql is not allowed in stored function or trigger/i.test(message);
+      if (!dynamicSqlError) {
+        throw insertErr;
+      }
+
+      const entries = Object.entries(sanitizedValues);
+      if (entries.length === 0) {
+        throw insertErr;
+      }
+
+      const columnsSql = entries.map(([col]) => `\`${col}\``).join(', ');
+      const placeholders = entries.map(() => '?').join(', ');
+      const params = entries.map(([, value]) => value);
+      const [fallbackResult] = await conn.query(
+        `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
+        params,
+      );
+      insertedId = fallbackResult?.insertId ?? null;
+    }
     const promotedId = insertedId ? String(insertedId) : null;
     if (formName && formCfg) {
       try {
@@ -983,37 +1008,45 @@ export async function promoteTemporarySubmission(
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
-    await logUserAction(
-      {
-        emp_id: normalizedReviewer,
-        table_name: row.table_name,
-        record_id: id,
-        action: 'approve',
-        details: {
-          promotedRecordId: promotedId,
-          formName: row.form_name ?? null,
-          temporaryAction: 'promote',
+    try {
+      await logUserAction(
+        {
+          emp_id: normalizedReviewer,
+          table_name: row.table_name,
+          record_id: id,
+          action: 'approve',
+          details: {
+            promotedRecordId: promotedId,
+            formName: row.form_name ?? null,
+            temporaryAction: 'promote',
+          },
+          company_id: row.company_id ?? null,
         },
-        company_id: row.company_id ?? null,
-      },
-      conn,
-    );
-    await insertNotification(conn, {
-      companyId: row.company_id,
-      recipientEmpId: row.created_by,
-      createdBy: normalizedReviewer,
-      relatedId: id,
-      message: `Temporary submission for ${row.table_name} approved`,
-      type: 'response',
-    });
-    await insertNotification(conn, {
-      companyId: row.company_id,
-      recipientEmpId: normalizedReviewer,
-      createdBy: normalizedReviewer,
-      relatedId: id,
-      message: `You approved temporary submission #${id} for ${row.table_name}`,
-      type: 'response',
-    });
+        conn,
+      );
+    } catch (logErr) {
+      console.error('Failed to log user action for temporary promotion', logErr);
+    }
+    try {
+      await insertNotification(conn, {
+        companyId: row.company_id,
+        recipientEmpId: row.created_by,
+        createdBy: normalizedReviewer,
+        relatedId: id,
+        message: `Temporary submission for ${row.table_name} approved`,
+        type: 'response',
+      });
+      await insertNotification(conn, {
+        companyId: row.company_id,
+        recipientEmpId: normalizedReviewer,
+        createdBy: normalizedReviewer,
+        relatedId: id,
+        message: `You approved temporary submission #${id} for ${row.table_name}`,
+        type: 'response',
+      });
+    } catch (notifErr) {
+      console.error('Failed to insert approval notifications', notifErr);
+    }
     await conn.query('COMMIT');
     if (io) {
       io.to(`user:${row.created_by}`).emit('temporaryReviewed', {
