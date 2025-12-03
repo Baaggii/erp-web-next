@@ -73,6 +73,7 @@ export default function ReportTable({
   const [labelEdits, setLabelEdits] = useState({});
   const [txnInfo, setTxnInfo] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
+  const [frozenColumnCount, setFrozenColumnCount] = useState(0);
 
   const columns = useMemo(
     () => (rows && rows.length ? Object.keys(rows[0]) : []),
@@ -93,6 +94,10 @@ export default function ReportTable({
       if (Object.keys(prev).length !== Object.keys(next).length) changed = true;
       return changed ? next : prev;
     });
+  }, [columns]);
+
+  useEffect(() => {
+    setFrozenColumnCount((prev) => Math.min(prev, columns.length));
   }, [columns]);
 
   function handleColumnFilterChange(col, value) {
@@ -228,6 +233,29 @@ export default function ReportTable({
     });
     return sums;
   }, [numericColumns, sorted]);
+
+  const frozenOffsets = useMemo(() => {
+    let offset = 0;
+    const map = {};
+    columns.forEach((col, idx) => {
+      if (idx < frozenColumnCount) {
+        map[col] = offset;
+        offset += columnWidths[col] || 0;
+      }
+    });
+    return map;
+  }, [columns, columnWidths, frozenColumnCount]);
+
+  function getFrozenStyles(col, idx, extra = {}) {
+    if (idx >= frozenColumnCount) return extra;
+    return {
+      position: 'sticky',
+      left: frozenOffsets[col] || 0,
+      zIndex: 2,
+      backgroundColor: '#fff',
+      ...extra,
+    };
+  }
 
   const modalColumns = useMemo(() => {
     if (!txnInfo || !txnInfo.data || txnInfo.data.length === 0) return [];
@@ -547,16 +575,32 @@ export default function ReportTable({
         )}
       </h4>
       {paramText && <div style={{ marginTop: '0.25rem' }}>{paramText}</div>}
-      <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
+      <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
         <input
           type="text"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search"
-          style={{ marginRight: '0.5rem' }}
         />
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+          Freeze first
+          <select
+            value={frozenColumnCount}
+            onChange={(e) => setFrozenColumnCount(Number(e.target.value) || 0)}
+          >
+            {Array.from({ length: columns.length + 1 }).map((_, idx) => (
+              <option key={idx} value={idx}>
+                {idx}
+              </option>
+            ))}
+          </select>
+          column{frozenColumnCount === 1 ? '' : 's'}
+        </label>
       </div>
-      <div className="table-container overflow-x-auto">
+      <div
+        className="table-container overflow-x-auto"
+        style={{ maxWidth: '100%', position: 'relative', overflowX: 'auto' }}
+      >
         <table
           className="table-manager"
           style={{
@@ -587,6 +631,7 @@ export default function ReportTable({
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     cursor: 'pointer',
+                    ...getFrozenStyles(col, idx, { backgroundColor: '#e5e7eb', zIndex: 3 }),
                     ...(columnWidths[col] <= ch(8)
                       ? {
                           writingMode: 'vertical-rl',
@@ -619,6 +664,7 @@ export default function ReportTable({
                     resize: 'horizontal',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
+                    ...getFrozenStyles(col, idx, { backgroundColor: '#f9fafb', zIndex: 2 }),
                   }}
                 >
                   <input
@@ -632,37 +678,44 @@ export default function ReportTable({
             </tr>
           </thead>
           <tbody className="table-manager">
-            {pageRows.map((row, idx) => (
-              <tr key={idx}>
-                {columns.map((col) => {
-                  const w = columnWidths[col];
-                  const style = {
-                    padding: '0.5rem',
-                    border: '1px solid #d1d5db',
-                    textAlign: columnAlign[col],
-                  };
-                  if (w) {
-                    style.width = w;
-                    style.minWidth = w;
-                    style.maxWidth = MAX_WIDTH;
-                    style.whiteSpace = 'nowrap';
-                    style.overflow = 'hidden';
-                    style.textOverflow = 'ellipsis';
-                  }
-                  return (
-                    <td
-                      key={col}
-                      style={{ ...style, cursor: row[col] ? 'pointer' : 'default' }}
-                      onClick={() => handleCellClick(col, row[col], row)}
-                    >
-                      {numericColumns.includes(col)
-                        ? formatNumber(row[col])
-                        : formatCellValue(row[col], placeholders[col])}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+            {pageRows.map((row, idx) => {
+              const odd = idx % 2 === 1;
+              return (
+                <tr key={idx}>
+                  {columns.map((col, colIdx) => {
+                    const w = columnWidths[col];
+                    const style = {
+                      padding: '0.5rem',
+                      border: '1px solid #d1d5db',
+                      textAlign: columnAlign[col],
+                      backgroundColor: odd ? '#f9fafb' : '#fff',
+                    };
+                    if (w) {
+                      style.width = w;
+                      style.minWidth = w;
+                      style.maxWidth = MAX_WIDTH;
+                      style.whiteSpace = 'nowrap';
+                      style.overflow = 'hidden';
+                      style.textOverflow = 'ellipsis';
+                    }
+                    return (
+                      <td
+                        key={col}
+                        style={getFrozenStyles(col, colIdx, {
+                          ...style,
+                          cursor: row[col] ? 'pointer' : 'default',
+                        })}
+                        onClick={() => handleCellClick(col, row[col], row)}
+                      >
+                        {numericColumns.includes(col)
+                          ? formatNumber(row[col])
+                          : formatCellValue(row[col], placeholders[col])}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
           </tbody>
           {numericColumns.length > 0 && (
             <tfoot>
@@ -670,12 +723,13 @@ export default function ReportTable({
                 {columns.map((col, idx) => (
                   <td
                     key={col}
-                    style={{
+                    style={getFrozenStyles(col, idx, {
                       padding: '0.5rem',
                       border: '1px solid #d1d5db',
                       textAlign: columnAlign[col],
                       fontWeight: 'bold',
-                    }}
+                      backgroundColor: '#f3f4f6',
+                    })}
                   >
                     {idx === 0
                       ? 'TOTAL'
