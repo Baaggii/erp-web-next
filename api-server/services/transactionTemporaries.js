@@ -119,6 +119,38 @@ function isDynamicSqlTriggerError(err) {
   return err.errno === 1336 || message.includes('dynamic sql is not allowed');
 }
 
+function formatDbErrorDetails(err) {
+  return {
+    errno: err?.errno ?? null,
+    code: err?.code || null,
+    sqlState: err?.sqlState || null,
+    message: err?.sqlMessage || err?.message || null,
+  };
+}
+
+function attachDynamicSqlErrorDetails(err, context = {}) {
+  const details = {
+    ...formatDbErrorDetails(err),
+    ...context,
+  };
+  const codeParts = [];
+  if (details.errno !== null && details.errno !== undefined) {
+    codeParts.push(`errno=${details.errno}`);
+  }
+  if (details.code) {
+    codeParts.push(`code=${details.code}`);
+  }
+  if (details.sqlState) {
+    codeParts.push(`sqlState=${details.sqlState}`);
+  }
+  const suffix = codeParts.length > 0 ? ` (${codeParts.join(', ')})` : '';
+  const formattedMessage = `${details.message || 'Dynamic SQL trigger error'}${suffix}`;
+  const enriched = new Error(formattedMessage);
+  enriched.status = err?.status || err?.statusCode || 400;
+  enriched.details = details;
+  return enriched;
+}
+
 function isPlainObject(value) {
   return Boolean(
     value &&
@@ -782,7 +814,7 @@ export async function promoteTemporarySubmission(
       }
     }
 
-    const sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
+    let sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
     const sanitationWarnings = Array.isArray(sanitizedCleaned?.warnings)
       ? sanitizedCleaned.warnings
       : [];
@@ -863,6 +895,19 @@ export async function promoteTemporarySubmission(
       }
     }
 
+    const hasSkipTriggerColumn = Array.isArray(columns)
+      ? columns.some(
+          (col) =>
+            col &&
+            typeof col.name === 'string' &&
+            col.name.trim().toLowerCase() === 'skip_trigger',
+        )
+      : false;
+
+    if (hasSkipTriggerColumn && !sanitizedValues.skip_trigger) {
+      sanitizedValues = { ...sanitizedValues, skip_trigger: 1 };
+    }
+
     const mutationContext = {
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
@@ -888,18 +933,69 @@ export async function promoteTemporarySubmission(
         id,
         error: err,
       });
-      const keys = Object.keys(sanitizedValues);
-      if (keys.length === 0) {
-        throw err;
+      let recordForInsert = sanitizedValues;
+      const skipTriggerEnabled =
+        recordForInsert.skip_trigger === 1 ||
+        recordForInsert.skip_trigger === true ||
+        (typeof recordForInsert.skip_trigger === 'string' &&
+          recordForInsert.skip_trigger.trim() === '1');
+      if (hasSkipTriggerColumn && !skipTriggerEnabled) {
+        recordForInsert = { ...recordForInsert, skip_trigger: 1 };
+        sanitizedValues = recordForInsert;
       }
-      const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
-      const placeholders = keys.map(() => '?').join(', ');
-      const params = keys.map((k) => sanitizedValues[k]);
-      const [fallbackResult] = await conn.query(
-        `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
-        params,
-      );
-      insertedId = fallbackResult?.insertId ?? null;
+      try {
+        const inserted = await insertTableRow(
+          row.table_name,
+          recordForInsert,
+          undefined,
+          undefined,
+          false,
+          normalizedReviewer,
+          { conn, mutationContext },
+        );
+        insertedId = inserted?.id ?? null;
+      } catch (skipErr) {
+        if (!isDynamicSqlTriggerError(skipErr)) {
+          throw skipErr;
+        }
+        console.warn(
+          'Dynamic SQL trigger error persisted after skip_trigger flag, falling back to direct insert',
+          {
+            table: row.table_name,
+            id,
+            error: skipErr,
+          },
+        );
+      }
+      if (insertedId === null) {
+        const keys = Object.keys(recordForInsert);
+        if (keys.length === 0) {
+          throw attachDynamicSqlErrorDetails(err, {
+            table: row.table_name,
+            id,
+            attempt: 'no values available for direct insert',
+          });
+        }
+        const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
+        const placeholders = keys.map(() => '?').join(', ');
+        const params = keys.map((k) => recordForInsert[k]);
+        try {
+          const [fallbackResult] = await conn.query(
+            `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
+            params,
+          );
+          insertedId = fallbackResult?.insertId ?? null;
+        } catch (directInsertErr) {
+          if (isDynamicSqlTriggerError(directInsertErr)) {
+            throw attachDynamicSqlErrorDetails(directInsertErr, {
+              table: row.table_name,
+              id,
+              attempt: 'direct insert',
+            });
+          }
+          throw directInsertErr;
+        }
+      }
     }
     const promotedId = insertedId ? String(insertedId) : null;
     if (formName && formCfg) {

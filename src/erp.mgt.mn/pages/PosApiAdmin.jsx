@@ -1008,18 +1008,13 @@ function createFormState(definition) {
         return list;
       })()
     : [];
-  const baseRequestSchema = isTransaction
-    ? buildDefaultRequestSchema(
-        definition.posApiType || definition.requestBody?.schema?.type || 'B2C',
-        supportsItems,
-        supportsMultiplePayments,
-      )
-    : {};
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
-  const requestSchema = hasRequestSchema ? definition.requestBody.schema : baseRequestSchema;
-  const requestSchemaFallback = isTransaction
-    ? JSON.stringify(baseRequestSchema, null, 2)
-    : '{}';
+  const requestSchema = hasRequestSchema
+    ? definition.requestBody.schema
+    : hasObjectEntries(definition.requestExample)
+      ? definition.requestExample
+      : {};
+  const requestSchemaFallback = '{}';
 
   return {
     id: definition.id || '',
