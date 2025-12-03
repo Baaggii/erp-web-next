@@ -827,6 +827,22 @@ export async function promoteTemporarySubmission(
       ? sanitizedCleaned.warnings
       : [];
 
+    const errorRevokedFields = Array.isArray(payloadJson?.errorRevokedFieldsOnly)
+      ? payloadJson.errorRevokedFieldsOnly
+          .map((field) => (typeof field === 'string' ? field.trim() : ''))
+          .filter(Boolean)
+      : [];
+    if (errorRevokedFields.length > 0) {
+      const revokedLookup = new Set(
+        errorRevokedFields.map((field) => field.toLowerCase()),
+      );
+      sanitizedValues = Object.fromEntries(
+        Object.entries(sanitizedValues).filter(
+          ([key]) => !revokedLookup.has(String(key || '').toLowerCase()),
+        ),
+      );
+    }
+
     if (Object.keys(sanitizedValues).length === 0) {
       const err = new Error('Temporary submission is missing promotable values');
       err.status = 422;
@@ -916,6 +932,10 @@ export async function promoteTemporarySubmission(
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
     };
+    const shouldBypassTriggers = hasSkipTriggerColumn;
+    if (shouldBypassTriggers && !sanitizedValues.skip_trigger) {
+      sanitizedValues = { ...sanitizedValues, skip_trigger: 1 };
+    }
     let insertedId = null;
     try {
       const inserted = await insertTableRow(
