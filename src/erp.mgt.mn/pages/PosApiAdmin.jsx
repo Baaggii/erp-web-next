@@ -1008,7 +1008,10 @@ function createFormState(definition) {
         return list;
       })()
     : [];
-  const baseRequestSchema = isTransaction
+  const transactionTypes = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
+  const shouldDefaultRequestSchema =
+    isTransaction && definition.posApiType && transactionTypes.has(definition.posApiType);
+  const baseRequestSchema = shouldDefaultRequestSchema
     ? buildDefaultRequestSchema(
         definition.posApiType || definition.requestBody?.schema?.type || 'B2C',
         supportsItems,
@@ -1017,7 +1020,7 @@ function createFormState(definition) {
     : {};
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : baseRequestSchema;
-  const requestSchemaFallback = isTransaction
+  const requestSchemaFallback = shouldDefaultRequestSchema
     ? JSON.stringify(baseRequestSchema, null, 2)
     : '{}';
 
