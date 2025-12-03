@@ -833,6 +833,35 @@ export async function promoteTemporarySubmission(
       }
     }
 
+    const applyScopedFallback = (columnName, value) => {
+      if (value === undefined || value === null) return;
+      const hasColumn = Array.isArray(columns)
+        ? columns.some(
+            (col) =>
+              col &&
+              typeof col.name === 'string' &&
+              col.name.trim().toLowerCase() === columnName,
+          )
+        : false;
+      if (!hasColumn) return;
+      const hasValue = Object.prototype.hasOwnProperty.call(
+        sanitizedValues,
+        columnName,
+      );
+      const sanitizedValue = hasValue ? sanitizedValues[columnName] : undefined;
+      if (
+        sanitizedValue === undefined ||
+        sanitizedValue === null ||
+        (typeof sanitizedValue === 'string' && !sanitizedValue.trim())
+      ) {
+        sanitizedValues[columnName] = value;
+      }
+    };
+
+    applyScopedFallback('company_id', row.company_id ?? null);
+    applyScopedFallback('branch_id', row.branch_id ?? null);
+    applyScopedFallback('department_id', row.department_id ?? null);
+
     const mutationContext = {
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
