@@ -119,6 +119,38 @@ function isDynamicSqlTriggerError(err) {
   return err.errno === 1336 || message.includes('dynamic sql is not allowed');
 }
 
+function formatDbErrorDetails(err) {
+  return {
+    errno: err?.errno ?? null,
+    code: err?.code || null,
+    sqlState: err?.sqlState || null,
+    message: err?.sqlMessage || err?.message || null,
+  };
+}
+
+function attachDynamicSqlErrorDetails(err, context = {}) {
+  const details = {
+    ...formatDbErrorDetails(err),
+    ...context,
+  };
+  const codeParts = [];
+  if (details.errno !== null && details.errno !== undefined) {
+    codeParts.push(`errno=${details.errno}`);
+  }
+  if (details.code) {
+    codeParts.push(`code=${details.code}`);
+  }
+  if (details.sqlState) {
+    codeParts.push(`sqlState=${details.sqlState}`);
+  }
+  const suffix = codeParts.length > 0 ? ` (${codeParts.join(', ')})` : '';
+  const formattedMessage = `${details.message || 'Dynamic SQL trigger error'}${suffix}`;
+  const enriched = new Error(formattedMessage);
+  enriched.status = err?.status || err?.statusCode || 400;
+  enriched.details = details;
+  return enriched;
+}
+
 function isPlainObject(value) {
   return Boolean(
     value &&
