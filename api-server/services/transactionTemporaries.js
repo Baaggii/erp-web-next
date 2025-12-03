@@ -520,6 +520,13 @@ export async function createTemporarySubmission({
     try {
       await conn.query('ROLLBACK');
     } catch {}
+    if (isDynamicSqlTriggerError(err)) {
+      throw attachDynamicSqlErrorDetails(err, {
+        table: row?.table_name || null,
+        temporaryId: id,
+        reviewerEmpId: normalizedReviewer,
+      });
+    }
     throw err;
   } finally {
     conn.release();
@@ -749,6 +756,7 @@ export async function promoteTemporarySubmission(
     throw err;
   }
   const conn = await pool.getConnection();
+  let row = null;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
@@ -756,7 +764,7 @@ export async function promoteTemporarySubmission(
       `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? FOR UPDATE`,
       [id],
     );
-    const row = rows[0];
+    row = rows[0];
     if (!row) {
       const err = new Error('Temporary submission not found');
       err.status = 404;
@@ -1160,6 +1168,13 @@ export async function promoteTemporarySubmission(
     try {
       await conn.query('ROLLBACK');
     } catch {}
+    if (isDynamicSqlTriggerError(err)) {
+      throw attachDynamicSqlErrorDetails(err, {
+        table: row?.table_name || null,
+        temporaryId: id,
+        reviewerEmpId: normalizedReviewer,
+      });
+    }
     throw err;
   } finally {
     conn.release();
