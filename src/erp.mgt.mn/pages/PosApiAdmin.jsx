@@ -2708,11 +2708,17 @@ export default function PosApiAdmin() {
     setSelectedImportId(draft.id || '');
     setImportTestValues(buildDraftParameterDefaults(draft.parameters || []));
     if (draft.requestExample !== undefined) {
-      try {
-        setImportRequestBody(JSON.stringify(draft.requestExample, null, 2));
-      } catch {
-        setImportRequestBody(String(draft.requestExample));
+      if (typeof draft.requestExample === 'string') {
+        setImportRequestBody(draft.requestExample);
+      } else {
+        try {
+          setImportRequestBody(JSON.stringify(draft.requestExample, null, 2));
+        } catch {
+          setImportRequestBody(String(draft.requestExample));
+        }
       }
+    } else if (draft.requestBody?.schema) {
+      setImportRequestBody(toPrettyJson(draft.requestBody.schema, ''));
     } else {
       setImportRequestBody('');
     }
@@ -2850,25 +2856,39 @@ export default function PosApiAdmin() {
       : activeImportDraft.posApiType === 'LOOKUP'
         ? 'info'
         : 'transaction';
-    setSelectedId('');
-    setFormState({
+    const draftDefinition = {
       ...EMPTY_ENDPOINT,
       id: activeImportDraft.id || '',
       name: activeImportDraft.name || '',
       method: activeImportDraft.method || 'GET',
       path: activeImportDraft.path || '/',
-      parametersText: paramsText,
+      parameters: activeImportDraft.parameters || [],
       posApiType: activeImportDraft.posApiType || '',
       usage: inferredUsage,
+      requestBody: activeImportDraft.requestBody,
+      responseBody: activeImportDraft.responseBody,
+      requestFields: activeImportDraft.requestFields || [],
+      responseFields: activeImportDraft.responseFields || [],
+      supportsItems: activeImportDraft.supportsItems ?? inferredUsage === 'transaction',
+      supportsMultiplePayments: activeImportDraft.supportsMultiplePayments,
+      supportsMultipleReceipts: activeImportDraft.supportsMultipleReceipts,
+      receiptTypes: activeImportDraft.receiptTypes,
+      taxTypes: activeImportDraft.taxTypes,
+      paymentMethods: activeImportDraft.paymentMethods,
+      testable: Boolean(activeImportDraft.testServerUrl || activeImportDraft.serverUrl),
+      testServerUrl: activeImportDraft.testServerUrl || activeImportDraft.serverUrl || '',
+      testServerUrlProduction: activeImportDraft.testServerUrlProduction || '',
+    };
+
+    setSelectedId('');
+    setFormState({
+      ...createFormState(draftDefinition),
+      parametersText: paramsText,
       requestSchemaText: requestBodyText || '',
       responseSchemaText: responseBodyText,
       requestFieldsText,
       responseFieldsText,
-      supportsItems: inferredUsage === 'transaction',
-      enableReceiptTypes: inferredUsage === 'transaction',
-      enableReceiptTaxTypes: inferredUsage === 'transaction',
-      enablePaymentMethods: inferredUsage === 'transaction',
-      enableReceiptItems: inferredUsage === 'transaction',
+      usage: inferredUsage,
     });
     setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
     setActiveTab('endpoints');
