@@ -872,10 +872,6 @@ export async function promoteTemporarySubmission(
         )
       : false;
 
-    if (hasSkipTriggerColumn && !sanitizedValues.skip_trigger) {
-      sanitizedValues = { ...sanitizedValues, skip_trigger: 1 };
-    }
-
     const mutationContext = {
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
