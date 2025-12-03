@@ -983,37 +983,45 @@ export async function promoteTemporarySubmission(
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
-    await logUserAction(
-      {
-        emp_id: normalizedReviewer,
-        table_name: row.table_name,
-        record_id: id,
-        action: 'approve',
-        details: {
-          promotedRecordId: promotedId,
-          formName: row.form_name ?? null,
-          temporaryAction: 'promote',
+    try {
+      await logUserAction(
+        {
+          emp_id: normalizedReviewer,
+          table_name: row.table_name,
+          record_id: id,
+          action: 'approve',
+          details: {
+            promotedRecordId: promotedId,
+            formName: row.form_name ?? null,
+            temporaryAction: 'promote',
+          },
+          company_id: row.company_id ?? null,
         },
-        company_id: row.company_id ?? null,
-      },
-      conn,
-    );
-    await insertNotification(conn, {
-      companyId: row.company_id,
-      recipientEmpId: row.created_by,
-      createdBy: normalizedReviewer,
-      relatedId: id,
-      message: `Temporary submission for ${row.table_name} approved`,
-      type: 'response',
-    });
-    await insertNotification(conn, {
-      companyId: row.company_id,
-      recipientEmpId: normalizedReviewer,
-      createdBy: normalizedReviewer,
-      relatedId: id,
-      message: `You approved temporary submission #${id} for ${row.table_name}`,
-      type: 'response',
-    });
+        conn,
+      );
+    } catch (logErr) {
+      console.error('Failed to log user action for temporary promotion', logErr);
+    }
+    try {
+      await insertNotification(conn, {
+        companyId: row.company_id,
+        recipientEmpId: row.created_by,
+        createdBy: normalizedReviewer,
+        relatedId: id,
+        message: `Temporary submission for ${row.table_name} approved`,
+        type: 'response',
+      });
+      await insertNotification(conn, {
+        companyId: row.company_id,
+        recipientEmpId: normalizedReviewer,
+        createdBy: normalizedReviewer,
+        relatedId: id,
+        message: `You approved temporary submission #${id} for ${row.table_name}`,
+        type: 'response',
+      });
+    } catch (notifErr) {
+      console.error('Failed to insert approval notifications', notifErr);
+    }
     await conn.query('COMMIT');
     if (io) {
       io.to(`user:${row.created_by}`).emit('temporaryReviewed', {
