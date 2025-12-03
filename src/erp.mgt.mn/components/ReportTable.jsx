@@ -616,8 +616,7 @@ export default function ReportTable({
         <table
           className="table-manager"
           style={{
-            borderCollapse: 'separate',
-            borderSpacing: 0,
+            borderCollapse: 'collapse',
             tableLayout: 'fixed',
             minWidth: '100%',
             width: 'max-content',
@@ -650,7 +649,6 @@ export default function ReportTable({
                           left: stickyOffsets[col],
                           zIndex: 20,
                           background: '#e5e7eb',
-                          backgroundClip: 'padding-box',
                           boxShadow: '1px 0 0 #d1d5db',
                         }
                       : {}),
@@ -692,7 +690,6 @@ export default function ReportTable({
                           left: stickyOffsets[col],
                           zIndex: 15,
                           background: '#f9fafb',
-                          backgroundClip: 'padding-box',
                           boxShadow: '1px 0 0 #d1d5db',
                         }
                       : {}),
@@ -731,7 +728,6 @@ export default function ReportTable({
                     style.left = stickyOffsets[col];
                     style.background = '#fff';
                     style.zIndex = 5;
-                    style.backgroundClip = 'padding-box';
                     style.boxShadow = '1px 0 0 #d1d5db';
                   }
                   return (
@@ -766,7 +762,6 @@ export default function ReportTable({
                             left: stickyOffsets[col],
                             background: '#f3f4f6',
                             zIndex: 6,
-                            backgroundClip: 'padding-box',
                             boxShadow: '1px 0 0 #d1d5db',
                           }
                         : {}),
@@ -849,12 +844,7 @@ export default function ReportTable({
             <div className="table-container overflow-x-auto">
               <table
                 className="table-manager"
-                style={{
-                  borderCollapse: 'separate',
-                  borderSpacing: 0,
-                  tableLayout: 'fixed',
-                  width: '100%',
-                }}
+                style={{ borderCollapse: 'collapse', tableLayout: 'fixed', width: '100%' }}
               >
                 <thead className="table-manager sticky-header">
                   <tr>
