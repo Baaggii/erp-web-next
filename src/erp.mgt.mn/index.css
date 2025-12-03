@@ -156,17 +156,6 @@ footer { text-align:center; padding:1rem; background:#f1f1f1; font-size:0.9rem; 
   max-width: 100%;
   min-width: 0;
   position: relative;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable both-edges;
-}
-
-.report-table-scroll {
-  overflow: auto;
-  padding-bottom: 0.25rem;
-}
-
-.report-table-scroll table {
-  min-width: 100%;
 }
 
 /* Improve visibility for multi-select lists */
