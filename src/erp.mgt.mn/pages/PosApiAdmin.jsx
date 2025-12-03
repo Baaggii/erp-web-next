@@ -1225,7 +1225,11 @@ function normalizeParametersFromSpec(params) {
       required: Boolean(param.required),
       description: param.description || '',
       example:
-        param.example ?? param.default ?? (param.examples && Object.values(param.examples)[0]?.value),
+        param.example ?? param.default ?? param.testValue
+        ?? param.sample ?? (param.examples && Object.values(param.examples)[0]?.value),
+      ...(param.default !== undefined ? { default: param.default } : {}),
+      ...(param.testValue !== undefined ? { testValue: param.testValue } : {}),
+      ...(param.sample !== undefined ? { sample: param.sample } : {}),
     });
   });
   return deduped;
@@ -1306,7 +1310,24 @@ function extractOperationsFromOpenApi(spec) {
 }
 
 function parsePostmanUrl(urlObj) {
-  if (!urlObj) return { path: '/', query: [], baseUrl: '' };
+  const detectPathParams = (rawPath) => {
+    const params = new Set();
+    const colonMatches = rawPath.match(/:\w+/g) || [];
+    colonMatches.forEach((segment) => params.add(segment.slice(1)));
+    const braceMatches = rawPath.match(/{{\s*([\w-]+)\s*}}/g) || [];
+    braceMatches.forEach((segment) => {
+      const key = segment.replace(/^{+|}+$/g, '').replace(/\s+/g, '');
+      if (key) params.add(key);
+    });
+    const normalizedMatches = rawPath.match(/{([^}]+)}/g) || [];
+    normalizedMatches.forEach((segment) => {
+      const key = segment.replace(/^{|}$/g, '');
+      if (key) params.add(key);
+    });
+    return Array.from(params);
+  };
+
+  if (!urlObj) return { path: '/', query: [], baseUrl: '', pathParams: [] };
   if (typeof urlObj === 'string') {
     const urlString = urlObj.startsWith('http') ? urlObj : `https://placeholder.local${urlObj}`;
     try {
@@ -1317,21 +1338,27 @@ function parsePostmanUrl(urlObj) {
         query.push({ name: key, in: 'query', value });
       });
       const baseUrl = `${parsed.protocol}//${parsed.host}`;
-      return { path, query, baseUrl };
+      return { path, query, baseUrl, pathParams: detectPathParams(path) };
     } catch {
-      return { path: '/', query: [], baseUrl: '' };
+      return { path: '/', query: [], baseUrl: '', pathParams: [] };
     }
   }
   const pathParts = Array.isArray(urlObj.path) ? urlObj.path : [];
   const rawPath = `/${pathParts.join('/')}`;
   const normalizedPath = rawPath.replace(/\/:([\w-]+)/g, '/{$1}').replace(/{{\s*([\w-]+)\s*}}/g, '{$1}');
   const query = Array.isArray(urlObj.query)
-    ? urlObj.query.map((entry) => ({ name: entry.key, in: 'query', example: entry.value }))
+    ? urlObj.query.map((entry) => ({
+      name: entry.key,
+      in: 'query',
+      example: entry.value,
+      default: entry?.value,
+      description: entry?.description || '',
+    }))
     : [];
   const host = Array.isArray(urlObj.host) ? urlObj.host.join('.') : '';
   const protocol = Array.isArray(urlObj.protocol) ? urlObj.protocol[0] : urlObj.protocol;
   const baseUrl = host ? `${protocol || 'https'}://${host}` : '';
-  return { path: normalizedPath || '/', query, baseUrl };
+  return { path: normalizedPath || '/', query, baseUrl, pathParams: detectPathParams(rawPath) };
 }
 
 function extractOperationsFromPostman(spec) {
@@ -1339,38 +1366,197 @@ function extractOperationsFromPostman(spec) {
   if (!Array.isArray(items)) return [];
   const entries = [];
 
-  function walk(list, folderTags = []) {
+  const variables = Array.isArray(spec?.variable)
+    ? spec.variable
+      .map((variable) => (typeof variable?.key === 'string' ? variable.key.trim() : ''))
+      .filter(Boolean)
+    : [];
+
+  function buildSchemaFromExample(example) {
+    const detectType = (value) => {
+      if (value === null) return 'null';
+      if (Array.isArray(value)) return 'array';
+      return typeof value;
+    };
+
+    const walkSchema = (value) => {
+      const type = detectType(value);
+      switch (type) {
+        case 'object': {
+          const properties = {};
+          Object.entries(value).forEach(([key, val]) => {
+            properties[key] = walkSchema(val);
+          });
+          const required = Object.keys(properties);
+          return { type: 'object', properties, required };
+        }
+        case 'array': {
+          const first = value.length ? walkSchema(value[0]) : {};
+          return { type: 'array', items: first };
+        }
+        case 'number':
+          return { type: Number.isInteger(value) ? 'integer' : 'number' };
+        case 'boolean':
+          return { type: 'boolean' };
+        case 'null':
+          return { type: 'string', nullable: true };
+        default:
+          return { type: 'string' };
+      }
+    };
+
+    return walkSchema(example);
+  }
+
+  function mergeExampleSchemas(examples) {
+    if (!Array.isArray(examples) || examples.length === 0) return undefined;
+    const objectExamples = examples.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+    if (!objectExamples.length) return undefined;
+    const properties = {};
+    const counts = {};
+    objectExamples.forEach((obj) => {
+      Object.entries(obj).forEach(([key, value]) => {
+        properties[key] = buildSchemaFromExample(value);
+        counts[key] = (counts[key] || 0) + 1;
+      });
+    });
+    const required = Object.keys(counts).filter((key) => counts[key] === objectExamples.length);
+    return {
+      type: 'object',
+      properties,
+      ...(required.length ? { required } : {}),
+    };
+  }
+
+  function parseRequestBody(body) {
+    if (!body || typeof body !== 'object') return {};
+    if (body.mode === 'raw') {
+      const rawText = typeof body.raw === 'string' ? body.raw.trim() : '';
+      if (!rawText) return {};
+      try {
+        const parsed = JSON.parse(rawText);
+        return { requestExample: parsed, requestSchema: buildSchemaFromExample(parsed) };
+      } catch {
+        return { requestExample: body.raw };
+      }
+    }
+    if (body.mode === 'urlencoded' && Array.isArray(body.urlencoded)) {
+      const example = {};
+      body.urlencoded
+        .filter((entry) => !entry?.disabled)
+        .forEach((entry) => {
+          const key = entry?.key || '';
+          example[key] = entry?.value ?? '';
+        });
+      return { requestExample: example, requestSchema: buildSchemaFromExample(example) };
+    }
+    if (body.mode === 'formdata' && Array.isArray(body.formdata)) {
+      const example = {};
+      const schemaProperties = {};
+      body.formdata
+        .filter((entry) => !entry?.disabled)
+        .forEach((entry) => {
+          const key = entry?.key || '';
+          if (!key) return;
+          if (entry.type === 'file') {
+            example[key] = entry?.src || 'file';
+            schemaProperties[key] = { type: 'string', format: 'binary' };
+          } else {
+            example[key] = entry?.value ?? '';
+            schemaProperties[key] = { type: 'string' };
+          }
+        });
+      const requestSchema = Object.keys(schemaProperties).length
+        ? { type: 'object', properties: schemaProperties, required: Object.keys(schemaProperties) }
+        : undefined;
+      return { requestExample: example, requestSchema };
+    }
+    return {};
+  }
+
+  function parseResponses(responses = []) {
+    const examples = [];
+    const jsonBodies = [];
+    responses
+      .filter((resp) => resp && resp.body)
+      .forEach((resp) => {
+        const headers = Array.isArray(resp.header)
+          ? resp.header.reduce((acc, h) => {
+            if (h?.key) acc[h.key] = h?.value;
+            return acc;
+          }, {})
+          : {};
+        const contentType = headers['Content-Type'] || headers['content-type'] || '';
+        let parsedBody = resp.body;
+        if (/json/i.test(contentType)) {
+          try {
+            parsedBody = JSON.parse(resp.body);
+            if (parsedBody && typeof parsedBody === 'object') {
+              jsonBodies.push(parsedBody);
+            }
+          } catch {
+            // leave as-is
+          }
+        }
+        examples.push({
+          status: resp.code || resp.status,
+          name: resp.name || resp.status || '',
+          body: parsedBody,
+          headers,
+        });
+      });
+    const responseSchema = jsonBodies.length ? mergeExampleSchemas(jsonBodies) : undefined;
+    return { examples, responseSchema };
+  }
+
+  function walk(list, folderTags = [], folderPath = []) {
     list.forEach((item) => {
       if (item?.item) {
-        walk(item.item, [...folderTags, item.name || '']);
+        walk(item.item, [...folderTags, item.name || ''], [...folderPath, item.name || '']);
         return;
       }
       if (!item?.request) return;
       const method = (item.request.method || 'GET').toUpperCase();
-      const { path, query, baseUrl } = parsePostmanUrl(item.request.url || '/');
+      const { path, query, baseUrl, pathParams } = parsePostmanUrl(item.request.url || '/');
       const body = item.request.body;
-      let requestExample;
-      if (body?.mode === 'raw' && typeof body.raw === 'string') {
-        try {
-          requestExample = JSON.parse(body.raw);
-        } catch {
-          requestExample = body.raw;
-        }
-      }
-      const parameters = normalizeParametersFromSpec(query);
+      const { requestExample, requestSchema } = parseRequestBody(body);
+      const { examples: responseExamples, responseSchema } = parseResponses(item.response);
+      const parameters = normalizeParametersFromSpec([
+        ...query,
+        ...pathParams.map((name) => ({ name, in: 'path', required: true })),
+        ...(Array.isArray(item.request.header)
+          ? item.request.header.map((header) => ({
+            name: header?.key,
+            in: 'header',
+            required: header?.disabled === false || header?.required === true,
+            example: header?.value,
+            description: header?.description || '',
+          }))
+          : []),
+      ]);
       const idSource = `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
+      const description = item.request.description || item.description || '';
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: item.name || `${method} ${path}`,
         method,
         path,
-        summary: item.request.description || '',
+        summary: description,
         parameters,
         requestExample,
+        requestBody: requestSchema ? { schema: requestSchema, description } : undefined,
+        responseBody: responseSchema
+          ? {
+            schema: responseSchema,
+            description: responseExamples?.[0]?.name || responseExamples?.[0]?.status || '',
+          }
+          : undefined,
+        responseExamples,
         posApiType: inferPosApiTypeFromHints(folderTags, path, item.request.description || ''),
         serverUrl: baseUrl,
-        tags: folderTags,
+        tags: [...folderPath],
+        variables,
       });
     });
   }
@@ -1427,6 +1613,7 @@ export default function PosApiAdmin() {
   const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
   const [taxTypeListError, setTaxTypeListError] = useState('');
   const taxTypeInputDirtyRef = useRef(false);
+  const importAuthSelectionDirtyRef = useRef(false);
   const [activeTab, setActiveTab] = useState('endpoints');
   const [infoSyncSettings, setInfoSyncSettings] = useState({
     autoSyncEnabled: false,
@@ -2358,10 +2545,24 @@ export default function PosApiAdmin() {
     if (!formState.authEndpointId && authEndpointOptions.length > 0) {
       setFormState((prev) => ({ ...prev, authEndpointId: prev.authEndpointId || authEndpointOptions[0].id }));
     }
+    if (importAuthSelectionDirtyRef.current) return;
+    const isAuthDraft = activeImportDraft?.posApiType === 'AUTH' || formState.posApiType === 'AUTH';
+    if (isAuthDraft) {
+      if (importAuthEndpointId !== '') {
+        setImportAuthEndpointId('');
+      }
+      return;
+    }
     if (!importAuthEndpointId && authEndpointOptions.length > 0) {
       setImportAuthEndpointId(authEndpointOptions[0].id || '');
     }
-  }, [authEndpointOptions, formState.authEndpointId, importAuthEndpointId]);
+  }, [
+    activeImportDraft?.posApiType,
+    authEndpointOptions,
+    formState.authEndpointId,
+    formState.posApiType,
+    importAuthEndpointId,
+  ]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2700,6 +2901,7 @@ export default function PosApiAdmin() {
 
   function prepareDraftDefaults(draft) {
     if (!draft) return;
+    importAuthSelectionDirtyRef.current = false;
     setSelectedImportId(draft.id || '');
     setImportTestValues(buildDraftParameterDefaults(draft.parameters || []));
     if (draft.requestExample !== undefined) {
@@ -3828,7 +4030,10 @@ export default function PosApiAdmin() {
                             Token endpoint
                             <select
                               value={importAuthEndpointId}
-                              onChange={(e) => setImportAuthEndpointId(e.target.value)}
+                              onChange={(e) => {
+                                importAuthSelectionDirtyRef.current = true;
+                                setImportAuthEndpointId(e.target.value);
+                              }}
                               style={styles.input}
                             >
                               <option value="">Use editor selection</option>
