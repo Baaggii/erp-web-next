@@ -1618,6 +1618,7 @@ export default function PosApiAdmin() {
   const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
   const [taxTypeListError, setTaxTypeListError] = useState('');
   const taxTypeInputDirtyRef = useRef(false);
+  const importAuthSelectionDirtyRef = useRef(false);
   const [activeTab, setActiveTab] = useState('endpoints');
   const [infoSyncSettings, setInfoSyncSettings] = useState({
     autoSyncEnabled: false,
@@ -2549,10 +2550,24 @@ export default function PosApiAdmin() {
     if (!formState.authEndpointId && authEndpointOptions.length > 0) {
       setFormState((prev) => ({ ...prev, authEndpointId: prev.authEndpointId || authEndpointOptions[0].id }));
     }
+    if (importAuthSelectionDirtyRef.current) return;
+    const isAuthDraft = activeImportDraft?.posApiType === 'AUTH' || formState.posApiType === 'AUTH';
+    if (isAuthDraft) {
+      if (importAuthEndpointId !== '') {
+        setImportAuthEndpointId('');
+      }
+      return;
+    }
     if (!importAuthEndpointId && authEndpointOptions.length > 0) {
       setImportAuthEndpointId(authEndpointOptions[0].id || '');
     }
-  }, [authEndpointOptions, formState.authEndpointId, importAuthEndpointId]);
+  }, [
+    activeImportDraft?.posApiType,
+    authEndpointOptions,
+    formState.authEndpointId,
+    formState.posApiType,
+    importAuthEndpointId,
+  ]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -2891,6 +2906,7 @@ export default function PosApiAdmin() {
 
   function prepareDraftDefaults(draft) {
     if (!draft) return;
+    importAuthSelectionDirtyRef.current = false;
     setSelectedImportId(draft.id || '');
     setImportTestValues(buildDraftParameterDefaults(draft.parameters || []));
     if (draft.requestExample !== undefined) {
@@ -4019,7 +4035,10 @@ export default function PosApiAdmin() {
                             Token endpoint
                             <select
                               value={importAuthEndpointId}
-                              onChange={(e) => setImportAuthEndpointId(e.target.value)}
+                              onChange={(e) => {
+                                importAuthSelectionDirtyRef.current = true;
+                                setImportAuthEndpointId(e.target.value);
+                              }}
                               style={styles.input}
                             >
                               <option value="">Use editor selection</option>

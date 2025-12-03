@@ -1337,7 +1337,8 @@ router.post('/test', requireAuth, async (req, res, next) => {
       res.json(result);
     } catch (err) {
       if (err?.status) {
-        res.status(err.status).json({ message: err.message, request: err.request || null });
+        const status = err.status === 401 || err.status === 403 ? 502 : err.status;
+        res.status(status).json({ message: err.message, request: err.request || null });
       } else {
         next(err);
       }
@@ -1396,8 +1397,9 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
       });
     } catch (err) {
       const status = err?.status || 502;
+      const safeStatus = status === 401 || status === 403 ? 502 : status;
       res
-        .status(status)
+        .status(safeStatus)
         .json({
           message: err?.message || 'Failed to invoke POSAPI endpoint',
           request: err?.request || null,
