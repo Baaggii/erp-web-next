@@ -603,7 +603,16 @@ export default function ReportTable({
           </label>
         )}
       </div>
-      <div className="table-container">
+      <div
+        className="table-container"
+        style={{
+          maxHeight: '70vh',
+          overflow: 'auto',
+          width: '100%',
+          maxWidth: '100%',
+          position: 'relative',
+        }}
+      >
         <table
           className="table-manager"
           style={{
