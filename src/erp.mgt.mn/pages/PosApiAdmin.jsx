@@ -92,6 +92,7 @@ const DEFAULT_INFO_TABLE_OPTIONS = [
   { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
 ];
 const BASE_COMPLEX_REQUEST_SCHEMA = createReceiptTemplate('B2C');
+const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
 
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
@@ -390,7 +391,7 @@ const EMPTY_ENDPOINT = {
   path: '',
   parametersText: '[]',
   requestDescription: '',
-  requestSchemaText: JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
+  requestSchemaText: '{}',
   responseDescription: '',
   responseSchemaText: '{}',
   fieldDescriptionsText: '{}',
@@ -1008,21 +1009,19 @@ function createFormState(definition) {
         return list;
       })()
     : [];
-  const transactionTypes = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
   const shouldDefaultRequestSchema =
-    isTransaction && definition.posApiType && transactionTypes.has(definition.posApiType);
-  const baseRequestSchema = shouldDefaultRequestSchema
+    isTransaction && definition.posApiType && TRANSACTION_POSAPI_TYPES.has(definition.posApiType);
+  const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
+  const shouldApplyTemplate = shouldDefaultRequestSchema && !hasRequestSchema;
+  const baseRequestSchema = shouldApplyTemplate
     ? buildDefaultRequestSchema(
         definition.posApiType || definition.requestBody?.schema?.type || 'B2C',
         supportsItems,
         supportsMultiplePayments,
       )
     : {};
-  const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : baseRequestSchema;
-  const requestSchemaFallback = shouldDefaultRequestSchema
-    ? JSON.stringify(baseRequestSchema, null, 2)
-    : '{}';
+  const requestSchemaFallback = shouldApplyTemplate ? JSON.stringify(baseRequestSchema, null, 2) : '{}';
 
   return {
     id: definition.id || '',
@@ -1545,6 +1544,13 @@ function extractOperationsFromPostman(spec) {
       const idSource = `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
       const description = item.request.description || item.description || '';
+      const posApiType = inferPosApiTypeFromHints(folderTags, path, item.request.description || '');
+      const usage = posApiType === 'AUTH' ? 'admin' : posApiType === 'LOOKUP' ? 'info' : 'transaction';
+      const requestBody = requestSchema
+        ? { schema: requestSchema, description }
+        : usage === 'transaction'
+          ? undefined
+          : { schema: {}, description };
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: item.name || `${method} ${path}`,
@@ -1553,7 +1559,7 @@ function extractOperationsFromPostman(spec) {
         summary: description,
         parameters,
         requestExample,
-        requestBody: requestSchema ? { schema: requestSchema, description } : undefined,
+        requestBody,
         responseBody: responseSchema
           ? {
             schema: responseSchema,
@@ -1561,7 +1567,8 @@ function extractOperationsFromPostman(spec) {
           }
           : undefined,
         responseExamples,
-        posApiType: inferPosApiTypeFromHints(folderTags, path, item.request.description || ''),
+        posApiType,
+        usage,
         serverUrl: baseUrl,
         tags: [...folderPath],
         variables,
@@ -1905,6 +1912,11 @@ export default function PosApiAdmin() {
   const paymentTypeOptions = allowedPaymentTypes.length > 0 ? allowedPaymentTypes : PAYMENT_TYPES;
 
   useEffect(() => {
+    if (!isTransactionUsage) {
+      setRequestBuilder(null);
+      setRequestBuilderError('');
+      return;
+    }
     if (builderSyncRef.current) {
       builderSyncRef.current = false;
       return;
@@ -1926,7 +1938,7 @@ export default function PosApiAdmin() {
       setRequestBuilder(null);
       setRequestBuilderError(err.message || 'Invalid JSON');
     }
-  }, [formState.requestSchemaText]);
+  }, [formState.requestSchemaText, isTransactionUsage]);
 
   useEffect(() => {
     const payments = Array.isArray(requestBuilder?.payments) ? requestBuilder.payments : [];
@@ -2079,6 +2091,13 @@ export default function PosApiAdmin() {
     }
     if (!type) return;
     updateRequestBuilder((prev) => normaliseBuilderForType(prev, type, supportsItems, supportsMultiplePayments));
+  };
+
+  const handleResetRequestSchema = () => {
+    builderSyncRef.current = true;
+    setRequestBuilder(null);
+    setRequestBuilderError('');
+    setFormState((prev) => ({ ...prev, requestSchemaText: '{}' }));
   };
 
   const handleBuilderFieldChange = (field, value) => {
@@ -4666,17 +4685,23 @@ export default function PosApiAdmin() {
               <span style={styles.sectionBadge}>{formatTypeLabel(formState.posApiType)}</span>
             )}
           </div>
-          {!formState.posApiType && (
+          {!isTransactionUsage && (
+            <p style={styles.sectionHelp}>
+              Structured builder is available only for transaction endpoints. Edit the JSON schema directly for
+              admin or lookup endpoints.
+            </p>
+          )}
+          {isTransactionUsage && !formState.posApiType && (
             <p style={styles.sectionHelp}>
               Select a POSAPI type to load guided templates for receipts, invoices, and stock QR payloads.
             </p>
           )}
-          {requestBuilderError && (
+          {isTransactionUsage && requestBuilderError && (
             <div style={styles.previewErrorBox}>
               <strong>Invalid request JSON:</strong> {requestBuilderError}
             </div>
           )}
-          {formState.posApiType && requestBuilder && (
+          {isTransactionUsage && formState.posApiType && requestBuilder && (
             <>
               <details open style={styles.detailSection}>
                 <summary style={styles.detailSummary}>Header &amp; totals</summary>
@@ -5426,6 +5451,14 @@ export default function PosApiAdmin() {
         </label>
         <label style={styles.labelFull}>
           Request body schema (JSON)
+          <div style={styles.inlineActionRow}>
+            <button type="button" style={styles.smallButton} onClick={handleResetRequestSchema}>
+              Reset to empty object
+            </button>
+            <span style={styles.inlineActionHint}>
+              Clears the structured builder for non-transaction endpoints and removes receipt defaults.
+            </span>
+          </div>
           <textarea
             value={formState.requestSchemaText}
             onChange={(e) => handleChange('requestSchemaText', e.target.value)}

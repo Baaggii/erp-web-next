@@ -932,8 +932,11 @@ export async function promoteTemporarySubmission(
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
     };
-    const shouldBypassTriggers = hasSkipTriggerColumn;
-    if (shouldBypassTriggers && !sanitizedValues.skip_trigger) {
+    const shouldSkipTriggers =
+      hasSkipTriggerColumn &&
+      (payloadJson?.skipTriggerOnPromote === true ||
+        errorRevokedFields.length > 0);
+    if (shouldSkipTriggers && !sanitizedValues.skip_trigger) {
       sanitizedValues = { ...sanitizedValues, skip_trigger: 1 };
     }
     let insertedId = null;
