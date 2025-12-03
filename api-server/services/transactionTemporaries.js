@@ -883,62 +883,23 @@ export async function promoteTemporarySubmission(
       if (!isDynamicSqlTriggerError(err)) {
         throw err;
       }
-
-      const hasSkipTriggerColumn = Array.isArray(columns)
-        ? columns.some(
-            (col) =>
-              col &&
-              typeof col.name === 'string' &&
-              col.name.trim().toLowerCase() === 'skip_trigger',
-          )
-        : false;
-      const valuesWithSkipTrigger = hasSkipTriggerColumn
-        ? { ...sanitizedValues, skip_trigger: 1 }
-        : sanitizedValues;
-
-      console.warn(
-        'Dynamic SQL trigger error during promotion, applying fallback insert with skip_trigger flag when available',
-        {
-          table: row.table_name,
-          id,
-          hasSkipTriggerColumn,
-          error: err,
-        },
+      console.warn('Dynamic SQL trigger error during promotion, applying fallback insert', {
+        table: row.table_name,
+        id,
+        error: err,
+      });
+      const keys = Object.keys(sanitizedValues);
+      if (keys.length === 0) {
+        throw err;
+      }
+      const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
+      const placeholders = keys.map(() => '?').join(', ');
+      const params = keys.map((k) => sanitizedValues[k]);
+      const [fallbackResult] = await conn.query(
+        `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
+        params,
       );
-
-      if (hasSkipTriggerColumn) {
-        try {
-          const insertedWithSkip = await insertTableRow(
-            row.table_name,
-            valuesWithSkipTrigger,
-            undefined,
-            undefined,
-            false,
-            normalizedReviewer,
-            { conn, mutationContext },
-          );
-          insertedId = insertedWithSkip?.id ?? null;
-        } catch (skipErr) {
-          if (!isDynamicSqlTriggerError(skipErr)) {
-            throw skipErr;
-          }
-        }
-      }
-
-      if (!insertedId) {
-        const keys = Object.keys(valuesWithSkipTrigger);
-        if (keys.length === 0) {
-          throw err;
-        }
-        const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
-        const placeholders = keys.map(() => '?').join(', ');
-        const params = keys.map((k) => valuesWithSkipTrigger[k]);
-        const [fallbackResult] = await conn.query(
-          `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
-          params,
-        );
-        insertedId = fallbackResult?.insertId ?? null;
-      }
+      insertedId = fallbackResult?.insertId ?? null;
     }
     const promotedId = insertedId ? String(insertedId) : null;
     if (formName && formCfg) {

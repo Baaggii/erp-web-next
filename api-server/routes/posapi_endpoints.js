@@ -184,6 +184,42 @@ function parseApiSpecText(text) {
   return parseYaml(trimmed);
 }
 
+function buildSchemaFromExample(example) {
+  const detectType = (value) => {
+    if (value === null) return 'null';
+    if (Array.isArray(value)) return 'array';
+    return typeof value;
+  };
+
+  const walk = (value) => {
+    const type = detectType(value);
+    switch (type) {
+      case 'object': {
+        const properties = {};
+        Object.entries(value).forEach(([key, val]) => {
+          properties[key] = walk(val);
+        });
+        const required = Object.keys(properties);
+        return { type: 'object', properties, required };
+      }
+      case 'array': {
+        const first = value.length ? walk(value[0]) : {};
+        return { type: 'array', items: first };
+      }
+      case 'number':
+        return { type: Number.isInteger(value) ? 'integer' : 'number' };
+      case 'boolean':
+        return { type: 'boolean' };
+      case 'null':
+        return { type: 'string', nullable: true };
+      default:
+        return { type: 'string' };
+    }
+  };
+
+  return walk(example);
+}
+
 function mergeOperationNode(existing, incoming, meta) {
   if (!incoming || typeof incoming !== 'object') return existing;
   if (!existing) {
@@ -855,17 +891,36 @@ function extractOperationsFromPostman(spec, meta = {}) {
       const { path, query, baseUrl } = parsePostmanUrl(item.request.url || '/');
       const body = item.request.body;
       let requestExample;
+      let requestSchema;
       if (body?.mode === 'raw' && typeof body.raw === 'string') {
+        const rawText = body.raw.trim();
+        if (rawText) {
+          try {
+            requestExample = JSON.parse(rawText);
+            requestSchema = buildSchemaFromExample(requestExample);
+          } catch {
+            requestExample = body.raw;
+          }
+        }
+      }
+      const sampleResponse = Array.isArray(item.response)
+        ? item.response.find((response) => response?.body)
+        : null;
+      let responseSchema;
+      if (sampleResponse?.body) {
         try {
-          requestExample = JSON.parse(body.raw);
+          const parsedResponse = JSON.parse(sampleResponse.body);
+          responseSchema = buildSchemaFromExample(parsedResponse);
         } catch {
-          requestExample = body.raw;
+          responseSchema = undefined;
         }
       }
       const parameters = normalizeParametersFromSpec(query);
       const idSource = `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
       const posApiType = classifyPosApiType(folderTags, path, item.request.description || '');
+      const requestDetails = buildRequestDetails(requestSchema, 'application/json');
+      const responseDetails = buildResponseDetails(responseSchema);
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: item.name || `${method} ${path}`,
@@ -877,6 +932,25 @@ function extractOperationsFromPostman(spec, meta = {}) {
         posApiType,
         serverUrl: baseUrl,
         tags: folderTags,
+        requestBody: requestSchema ? { schema: requestSchema, description: item.request.description || '' } : undefined,
+        responseBody: responseSchema
+          ? { schema: responseSchema, description: sampleResponse?.name || sampleResponse?.status || '' }
+          : undefined,
+        requestFields: requestDetails.requestFields,
+        responseFields: responseDetails.responseFields,
+        ...(Array.isArray(requestDetails.enums.receiptTypes) && requestDetails.enums.receiptTypes.length
+          ? { receiptTypes: requestDetails.enums.receiptTypes }
+          : {}),
+        ...(Array.isArray(requestDetails.enums.taxTypes) && requestDetails.enums.taxTypes.length
+          ? { taxTypes: requestDetails.enums.taxTypes }
+          : {}),
+        ...(requestDetails.flags.supportsMultipleReceipts !== undefined
+          ? { supportsMultipleReceipts: requestDetails.flags.supportsMultipleReceipts }
+          : {}),
+        ...(requestDetails.flags.supportsMultiplePayments !== undefined
+          ? { supportsMultiplePayments: requestDetails.flags.supportsMultiplePayments }
+          : {}),
+        ...(requestDetails.flags.supportsItems !== undefined ? { supportsItems: requestDetails.flags.supportsItems } : {}),
         validation: posApiType ? { state: 'ok' } : {
           state: 'incomplete',
           issues: ['POSAPI type could not be determined automatically.'],
@@ -1087,6 +1161,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
     }
 
     const payload = {};
+    const bodyOverride = req.body?.body;
     const params = Array.isArray(definition.parameters) ? definition.parameters : [];
     params.forEach((param) => {
       if (!param?.name) return;
@@ -1095,7 +1170,11 @@ router.post('/test', requireAuth, async (req, res, next) => {
         payload[param.name] = value;
       }
     });
-    if (definition.requestBody && typeof definition.requestBody === 'object') {
+    if (bodyOverride !== undefined) {
+      payload.body = bodyOverride;
+    } else if (definition.requestExample !== undefined && definition.method !== 'GET') {
+      payload.body = definition.requestExample;
+    } else if (definition.requestBody && typeof definition.requestBody === 'object') {
       const schema = definition.requestBody.schema;
       if (schema !== undefined && schema !== null && definition.method !== 'GET') {
         payload.body = schema;
