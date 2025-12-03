@@ -603,7 +603,16 @@ export default function ReportTable({
           </label>
         )}
       </div>
-      <div className="table-container">
+      <div
+        className="table-container"
+        style={{
+          maxHeight: '70vh',
+          overflow: 'auto',
+          width: '100%',
+          maxWidth: '100%',
+          position: 'relative',
+        }}
+      >
         <table
           className="table-manager"
           style={{
@@ -612,8 +621,6 @@ export default function ReportTable({
             tableLayout: 'fixed',
             minWidth: '100%',
             width: 'max-content',
-            position: 'relative',
-            isolation: 'isolate',
           }}
         >
           <thead className="table-manager sticky-header">
@@ -756,16 +763,15 @@ export default function ReportTable({
                       border: '1px solid #d1d5db',
                       textAlign: columnAlign[col],
                       fontWeight: 'bold',
-                    ...(col in stickyOffsets
-                      ? {
-                          position: 'sticky',
-                          left: stickyOffsets[col],
-                          insetInlineStart: stickyOffsets[col],
-                          background: '#f3f4f6',
-                          zIndex: 6,
-                          backgroundClip: 'padding-box',
-                          boxShadow: '1px 0 0 #d1d5db',
-                        }
+                      ...(col in stickyOffsets
+                        ? {
+                            position: 'sticky',
+                            left: stickyOffsets[col],
+                            background: '#f3f4f6',
+                            zIndex: 6,
+                            backgroundClip: 'padding-box',
+                            boxShadow: '1px 0 0 #d1d5db',
+                          }
                         : {}),
                     }}
                   >
