@@ -4366,9 +4366,18 @@ function MainWindow({ title }) {
 function TabPanel({ tabKey, active, children }) {
   const loading = useIsLoading(tabKey);
   return (
-    <div style={{ position: 'relative', display: active ? 'block' : 'none' }}>
+    <div
+      style={{
+        position: 'relative',
+        display: active ? 'flex' : 'none',
+        flexDirection: 'column',
+        minHeight: '100%',
+        height: '100%',
+        flex: '1 1 auto',
+      }}
+    >
       {loading && <Spinner />}
-      {children}
+      <div style={styles.tabPanelContent}>{children}</div>
     </div>
   );
 }
@@ -4637,7 +4646,17 @@ const styles = {
   },
   windowContent: {
     flexGrow: 1,
+    overflowX: "hidden",
+    overflowY: "hidden",
+    display: "flex",
+    flexDirection: "column",
+    minHeight: 0,
+  },
+  tabPanelContent: {
+    flex: "1 1 auto",
+    minHeight: 0,
+    overflowX: "hidden",
+    overflowY: "auto",
     padding: "1rem",
-    overflow: "auto",
   },
 };

@@ -903,24 +903,6 @@ function extractOperationsFromPostman(spec, meta = {}) {
           }
         }
       }
-      if (!requestExample && body?.mode === 'urlencoded' && Array.isArray(body.urlencoded)) {
-        const sample = Object.fromEntries(
-          body.urlencoded
-            .filter((entry) => entry?.key)
-            .map((entry) => [entry.key, entry.value ?? '']),
-        );
-        requestExample = sample;
-        requestSchema = buildSchemaFromExample(sample);
-      }
-      if (!requestExample && body?.mode === 'formdata' && Array.isArray(body.formdata)) {
-        const sample = Object.fromEntries(
-          body.formdata
-            .filter((entry) => entry?.key)
-            .map((entry) => [entry.key, entry.value ?? '']),
-        );
-        requestExample = sample;
-        requestSchema = buildSchemaFromExample(sample);
-      }
       const sampleResponse = Array.isArray(item.response)
         ? item.response.find((response) => response?.body)
         : null;
@@ -931,15 +913,6 @@ function extractOperationsFromPostman(spec, meta = {}) {
           responseSchema = buildSchemaFromExample(parsedResponse);
         } catch {
           responseSchema = undefined;
-        }
-      }
-      if (!requestExample && sampleResponse?.originalRequest?.body?.raw) {
-        const raw = sampleResponse.originalRequest.body.raw;
-        try {
-          requestExample = JSON.parse(raw);
-          requestSchema = buildSchemaFromExample(requestExample);
-        } catch {
-          requestExample = raw;
         }
       }
       const parameters = normalizeParametersFromSpec(query);
