@@ -113,6 +113,12 @@ function safeJsonParse(value, fallback = null) {
   }
 }
 
+function isDynamicSqlTriggerError(err) {
+  if (!err) return false;
+  const message = String(err.sqlMessage || err.message || '').toLowerCase();
+  return err.errno === 1336 || message.includes('dynamic sql is not allowed');
+}
+
 function isPlainObject(value) {
   return Boolean(
     value &&
@@ -342,6 +348,27 @@ async function insertNotification(
   );
 }
 
+function mergeCalculatedValues(cleanedValues, payload) {
+  const base = isPlainObject(cleanedValues) ? { ...cleanedValues } : {};
+  if (!payload || typeof payload !== 'object') return base;
+
+  const candidates = [
+    payload.calculatedValues,
+    payload.recalculatedValues,
+    payload.values?.calculatedValues,
+    payload.values?.recalculatedValues,
+  ];
+
+  for (const candidate of candidates) {
+    if (!isPlainObject(candidate)) continue;
+    Object.entries(candidate).forEach(([key, value]) => {
+      if (value === undefined) return;
+      base[key] = value;
+    });
+  }
+  return base;
+}
+
 export async function createTemporarySubmission({
   tableName,
   formName,
@@ -407,6 +434,7 @@ export async function createTemporarySubmission({
     const insertDepartmentId = departmentPrefSpecified
       ? normalizedDepartmentPref ?? null
       : fallbackDepartment ?? null;
+    const cleanedWithCalculated = mergeCalculatedValues(cleanedValues, payload);
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -421,7 +449,7 @@ export async function createTemporarySubmission({
         moduleKey ?? null,
         safeJsonStringify(payload),
         safeJsonStringify(rawValues),
-        safeJsonStringify(cleanedValues),
+        safeJsonStringify(cleanedWithCalculated),
         normalizedCreator,
         reviewerEmpId,
         insertBranchId,
@@ -732,6 +760,8 @@ export async function promoteTemporarySubmission(
     pushCandidate(cleanedOverride);
     pushCandidate(safeJsonParse(row.cleaned_values_json));
     pushCandidate(payloadJson?.cleanedValues);
+    pushCandidate(payloadJson?.calculatedValues);
+    pushCandidate(payloadJson?.recalculatedValues);
     pushCandidate(payloadJson?.values);
     pushCandidate(payloadJson);
     pushCandidate(safeJsonParse(row.raw_values_json));
@@ -837,16 +867,79 @@ export async function promoteTemporarySubmission(
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
     };
-    const inserted = await insertTableRow(
-      row.table_name,
-      sanitizedValues,
-      undefined,
-      undefined,
-      false,
-      normalizedReviewer,
-      { conn, mutationContext },
-    );
-    const insertedId = inserted?.id ?? null;
+    let insertedId = null;
+    try {
+      const inserted = await insertTableRow(
+        row.table_name,
+        sanitizedValues,
+        undefined,
+        undefined,
+        false,
+        normalizedReviewer,
+        { conn, mutationContext },
+      );
+      insertedId = inserted?.id ?? null;
+    } catch (err) {
+      if (!isDynamicSqlTriggerError(err)) {
+        throw err;
+      }
+
+      const hasSkipTriggerColumn = Array.isArray(columns)
+        ? columns.some(
+            (col) =>
+              col &&
+              typeof col.name === 'string' &&
+              col.name.trim().toLowerCase() === 'skip_trigger',
+          )
+        : false;
+      const valuesWithSkipTrigger = hasSkipTriggerColumn
+        ? { ...sanitizedValues, skip_trigger: 1 }
+        : sanitizedValues;
+
+      console.warn(
+        'Dynamic SQL trigger error during promotion, applying fallback insert with skip_trigger flag when available',
+        {
+          table: row.table_name,
+          id,
+          hasSkipTriggerColumn,
+          error: err,
+        },
+      );
+
+      if (hasSkipTriggerColumn) {
+        try {
+          const insertedWithSkip = await insertTableRow(
+            row.table_name,
+            valuesWithSkipTrigger,
+            undefined,
+            undefined,
+            false,
+            normalizedReviewer,
+            { conn, mutationContext },
+          );
+          insertedId = insertedWithSkip?.id ?? null;
+        } catch (skipErr) {
+          if (!isDynamicSqlTriggerError(skipErr)) {
+            throw skipErr;
+          }
+        }
+      }
+
+      if (!insertedId) {
+        const keys = Object.keys(valuesWithSkipTrigger);
+        if (keys.length === 0) {
+          throw err;
+        }
+        const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
+        const placeholders = keys.map(() => '?').join(', ');
+        const params = keys.map((k) => valuesWithSkipTrigger[k]);
+        const [fallbackResult] = await conn.query(
+          `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
+          params,
+        );
+        insertedId = fallbackResult?.insertId ?? null;
+      }
+    }
     const promotedId = insertedId ? String(insertedId) : null;
     if (formName && formCfg) {
       try {
