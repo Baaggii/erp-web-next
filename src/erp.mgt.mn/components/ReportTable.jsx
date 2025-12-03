@@ -604,10 +604,11 @@ export default function ReportTable({
         )}
       </div>
       <div
-        className="table-container"
+        className="table-container report-table-scroll"
         style={{
           maxHeight: '70vh',
-          overflow: 'auto',
+          overflowX: 'auto',
+          overflowY: 'auto',
           width: '100%',
           maxWidth: '100%',
           position: 'relative',
