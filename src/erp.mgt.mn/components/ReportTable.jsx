@@ -612,8 +612,8 @@ export default function ReportTable({
           style={{
             borderCollapse: 'collapse',
             tableLayout: 'fixed',
-            minWidth: '1200px',
-            maxWidth: '2000px',
+            minWidth: '100%',
+            width: 'max-content',
           }}
         >
           <thead className="table-manager sticky-header">
