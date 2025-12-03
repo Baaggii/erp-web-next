@@ -606,13 +606,10 @@ export default function ReportTable({
       <div
         className="table-container"
         style={{
-          height: '70vh',
           maxHeight: '70vh',
-          overflowX: 'auto',
-          overflowY: 'auto',
+          overflow: 'auto',
           width: '100%',
           maxWidth: '100%',
-          minWidth: 0,
           position: 'relative',
         }}
       >
