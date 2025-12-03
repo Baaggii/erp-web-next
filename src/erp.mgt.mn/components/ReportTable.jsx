@@ -648,6 +648,7 @@ export default function ReportTable({
                       ? {
                           position: 'sticky',
                           left: stickyOffsets[col],
+                          insetInlineStart: stickyOffsets[col],
                           zIndex: 20,
                           background: '#e5e7eb',
                           backgroundClip: 'padding-box',
@@ -690,6 +691,7 @@ export default function ReportTable({
                       ? {
                           position: 'sticky',
                           left: stickyOffsets[col],
+                          insetInlineStart: stickyOffsets[col],
                           zIndex: 15,
                           background: '#f9fafb',
                           backgroundClip: 'padding-box',
@@ -729,6 +731,7 @@ export default function ReportTable({
                   if (col in stickyOffsets) {
                     style.position = 'sticky';
                     style.left = stickyOffsets[col];
+                    style.insetInlineStart = stickyOffsets[col];
                     style.background = '#fff';
                     style.zIndex = 5;
                     style.backgroundClip = 'padding-box';
