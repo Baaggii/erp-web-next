@@ -604,16 +604,22 @@ export default function ReportTable({
         )}
       </div>
       <div
-        className="table-container overflow-x-auto"
-        style={{ maxWidth: '100%', overflowX: 'auto' }}
+        className="table-container"
+        style={{
+          maxHeight: '70vh',
+          overflow: 'auto',
+          width: '100%',
+          maxWidth: '100%',
+          position: 'relative',
+        }}
       >
         <table
           className="table-manager"
           style={{
             borderCollapse: 'collapse',
             tableLayout: 'fixed',
-            minWidth: '1200px',
-            maxWidth: '2000px',
+            minWidth: '100%',
+            width: 'max-content',
           }}
         >
           <thead className="table-manager sticky-header">
