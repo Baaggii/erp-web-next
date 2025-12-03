@@ -607,16 +607,13 @@ export default function ReportTable({
         className="table-container overflow-auto"
         style={{
           position: 'relative',
-          width: '100%',
           maxWidth: '100%',
-          height: '70vh',
-          overflowX: 'auto',
-          overflowY: 'auto',
+          maxHeight: '70vh',
+          overflow: 'auto',
           border: '1px solid #d1d5db',
           borderRadius: '0.5rem',
           background: '#fff',
           boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
-          scrollbarGutter: 'stable both-edges',
         }}
       >
         <table
