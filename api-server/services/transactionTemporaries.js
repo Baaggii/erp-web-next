@@ -782,7 +782,7 @@ export async function promoteTemporarySubmission(
       }
     }
 
-    const sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
+    let sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
     const sanitationWarnings = Array.isArray(sanitizedCleaned?.warnings)
       ? sanitizedCleaned.warnings
       : [];
@@ -863,6 +863,15 @@ export async function promoteTemporarySubmission(
       }
     }
 
+    const hasSkipTriggerColumn = Array.isArray(columns)
+      ? columns.some(
+          (col) =>
+            col &&
+            typeof col.name === 'string' &&
+            col.name.trim().toLowerCase() === 'skip_trigger',
+        )
+      : false;
+
     const mutationContext = {
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
@@ -888,18 +897,49 @@ export async function promoteTemporarySubmission(
         id,
         error: err,
       });
-      const keys = Object.keys(sanitizedValues);
-      if (keys.length === 0) {
-        throw err;
+      let recordForInsert = sanitizedValues;
+      if (hasSkipTriggerColumn && !recordForInsert.skip_trigger) {
+        recordForInsert = { ...recordForInsert, skip_trigger: 1 };
+        sanitizedValues = recordForInsert;
+        try {
+          const inserted = await insertTableRow(
+            row.table_name,
+            recordForInsert,
+            undefined,
+            undefined,
+            false,
+            normalizedReviewer,
+            { conn, mutationContext },
+          );
+          insertedId = inserted?.id ?? null;
+        } catch (skipErr) {
+          if (!isDynamicSqlTriggerError(skipErr)) {
+            throw skipErr;
+          }
+          console.warn(
+            'Dynamic SQL trigger error persisted after skip_trigger flag, falling back to direct insert',
+            {
+              table: row.table_name,
+              id,
+              error: skipErr,
+            },
+          );
+        }
       }
-      const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
-      const placeholders = keys.map(() => '?').join(', ');
-      const params = keys.map((k) => sanitizedValues[k]);
-      const [fallbackResult] = await conn.query(
-        `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
-        params,
-      );
-      insertedId = fallbackResult?.insertId ?? null;
+      if (insertedId === null) {
+        const keys = Object.keys(recordForInsert);
+        if (keys.length === 0) {
+          throw err;
+        }
+        const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
+        const placeholders = keys.map(() => '?').join(', ');
+        const params = keys.map((k) => recordForInsert[k]);
+        const [fallbackResult] = await conn.query(
+          `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
+          params,
+        );
+        insertedId = fallbackResult?.insertId ?? null;
+      }
     }
     const promotedId = insertedId ? String(insertedId) : null;
     if (formName && formCfg) {
