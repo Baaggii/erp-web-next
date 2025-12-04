@@ -450,6 +450,7 @@ const EMPTY_ENDPOINT = {
   topLevelFieldsText: '[]',
   nestedPathsText: '{}',
   notes: '',
+  requestEnvMap: {},
 };
 
 const PAYMENT_FIELD_DESCRIPTIONS = {
@@ -1054,7 +1055,13 @@ function setValueAtPath(target, path, value) {
 function buildRequestSampleFromSelections(
   baseSample,
   selections,
-  { resolveEnv = false, preferPlaceholders = false, fallbackToLiteral = true, onError } = {},
+  {
+    resolveEnv = false,
+    preferPlaceholders = false,
+    fallbackToLiteral = true,
+    onError,
+    useEnvPlaceholders = true,
+  } = {},
 ) {
   const result = baseSample && typeof baseSample === 'object' && !Array.isArray(baseSample)
     ? { ...baseSample }
@@ -1065,7 +1072,12 @@ function buildRequestSampleFromSelections(
     const placeholder = entry?.envVar ? `{{${entry.envVar}}}` : '';
     if (mode === 'env' && entry?.envVar) {
       if (!resolveEnv) {
-        setValueAtPath(result, fieldPath, placeholder);
+        const sampleValue = useEnvPlaceholders
+          ? placeholder
+          : entry?.literal !== undefined && entry.literal !== null
+            ? entry.literal
+            : '';
+        setValueAtPath(result, fieldPath, sampleValue);
         return;
       }
 
@@ -1103,6 +1115,15 @@ function buildRequestSampleFromSelections(
     }
   });
   return result;
+}
+
+function buildRequestEnvMap(selections = {}) {
+  return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
+    if (entry?.mode === 'env' && entry.envVar) {
+      acc[fieldPath] = entry.envVar;
+    }
+    return acc;
+  }, {});
 }
 
 function normalizeHintEntry(entry) {
@@ -1269,6 +1290,7 @@ function createFormState(definition) {
     topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
+    requestEnvMap: definition.requestEnvMap || {},
   };
 }
 
@@ -2110,14 +2132,12 @@ export default function PosApiAdmin() {
         seenFields.add(fieldPath);
         if (next[fieldPath]) return;
         const currentValue = readValueAtPath(parsedSample, fieldPath);
-        if (typeof currentValue === 'string') {
-          const envMatch = currentValue.match(/^{{(.+)}}$/);
-          if (envMatch) {
-            next[fieldPath] = { mode: 'env', envVar: envMatch[1], literal: '' };
-            changed = true;
-            return;
-          }
-          next[fieldPath] = { mode: 'literal', literal: currentValue };
+        if (typeof formState.requestEnvMap?.[fieldPath] === 'string') {
+          next[fieldPath] = {
+            mode: 'env',
+            envVar: formState.requestEnvMap[fieldPath],
+            literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
+          };
           changed = true;
           return;
         }
@@ -2129,9 +2149,12 @@ export default function PosApiAdmin() {
         next[fieldPath] = { mode: 'literal', literal: '' };
         changed = true;
       });
+      if (changed) {
+        syncRequestSampleFromSelections(next);
+      }
       return changed ? next : prev;
     });
-  }, [formState.requestSchemaText, requestFieldHints.items]);
+  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldHints.items]);
 
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
@@ -3059,6 +3082,7 @@ export default function PosApiAdmin() {
     setDocFieldDescriptions({});
     setSampleImportText('');
     setSampleImportError('');
+    setRequestFieldValues({});
     setSelectedId(id);
     const definition = endpoints.find((ep) => ep.id === id);
     setFormState(createFormState(definition));
@@ -3752,6 +3776,7 @@ export default function PosApiAdmin() {
         schema: responseSchema,
         description: formState.responseDescription || '',
       },
+      requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: sanitizedRequestFields,
       responseFields,
       testable: Boolean(formState.testable),
@@ -3972,7 +3997,10 @@ export default function PosApiAdmin() {
     } catch {
       baseSample = {};
     }
-    const updated = buildRequestSampleFromSelections(baseSample, nextSelections, { resolveEnv: false });
+    const updated = buildRequestSampleFromSelections(baseSample, nextSelections, {
+      resolveEnv: false,
+      useEnvPlaceholders: false,
+    });
     try {
       const formatted = JSON.stringify(updated, null, 2);
       setFormState((prev) => ({ ...prev, requestSchemaText: formatted }));
@@ -3988,29 +4016,12 @@ export default function PosApiAdmin() {
       const nextEntry = { ...current, ...updates };
       const nextSelections = { ...prev, [fieldPath]: nextEntry };
       syncRequestSampleFromSelections(nextSelections);
+      setFormState((prevState) => ({
+        ...prevState,
+        requestEnvMap: buildRequestEnvMap(nextSelections),
+      }));
       return nextSelections;
     });
-  }
-
-  function buildResolvedDefinition(definition) {
-    const resolved = JSON.parse(JSON.stringify(definition));
-    const envWarnings = [];
-    if (resolved.requestBody && resolved.requestBody.schema) {
-      resolved.requestBody.schema = buildRequestSampleFromSelections(
-        resolved.requestBody.schema,
-        requestFieldValues,
-        {
-          resolveEnv: true,
-          preferPlaceholders: true,
-          fallbackToLiteral: true,
-          onError: (msg) => envWarnings.push(msg),
-        },
-      );
-    }
-    if (envWarnings.length) {
-      setStatus(envWarnings.join(' '));
-    }
-    return resolved;
   }
 
   function updateTokenMetaFromResult(result) {
@@ -4049,7 +4060,7 @@ export default function PosApiAdmin() {
     try {
       setError('');
       setStatus('');
-      definition = buildResolvedDefinition(buildDefinition());
+      definition = buildDefinition();
     } catch (err) {
       setError(err.message || 'Failed to prepare endpoint');
       return;
@@ -4105,6 +4116,9 @@ export default function PosApiAdmin() {
         throw new Error(message || 'Test request failed');
       }
       const data = await res.json();
+      if (Array.isArray(data.envWarnings) && data.envWarnings.length) {
+        setStatus(data.envWarnings.join(' '));
+      }
       updateTokenMetaFromResult(data);
       setTestState({ running: false, error: '', result: data });
     } catch (err) {
@@ -5984,6 +5998,9 @@ export default function PosApiAdmin() {
                     literal: '',
                     envVar: '',
                   };
+                  const envVarMissing = selection.mode === 'env'
+                    && selection.envVar
+                    && !resolveEnvironmentVariable(selection.envVar, { parseJson: false }).found;
                   return (
                     <li key={`request-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
                       <div style={styles.hintFieldRow}>
@@ -6036,28 +6053,41 @@ export default function PosApiAdmin() {
                             style={styles.input}
                           />
                         ) : (
-                          <select
-                            value={selection.envVar || ''}
-                            onChange={(e) =>
-                              handleRequestFieldValueChange(fieldLabel, {
-                                envVar: e.target.value,
-                                mode: 'env',
-                              })
-                            }
-                            style={styles.input}
-                          >
-                            <option value="">Select environment variable…</option>
-                            {envVariableOptions.length === 0 && (
-                              <option value="" disabled>
-                                No POSAPI_* variables detected
-                              </option>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
+                            <input
+                              type="text"
+                              list={`env-options-${fieldLabel}`}
+                              value={selection.envVar || ''}
+                              onChange={(e) =>
+                                handleRequestFieldValueChange(fieldLabel, {
+                                  envVar: e.target.value,
+                                  mode: 'env',
+                                })
+                              }
+                              placeholder="Select environment variable…"
+                              style={styles.input}
+                            />
+                            <datalist id={`env-options-${fieldLabel}`}>
+                              {envVariableOptions.map((opt) => (
+                                <option key={`env-${fieldLabel}-${opt}`} value={opt} />
+                              ))}
+                            </datalist>
+                            <input
+                              type="text"
+                              value={selection.literal ?? ''}
+                              onChange={(e) =>
+                                handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
+                              }
+                              placeholder="Fallback literal (used if the environment variable is missing)"
+                              style={styles.input}
+                            />
+                            {envVarMissing && (
+                              <div style={styles.hintError}>
+                                Environment variable {selection.envVar} is not available; the fallback
+                                literal will be sent instead.
+                              </div>
                             )}
-                            {envVariableOptions.map((opt) => (
-                              <option key={`env-${fieldLabel}-${opt}`} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
+                          </div>
                         )}
                         <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
                       </div>
