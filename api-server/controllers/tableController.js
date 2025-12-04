@@ -59,11 +59,20 @@ export async function getTableRows(req, res, next) {
       searchColumns,
       company_id, // eslint-disable-line camelcase
       includeDeleted,
+      exactFilters: rawExactFilters,
       ...filters
     } = req.query;
     const rowsPerPage = Math.min(Number(perPage) || 50, 500);
     const includeDeletedFlag =
       includeDeleted === '1' || includeDeleted === 'true';
+    const exactFilters = Array.isArray(rawExactFilters)
+      ? rawExactFilters
+      : typeof rawExactFilters === 'string'
+        ? rawExactFilters
+            .split(',')
+            .map((v) => v.trim())
+            .filter(Boolean)
+        : [];
     const result = await listTableRows(
       req.params.table,
       {
@@ -78,6 +87,7 @@ export async function getTableRows(req, res, next) {
         },
         search: search || '',
         searchColumns: typeof searchColumns === 'string' ? searchColumns.split(',') : [],
+        exactFilters,
         sort: { column: sort, dir },
         debug: debug === '1' || debug === 'true',
         ...(includeDeletedFlag ? { includeDeleted: true } : {}),

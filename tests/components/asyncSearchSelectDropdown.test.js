@@ -150,6 +150,8 @@ if (!haveReact) {
           idField: 'id',
           value: '',
           onChange: handleChange,
+          filters: { company_id: 'ACME' },
+          exactFilters: ['company_id'],
         }),
       );
     });
@@ -180,6 +182,8 @@ if (!haveReact) {
     const parsed = new URL(searchRequest, 'http://localhost');
     assert.equal(parsed.searchParams.get('search'), 'Alpha');
     assert.equal(parsed.searchParams.get('searchColumns'), 'code,id,name,sku');
+    assert.equal(parsed.searchParams.get('company_id'), 'ACME');
+    assert.equal(parsed.searchParams.get('exactFilters'), 'company_id');
 
     await act(async () => {
       root.unmount();
