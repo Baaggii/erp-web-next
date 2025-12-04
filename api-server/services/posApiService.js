@@ -53,6 +53,53 @@ function toStringValue(value) {
   return String(value ?? '').trim();
 }
 
+const ENV_PLACEHOLDER_REGEX = /^\s*\{\{\s*(POSAPI_[A-Z0-9_]+)\s*}}\s*$/;
+
+function coerceEnvPlaceholderValue(envVar, rawValue, path = '') {
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    const err = new Error(`Environment variable ${envVar} is not configured for POSAPI requests`);
+    err.status = 400;
+    err.details = { envVar, path };
+    throw err;
+  }
+  if (typeof rawValue !== 'string') {
+    return rawValue;
+  }
+  const trimmed = rawValue.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      return JSON.parse(trimmed);
+    } catch (err) {
+      const parseErr = new Error(`Environment variable ${envVar} contains invalid JSON`);
+      parseErr.status = 400;
+      parseErr.details = { envVar, path };
+      throw parseErr;
+    }
+  }
+  return trimmed;
+}
+
+function resolveEnvPlaceholders(value, path = '') {
+  if (Array.isArray(value)) {
+    return value.map((item, index) => resolveEnvPlaceholders(item, `${path}[${index}]`));
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value).reduce((acc, [key, nested]) => {
+      acc[key] = resolveEnvPlaceholders(nested, path ? `${path}.${key}` : key);
+      return acc;
+    }, Array.isArray(value) ? [] : {});
+  }
+  if (typeof value === 'string') {
+    const match = ENV_PLACEHOLDER_REGEX.exec(value);
+    if (match) {
+      const envVar = match[1];
+      const resolved = readEnvVar(envVar, { trim: false });
+      return coerceEnvPlaceholderValue(envVar, resolved, path);
+    }
+  }
+  return value;
+}
+
 let cachedBaseUrl = '';
 let cachedBaseUrlLoaded = false;
 const tokenCache = new Map();
@@ -1754,10 +1801,17 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
   const method = (endpoint?.method || 'GET').toUpperCase();
   let path = (endpoint?.path || '/').trim() || '/';
   const params = Array.isArray(endpoint?.parameters) ? endpoint.parameters : [];
-  const payloadData =
+  let payloadData =
     payload && typeof payload === 'object' && !Array.isArray(payload)
       ? { ...payload }
       : {};
+  try {
+    payloadData = resolveEnvPlaceholders(payloadData);
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to resolve environment placeholders');
+    error.status = error.status || 400;
+    throw error;
+  }
   const { body: explicitBody, ...restPayload } = payloadData;
 
   params

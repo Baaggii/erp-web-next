@@ -111,12 +111,6 @@ const VALID_TAX_TYPES = new Set(DEFAULT_TAX_TYPES);
 const VALID_PAYMENT_METHODS = new Set(DEFAULT_PAYMENT_METHODS);
 const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
 const DEFAULT_TOKEN_TTL_MS = 55 * 60 * 1000;
-const ENV_VARIABLE_OPTIONS = [
-  'POSAPI_CLIENT_ID',
-  'POSAPI_CLIENT_SECRET',
-  'POSAPI_USERNAME',
-  'POSAPI_PASSWORD',
-];
 const DEFAULT_INFO_TABLE_OPTIONS = [
   { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
 ];
@@ -939,21 +933,53 @@ function parseHintPreview(text, arrayErrorMessage) {
   }
 }
 
-function resolveEnvironmentVariable(key) {
-  if (!key) return '';
-  if (typeof window !== 'undefined') {
-    const win = window;
-    if (win && win.__ENV__ && win.__ENV__[key] !== undefined) {
-      return win.__ENV__[key];
+function getEnvironmentSources() {
+  const sources = [];
+  if (typeof window !== 'undefined' && window && window.__ENV__) {
+    sources.push(['window', window.__ENV__]);
+  }
+  if (typeof import.meta !== 'undefined' && import.meta.env) {
+    sources.push(['importMeta', import.meta.env]);
+  }
+  if (typeof process !== 'undefined' && process.env) {
+    sources.push(['process', process.env]);
+  }
+  return sources;
+}
+
+function listPosApiEnvVariables(extraKeys = []) {
+  const keys = new Set();
+  getEnvironmentSources().forEach(([, env]) => {
+    Object.keys(env || {})
+      .filter((key) => key && key.startsWith('POSAPI_'))
+      .forEach((key) => keys.add(key));
+  });
+  (extraKeys || [])
+    .filter((key) => key && key.startsWith('POSAPI_'))
+    .forEach((key) => keys.add(key));
+  return Array.from(keys).sort();
+}
+
+function resolveEnvironmentVariable(key, { parseJson = true } = {}) {
+  if (!key) return { found: false, value: undefined };
+  for (const [, env] of getEnvironmentSources()) {
+    if (env && Object.prototype.hasOwnProperty.call(env, key) && env[key] !== undefined) {
+      const raw = env[key];
+      if (!parseJson || typeof raw !== 'string') {
+        return { found: true, value: raw };
+      }
+      const trimmed = raw.trim();
+      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+        try {
+          return { found: true, value: JSON.parse(trimmed) };
+        } catch (err) {
+          return { found: false, value: undefined, error: err?.message || 'Invalid JSON in environment variable' };
+        }
+      }
+      return { found: true, value: raw };
     }
   }
-  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key] !== undefined) {
-    return import.meta.env[key];
-  }
-  if (typeof process !== 'undefined' && process.env && process.env[key] !== undefined) {
-    return process.env[key];
-  }
-  return '';
+  return { found: false, value: undefined };
 }
 
 function tokenizeFieldPath(path) {
@@ -982,11 +1008,15 @@ function readValueAtPath(source, path) {
 }
 
 function setValueAtPath(target, path, value) {
-  if (!path) return;
+  if (!path || !target || typeof target !== 'object') return false;
   const tokens = tokenizeFieldPath(path);
-  if (!tokens.length) return;
+  if (!tokens.length) return false;
   let current = target;
   tokens.forEach((token, index) => {
+    if (typeof current !== 'object' || current === null) {
+      current = null;
+      return;
+    }
     const isLast = index === tokens.length - 1;
     if (isLast) {
       if (token.isArray) {
@@ -1018,24 +1048,58 @@ function setValueAtPath(target, path, value) {
       current = current[token.key];
     }
   });
+  return current !== null;
 }
 
-function buildRequestSampleFromSelections(baseSample, selections, { resolveEnv = false } = {}) {
+function buildRequestSampleFromSelections(
+  baseSample,
+  selections,
+  { resolveEnv = false, preferPlaceholders = false, fallbackToLiteral = true, onError } = {},
+) {
   const result = baseSample && typeof baseSample === 'object' && !Array.isArray(baseSample)
     ? { ...baseSample }
     : {};
   Object.entries(selections || {}).forEach(([fieldPath, entry]) => {
     if (!fieldPath) return;
     const mode = entry?.mode || 'literal';
-    if (mode === 'env' && entry.envVar) {
-      const value = resolveEnv ? resolveEnvironmentVariable(entry.envVar) || '' : `{{${entry.envVar}}}`;
-      setValueAtPath(result, fieldPath, value);
+    const placeholder = entry?.envVar ? `{{${entry.envVar}}}` : '';
+    if (mode === 'env' && entry?.envVar) {
+      if (!resolveEnv) {
+        setValueAtPath(result, fieldPath, placeholder);
+        return;
+      }
+
+      const { found, value, error } = resolveEnvironmentVariable(entry.envVar, { parseJson: true });
+      if (!found) {
+        const fallbackValue = fallbackToLiteral && entry?.literal !== undefined && entry.literal !== ''
+          ? parseScalarValue(entry.literal)
+          : placeholder;
+        if (typeof onError === 'function') {
+          const fallbackLabel = fallbackToLiteral ? 'literal' : 'placeholder';
+          onError(
+            error
+              ? `Environment variable ${entry.envVar} is invalid: ${error}`
+              : `Environment variable ${entry.envVar} is not configured; using ${fallbackLabel} value for ${fieldPath}.`,
+          );
+        }
+        if (!setValueAtPath(result, fieldPath, fallbackValue) && typeof onError === 'function') {
+          onError(`Could not assign environment value for ${fieldPath}.`);
+        }
+        return;
+      }
+
+      const parsedValue = preferPlaceholders ? placeholder : value;
+      if (!setValueAtPath(result, fieldPath, parsedValue) && typeof onError === 'function') {
+        onError(`Could not assign environment value for ${fieldPath}.`);
+      }
       return;
     }
     if (mode === 'literal') {
       const raw = entry?.literal ?? '';
       const parsedValue = typeof raw === 'string' ? parseScalarValue(raw) : raw;
-      setValueAtPath(result, fieldPath, parsedValue);
+      if (!setValueAtPath(result, fieldPath, parsedValue) && typeof onError === 'function') {
+        onError(`Could not assign value for ${fieldPath}.`);
+      }
     }
   });
   return result;
@@ -2123,6 +2187,15 @@ export default function PosApiAdmin() {
     : formState.testServerUrl || formState.testServerUrlProduction
   ) || '').trim();
   const hasTestServerUrl = Boolean(resolvedTestServerUrl);
+  const envVariableOptions = useMemo(
+    () =>
+      listPosApiEnvVariables(
+        Object.values(requestFieldValues || {})
+          .map((entry) => entry?.envVar)
+          .filter(Boolean),
+      ),
+    [requestFieldValues],
+  );
 
   const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
   const receiptTypeOptions = receiptTypesEnabled && formReceiptTypes.length > 0
@@ -3921,12 +3994,21 @@ export default function PosApiAdmin() {
 
   function buildResolvedDefinition(definition) {
     const resolved = JSON.parse(JSON.stringify(definition));
+    const envWarnings = [];
     if (resolved.requestBody && resolved.requestBody.schema) {
       resolved.requestBody.schema = buildRequestSampleFromSelections(
         resolved.requestBody.schema,
         requestFieldValues,
-        { resolveEnv: true },
+        {
+          resolveEnv: true,
+          preferPlaceholders: true,
+          fallbackToLiteral: true,
+          onError: (msg) => envWarnings.push(msg),
+        },
       );
+    }
+    if (envWarnings.length) {
+      setStatus(envWarnings.join(' '));
     }
     return resolved;
   }
@@ -4433,7 +4515,12 @@ export default function PosApiAdmin() {
                                         }}
                                       >
                                         <option value="">Use environment variable…</option>
-                                        {ENV_VARIABLE_OPTIONS.map((opt) => (
+                                        {envVariableOptions.length === 0 && (
+                                          <option value="" disabled>
+                                            No POSAPI_* variables detected
+                                          </option>
+                                        )}
+                                        {envVariableOptions.map((opt) => (
                                           <option key={`${param.name}-${opt}`} value={opt}>
                                             {opt}
                                           </option>
@@ -5960,7 +6047,12 @@ export default function PosApiAdmin() {
                             style={styles.input}
                           >
                             <option value="">Select environment variable…</option>
-                            {ENV_VARIABLE_OPTIONS.map((opt) => (
+                            {envVariableOptions.length === 0 && (
+                              <option value="" disabled>
+                                No POSAPI_* variables detected
+                              </option>
+                            )}
+                            {envVariableOptions.map((opt) => (
                               <option key={`env-${fieldLabel}-${opt}`} value={opt}>
                                 {opt}
                               </option>
