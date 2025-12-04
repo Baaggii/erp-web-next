@@ -982,11 +982,10 @@ function readValueAtPath(source, path) {
 }
 
 function setValueAtPath(target, path, value) {
-  if (!path) return target;
+  if (!path) return;
   const tokens = tokenizeFieldPath(path);
-  if (!tokens.length) return target;
-  const safeTarget = target && typeof target === 'object' ? target : {};
-  let current = safeTarget;
+  if (!tokens.length) return;
+  let current = target;
   tokens.forEach((token, index) => {
     const isLast = index === tokens.length - 1;
     if (isLast) {
@@ -1019,11 +1018,10 @@ function setValueAtPath(target, path, value) {
       current = current[token.key];
     }
   });
-  return safeTarget;
 }
 
 function buildRequestSampleFromSelections(baseSample, selections, { resolveEnv = false } = {}) {
-  let result = baseSample && typeof baseSample === 'object' && !Array.isArray(baseSample)
+  const result = baseSample && typeof baseSample === 'object' && !Array.isArray(baseSample)
     ? { ...baseSample }
     : {};
   Object.entries(selections || {}).forEach(([fieldPath, entry]) => {
@@ -1031,13 +1029,13 @@ function buildRequestSampleFromSelections(baseSample, selections, { resolveEnv =
     const mode = entry?.mode || 'literal';
     if (mode === 'env' && entry.envVar) {
       const value = resolveEnv ? resolveEnvironmentVariable(entry.envVar) || '' : `{{${entry.envVar}}}`;
-      result = setValueAtPath(result, fieldPath, value);
+      setValueAtPath(result, fieldPath, value);
       return;
     }
     if (mode === 'literal') {
       const raw = entry?.literal ?? '';
       const parsedValue = typeof raw === 'string' ? parseScalarValue(raw) : raw;
-      result = setValueAtPath(result, fieldPath, parsedValue);
+      setValueAtPath(result, fieldPath, parsedValue);
     }
   });
   return result;
