@@ -2714,6 +2714,24 @@ const TableManager = forwardRef(function TableManager({
         return true;
       };
 
+      const getRelationOption = (fieldKey, value) => {
+        if (value === undefined || value === null) return null;
+        const relationId = resolveScopeId(value);
+        const options =
+          refData[fieldKey] || refData[resolveCanonicalKey(fieldKey)] || [];
+        if (!Array.isArray(options)) return null;
+        return (
+          options.find(
+            (opt) =>
+              opt &&
+              (opt.value === relationId ||
+                (relationId !== undefined &&
+                  relationId !== null &&
+                  String(opt.value) === String(relationId))),
+          ) || null
+        );
+      };
+
       const getRelationRow = (fieldKey, value) => {
         if (value === undefined || value === null) return null;
         const relationId = resolveScopeId(value);
@@ -2751,9 +2769,10 @@ const TableManager = forwardRef(function TableManager({
           hydrated === values ? values[canonicalField] : hydrated[canonicalField];
         if (!hasMeaningfulValue(relationValue)) return;
         const relationRow = getRelationRow(canonicalField, relationValue);
-        if (!relationRow || typeof relationRow !== 'object') return;
+        const relationOption = getRelationOption(canonicalField, relationValue);
+        if (!relationRow && !relationOption) return;
         const rowKeyMap = {};
-        Object.keys(relationRow).forEach((key) => {
+        Object.keys(relationRow || {}).forEach((key) => {
           rowKeyMap[key.toLowerCase()] = key;
         });
         config.displayFields.forEach((displayField) => {
@@ -2769,9 +2788,15 @@ const TableManager = forwardRef(function TableManager({
             config,
             rowKeyMap,
           );
-          if (!hasMeaningfulValue(displayValue)) return;
+          const fallbackLabel = relationOption?.label;
+          if (!hasMeaningfulValue(displayValue) && !hasMeaningfulValue(fallbackLabel)) {
+            return;
+          }
           ensureHydrated();
-          hydrated[canonicalDisplay] = displayValue;
+          hydrated[canonicalDisplay] =
+            hasMeaningfulValue(displayValue) && displayValue !== relationValue
+              ? displayValue
+              : fallbackLabel ?? displayValue;
         });
       });
 
@@ -2801,7 +2826,13 @@ const TableManager = forwardRef(function TableManager({
 
       return hydrated;
     },
-    [refRows, relationConfigs, resolveCanonicalKey, resolveRelationDisplayValue],
+    [
+      refData,
+      refRows,
+      relationConfigs,
+      resolveCanonicalKey,
+      resolveRelationDisplayValue,
+    ],
   );
 
   const mergeDisplayFallbacks = useCallback(
