@@ -21,3 +21,24 @@ mysql -u <user> -p <database> < db/seed_default.sql
 ```
 
 `seed_default.sql` inserts shared code tables, modules, user level defaults and role/module mappings. All shared rows use `company_id=0`.
+
+## Global trigger skip condition
+
+Use the following reusable condition block at the very start of any trigger to honor the session toggle `@skip_triggers`:
+
+```sql
+trigger_block: BEGIN
+    IF @skip_triggers = 1 THEN
+        LEAVE trigger_block;
+    END IF;
+    -- existing trigger logic follows
+```
+
+- Place this block immediately after the `BEGIN` keyword and before any `DECLARE` statements.
+- Do not alter the trigger logic itself; the `LEAVE` exits cleanly when `@skip_triggers` is enabled with `SET @skip_triggers = 1;`.
+
+### How it behaves in practice
+
+- **Modal form dynamic logic**: No skip variable is set, so all triggers continue to run normally. Modal form stored procedures execute through the API rather than via triggers, so there is no conflict.
+- **Promote / posting operations**: The backend calls `SET @skip_triggers = 1;` before the `INSERT` or `UPDATE`. The trigger sees the flag, immediately leaves the labeled block, and any heavy stored procedure logic is skipped. The application can then supply the previously trigger-calculated values manually (for example, in `sanitizedValues`).
+- **Optional cleanup**: After posting completes, you can reset the flag with `SET @skip_triggers = NULL;`.
