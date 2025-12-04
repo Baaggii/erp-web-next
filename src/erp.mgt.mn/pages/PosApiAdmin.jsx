@@ -1071,10 +1071,9 @@ function buildRequestSampleFromSelections(
 
       const { found, value, error } = resolveEnvironmentVariable(entry.envVar, { parseJson: true });
       if (!found) {
-        const hasLiteral = entry?.literal !== undefined;
-        const fallbackValue = fallbackToLiteral && hasLiteral
+        const fallbackValue = fallbackToLiteral && entry?.literal !== undefined && entry.literal !== ''
           ? parseScalarValue(entry.literal)
-          : '';
+          : placeholder;
         if (typeof onError === 'function') {
           const fallbackLabel = fallbackToLiteral ? 'literal' : 'placeholder';
           onError(
@@ -2196,15 +2195,6 @@ export default function PosApiAdmin() {
           .filter(Boolean),
       ),
     [requestFieldValues],
-  );
-  const detectedEnvVariables = useMemo(() => listPosApiEnvVariables(), []);
-  const detectedEnvVarSet = useMemo(() => new Set(detectedEnvVariables), [detectedEnvVariables]);
-  const missingEnvSelections = useMemo(
-    () =>
-      Object.entries(requestFieldValues || {})
-        .filter(([, entry]) => entry?.mode === 'env' && entry.envVar && !detectedEnvVarSet.has(entry.envVar))
-        .map(([field, entry]) => ({ field, envVar: entry.envVar, literal: entry.literal ?? '' })),
-    [requestFieldValues, detectedEnvVarSet],
   );
 
   const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
@@ -4011,7 +4001,7 @@ export default function PosApiAdmin() {
         requestFieldValues,
         {
           resolveEnv: true,
-          preferPlaceholders: false,
+          preferPlaceholders: true,
           fallbackToLiteral: true,
           onError: (msg) => envWarnings.push(msg),
         },
