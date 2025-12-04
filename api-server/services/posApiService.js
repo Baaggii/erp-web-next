@@ -27,33 +27,6 @@ function readEnvVar(name, { trim = true } = {}) {
   return trim ? raw.trim() : raw;
 }
 
-function resolveEnvPlaceholder(value, env = process.env) {
-  if (typeof value !== 'string') return value;
-  const match = value.match(/^\s*\{\{\s*([A-Z0-9_]+)\s*\}\}\s*$/);
-  if (!match) return value;
-  const key = match[1];
-  const envValue = env?.[key];
-  if (envValue === undefined || envValue === null || `${envValue}`.trim() === '') {
-    const err = new Error(`Environment variable ${key} is not defined`);
-    err.status = 500;
-    err.details = { missingEnvVar: key };
-    throw err;
-  }
-  return typeof envValue === 'string' ? envValue : `${envValue}`;
-}
-
-function resolveEnvPlaceholders(payload, env = process.env) {
-  if (Array.isArray(payload)) {
-    return payload.map((item) => resolveEnvPlaceholders(item, env));
-  }
-  if (!payload || typeof payload !== 'object') {
-    return resolveEnvPlaceholder(payload, env);
-  }
-  return Object.fromEntries(
-    Object.entries(payload).map(([key, val]) => [key, resolveEnvPlaceholders(val, env)]),
-  );
-}
-
 function toNumber(value) {
   if (value === undefined || value === null) return null;
   if (typeof value === 'number') {
@@ -1783,32 +1756,29 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
     payload && typeof payload === 'object' && !Array.isArray(payload)
       ? { ...payload }
       : {};
-  const envBag = optionBag.environment || process.env;
   const { body: explicitBody, ...restPayload } = payloadData;
-  const resolvedBody = resolveEnvPlaceholders(explicitBody, envBag);
-  const resolvedPayload = resolveEnvPlaceholders(restPayload, envBag);
 
   params
     .filter((param) => param && param.in === 'path' && typeof param.name === 'string')
     .forEach((param) => {
-      const raw = resolvedPayload[param.name];
+      const raw = restPayload[param.name];
       const strValue =
         raw === undefined || raw === null ? '' : encodeURIComponent(String(raw));
       if (strValue) {
         path = path.replaceAll(`{${param.name}}`, strValue);
       }
-      delete resolvedPayload[param.name];
+      delete restPayload[param.name];
     });
 
   const queryParams = new URLSearchParams();
   params
     .filter((param) => param && param.in === 'query' && typeof param.name === 'string')
     .forEach((param) => {
-      const value = resolvedPayload[param.name];
+      const value = restPayload[param.name];
       if (value !== undefined && value !== null && String(value).trim() !== '') {
         queryParams.append(param.name, String(value));
       }
-      delete resolvedPayload[param.name];
+      delete restPayload[param.name];
     });
 
   const queryString = queryParams.toString();
@@ -1818,12 +1788,12 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
 
   let bodyPayload;
   if (explicitBody !== undefined) {
-    bodyPayload = resolvedBody;
-  } else if (method !== 'GET' && method !== 'HEAD' && Object.keys(resolvedPayload).length) {
-    bodyPayload = resolvedPayload;
+    bodyPayload = explicitBody;
+  } else if (method !== 'GET' && method !== 'HEAD' && Object.keys(restPayload).length) {
+    bodyPayload = restPayload;
   }
 
-  const headers = resolveEnvPlaceholders({ ...(optionHeaders || {}) }, envBag);
+  const headers = { ...(optionHeaders || {}) };
   let body;
   if (bodyPayload !== undefined && method !== 'GET' && method !== 'HEAD') {
     if (endpoint?.posApiType === 'AUTH') {
