@@ -490,6 +490,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
+  const promotionHydrationNeededRef = useRef(false);
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -4216,91 +4217,132 @@ const TableManager = forwardRef(function TableManager({
     }
   }
 
-    const buildTemporaryFormState = useCallback(
-      (entry) => {
-        if (!entry) {
-          return { values: {}, rows: [] };
-        }
+  const buildTemporaryFormState = useCallback(
+    (entry) => {
+      if (!entry) {
+        return { values: {}, rows: [] };
+      }
 
-        const valueSources = [
-          entry?.cleanedValues,
-          entry?.payload?.cleanedValues,
-          entry?.payload?.values,
-          entry?.values,
-          entry?.rawValues,
-        ];
-        const baseValues = valueSources.find(
-          (candidate) =>
-            candidate && typeof candidate === 'object' && !Array.isArray(candidate),
-        );
-        const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
-        const normalizedValues = populateRelationDisplayFields(
-          normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
-        );
-        const mergedValues = mergeDisplayFallbacks(normalizedValues, hydratedValues);
+      const valueSources = [
+        entry?.cleanedValues,
+        entry?.payload?.cleanedValues,
+        entry?.payload?.values,
+        entry?.values,
+        entry?.rawValues,
+      ];
+      const baseValues = valueSources.find(
+        (candidate) =>
+          candidate && typeof candidate === 'object' && !Array.isArray(candidate),
+      );
+      const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
+      const canonicalHydratedValues = normalizeToCanonical(hydratedValues);
+      const normalizedValues = populateRelationDisplayFields(
+        normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
+      );
+      const mergedValues = mergeDisplayFallbacks(normalizedValues, canonicalHydratedValues);
+      const finalizedValues = populateRelationDisplayFields(mergedValues);
 
-        const rowSources = [
-          entry?.payload?.gridRows,
-          entry?.payload?.values?.rows,
-          entry?.cleanedValues?.rows,
-          entry?.values?.rows,
-          entry?.rawValues?.rows,
-        ];
-        const baseRows = rowSources.find((rows) => Array.isArray(rows));
-        const sanitizedRows = Array.isArray(baseRows)
-          ? baseRows.map((row) => {
-              const hydratedRow = hydrateDisplayFromWrappedRelations(row);
-              const stripped = stripTemporaryLabelValue(hydratedRow);
-              if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
-                const canonical = normalizeToCanonical(stripped);
-                const populated = populateRelationDisplayFields(canonical);
-                return mergeDisplayFallbacks(populated, hydratedRow);
-              }
-              return stripped ?? {};
-            })
-          : [];
+      const rowSources = [
+        entry?.payload?.gridRows,
+        entry?.payload?.values?.rows,
+        entry?.cleanedValues?.rows,
+        entry?.values?.rows,
+        entry?.rawValues?.rows,
+      ];
+      const baseRows = rowSources.find((rows) => Array.isArray(rows));
+      const sanitizedRows = Array.isArray(baseRows)
+        ? baseRows.map((row) => {
+            const hydratedRow = hydrateDisplayFromWrappedRelations(row);
+            const stripped = stripTemporaryLabelValue(hydratedRow);
+            if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
+              const canonical = normalizeToCanonical(stripped);
+              const populated = populateRelationDisplayFields(canonical);
+              const mergedRow = mergeDisplayFallbacks(
+                populated,
+                normalizeToCanonical(hydratedRow),
+              );
+              return populateRelationDisplayFields(mergedRow);
+            }
+            return stripped ?? {};
+          })
+        : [];
 
-        return { values: mergedValues, rows: sanitizedRows };
-      },
-      [
-        hydrateDisplayFromWrappedRelations,
-        mergeDisplayFallbacks,
-        normalizeToCanonical,
-        populateRelationDisplayFields,
-      ],
-    );
+      return { values: finalizedValues, rows: sanitizedRows };
+    },
+    [
+      hydrateDisplayFromWrappedRelations,
+      mergeDisplayFallbacks,
+      normalizeToCanonical,
+      populateRelationDisplayFields,
+    ],
+  );
 
-    const openTemporaryPromotion = useCallback(
-      async (entry, { resetQueue = true } = {}) => {
-        if (!entry) return;
-        const temporaryId = getTemporaryId(entry);
-        if (!temporaryId) return;
-        if (resetQueue) {
-          setTemporaryPromotionQueue([]);
-        }
-        await ensureColumnMeta();
-        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
+  const openTemporaryPromotion = useCallback(
+    async (entry, { resetQueue = true } = {}) => {
+      if (!entry) return;
+      const temporaryId = getTemporaryId(entry);
+      if (!temporaryId) return;
+      if (resetQueue) {
+        setTemporaryPromotionQueue([]);
+      }
+      await ensureColumnMeta();
+      const relationDataReady =
+        (relationConfigs && Object.keys(relationConfigs).length > 0) ||
+        (refRows && Object.keys(refRows).length > 0);
+      promotionHydrationNeededRef.current = !relationDataReady;
 
-        setPendingTemporaryPromotion({ id: temporaryId, entry });
-        setEditing(normalizedValues);
-        setGridRows(sanitizedRows);
-        setIsAdding(true);
+      const { values: normalizedValues, rows: sanitizedRows } =
+        buildTemporaryFormState(entry);
+
+      setPendingTemporaryPromotion({ id: temporaryId, entry });
+      setEditing(normalizedValues);
+      setGridRows(sanitizedRows);
+      setIsAdding(true);
       setRequestType('temporary-promote');
       setShowTemporaryModal(false);
-        setShowForm(true);
-      },
-      [
-        buildTemporaryFormState,
-        ensureColumnMeta,
-        setEditing,
-        setGridRows,
-        setIsAdding,
-        setRequestType,
-        setShowTemporaryModal,
+      setShowForm(true);
+    },
+    [
+      buildTemporaryFormState,
+      ensureColumnMeta,
+      refRows,
+      relationConfigs,
+      setEditing,
+      setGridRows,
+      setIsAdding,
+      setRequestType,
+      setShowTemporaryModal,
       setShowForm,
       setTemporaryPromotionQueue,
     ],
+  );
+
+  useEffect(() => {
+    if (!promotionHydrationNeededRef.current) return;
+    if (requestType !== 'temporary-promote') return;
+    if (!pendingTemporaryPromotion?.entry) return;
+    if (!showForm) return;
+
+    const hasRelations = relationConfigs && Object.keys(relationConfigs).length > 0;
+    const hasRefRows = refRows && Object.keys(refRows).length > 0;
+    if (!hasRelations && !hasRefRows) return;
+
+    const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(
+      pendingTemporaryPromotion.entry,
     );
+    setEditing(normalizedValues);
+    setGridRows(sanitizedRows);
+    promotionHydrationNeededRef.current = false;
+  }, [
+    buildTemporaryFormState,
+    pendingTemporaryPromotion,
+    refRows,
+    relationConfigs,
+    requestType,
+    setEditing,
+    setGridRows,
+    showForm,
+  ]);
 
     const openTemporaryDraft = useCallback(
       async (entry) => {
