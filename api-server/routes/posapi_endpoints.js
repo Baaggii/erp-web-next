@@ -1332,6 +1332,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
         baseUrl: testBaseUrl,
         debug: true,
         authEndpointId: selectedAuthEndpoint,
+        useCachedToken: req.body?.useCachedToken !== false,
         environment,
       });
       res.json(result);
@@ -1388,6 +1389,7 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
         baseUrl: baseUrl || undefined,
         debug: true,
         authEndpointId,
+        useCachedToken: req.body?.useCachedToken !== false,
       });
       res.json({
         ok: true,
