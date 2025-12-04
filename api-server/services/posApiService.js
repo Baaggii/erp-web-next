@@ -57,14 +57,14 @@ let cachedBaseUrl = '';
 let cachedBaseUrlLoaded = false;
 const tokenCache = new Map();
 
-function cacheToken(endpointId, token, expiresInSeconds, fetchedAt = Date.now()) {
+function cacheToken(endpointId, token, expiresInSeconds) {
   if (!endpointId || !token) return;
   const ttl = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? expiresInSeconds : 300;
   const expiresAt = Date.now() + ttl * 1000 - 30000;
-  tokenCache.set(endpointId, { token, expiresAt, fetchedAt });
+  tokenCache.set(endpointId, { token, expiresAt });
 }
 
-function getCachedTokenEntry(endpointId) {
+function getCachedToken(endpointId) {
   if (!endpointId) return null;
   const entry = tokenCache.get(endpointId);
   if (!entry || !entry.token) return null;
@@ -72,7 +72,7 @@ function getCachedTokenEntry(endpointId) {
     tokenCache.delete(endpointId);
     return null;
   }
-  return entry;
+  return entry.token;
 }
 
 export async function getPosApiBaseUrl() {
@@ -1128,25 +1128,9 @@ async function posApiFetch(path, { method = 'GET', body, token, headers, baseUrl
   return parsedBody;
 }
 
-function formatTokenResult(token, meta = {}, returnMeta = false) {
-  const payload = {
-    token,
-    fetchedAt: meta.fetchedAt || Date.now(),
-    expiresAt: meta.expiresAt || null,
-    fromCache: Boolean(meta.fromCache),
-  };
-  return returnMeta ? payload : token;
-}
-
-async function fetchEnvPosApiToken({ useCachedToken = true, returnMeta = false } = {}) {
-  const cachedEntry = useCachedToken ? getCachedTokenEntry('ENV_FALLBACK') : null;
-  if (cachedEntry) {
-    return formatTokenResult(cachedEntry.token, {
-      fetchedAt: cachedEntry.fetchedAt,
-      expiresAt: cachedEntry.expiresAt,
-      fromCache: true,
-    }, returnMeta);
-  }
+async function fetchEnvPosApiToken({ useCachedToken = true } = {}) {
+  const cached = useCachedToken ? getCachedToken('ENV_FALLBACK') : null;
+  if (cached) return cached;
 
   const requiredEnv = [
     'POSAPI_AUTH_URL',
@@ -1200,26 +1184,13 @@ async function fetchEnvPosApiToken({ useCachedToken = true, returnMeta = false }
   }
   const expiresIn = toNumber(json.expires_in || json.expiresIn) || 300;
   cacheToken('ENV_FALLBACK', json.access_token, expiresIn);
-  return formatTokenResult(
-    json.access_token,
-    { expiresAt: Date.now() + expiresIn * 1000 - 30000, fetchedAt: Date.now() },
-    returnMeta,
-  );
+  return json.access_token;
 }
 
-async function fetchTokenFromAuthEndpoint(
-  authEndpoint,
-  { baseUrl, payload, useCachedToken = true, returnMeta = false } = {},
-) {
-  if (!authEndpoint?.id) return fetchEnvPosApiToken({ useCachedToken, returnMeta });
-  const cachedEntry = useCachedToken ? getCachedTokenEntry(authEndpoint.id) : null;
-  if (cachedEntry) {
-    return formatTokenResult(cachedEntry.token, {
-      fetchedAt: cachedEntry.fetchedAt,
-      expiresAt: cachedEntry.expiresAt,
-      fromCache: true,
-    }, returnMeta);
-  }
+async function fetchTokenFromAuthEndpoint(authEndpoint, { baseUrl, payload, useCachedToken = true } = {}) {
+  if (!authEndpoint?.id) return fetchEnvPosApiToken({ useCachedToken });
+  const cached = useCachedToken ? getCachedToken(authEndpoint.id) : null;
+  if (cached) return cached;
 
   const requestPayload =
     payload && typeof payload === 'object'
@@ -1264,30 +1235,21 @@ async function fetchTokenFromAuthEndpoint(
   }
   const expiresIn = toNumber(parsed?.expires_in || parsed?.expiresIn) || 300;
   cacheToken(authEndpoint.id, token, expiresIn);
-  return formatTokenResult(
-    token,
-    { expiresAt: Date.now() + expiresIn * 1000 - 30000, fetchedAt: Date.now(), fromCache: false },
-    returnMeta,
-  );
+  return token;
 }
 
 export async function getPosApiToken(options = {}) {
   const optionBag = options && typeof options === 'object' ? options : {};
   const authEndpointId = optionBag.authEndpointId || null;
-  const returnMeta = optionBag.returnMeta === true;
   const authEndpoint = await resolveAuthEndpoint(authEndpointId);
   if (authEndpoint) {
     return fetchTokenFromAuthEndpoint(authEndpoint, {
       baseUrl: optionBag.baseUrl,
       payload: optionBag.authPayload,
       useCachedToken: optionBag.useCachedToken !== false,
-      returnMeta,
     });
   }
-  return fetchEnvPosApiToken({
-    useCachedToken: optionBag.useCachedToken !== false,
-    returnMeta,
-  });
+  return fetchEnvPosApiToken({ useCachedToken: optionBag.useCachedToken !== false });
 }
 
 export async function buildReceiptFromDynamicTransaction(
@@ -1856,21 +1818,13 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
   const requestUrl = `${trimEndSlash(requestBaseUrl)}${path.startsWith('/') ? path : `/${path}`}`;
 
   let token = null;
-  let tokenMeta = null;
   if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
-    const tokenResult = await getPosApiToken({
+    token = await getPosApiToken({
       authEndpointId,
       baseUrl: requestBaseUrl,
       authPayload,
       useCachedToken,
-      returnMeta: Boolean(debug),
     });
-    if (typeof tokenResult === 'object' && tokenResult?.token) {
-      tokenMeta = tokenResult;
-      token = tokenResult.token;
-    } else {
-      token = tokenResult;
-    }
   }
 
   try {
@@ -1885,7 +1839,6 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
     if (debug) {
       return {
         response,
-        tokenMeta,
         request: {
           method,
           url: requestUrl,
