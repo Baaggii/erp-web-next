@@ -6054,9 +6054,7 @@ export default function PosApiAdmin() {
                           />
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
-                            <input
-                              type="text"
-                              list={`env-options-${fieldLabel}`}
+                            <select
                               value={selection.envVar || ''}
                               onChange={(e) =>
                                 handleRequestFieldValueChange(fieldLabel, {
@@ -6064,14 +6062,26 @@ export default function PosApiAdmin() {
                                   mode: 'env',
                                 })
                               }
-                              placeholder="Select environment variable…"
                               style={styles.input}
-                            />
-                            <datalist id={`env-options-${fieldLabel}`}>
+                            >
+                              <option value="">Select environment variable…</option>
+                              {envVariableOptions.length === 0 && (
+                                <option value="" disabled>
+                                  No POSAPI_* variables detected
+                                </option>
+                              )}
                               {envVariableOptions.map((opt) => (
-                                <option key={`env-${fieldLabel}-${opt}`} value={opt} />
+                                <option key={`env-${fieldLabel}-${opt}`} value={opt}>
+                                  {opt}
+                                </option>
                               ))}
-                            </datalist>
+                            </select>
+                            <input
+                              type="text"
+                              readOnly
+                              value={selection.envVar ? `Using ${selection.envVar}` : 'Select environment variable'}
+                              style={{ ...styles.input, background: '#f8fafc', color: '#0f172a' }}
+                            />
                             <input
                               type="text"
                               value={selection.literal ?? ''}
