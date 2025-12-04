@@ -2752,6 +2752,13 @@ const TableManager = forwardRef(function TableManager({
         return null;
       };
 
+      const hydrateRelationRow = (row) => {
+        if (!row || typeof row !== 'object') return row;
+        const canonical = normalizeToCanonical(row);
+        const populated = populateRelationDisplayFields(canonical, seen);
+        return populated || canonical;
+      };
+
       let hydrated = values;
       const ensureHydrated = () => {
         if (hydrated === values) {
@@ -2783,7 +2790,7 @@ const TableManager = forwardRef(function TableManager({
             hydrated === values ? values[canonicalDisplay] : hydrated[canonicalDisplay];
           if (hasMeaningfulValue(currentValue)) return;
           const displayValue = resolveRelationDisplayValue(
-            relationRow,
+            hydratedRelationRow,
             displayField,
             config,
             rowKeyMap,
