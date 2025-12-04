@@ -1805,20 +1805,6 @@ export default function PosApiAdmin() {
     [activeImportDraft],
   );
 
-  const formParameters = useMemo(() => {
-    try {
-      const parsed = JSON.parse(formState.parametersText || '[]');
-      return normalizeParametersFromSpec(parsed);
-    } catch {
-      return [];
-    }
-  }, [formState.parametersText]);
-
-  const formParameterGroups = useMemo(
-    () => groupParametersByLocation(formParameters || []),
-    [formParameters],
-  );
-
   const infoSyncEndpointOptions = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
     return normalized
