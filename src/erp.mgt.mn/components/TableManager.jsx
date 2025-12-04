@@ -125,6 +125,8 @@ function resolveScopeId(value) {
       return value.branch_id;
     if (value.department_id !== undefined && value.department_id !== null)
       return value.department_id;
+    if (value.key !== undefined && value.key !== null) return value.key;
+    if (value.code !== undefined && value.code !== null) return value.code;
     if (value.value !== undefined && value.value !== null) return value.value;
   }
   return value;
