@@ -491,6 +491,23 @@ const TableManager = forwardRef(function TableManager({
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
   const promotionHydrationNeededRef = useRef(false);
+
+  const updateTemporaryListEntry = useCallback((id, updater) => {
+    if (!id || typeof updater !== 'function') return;
+    setTemporaryList((prev) => {
+      if (!Array.isArray(prev) || prev.length === 0) return prev;
+      let changed = false;
+      const targetId = String(id);
+      const next = prev.map((entry) => {
+        const entryId = getTemporaryId(entry);
+        if (entryId == null || String(entryId) !== targetId) return entry;
+        const updated = updater(entry);
+        if (updated !== entry) changed = true;
+        return updated;
+      });
+      return changed ? next : prev;
+    });
+  }, []);
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -4176,6 +4193,11 @@ const TableManager = forwardRef(function TableManager({
     )
       return false;
     try {
+      updateTemporaryListEntry(id, (entry) => ({
+        ...entry,
+        _promotionState: 'posting',
+        _promotionError: null,
+      }));
       const payload =
         overrideValues && typeof overrideValues === 'object'
           ? stripTemporaryLabelValue(overrideValues)
@@ -4204,6 +4226,11 @@ const TableManager = forwardRef(function TableManager({
         if (!silent) {
           addToast(message, 'error');
         }
+        updateTemporaryListEntry(id, (entry) => ({
+          ...entry,
+          _promotionState: 'error',
+          _promotionError: message,
+        }));
         return false;
       }
       if (!silent) {
@@ -4238,12 +4265,23 @@ const TableManager = forwardRef(function TableManager({
         await fetchTemporaryList('review');
         setLocalRefresh((r) => r + 1);
       }
+      updateTemporaryListEntry(id, (entry) => ({
+        ...entry,
+        status: 'promoted',
+        _promotionState: 'success',
+        _promotionError: null,
+      }));
       return true;
     } catch (err) {
       console.error(err);
       if (!silent) {
         addToast(t('temporary_promote_failed', 'Failed to promote temporary'), 'error');
       }
+      updateTemporaryListEntry(id, (entry) => ({
+        ...entry,
+        _promotionState: 'error',
+        _promotionError: t('temporary_promote_failed', 'Failed to promote temporary'),
+      }));
       return false;
     }
   }
@@ -6574,15 +6612,27 @@ const TableManager = forwardRef(function TableManager({
                       const statusRaw = entry?.status
                         ? String(entry.status).trim().toLowerCase()
                         : '';
+                      const promotionState = entry?._promotionState || '';
+                      const promotionError = entry?._promotionError || '';
+                      const isPostingState = promotionState === 'posting';
+                      const isErrorState = promotionState === 'error';
                       const isPendingStatus = statusRaw === 'pending' || statusRaw === '';
-                      const statusLabel = isPendingStatus
+                      const statusLabel = isPostingState
+                        ? t('temporary_promoting', 'Posting…')
+                        : isErrorState
+                        ? t('temporary_promote_failed_short', 'Post failed')
+                        : isPendingStatus
                         ? t('temporary_pending_status', 'Pending')
                         : statusRaw === 'promoted'
                         ? t('temporary_promoted_short', 'Promoted')
                         : statusRaw === 'rejected'
                         ? t('temporary_rejected_short', 'Rejected')
                         : entry?.status || '-';
-                      const statusColor = statusRaw === 'rejected'
+                      const statusColor = isErrorState
+                        ? '#b91c1c'
+                        : isPostingState
+                        ? '#2563eb'
+                        : statusRaw === 'rejected'
                         ? '#b91c1c'
                         : statusRaw === 'promoted'
                         ? '#15803d'
@@ -6663,20 +6713,55 @@ const TableManager = forwardRef(function TableManager({
                           <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                             {entry?.createdBy}
                           </td>
-                            <td
-                              style={{
-                                borderBottom: '1px solid #f3f4f6',
-                                padding: '0.25rem',
-                              }}
-                            >
+                          <td
+                            style={{
+                              borderBottom: '1px solid #f3f4f6',
+                              padding: '0.25rem',
+                            }}
+                          >
                               <div
                                 style={{
-                                  fontWeight: 600,
-                                  color: statusColor,
-                                  textTransform: 'capitalize',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '0.35rem',
+                                  flexWrap: 'wrap',
                                 }}
                               >
-                                {statusLabel}
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '0.25rem',
+                                    padding: '0.2rem 0.5rem',
+                                    backgroundColor: '#f3f4f6',
+                                    borderRadius: '9999px',
+                                    fontSize: '0.8rem',
+                                    color: '#374151',
+                                    minWidth: '3.5rem',
+                                  }}
+                                >
+                                  <span
+                                    style={{
+                                      display: 'inline-block',
+                                      width: '0.65rem',
+                                      height: '0.65rem',
+                                      borderRadius: '50%',
+                                      backgroundColor: statusColor,
+                                    }}
+                                  />
+                                  <span style={{ fontWeight: 600 }}>{statusLabel}</span>
+                                </span>
+                                {isErrorState && promotionError ? (
+                                  <span
+                                    style={{
+                                      color: '#b91c1c',
+                                      fontSize: '0.75rem',
+                                      maxWidth: '16rem',
+                                    }}
+                                  >
+                                    {promotionError}
+                                  </span>
+                                ) : null}
                               </div>
                               {!isPendingStatus && reviewedAt && (
                                 <div style={{ fontSize: '0.75rem', color: '#4b5563' }}>
@@ -6707,7 +6792,7 @@ const TableManager = forwardRef(function TableManager({
                                   {reviewNotes}
                                 </div>
                               )}
-                            </td>
+                          </td>
                             <td style={{ borderBottom: '1px solid #f3f4f6', padding: '0.25rem' }}>
                               {formatTimestamp(entry?.createdAt)}
                             </td>
