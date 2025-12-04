@@ -213,6 +213,15 @@ function sanitizeTemplateList(value) {
     .filter(Boolean);
 }
 
+function shallowEqualObjects(a, b) {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  return keysA.every((key) => Object.prototype.hasOwnProperty.call(b, key) && a[key] === b[key]);
+}
+
 function buildTemplateMap(source, allowedValues) {
   if (!source || typeof source !== 'object') return {};
   const allowedSet = allowedValues ? new Set(allowedValues) : null;
@@ -408,6 +417,7 @@ const EMPTY_ENDPOINT = {
   method: 'GET',
   path: '',
   parametersText: '[]',
+  parameterValues: {},
   requestDescription: '',
   requestSchemaText: '{}',
   responseDescription: '',
@@ -1102,6 +1112,7 @@ function createFormState(definition) {
     topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
+    parameterValues: buildDraftParameterDefaults(normalizeParametersFromSpec(definition.parameters)),
   };
 }
 
@@ -1844,6 +1855,20 @@ export default function PosApiAdmin() {
       return filtered;
     });
   }, [infoSyncTableOptions]);
+
+  useEffect(() => {
+    const defaults = buildDraftParameterDefaults(formParameters);
+    const allowedNames = new Set(formParameters.map((param) => param.name));
+    setFormState((prev) => {
+      const current = prev.parameterValues || {};
+      const merged = { ...defaults, ...current };
+      Object.keys(merged).forEach((key) => {
+        if (!allowedNames.has(key)) delete merged[key];
+      });
+      if (shallowEqualObjects(current, merged)) return prev;
+      return { ...prev, parameterValues: merged };
+    });
+  }, [formParameters]);
 
   const requestPreview = useMemo(() => {
     const text = (formState.requestSchemaText || '').trim();
@@ -2935,6 +2960,19 @@ export default function PosApiAdmin() {
     }
   }
 
+  function handleParameterValueChange(name, value) {
+    const key = typeof name === 'string' ? name : '';
+    if (!key) return;
+    const trimmed = `${value ?? ''}`;
+    setFormState((prev) => {
+      const nextValues = { ...(prev.parameterValues || {}) };
+      if (trimmed.trim()) nextValues[key] = value;
+      else delete nextValues[key];
+      if (shallowEqualObjects(prev.parameterValues || {}, nextValues)) return prev;
+      return { ...prev, parameterValues: nextValues };
+    });
+  }
+
   function handleApplySamplePayload(type) {
     const sample = RECEIPT_SAMPLE_PAYLOADS[type];
     if (!sample) return;
@@ -3397,10 +3435,15 @@ export default function PosApiAdmin() {
   }
 
   function buildDefinition() {
-    const parameters = parseJsonInput('Parameters', formState.parametersText, []);
-    if (!Array.isArray(parameters)) {
+    const rawParameters = parseJsonInput('Parameters', formState.parametersText, []);
+    if (!Array.isArray(rawParameters)) {
       throw new Error('Parameters must be a JSON array');
     }
+    const parameters = normalizeParametersFromSpec(rawParameters).map((param) => {
+      const value = formState.parameterValues?.[param.name];
+      if (value === undefined || value === null || `${value}`.trim() === '') return param;
+      return { ...param, testValue: value };
+    });
     let requestSchema = parseJsonInput(
       'Request body schema',
       formState.requestSchemaText,
@@ -4779,6 +4822,50 @@ export default function PosApiAdmin() {
               placeholder="/rest/receipt"
             />
           </label>
+          <div style={styles.labelFull}>
+            <div style={styles.importParamsHeader}>Parameters</div>
+            {(!formParameters || formParameters.length === 0) && (
+              <div style={styles.sectionHelp}>
+                No path, query, or header parameters defined. Add them in the JSON definition below.
+              </div>
+            )}
+            {['path', 'query', 'header'].map((loc) => {
+              const items = formParameterGroups[loc] || [];
+              if (!items.length) return null;
+              const title =
+                loc === 'path'
+                  ? 'Path parameters'
+                  : loc === 'header'
+                    ? 'Header parameters'
+                    : 'Query parameters';
+              return (
+                <div key={`form-params-${loc}`} style={{ marginBottom: '0.5rem' }}>
+                  <div style={{ fontWeight: 600, marginBottom: '0.35rem' }}>{title}</div>
+                  <div style={styles.importParamGrid}>
+                    {items.map((param) => (
+                      <label key={`form-param-${param.name}-${loc}`} style={styles.label}>
+                        {param.name}
+                        <input
+                          type="text"
+                          value={formState.parameterValues?.[param.name] ?? ''}
+                          onChange={(e) => handleParameterValueChange(param.name, e.target.value)}
+                          placeholder={param.description || param.example || ''}
+                          style={styles.input}
+                        />
+                        <div style={styles.paramMeta}>
+                          {loc} {param.required ? '• required' : ''}
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={styles.sectionHelp}>
+              Use environment placeholders (e.g., {{POSAPI_CLIENT_ID}}) for credentials. Only filled values are
+              sent to the server when testing.
+            </div>
+          </div>
           <label style={styles.labelFull}>
             Parameters (JSON array)
             <textarea
