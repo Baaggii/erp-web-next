@@ -60,9 +60,8 @@ const tokenCache = new Map();
 function cacheToken(endpointId, token, expiresInSeconds) {
   if (!endpointId || !token) return;
   const ttl = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? expiresInSeconds : 300;
-  const now = Date.now();
-  const expiresAt = now + ttl * 1000 - 30000;
-  tokenCache.set(endpointId, { token, expiresAt, fetchedAt: now });
+  const expiresAt = Date.now() + ttl * 1000 - 30000;
+  tokenCache.set(endpointId, { token, expiresAt });
 }
 
 function getCachedToken(endpointId) {
@@ -70,27 +69,10 @@ function getCachedToken(endpointId) {
   const entry = tokenCache.get(endpointId);
   if (!entry || !entry.token) return null;
   if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+    tokenCache.delete(endpointId);
     return null;
   }
   return entry.token;
-}
-
-export function getTokenCacheEntry(endpointId) {
-  if (!endpointId) return null;
-  const entry = tokenCache.get(endpointId);
-  if (!entry || !entry.token) return null;
-  const expired = entry.expiresAt ? entry.expiresAt <= Date.now() : false;
-  return {
-    endpointId,
-    fetchedAt: entry.fetchedAt || null,
-    expiresAt: entry.expiresAt || null,
-    expired,
-  };
-}
-
-export function clearCachedToken(endpointId) {
-  if (!endpointId) return false;
-  return tokenCache.delete(endpointId);
 }
 
 export async function getPosApiBaseUrl() {
@@ -1836,10 +1818,6 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
   const requestUrl = `${trimEndSlash(requestBaseUrl)}${path.startsWith('/') ? path : `/${path}`}`;
 
   let token = null;
-  let tokenMeta = null;
-  let tokenSource = 'skipped';
-  const cacheKey = authEndpointId || 'ENV_FALLBACK';
-  const cacheEntryBefore = useCachedToken ? getTokenCacheEntry(cacheKey) : null;
   if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
     token = await getPosApiToken({
       authEndpointId,
@@ -1847,12 +1825,6 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
       authPayload,
       useCachedToken,
     });
-    tokenMeta = getTokenCacheEntry(cacheKey);
-    const matchedCached = cacheEntryBefore
-      && tokenMeta
-      && !cacheEntryBefore.expired
-      && cacheEntryBefore.fetchedAt === tokenMeta.fetchedAt;
-    tokenSource = matchedCached ? 'cache' : 'fetched';
   }
 
   try {
@@ -1873,8 +1845,6 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
           headers,
           body: bodyPayload ?? null,
         },
-        tokenMeta,
-        tokenSource,
       };
     }
     return response;

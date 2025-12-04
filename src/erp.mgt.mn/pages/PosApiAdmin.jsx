@@ -204,26 +204,6 @@ function hasObjectEntries(value) {
   return Boolean(value && typeof value === 'object' && Object.keys(value).length > 0);
 }
 
-function isPlainObject(value) {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
-
-function safeParseObject(text) {
-  const trimmed = (text || '').trim();
-  if (!trimmed) return {};
-  try {
-    const parsed = JSON.parse(trimmed);
-    return isPlainObject(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-function formatDateTime(timestamp) {
-  if (!timestamp) return 'Not fetched yet';
-  return new Date(timestamp).toLocaleString();
-}
-
 function sanitizeTemplateList(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -1626,6 +1606,12 @@ function extractOperationsFromPostman(spec) {
 
 function buildDraftParameterDefaults(parameters) {
   const values = {};
+  const envFallbacks = {
+    client_id: '{{POSAPI_CLIENT_ID}}',
+    client_secret: '{{POSAPI_CLIENT_SECRET}}',
+    username: '{{POSAPI_USERNAME}}',
+    password: '{{POSAPI_PASSWORD}}',
+  };
   parameters.forEach((param) => {
     if (!param?.name) return;
     const candidates = [param.example, param.default, param.sample];
@@ -1633,6 +1619,11 @@ function buildDraftParameterDefaults(parameters) {
     if (hit !== undefined && hit !== null) {
       values[param.name] = hit;
       return;
+    }
+    const normalizedName = typeof param.name === 'string' ? param.name.toLowerCase() : param.name;
+    const envKey = envFallbacks[normalizedName];
+    if (envKey) {
+      values[param.name] = envKey;
     }
   });
   return values;
@@ -1686,7 +1677,6 @@ export default function PosApiAdmin() {
   const [docMetadata, setDocMetadata] = useState({});
   const [requestBuilder, setRequestBuilder] = useState(null);
   const [requestBuilderError, setRequestBuilderError] = useState('');
-  const [requestFieldValues, setRequestFieldValues] = useState({});
   const [sampleImportText, setSampleImportText] = useState('');
   const [sampleImportError, setSampleImportError] = useState('');
   const [importSpecText, setImportSpecText] = useState('');
@@ -1702,15 +1692,12 @@ export default function PosApiAdmin() {
   const [importTestError, setImportTestError] = useState('');
   const [importUseCachedToken, setImportUseCachedToken] = useState(true);
   const [importBaseUrl, setImportBaseUrl] = useState('');
-  const [tokenMeta, setTokenMeta] = useState(null);
-  const [tokenStatusError, setTokenStatusError] = useState('');
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
   const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
   const [taxTypeListError, setTaxTypeListError] = useState('');
   const taxTypeInputDirtyRef = useRef(false);
   const importAuthSelectionDirtyRef = useRef(false);
-  const requestFieldSyncRef = useRef(false);
   const [activeTab, setActiveTab] = useState('endpoints');
   const [infoSyncSettings, setInfoSyncSettings] = useState({
     autoSyncEnabled: false,
@@ -1881,88 +1868,6 @@ export default function PosApiAdmin() {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
   }, [formState.responseSchemaText]);
-
-  function applyRequestFieldValuesFromInputs(values) {
-    if (requestFieldHints.state !== 'ok') return;
-    const base = safeParseObject(formState.requestSchemaText);
-    const nextBody = isPlainObject(base) ? { ...base } : {};
-    requestFieldHints.items.forEach((hint) => {
-      const fieldName = hint.field;
-      if (!fieldName) return;
-      const entry = values[fieldName];
-      if (!entry) return;
-      if (entry.mode === 'env') {
-        nextBody[fieldName] = entry.value ? `{{${entry.value}}}` : '';
-      } else if (entry.value !== undefined) {
-        nextBody[fieldName] = entry.value;
-      }
-    });
-    requestFieldSyncRef.current = true;
-    setFormState((prev) => ({ ...prev, requestSchemaText: JSON.stringify(nextBody, null, 2) }));
-    window.setTimeout(() => {
-      requestFieldSyncRef.current = false;
-    }, 0);
-  }
-
-  function updateRequestFieldValue(field, updater) {
-    setRequestFieldValues((prev) => {
-      const current = prev[field] || { mode: 'literal', value: '' };
-      const nextEntry = typeof updater === 'function' ? updater(current) : updater;
-      const merged = { ...prev, [field]: nextEntry };
-      applyRequestFieldValuesFromInputs(merged);
-      return merged;
-    });
-  }
-
-  useEffect(() => {
-    if (requestFieldSyncRef.current) return;
-    if (requestFieldHints.state !== 'ok') {
-      setRequestFieldValues({});
-      return;
-    }
-    const sample = safeParseObject(formState.requestSchemaText);
-    const nextValues = {};
-    requestFieldHints.items.forEach((hint) => {
-      const fieldName = hint.field;
-      if (!fieldName) return;
-      const raw = sample[fieldName];
-      if (typeof raw === 'string') {
-        const envMatch = /^{{(.+)}}$/.exec(raw.trim());
-        if (envMatch) {
-          nextValues[fieldName] = { mode: 'env', value: envMatch[1] };
-          return;
-        }
-      }
-      if (raw !== undefined) {
-        nextValues[fieldName] = {
-          mode: 'literal',
-          value: typeof raw === 'string' ? raw : JSON.stringify(raw),
-        };
-      } else {
-        nextValues[fieldName] = { mode: 'literal', value: '' };
-      }
-    });
-    setRequestFieldValues(nextValues);
-  }, [formState.id, formState.requestSchemaText, requestFieldHints, selectedId]);
-
-  const requestFieldSelectionPayload = useMemo(() => {
-    const payload = {};
-    Object.entries(requestFieldValues || {}).forEach(([field, entry]) => {
-      if (!field || !entry) return;
-      if (entry.mode === 'env') {
-        if (entry.value) {
-          payload[field] = { mode: 'env', value: entry.value };
-        }
-      } else {
-        const raw = entry.value;
-        const hasValue = raw !== undefined && raw !== null && `${raw}`.trim() !== '';
-        if (hasValue) {
-          payload[field] = { mode: 'literal', value: raw };
-        }
-      }
-    });
-    return payload;
-  }, [requestFieldValues]);
 
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
@@ -2786,16 +2691,6 @@ export default function PosApiAdmin() {
   ]);
 
   useEffect(() => {
-    refreshTokenMeta();
-  }, [formState.authEndpointId]);
-
-  useEffect(() => {
-    if (tokenMeta?.expired) {
-      setUseCachedToken(false);
-    }
-  }, [tokenMeta]);
-
-  useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
 
@@ -2950,8 +2845,6 @@ export default function PosApiAdmin() {
     setFormState(createFormState(definition));
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
-    setTokenMeta(null);
-    setTokenStatusError('');
   }
 
   function handleChange(field, value) {
@@ -3869,57 +3762,6 @@ export default function PosApiAdmin() {
     setImportAuthEndpointId('');
     setUseCachedToken(true);
     setImportUseCachedToken(true);
-    setTokenMeta(null);
-    setTokenStatusError('');
-    setRequestFieldValues({});
-  }
-
-  async function refreshTokenMeta(authEndpointId = formState.authEndpointId || '') {
-    try {
-      setTokenStatusError('');
-      const params = new URLSearchParams();
-      if (authEndpointId) {
-        params.set('authEndpointId', authEndpointId);
-      }
-      const query = params.toString();
-      const res = await fetch(
-        `${API_BASE}/posapi/endpoints/token-status${query ? `?${query}` : ''}`,
-        {
-          credentials: 'include',
-          skipLoader: true,
-        },
-      );
-      if (!res.ok) {
-        throw new Error('Failed to load token status');
-      }
-      const data = await res.json();
-      setTokenMeta(data?.tokenMeta || null);
-      if (data?.tokenMeta?.expired) {
-        setUseCachedToken(false);
-      }
-    } catch (err) {
-      setTokenStatusError(err.message || 'Failed to load token status');
-      setTokenMeta(null);
-    }
-  }
-
-  async function handleClearCachedToken() {
-    try {
-      setTokenStatusError('');
-      const res = await fetch(`${API_BASE}/posapi/endpoints/clear-token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        skipLoader: true,
-        body: JSON.stringify({ authEndpointId: formState.authEndpointId || '' }),
-      });
-      if (!res.ok) {
-        throw new Error('Failed to clear saved token');
-      }
-      setTokenMeta(null);
-    } catch (err) {
-      setTokenStatusError(err.message || 'Failed to clear saved token');
-    }
   }
 
   async function handleTest() {
@@ -3960,7 +3802,6 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken,
-          requestFieldValues: requestFieldSelectionPayload,
         }),
       });
       if (!res.ok) {
@@ -3977,10 +3818,6 @@ export default function PosApiAdmin() {
         throw new Error(message || 'Test request failed');
       }
       const data = await res.json();
-      setTokenMeta(data?.tokenMeta || null);
-      if (data?.tokenMeta?.expired) {
-        setUseCachedToken(false);
-      }
       setTestState({ running: false, error: '', result: data });
     } catch (err) {
       console.error(err);
@@ -4376,6 +4213,25 @@ export default function PosApiAdmin() {
                                       placeholder={param.description || param.example || ''}
                                       style={styles.input}
                                     />
+                                    <select
+                                      style={styles.input}
+                                      value=""
+                                      onChange={(e) => {
+                                        const selected = e.target.value;
+                                        if (!selected) return;
+                                        setImportTestValues((prev) => ({
+                                          ...prev,
+                                          [param.name]: `{{${selected}}}`,
+                                        }));
+                                      }}
+                                    >
+                                      <option value="">Use environment variable…</option>
+                                      {ENV_VARIABLE_OPTIONS.map((opt) => (
+                                        <option key={`${param.name}-${opt}`} value={opt}>
+                                          {opt}
+                                        </option>
+                                      ))}
+                                    </select>
                                     <div style={styles.paramMeta}>
                                       {loc} {param.required ? '• required' : ''}
                                     </div>
@@ -5899,100 +5755,6 @@ export default function PosApiAdmin() {
             )}
           </div>
         </div>
-        {requestFieldHints.state === 'ok' && requestFieldHints.items.length > 0 && (
-          <div style={styles.requestFieldPanel}>
-            <div style={styles.requestFieldHeader}>
-              <h3 style={styles.previewTitle}>Request field test values</h3>
-              <span style={styles.inlineActionHint}>
-                Choose literal values or map to environment variables. The request sample updates automatically.
-              </span>
-            </div>
-            <div style={styles.requestFieldGridPanel}>
-              {requestFieldHints.items.map((hint) => {
-                const normalized = normalizeHintEntry(hint);
-                if (!normalized.field) return null;
-                const fieldValue = requestFieldValues[normalized.field] || { mode: 'literal', value: '' };
-                const envSelected = fieldValue.mode === 'env';
-                const literalSelected = fieldValue.mode !== 'env';
-                return (
-                  <div key={`request-input-${normalized.field}`} style={styles.requestFieldCard}>
-                    <div style={styles.requestFieldHeaderRow}>
-                      <div>
-                        <div style={styles.requestFieldName}>{normalized.field}</div>
-                        {normalized.description && (
-                          <div style={styles.requestFieldDescription}>{normalized.description}</div>
-                        )}
-                      </div>
-                      {typeof normalized.required === 'boolean' && (
-                        <span
-                          style={{
-                            ...styles.hintBadge,
-                            ...(normalized.required ? styles.hintBadgeRequired : styles.hintBadgeOptional),
-                          }}
-                        >
-                          {normalized.required ? 'Required' : 'Optional'}
-                        </span>
-                      )}
-                    </div>
-                    <div style={styles.requestFieldControlRow}>
-                      <label style={styles.requestFieldMode}>
-                        <input
-                          type="radio"
-                          checked={literalSelected}
-                          onChange={() => updateRequestFieldValue(normalized.field, { ...fieldValue, mode: 'literal' })}
-                        />
-                        <span>Literal value</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={literalSelected ? fieldValue.value ?? '' : ''}
-                        onChange={(e) =>
-                          updateRequestFieldValue(normalized.field, {
-                            mode: 'literal',
-                            value: e.target.value,
-                          })
-                        }
-                        style={styles.input}
-                        placeholder="Enter a value"
-                        disabled={!literalSelected}
-                      />
-                    </div>
-                    <div style={styles.requestFieldControlRow}>
-                      <label style={styles.requestFieldMode}>
-                        <input
-                          type="radio"
-                          checked={envSelected}
-                          onChange={() => updateRequestFieldValue(normalized.field, {
-                            ...fieldValue,
-                            mode: 'env',
-                          })}
-                        />
-                        <span>Environment variable</span>
-                      </label>
-                      <select
-                        style={styles.input}
-                        value={envSelected ? fieldValue.value || '' : ''}
-                        onChange={(e) =>
-                          updateRequestFieldValue(normalized.field, {
-                            mode: 'env',
-                            value: e.target.value,
-                          })
-                        }
-                      >
-                        <option value="">Select environment variable…</option>
-                        {ENV_VARIABLE_OPTIONS.map((opt) => (
-                          <option key={`${normalized.field}-${opt}`} value={opt}>
-                            {opt}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
         <label style={styles.labelFull}>
           Top-level mapping hints (JSON array)
           <textarea
@@ -6058,10 +5820,7 @@ export default function PosApiAdmin() {
             <span style={styles.fieldHelp}>
               Used by the test harness to fetch a bearer token before calling the endpoint.
             </span>
-            <label
-              style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}
-              title="Reuses the most recent token fetched during this session and skips a new authentication call when it is still valid."
-            >
+            <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
               <input
                 type="checkbox"
                 checked={useCachedToken}
@@ -6069,25 +5828,6 @@ export default function PosApiAdmin() {
               />
               <span>Use last successful token when testing</span>
             </label>
-            {tokenMeta && (
-              <div style={styles.tokenMetaRow}>
-                <div>Last fetched: {formatDateTime(tokenMeta.fetchedAt)}</div>
-                {tokenMeta.expiresAt && (
-                  <div
-                    style={{
-                      ...styles.tokenMetaPill,
-                      ...(tokenMeta.expired ? styles.tokenMetaPillExpired : {}),
-                    }}
-                  >
-                    Expires: {formatDateTime(tokenMeta.expiresAt)} {tokenMeta.expired ? '(expired)' : ''}
-                  </div>
-                )}
-                <button type="button" style={styles.smallButton} onClick={handleClearCachedToken}>
-                  Clear saved token
-                </button>
-              </div>
-            )}
-            {tokenStatusError && <div style={styles.inlineError}>{tokenStatusError}</div>}
           </label>
           <div style={{ ...styles.label, flex: 1 }}>
             <div style={styles.radioRow}>
@@ -7337,65 +7077,6 @@ const styles = {
     background: '#e2e8f0',
     color: '#1e293b',
   },
-  requestFieldPanel: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    padding: '1rem',
-    background: '#fff',
-    gridColumn: '1 / -1',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-  },
-  requestFieldHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '0.5rem',
-    flexWrap: 'wrap',
-  },
-  requestFieldGridPanel: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-    gap: '0.75rem',
-  },
-  requestFieldCard: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-    padding: '0.75rem',
-    background: '#f8fafc',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-  },
-  requestFieldHeaderRow: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '0.75rem',
-    alignItems: 'center',
-  },
-  requestFieldName: {
-    fontWeight: 700,
-    fontSize: '0.95rem',
-    color: '#0f172a',
-  },
-  requestFieldDescription: {
-    fontSize: '0.85rem',
-    color: '#475569',
-    marginTop: '0.2rem',
-  },
-  requestFieldControlRow: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.5rem',
-  },
-  requestFieldMode: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '0.35rem',
-    fontWeight: 600,
-    minWidth: '150px',
-  },
   inlineFields: {
     gridColumn: '1 / -1',
     display: 'flex',
@@ -7422,26 +7103,6 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '0.75rem',
-  },
-  tokenMetaRow: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '0.5rem',
-    alignItems: 'center',
-    marginTop: '0.4rem',
-    fontSize: '0.85rem',
-    color: '#334155',
-  },
-  tokenMetaPill: {
-    background: '#e2e8f0',
-    color: '#0f172a',
-    padding: '0.2rem 0.6rem',
-    borderRadius: '999px',
-    fontWeight: 600,
-  },
-  tokenMetaPillExpired: {
-    background: '#fee2e2',
-    color: '#b91c1c',
   },
   radioLabel: {
     display: 'flex',
