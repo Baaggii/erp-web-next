@@ -5097,6 +5097,34 @@ const TableManager = forwardRef(function TableManager({
   const showReviewActions = canReviewTemporary && temporaryScope === 'review';
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
 
+  const temporaryDetailColumns = useMemo(() => {
+    const valueKeys = new Set();
+    temporaryList.forEach((entry) => {
+      const { values: normalizedValues } = buildTemporaryFormState(entry);
+      Object.keys(normalizedValues || {}).forEach((key) => {
+        if (key) {
+          valueKeys.add(key);
+        }
+      });
+    });
+
+    const seen = new Set();
+    const orderedColumns = [];
+
+    formColumnOrder.forEach((key) => {
+      if (!key || seen.has(key)) return;
+      if (columns.length === 0 || columns.includes(key) || valueKeys.has(key)) {
+        seen.add(key);
+        orderedColumns.push(key);
+      }
+    });
+
+    const remaining = Array.from(valueKeys).filter((key) => !seen.has(key));
+    remaining.sort((a, b) => a.localeCompare(b));
+
+    return [...orderedColumns, ...remaining];
+  }, [buildTemporaryFormState, columns, formColumnOrder, temporaryList]);
+
   let detailHeaderRendered = false;
 
   return (
@@ -6500,14 +6528,7 @@ const TableManager = forwardRef(function TableManager({
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
                       const { values: normalizedValues } = buildTemporaryFormState(entry);
-                      const normalizedValueKeys = Object.keys(normalizedValues || {});
-                      const detailColumnsSource =
-                        columns.length > 0
-                          ? [...columns, ...normalizedValueKeys]
-                          : normalizedValueKeys;
-                      const detailColumns = Array.from(
-                        new Set((detailColumnsSource || []).filter(Boolean)),
-                      );
+                      const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'
                         : isActiveDraft
