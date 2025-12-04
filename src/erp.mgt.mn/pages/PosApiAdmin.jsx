@@ -9,7 +9,10 @@ const POSAPI_TRANSACTION_TYPES = [
 ];
 
 const POSAPI_INFO_TYPES = [{ value: 'LOOKUP', label: 'Information lookup' }];
-const POSAPI_ADMIN_TYPES = [{ value: 'ADMIN', label: 'Admin utility' }];
+const POSAPI_ADMIN_TYPES = [
+  { value: 'AUTH', label: 'Authentication / Token' },
+  { value: 'ADMIN', label: 'Admin utility' },
+];
 const ALL_POSAPI_TYPES = [
   ...POSAPI_TRANSACTION_TYPES,
   ...POSAPI_INFO_TYPES,
@@ -17,13 +20,13 @@ const ALL_POSAPI_TYPES = [
 ];
 const USAGE_TYPE_OPTIONS = {
   transaction: POSAPI_TRANSACTION_TYPES,
-  info: [],
-  admin: [],
+  info: POSAPI_INFO_TYPES,
+  admin: POSAPI_ADMIN_TYPES,
 };
 const USAGE_DEFAULT_TYPE = {
   transaction: '',
   info: 'LOOKUP',
-  admin: 'ADMIN',
+  admin: 'AUTH',
 };
 
 const TAX_TYPES = [
@@ -1051,8 +1054,6 @@ function createFormState(definition) {
     method: definition.method || 'GET',
     path: definition.path || '',
     parametersText: toPrettyJson(definition.parameters, '[]'),
-    parameterValues: buildDraftParameterDefaults(definition.parameters || []),
-    envPrefix: 'POSAPI_',
     requestDescription: definition.requestBody?.description || '',
     requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
     responseDescription: definition.responseBody?.description || '',
@@ -1065,11 +1066,7 @@ function createFormState(definition) {
     testServerUrlProduction: definition.testServerUrlProduction || '',
     authEndpointId: definition.authEndpointId || '',
     docUrl: '',
-    posApiType: rawUsage === 'transaction'
-      ? definition.posApiType || definition.requestBody?.schema?.type || ''
-      : rawUsage === 'info'
-        ? 'LOOKUP'
-        : definition.posApiType || 'ADMIN',
+    posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
     usage: rawUsage,
     defaultForForm: isTransaction ? Boolean(definition.defaultForForm) : false,
     supportsMultipleReceipts: isTransaction ? Boolean(definition.supportsMultipleReceipts) : false,
@@ -1607,7 +1604,7 @@ function extractOperationsFromPostman(spec) {
   return entries;
 }
 
-function buildDraftParameterDefaults(parameters, envPrefix = 'POSAPI_') {
+function buildDraftParameterDefaults(parameters) {
   const values = {};
   const envFallbacks = {
     client_id: '{{POSAPI_CLIENT_ID}}',
@@ -1627,10 +1624,6 @@ function buildDraftParameterDefaults(parameters, envPrefix = 'POSAPI_') {
     const envKey = envFallbacks[normalizedName];
     if (envKey) {
       values[param.name] = envKey;
-      return;
-    }
-    if (envPrefix && typeof param.name === 'string') {
-      values[param.name] = `{{${envPrefix}${param.name.toUpperCase()}}}`;
     }
   });
   return values;
@@ -1665,20 +1658,6 @@ function groupParametersByLocation(parameters = []) {
     else groups.query.push(param);
   });
   return groups;
-}
-
-function parseParametersText(text) {
-  const trimmed = (text || '').trim();
-  if (!trimmed) return { items: [], error: '' };
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (!Array.isArray(parsed)) {
-      return { items: [], error: 'Parameters must be a JSON array' };
-    }
-    return { items: parsed, error: '' };
-  } catch (err) {
-    return { items: [], error: err.message || 'Invalid parameters JSON' };
-  }
 }
 
 export default function PosApiAdmin() {
@@ -1736,31 +1715,6 @@ export default function PosApiAdmin() {
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
-
-  const parameterPreview = useMemo(
-    () => parseParametersText(formState.parametersText),
-    [formState.parametersText],
-  );
-  const parameterGroups = useMemo(
-    () => groupParametersByLocation(parameterPreview.items),
-    [parameterPreview.items],
-  );
-
-  useEffect(() => {
-    setFormState((prev) => {
-      const defaults = buildDraftParameterDefaults(
-        parameterPreview.items,
-        prev.envPrefix || 'POSAPI_',
-      );
-      const existing = prev.parameterValues || {};
-      const nextValues = { ...defaults, ...existing };
-      const sameKeys = Object.keys(nextValues).length === Object.keys(existing).length;
-      const sameValues = sameKeys
-        && Object.entries(nextValues).every(([key, value]) => existing[key] === value);
-      if (sameKeys && sameValues) return prev;
-      return { ...prev, parameterValues: nextValues };
-    });
-  }, [parameterPreview.items, formState.envPrefix]);
 
   const groupedEndpoints = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
@@ -2870,17 +2824,6 @@ export default function PosApiAdmin() {
     setImportAuthEndpointId(definition?.authEndpointId || '');
   }
 
-  function handleParameterValueChange(name, value) {
-    setFormState((prev) => ({
-      ...prev,
-      parameterValues: {
-        ...(prev.parameterValues || {}),
-        [name]: value,
-      },
-    }));
-    resetTestState();
-  }
-
   function handleChange(field, value) {
     setFormState((prev) => {
       const next = { ...prev, [field]: value };
@@ -3083,7 +3026,7 @@ export default function PosApiAdmin() {
     if (!draft) return;
     importAuthSelectionDirtyRef.current = false;
     setSelectedImportId(draft.id || '');
-    setImportTestValues(buildDraftParameterDefaults(draft.parameters || [], formState.envPrefix));
+    setImportTestValues(buildDraftParameterDefaults(draft.parameters || []));
     if (draft.requestExample !== undefined) {
       if (typeof draft.requestExample === 'string') {
         setImportRequestBody(draft.requestExample);
@@ -3503,11 +3446,6 @@ export default function PosApiAdmin() {
       : VALID_USAGE_VALUES.has(formState.usage)
         ? formState.usage
         : 'transaction';
-    const normalizedType = usage === 'transaction'
-      ? formState.posApiType || ''
-      : usage === 'info'
-        ? 'LOOKUP'
-        : 'ADMIN';
     const isTransaction = usage === 'transaction';
     const supportsItems = isTransaction ? formState.supportsItems !== false : false;
     const supportsMultiplePayments = isTransaction ? Boolean(formState.supportsMultiplePayments) : false;
@@ -3566,7 +3504,7 @@ export default function PosApiAdmin() {
       category: formState.category.trim(),
       method: formState.method.trim().toUpperCase(),
       path: formState.path.trim(),
-      posApiType: normalizedType,
+      posApiType: formState.posApiType || '',
       usage,
       defaultForForm: isTransaction ? Boolean(formState.defaultForForm) : false,
       ...(settingsId ? { settingsId } : {}),
@@ -3836,11 +3774,9 @@ export default function PosApiAdmin() {
 
   async function handleTest() {
     let definition;
-    let parsedParameters = [];
     try {
       setError('');
       setStatus('');
-      parsedParameters = parseJsonInput('Parameters', formState.parametersText, []);
       definition = buildDefinition();
     } catch (err) {
       setError(err.message || 'Failed to prepare endpoint');
@@ -3865,7 +3801,6 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
-      const filteredParams = buildFilledParams(parsedParameters, formState.parameterValues || {});
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3874,16 +3809,6 @@ export default function PosApiAdmin() {
           endpoint: definition,
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
-          payload: {
-            params: {
-              ...filteredParams.path,
-              ...filteredParams.query,
-              ...filteredParams.header,
-            },
-            pathParams: filteredParams.path,
-            queryParams: filteredParams.query,
-            headers: filteredParams.header,
-          },
         }),
       });
       if (!res.ok) {
@@ -4497,31 +4422,21 @@ export default function PosApiAdmin() {
               )}
             </span>
           </label>
-          {formState.usage === 'transaction' ? (
-            <label style={styles.label}>
-              POSAPI type
-              <select
-                value={formState.posApiType}
-                onChange={(e) => handleTypeChange(e.target.value)}
-                style={styles.input}
-              >
-                <option value="">Select a type…</option>
-                {POSAPI_TRANSACTION_TYPES.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div style={styles.label}>
-              <div style={{ fontWeight: 600 }}>POSAPI type</div>
-              <div style={styles.previewBox}>{formatTypeLabel(formState.posApiType) || 'Auto-set'}</div>
-              <div style={styles.fieldHelp}>
-                POSAPI type follows the selected usage (lookup or admin) and is not editable here.
-              </div>
-            </div>
-          )}
+          <label style={styles.label}>
+            POSAPI type
+            <select
+              value={formState.posApiType}
+              onChange={(e) => handleTypeChange(e.target.value)}
+              style={styles.input}
+            >
+              <option value="">Select a type…</option>
+              {(USAGE_TYPE_OPTIONS[formState.usage] || POSAPI_TRANSACTION_TYPES).map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </label>
           {isTransactionUsage && supportsItems && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
@@ -4864,79 +4779,15 @@ export default function PosApiAdmin() {
               placeholder="/rest/receipt"
             />
           </label>
-          <div style={styles.paramSection}>
-            <div style={styles.sectionHeader}>
-              <h2 style={styles.sectionTitle}>Parameters</h2>
-              <span style={styles.sectionBadge}>Path • Query • Header</span>
-            </div>
-            <div style={styles.paramControls}>
-              <label style={styles.label}>
-                Env variable prefix
-                <input
-                  type="text"
-                  value={formState.envPrefix}
-                  onChange={(e) => handleChange('envPrefix', e.target.value.toUpperCase())}
-                  style={styles.input}
-                  placeholder="POSAPI_"
-                />
-                <span style={styles.fieldHelp}>
-                  Use {{PREFIX_NAME}} placeholders to keep secrets in .env instead of the browser.
-                </span>
-              </label>
-              <label style={styles.labelFull}>
-                Raw parameters JSON
-                <textarea
-                  value={formState.parametersText}
-                  onChange={(e) => handleChange('parametersText', e.target.value)}
-                  style={styles.textarea}
-                  rows={4}
-                />
-              </label>
-            </div>
-            {parameterPreview.error && (
-              <div style={styles.previewErrorBox}>
-                <strong>Parameters error:</strong> {parameterPreview.error}
-              </div>
-            )}
-            {parameterPreview.items.length === 0 && !parameterPreview.error && (
-              <div style={styles.sectionHelp}>
-                No parameters declared. Add path, query, or header parameters in the JSON block above.
-              </div>
-            )}
-            {['path', 'query', 'header'].map((loc) => {
-              const items = parameterGroups[loc] || [];
-              if (!items.length) return null;
-              const label = loc === 'path' ? 'Path parameters' : loc === 'header' ? 'Header parameters' : 'Query parameters';
-              return (
-                <div key={`param-section-${loc}`} style={{ marginBottom: '0.75rem' }}>
-                  <div style={{ fontWeight: 600, marginBottom: '0.35rem' }}>{label}</div>
-                  <div style={styles.importParamGrid}>
-                    {items.map((param) => {
-                      const placeholder =
-                        param.example
-                        || param.description
-                        || `{{${formState.envPrefix || 'POSAPI_'}${(param.name || '').toUpperCase()}}}`;
-                      return (
-                        <label key={`${loc}-${param.name}`} style={styles.label}>
-                          {param.name}
-                          <input
-                            type="text"
-                            value={formState.parameterValues?.[param.name] ?? ''}
-                            onChange={(e) => handleParameterValueChange(param.name, e.target.value)}
-                            placeholder={placeholder}
-                            style={styles.input}
-                          />
-                          <div style={styles.paramMeta}>
-                            {loc} {param.required ? '• required' : ''}
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          <label style={styles.labelFull}>
+            Parameters (JSON array)
+            <textarea
+              value={formState.parametersText}
+              onChange={(e) => handleChange('parametersText', e.target.value)}
+              style={styles.textarea}
+              rows={6}
+            />
+          </label>
           <label style={styles.labelFull}>
             Notes / guidance
             <textarea
@@ -6824,18 +6675,6 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
     gap: '0.75rem',
-  },
-  paramSection: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '12px',
-    padding: '1rem',
-    background: '#f8fafc',
-  },
-  paramControls: {
-    display: 'grid',
-    gap: '0.75rem',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-    marginBottom: '0.75rem',
   },
   paramMeta: {
     fontSize: '0.8rem',
