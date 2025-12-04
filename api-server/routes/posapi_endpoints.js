@@ -3,7 +3,11 @@ import multer from 'multer';
 import { parseYaml } from '../utils/yaml.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
-import { invokePosApiEndpoint } from '../services/posApiService.js';
+import {
+  clearCachedToken,
+  getTokenCacheEntry,
+  invokePosApiEndpoint,
+} from '../services/posApiService.js';
 import { getEmploymentSession } from '../../db/index.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
@@ -23,6 +27,13 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024, files: 10 },
 });
 
+const ALLOWED_ENV_KEYS = new Set([
+  'POSAPI_CLIENT_ID',
+  'POSAPI_CLIENT_SECRET',
+  'POSAPI_USERNAME',
+  'POSAPI_PASSWORD',
+]);
+
 async function requireSystemSettings(req, res) {
   const companyId = Number(req.query.companyId ?? req.user.companyId);
   const session =
@@ -33,6 +44,38 @@ async function requireSystemSettings(req, res) {
     return null;
   }
   return { session, companyId };
+}
+
+function normalizeRequestFieldValues(input) {
+  if (!input || typeof input !== 'object') return {};
+  const normalized = {};
+  Object.entries(input).forEach(([field, entry]) => {
+    if (!field) return;
+    const mode = entry?.mode || entry?.type || 'literal';
+    const value = entry?.value;
+    normalized[field] = {
+      mode: mode === 'env' ? 'env' : 'literal',
+      value,
+    };
+  });
+  return normalized;
+}
+
+function applyRequestFieldValues(body, fieldValues) {
+  if (!fieldValues || typeof fieldValues !== 'object') return body;
+  const base = body && typeof body === 'object' && !Array.isArray(body) ? { ...body } : {};
+  Object.entries(fieldValues).forEach(([field, entry]) => {
+    if (!field) return;
+    if (entry.mode === 'env') {
+      const envKey = typeof entry.value === 'string' ? entry.value : '';
+      if (envKey && ALLOWED_ENV_KEYS.has(envKey)) {
+        base[field] = process.env[envKey] ?? '';
+      }
+    } else if (entry.value !== undefined) {
+      base[field] = entry.value;
+    }
+  });
+  return base;
 }
 
 router.get('/', requireAuth, async (req, res, next) => {
@@ -1299,6 +1342,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
     }
 
     const payload = {};
+    const requestFieldValues = normalizeRequestFieldValues(req.body?.requestFieldValues);
     const bodyOverride = req.body?.body;
     const params = Array.isArray(definition.parameters) ? definition.parameters : [];
     params.forEach((param) => {
@@ -1319,6 +1363,10 @@ router.post('/test', requireAuth, async (req, res, next) => {
       }
     }
 
+    if (Object.keys(requestFieldValues).length > 0) {
+      payload.body = applyRequestFieldValues(payload.body, requestFieldValues);
+    }
+
     const selectedAuthEndpoint =
       typeof req.body?.authEndpointId === 'string' && req.body.authEndpointId.trim()
         ? req.body.authEndpointId.trim()
@@ -1335,7 +1383,9 @@ router.post('/test', requireAuth, async (req, res, next) => {
         useCachedToken: req.body?.useCachedToken !== false,
         environment,
       });
-      res.json(result);
+      const cacheKey = selectedAuthEndpoint || 'ENV_FALLBACK';
+      const tokenMeta = getTokenCacheEntry(cacheKey);
+      res.json({ ...result, tokenMeta });
     } catch (err) {
       if (err?.status) {
         const status = err.status === 401 || err.status === 403 ? 502 : err.status;
@@ -1407,6 +1457,36 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
           request: err?.request || null,
         });
     }
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/token-status', requireAuth, async (req, res, next) => {
+  try {
+    const guard = await requireSystemSettings(req, res);
+    if (!guard) return;
+    const authEndpointId = typeof req.query?.authEndpointId === 'string'
+      ? req.query.authEndpointId.trim()
+      : '';
+    const cacheKey = authEndpointId || 'ENV_FALLBACK';
+    const tokenMeta = getTokenCacheEntry(cacheKey);
+    res.json({ tokenMeta: tokenMeta || null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/clear-token', requireAuth, async (req, res, next) => {
+  try {
+    const guard = await requireSystemSettings(req, res);
+    if (!guard) return;
+    const authEndpointId = typeof req.body?.authEndpointId === 'string'
+      ? req.body.authEndpointId.trim()
+      : '';
+    const cacheKey = authEndpointId || 'ENV_FALLBACK';
+    const cleared = clearCachedToken(cacheKey);
+    res.json({ cleared });
   } catch (err) {
     next(err);
   }
