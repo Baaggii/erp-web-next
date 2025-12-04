@@ -4964,8 +4964,14 @@ export async function listTableRows(
           filterClauses.push(`\`${field}\` BETWEEN ? AND ?`);
           params.push(range[1], range[2]);
         } else if (typeof value === 'string') {
-          filterClauses.push(`\`${field}\` LIKE ?`);
-          params.push(`%${value}%`);
+          const hasWildcards = value.includes('%') || value.includes('_');
+          if (hasWildcards) {
+            filterClauses.push(`\`${field}\` LIKE ?`);
+            params.push(value);
+          } else {
+            filterClauses.push(`\`${field}\` = ?`);
+            params.push(value);
+          }
         } else {
           filterClauses.push(`\`${field}\` = ?`);
           params.push(value);
