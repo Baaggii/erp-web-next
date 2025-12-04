@@ -116,6 +116,12 @@ const ENV_VARIABLE_OPTIONS = [
   'POSAPI_USERNAME',
   'POSAPI_PASSWORD',
 ];
+const ENV_VARIABLE_DEFAULTS = {
+  client_id: 'POSAPI_CLIENT_ID',
+  client_secret: 'POSAPI_CLIENT_SECRET',
+  username: 'POSAPI_USERNAME',
+  password: 'POSAPI_PASSWORD',
+};
 const DEFAULT_INFO_TABLE_OPTIONS = [
   { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
 ];
@@ -1629,6 +1635,53 @@ function buildDraftParameterDefaults(parameters) {
   return values;
 }
 
+function resolveEnvironmentValue(key) {
+  if (!key) return '';
+  const normalized = key.trim();
+  const envSource = (typeof import.meta !== 'undefined' && import.meta.env) || process.env || {};
+  return envSource[normalized] || '';
+}
+
+function substituteEnvPlaceholders(payload) {
+  if (payload === null || payload === undefined) return payload;
+  if (Array.isArray(payload)) {
+    return payload.map((entry) => substituteEnvPlaceholders(entry));
+  }
+  if (typeof payload === 'object') {
+    return Object.entries(payload).reduce((acc, [key, value]) => {
+      acc[key] = substituteEnvPlaceholders(value);
+      return acc;
+    }, Array.isArray(payload) ? [] : {});
+  }
+  if (typeof payload === 'string') {
+    const match = payload.match(/^{{\s*([A-Z0-9_]+)\s*}}$/);
+    if (match) {
+      const resolved = resolveEnvironmentValue(match[1]);
+      return resolved || payload;
+    }
+  }
+  return payload;
+}
+
+function applyEnvDefaultsToRequest(body) {
+  if (!body || typeof body !== 'object') return body;
+  const walker = (node) => {
+    if (Array.isArray(node)) return node.map(walker);
+    if (!node || typeof node !== 'object') return node;
+    const next = { ...node };
+    Object.entries(next).forEach(([key, value]) => {
+      const envKey = ENV_VARIABLE_DEFAULTS[key];
+      if (envKey && (value === undefined || value === null || value === '')) {
+        next[key] = `{{${envKey}}}`;
+        return;
+      }
+      next[key] = walker(value);
+    });
+    return next;
+  };
+  return walker(body);
+}
+
 function buildFilledParams(parameters, providedValues = {}) {
   const byLocation = { path: {}, query: {}, header: {} };
   if (!Array.isArray(parameters)) return byLocation;
@@ -1677,6 +1730,7 @@ export default function PosApiAdmin() {
   const [docMetadata, setDocMetadata] = useState({});
   const [requestBuilder, setRequestBuilder] = useState(null);
   const [requestBuilderError, setRequestBuilderError] = useState('');
+  const [lastTokenMeta, setLastTokenMeta] = useState(null);
   const [sampleImportText, setSampleImportText] = useState('');
   const [sampleImportError, setSampleImportError] = useState('');
   const [importSpecText, setImportSpecText] = useState('');
@@ -1717,6 +1771,7 @@ export default function PosApiAdmin() {
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
+  const tokenMetaRef = useRef(null);
 
   const groupedEndpoints = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
@@ -1903,6 +1958,19 @@ export default function PosApiAdmin() {
     return DEFAULT_PAYMENT_METHODS;
   }, [formState.paymentMethods, paymentMethodsEnabled]);
 
+  const updateTokenMeta = (data, fallbackAuthId = '') => {
+    const candidate =
+      data?.tokenInfo || data?.auth?.tokenInfo || data?.auth?.tokenMetadata || null;
+    if (!candidate && !fallbackAuthId) return;
+    const normalized = {
+      obtainedAt: candidate?.obtainedAt || new Date().toISOString(),
+      authEndpointId: candidate?.authEndpointId || fallbackAuthId,
+      authUrl: candidate?.authUrl || candidate?.tokenUrl || '',
+    };
+    tokenMetaRef.current = normalized;
+    setLastTokenMeta(normalized);
+  };
+
   const formSupportsItems = supportsItems;
 
   const requestFieldHints = useMemo(
@@ -1985,6 +2053,28 @@ export default function PosApiAdmin() {
   const taxTypeOptions = allowedTaxTypes.length > 0 ? allowedTaxTypes : TAX_TYPES;
   const paymentTypeOptions = allowedPaymentTypes.length > 0 ? allowedPaymentTypes : PAYMENT_TYPES;
 
+  const EnvVariableSelect = ({ onSelect, idSuffix }) => (
+    <select
+      style={styles.envSelect}
+      value=""
+      onChange={(e) => {
+        const selected = e.target.value;
+        if (selected && typeof onSelect === 'function') {
+          onSelect(selected);
+        }
+      }}
+      aria-label="Use environment variable"
+      id={idSuffix ? `env-select-${idSuffix}` : undefined}
+    >
+      <option value="">Use environment variable…</option>
+      {ENV_VARIABLE_OPTIONS.map((opt) => (
+        <option key={opt} value={opt}>
+          {opt}
+        </option>
+      ))}
+    </select>
+  );
+
   useEffect(() => {
     if (!isTransactionUsage) {
       setRequestBuilder(null);
@@ -2003,8 +2093,15 @@ export default function PosApiAdmin() {
     }
     try {
       const parsed = JSON.parse(text);
-      setRequestBuilder(parsed);
+      const withEnvDefaults = applyEnvDefaultsToRequest(parsed);
+      const normalizedText = JSON.stringify(withEnvDefaults, null, 2);
+      const changed = normalizedText !== JSON.stringify(parsed, null, 2);
+      setRequestBuilder(withEnvDefaults);
       setRequestBuilderError('');
+      if (changed) {
+        builderSyncRef.current = true;
+        setFormState((prev) => ({ ...prev, requestSchemaText: normalizedText }));
+      }
       if (parsed?.type && parsed.type !== formState.posApiType) {
         setFormState((prev) => ({ ...prev, posApiType: parsed.type }));
       }
@@ -3117,7 +3214,7 @@ export default function PosApiAdmin() {
       setImportTestError('Select an imported operation to test.');
       return;
     }
-    let parsedBody;
+    let parsedBody = {};
     if (importRequestBody.trim()) {
       try {
         parsedBody = JSON.parse(importRequestBody);
@@ -3130,7 +3227,13 @@ export default function PosApiAdmin() {
     setImportTestRunning(true);
     try {
       const filteredParams = buildFilledParams(activeImportDraft.parameters || [], importTestValues);
-      const mergedParams = { ...filteredParams.path, ...filteredParams.query, ...filteredParams.header };
+      const resolvedParams = substituteEnvPlaceholders(filteredParams);
+      const mergedParams = substituteEnvPlaceholders({
+        ...resolvedParams.path,
+        ...resolvedParams.query,
+        ...resolvedParams.header,
+      });
+      const resolvedBody = substituteEnvPlaceholders(parsedBody) || {};
       const res = await fetch(`${API_BASE}/posapi/endpoints/import/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3146,10 +3249,10 @@ export default function PosApiAdmin() {
           },
           payload: {
             params: mergedParams,
-            pathParams: filteredParams.path,
-            queryParams: filteredParams.query,
-            headers: filteredParams.header,
-            body: parsedBody,
+            pathParams: resolvedParams.path,
+            queryParams: resolvedParams.query,
+            headers: resolvedParams.header,
+            body: resolvedBody,
           },
           baseUrl: importBaseUrl.trim() || undefined,
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
@@ -3160,6 +3263,7 @@ export default function PosApiAdmin() {
       if (!res.ok) {
         throw new Error(data?.message || 'Test request failed.');
       }
+      updateTokenMeta(data, importAuthEndpointId || formState.authEndpointId || '');
       setImportTestResult(data);
       setImportStatus('Test call completed. Review the response below.');
     } catch (err) {
@@ -3793,12 +3897,24 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
+      const requestBodySchema =
+        definition.requestBody && hasObjectEntries(definition.requestBody.schema)
+          ? definition.requestBody.schema
+          : {};
+      const resolvedDefinition = {
+        ...definition,
+        parameters: substituteEnvPlaceholders(definition.parameters || []),
+        requestBody: {
+          ...definition.requestBody,
+          schema: substituteEnvPlaceholders(requestBodySchema) || {},
+        },
+      };
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          endpoint: definition,
+          endpoint: resolvedDefinition,
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken,
@@ -3818,6 +3934,7 @@ export default function PosApiAdmin() {
         throw new Error(message || 'Test request failed');
       }
       const data = await res.json();
+      updateTokenMeta(data, formState.authEndpointId || '');
       setTestState({ running: false, error: '', result: data });
     } catch (err) {
       console.error(err);
@@ -4170,7 +4287,10 @@ export default function PosApiAdmin() {
                             <span style={styles.fieldHelp}>
                               Choose which AUTH endpoint to call before testing this imported request.
                             </span>
-                            <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+                            <label
+                              style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}
+                              title="When checked, we won’t call the auth endpoint again; we’ll reuse the token from the last successful login during this session."
+                            >
                               <input
                                 type="checkbox"
                                 checked={importUseCachedToken}
@@ -4178,6 +4298,11 @@ export default function PosApiAdmin() {
                               />
                               <span>Use last successful token</span>
                             </label>
+                            <div style={styles.fieldHelp}>
+                              {lastTokenMeta?.obtainedAt
+                                ? `Last token obtained ${new Date(lastTokenMeta.obtainedAt).toLocaleString()} via ${lastTokenMeta.authEndpointId || 'unknown endpoint'}.`
+                                : 'No cached token yet in this session.'}
+                            </div>
                           </label>
                         </div>
                         <div style={styles.importFieldRow}>
@@ -4251,6 +4376,10 @@ export default function PosApiAdmin() {
                             onChange={(e) => setImportRequestBody(e.target.value)}
                             rows={6}
                           />
+                        </div>
+                        <div style={styles.testHelperText}>
+                          Import test requests use the request body shown above after substituting
+                          environment variables. If left blank, an empty object will be sent.
                         </div>
                         <div style={styles.importActionsRow}>
                           <button
@@ -4860,30 +4989,52 @@ export default function PosApiAdmin() {
                   <div style={styles.builderGrid}>
                     <label style={styles.builderLabel}>
                       Branch number
-                      <input
-                        type="text"
-                        value={requestBuilder.branchNo || ''}
-                        onChange={(e) => handleBuilderFieldChange('branchNo', e.target.value)}
-                        style={styles.input}
-                      />
+                      <div style={styles.inputRow}>
+                        <input
+                          type="text"
+                          value={requestBuilder.branchNo || ''}
+                          onChange={(e) => handleBuilderFieldChange('branchNo', e.target.value)}
+                          style={styles.input}
+                        />
+                        <EnvVariableSelect
+                          idSuffix="branchNo"
+                          onSelect={(selected) =>
+                            handleBuilderFieldChange('branchNo', `{{${selected}}}`)
+                          }
+                        />
+                      </div>
                     </label>
                     <label style={styles.builderLabel}>
                       POS number
-                      <input
-                        type="text"
-                        value={requestBuilder.posNo || ''}
-                        onChange={(e) => handleBuilderFieldChange('posNo', e.target.value)}
-                        style={styles.input}
-                      />
+                      <div style={styles.inputRow}>
+                        <input
+                          type="text"
+                          value={requestBuilder.posNo || ''}
+                          onChange={(e) => handleBuilderFieldChange('posNo', e.target.value)}
+                          style={styles.input}
+                        />
+                        <EnvVariableSelect
+                          idSuffix="posNo"
+                          onSelect={(selected) => handleBuilderFieldChange('posNo', `{{${selected}}}`)}
+                        />
+                      </div>
                     </label>
                     <label style={styles.builderLabel}>
                       Merchant TIN
-                      <input
-                        type="text"
-                        value={requestBuilder.merchantTin || ''}
-                        onChange={(e) => handleBuilderFieldChange('merchantTin', e.target.value)}
-                        style={styles.input}
-                      />
+                      <div style={styles.inputRow}>
+                        <input
+                          type="text"
+                          value={requestBuilder.merchantTin || ''}
+                          onChange={(e) => handleBuilderFieldChange('merchantTin', e.target.value)}
+                          style={styles.input}
+                        />
+                        <EnvVariableSelect
+                          idSuffix="merchantTin"
+                          onSelect={(selected) =>
+                            handleBuilderFieldChange('merchantTin', `{{${selected}}}`)
+                          }
+                        />
+                      </div>
                     </label>
                     {!isStockType && (
                       <label style={styles.builderLabel}>
@@ -4904,61 +5055,128 @@ export default function PosApiAdmin() {
                     {formState.posApiType?.startsWith('B2B') && (
                       <label style={styles.builderLabel}>
                         Customer TIN
-                        <input
-                          type="text"
-                          value={requestBuilder.customerTin || ''}
-                          onChange={(e) => handleBuilderFieldChange('customerTin', e.target.value)}
-                          style={styles.input}
-                        />
+                        <div style={styles.inputRow}>
+                          <input
+                            type="text"
+                            value={requestBuilder.customerTin || ''}
+                            onChange={(e) => handleBuilderFieldChange('customerTin', e.target.value)}
+                            style={styles.input}
+                          />
+                          <EnvVariableSelect
+                            idSuffix="customerTin"
+                            onSelect={(selected) =>
+                              handleBuilderFieldChange('customerTin', `{{${selected}}}`)
+                            }
+                          />
+                        </div>
                       </label>
                     )}
                     {!formState.posApiType?.startsWith('B2B') && isReceiptType && (
                       <label style={styles.builderLabel}>
                         Consumer number / phone
-                        <input
-                          type="text"
-                          value={requestBuilder.consumerNo || ''}
-                          onChange={(e) => handleBuilderFieldChange('consumerNo', e.target.value)}
-                          style={styles.input}
-                        />
+                        <div style={styles.inputRow}>
+                          <input
+                            type="text"
+                            value={requestBuilder.consumerNo || ''}
+                            onChange={(e) => handleBuilderFieldChange('consumerNo', e.target.value)}
+                            style={styles.input}
+                          />
+                          <EnvVariableSelect
+                            idSuffix="consumerNo"
+                            onSelect={(selected) =>
+                              handleBuilderFieldChange('consumerNo', `{{${selected}}}`)
+                            }
+                          />
+                        </div>
                       </label>
                     )}
                     {isReceiptType && (
                       <>
                         <label style={styles.builderLabel}>
                           Total amount
-                          <input
-                            type="number"
-                            value={requestBuilder.totalAmount ?? 0}
-                            onChange={(e) =>
-                              handleBuilderFieldChange('totalAmount', Number(e.target.value) || 0)
-                            }
-                            style={styles.input}
-                          />
+                          <div style={styles.inputRow}>
+                            <input
+                              type="text"
+                              value={requestBuilder.totalAmount ?? ''}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const trimmed = raw.trim();
+                                const numeric = Number(raw);
+                                const nextValue =
+                                  trimmed.startsWith('{{') || trimmed === ''
+                                    ? raw
+                                    : Number.isNaN(numeric)
+                                      ? raw
+                                      : numeric;
+                                handleBuilderFieldChange('totalAmount', nextValue);
+                              }}
+                              style={styles.input}
+                            />
+                            <EnvVariableSelect
+                              idSuffix="totalAmount"
+                              onSelect={(selected) =>
+                                handleBuilderFieldChange('totalAmount', `{{${selected}}}`)
+                              }
+                            />
+                          </div>
                         </label>
                         <label style={styles.builderLabel}>
                           Total VAT
-                          <input
-                            type="number"
-                            value={requestBuilder.totalVAT ?? 0}
-                            onChange={(e) =>
-                              handleBuilderFieldChange('totalVAT', Number(e.target.value) || 0)
-                            }
-                            style={styles.input}
-                            disabled={requestBuilder.taxType !== 'VAT_ABLE'}
-                          />
+                          <div style={styles.inputRow}>
+                            <input
+                              type="text"
+                              value={requestBuilder.totalVAT ?? ''}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const trimmed = raw.trim();
+                                const numeric = Number(raw);
+                                const nextValue =
+                                  trimmed.startsWith('{{') || trimmed === ''
+                                    ? raw
+                                    : Number.isNaN(numeric)
+                                      ? raw
+                                      : numeric;
+                                handleBuilderFieldChange('totalVAT', nextValue);
+                              }}
+                              style={styles.input}
+                              disabled={requestBuilder.taxType !== 'VAT_ABLE'}
+                            />
+                            <EnvVariableSelect
+                              idSuffix="totalVAT"
+                              onSelect={(selected) =>
+                                handleBuilderFieldChange('totalVAT', `{{${selected}}}`)
+                              }
+                            />
+                          </div>
                         </label>
                         <label style={styles.builderLabel}>
                           Total city tax
-                          <input
-                            type="number"
-                            value={requestBuilder.totalCityTax ?? 0}
-                            onChange={(e) =>
-                              handleBuilderFieldChange('totalCityTax', Number(e.target.value) || 0)
-                            }
-                            style={styles.input}
-                            disabled={requestBuilder.taxType !== 'VAT_ABLE'}
-                          />
+                          <div style={styles.inputRow}>
+                            <input
+                              type="text"
+                              value={requestBuilder.totalCityTax ?? ''}
+                              onChange={(e) => {
+                                const raw = e.target.value;
+                                const trimmed = raw.trim();
+                                const numeric = Number(raw);
+                                const nextValue =
+                                  trimmed.startsWith('{{') || trimmed === ''
+                                    ? raw
+                                    : Number.isNaN(numeric)
+                                      ? raw
+                                      : numeric;
+                                handleBuilderFieldChange('totalCityTax', nextValue);
+                              }}
+                              style={styles.input}
+                              disabled={requestBuilder.taxType !== 'VAT_ABLE'}
+                            />
+                            <EnvVariableSelect
+                              idSuffix="totalCityTax"
+                              onSelect={(selected) =>
+                                handleBuilderFieldChange('totalCityTax', `{{${selected}}}`)
+                              }
+                            />
+                          </div>
                         </label>
                       </>
                     )}
@@ -5820,7 +6038,10 @@ export default function PosApiAdmin() {
             <span style={styles.fieldHelp}>
               Used by the test harness to fetch a bearer token before calling the endpoint.
             </span>
-            <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+            <label
+              style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}
+              title="When checked, we won’t call the auth endpoint again; we’ll reuse the token from the last successful login during this session."
+            >
               <input
                 type="checkbox"
                 checked={useCachedToken}
@@ -5828,6 +6049,17 @@ export default function PosApiAdmin() {
               />
               <span>Use last successful token when testing</span>
             </label>
+            <div style={styles.fieldHelp}>
+              {lastTokenMeta?.obtainedAt ? (
+                <>
+                  Last token obtained {new Date(lastTokenMeta.obtainedAt).toLocaleString()} via{' '}
+                  {lastTokenMeta.authEndpointId || 'unknown endpoint'}
+                  {lastTokenMeta.authUrl ? ` (${lastTokenMeta.authUrl})` : ''}.
+                </>
+              ) : (
+                'No cached token yet in this session.'
+              )}
+            </div>
           </label>
           <div style={{ ...styles.label, flex: 1 }}>
             <div style={styles.radioRow}>
@@ -5973,6 +6205,11 @@ export default function PosApiAdmin() {
             )}
           </div>
         )}
+
+        <div style={styles.testHelperText}>
+          Test requests use the request body currently visible above after substituting environment
+          variables. If no body is provided, we send an empty object or any schema defaults.
+        </div>
 
         <div style={styles.actions}>
           <button
@@ -6922,6 +7159,19 @@ const styles = {
     border: '1px solid #cbd5f5',
     fontSize: '0.95rem',
   },
+  inputRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.4rem',
+  },
+  envSelect: {
+    minWidth: '180px',
+    padding: '0.35rem',
+    borderRadius: '6px',
+    border: '1px solid #cbd5f5',
+    background: '#f8fafc',
+    fontSize: '0.9rem',
+  },
   inlineTextarea: {
     minHeight: '90px',
     padding: '0.5rem',
@@ -7098,6 +7348,11 @@ const styles = {
     fontSize: '0.82rem',
     color: '#475569',
     marginTop: '0.25rem',
+  },
+  testHelperText: {
+    fontSize: '0.85rem',
+    color: '#1f2937',
+    marginTop: '0.35rem',
   },
   radioRow: {
     display: 'flex',
