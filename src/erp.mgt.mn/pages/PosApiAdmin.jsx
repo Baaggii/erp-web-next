@@ -1621,13 +1621,14 @@ function sanitizeEnvPlaceholders(list) {
 
 function buildDraftParameterDefaults(parameters, envPlaceholders = []) {
   const values = {};
-  const envMap = sanitizeEnvPlaceholders(envPlaceholders).reduce((acc, entry) => {
-    if (!entry.target || !entry.variable) return acc;
-    const normalizedTarget = entry.target.toLowerCase();
-    const wrapped = entry.variable.startsWith('{{') ? entry.variable : `{{${entry.variable}}}`;
-    acc[normalizedTarget] = wrapped;
-    return acc;
-  }, {});
+  const envFallbacks = {
+    client_id: '{{POSAPI_CLIENT_ID}}',
+    clientid: '{{POSAPI_CLIENT_ID}}',
+    clientsecret: '{{POSAPI_CLIENT_SECRET}}',
+    client_secret: '{{POSAPI_CLIENT_SECRET}}',
+    username: '{{POSAPI_USERNAME}}',
+    password: '{{POSAPI_PASSWORD}}',
+  };
   parameters.forEach((param) => {
     if (!param?.name) return;
     const candidates = [param.example, param.default, param.sample, param.testValue];
@@ -1645,8 +1646,8 @@ function buildDraftParameterDefaults(parameters, envPlaceholders = []) {
   return values;
 }
 
-function buildParameterValueDefaults(parameters = [], currentValues = {}, envPlaceholders = []) {
-  const defaults = buildDraftParameterDefaults(parameters, envPlaceholders);
+function buildParameterValueDefaults(parameters = [], currentValues = {}) {
+  const defaults = buildDraftParameterDefaults(parameters);
   const values = {};
   const seen = new Set();
   parameters.forEach((param) => {
@@ -2036,11 +2037,6 @@ export default function PosApiAdmin() {
     }
   }, [formState.parametersText]);
 
-  const envPlaceholderList = useMemo(
-    () => sanitizeEnvPlaceholders(formState.envPlaceholders),
-    [formState.envPlaceholders],
-  );
-
   useEffect(() => {
     const text = (formState.parametersText || '').trim();
     if (!text) {
@@ -2048,49 +2044,23 @@ export default function PosApiAdmin() {
       setParameterValues({});
       return;
     }
-      try {
-        const parsed = JSON.parse(text);
-        if (!Array.isArray(parsed)) {
-          throw new Error('Parameters must be a JSON array');
-        }
-        setParameterError('');
-        setParameterValues((prev) => buildParameterValueDefaults(parsed, prev, envPlaceholderList));
-      } catch (err) {
-        setParameterError(err.message || 'Parameters must be valid JSON.');
-        setParameterValues({});
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        throw new Error('Parameters must be a JSON array');
       }
-  }, [envPlaceholderList, formState.parametersText]);
+      setParameterError('');
+      setParameterValues((prev) => buildParameterValueDefaults(parsed, prev));
+    } catch (err) {
+      setParameterError(err.message || 'Parameters must be valid JSON.');
+      setParameterValues({});
+    }
+  }, [formState.parametersText]);
 
   const parameterGroups = useMemo(() => {
     if (parameterError) return { path: [], query: [], header: [] };
     return groupParametersByLocation(parsedParameters);
   }, [parsedParameters, parameterError]);
-
-  const handleEnvPlaceholderAdd = () => {
-    setFormState((prev) => {
-      const list = Array.isArray(prev.envPlaceholders) ? prev.envPlaceholders.slice() : [];
-      return { ...prev, envPlaceholders: [...list, { target: '', variable: '' }] };
-    });
-  };
-
-  const handleEnvPlaceholderRemove = (index) => {
-    setFormState((prev) => {
-      const list = Array.isArray(prev.envPlaceholders) ? prev.envPlaceholders.slice() : [];
-      list.splice(index, 1);
-      return { ...prev, envPlaceholders: list };
-    });
-  };
-
-  const handleEnvPlaceholderUpdate = (index, field, value) => {
-    setFormState((prev) => {
-      const list = Array.isArray(prev.envPlaceholders) ? prev.envPlaceholders.slice() : [];
-      if (!list[index]) {
-        list[index] = { target: '', variable: '' };
-      }
-      list[index] = { ...list[index], [field]: value };
-      return { ...prev, envPlaceholders: list };
-    });
-  };
 
   const authEndpointOptions = useMemo(
     () => endpoints.filter((endpoint) => endpoint?.posApiType === 'AUTH'),
@@ -5041,8 +5011,8 @@ export default function PosApiAdmin() {
             </div>
             <p style={styles.sectionHelp}>
               Enter values only for the parameters you intend to send. Leave a field empty to omit it from
-              the request URL or headers. Environment placeholders such as {{CLIENT_ID_ENV}} are supported for
-              sensitive values.
+              the request URL or headers. Environment placeholders such as {{POSAPI_CLIENT_ID}} are
+              supported for sensitive values.
             </p>
             {parameterError && <div style={styles.previewErrorBox}>{parameterError}</div>}
             {['path', 'query', 'header'].map((loc) => {
@@ -5080,55 +5050,6 @@ export default function PosApiAdmin() {
                 </div>
               );
             })}
-            <div style={styles.envPlaceholderBox}>
-              <div style={styles.sectionHeader}>
-                <h3 style={{ ...styles.sectionTitle, marginBottom: 0 }}>Environment variables</h3>
-              </div>
-              <p style={styles.sectionHelp}>
-                Map sensitive parameter names to server environment variables. The variable names you enter will be
-                wrapped in <code>{'{{ }}'}</code> and used as defaults without hard-coding specific keys.
-              </p>
-              {envPlaceholderList.length === 0 ? (
-                <div style={styles.toggleStateHelper}>No environment mappings defined yet.</div>
-              ) : (
-                <div style={styles.envPlaceholderGrid}>
-                  {envPlaceholderList.map((entry, index) => (
-                    <div key={`env-placeholder-${index}`} style={styles.envPlaceholderRow}>
-                      <label style={styles.label}>
-                        Parameter name
-                        <input
-                          type="text"
-                          value={entry.target}
-                          onChange={(e) => handleEnvPlaceholderUpdate(index, 'target', e.target.value)}
-                          style={styles.input}
-                          placeholder="client_id"
-                        />
-                      </label>
-                      <label style={styles.label}>
-                        Environment variable
-                        <input
-                          type="text"
-                          value={entry.variable}
-                          onChange={(e) => handleEnvPlaceholderUpdate(index, 'variable', e.target.value)}
-                          style={styles.input}
-                          placeholder="CLIENT_ID_ENV or CUSTOM_CLIENT_ID"
-                        />
-                      </label>
-                      <button
-                        type="button"
-                        style={{ ...styles.secondaryButton, marginTop: '1.6rem' }}
-                        onClick={() => handleEnvPlaceholderRemove(index)}
-                      >
-                        Remove
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <button type="button" style={styles.smallButton} onClick={handleEnvPlaceholderAdd}>
-                + Add environment variable
-              </button>
-            </div>
             <label style={styles.labelFull}>
               Raw parameters (JSON array)
               <textarea
@@ -5136,7 +5057,7 @@ export default function PosApiAdmin() {
                 onChange={(e) => handleChange('parametersText', e.target.value)}
                 style={styles.textarea}
                 rows={6}
-                placeholder='[{ "name": "client_id", "in": "query", "example": "{{CLIENT_ID_ENV}}" }]'
+                placeholder='[{ "name": "client_id", "in": "query", "example": "{{POSAPI_CLIENT_ID}}" }]'
               />
             </label>
           </div>
