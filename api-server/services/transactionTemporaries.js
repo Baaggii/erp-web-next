@@ -919,26 +919,13 @@ export async function promoteTemporarySubmission(
       }
     }
 
-    const hasSkipTriggerColumn = Array.isArray(columns)
-      ? columns.some(
-          (col) =>
-            col &&
-            typeof col.name === 'string' &&
-            col.name.trim().toLowerCase() === 'skip_trigger',
-        )
-      : false;
-
     const mutationContext = {
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
     };
     const shouldSkipTriggers =
-      hasSkipTriggerColumn &&
-      (payloadJson?.skipTriggerOnPromote === true ||
-        errorRevokedFields.length > 0);
-    if (shouldSkipTriggers && !sanitizedValues.skip_trigger) {
-      sanitizedValues = { ...sanitizedValues, skip_trigger: 1 };
-    }
+      payloadJson?.skipTriggerOnPromote === true ||
+      errorRevokedFields.length > 0;
     const skipTriggers = shouldSkipTriggers;
     let skipSessionEnabled = false;
     let insertedId = null;
@@ -968,33 +955,33 @@ export async function promoteTemporarySubmission(
           error: err,
         });
         let recordForInsert = sanitizedValues;
-        if (hasSkipTriggerColumn && !recordForInsert.skip_trigger) {
-          recordForInsert = { ...recordForInsert, skip_trigger: 1 };
-          sanitizedValues = recordForInsert;
-          try {
-            const inserted = await insertTableRow(
-              row.table_name,
-              recordForInsert,
-              undefined,
-              undefined,
-              false,
-              normalizedReviewer,
-              { conn, mutationContext },
-            );
-            insertedId = inserted?.id ?? null;
-          } catch (skipErr) {
-            if (!isDynamicSqlTriggerError(skipErr)) {
-              throw skipErr;
-            }
-            console.warn(
-              'Dynamic SQL trigger error persisted after skip_trigger flag, falling back to direct insert',
-              {
-                table: row.table_name,
-                id,
-                error: skipErr,
-              },
-            );
+        if (!skipSessionEnabled) {
+          await conn.query('SET @skip_triggers = 1;');
+          skipSessionEnabled = true;
+        }
+        try {
+          const inserted = await insertTableRow(
+            row.table_name,
+            recordForInsert,
+            undefined,
+            undefined,
+            false,
+            normalizedReviewer,
+            { conn, mutationContext },
+          );
+          insertedId = inserted?.id ?? null;
+        } catch (skipErr) {
+          if (!isDynamicSqlTriggerError(skipErr)) {
+            throw skipErr;
           }
+          console.warn(
+            'Dynamic SQL trigger error persisted after skip trigger session flag, falling back to direct insert',
+            {
+              table: row.table_name,
+              id,
+              error: skipErr,
+            },
+          );
         }
         if (insertedId === null) {
           const keys = Object.keys(recordForInsert);
