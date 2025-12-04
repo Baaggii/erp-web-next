@@ -548,17 +548,27 @@ function InlineTransactionTable(
     [relationConfigMap, autoSelectConfigs, columnCaseMap, getRowValueCaseInsensitive],
   );
 
+  const isCombinationFilterReady = (hasCombination, targetColumn, filters) => {
+    if (!hasCombination) return true;
+    if (!targetColumn || !filters) return false;
+    const value = filters[targetColumn];
+    return !(value === undefined || value === null || value === '');
+  };
+
   const filterRelationOptions = useCallback(
     (rowObj, column, options) => {
       if (!Array.isArray(options) || options.length === 0) return options;
-      const filters = resolveCombinationFilters(rowObj, column);
-      if (!filters) return options;
       const config = relationConfigMap[column] || autoSelectConfigs[column];
+      const hasCombination = Boolean(
+        config?.combinationSourceColumn && config?.combinationTargetColumn,
+      );
+      const filters = resolveCombinationFilters(rowObj, column);
+      if (!filters) return hasCombination ? [] : options;
       const targetColumn = config?.combinationTargetColumn;
-      if (!targetColumn) return options;
+      if (!targetColumn) return hasCombination ? [] : options;
       const filterValue = filters[targetColumn];
       if (filterValue === undefined || filterValue === null || filterValue === '') {
-        return options;
+        return hasCombination ? [] : options;
       }
       const columnRows = relationData[column];
       if (!columnRows || typeof columnRows !== 'object') return options;
@@ -2240,6 +2250,16 @@ function InlineTransactionTable(
     }
     if (relationConfigMap[f]) {
       const conf = relationConfigMap[f];
+      const comboFilters = resolveCombinationFilters(rows[idx], f, conf);
+      const hasCombination = Boolean(
+        conf?.combinationSourceColumn && conf?.combinationTargetColumn,
+      );
+      const targetColumn = conf?.combinationTargetColumn;
+      const combinationReady = isCombinationFilterReady(
+        hasCombination,
+        targetColumn,
+        comboFilters,
+      );
       const inputVal = typeof val === 'object' ? val.value : val;
       return (
         <AsyncSearchSelect
@@ -2258,7 +2278,11 @@ function InlineTransactionTable(
           className={invalid ? 'border-red-500 bg-red-100' : ''}
           inputStyle={inputStyle}
           companyId={company}
-          filters={resolveCombinationFilters(rows[idx], f, conf) || undefined}
+          filters={comboFilters || undefined}
+          exactFilters={
+            combinationReady && targetColumn ? [targetColumn] : undefined
+          }
+          shouldFetch={combinationReady}
         />
       );
     }
@@ -2288,6 +2312,16 @@ function InlineTransactionTable(
     if (viewSourceMap[f]) {
       const view = viewSourceMap[f];
       const cfg = viewDisplays[view] || {};
+      const comboFilters = resolveCombinationFilters(rows[idx], f, cfg);
+      const hasCombination = Boolean(
+        cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
+      );
+      const targetColumn = cfg?.combinationTargetColumn;
+      const combinationReady = isCombinationFilterReady(
+        hasCombination,
+        targetColumn,
+        comboFilters,
+      );
       const inputVal = typeof val === 'object' ? val.value : val;
       const idField = cfg.idField || f;
       const labelFields = cfg.displayFields || [];
@@ -2309,12 +2343,26 @@ function InlineTransactionTable(
           className={invalid ? 'border-red-500 bg-red-100' : ''}
           inputStyle={inputStyle}
           companyId={company}
-          filters={resolveCombinationFilters(rows[idx], f) || undefined}
+          filters={comboFilters || undefined}
+          exactFilters={
+            combinationReady && targetColumn ? [targetColumn] : undefined
+          }
+          shouldFetch={combinationReady}
         />
       );
     }
     if (autoSelectConfigs[f]) {
       const cfg = autoSelectConfigs[f];
+      const comboFilters = resolveCombinationFilters(rows[idx], f, cfg);
+      const hasCombination = Boolean(
+        cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
+      );
+      const targetColumn = cfg?.combinationTargetColumn;
+      const combinationReady = isCombinationFilterReady(
+        hasCombination,
+        targetColumn,
+        comboFilters,
+      );
       const inputVal = typeof val === 'object' ? val.value : val;
       return (
         <AsyncSearchSelect
@@ -2334,7 +2382,11 @@ function InlineTransactionTable(
           className={invalid ? 'border-red-500 bg-red-100' : ''}
           inputStyle={inputStyle}
           companyId={company}
-          filters={resolveCombinationFilters(rows[idx], f) || undefined}
+          filters={comboFilters || undefined}
+          exactFilters={
+            combinationReady && targetColumn ? [targetColumn] : undefined
+          }
+          shouldFetch={combinationReady}
         />
       );
     }

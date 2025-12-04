@@ -1023,6 +1023,81 @@ if (typeof mock?.import !== 'function') {
       const deptCall = selectCalls.find((props) => props.table === 'departments');
       assert.ok(deptCall, 'relation AsyncSearchSelect should render');
       assert.deepEqual(deptCall.filters, { company_id: 'COMP-1' });
+      assert.deepEqual(deptCall.exactFilters, ['company_id']);
+      assert.equal(deptCall.shouldFetch, true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('InlineTransactionTable blocks combination AsyncSearchSelect without source', async () => {
+    const reactMock = createReactMock();
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+    const selectCalls = [];
+    const AsyncSearchSelectMock = (props) => {
+      selectCalls.push(props);
+      return { type: 'async-select', props, children: [] };
+    };
+
+    const { default: InlineTransactionTable } = await mock.import(
+      '../../src/erp.mgt.mn/components/InlineTransactionTable.jsx',
+      {
+        react: reactMock.module,
+        '../hooks/useGeneralConfig.js': { default: () => ({ forms: {}, general: {} }) },
+        './AsyncSearchSelect.jsx': { default: AsyncSearchSelectMock },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        '../utils/buildImageName.js': { default: () => ({ name: '' }) },
+        '../utils/slugify.js': { default: (value) => String(value) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/callProcedure.js': { default: async () => ({}) },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    try {
+      reactMock.render(InlineTransactionTable, {
+        fields: ['company_id', 'dept_id'],
+        labels: { company_id: 'Company', dept_id: 'Dept' },
+        rows: [{ company_id: '', dept_id: '' }],
+        disabledFields: [],
+        defaultValues: {},
+        onRowsChange: () => {},
+        minRows: 1,
+        relations: {},
+        relationConfigs: {
+          dept_id: {
+            table: 'departments',
+            column: 'id',
+            idField: 'id',
+            combinationSourceColumn: 'company_id',
+            combinationTargetColumn: 'company_id',
+          },
+        },
+        relationData: {},
+        fieldTypeMap: {},
+        totalAmountFields: [],
+        totalCurrencyFields: [],
+        columnCaseMap: {},
+        viewSource: {},
+        viewDisplays: {},
+        viewColumns: {},
+        loadView: noop,
+        procTriggers: {},
+        user: {},
+        collectRows: false,
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      const deptCall = selectCalls.find((props) => props.table === 'departments');
+      assert.ok(deptCall, 'relation AsyncSearchSelect should render');
+      assert.equal(deptCall.filters, undefined);
+      assert.equal(deptCall.exactFilters, undefined);
+      assert.equal(deptCall.shouldFetch, false);
     } finally {
       global.fetch = originalFetch;
     }
@@ -1111,6 +1186,94 @@ if (typeof mock?.import !== 'function') {
         .filter((child) => child.type === 'option')
         .map((opt) => opt.props.value);
       assert.deepEqual(optionValues, ['', '1']);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  test('InlineTransactionTable hides relation options until combination value provided', async () => {
+    const reactMock = createReactMock();
+    const originalFetch = global.fetch;
+    global.fetch = async () => ({ ok: true, json: async () => ({}) });
+
+    const tableRelations = {
+      items: {
+        dept_id: {
+          table: 'departments',
+          column: 'id',
+          combinationSourceColumn: 'company_id',
+          combinationTargetColumn: 'company_id',
+        },
+      },
+    };
+
+    const { default: InlineTransactionTable } = await mock.import(
+      '../../src/erp.mgt.mn/components/InlineTransactionTable.jsx',
+      {
+        react: reactMock.module,
+        '../hooks/useGeneralConfig.js': {
+          default: () => ({
+            tableRelations,
+            general: {},
+          }),
+        },
+        './AsyncSearchSelect.jsx': { default: () => null },
+        './RowDetailModal.jsx': { default: () => null },
+        './RowImageUploadModal.jsx': { default: () => null },
+        '../utils/buildImageName.js': { default: () => ({ name: '' }) },
+        '../utils/slugify.js': { default: (value) => String(value) },
+        '../utils/formatTimestamp.js': { default: () => '2024-01-01 00:00:00' },
+        '../utils/callProcedure.js': { default: async () => ({}) },
+        '../utils/normalizeDateInput.js': { default: (value) => value },
+      },
+    );
+
+    try {
+      reactMock.render(InlineTransactionTable, {
+        tableName: 'items',
+        fields: ['company_id', 'dept_id'],
+        labels: { company_id: 'Company', dept_id: 'Dept' },
+        rows: [{ company_id: '', dept_id: '' }],
+        disabledFields: [],
+        defaultValues: {},
+        onRowsChange: () => {},
+        minRows: 1,
+        relations: {
+          dept_id: [
+            { value: '1', label: 'North' },
+            { value: '2', label: 'South' },
+          ],
+        },
+        relationConfigs: {},
+        relationData: {
+          dept_id: {
+            '1': { id: '1', company_id: 'COMP-1' },
+            '2': { id: '2', company_id: 'COMP-2' },
+          },
+        },
+        fieldTypeMap: {},
+        totalAmountFields: [],
+        totalCurrencyFields: [],
+        columnCaseMap: {},
+        viewSource: {},
+        viewDisplays: {},
+        viewColumns: {},
+        loadView: noop,
+        procTriggers: {},
+        user: {},
+        collectRows: false,
+      });
+
+      await flushPromises();
+      await flushPromises();
+
+      const tree = reactMock.getTree();
+      const selects = findAllByType(tree, 'select');
+      assert.ok(selects.length > 0, 'expected select control to render');
+      const optionValues = selects[0].children
+        .filter((child) => child.type === 'option')
+        .map((opt) => opt.props.value);
+      assert.deepEqual(optionValues, ['']);
     } finally {
       global.fetch = originalFetch;
     }
