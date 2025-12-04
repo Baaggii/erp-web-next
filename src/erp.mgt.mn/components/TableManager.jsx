@@ -4234,10 +4234,12 @@ const TableManager = forwardRef(function TableManager({
             candidate && typeof candidate === 'object' && !Array.isArray(candidate),
         );
         const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
+        const canonicalHydratedValues = normalizeToCanonical(hydratedValues);
         const normalizedValues = populateRelationDisplayFields(
           normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
         );
-        const mergedValues = mergeDisplayFallbacks(normalizedValues, hydratedValues);
+        const mergedValues = mergeDisplayFallbacks(normalizedValues, canonicalHydratedValues);
+        const finalizedValues = populateRelationDisplayFields(mergedValues);
 
         const rowSources = [
           entry?.payload?.gridRows,
@@ -4254,13 +4256,17 @@ const TableManager = forwardRef(function TableManager({
               if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
                 const canonical = normalizeToCanonical(stripped);
                 const populated = populateRelationDisplayFields(canonical);
-                return mergeDisplayFallbacks(populated, hydratedRow);
+                const mergedRow = mergeDisplayFallbacks(
+                  populated,
+                  normalizeToCanonical(hydratedRow),
+                );
+                return populateRelationDisplayFields(mergedRow);
               }
               return stripped ?? {};
             })
           : [];
 
-        return { values: mergedValues, rows: sanitizedRows };
+        return { values: finalizedValues, rows: sanitizedRows };
       },
       [
         hydrateDisplayFromWrappedRelations,
@@ -4279,19 +4285,19 @@ const TableManager = forwardRef(function TableManager({
           setTemporaryPromotionQueue([]);
         }
         await ensureColumnMeta();
-        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
+          const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
 
-        setPendingTemporaryPromotion({ id: temporaryId, entry });
-        setEditing(normalizedValues);
-        setGridRows(sanitizedRows);
-        setIsAdding(true);
-      setRequestType('temporary-promote');
-      setShowTemporaryModal(false);
-        setShowForm(true);
-      },
-      [
-        buildTemporaryFormState,
-        ensureColumnMeta,
+          setPendingTemporaryPromotion({ id: temporaryId, entry });
+          setEditing(normalizedValues);
+          setGridRows(sanitizedRows);
+          setIsAdding(true);
+          setRequestType('temporary-promote');
+          setShowTemporaryModal(false);
+          setShowForm(true);
+        },
+        [
+          buildTemporaryFormState,
+          ensureColumnMeta,
         setEditing,
         setGridRows,
         setIsAdding,
