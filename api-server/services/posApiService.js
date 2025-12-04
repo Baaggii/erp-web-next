@@ -53,6 +53,28 @@ function toStringValue(value) {
   return String(value ?? '').trim();
 }
 
+function resolveEnvPlaceholders(value) {
+  if (typeof value === 'string') {
+    const match = value.match(/^{{\s*([A-Z0-9_\-]+)\s*}}$/i);
+    if (match) {
+      const envVal = readEnvVar(match[1], { trim: false });
+      return envVal !== undefined && envVal !== null ? envVal : '';
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => resolveEnvPlaceholders(entry));
+  }
+  if (value && typeof value === 'object') {
+    const next = {};
+    Object.entries(value).forEach(([key, val]) => {
+      next[key] = resolveEnvPlaceholders(val);
+    });
+    return next;
+  }
+  return value;
+}
+
 let cachedBaseUrl = '';
 let cachedBaseUrlLoaded = false;
 const tokenCache = new Map();
@@ -60,11 +82,12 @@ const tokenCache = new Map();
 function cacheToken(endpointId, token, expiresInSeconds) {
   if (!endpointId || !token) return;
   const ttl = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? expiresInSeconds : 300;
-  const expiresAt = Date.now() + ttl * 1000 - 30000;
-  tokenCache.set(endpointId, { token, expiresAt });
+  const now = Date.now();
+  const expiresAt = now + ttl * 1000 - 30000;
+  tokenCache.set(endpointId, { token, expiresAt, obtainedAt: now });
 }
 
-function getCachedToken(endpointId) {
+function getCachedTokenEntry(endpointId) {
   if (!endpointId) return null;
   const entry = tokenCache.get(endpointId);
   if (!entry || !entry.token) return null;
@@ -72,7 +95,23 @@ function getCachedToken(endpointId) {
     tokenCache.delete(endpointId);
     return null;
   }
-  return entry.token;
+  return entry;
+}
+
+function getCachedToken(endpointId) {
+  const entry = getCachedTokenEntry(endpointId);
+  return entry?.token || null;
+}
+
+function buildTokenMeta(endpointId, cached) {
+  const entry = getCachedTokenEntry(endpointId);
+  if (!entry) return null;
+  return {
+    endpointId,
+    cached: Boolean(cached),
+    obtainedAt: entry.obtainedAt || Date.now(),
+    expiresAt: entry.expiresAt || null,
+  };
 }
 
 export async function getPosApiBaseUrl() {
@@ -1128,8 +1167,8 @@ async function posApiFetch(path, { method = 'GET', body, token, headers, baseUrl
   return parsedBody;
 }
 
-async function fetchEnvPosApiToken() {
-  const cached = getCachedToken('ENV_FALLBACK');
+async function fetchEnvPosApiToken({ useCachedToken = true } = {}) {
+  const cached = useCachedToken ? getCachedToken('ENV_FALLBACK') : null;
   if (cached) return cached;
 
   const requiredEnv = [
@@ -1187,9 +1226,9 @@ async function fetchEnvPosApiToken() {
   return json.access_token;
 }
 
-async function fetchTokenFromAuthEndpoint(authEndpoint, { baseUrl, payload } = {}) {
-  if (!authEndpoint?.id) return fetchEnvPosApiToken();
-  const cached = getCachedToken(authEndpoint.id);
+async function fetchTokenFromAuthEndpoint(authEndpoint, { baseUrl, payload, useCachedToken = true } = {}) {
+  if (!authEndpoint?.id) return fetchEnvPosApiToken({ useCachedToken });
+  const cached = useCachedToken ? getCachedToken(authEndpoint.id) : null;
   if (cached) return cached;
 
   const requestPayload =
@@ -1242,13 +1281,24 @@ export async function getPosApiToken(options = {}) {
   const optionBag = options && typeof options === 'object' ? options : {};
   const authEndpointId = optionBag.authEndpointId || null;
   const authEndpoint = await resolveAuthEndpoint(authEndpointId);
+  const sourceId = authEndpoint?.id || 'ENV_FALLBACK';
+  const useCached = optionBag.useCachedToken !== false;
+  const cachedEntry = useCached ? getCachedTokenEntry(sourceId) : null;
+  if (cachedEntry) {
+    return optionBag.withMeta
+      ? { token: cachedEntry.token, meta: buildTokenMeta(sourceId, true) }
+      : cachedEntry.token;
+  }
   if (authEndpoint) {
-    return fetchTokenFromAuthEndpoint(authEndpoint, {
+    const token = await fetchTokenFromAuthEndpoint(authEndpoint, {
       baseUrl: optionBag.baseUrl,
       payload: optionBag.authPayload,
+      useCachedToken: useCached,
     });
+    return optionBag.withMeta ? { token, meta: buildTokenMeta(sourceId, false) } : token;
   }
-  return fetchEnvPosApiToken();
+  const token = await fetchEnvPosApiToken({ useCachedToken: useCached });
+  return optionBag.withMeta ? { token, meta: buildTokenMeta(sourceId, false) } : token;
 }
 
 export async function buildReceiptFromDynamicTransaction(
@@ -1747,6 +1797,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
     authPayload,
     environment,
     skipAuth,
+    useCachedToken = true,
   } = optionBag;
   const endpoint = endpointOverride || (await resolvePosApiEndpoint(endpointId));
   const method = (endpoint?.method || 'GET').toUpperCase();
@@ -1754,7 +1805,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
   const params = Array.isArray(endpoint?.parameters) ? endpoint.parameters : [];
   const payloadData =
     payload && typeof payload === 'object' && !Array.isArray(payload)
-      ? { ...payload }
+      ? resolveEnvPlaceholders({ ...payload })
       : {};
   const { body: explicitBody, ...restPayload } = payloadData;
 
@@ -1816,12 +1867,20 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
   const requestUrl = `${trimEndSlash(requestBaseUrl)}${path.startsWith('/') ? path : `/${path}`}`;
 
   let token = null;
+  let tokenMeta = null;
   if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
-    token = await getPosApiToken({
+    const tokenResult = await getPosApiToken({
       authEndpointId,
       baseUrl: requestBaseUrl,
       authPayload,
+      useCachedToken,
+      withMeta: true,
     });
+    token = typeof tokenResult === 'string' ? tokenResult : tokenResult?.token;
+    tokenMeta =
+      tokenResult && typeof tokenResult === 'object'
+        ? tokenResult.meta || buildTokenMeta(authEndpointId || 'ENV_FALLBACK')
+        : buildTokenMeta(authEndpointId || 'ENV_FALLBACK');
   }
 
   try {
@@ -1842,6 +1901,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
           headers,
           body: bodyPayload ?? null,
         },
+        tokenMeta,
       };
     }
     return response;

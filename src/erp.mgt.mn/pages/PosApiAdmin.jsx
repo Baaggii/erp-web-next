@@ -22,11 +22,13 @@ const USAGE_TYPE_OPTIONS = {
   transaction: POSAPI_TRANSACTION_TYPES,
   info: POSAPI_INFO_TYPES,
   admin: POSAPI_ADMIN_TYPES,
+  auth: POSAPI_ADMIN_TYPES.filter((type) => type.value === 'AUTH'),
 };
 const USAGE_DEFAULT_TYPE = {
   transaction: '',
   info: 'LOOKUP',
-  admin: 'AUTH',
+  admin: 'ADMIN',
+  auth: 'AUTH',
 };
 
 const TAX_TYPES = [
@@ -91,12 +93,14 @@ const USAGE_OPTIONS = [
   { value: 'transaction', label: 'Transaction – triggered during form submission' },
   { value: 'info', label: 'Information lookup – fetches reference data' },
   { value: 'admin', label: 'Admin utility – management-only endpoints' },
+  { value: 'auth', label: 'Authentication' },
 ];
 
 const USAGE_BADGES = {
   transaction: '#047857',
   info: '#1d4ed8',
   admin: '#78350f',
+  auth: '#047857',
 };
 
 const DEFAULT_RECEIPT_TYPES = POSAPI_TRANSACTION_TYPES.map((type) => type.value);
@@ -106,6 +110,22 @@ const VALID_RECEIPT_TYPES = new Set(DEFAULT_RECEIPT_TYPES);
 const VALID_TAX_TYPES = new Set(DEFAULT_TAX_TYPES);
 const VALID_PAYMENT_METHODS = new Set(DEFAULT_PAYMENT_METHODS);
 const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
+const ENV_VARIABLE_OPTIONS = [
+  'POSAPI_CLIENT_ID',
+  'POSAPI_CLIENT_SECRET',
+  'POSAPI_USERNAME',
+  'POSAPI_PASSWORD',
+];
+const ENV_FIELD_DEFAULTS = {
+  client_id: 'POSAPI_CLIENT_ID',
+  clientid: 'POSAPI_CLIENT_ID',
+  clientsecret: 'POSAPI_CLIENT_SECRET',
+  client_secret: 'POSAPI_CLIENT_SECRET',
+  username: 'POSAPI_USERNAME',
+  user: 'POSAPI_USERNAME',
+  password: 'POSAPI_PASSWORD',
+  pwd: 'POSAPI_PASSWORD',
+};
 const DEFAULT_INFO_TABLE_OPTIONS = [
   { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
 ];
@@ -304,7 +324,7 @@ function sanitizeTableSelection(selection, options) {
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
   const usage = endpoint.posApiType === 'AUTH'
-    ? 'admin'
+    ? 'auth'
     : endpoint.posApiType === 'LOOKUP'
       ? 'info'
       : normalizeUsage(endpoint.usage);
@@ -955,7 +975,7 @@ function createFormState(definition) {
     ? definition.usage
     : 'transaction';
   const rawUsage = definition.posApiType === 'AUTH'
-    ? 'admin'
+    ? 'auth'
     : definition.posApiType === 'LOOKUP'
       ? 'info'
       : definition.posApiType === 'ADMIN'
@@ -1033,19 +1053,9 @@ function createFormState(definition) {
         return list;
       })()
     : [];
-  const shouldDefaultRequestSchema =
-    isTransaction && definition.posApiType && TRANSACTION_POSAPI_TYPES.has(definition.posApiType);
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
-  const shouldApplyTemplate = shouldDefaultRequestSchema && !hasRequestSchema;
-  const baseRequestSchema = shouldApplyTemplate
-    ? buildDefaultRequestSchema(
-        definition.posApiType || definition.requestBody?.schema?.type || 'B2C',
-        supportsItems,
-        supportsMultiplePayments,
-      )
-    : {};
-  const requestSchema = hasRequestSchema ? definition.requestBody.schema : baseRequestSchema;
-  const requestSchemaFallback = shouldApplyTemplate ? JSON.stringify(baseRequestSchema, null, 2) : '{}';
+  const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
+  const requestSchemaFallback = '{}';
 
   return {
     id: definition.id || '',
@@ -1078,7 +1088,7 @@ function createFormState(definition) {
     receiptTypes: receiptTypesEnabled
       ? resolvedReceiptTypes.length > 0
         ? resolvedReceiptTypes
-        : DEFAULT_RECEIPT_TYPES.slice()
+        : []
       : [],
     enableReceiptTaxTypes: receiptTaxTypesEnabled,
     allowMultipleReceiptTaxTypes,
@@ -1086,7 +1096,7 @@ function createFormState(definition) {
     taxTypes: receiptTaxTypesEnabled
       ? resolvedTaxTypes.length > 0
         ? resolvedTaxTypes
-        : DEFAULT_TAX_TYPES.slice()
+        : []
       : [],
     enablePaymentMethods: paymentMethodsEnabled,
     allowMultiplePaymentMethods,
@@ -1094,7 +1104,7 @@ function createFormState(definition) {
     paymentMethods: paymentMethodsEnabled
       ? resolvedPaymentMethods.length > 0
         ? resolvedPaymentMethods
-        : DEFAULT_PAYMENT_METHODS.slice()
+        : []
       : [],
     enableReceiptItems: receiptItemsEnabled,
     allowMultipleReceiptItems,
@@ -1569,7 +1579,7 @@ function extractOperationsFromPostman(spec) {
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
       const description = item.request.description || item.description || '';
       const posApiType = inferPosApiTypeFromHints(folderTags, path, item.request.description || '');
-      const usage = posApiType === 'AUTH' ? 'admin' : posApiType === 'LOOKUP' ? 'info' : 'transaction';
+      const usage = posApiType === 'AUTH' ? 'auth' : posApiType === 'LOOKUP' ? 'info' : 'transaction';
       const requestBody = requestSchema
         ? { schema: requestSchema, description }
         : usage === 'transaction'
@@ -1629,6 +1639,26 @@ function buildDraftParameterDefaults(parameters) {
   return values;
 }
 
+function primeBodyWithEnvDefaults(body) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
+  const clone = Array.isArray(body) ? [...body] : { ...body };
+  Object.keys(clone).forEach((key) => {
+    const normalized = key.toLowerCase();
+    const envVar = ENV_FIELD_DEFAULTS[normalized];
+    if (envVar) {
+      clone[key] = `{{${envVar}}}`;
+    }
+  });
+  return clone;
+}
+
+function formatTokenMeta(meta) {
+  if (!meta) return '';
+  const source = meta.endpointId === 'ENV_FALLBACK' ? 'environment auth' : meta.endpointId;
+  const obtained = meta.obtainedAt ? new Date(meta.obtainedAt).toLocaleString() : 'unknown time';
+  return `${source} – fetched ${obtained}`;
+}
+
 function buildFilledParams(parameters, providedValues = {}) {
   const byLocation = { path: {}, query: {}, header: {} };
   if (!Array.isArray(parameters)) return byLocation;
@@ -1670,6 +1700,8 @@ export default function PosApiAdmin() {
   const [usageFilter, setUsageFilter] = useState('all');
   const [testState, setTestState] = useState({ running: false, error: '', result: null });
   const [testEnvironment, setTestEnvironment] = useState('staging');
+  const [useCachedToken, setUseCachedToken] = useState(true);
+  const [lastTokenMeta, setLastTokenMeta] = useState(null);
   const [docExamples, setDocExamples] = useState([]);
   const [selectedDocBlock, setSelectedDocBlock] = useState('');
   const [docFieldDescriptions, setDocFieldDescriptions] = useState({});
@@ -1689,6 +1721,8 @@ export default function PosApiAdmin() {
   const [importTestResult, setImportTestResult] = useState(null);
   const [importTestRunning, setImportTestRunning] = useState(false);
   const [importTestError, setImportTestError] = useState('');
+  const [importUseCachedToken, setImportUseCachedToken] = useState(true);
+  const [importLastTokenMeta, setImportLastTokenMeta] = useState(null);
   const [importBaseUrl, setImportBaseUrl] = useState('');
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
@@ -1721,7 +1755,7 @@ export default function PosApiAdmin() {
     const filtered = normalized.filter(
       (endpoint) => usageFilter === 'all' || endpoint.usage === usageFilter,
     );
-    const usageOrder = ['transaction', 'info', 'admin'];
+    const usageOrder = ['transaction', 'info', 'admin', 'auth'];
     return usageOrder
       .map((usage) => {
         const label = formatUsageLabel(usage);
@@ -1850,7 +1884,7 @@ export default function PosApiAdmin() {
     if (!text) return { state: 'empty', formatted: '', error: '' };
     try {
       const parsed = JSON.parse(text);
-      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '' };
+      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '', parsed };
     } catch (err) {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
@@ -1866,6 +1900,27 @@ export default function PosApiAdmin() {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
   }, [formState.responseSchemaText]);
+
+  const requestBodyFields = useMemo(() => {
+    if (requestPreview.state !== 'ok' || !requestPreview.parsed) return [];
+    if (Array.isArray(requestPreview.parsed) || typeof requestPreview.parsed !== 'object') return [];
+    return Object.entries(requestPreview.parsed).map(([key, value]) => ({ key, value }));
+  }, [requestPreview]);
+
+  const importRequestBodyPreview = useMemo(() => {
+    if (!importRequestBody.trim()) return null;
+    try {
+      const parsed = JSON.parse(importRequestBody);
+      return typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+    } catch {
+      return null;
+    }
+  }, [importRequestBody]);
+
+  const importRequestBodyFields = useMemo(() => {
+    if (!importRequestBodyPreview) return [];
+    return Object.entries(importRequestBodyPreview).map(([key, value]) => ({ key, value }));
+  }, [importRequestBodyPreview]);
 
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
@@ -2135,36 +2190,57 @@ export default function PosApiAdmin() {
     });
   };
 
-  const handleTypeChange = (type) => {
-    const nextUsage = type === 'AUTH' || type === 'ADMIN'
-      ? 'admin'
-      : type === 'LOOKUP'
-        ? 'info'
-        : 'transaction';
-    const isTransactionType = nextUsage === 'transaction';
+  const handleUsageChange = (value) => {
+    const normalized = VALID_USAGE_VALUES.has(value) ? value : 'transaction';
+    const nextType = normalized === 'info'
+      ? 'LOOKUP'
+      : normalized === 'admin'
+        ? 'ADMIN'
+        : normalized === 'auth'
+          ? 'AUTH'
+          : TRANSACTION_POSAPI_TYPES.has(formState.posApiType)
+            ? formState.posApiType
+            : '';
+    const isTransactionType = normalized === 'transaction';
     setFormState((prev) => ({
       ...prev,
-      posApiType: type,
-      usage: nextUsage,
-      supportsItems: isTransactionType ? prev.supportsItems : false,
+      usage: normalized,
+      posApiType: nextType,
+      supportsItems: isTransactionType ? prev.supportsItems !== false : false,
       supportsMultiplePayments: isTransactionType ? prev.supportsMultiplePayments : false,
       supportsMultipleReceipts: isTransactionType ? prev.supportsMultipleReceipts : false,
       enableReceiptTypes: isTransactionType ? prev.enableReceiptTypes : false,
       enableReceiptTaxTypes: isTransactionType ? prev.enableReceiptTaxTypes : false,
       enablePaymentMethods: isTransactionType ? prev.enablePaymentMethods : false,
       enableReceiptItems: isTransactionType ? prev.enableReceiptItems : false,
-      allowMultiplePaymentMethods: isTransactionType ? prev.allowMultiplePaymentMethods : false,
-      allowMultipleReceiptTypes: isTransactionType ? prev.allowMultipleReceiptTypes : false,
-      allowMultipleReceiptTaxTypes: isTransactionType ? prev.allowMultipleReceiptTaxTypes : false,
-      allowMultipleReceiptItems: isTransactionType ? prev.allowMultipleReceiptItems : false,
-      requestSchemaText: isTransactionType ? prev.requestSchemaText : '{}',
-      requestFieldsText: isTransactionType ? prev.requestFieldsText : '[]',
     }));
     if (!isTransactionType) {
       setRequestBuilder(null);
       setRequestBuilderError('');
-      return;
     }
+  };
+
+  const handleTypeChange = (type) => {
+    const nextUsage = 'transaction';
+    const isTransactionType = true;
+    setFormState((prev) => ({
+      ...prev,
+      posApiType: type,
+      usage: nextUsage,
+      supportsItems: prev.supportsItems,
+      supportsMultiplePayments: prev.supportsMultiplePayments,
+      supportsMultipleReceipts: prev.supportsMultipleReceipts,
+      enableReceiptTypes: prev.enableReceiptTypes,
+      enableReceiptTaxTypes: prev.enableReceiptTaxTypes,
+      enablePaymentMethods: prev.enablePaymentMethods,
+      enableReceiptItems: prev.enableReceiptItems,
+      allowMultiplePaymentMethods: prev.allowMultiplePaymentMethods,
+      allowMultipleReceiptTypes: prev.allowMultipleReceiptTypes,
+      allowMultipleReceiptTaxTypes: prev.allowMultipleReceiptTaxTypes,
+      allowMultipleReceiptItems: prev.allowMultipleReceiptItems,
+      requestSchemaText: prev.requestSchemaText,
+      requestFieldsText: prev.requestFieldsText,
+    }));
     if (!type) return;
     updateRequestBuilder((prev) => normaliseBuilderForType(prev, type, supportsItems, supportsMultiplePayments));
   };
@@ -2826,40 +2902,11 @@ export default function PosApiAdmin() {
 
   function handleChange(field, value) {
     setFormState((prev) => {
-      const next = { ...prev, [field]: value };
       if (field === 'usage') {
-        const allowedTypes = USAGE_TYPE_OPTIONS[value] || [];
-        const allowedCodes = new Set(allowedTypes.map((type) => type.value));
-        if (!allowedCodes.has(next.posApiType)) {
-          next.posApiType = USAGE_DEFAULT_TYPE[value] ?? '';
-        }
-        if (value !== 'transaction') {
-          next.defaultForForm = false;
-          next.supportsMultipleReceipts = false;
-          next.supportsMultiplePayments = false;
-          next.supportsItems = false;
-          next.receiptTypes = [];
-          next.taxTypes = [];
-          next.paymentMethods = [];
-          next.enableReceiptTypes = false;
-          next.enableReceiptTaxTypes = false;
-          next.enablePaymentMethods = false;
-          next.enableReceiptItems = false;
-          next.receiptItemTemplates = [];
-        } else {
-          next.supportsItems = true;
-          next.receiptTypes = DEFAULT_RECEIPT_TYPES.slice();
-          next.taxTypes = DEFAULT_TAX_TYPES.slice();
-          next.paymentMethods = DEFAULT_PAYMENT_METHODS.slice();
-          next.enableReceiptTypes = true;
-          next.enableReceiptTaxTypes = true;
-          next.enablePaymentMethods = true;
-          next.enableReceiptItems = true;
-          if (!Array.isArray(next.receiptItemTemplates) || next.receiptItemTemplates.length === 0) {
-            next.receiptItemTemplates = [''];
-          }
-        }
+        handleUsageChange(value);
+        return prev;
       }
+      const next = { ...prev, [field]: value };
       if (field === 'supportsItems' && value === false) {
         next.supportsMultipleReceipts = false;
         next.enableReceiptItems = false;
@@ -2914,11 +2961,13 @@ export default function PosApiAdmin() {
           : [];
       }
       if (field === 'posApiType') {
-        const inferredUsage = value === 'AUTH' || value === 'ADMIN'
-          ? 'admin'
-          : value === 'LOOKUP'
-            ? 'info'
-            : next.usage;
+        const inferredUsage = value === 'AUTH'
+          ? 'auth'
+          : value === 'ADMIN'
+            ? 'admin'
+            : value === 'LOOKUP'
+              ? 'info'
+              : next.usage;
         if (inferredUsage !== next.usage) {
           next.usage = inferredUsage;
           const allowedTypes = USAGE_TYPE_OPTIONS[inferredUsage] || [];
@@ -3001,6 +3050,33 @@ export default function PosApiAdmin() {
     }
   }
 
+  function updateImportBodyField(key, value) {
+    try {
+      const parsed = importRequestBodyPreview && typeof importRequestBodyPreview === 'object'
+        ? { ...importRequestBodyPreview }
+        : {};
+      parsed[key] = value;
+      setImportRequestBody(JSON.stringify(parsed, null, 2));
+    } catch {
+      // ignore
+    }
+  }
+
+  function updateRequestSchemaField(key, value) {
+    try {
+      const parsed = requestPreview.parsed && typeof requestPreview.parsed === 'object'
+        ? { ...requestPreview.parsed }
+        : {};
+      parsed[key] = value;
+      setFormState((prev) => ({
+        ...prev,
+        requestSchemaText: JSON.stringify(parsed, null, 2),
+      }));
+    } catch {
+      // ignore JSON mutation errors
+    }
+  }
+
   function handleSampleFile(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -3020,6 +3096,7 @@ export default function PosApiAdmin() {
     setImportTestResult(null);
     setImportTestError('');
     setImportTestRunning(false);
+    setImportLastTokenMeta(null);
   }
 
   function prepareDraftDefaults(draft) {
@@ -3032,13 +3109,14 @@ export default function PosApiAdmin() {
         setImportRequestBody(draft.requestExample);
       } else {
         try {
-          setImportRequestBody(JSON.stringify(draft.requestExample, null, 2));
+          const primed = primeBodyWithEnvDefaults(draft.requestExample);
+          setImportRequestBody(JSON.stringify(primed, null, 2));
         } catch {
           setImportRequestBody(String(draft.requestExample));
         }
       }
     } else if (draft.requestBody?.schema) {
-      setImportRequestBody(toPrettyJson(draft.requestBody.schema, ''));
+      setImportRequestBody(toPrettyJson(primeBodyWithEnvDefaults(draft.requestBody.schema), ''));
     } else {
       setImportRequestBody('');
     }
@@ -3157,6 +3235,7 @@ export default function PosApiAdmin() {
           },
           baseUrl: importBaseUrl.trim() || undefined,
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
+          useCachedToken: importUseCachedToken,
         }),
       });
       const data = await res.json();
@@ -3164,6 +3243,7 @@ export default function PosApiAdmin() {
         throw new Error(data?.message || 'Test request failed.');
       }
       setImportTestResult(data);
+      setImportLastTokenMeta(data?.tokenMeta || null);
       setImportStatus('Test call completed. Review the response below.');
     } catch (err) {
       setImportTestError(err.message || 'Failed to call the imported endpoint.');
@@ -3175,12 +3255,15 @@ export default function PosApiAdmin() {
   function handleLoadDraftIntoForm() {
     if (!activeImportDraft) return;
     const paramsText = toPrettyJson(activeImportDraft.parameters || [], '[]');
-    const requestBodyText = toPrettyJson(activeImportDraft.requestBody?.schema, importRequestBody.trim() || '{}');
+    const requestBodyText = toPrettyJson(
+      primeBodyWithEnvDefaults(activeImportDraft.requestBody?.schema),
+      importRequestBody.trim() || '{}',
+    );
     const responseBodyText = toPrettyJson(activeImportDraft.responseBody?.schema, '{}');
     const requestFieldsText = toPrettyJson(activeImportDraft.requestFields, '[]');
     const responseFieldsText = toPrettyJson(activeImportDraft.responseFields, '[]');
     const inferredUsage = activeImportDraft.posApiType === 'AUTH'
-      ? 'admin'
+      ? 'auth'
       : activeImportDraft.posApiType === 'LOOKUP'
         ? 'info'
         : 'transaction';
@@ -3224,6 +3307,7 @@ export default function PosApiAdmin() {
 
   function resetTestState() {
     setTestState({ running: false, error: '', result: null });
+    setLastTokenMeta(null);
   }
 
   function updateInfoSetting(field, value) {
@@ -3442,10 +3526,11 @@ export default function PosApiAdmin() {
     });
 
     const usage = formState.posApiType === 'AUTH'
-      ? 'admin'
+      ? 'auth'
       : VALID_USAGE_VALUES.has(formState.usage)
         ? formState.usage
         : 'transaction';
+    const resolvedPosApiType = formState.posApiType || USAGE_DEFAULT_TYPE[usage] || '';
     const isTransaction = usage === 'transaction';
     const supportsItems = isTransaction ? formState.supportsItems !== false : false;
     const supportsMultiplePayments = isTransaction ? Boolean(formState.supportsMultiplePayments) : false;
@@ -3483,19 +3568,11 @@ export default function PosApiAdmin() {
       : [];
     const settingsId = usage === 'transaction' ? 'defaultTransaction' : '';
 
-    if (requestSchema && typeof requestSchema === 'object' && formState.posApiType) {
-      requestSchema.type = formState.posApiType;
+    if (requestSchema && typeof requestSchema === 'object' && resolvedPosApiType) {
+      requestSchema.type = resolvedPosApiType;
     }
-    if (isTransaction) {
-      const targetType = requestSchema?.type || formState.posApiType || 'B2C';
-      const fallbackSchema = buildDefaultRequestSchema(
-        targetType,
-        supportsItems,
-        supportsMultiplePayments,
-      );
-      requestSchema = hasObjectEntries(requestSchema)
-        ? applySchemaFeatureFlags(requestSchema, supportsItems, supportsMultiplePayments)
-        : fallbackSchema;
+    if (isTransaction && hasObjectEntries(requestSchema)) {
+      requestSchema = applySchemaFeatureFlags(requestSchema, supportsItems, supportsMultiplePayments);
     }
 
     const endpoint = {
@@ -3504,7 +3581,7 @@ export default function PosApiAdmin() {
       category: formState.category.trim(),
       method: formState.method.trim().toUpperCase(),
       path: formState.path.trim(),
-      posApiType: formState.posApiType || '',
+      posApiType: resolvedPosApiType,
       usage,
       defaultForForm: isTransaction ? Boolean(formState.defaultForForm) : false,
       ...(settingsId ? { settingsId } : {}),
@@ -3770,6 +3847,10 @@ export default function PosApiAdmin() {
     setSampleImportError('');
     setTestEnvironment('staging');
     setImportAuthEndpointId('');
+    setUseCachedToken(true);
+    setImportUseCachedToken(true);
+    setLastTokenMeta(null);
+    setImportLastTokenMeta(null);
   }
 
   async function handleTest() {
@@ -3809,6 +3890,7 @@ export default function PosApiAdmin() {
           endpoint: definition,
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
+          useCachedToken,
         }),
       });
       if (!res.ok) {
@@ -3826,6 +3908,7 @@ export default function PosApiAdmin() {
       }
       const data = await res.json();
       setTestState({ running: false, error: '', result: data });
+      setLastTokenMeta(data?.tokenMeta || null);
     } catch (err) {
       console.error(err);
       setTestState({ running: false, error: err.message || 'Failed to run test', result: null });
@@ -4177,6 +4260,23 @@ export default function PosApiAdmin() {
                             <span style={styles.fieldHelp}>
                               Choose which AUTH endpoint to call before testing this imported request.
                             </span>
+                            <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+                              <input
+                                type="checkbox"
+                                checked={importUseCachedToken}
+                                onChange={(e) => setImportUseCachedToken(e.target.checked)}
+                              />
+                              <span
+                                title="When checked, we won't call the auth endpoint again; we'll reuse the token from the last successful login during this session."
+                              >
+                                Use last successful token
+                              </span>
+                            </label>
+                            {formatTokenMeta(importLastTokenMeta) && (
+                              <div style={styles.checkboxHint}>
+                                Last token: {formatTokenMeta(importLastTokenMeta)}
+                              </div>
+                            )}
                           </label>
                         </div>
                         <div style={styles.importFieldRow}>
@@ -4200,22 +4300,41 @@ export default function PosApiAdmin() {
                                   {items.map((param) => (
                                     <label key={`${activeImportDraft.id}-${param.name}-${loc}`} style={styles.label}>
                                       {param.name}
-                                      <input
-                                        type="text"
-                                        value={importTestValues[param.name] ?? ''}
-                                        onChange={(e) =>
-                                          setImportTestValues((prev) => ({
-                                            ...prev,
-                                            [param.name]: e.target.value,
-                                          }))
-                                        }
-                                        placeholder={param.description || param.example || ''}
-                                        style={styles.input}
-                                      />
-                                      <div style={styles.paramMeta}>
-                                        {loc} {param.required ? '• required' : ''}
-                                      </div>
-                                    </label>
+                                    <input
+                                      type="text"
+                                      value={importTestValues[param.name] ?? ''}
+                                      onChange={(e) =>
+                                        setImportTestValues((prev) => ({
+                                          ...prev,
+                                          [param.name]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder={param.description || param.example || ''}
+                                      style={styles.input}
+                                    />
+                                    <select
+                                      style={styles.input}
+                                      value=""
+                                      onChange={(e) => {
+                                        const selected = e.target.value;
+                                        if (!selected) return;
+                                        setImportTestValues((prev) => ({
+                                          ...prev,
+                                          [param.name]: `{{${selected}}}`,
+                                        }));
+                                      }}
+                                    >
+                                      <option value="">Use environment variable…</option>
+                                      {ENV_VARIABLE_OPTIONS.map((opt) => (
+                                        <option key={`${param.name}-${opt}`} value={opt}>
+                                          {opt}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <div style={styles.paramMeta}>
+                                      {loc} {param.required ? '• required' : ''}
+                                    </div>
+                                  </label>
                                   ))}
                                 </div>
                               </div>
@@ -4231,6 +4350,32 @@ export default function PosApiAdmin() {
                             onChange={(e) => setImportRequestBody(e.target.value)}
                             rows={6}
                           />
+                          {importRequestBodyFields.length > 0 && (
+                            <div style={styles.importParamGrid}>
+                              {importRequestBodyFields.map((field) => (
+                                <label key={`import-body-${field.key}`} style={styles.label}>
+                                  {field.key}
+                                  <select
+                                    style={styles.input}
+                                    value=""
+                                    onChange={(e) => {
+                                      const selected = e.target.value;
+                                      if (!selected) return;
+                                      updateImportBodyField(field.key, `{{${selected}}}`);
+                                    }}
+                                  >
+                                    <option value="">Use environment variable…</option>
+                                    {ENV_VARIABLE_OPTIONS.map((opt) => (
+                                      <option key={`import-body-${field.key}-${opt}`} value={opt}>
+                                        {opt}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <div style={styles.paramMeta}>Replaces the field with the selected variable.</div>
+                                </label>
+                              ))}
+                            </div>
+                          )}
                         </div>
                         <div style={styles.importActionsRow}>
                           <button
@@ -4242,6 +4387,9 @@ export default function PosApiAdmin() {
                             {importTestRunning ? 'Testing…' : 'Call staging endpoint'}
                           </button>
                           {importTestError && <div style={styles.previewErrorBox}>{importTestError}</div>}
+                        </div>
+                        <div style={styles.checkboxHint}>
+                          Test calls use the request body shown above after environment variable substitution.
                         </div>
                         {importTestResult && (
                           <div style={styles.importResultBox}>
@@ -4356,7 +4504,7 @@ export default function PosApiAdmin() {
             Usage
             <select
               value={formState.usage}
-              onChange={(e) => handleChange('usage', e.target.value)}
+              onChange={(e) => handleUsageChange(e.target.value)}
               style={styles.input}
             >
               {USAGE_OPTIONS.map((option) => (
@@ -4422,21 +4570,30 @@ export default function PosApiAdmin() {
               )}
             </span>
           </label>
-          <label style={styles.label}>
-            POSAPI type
-            <select
-              value={formState.posApiType}
-              onChange={(e) => handleTypeChange(e.target.value)}
-              style={styles.input}
-            >
-              <option value="">Select a type…</option>
-              {(USAGE_TYPE_OPTIONS[formState.usage] || POSAPI_TRANSACTION_TYPES).map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          {isTransactionUsage ? (
+            <label style={styles.label}>
+              POSAPI type
+              <select
+                value={formState.posApiType}
+                onChange={(e) => handleTypeChange(e.target.value)}
+                style={styles.input}
+              >
+                <option value="">Select a type…</option>
+                {(USAGE_TYPE_OPTIONS[formState.usage] || POSAPI_TRANSACTION_TYPES).map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div style={styles.label}>
+              <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>POSAPI type</div>
+              <div style={styles.toggleStateHelper}>
+                {formatTypeLabel(formState.posApiType) || 'Auto-selected from usage'}
+              </div>
+            </div>
+          )}
           {isTransactionUsage && supportsItems && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
@@ -5587,6 +5744,32 @@ export default function PosApiAdmin() {
             style={styles.textarea}
             rows={10}
           />
+          {requestBodyFields.length > 0 && (
+            <div style={styles.importParamGrid}>
+              {requestBodyFields.map((field) => (
+                <label key={`request-body-${field.key}`} style={styles.label}>
+                  {field.key}
+                  <select
+                    style={styles.input}
+                    value=""
+                    onChange={(e) => {
+                      const selected = e.target.value;
+                      if (!selected) return;
+                      updateRequestSchemaField(field.key, `{{${selected}}}`);
+                    }}
+                  >
+                    <option value="">Use environment variable…</option>
+                    {ENV_VARIABLE_OPTIONS.map((opt) => (
+                      <option key={`request-body-${field.key}-${opt}`} value={opt}>
+                        {opt}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={styles.paramMeta}>Applies the selected environment variable to this field.</div>
+                </label>
+              ))}
+            </div>
+          )}
         </label>
         <label style={styles.labelFull}>
           Response description
@@ -5791,6 +5974,21 @@ export default function PosApiAdmin() {
             <span style={styles.fieldHelp}>
               Used by the test harness to fetch a bearer token before calling the endpoint.
             </span>
+            <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+              <input
+                type="checkbox"
+                checked={useCachedToken}
+                onChange={(e) => setUseCachedToken(e.target.checked)}
+              />
+              <span
+                title="When checked, we won't call the auth endpoint again; we'll reuse the token from the last successful login during this session."
+              >
+                Use last successful token when testing
+              </span>
+            </label>
+            {formatTokenMeta(lastTokenMeta) && (
+              <div style={styles.checkboxHint}>Last token: {formatTokenMeta(lastTokenMeta)}</div>
+            )}
           </label>
           <div style={{ ...styles.label, flex: 1 }}>
             <div style={styles.radioRow}>
@@ -5963,6 +6161,10 @@ export default function PosApiAdmin() {
           >
             Delete
           </button>
+        </div>
+
+        <div style={styles.checkboxHint}>
+          Tests send the request body shown in the editor after applying any environment variable selections above.
         </div>
 
         {testState.error && <div style={styles.testError}>{testState.error}</div>}
