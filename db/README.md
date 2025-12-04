@@ -36,16 +36,3 @@ trigger_block: BEGIN
 
 - Place this block immediately after the `BEGIN` keyword and before any `DECLARE` statements.
 - Do not alter the trigger logic itself; the `LEAVE` exits cleanly when `@skip_triggers` is enabled with `SET @skip_triggers = 1;`.
-
-### How it behaves in practice
-
-- **Modal form dynamic logic**
-  - No skip variable is set, so triggers run normally.
-  - Modal form stored procedures run directly via the API (not via triggers), so there is no conflict.
-- **Promote / posting operations**
-  - Backend sets the flag: `SET @skip_triggers = 1;`
-  - Performs the write: `INSERT INTO transactions_income SET ...;` (or the relevant `INSERT`/`UPDATE`).
-  - Trigger detects the flag, exits immediately, and heavy stored procedures do **not** run.
-  - The application fills any SP-derived values manually (for example, in `sanitizedValues`).
-- **Optional cleanup after posting**
-  - Reset the session flag when you are done: `SET @skip_triggers = NULL;`.
