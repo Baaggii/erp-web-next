@@ -1,16 +1,33 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 
-const POSAPI_TYPES = [
+const POSAPI_TRANSACTION_TYPES = [
   { value: 'B2C', label: 'B2C receipt' },
   { value: 'B2B_SALE', label: 'B2B sale invoice' },
   { value: 'B2B_PURCHASE', label: 'B2B purchase invoice' },
   { value: 'STOCK_QR', label: 'Stock QR' },
 ];
 
-const AUTH_POSAPI_TYPE = { value: 'AUTH', label: 'Authentication / Token' };
-const LOOKUP_POSAPI_TYPE = { value: 'LOOKUP', label: 'Lookup / Information' };
-const POSAPI_TYPES_WITH_AUTH = [...POSAPI_TYPES, LOOKUP_POSAPI_TYPE, AUTH_POSAPI_TYPE];
+const POSAPI_INFO_TYPES = [{ value: 'LOOKUP', label: 'Information lookup' }];
+const POSAPI_ADMIN_TYPES = [
+  { value: 'AUTH', label: 'Authentication / Token' },
+  { value: 'ADMIN', label: 'Admin utility' },
+];
+const ALL_POSAPI_TYPES = [
+  ...POSAPI_TRANSACTION_TYPES,
+  ...POSAPI_INFO_TYPES,
+  ...POSAPI_ADMIN_TYPES,
+];
+const USAGE_TYPE_OPTIONS = {
+  transaction: POSAPI_TRANSACTION_TYPES,
+  info: POSAPI_INFO_TYPES,
+  admin: POSAPI_ADMIN_TYPES,
+};
+const USAGE_DEFAULT_TYPE = {
+  transaction: '',
+  info: 'LOOKUP',
+  admin: 'AUTH',
+};
 
 const TAX_TYPES = [
   { value: 'VAT_ABLE', label: 'VAT-able' },
@@ -61,6 +78,7 @@ const TYPE_BADGES = {
   STOCK_QR: '#0ea5e9',
   AUTH: '#047857',
   LOOKUP: '#0ea5e9',
+  ADMIN: '#7f1d1d',
 };
 
 const TAX_PRODUCT_OPTIONS = [
@@ -81,7 +99,7 @@ const USAGE_BADGES = {
   admin: '#78350f',
 };
 
-const DEFAULT_RECEIPT_TYPES = POSAPI_TYPES.map((type) => type.value);
+const DEFAULT_RECEIPT_TYPES = POSAPI_TRANSACTION_TYPES.map((type) => type.value);
 const DEFAULT_TAX_TYPES = TAX_TYPES.map((tax) => tax.value);
 const DEFAULT_PAYMENT_METHODS = PAYMENT_TYPES.map((payment) => payment.value);
 const VALID_RECEIPT_TYPES = new Set(DEFAULT_RECEIPT_TYPES);
@@ -867,7 +885,7 @@ function normaliseBuilderForType(builder, type, withItems = true, withPayments =
 
 function formatTypeLabel(type) {
   if (!type) return '';
-  const hit = POSAPI_TYPES_WITH_AUTH.find((opt) => opt.value === type);
+  const hit = ALL_POSAPI_TYPES.find((opt) => opt.value === type);
   return hit ? hit.label : type;
 }
 
@@ -936,7 +954,13 @@ function createFormState(definition) {
   const declaredUsage = definition.usage && VALID_USAGE_VALUES.has(definition.usage)
     ? definition.usage
     : 'transaction';
-  const rawUsage = definition.posApiType === 'AUTH' ? 'admin' : declaredUsage;
+  const rawUsage = definition.posApiType === 'AUTH'
+    ? 'admin'
+    : definition.posApiType === 'LOOKUP'
+      ? 'info'
+      : definition.posApiType === 'ADMIN'
+        ? 'admin'
+        : declaredUsage;
   const isTransaction = rawUsage === 'transaction';
   const supportsItems = isTransaction
     ? definition.supportsItems !== undefined
@@ -1582,15 +1606,58 @@ function extractOperationsFromPostman(spec) {
 
 function buildDraftParameterDefaults(parameters) {
   const values = {};
+  const envFallbacks = {
+    client_id: '{{POSAPI_CLIENT_ID}}',
+    client_secret: '{{POSAPI_CLIENT_SECRET}}',
+    username: '{{POSAPI_USERNAME}}',
+    password: '{{POSAPI_PASSWORD}}',
+  };
   parameters.forEach((param) => {
     if (!param?.name) return;
     const candidates = [param.example, param.default, param.sample];
     const hit = candidates.find((val) => val !== undefined && val !== null);
     if (hit !== undefined && hit !== null) {
       values[param.name] = hit;
+      return;
+    }
+    const normalizedName = typeof param.name === 'string' ? param.name.toLowerCase() : param.name;
+    const envKey = envFallbacks[normalizedName];
+    if (envKey) {
+      values[param.name] = envKey;
     }
   });
   return values;
+}
+
+function buildFilledParams(parameters, providedValues = {}) {
+  const byLocation = { path: {}, query: {}, header: {} };
+  if (!Array.isArray(parameters)) return byLocation;
+  parameters.forEach((param) => {
+    const name = typeof param?.name === 'string' ? param.name : '';
+    const loc = typeof param?.in === 'string' ? param.in : 'query';
+    if (!name) return;
+    const raw = providedValues[name];
+    if (raw === undefined || raw === null || `${raw}`.trim() === '') return;
+    if (loc === 'path') {
+      byLocation.path[name] = raw;
+    } else if (loc === 'header') {
+      byLocation.header[name] = raw;
+    } else {
+      byLocation.query[name] = raw;
+    }
+  });
+  return byLocation;
+}
+
+function groupParametersByLocation(parameters = []) {
+  const groups = { path: [], query: [], header: [] };
+  parameters.forEach((param) => {
+    const loc = typeof param?.in === 'string' ? param.in : 'query';
+    if (loc === 'path') groups.path.push(param);
+    else if (loc === 'header') groups.header.push(param);
+    else groups.query.push(param);
+  });
+  return groups;
 }
 
 export default function PosApiAdmin() {
@@ -1720,6 +1787,11 @@ export default function PosApiAdmin() {
   const activeImportDraft = useMemo(
     () => importDrafts.find((entry) => entry.id === selectedImportId) || importDrafts[0] || null,
     [importDrafts, selectedImportId],
+  );
+
+  const activeImportParameterGroups = useMemo(
+    () => groupParametersByLocation(activeImportDraft?.parameters || []),
+    [activeImportDraft],
   );
 
   const infoSyncEndpointOptions = useMemo(() => {
@@ -1906,8 +1978,8 @@ export default function PosApiAdmin() {
 
   const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
   const receiptTypeOptions = receiptTypesEnabled && formReceiptTypes.length > 0
-    ? POSAPI_TYPES.filter((type) => formReceiptTypes.includes(type.value))
-    : POSAPI_TYPES;
+    ? POSAPI_TRANSACTION_TYPES.filter((type) => formReceiptTypes.includes(type.value))
+    : POSAPI_TRANSACTION_TYPES;
   const taxTypeOptions = allowedTaxTypes.length > 0 ? allowedTaxTypes : TAX_TYPES;
   const paymentTypeOptions = allowedPaymentTypes.length > 0 ? allowedPaymentTypes : PAYMENT_TYPES;
 
@@ -2064,7 +2136,11 @@ export default function PosApiAdmin() {
   };
 
   const handleTypeChange = (type) => {
-    const nextUsage = type === 'AUTH' ? 'admin' : type === 'LOOKUP' ? 'info' : formState.usage;
+    const nextUsage = type === 'AUTH' || type === 'ADMIN'
+      ? 'admin'
+      : type === 'LOOKUP'
+        ? 'info'
+        : 'transaction';
     const isTransactionType = nextUsage === 'transaction';
     setFormState((prev) => ({
       ...prev,
@@ -2752,6 +2828,11 @@ export default function PosApiAdmin() {
     setFormState((prev) => {
       const next = { ...prev, [field]: value };
       if (field === 'usage') {
+        const allowedTypes = USAGE_TYPE_OPTIONS[value] || [];
+        const allowedCodes = new Set(allowedTypes.map((type) => type.value));
+        if (!allowedCodes.has(next.posApiType)) {
+          next.posApiType = USAGE_DEFAULT_TYPE[value] ?? '';
+        }
         if (value !== 'transaction') {
           next.defaultForForm = false;
           next.supportsMultipleReceipts = false;
@@ -2831,6 +2912,21 @@ export default function PosApiAdmin() {
         next.receiptItemTemplates = Array.isArray(next.receiptItemTemplates)
           ? next.receiptItemTemplates.slice(0, 1)
           : [];
+      }
+      if (field === 'posApiType') {
+        const inferredUsage = value === 'AUTH' || value === 'ADMIN'
+          ? 'admin'
+          : value === 'LOOKUP'
+            ? 'info'
+            : next.usage;
+        if (inferredUsage !== next.usage) {
+          next.usage = inferredUsage;
+          const allowedTypes = USAGE_TYPE_OPTIONS[inferredUsage] || [];
+          const allowedCodes = new Set(allowedTypes.map((type) => type.value));
+          if (!allowedCodes.has(value)) {
+            next.posApiType = USAGE_DEFAULT_TYPE[inferredUsage] ?? '';
+          }
+        }
       }
       return next;
     });
@@ -3037,6 +3133,8 @@ export default function PosApiAdmin() {
     resetImportTestState();
     setImportTestRunning(true);
     try {
+      const filteredParams = buildFilledParams(activeImportDraft.parameters || [], importTestValues);
+      const mergedParams = { ...filteredParams.path, ...filteredParams.query, ...filteredParams.header };
       const res = await fetch(`${API_BASE}/posapi/endpoints/import/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3050,7 +3148,13 @@ export default function PosApiAdmin() {
             parameters: activeImportDraft.parameters || [],
             posApiType: activeImportDraft.posApiType,
           },
-          payload: { params: importTestValues, body: parsedBody },
+          payload: {
+            params: mergedParams,
+            pathParams: filteredParams.path,
+            queryParams: filteredParams.query,
+            headers: filteredParams.header,
+            body: parsedBody,
+          },
           baseUrl: importBaseUrl.trim() || undefined,
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
         }),
@@ -4077,28 +4181,46 @@ export default function PosApiAdmin() {
                         </div>
                         <div style={styles.importFieldRow}>
                           <div style={styles.importParamsHeader}>Parameters</div>
-                          {(activeImportDraft.parameters || []).length === 0 && (
-                            <div style={styles.sectionHelp}>No query or path parameters defined.</div>
+                          {(!activeImportDraft.parameters || activeImportDraft.parameters.length === 0) && (
+                            <div style={styles.sectionHelp}>No query, path, or header parameters defined.</div>
                           )}
-                          <div style={styles.importParamGrid}>
-                            {(activeImportDraft.parameters || []).map((param) => (
-                              <label key={`${activeImportDraft.id}-${param.name}`} style={styles.label}>
-                                {param.name}
-                                <input
-                                  type="text"
-                                  value={importTestValues[param.name] ?? ''}
-                                  onChange={(e) =>
-                                    setImportTestValues((prev) => ({ ...prev, [param.name]: e.target.value }))
-                                  }
-                                  placeholder={param.description || param.example || ''}
-                                  style={styles.input}
-                                />
-                                <div style={styles.paramMeta}>
-                                  {param.in} {param.required ? '• required' : ''}
+                          {['path', 'query', 'header'].map((loc) => {
+                            const items = activeImportParameterGroups[loc] || [];
+                            if (!items.length) return null;
+                            const title =
+                              loc === 'path'
+                                ? 'Path parameters'
+                                : loc === 'header'
+                                  ? 'Header parameters'
+                                  : 'Query parameters';
+                            return (
+                              <div key={`${activeImportDraft.id}-${loc}`} style={{ marginBottom: '0.5rem' }}>
+                                <div style={{ fontWeight: 600, marginBottom: '0.35rem' }}>{title}</div>
+                                <div style={styles.importParamGrid}>
+                                  {items.map((param) => (
+                                    <label key={`${activeImportDraft.id}-${param.name}-${loc}`} style={styles.label}>
+                                      {param.name}
+                                      <input
+                                        type="text"
+                                        value={importTestValues[param.name] ?? ''}
+                                        onChange={(e) =>
+                                          setImportTestValues((prev) => ({
+                                            ...prev,
+                                            [param.name]: e.target.value,
+                                          }))
+                                        }
+                                        placeholder={param.description || param.example || ''}
+                                        style={styles.input}
+                                      />
+                                      <div style={styles.paramMeta}>
+                                        {loc} {param.required ? '• required' : ''}
+                                      </div>
+                                    </label>
+                                  ))}
                                 </div>
-                              </label>
-                            ))}
-                          </div>
+                              </div>
+                            );
+                          })}
                         </div>
                         <div style={styles.importFieldRow}>
                           <div style={styles.importParamsHeader}>Request body</div>
@@ -4308,7 +4430,7 @@ export default function PosApiAdmin() {
               style={styles.input}
             >
               <option value="">Select a type…</option>
-              {POSAPI_TYPES_WITH_AUTH.map((type) => (
+              {(USAGE_TYPE_OPTIONS[formState.usage] || POSAPI_TRANSACTION_TYPES).map((type) => (
                 <option key={type.value} value={type.value}>
                   {type.label}
                 </option>
@@ -4345,7 +4467,7 @@ export default function PosApiAdmin() {
                     Choose the transaction types this endpoint accepts at runtime.
                   </span>
                   <div style={styles.multiSelectOptions}>
-                    {POSAPI_TYPES.map((type) => {
+                    {POSAPI_TRANSACTION_TYPES.map((type) => {
                       const checked = Array.isArray(formState.receiptTypes)
                         ? formState.receiptTypes.includes(type.value)
                         : false;
@@ -4834,7 +4956,7 @@ export default function PosApiAdmin() {
                       ))}
                     </ul>
                     <div style={styles.sampleGrid}>
-                      {POSAPI_TYPES.map((type) => {
+                      {POSAPI_TRANSACTION_TYPES.map((type) => {
                         const sample = RECEIPT_SAMPLE_PAYLOADS[type.value];
                         if (!sample) return null;
                         const pretty = JSON.stringify(sample, null, 2);
