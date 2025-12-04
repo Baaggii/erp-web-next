@@ -39,7 +39,6 @@ export default function AsyncSearchSelect({
   companyId,
   shouldFetch = true,
   filters = {},
-  exactFilters = [],
   ...rest
 }) {
   const { company } = useContext(AuthContext);
@@ -69,21 +68,6 @@ export default function AsyncSearchSelect({
   const forcedLocalSearchRef = useRef('');
   const fetchRequestIdRef = useRef(0);
   const filtersKey = useMemo(() => JSON.stringify(filters || {}), [filters]);
-  const normalizedExactFilters = useMemo(() => {
-    if (!Array.isArray(exactFilters) || exactFilters.length === 0) return [];
-    const set = new Set();
-    exactFilters.forEach((field) => {
-      if (typeof field !== 'string') return;
-      const trimmed = field.trim();
-      if (!trimmed) return;
-      set.add(trimmed);
-    });
-    return Array.from(set);
-  }, [exactFilters]);
-  const exactFiltersKey = useMemo(
-    () => JSON.stringify(normalizedExactFilters),
-    [normalizedExactFilters],
-  );
   const beginFetchRequest = useCallback(() => {
     fetchRequestIdRef.current += 1;
     return fetchRequestIdRef.current;
@@ -308,9 +292,6 @@ export default function AsyncSearchSelect({
       if (shouldUseRemoteSearch) {
         params.set('search', normalizedQuery);
         params.set('searchColumns', cols.join(','));
-      }
-      if (normalizedExactFilters.length > 0) {
-        params.set('exactFilters', normalizedExactFilters.join(','));
       }
       Object.entries(filters || {}).forEach(([field, rawValue]) => {
         if (rawValue === undefined || rawValue === null || rawValue === '') return;
@@ -565,7 +546,6 @@ export default function AsyncSearchSelect({
     shouldFetch,
     beginFetchRequest,
     filtersKey,
-    exactFiltersKey,
   ]);
 
   useEffect(() => {
@@ -586,7 +566,6 @@ export default function AsyncSearchSelect({
     effectiveCompanyId,
     beginFetchRequest,
     filtersKey,
-    exactFiltersKey,
   ]);
 
   useEffect(() => {
