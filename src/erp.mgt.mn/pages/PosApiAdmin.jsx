@@ -116,16 +116,6 @@ const ENV_VARIABLE_OPTIONS = [
   'POSAPI_USERNAME',
   'POSAPI_PASSWORD',
 ];
-const ENV_FIELD_DEFAULTS = {
-  client_id: 'POSAPI_CLIENT_ID',
-  clientid: 'POSAPI_CLIENT_ID',
-  clientsecret: 'POSAPI_CLIENT_SECRET',
-  client_secret: 'POSAPI_CLIENT_SECRET',
-  username: 'POSAPI_USERNAME',
-  user: 'POSAPI_USERNAME',
-  password: 'POSAPI_PASSWORD',
-  pwd: 'POSAPI_PASSWORD',
-};
 const DEFAULT_INFO_TABLE_OPTIONS = [
   { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
 ];
@@ -1701,7 +1691,6 @@ export default function PosApiAdmin() {
   const [testState, setTestState] = useState({ running: false, error: '', result: null });
   const [testEnvironment, setTestEnvironment] = useState('staging');
   const [useCachedToken, setUseCachedToken] = useState(true);
-  const [lastTokenMeta, setLastTokenMeta] = useState(null);
   const [docExamples, setDocExamples] = useState([]);
   const [selectedDocBlock, setSelectedDocBlock] = useState('');
   const [docFieldDescriptions, setDocFieldDescriptions] = useState({});
@@ -1722,7 +1711,6 @@ export default function PosApiAdmin() {
   const [importTestRunning, setImportTestRunning] = useState(false);
   const [importTestError, setImportTestError] = useState('');
   const [importUseCachedToken, setImportUseCachedToken] = useState(true);
-  const [importLastTokenMeta, setImportLastTokenMeta] = useState(null);
   const [importBaseUrl, setImportBaseUrl] = useState('');
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
@@ -3849,8 +3837,6 @@ export default function PosApiAdmin() {
     setImportAuthEndpointId('');
     setUseCachedToken(true);
     setImportUseCachedToken(true);
-    setLastTokenMeta(null);
-    setImportLastTokenMeta(null);
   }
 
   async function handleTest() {
@@ -4266,17 +4252,8 @@ export default function PosApiAdmin() {
                                 checked={importUseCachedToken}
                                 onChange={(e) => setImportUseCachedToken(e.target.checked)}
                               />
-                              <span
-                                title="When checked, we won't call the auth endpoint again; we'll reuse the token from the last successful login during this session."
-                              >
-                                Use last successful token
-                              </span>
+                              <span>Use last successful token</span>
                             </label>
-                            {formatTokenMeta(importLastTokenMeta) && (
-                              <div style={styles.checkboxHint}>
-                                Last token: {formatTokenMeta(importLastTokenMeta)}
-                              </div>
-                            )}
                           </label>
                         </div>
                         <div style={styles.importFieldRow}>
@@ -5980,15 +5957,8 @@ export default function PosApiAdmin() {
                 checked={useCachedToken}
                 onChange={(e) => setUseCachedToken(e.target.checked)}
               />
-              <span
-                title="When checked, we won't call the auth endpoint again; we'll reuse the token from the last successful login during this session."
-              >
-                Use last successful token when testing
-              </span>
+              <span>Use last successful token when testing</span>
             </label>
-            {formatTokenMeta(lastTokenMeta) && (
-              <div style={styles.checkboxHint}>Last token: {formatTokenMeta(lastTokenMeta)}</div>
-            )}
           </label>
           <div style={{ ...styles.label, flex: 1 }}>
             <div style={styles.radioRow}>

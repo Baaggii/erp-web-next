@@ -1293,12 +1293,11 @@ export async function getPosApiToken(options = {}) {
     const token = await fetchTokenFromAuthEndpoint(authEndpoint, {
       baseUrl: optionBag.baseUrl,
       payload: optionBag.authPayload,
-      useCachedToken: useCached,
+      useCachedToken: optionBag.useCachedToken !== false,
     });
     return optionBag.withMeta ? { token, meta: buildTokenMeta(sourceId, false) } : token;
   }
-  const token = await fetchEnvPosApiToken({ useCachedToken: useCached });
-  return optionBag.withMeta ? { token, meta: buildTokenMeta(sourceId, false) } : token;
+  return fetchEnvPosApiToken({ useCachedToken: optionBag.useCachedToken !== false });
 }
 
 export async function buildReceiptFromDynamicTransaction(
@@ -1874,7 +1873,6 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
       baseUrl: requestBaseUrl,
       authPayload,
       useCachedToken,
-      withMeta: true,
     });
     token = typeof tokenResult === 'string' ? tokenResult : tokenResult?.token;
     tokenMeta =
