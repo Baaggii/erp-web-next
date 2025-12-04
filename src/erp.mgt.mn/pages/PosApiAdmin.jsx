@@ -1608,15 +1608,13 @@ function buildDraftParameterDefaults(parameters) {
   const values = {};
   const envFallbacks = {
     client_id: '{{POSAPI_CLIENT_ID}}',
-    clientid: '{{POSAPI_CLIENT_ID}}',
-    clientsecret: '{{POSAPI_CLIENT_SECRET}}',
     client_secret: '{{POSAPI_CLIENT_SECRET}}',
     username: '{{POSAPI_USERNAME}}',
     password: '{{POSAPI_PASSWORD}}',
   };
   parameters.forEach((param) => {
     if (!param?.name) return;
-    const candidates = [param.example, param.default, param.sample, param.testValue];
+    const candidates = [param.example, param.default, param.sample];
     const hit = candidates.find((val) => val !== undefined && val !== null);
     if (hit !== undefined && hit !== null) {
       values[param.name] = hit;
@@ -1627,22 +1625,6 @@ function buildDraftParameterDefaults(parameters) {
     if (envKey) {
       values[param.name] = envKey;
     }
-  });
-  return values;
-}
-
-function buildParameterValueDefaults(parameters = [], currentValues = {}) {
-  const defaults = buildDraftParameterDefaults(parameters);
-  const values = {};
-  const seen = new Set();
-  parameters.forEach((param) => {
-    const name = typeof param?.name === 'string' ? param.name : '';
-    if (!name || seen.has(name)) return;
-    seen.add(name);
-    const existing = currentValues && currentValues[name];
-    const fallback = defaults[name] ?? '';
-    const normalizedExisting = existing === undefined || existing === null ? '' : existing;
-    values[name] = `${normalizedExisting}`.trim() !== '' ? normalizedExisting : fallback;
   });
   return values;
 }
@@ -1678,32 +1660,6 @@ function groupParametersByLocation(parameters = []) {
   return groups;
 }
 
-function extractSchemaFeatureFlags(schema = {}) {
-  const asObject = schema && typeof schema === 'object' ? schema : {};
-  const receipts = Array.isArray(asObject.receipts) ? asObject.receipts : [];
-  const payments = Array.isArray(asObject.payments) ? asObject.payments : [];
-  const hasReceiptItems = receipts.some((receipt) => Array.isArray(receipt?.items));
-  const hasPayments = payments.length > 0 || receipts.some((receipt) => Array.isArray(receipt?.payments));
-  return {
-    supportsItems: hasReceiptItems || Boolean(asObject.items || asObject.item || asObject.stockCodes),
-    supportsMultipleReceipts: receipts.length > 1,
-    supportsMultiplePayments: hasPayments,
-  };
-}
-
-function extractAccessToken(result) {
-  if (!result || typeof result !== 'object') return '';
-  const candidates = [result, result.response, result.response?.data];
-  for (const entry of candidates) {
-    if (!entry || typeof entry !== 'object') continue;
-    if (typeof entry.access_token === 'string') return entry.access_token;
-    if (typeof entry.accessToken === 'string') return entry.accessToken;
-    if (typeof entry.token === 'string') return entry.token;
-    if (entry.data && typeof entry.data === 'string') return entry.data;
-  }
-  return '';
-}
-
 export default function PosApiAdmin() {
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
@@ -1734,16 +1690,12 @@ export default function PosApiAdmin() {
   const [importTestRunning, setImportTestRunning] = useState(false);
   const [importTestError, setImportTestError] = useState('');
   const [importBaseUrl, setImportBaseUrl] = useState('');
-  const [parameterValues, setParameterValues] = useState({});
-  const [parameterError, setParameterError] = useState('');
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
   const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
   const [taxTypeListError, setTaxTypeListError] = useState('');
   const taxTypeInputDirtyRef = useRef(false);
   const importAuthSelectionDirtyRef = useRef(false);
-  const [authTokenCache, setAuthTokenCache] = useState({});
-  const [reuseCachedAuth, setReuseCachedAuth] = useState(true);
   const [activeTab, setActiveTab] = useState('endpoints');
   const [infoSyncSettings, setInfoSyncSettings] = useState({
     autoSyncEnabled: false,
@@ -2013,49 +1965,10 @@ export default function PosApiAdmin() {
     return PAYMENT_TYPES.filter((payment) => unique.includes(payment.value));
   }, [paymentMethodsEnabled, selectedPaymentMethods]);
 
-  const parsedParameters = useMemo(() => {
-    try {
-      const parsed = JSON.parse(formState.parametersText || '[]');
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  }, [formState.parametersText]);
-
-  useEffect(() => {
-    const text = (formState.parametersText || '').trim();
-    if (!text) {
-      setParameterError('');
-      setParameterValues({});
-      return;
-    }
-    try {
-      const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed)) {
-        throw new Error('Parameters must be a JSON array');
-      }
-      setParameterError('');
-      setParameterValues((prev) => buildParameterValueDefaults(parsed, prev));
-    } catch (err) {
-      setParameterError(err.message || 'Parameters must be valid JSON.');
-      setParameterValues({});
-    }
-  }, [formState.parametersText]);
-
-  const parameterGroups = useMemo(() => {
-    if (parameterError) return { path: [], query: [], header: [] };
-    return groupParametersByLocation(parsedParameters);
-  }, [parsedParameters, parameterError]);
-
   const authEndpointOptions = useMemo(
     () => endpoints.filter((endpoint) => endpoint?.posApiType === 'AUTH'),
     [endpoints],
   );
-
-  const cachedAuthToken = useMemo(() => {
-    if (!formState.authEndpointId) return '';
-    return authTokenCache[formState.authEndpointId]?.token || '';
-  }, [authTokenCache, formState.authEndpointId]);
 
   const resolvedTestServerUrl = ((testEnvironment === 'production'
     ? formState.testServerUrlProduction || formState.testServerUrl
@@ -3271,16 +3184,6 @@ export default function PosApiAdmin() {
       : activeImportDraft.posApiType === 'LOOKUP'
         ? 'info'
         : 'transaction';
-    const featureFlags = extractSchemaFeatureFlags(
-      activeImportDraft.requestBody?.schema || activeImportDraft.requestExample || {},
-    );
-    const receiptTemplateType =
-      activeImportDraft.requestExample && typeof activeImportDraft.requestExample === 'object'
-        ? activeImportDraft.requestExample.type
-        : '';
-    const receiptTemplates = TRANSACTION_POSAPI_TYPES.has(receiptTemplateType)
-      ? { [receiptTemplateType]: JSON.stringify(activeImportDraft.requestExample, null, 2) }
-      : {};
     const draftDefinition = {
       ...EMPTY_ENDPOINT,
       id: activeImportDraft.id || '',
@@ -3294,16 +3197,12 @@ export default function PosApiAdmin() {
       responseBody: activeImportDraft.responseBody,
       requestFields: activeImportDraft.requestFields || [],
       responseFields: activeImportDraft.responseFields || [],
-      supportsItems:
-        activeImportDraft.supportsItems ?? featureFlags.supportsItems ?? inferredUsage === 'transaction',
-      supportsMultiplePayments:
-        activeImportDraft.supportsMultiplePayments ?? featureFlags.supportsMultiplePayments,
-      supportsMultipleReceipts:
-        activeImportDraft.supportsMultipleReceipts ?? featureFlags.supportsMultipleReceipts,
+      supportsItems: activeImportDraft.supportsItems ?? inferredUsage === 'transaction',
+      supportsMultiplePayments: activeImportDraft.supportsMultiplePayments,
+      supportsMultipleReceipts: activeImportDraft.supportsMultipleReceipts,
       receiptTypes: activeImportDraft.receiptTypes,
       taxTypes: activeImportDraft.taxTypes,
       paymentMethods: activeImportDraft.paymentMethods,
-      receiptTypeTemplates: receiptTemplates,
       testable: Boolean(activeImportDraft.testServerUrl || activeImportDraft.serverUrl),
       testServerUrl: activeImportDraft.testServerUrl || activeImportDraft.serverUrl || '',
       testServerUrlProduction: activeImportDraft.testServerUrlProduction || '',
@@ -3884,11 +3783,6 @@ export default function PosApiAdmin() {
       return;
     }
 
-    if (parameterError) {
-      setTestState({ running: false, error: parameterError, result: null });
-      return;
-    }
-
     if (!definition.testable) {
       setTestState({ running: false, error: 'Enable the testable checkbox to run tests.', result: null });
       return;
@@ -3907,77 +3801,6 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
-      let filteredParams = buildFilledParams(definition.parameters || [], parameterValues);
-      let authToken = '';
-      let authResult = null;
-      const requestBodyText = (formState.requestSchemaText || '').trim();
-      let parsedRequestBody;
-      if (requestBodyText) {
-        try {
-          parsedRequestBody = JSON.parse(requestBodyText);
-        } catch {
-          parsedRequestBody = undefined;
-        }
-      }
-
-      if (definition.authEndpointId) {
-        const authEndpoint = endpoints.find((ep) => ep.id === definition.authEndpointId);
-        if (!authEndpoint) {
-          setTestState({ running: false, error: 'Auth endpoint could not be found.', result: null });
-          return;
-        }
-        const cached = reuseCachedAuth ? authTokenCache[definition.authEndpointId] : null;
-        authToken = cached?.token || '';
-        if (!authToken) {
-          const authParams = buildFilledParams(authEndpoint.parameters || [], parameterValues);
-          const authPayload = {
-            params: { ...authParams.path, ...authParams.query, ...authParams.header },
-            pathParams: authParams.path,
-            queryParams: authParams.query,
-            headers: authParams.header,
-            body: authEndpoint.requestBody?.schema,
-          };
-          const authRes = await fetch(`${API_BASE}/posapi/endpoints/test`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              endpoint: authEndpoint,
-              environment: testEnvironment,
-              payload: authPayload,
-            }),
-          });
-          authResult = await authRes.json();
-          if (!authRes.ok) {
-            const message = authResult?.message || 'Auth request failed.';
-            setTestState({ running: false, error: message, result: null });
-            return;
-          }
-          authToken = extractAccessToken(authResult);
-          if (authToken) {
-            setAuthTokenCache((prev) => ({
-              ...prev,
-              [definition.authEndpointId]: { token: authToken, response: authResult },
-            }));
-          }
-        }
-        if (authToken) {
-          filteredParams = {
-            ...filteredParams,
-            header: { ...filteredParams.header, Authorization: `Bearer ${authToken}` },
-          };
-        }
-      }
-
-      const mergedParams = { ...filteredParams.path, ...filteredParams.query, ...filteredParams.header };
-      const payload = {
-        params: mergedParams,
-        pathParams: filteredParams.path,
-        queryParams: filteredParams.query,
-        headers: filteredParams.header,
-        body: parsedRequestBody,
-      };
-
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3986,8 +3809,6 @@ export default function PosApiAdmin() {
           endpoint: definition,
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
-          payload,
-          ...(authResult ? { authPreview: authResult } : {}),
         }),
       });
       if (!res.ok) {
@@ -4004,11 +3825,7 @@ export default function PosApiAdmin() {
         throw new Error(message || 'Test request failed');
       }
       const data = await res.json();
-      setTestState({
-        running: false,
-        error: '',
-        result: authResult ? { ...data, auth: authResult } : data,
-      });
+      setTestState({ running: false, error: '', result: data });
     } catch (err) {
       console.error(err);
       setTestState({ running: false, error: err.message || 'Failed to run test', result: null });
@@ -4605,47 +4422,21 @@ export default function PosApiAdmin() {
               )}
             </span>
           </label>
-          {formState.usage === 'transaction' && (
-            <label style={styles.label}>
-              Transaction subtype
-              <select
-                value={formState.posApiType}
-                onChange={(e) => handleTypeChange(e.target.value)}
-                style={styles.input}
-              >
-                <option value="">Select a transaction type…</option>
-                {POSAPI_TRANSACTION_TYPES.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {formState.usage === 'admin' && (
-            <label style={styles.label}>
-              Admin subtype
-              <select
-                value={formState.posApiType}
-                onChange={(e) => handleTypeChange(e.target.value)}
-                style={styles.input}
-              >
-                {(USAGE_TYPE_OPTIONS.admin || POSAPI_ADMIN_TYPES).map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
-          {formState.usage === 'info' && (
-            <div style={styles.label}>
-              <span style={{ fontWeight: 600 }}>POSAPI type</span>
-              <div style={{ padding: '0.65rem 0.75rem', background: '#f8fafc', borderRadius: '6px' }}>
-                LOOKUP (auto-set for information endpoints)
-              </div>
-            </div>
-          )}
+          <label style={styles.label}>
+            POSAPI type
+            <select
+              value={formState.posApiType}
+              onChange={(e) => handleTypeChange(e.target.value)}
+              style={styles.input}
+            >
+              <option value="">Select a type…</option>
+              {(USAGE_TYPE_OPTIONS[formState.usage] || POSAPI_TRANSACTION_TYPES).map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </label>
           {isTransactionUsage && supportsItems && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
@@ -4988,62 +4779,15 @@ export default function PosApiAdmin() {
               placeholder="/rest/receipt"
             />
           </label>
-          <div style={styles.labelFull}>
-            <div style={styles.sectionHeader}>
-              <h2 style={styles.sectionTitle}>Parameters</h2>
-            </div>
-            <p style={styles.sectionHelp}>
-              Enter values only for the parameters you intend to send. Leave a field empty to omit it from
-              the request URL or headers. Environment placeholders such as {{POSAPI_CLIENT_ID}} are
-              supported for sensitive values.
-            </p>
-            {parameterError && <div style={styles.previewErrorBox}>{parameterError}</div>}
-            {['path', 'query', 'header'].map((loc) => {
-              const items = parameterGroups[loc] || [];
-              if (!items.length) return null;
-              const title =
-                loc === 'path' ? 'Path parameters' : loc === 'header' ? 'Header parameters' : 'Query parameters';
-              return (
-                <div key={`param-block-${loc}`} style={{ marginBottom: '0.5rem' }}>
-                  <div style={{ fontWeight: 600, marginBottom: '0.35rem' }}>{title}</div>
-                  <div style={styles.importParamGrid}>
-                    {items.map((param) => (
-                      <label key={`param-${param.name}-${loc}`} style={styles.label}>
-                        {param.name}
-                        <input
-                          type="text"
-                          value={parameterValues[param.name] ?? ''}
-                          onChange={(e) =>
-                            setParameterValues((prev) => ({
-                              ...prev,
-                              [param.name]: e.target.value,
-                            }))
-                          }
-                          placeholder={param.description || param.example || param.default || ''}
-                          style={styles.input}
-                        />
-                        <div style={styles.paramMeta}>
-                          {loc}
-                          {param.required ? ' • required' : ''}
-                          {param.example && ` • example: ${param.example}`}
-                        </div>
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-            <label style={styles.labelFull}>
-              Raw parameters (JSON array)
-              <textarea
-                value={formState.parametersText}
-                onChange={(e) => handleChange('parametersText', e.target.value)}
-                style={styles.textarea}
-                rows={6}
-                placeholder='[{ "name": "client_id", "in": "query", "example": "{{POSAPI_CLIENT_ID}}" }]'
-              />
-            </label>
-          </div>
+          <label style={styles.labelFull}>
+            Parameters (JSON array)
+            <textarea
+              value={formState.parametersText}
+              onChange={(e) => handleChange('parametersText', e.target.value)}
+              style={styles.textarea}
+              rows={6}
+            />
+          </label>
           <label style={styles.labelFull}>
             Notes / guidance
             <textarea
@@ -6047,17 +5791,6 @@ export default function PosApiAdmin() {
             <span style={styles.fieldHelp}>
               Used by the test harness to fetch a bearer token before calling the endpoint.
             </span>
-            <div style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
-              <input
-                type="checkbox"
-                checked={reuseCachedAuth}
-                onChange={(e) => setReuseCachedAuth(e.target.checked)}
-              />
-              <span>
-                Reuse last successful token
-                {cachedAuthToken ? ' (cached)' : ''}
-              </span>
-            </div>
           </label>
           <div style={{ ...styles.label, flex: 1 }}>
             <div style={styles.radioRow}>
