@@ -2833,7 +2833,16 @@ const TableManager = forwardRef(function TableManager({
       }
 
       if (!primary || typeof primary !== 'object') {
-        return hasMeaningfulValue(primary) ? primary : fallback;
+        const hasDisplayMetadata =
+          fallback &&
+          typeof fallback === 'object' &&
+          Object.entries(fallback).some(
+            ([key, val]) => key !== 'value' && hasMeaningfulValue(val),
+          );
+        if (hasMeaningfulValue(primary)) {
+          return hasDisplayMetadata ? fallback : primary;
+        }
+        return hasDisplayMetadata ? fallback : primary ?? fallback;
       }
 
       if (seen.has(fallback)) return primary;
