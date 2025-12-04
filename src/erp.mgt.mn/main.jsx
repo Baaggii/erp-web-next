@@ -7,7 +7,6 @@ import { setupDebugHooks } from './utils/debugHooks.js';
 import './index.css';
 import './legacyModals.js';
 import './legacyPermissionGlobals.js';
-import { bootstrapClientEnv } from './utils/clientEnv.js';
 
 if (
   typeof globalThis !== 'undefined' &&
@@ -15,8 +14,6 @@ if (
 ) {
   globalThis.temporaryFeatureEnabled = false;
 }
-
-bootstrapClientEnv();
 
 setupDebugHooks();
 
