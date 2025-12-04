@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 
 const POSAPI_TRANSACTION_TYPES = [
@@ -1692,6 +1692,8 @@ export default function PosApiAdmin() {
   const [importTestError, setImportTestError] = useState('');
   const [importUseCachedToken, setImportUseCachedToken] = useState(true);
   const [importBaseUrl, setImportBaseUrl] = useState('');
+  const [requestFieldValues, setRequestFieldValues] = useState({});
+  const [tokenStatus, setTokenStatus] = useState({ loading: false, data: null, error: '' });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
   const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
@@ -1869,6 +1871,17 @@ export default function PosApiAdmin() {
     }
   }, [formState.responseSchemaText]);
 
+  const parsedRequestSample = useMemo(() => {
+    if (formState.posApiType !== 'AUTH') return {};
+    try {
+      const parsed = JSON.parse(formState.requestSchemaText || '{}');
+      return parsed && typeof parsed === 'object' ? parsed : {};
+    } catch (err) {
+      console.warn('Failed to parse request sample for auth builder', err);
+      return {};
+    }
+  }, [formState.posApiType, formState.requestSchemaText]);
+
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
   const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
@@ -1913,6 +1926,50 @@ export default function PosApiAdmin() {
       ),
     [formState.requestFieldsText],
   );
+
+  useEffect(() => {
+    if (formState.posApiType !== 'AUTH' || requestFieldHints.state !== 'ok') {
+      setRequestFieldValues({});
+      return;
+    }
+    const nextValues = {};
+    requestFieldHints.items.forEach((hint) => {
+      const fieldName = hint?.field || '';
+      if (!fieldName) return;
+      const rawValue = parsedRequestSample[fieldName];
+      if (typeof rawValue === 'string') {
+        const trimmed = rawValue.trim();
+        const match = /^\{\{(.+)}}$/.exec(trimmed);
+        const envKey = match ? match[1] : trimmed;
+        if (ENV_VARIABLE_OPTIONS.includes(envKey)) {
+          nextValues[fieldName] = { mode: 'env', envKey, value: '' };
+          return;
+        }
+      }
+      nextValues[fieldName] = {
+        mode: 'literal',
+        envKey: '',
+        value: rawValue === undefined ? '' : rawValue,
+      };
+    });
+    setRequestFieldValues(nextValues);
+  }, [formState.id, formState.posApiType, parsedRequestSample, requestFieldHints.state]);
+
+  const authRequestBody = useMemo(() => {
+    if (formState.posApiType !== 'AUTH') return null;
+    return buildRequestBodyFromFields();
+  }, [buildRequestBodyFromFields, formState.posApiType]);
+
+  const authEnvSelections = useMemo(() => {
+    if (formState.posApiType !== 'AUTH') return {};
+    const selections = {};
+    Object.entries(requestFieldValues || {}).forEach(([field, entry]) => {
+      if (entry?.mode === 'env' && entry.envKey) {
+        selections[field] = { mode: 'env', key: entry.envKey };
+      }
+    });
+    return selections;
+  }, [formState.posApiType, requestFieldValues]);
 
   const responseFieldHints = useMemo(
     () =>
@@ -2058,6 +2115,100 @@ export default function PosApiAdmin() {
       return next;
     });
   };
+
+  const buildRequestBodyFromFields = useCallback(
+    (values = requestFieldValues) => {
+      if (formState.posApiType !== 'AUTH' || requestFieldHints.state !== 'ok') return null;
+      const body = {};
+      requestFieldHints.items.forEach((hint) => {
+        const field = hint?.field || '';
+        if (!field) return;
+        const entry = values[field];
+        if (!entry) return;
+        if (entry.mode === 'env' && entry.envKey) {
+          body[field] = `{{${entry.envKey}}}`;
+        } else if (entry.value !== undefined) {
+          body[field] = entry.value;
+        }
+      });
+      return body;
+    },
+    [formState.posApiType, requestFieldHints.items, requestFieldHints.state, requestFieldValues],
+  );
+
+  const updateRequestFieldValue = (field, updater) => {
+    setRequestFieldValues((prev) => {
+      const previous = prev[field] || { mode: 'literal', value: '', envKey: '' };
+      const nextEntry = typeof updater === 'function' ? updater(previous) : updater;
+      const merged = { ...prev, [field]: nextEntry };
+      const body = buildRequestBodyFromFields(merged);
+      if (body) {
+        setFormState((prevState) => ({
+          ...prevState,
+          requestSchemaText: JSON.stringify(body, null, 2),
+        }));
+      }
+      return merged;
+    });
+  };
+
+  const refreshTokenStatus = useCallback(async () => {
+    if (!useCachedToken) {
+      setTokenStatus({ loading: false, data: null, error: '' });
+      return;
+    }
+    setTokenStatus((prev) => ({ ...prev, loading: true, error: '' }));
+    try {
+      const params = new URLSearchParams();
+      if (formState.authEndpointId) {
+        params.set('authEndpointId', formState.authEndpointId);
+      }
+      const res = await fetch(`${API_BASE}/posapi/endpoints/token-status?${params.toString()}`, {
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        throw new Error('Unable to load token status');
+      }
+      const data = await res.json();
+      if (data?.isExpired) {
+        setTokenStatus({ loading: false, data: null, error: '' });
+        return;
+      }
+      setTokenStatus({ loading: false, data, error: '' });
+    } catch (err) {
+      setTokenStatus({ loading: false, data: null, error: err.message || 'Unable to load token status' });
+    }
+  }, [formState.authEndpointId, useCachedToken]);
+
+  const handleClearCachedToken = useCallback(
+    async (shouldRefresh = true) => {
+      setTokenStatus((prev) => ({ ...prev, loading: true, error: '' }));
+      try {
+        const res = await fetch(`${API_BASE}/posapi/endpoints/token/clear`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ authEndpointId: formState.authEndpointId || '' }),
+        });
+        if (!res.ok) {
+          const message = await res.text();
+          throw new Error(message || 'Failed to clear saved token');
+        }
+        if (shouldRefresh) {
+          await refreshTokenStatus();
+        } else {
+          setTokenStatus({ loading: false, data: null, error: '' });
+        }
+      } catch (err) {
+        setTokenStatus((prev) => ({ ...prev, loading: false, error: err.message || 'Failed to clear saved token' }));
+      }
+    },
+    [formState.authEndpointId, refreshTokenStatus],
+  );
+
+  useEffect(() => {
+    refreshTokenStatus();
+  }, [refreshTokenStatus]);
 
   const handlePaymentDataChange = (index, text) => {
     const key = String(index);
@@ -3802,6 +3953,8 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken,
+          ...(authRequestBody ? { body: authRequestBody } : {}),
+          ...(Object.keys(authEnvSelections).length ? { envSelections: authEnvSelections } : {}),
         }),
       });
       if (!res.ok) {
@@ -3819,6 +3972,7 @@ export default function PosApiAdmin() {
       }
       const data = await res.json();
       setTestState({ running: false, error: '', result: data });
+      refreshTokenStatus();
     } catch (err) {
       console.error(err);
       setTestState({ running: false, error: err.message || 'Failed to run test', result: null });
@@ -4176,7 +4330,7 @@ export default function PosApiAdmin() {
                                 checked={importUseCachedToken}
                                 onChange={(e) => setImportUseCachedToken(e.target.checked)}
                               />
-                              <span>Use last successful token</span>
+                              <span title="Reuses the most recent token from this session instead of calling the auth endpoint again.">Use last successful token</span>
                             </label>
                           </label>
                         </div>
@@ -5755,6 +5909,99 @@ export default function PosApiAdmin() {
             )}
           </div>
         </div>
+
+        {formState.posApiType === 'AUTH'
+          && requestFieldHints.state === 'ok'
+          && requestFieldHints.items.length > 0 && (
+            <div style={styles.authFieldPanel}>
+              <div style={styles.authFieldHeaderRow}>
+                <h3 style={styles.authFieldTitle}>Auth request fields</h3>
+                <span style={styles.authFieldHelper}>
+                  Enter literal values or select environment variables. The request sample updates automatically.
+                </span>
+              </div>
+              <div style={styles.authFieldList}>
+                {requestFieldHints.items.map((hint) => {
+                  const normalized = normalizeHintEntry(hint);
+                  const fieldKey = normalized.field || '';
+                  const entry = requestFieldValues[fieldKey] || { mode: 'literal', value: '', envKey: '' };
+                  if (!fieldKey) return null;
+                  return (
+                    <div key={`auth-field-${fieldKey}`} style={styles.authFieldRow}>
+                      <div style={styles.authFieldLabelRow}>
+                        <span style={styles.authFieldName}>{fieldKey}</span>
+                        {normalized.description && (
+                          <span style={styles.authFieldDescription}>{normalized.description}</span>
+                        )}
+                      </div>
+                      <div style={styles.authFieldControls}>
+                        <label style={styles.radioLabel}>
+                          <input
+                            type="radio"
+                            name={`auth-field-mode-${fieldKey}`}
+                            checked={entry.mode === 'literal'}
+                            onChange={() =>
+                              updateRequestFieldValue(fieldKey, (prev) => ({ ...prev, mode: 'literal' }))
+                            }
+                          />
+                          Literal value
+                        </label>
+                        <input
+                          type="text"
+                          value={entry.value ?? ''}
+                          disabled={entry.mode !== 'literal'}
+                          onChange={(e) =>
+                            updateRequestFieldValue(fieldKey, (prev) => ({
+                              ...prev,
+                              mode: 'literal',
+                              value: e.target.value,
+                            }))
+                          }
+                          style={styles.authFieldInput}
+                        />
+                      </div>
+                      <div style={styles.authFieldControls}>
+                        <label style={styles.radioLabel}>
+                          <input
+                            type="radio"
+                            name={`auth-field-mode-${fieldKey}`}
+                            checked={entry.mode === 'env'}
+                            onChange={() =>
+                              updateRequestFieldValue(fieldKey, (prev) => ({
+                                ...prev,
+                                mode: 'env',
+                                envKey: prev.envKey || ENV_VARIABLE_OPTIONS[0] || '',
+                              }))
+                            }
+                          />
+                          Use environment variable
+                        </label>
+                        <select
+                          style={styles.authFieldSelect}
+                          disabled={entry.mode !== 'env'}
+                          value={entry.envKey || ''}
+                          onChange={(e) =>
+                            updateRequestFieldValue(fieldKey, (prev) => ({
+                              ...prev,
+                              mode: 'env',
+                              envKey: e.target.value,
+                            }))
+                          }
+                        >
+                          <option value="">Select variable…</option>
+                          {ENV_VARIABLE_OPTIONS.map((opt) => (
+                            <option key={`${fieldKey}-${opt}`} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         <label style={styles.labelFull}>
           Top-level mapping hints (JSON array)
           <textarea
@@ -5826,8 +6073,28 @@ export default function PosApiAdmin() {
                 checked={useCachedToken}
                 onChange={(e) => setUseCachedToken(e.target.checked)}
               />
-              <span>Use last successful token when testing</span>
+              <span title="Reuses the most recent successful token instead of calling the auth endpoint again.">
+                Use last successful token when testing
+              </span>
             </label>
+            <div style={styles.tokenStatusRow}>
+              <span style={styles.tokenStatusText}>
+                {tokenStatus.loading
+                  ? 'Checking saved token...'
+                  : tokenStatus.data?.fetchedAt
+                    ? `Saved token from ${new Date(tokenStatus.data.fetchedAt).toLocaleString()}`
+                    : 'No saved token yet'}
+              </span>
+              <button
+                type="button"
+                onClick={() => handleClearCachedToken()}
+                style={styles.smallButton}
+                disabled={tokenStatus.loading}
+              >
+                Clear saved token
+              </button>
+            </div>
+            {tokenStatus.error && <div style={styles.previewErrorBox}>{tokenStatus.error}</div>}
           </label>
           <div style={{ ...styles.label, flex: 1 }}>
             <div style={styles.radioRow}>
@@ -7458,5 +7725,79 @@ const styles = {
   statusPillError: {
     background: '#fee2e2',
     color: '#991b1b',
+  },
+  authFieldPanel: {
+    marginTop: '1.5rem',
+    padding: '1rem',
+    borderRadius: '10px',
+    border: '1px solid #e2e8f0',
+    background: '#f8fafc',
+  },
+  authFieldHeaderRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: '0.75rem',
+    gap: '1rem',
+  },
+  authFieldTitle: {
+    margin: 0,
+  },
+  authFieldHelper: {
+    fontSize: '0.9rem',
+    color: '#475569',
+  },
+  authFieldList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.85rem',
+  },
+  authFieldRow: {
+    padding: '0.75rem',
+    borderRadius: '8px',
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+  },
+  authFieldLabelRow: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'baseline',
+    marginBottom: '0.35rem',
+    gap: '0.75rem',
+  },
+  authFieldName: {
+    fontWeight: 600,
+  },
+  authFieldDescription: {
+    fontSize: '0.9rem',
+    color: '#475569',
+  },
+  authFieldControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    marginTop: '0.35rem',
+    flexWrap: 'wrap',
+  },
+  authFieldInput: {
+    ...inputStyle,
+    flex: 1,
+    minWidth: '240px',
+  },
+  authFieldSelect: {
+    ...inputStyle,
+    flex: 1,
+    minWidth: '240px',
+  },
+  tokenStatusRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    marginTop: '0.35rem',
+    flexWrap: 'wrap',
+  },
+  tokenStatusText: {
+    color: '#475569',
+    fontSize: '0.9rem',
   },
 };

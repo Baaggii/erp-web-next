@@ -3,7 +3,11 @@ import multer from 'multer';
 import { parseYaml } from '../utils/yaml.js';
 import { requireAuth } from '../middlewares/auth.js';
 import { loadEndpoints, saveEndpoints } from '../services/posApiRegistry.js';
-import { invokePosApiEndpoint } from '../services/posApiService.js';
+import {
+  clearCachedToken,
+  getTokenMetadata,
+  invokePosApiEndpoint,
+} from '../services/posApiService.js';
 import { getEmploymentSession } from '../../db/index.js';
 
 const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
@@ -16,6 +20,13 @@ const DEFAULT_PAYMENT_METHODS = [
   'EASY_BANK_CARD',
   'SERVICE_PAYMENT',
 ];
+
+const ALLOWED_ENV_VARIABLES = new Set([
+  'POSAPI_CLIENT_ID',
+  'POSAPI_CLIENT_SECRET',
+  'POSAPI_USERNAME',
+  'POSAPI_PASSWORD',
+]);
 
 const router = express.Router();
 const upload = multer({
@@ -117,6 +128,51 @@ function sanitizeHeaders(headers) {
     entries.push([key, value]);
   });
   return Object.fromEntries(entries);
+}
+
+function substituteEnvValues(source, envSelections = {}) {
+  const replaceString = (value) => {
+    if (typeof value !== 'string') return value;
+    const trimmed = value.trim();
+    const match = /^\{\{(.+)}}$/.exec(trimmed);
+    const candidateKey = match ? match[1] : trimmed;
+    if (ALLOWED_ENV_VARIABLES.has(candidateKey) && process.env[candidateKey] !== undefined) {
+      return process.env[candidateKey];
+    }
+    return value;
+  };
+
+  const applySelection = (target) => {
+    if (!target || typeof target !== 'object') return target;
+    const next = Array.isArray(target) ? target.map(applySelection) : {};
+    if (Array.isArray(target)) return next;
+    Object.entries(target).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        next[key] = value.map(applySelection);
+      } else if (value && typeof value === 'object') {
+        next[key] = applySelection(value);
+      } else {
+        next[key] = replaceString(value);
+      }
+    });
+    Object.entries(envSelections || {}).forEach(([fieldName, selection]) => {
+      const normalizedSelection =
+        selection && typeof selection === 'object' && !Array.isArray(selection)
+          ? selection
+          : { mode: 'env', key: selection };
+      if (normalizedSelection.mode !== 'env') return;
+      const envKey = typeof normalizedSelection.key === 'string' ? normalizedSelection.key.trim() : '';
+      if (!envKey || !ALLOWED_ENV_VARIABLES.has(envKey)) return;
+      if (process.env[envKey] === undefined) return;
+      if (fieldName) {
+        next[fieldName] = process.env[envKey];
+      }
+    });
+    return next;
+  };
+
+  if (!source || typeof source !== 'object') return source;
+  return applySelection(source);
 }
 
 function coerceParamValue(param) {
@@ -1319,6 +1375,10 @@ router.post('/test', requireAuth, async (req, res, next) => {
       }
     }
 
+    if (payload.body && typeof payload.body === 'object') {
+      payload.body = substituteEnvValues(payload.body, req.body?.envSelections);
+    }
+
     const selectedAuthEndpoint =
       typeof req.body?.authEndpointId === 'string' && req.body.authEndpointId.trim()
         ? req.body.authEndpointId.trim()
@@ -1335,7 +1395,8 @@ router.post('/test', requireAuth, async (req, res, next) => {
         useCachedToken: req.body?.useCachedToken !== false,
         environment,
       });
-      res.json(result);
+      const tokenInfo = getTokenMetadata(selectedAuthEndpoint || 'ENV_FALLBACK');
+      res.json({ ...result, token: tokenInfo });
     } catch (err) {
       if (err?.status) {
         const status = err.status === 401 || err.status === 403 ? 502 : err.status;
@@ -1344,6 +1405,35 @@ router.post('/test', requireAuth, async (req, res, next) => {
         next(err);
       }
     }
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/token-status', requireAuth, async (req, res, next) => {
+  try {
+    const guard = await requireSystemSettings(req, res);
+    if (!guard) return;
+    const authEndpointId = typeof req.query.authEndpointId === 'string' ? req.query.authEndpointId.trim() : '';
+    const tokenInfo = getTokenMetadata(authEndpointId || 'ENV_FALLBACK');
+    res.json({
+      hasToken: Boolean(tokenInfo?.token),
+      fetchedAt: tokenInfo?.fetchedAt || null,
+      expiresAt: tokenInfo?.expiresAt || null,
+      isExpired: tokenInfo?.isExpired || false,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/token/clear', requireAuth, async (req, res, next) => {
+  try {
+    const guard = await requireSystemSettings(req, res);
+    if (!guard) return;
+    const authEndpointId = typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
+    const cleared = clearCachedToken(authEndpointId || 'ENV_FALLBACK');
+    res.json({ cleared });
   } catch (err) {
     next(err);
   }
