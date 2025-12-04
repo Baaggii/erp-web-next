@@ -5976,6 +5976,17 @@ export default function PosApiAdmin() {
             )}
             {requestFieldHints.state === 'ok' && (
               <ul style={styles.hintList}>
+                {missingEnvSelections.length > 0 && (
+                  <li style={{ listStyle: 'none' }}>
+                    <div style={styles.previewErrorBox}>
+                      Missing environment variables detected:
+                      {' '}
+                      {Array.from(new Set(missingEnvSelections.map((item) => item.envVar))).join(', ')}.
+                      {' '}
+                      The test request will fall back to literal values for these fields.
+                    </div>
+                  </li>
+                )}
                 {requestFieldHints.items.map((hint, index) => {
                   const normalized = normalizeHintEntry(hint);
                   const fieldLabel = normalized.field || '(unnamed field)';
@@ -6058,6 +6069,13 @@ export default function PosApiAdmin() {
                               </option>
                             ))}
                           </select>
+                        )}
+                        {selection.mode === 'env'
+                          && selection.envVar
+                          && !detectedEnvVarSet.has(selection.envVar) && (
+                            <div style={{ ...styles.previewErrorBox, marginTop: '0.35rem' }}>
+                              {selection.envVar} is not configured in this environment. The literal value will be used when testing.
+                            </div>
                         )}
                         <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
                       </div>
