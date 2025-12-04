@@ -146,6 +146,26 @@ function sanitizeCodeList(list, fallback, allowedValues) {
   return allowedSet ? deduped.filter((value) => allowedSet.has(value)) : deduped;
 }
 
+function resolveEnvValue(key) {
+  const cleaned = typeof key === 'string' ? key.replace(/^{+|}+$/g, '').trim() : '';
+  if (!cleaned) return '';
+  if (typeof window !== 'undefined' && window.ENV && window.ENV[cleaned]) {
+    return window.ENV[cleaned];
+  }
+  if (typeof window !== 'undefined' && window.__ENV && window.__ENV[cleaned]) {
+    return window.__ENV[cleaned];
+  }
+  return (import.meta.env && import.meta.env[cleaned]) || process.env?.[cleaned] || '';
+}
+
+function extractEnvKey(value) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  const match = /^{{?([^{}]+)}}?$/.exec(trimmed);
+  if (match && match[1]) return match[1];
+  return ENV_VARIABLE_OPTIONS.find((option) => option === trimmed) ? trimmed : '';
+}
+
 function sanitizeTemplateMap(value, allowedValues) {
   if (!value) return {};
   const allowedSet = allowedValues ? new Set(allowedValues) : null;
@@ -1677,6 +1697,7 @@ export default function PosApiAdmin() {
   const [docMetadata, setDocMetadata] = useState({});
   const [requestBuilder, setRequestBuilder] = useState(null);
   const [requestBuilderError, setRequestBuilderError] = useState('');
+  const [requestFieldSelections, setRequestFieldSelections] = useState({});
   const [sampleImportText, setSampleImportText] = useState('');
   const [sampleImportError, setSampleImportError] = useState('');
   const [importSpecText, setImportSpecText] = useState('');
@@ -1717,6 +1738,7 @@ export default function PosApiAdmin() {
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
+  const [tokenMeta, setTokenMeta] = useState(null);
 
   const groupedEndpoints = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
@@ -1939,6 +1961,25 @@ export default function PosApiAdmin() {
     ? formState.receiptItemTemplates
     : [];
 
+  const requestSampleObject = useMemo(() => {
+    try {
+      const parsed = JSON.parse(formState.requestSchemaText || '{}');
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  }, [formState.requestSchemaText]);
+
+  const requestFieldList = useMemo(() => {
+    if (!requestSampleObject) return [];
+    return Object.entries(requestSampleObject).filter(([_, value]) => {
+      if (value === null) return true;
+      const valueType = typeof value;
+      return valueType === 'string' || valueType === 'number' || valueType === 'boolean';
+    });
+  }, [requestSampleObject]);
+
   useEffect(() => {
     if (!receiptTaxTypesEnabled) {
       setTaxTypeListText('');
@@ -2041,6 +2082,22 @@ export default function PosApiAdmin() {
       return next;
     });
   }, [requestBuilder]);
+
+  useEffect(() => {
+    setRequestFieldSelections((prev) => {
+      const next = {};
+      requestFieldList.forEach(([field, value]) => {
+        const detectedEnv = extractEnvKey(value);
+        const defaultMode = detectedEnv ? 'env' : 'literal';
+        const defaultValue = detectedEnv || value || '';
+        const existing = prev[field];
+        next[field] = existing
+          ? existing
+          : { mode: defaultMode, value: defaultValue };
+      });
+      return next;
+    });
+  }, [requestFieldList]);
 
   const updateRequestBuilder = (updater) => {
     setRequestBuilder((prev) => {
@@ -2198,6 +2255,42 @@ export default function PosApiAdmin() {
     setRequestBuilderError('');
     setFormState((prev) => ({ ...prev, requestSchemaText: '{}' }));
   };
+
+  const applyRequestFieldSelection = (field, mode, rawValue) => {
+    const safeValue = rawValue ?? '';
+    setRequestFieldSelections((prev) => ({
+      ...prev,
+      [field]: { mode, value: safeValue },
+    }));
+    setFormState((prev) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(prev.requestSchemaText || '{}');
+      } catch {
+        parsed = {};
+      }
+      const working = parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? { ...parsed } : {};
+      const envPlaceholder = safeValue ? `{{${safeValue}}}` : '';
+      working[field] = mode === 'env' ? envPlaceholder : safeValue;
+      return { ...prev, requestSchemaText: JSON.stringify(working, null, 2) };
+    });
+  };
+
+  const buildRequestBodyOverride = () => {
+    if (!requestSampleObject) return undefined;
+    const override = { ...requestSampleObject };
+    Object.entries(requestFieldSelections).forEach(([field, selection]) => {
+      if (!Object.prototype.hasOwnProperty.call(override, field)) return;
+      if (selection?.mode === 'env') {
+        override[field] = resolveEnvValue(selection.value);
+      } else if (selection) {
+        override[field] = selection.value;
+      }
+    });
+    return override;
+  };
+
+  const isTokenExpired = (meta) => Boolean(meta?.expiresAt && meta.expiresAt <= Date.now());
 
   const handleBuilderFieldChange = (field, value) => {
     updateRequestBuilder((prev) => ({ ...prev, [field]: value }));
@@ -3131,6 +3224,8 @@ export default function PosApiAdmin() {
     try {
       const filteredParams = buildFilledParams(activeImportDraft.parameters || [], importTestValues);
       const mergedParams = { ...filteredParams.path, ...filteredParams.query, ...filteredParams.header };
+      const tokenExpired = isTokenExpired(tokenMeta);
+      const effectiveUseCachedToken = tokenExpired ? false : importUseCachedToken;
       const res = await fetch(`${API_BASE}/posapi/endpoints/import/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3153,13 +3248,14 @@ export default function PosApiAdmin() {
           },
           baseUrl: importBaseUrl.trim() || undefined,
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
-          useCachedToken: importUseCachedToken,
+          useCachedToken: effectiveUseCachedToken,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
         throw new Error(data?.message || 'Test request failed.');
       }
+      setTokenMeta(data?.tokenMeta || tokenMeta);
       setImportTestResult(data);
       setImportStatus('Test call completed. Review the response below.');
     } catch (err) {
@@ -3762,6 +3858,14 @@ export default function PosApiAdmin() {
     setImportAuthEndpointId('');
     setUseCachedToken(true);
     setImportUseCachedToken(true);
+    setTokenMeta(null);
+  }
+
+  function handleClearToken() {
+    setTokenMeta(null);
+    setUseCachedToken(false);
+    setImportUseCachedToken(false);
+    setStatus('Cleared saved token for this session.');
   }
 
   async function handleTest() {
@@ -3793,6 +3897,9 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
+      const payloadOverride = buildRequestBodyOverride();
+      const tokenExpired = isTokenExpired(tokenMeta);
+      const effectiveUseCachedToken = tokenExpired ? false : useCachedToken;
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -3801,7 +3908,8 @@ export default function PosApiAdmin() {
           endpoint: definition,
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
-          useCachedToken,
+          useCachedToken: effectiveUseCachedToken,
+          ...(payloadOverride ? { body: payloadOverride } : {}),
         }),
       });
       if (!res.ok) {
@@ -3818,6 +3926,7 @@ export default function PosApiAdmin() {
         throw new Error(message || 'Test request failed');
       }
       const data = await res.json();
+      setTokenMeta(data?.tokenMeta || null);
       setTestState({ running: false, error: '', result: data });
     } catch (err) {
       console.error(err);
@@ -4213,25 +4322,6 @@ export default function PosApiAdmin() {
                                       placeholder={param.description || param.example || ''}
                                       style={styles.input}
                                     />
-                                    <select
-                                      style={styles.input}
-                                      value=""
-                                      onChange={(e) => {
-                                        const selected = e.target.value;
-                                        if (!selected) return;
-                                        setImportTestValues((prev) => ({
-                                          ...prev,
-                                          [param.name]: `{{${selected}}}`,
-                                        }));
-                                      }}
-                                    >
-                                      <option value="">Use environment variable…</option>
-                                      {ENV_VARIABLE_OPTIONS.map((opt) => (
-                                        <option key={`${param.name}-${opt}`} value={opt}>
-                                          {opt}
-                                        </option>
-                                      ))}
-                                    </select>
                                     <div style={styles.paramMeta}>
                                       {loc} {param.required ? '• required' : ''}
                                     </div>
@@ -5617,6 +5707,71 @@ export default function PosApiAdmin() {
             rows={10}
           />
         </label>
+        {requestFieldList.length > 0 && (
+          <div style={styles.requestFieldPanel}>
+            <div style={styles.requestFieldHeader}>
+              <h3 style={styles.requestFieldTitle}>Request fields</h3>
+              <span style={styles.fieldHelp}>
+                Choose literal values or environment variables. The sample JSON updates automatically.
+              </span>
+            </div>
+            <div style={styles.requestFieldGrid}>
+              {requestFieldList.map(([field, value]) => {
+                const selection = requestFieldSelections[field] || { mode: 'literal', value: value ?? '' };
+                const envValue = selection.mode === 'env' ? selection.value : extractEnvKey(value) || '';
+                return (
+                  <label key={`request-field-${field}`} style={styles.requestFieldRow}>
+                    <div style={styles.requestFieldName}>{field}</div>
+                    <div style={styles.requestFieldControls}>
+                      <label style={styles.radioLabel}>
+                        <input
+                          type="radio"
+                          name={`request-${field}-mode`}
+                          value="literal"
+                          checked={selection.mode !== 'env'}
+                          onChange={() => applyRequestFieldSelection(field, 'literal', selection.value)}
+                        />
+                        <span>Literal value</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={selection.mode === 'env' ? '' : selection.value ?? ''}
+                        onChange={(e) => applyRequestFieldSelection(field, 'literal', e.target.value)}
+                        style={styles.input}
+                        disabled={selection.mode === 'env'}
+                      />
+                    </div>
+                    <div style={styles.requestFieldControls}>
+                      <label style={styles.radioLabel}>
+                        <input
+                          type="radio"
+                          name={`request-${field}-mode`}
+                          value="env"
+                          checked={selection.mode === 'env'}
+                          onChange={() => applyRequestFieldSelection(field, 'env', envValue || '')}
+                        />
+                        <span>Environment variable</span>
+                      </label>
+                      <select
+                        style={styles.input}
+                        value={selection.mode === 'env' ? envValue : ''}
+                        onChange={(e) => applyRequestFieldSelection(field, 'env', e.target.value)}
+                        disabled={selection.mode !== 'env'}
+                      >
+                        <option value="">Select environment variable…</option>
+                        {ENV_VARIABLE_OPTIONS.map((opt) => (
+                          <option key={`${field}-env-${opt}`} value={opt}>
+                            {opt}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <label style={styles.labelFull}>
           Response description
           <input
@@ -5826,8 +5981,32 @@ export default function PosApiAdmin() {
                 checked={useCachedToken}
                 onChange={(e) => setUseCachedToken(e.target.checked)}
               />
-              <span>Use last successful token when testing</span>
+              <span title="Reuses the most recent successful token without calling the auth endpoint again.">
+                Use last successful token when testing
+              </span>
             </label>
+            <div style={styles.tokenMetaRow}>
+              <div>
+                {tokenMeta ? (
+                  <>
+                    <div>
+                      Last fetched: {new Date(tokenMeta.fetchedAt || Date.now()).toLocaleString()}
+                    </div>
+                    {tokenMeta.expiresAt && (
+                      <div>
+                        Expires: {new Date(tokenMeta.expiresAt).toLocaleString()} (
+                        {isTokenExpired(tokenMeta) ? 'will refresh automatically' : 'will be reused while valid'})
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <span style={styles.fieldHelp}>No cached token in this session.</span>
+                )}
+              </div>
+              <button type="button" style={styles.smallSecondaryButton} onClick={handleClearToken} disabled={!tokenMeta}>
+                Clear saved token
+              </button>
+            </div>
           </label>
           <div style={{ ...styles.label, flex: 1 }}>
             <div style={styles.radioRow}>
@@ -6814,6 +6993,49 @@ const styles = {
     fontWeight: 600,
     gap: '0.5rem',
   },
+  requestFieldPanel: {
+    gridColumn: '1 / -1',
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#f8fafc',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  requestFieldHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.75rem',
+    flexWrap: 'wrap',
+  },
+  requestFieldTitle: { margin: 0 },
+  requestFieldGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  requestFieldRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    fontWeight: 600,
+    padding: '0.75rem',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    background: '#fff',
+  },
+  requestFieldName: {
+    fontSize: '0.95rem',
+    color: '#0f172a',
+  },
+  requestFieldControls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
   multiSelectTitle: {
     fontWeight: 700,
     fontSize: '0.95rem',
@@ -7098,6 +7320,13 @@ const styles = {
     fontSize: '0.82rem',
     color: '#475569',
     marginTop: '0.25rem',
+  },
+  tokenMetaRow: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.75rem',
+    flexWrap: 'wrap',
   },
   radioRow: {
     display: 'flex',

@@ -1335,7 +1335,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
         useCachedToken: req.body?.useCachedToken !== false,
         environment,
       });
-      res.json(result);
+      res.json({ ...result, tokenMeta: result.tokenMeta || null });
     } catch (err) {
       if (err?.status) {
         const status = err.status === 401 || err.status === 403 ? 502 : err.status;
@@ -1396,6 +1396,7 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
         request: result.request,
         response: result.response,
         endpoint: sanitized,
+        tokenMeta: result.tokenMeta || null,
       });
     } catch (err) {
       const status = err?.status || 502;
