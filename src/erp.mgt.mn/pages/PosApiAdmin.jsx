@@ -348,7 +348,6 @@ function withEndpointMetadata(endpoint) {
   const receiptItemTemplates = enableReceiptItems
     ? buildTemplateList(endpoint.receiptItemTemplates, allowMultipleReceiptItems)
     : [];
-  const envPlaceholders = sanitizeEnvPlaceholders(endpoint.envPlaceholders || []);
   let supportsItems = false;
   if (isTransaction) {
     if (endpoint.supportsItems === false) {
@@ -378,7 +377,6 @@ function withEndpointMetadata(endpoint) {
     enableReceiptItems,
     allowMultipleReceiptItems: enableReceiptItems ? allowMultipleReceiptItems : false,
     receiptItemTemplates,
-    envPlaceholders,
     receiptTypes,
     taxTypes,
     paymentMethods,
@@ -421,7 +419,6 @@ const EMPTY_ENDPOINT = {
   testServerUrl: '',
   testServerUrlProduction: '',
   authEndpointId: '',
-  envPlaceholders: [],
   docUrl: '',
   posApiType: '',
   usage: 'transaction',
@@ -1027,7 +1024,6 @@ function createFormState(definition) {
   const paymentMethodTemplates = paymentMethodsEnabled
     ? sanitizeTemplateMap(definition.paymentMethodTemplates, VALID_PAYMENT_METHODS)
     : {};
-  const envPlaceholders = sanitizeEnvPlaceholders(definition.envPlaceholders || []);
   const receiptItemTemplates = receiptItemsEnabled
     ? (() => {
         const list = buildTemplateList(definition.receiptItemTemplates, allowMultipleReceiptItems);
@@ -1069,7 +1065,6 @@ function createFormState(definition) {
     testServerUrl: definition.testServerUrl || '',
     testServerUrlProduction: definition.testServerUrlProduction || '',
     authEndpointId: definition.authEndpointId || '',
-    envPlaceholders,
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
     usage: rawUsage,
@@ -1609,17 +1604,7 @@ function extractOperationsFromPostman(spec) {
   return entries;
 }
 
-function sanitizeEnvPlaceholders(list) {
-  if (!Array.isArray(list)) return [];
-  return list
-    .map((entry) => ({
-      target: typeof entry?.target === 'string' ? entry.target.trim() : '',
-      variable: typeof entry?.variable === 'string' ? entry.variable.trim() : '',
-    }))
-    .filter((entry) => entry.target || entry.variable);
-}
-
-function buildDraftParameterDefaults(parameters, envPlaceholders = []) {
+function buildDraftParameterDefaults(parameters) {
   const values = {};
   const envFallbacks = {
     client_id: '{{POSAPI_CLIENT_ID}}',
@@ -1638,7 +1623,7 @@ function buildDraftParameterDefaults(parameters, envPlaceholders = []) {
       return;
     }
     const normalizedName = typeof param.name === 'string' ? param.name.toLowerCase() : param.name;
-    const envKey = envMap[normalizedName];
+    const envKey = envFallbacks[normalizedName];
     if (envKey) {
       values[param.name] = envKey;
     }
@@ -3128,8 +3113,7 @@ export default function PosApiAdmin() {
     if (!draft) return;
     importAuthSelectionDirtyRef.current = false;
     setSelectedImportId(draft.id || '');
-    const placeholderList = sanitizeEnvPlaceholders(draft.envPlaceholders || envPlaceholderList);
-    setImportTestValues(buildDraftParameterDefaults(draft.parameters || [], placeholderList));
+    setImportTestValues(buildDraftParameterDefaults(draft.parameters || []));
     if (draft.requestExample !== undefined) {
       if (typeof draft.requestExample === 'string') {
         setImportRequestBody(draft.requestExample);
@@ -3666,7 +3650,6 @@ export default function PosApiAdmin() {
       testServerUrl: formState.testServerUrl.trim(),
       testServerUrlProduction: formState.testServerUrlProduction.trim(),
       authEndpointId: formState.authEndpointId || '',
-      envPlaceholders: sanitizeEnvPlaceholders(formState.envPlaceholders),
     };
 
     if (settingsId) {
@@ -7205,25 +7188,6 @@ const styles = {
   inlineActionHint: {
     fontSize: '0.8rem',
     color: '#475569',
-  },
-  envPlaceholderBox: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '12px',
-    padding: '1rem',
-    marginBottom: '1rem',
-    background: '#f8fafc',
-  },
-  envPlaceholderGrid: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-    marginBottom: '0.5rem',
-  },
-  envPlaceholderRow: {
-    display: 'grid',
-    gridTemplateColumns: '1fr 1fr auto',
-    gap: '0.5rem',
-    alignItems: 'flex-end',
   },
   inputError: {
     fontSize: '0.8rem',
