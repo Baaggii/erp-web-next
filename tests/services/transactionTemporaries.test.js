@@ -19,6 +19,38 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
       return [[], []];
     }
+    if (sql.startsWith('SELECT * FROM `transaction_temporaries`')) {
+      const now = new Date().toISOString();
+      if (sql.includes('plan_senior_empid = ?')) {
+        return [
+          [
+            {
+              id: 1,
+              company_id: 1,
+              table_name: 'transactions_contract',
+              form_name: null,
+              config_name: null,
+              module_key: null,
+              payload_json: '{}',
+              cleaned_values_json: '{}',
+              raw_values_json: '{}',
+              created_by: 'EMP002',
+              plan_senior_empid: 'EMP001',
+              branch_id: null,
+              department_id: null,
+              status: 'approved',
+              review_notes: null,
+              reviewed_by: null,
+              reviewed_at: null,
+              promoted_record_id: null,
+              created_at: now,
+              updated_at: now,
+            },
+          ],
+        ];
+      }
+      return [[]];
+    }
     if (sql.includes('WHERE created_by = ?')) {
       return [[{ pending_cnt: 0, total_cnt: 1 }]];
     }

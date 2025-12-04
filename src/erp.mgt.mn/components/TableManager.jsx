@@ -5108,22 +5108,9 @@ const TableManager = forwardRef(function TableManager({
       });
     });
 
-    const seen = new Set();
-    const orderedColumns = [];
-
-    formColumnOrder.forEach((key) => {
-      if (!key || seen.has(key)) return;
-      if (columns.length === 0 || columns.includes(key) || valueKeys.has(key)) {
-        seen.add(key);
-        orderedColumns.push(key);
-      }
-    });
-
-    const remaining = Array.from(valueKeys).filter((key) => !seen.has(key));
-    remaining.sort((a, b) => a.localeCompare(b));
-
-    return [...orderedColumns, ...remaining];
-  }, [buildTemporaryFormState, columns, formColumnOrder, temporaryList]);
+    const mergedColumns = columns.length > 0 ? [...columns, ...valueKeys] : [...valueKeys];
+    return Array.from(new Set(mergedColumns.filter(Boolean)));
+  }, [buildTemporaryFormState, columns, temporaryList]);
 
   let detailHeaderRendered = false;
 

@@ -1128,8 +1128,8 @@ async function posApiFetch(path, { method = 'GET', body, token, headers, baseUrl
   return parsedBody;
 }
 
-async function fetchEnvPosApiToken() {
-  const cached = getCachedToken('ENV_FALLBACK');
+async function fetchEnvPosApiToken({ useCachedToken = true } = {}) {
+  const cached = useCachedToken ? getCachedToken('ENV_FALLBACK') : null;
   if (cached) return cached;
 
   const requiredEnv = [
@@ -1187,9 +1187,9 @@ async function fetchEnvPosApiToken() {
   return json.access_token;
 }
 
-async function fetchTokenFromAuthEndpoint(authEndpoint, { baseUrl, payload } = {}) {
-  if (!authEndpoint?.id) return fetchEnvPosApiToken();
-  const cached = getCachedToken(authEndpoint.id);
+async function fetchTokenFromAuthEndpoint(authEndpoint, { baseUrl, payload, useCachedToken = true } = {}) {
+  if (!authEndpoint?.id) return fetchEnvPosApiToken({ useCachedToken });
+  const cached = useCachedToken ? getCachedToken(authEndpoint.id) : null;
   if (cached) return cached;
 
   const requestPayload =
@@ -1246,9 +1246,10 @@ export async function getPosApiToken(options = {}) {
     return fetchTokenFromAuthEndpoint(authEndpoint, {
       baseUrl: optionBag.baseUrl,
       payload: optionBag.authPayload,
+      useCachedToken: optionBag.useCachedToken !== false,
     });
   }
-  return fetchEnvPosApiToken();
+  return fetchEnvPosApiToken({ useCachedToken: optionBag.useCachedToken !== false });
 }
 
 export async function buildReceiptFromDynamicTransaction(
@@ -1747,6 +1748,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
     authPayload,
     environment,
     skipAuth,
+    useCachedToken = true,
   } = optionBag;
   const endpoint = endpointOverride || (await resolvePosApiEndpoint(endpointId));
   const method = (endpoint?.method || 'GET').toUpperCase();
@@ -1821,6 +1823,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
       authEndpointId,
       baseUrl: requestBaseUrl,
       authPayload,
+      useCachedToken,
     });
   }
 
