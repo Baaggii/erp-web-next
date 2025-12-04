@@ -490,6 +490,7 @@ const TableManager = forwardRef(function TableManager({
   const [temporaryValuePreview, setTemporaryValuePreview] = useState(null);
   const temporaryRowRefs = useRef(new Map());
   const autoTemporaryLoadScopesRef = useRef(new Set());
+  const promotionHydrationNeededRef = useRef(false);
   const handleRowsChange = useCallback((rs) => {
     setGridRows(rs);
     if (!Array.isArray(rs) || rs.length === 0) return;
@@ -4306,7 +4307,34 @@ const TableManager = forwardRef(function TableManager({
       setShowForm,
       setTemporaryPromotionQueue,
     ],
+  );
+
+  useEffect(() => {
+    if (!promotionHydrationNeededRef.current) return;
+    if (requestType !== 'temporary-promote') return;
+    if (!pendingTemporaryPromotion?.entry) return;
+    if (!showForm) return;
+
+    const hasRelations = relationConfigs && Object.keys(relationConfigs).length > 0;
+    const hasRefRows = refRows && Object.keys(refRows).length > 0;
+    if (!hasRelations && !hasRefRows) return;
+
+    const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(
+      pendingTemporaryPromotion.entry,
     );
+    setEditing(normalizedValues);
+    setGridRows(sanitizedRows);
+    promotionHydrationNeededRef.current = false;
+  }, [
+    buildTemporaryFormState,
+    pendingTemporaryPromotion,
+    refRows,
+    relationConfigs,
+    requestType,
+    setEditing,
+    setGridRows,
+    showForm,
+  ]);
 
     const openTemporaryDraft = useCallback(
       async (entry) => {
