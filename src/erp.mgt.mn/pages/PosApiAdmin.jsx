@@ -1629,26 +1629,6 @@ function buildDraftParameterDefaults(parameters) {
   return values;
 }
 
-function primeBodyWithEnvDefaults(body) {
-  if (!body || typeof body !== 'object' || Array.isArray(body)) return body;
-  const clone = Array.isArray(body) ? [...body] : { ...body };
-  Object.keys(clone).forEach((key) => {
-    const normalized = key.toLowerCase();
-    const envVar = ENV_FIELD_DEFAULTS[normalized];
-    if (envVar) {
-      clone[key] = `{{${envVar}}}`;
-    }
-  });
-  return clone;
-}
-
-function formatTokenMeta(meta) {
-  if (!meta) return '';
-  const source = meta.endpointId === 'ENV_FALLBACK' ? 'environment auth' : meta.endpointId;
-  const obtained = meta.obtainedAt ? new Date(meta.obtainedAt).toLocaleString() : 'unknown time';
-  return `${source} – fetched ${obtained}`;
-}
-
 function buildFilledParams(parameters, providedValues = {}) {
   const byLocation = { path: {}, query: {}, header: {} };
   if (!Array.isArray(parameters)) return byLocation;
@@ -1872,7 +1852,7 @@ export default function PosApiAdmin() {
     if (!text) return { state: 'empty', formatted: '', error: '' };
     try {
       const parsed = JSON.parse(text);
-      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '', parsed };
+      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '' };
     } catch (err) {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
@@ -1888,27 +1868,6 @@ export default function PosApiAdmin() {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
   }, [formState.responseSchemaText]);
-
-  const requestBodyFields = useMemo(() => {
-    if (requestPreview.state !== 'ok' || !requestPreview.parsed) return [];
-    if (Array.isArray(requestPreview.parsed) || typeof requestPreview.parsed !== 'object') return [];
-    return Object.entries(requestPreview.parsed).map(([key, value]) => ({ key, value }));
-  }, [requestPreview]);
-
-  const importRequestBodyPreview = useMemo(() => {
-    if (!importRequestBody.trim()) return null;
-    try {
-      const parsed = JSON.parse(importRequestBody);
-      return typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
-    } catch {
-      return null;
-    }
-  }, [importRequestBody]);
-
-  const importRequestBodyFields = useMemo(() => {
-    if (!importRequestBodyPreview) return [];
-    return Object.entries(importRequestBodyPreview).map(([key, value]) => ({ key, value }));
-  }, [importRequestBodyPreview]);
 
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
@@ -3038,33 +2997,6 @@ export default function PosApiAdmin() {
     }
   }
 
-  function updateImportBodyField(key, value) {
-    try {
-      const parsed = importRequestBodyPreview && typeof importRequestBodyPreview === 'object'
-        ? { ...importRequestBodyPreview }
-        : {};
-      parsed[key] = value;
-      setImportRequestBody(JSON.stringify(parsed, null, 2));
-    } catch {
-      // ignore
-    }
-  }
-
-  function updateRequestSchemaField(key, value) {
-    try {
-      const parsed = requestPreview.parsed && typeof requestPreview.parsed === 'object'
-        ? { ...requestPreview.parsed }
-        : {};
-      parsed[key] = value;
-      setFormState((prev) => ({
-        ...prev,
-        requestSchemaText: JSON.stringify(parsed, null, 2),
-      }));
-    } catch {
-      // ignore JSON mutation errors
-    }
-  }
-
   function handleSampleFile(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -3084,7 +3016,6 @@ export default function PosApiAdmin() {
     setImportTestResult(null);
     setImportTestError('');
     setImportTestRunning(false);
-    setImportLastTokenMeta(null);
   }
 
   function prepareDraftDefaults(draft) {
@@ -3097,14 +3028,13 @@ export default function PosApiAdmin() {
         setImportRequestBody(draft.requestExample);
       } else {
         try {
-          const primed = primeBodyWithEnvDefaults(draft.requestExample);
-          setImportRequestBody(JSON.stringify(primed, null, 2));
+          setImportRequestBody(JSON.stringify(draft.requestExample, null, 2));
         } catch {
           setImportRequestBody(String(draft.requestExample));
         }
       }
     } else if (draft.requestBody?.schema) {
-      setImportRequestBody(toPrettyJson(primeBodyWithEnvDefaults(draft.requestBody.schema), ''));
+      setImportRequestBody(toPrettyJson(draft.requestBody.schema, ''));
     } else {
       setImportRequestBody('');
     }
@@ -3231,7 +3161,6 @@ export default function PosApiAdmin() {
         throw new Error(data?.message || 'Test request failed.');
       }
       setImportTestResult(data);
-      setImportLastTokenMeta(data?.tokenMeta || null);
       setImportStatus('Test call completed. Review the response below.');
     } catch (err) {
       setImportTestError(err.message || 'Failed to call the imported endpoint.');
@@ -3243,10 +3172,7 @@ export default function PosApiAdmin() {
   function handleLoadDraftIntoForm() {
     if (!activeImportDraft) return;
     const paramsText = toPrettyJson(activeImportDraft.parameters || [], '[]');
-    const requestBodyText = toPrettyJson(
-      primeBodyWithEnvDefaults(activeImportDraft.requestBody?.schema),
-      importRequestBody.trim() || '{}',
-    );
+    const requestBodyText = toPrettyJson(activeImportDraft.requestBody?.schema, importRequestBody.trim() || '{}');
     const responseBodyText = toPrettyJson(activeImportDraft.responseBody?.schema, '{}');
     const requestFieldsText = toPrettyJson(activeImportDraft.requestFields, '[]');
     const responseFieldsText = toPrettyJson(activeImportDraft.responseFields, '[]');
@@ -3295,7 +3221,6 @@ export default function PosApiAdmin() {
 
   function resetTestState() {
     setTestState({ running: false, error: '', result: null });
-    setLastTokenMeta(null);
   }
 
   function updateInfoSetting(field, value) {
@@ -3894,7 +3819,6 @@ export default function PosApiAdmin() {
       }
       const data = await res.json();
       setTestState({ running: false, error: '', result: data });
-      setLastTokenMeta(data?.tokenMeta || null);
     } catch (err) {
       console.error(err);
       setTestState({ running: false, error: err.message || 'Failed to run test', result: null });
@@ -4327,32 +4251,6 @@ export default function PosApiAdmin() {
                             onChange={(e) => setImportRequestBody(e.target.value)}
                             rows={6}
                           />
-                          {importRequestBodyFields.length > 0 && (
-                            <div style={styles.importParamGrid}>
-                              {importRequestBodyFields.map((field) => (
-                                <label key={`import-body-${field.key}`} style={styles.label}>
-                                  {field.key}
-                                  <select
-                                    style={styles.input}
-                                    value=""
-                                    onChange={(e) => {
-                                      const selected = e.target.value;
-                                      if (!selected) return;
-                                      updateImportBodyField(field.key, `{{${selected}}}`);
-                                    }}
-                                  >
-                                    <option value="">Use environment variable…</option>
-                                    {ENV_VARIABLE_OPTIONS.map((opt) => (
-                                      <option key={`import-body-${field.key}-${opt}`} value={opt}>
-                                        {opt}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  <div style={styles.paramMeta}>Replaces the field with the selected variable.</div>
-                                </label>
-                              ))}
-                            </div>
-                          )}
                         </div>
                         <div style={styles.importActionsRow}>
                           <button
@@ -4364,9 +4262,6 @@ export default function PosApiAdmin() {
                             {importTestRunning ? 'Testing…' : 'Call staging endpoint'}
                           </button>
                           {importTestError && <div style={styles.previewErrorBox}>{importTestError}</div>}
-                        </div>
-                        <div style={styles.checkboxHint}>
-                          Test calls use the request body shown above after environment variable substitution.
                         </div>
                         {importTestResult && (
                           <div style={styles.importResultBox}>
@@ -5721,32 +5616,6 @@ export default function PosApiAdmin() {
             style={styles.textarea}
             rows={10}
           />
-          {requestBodyFields.length > 0 && (
-            <div style={styles.importParamGrid}>
-              {requestBodyFields.map((field) => (
-                <label key={`request-body-${field.key}`} style={styles.label}>
-                  {field.key}
-                  <select
-                    style={styles.input}
-                    value=""
-                    onChange={(e) => {
-                      const selected = e.target.value;
-                      if (!selected) return;
-                      updateRequestSchemaField(field.key, `{{${selected}}}`);
-                    }}
-                  >
-                    <option value="">Use environment variable…</option>
-                    {ENV_VARIABLE_OPTIONS.map((opt) => (
-                      <option key={`request-body-${field.key}-${opt}`} value={opt}>
-                        {opt}
-                      </option>
-                    ))}
-                  </select>
-                  <div style={styles.paramMeta}>Applies the selected environment variable to this field.</div>
-                </label>
-              ))}
-            </div>
-          )}
         </label>
         <label style={styles.labelFull}>
           Response description
@@ -6131,10 +6000,6 @@ export default function PosApiAdmin() {
           >
             Delete
           </button>
-        </div>
-
-        <div style={styles.checkboxHint}>
-          Tests send the request body shown in the editor after applying any environment variable selections above.
         </div>
 
         {testState.error && <div style={styles.testError}>{testState.error}</div>}
