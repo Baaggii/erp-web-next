@@ -4925,7 +4925,6 @@ export async function listTableRows(
     page = 1,
     perPage = 50,
     filters = {},
-    exactFilters = [],
     sort = {},
     search = '',
     searchColumns = [],
@@ -4944,13 +4943,6 @@ export async function listTableRows(
   const offset = (Number(page) - 1) * Number(perPage);
   const filterClauses = [];
   const params = [tableName];
-  const exactFilterSet = new Set(
-    Array.isArray(exactFilters)
-      ? exactFilters
-          .map((field) => (typeof field === 'string' ? field.trim().toLowerCase() : ''))
-          .filter(Boolean)
-      : [],
-  );
   for (const [field, value] of Object.entries(filters)) {
     if (value !== undefined && value !== '') {
       if (field === 'company_id') {
@@ -4971,10 +4963,7 @@ export async function listTableRows(
         if (range) {
           filterClauses.push(`\`${field}\` BETWEEN ? AND ?`);
           params.push(range[1], range[2]);
-        } else if (
-          typeof value === 'string' &&
-          !exactFilterSet.has(String(field).toLowerCase())
-        ) {
+        } else if (typeof value === 'string') {
           filterClauses.push(`\`${field}\` LIKE ?`);
           params.push(`%${value}%`);
         } else {

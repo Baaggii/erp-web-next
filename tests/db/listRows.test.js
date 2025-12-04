@@ -55,20 +55,6 @@ test('listTableRows applies sorting and substring filters', async () => {
   assert.equal(result.rows[0].name, 'Bob Smith');
 });
 
-test('listTableRows applies exact string filters when requested', async () => {
-  const restore = mockPool();
-  await db.listTableRows('users', {
-    filters: { name: 'Bob' },
-    exactFilters: ['name'],
-  });
-  const calls = restore();
-  const count = calls.find((c) => c.sql.includes('COUNT(*)'));
-  assert.ok(count, 'expected count query to be issued');
-  assert.ok(/`name`\s*=\s*\?/i.test(count.sql));
-  assert.ok(!/`name`\s+like/i.test(count.sql));
-  assert.equal(count.params?.[1], 'Bob');
-});
-
 test('listTableRows returns SQL when debug enabled', async () => {
   const restore = mockPool();
   const result = await db.listTableRows('users', {
