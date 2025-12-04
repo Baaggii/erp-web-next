@@ -1,13 +1,35 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 
-const POSAPI_TYPES = [
-  { value: 'B2C_RECEIPT', label: 'B2C receipt' },
-  { value: 'B2B_RECEIPT', label: 'B2B receipt' },
-  { value: 'B2C_INVOICE', label: 'B2C invoice' },
-  { value: 'B2B_INVOICE', label: 'B2B invoice' },
+const POSAPI_TRANSACTION_TYPES = [
+  { value: 'B2C', label: 'B2C receipt' },
+  { value: 'B2B_SALE', label: 'B2B sale invoice' },
+  { value: 'B2B_PURCHASE', label: 'B2B purchase invoice' },
   { value: 'STOCK_QR', label: 'Stock QR' },
 ];
+
+const POSAPI_INFO_TYPES = [{ value: 'LOOKUP', label: 'Information lookup' }];
+const POSAPI_ADMIN_TYPES = [
+  { value: 'AUTH', label: 'Authentication / Token' },
+  { value: 'ADMIN', label: 'Admin utility' },
+];
+const ALL_POSAPI_TYPES = [
+  ...POSAPI_TRANSACTION_TYPES,
+  ...POSAPI_INFO_TYPES,
+  ...POSAPI_ADMIN_TYPES,
+];
+const USAGE_TYPE_OPTIONS = {
+  transaction: POSAPI_TRANSACTION_TYPES,
+  info: POSAPI_INFO_TYPES,
+  admin: POSAPI_ADMIN_TYPES,
+  auth: POSAPI_ADMIN_TYPES.filter((type) => type.value === 'AUTH'),
+};
+const USAGE_DEFAULT_TYPE = {
+  transaction: '',
+  info: 'LOOKUP',
+  admin: 'ADMIN',
+  auth: 'AUTH',
+};
 
 const TAX_TYPES = [
   { value: 'VAT_ABLE', label: 'VAT-able' },
@@ -52,11 +74,13 @@ const METHOD_BADGES = {
 };
 
 const TYPE_BADGES = {
-  B2C_RECEIPT: '#1d4ed8',
-  B2B_RECEIPT: '#0f172a',
-  B2C_INVOICE: '#4f46e5',
-  B2B_INVOICE: '#7c3aed',
+  B2C: '#1d4ed8',
+  B2B_SALE: '#0f172a',
+  B2B_PURCHASE: '#7c3aed',
   STOCK_QR: '#0ea5e9',
+  AUTH: '#047857',
+  LOOKUP: '#0ea5e9',
+  ADMIN: '#7f1d1d',
 };
 
 const TAX_PRODUCT_OPTIONS = [
@@ -69,24 +93,34 @@ const USAGE_OPTIONS = [
   { value: 'transaction', label: 'Transaction – triggered during form submission' },
   { value: 'info', label: 'Information lookup – fetches reference data' },
   { value: 'admin', label: 'Admin utility – management-only endpoints' },
+  { value: 'auth', label: 'Authentication' },
 ];
 
 const USAGE_BADGES = {
   transaction: '#047857',
   info: '#1d4ed8',
   admin: '#78350f',
+  auth: '#047857',
 };
 
-const DEFAULT_RECEIPT_TYPES = POSAPI_TYPES.map((type) => type.value);
+const DEFAULT_RECEIPT_TYPES = POSAPI_TRANSACTION_TYPES.map((type) => type.value);
 const DEFAULT_TAX_TYPES = TAX_TYPES.map((tax) => tax.value);
 const DEFAULT_PAYMENT_METHODS = PAYMENT_TYPES.map((payment) => payment.value);
 const VALID_RECEIPT_TYPES = new Set(DEFAULT_RECEIPT_TYPES);
 const VALID_TAX_TYPES = new Set(DEFAULT_TAX_TYPES);
 const VALID_PAYMENT_METHODS = new Set(DEFAULT_PAYMENT_METHODS);
 const VALID_USAGE_VALUES = new Set(USAGE_OPTIONS.map((opt) => opt.value));
+const ENV_VARIABLE_OPTIONS = [
+  'POSAPI_CLIENT_ID',
+  'POSAPI_CLIENT_SECRET',
+  'POSAPI_USERNAME',
+  'POSAPI_PASSWORD',
+];
 const DEFAULT_INFO_TABLE_OPTIONS = [
   { value: 'posapi_reference_codes', label: 'POSAPI reference codes' },
 ];
+const BASE_COMPLEX_REQUEST_SCHEMA = createReceiptTemplate('B2C');
+const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
 
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
@@ -166,6 +200,10 @@ function sanitizeTemplateMap(value, allowedValues) {
   return normalized;
 }
 
+function hasObjectEntries(value) {
+  return Boolean(value && typeof value === 'object' && Object.keys(value).length > 0);
+}
+
 function sanitizeTemplateList(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -205,6 +243,26 @@ function buildTemplateList(list, allowMultiple) {
     return sanitized.slice(0, 1);
   }
   return sanitized;
+}
+
+function buildDefaultRequestSchema(type, supportsItems = true, supportsMultiplePayments = true) {
+  const normalizedType = type || 'B2C';
+  return normaliseBuilderForType(BASE_COMPLEX_REQUEST_SCHEMA, normalizedType, supportsItems, supportsMultiplePayments);
+}
+
+function applySchemaFeatureFlags(schema, supportsItems = true, supportsMultiplePayments = true) {
+  const working = deepClone(schema) || {};
+  if (!supportsItems && Array.isArray(working.receipts)) {
+    working.receipts = working.receipts.map((receipt) => {
+      if (!receipt || typeof receipt !== 'object') return receipt;
+      const { items, ...rest } = receipt;
+      return rest;
+    });
+  }
+  if (!supportsMultiplePayments) {
+    delete working.payments;
+  }
+  return working;
 }
 
 function formatTableLabel(value) {
@@ -255,7 +313,11 @@ function sanitizeTableSelection(selection, options) {
 
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
-  const usage = normalizeUsage(endpoint.usage);
+  const usage = endpoint.posApiType === 'AUTH'
+    ? 'auth'
+    : endpoint.posApiType === 'LOOKUP'
+      ? 'info'
+      : normalizeUsage(endpoint.usage);
   const isTransaction = usage === 'transaction';
   const enableReceiptTypes = isTransaction ? endpoint.enableReceiptTypes !== false : false;
   const enableReceiptTaxTypes = isTransaction ? endpoint.enableReceiptTaxTypes !== false : false;
@@ -329,6 +391,10 @@ function withEndpointMetadata(endpoint) {
     taxTypes,
     paymentMethods,
     notes: typeof endpoint.notes === 'string' ? endpoint.notes : '',
+    testServerUrlProduction: typeof endpoint.testServerUrlProduction === 'string'
+      ? endpoint.testServerUrlProduction
+      : '',
+    authEndpointId: typeof endpoint.authEndpointId === 'string' ? endpoint.authEndpointId : '',
   };
 }
 
@@ -361,9 +427,12 @@ const EMPTY_ENDPOINT = {
   responseFieldsText: '[]',
   testable: false,
   testServerUrl: '',
+  testServerUrlProduction: '',
+  authEndpointId: '',
   docUrl: '',
   posApiType: '',
   usage: 'transaction',
+  settingsId: '',
   defaultForForm: false,
   supportsMultipleReceipts: false,
   supportsMultiplePayments: false,
@@ -403,7 +472,7 @@ const TAX_TYPE_DESCRIPTIONS = {
 };
 
 const RECEIPT_SAMPLE_PAYLOADS = {
-  B2C_RECEIPT: createReceiptTemplate('B2C_RECEIPT', {
+  B2C: createReceiptTemplate('B2C', {
     branchNo: '001',
     posNo: 'A01',
     merchantTin: '12345678901',
@@ -457,45 +526,11 @@ const RECEIPT_SAMPLE_PAYLOADS = {
       },
     ],
   }),
-  B2B_RECEIPT: createReceiptTemplate('B2B_RECEIPT', {
-    branchNo: '002',
-    posNo: 'B15',
-    merchantTin: '12345678901',
-    customerTin: '8889990001',
-    totalAmount: 1280000,
-    totalVAT: 116363,
-    totalCityTax: 0,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 1280000,
-        totalVAT: 116363,
-        totalCityTax: 0,
-        items: [
-          {
-            name: 'Office chair',
-            barCode: '5901234123457',
-            barCodeType: 'EAN_13',
-            classificationCode: '9401300',
-            measureUnit: 'PCS',
-            qty: 4,
-            price: 320000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: 'CHAIR-2024-04',
-          },
-        ],
-      },
-    ],
-    payments: [
-      { type: 'BANK_TRANSFER', amount: 1280000 },
-    ],
-  }),
-  B2C_INVOICE: createReceiptTemplate('B2C_INVOICE', {
+  B2B_PURCHASE: createReceiptTemplate('B2B_PURCHASE', {
     branchNo: '001',
     posNo: 'A01',
     merchantTin: '12345678901',
-    consumerNo: '88119922',
+    customerTin: '88119922',
     invoiceNo: 'INV-2024-0152',
     invoiceDate: '2024-07-01',
     dueDate: '2024-07-10',
@@ -541,7 +576,7 @@ const RECEIPT_SAMPLE_PAYLOADS = {
       { type: 'PAYMENT_CARD', amount: 225000, data: { cardIssuer: 'Mastercard', last4: '4455' } },
     ],
   }),
-  B2B_INVOICE: createReceiptTemplate('B2B_INVOICE', {
+  B2B_SALE: createReceiptTemplate('B2B_SALE', {
     branchNo: '005',
     posNo: 'INV-01',
     merchantTin: '12345678901',
@@ -700,10 +735,9 @@ function createStockQrTemplate() {
 
 function resolveTemplate(type) {
   switch (type) {
-    case 'B2C_RECEIPT':
-    case 'B2B_RECEIPT':
-    case 'B2C_INVOICE':
-    case 'B2B_INVOICE':
+    case 'B2C':
+    case 'B2B_SALE':
+    case 'B2B_PURCHASE':
       return createReceiptTemplate(type);
     case 'STOCK_QR':
       return createStockQrTemplate();
@@ -790,7 +824,7 @@ function createStockItem() {
   };
 }
 
-function normaliseBuilderForType(builder, type, withItems = true) {
+function normaliseBuilderForType(builder, type, withItems = true, withPayments = true) {
   const template = resolveTemplate(type);
   const base = typeof builder === 'object' && builder !== null ? deepClone(builder) : {};
   const next = { ...template, ...base, type };
@@ -837,15 +871,19 @@ function normaliseBuilderForType(builder, type, withItems = true) {
         return { ...receipt, items };
       });
     }
-    const payments = Array.isArray(base?.payments) && base.payments.length > 0
-      ? base.payments
-      : template.payments;
-    next.payments = deepClone(payments) || template.payments || [
-      {
-        type: 'CASH',
-        amount: next.totalAmount || 0,
-      },
-    ];
+    if (withPayments) {
+      const payments = Array.isArray(base?.payments) && base.payments.length > 0
+        ? base.payments
+        : template.payments;
+      next.payments = deepClone(payments) || template.payments || [
+        {
+          type: 'CASH',
+          amount: next.totalAmount || 0,
+        },
+      ];
+    } else {
+      delete next.payments;
+    }
     next.totalAmount = base?.totalAmount ?? template.totalAmount;
     next.totalVAT = base?.totalVAT ?? template.totalVAT;
     next.totalCityTax = base?.totalCityTax ?? template.totalCityTax;
@@ -857,7 +895,7 @@ function normaliseBuilderForType(builder, type, withItems = true) {
 
 function formatTypeLabel(type) {
   if (!type) return '';
-  const hit = POSAPI_TYPES.find((opt) => opt.value === type);
+  const hit = ALL_POSAPI_TYPES.find((opt) => opt.value === type);
   return hit ? hit.label : type;
 }
 
@@ -923,10 +961,25 @@ function normalizeHintEntry(entry) {
 
 function createFormState(definition) {
   if (!definition) return { ...EMPTY_ENDPOINT };
-  const rawUsage = definition.usage && VALID_USAGE_VALUES.has(definition.usage)
+  const declaredUsage = definition.usage && VALID_USAGE_VALUES.has(definition.usage)
     ? definition.usage
     : 'transaction';
+  const rawUsage = definition.posApiType === 'AUTH'
+    ? 'auth'
+    : definition.posApiType === 'LOOKUP'
+      ? 'info'
+      : definition.posApiType === 'ADMIN'
+        ? 'admin'
+        : declaredUsage;
   const isTransaction = rawUsage === 'transaction';
+  const supportsItems = isTransaction
+    ? definition.supportsItems !== undefined
+      ? Boolean(definition.supportsItems)
+      : definition.posApiType === 'STOCK_QR'
+        ? false
+        : true
+    : false;
+  const supportsMultiplePayments = isTransaction ? Boolean(definition.supportsMultiplePayments) : false;
   const resolvedReceiptTypes = Array.isArray(definition.receiptTypes)
     ? definition.receiptTypes.slice()
     : [];
@@ -952,10 +1005,14 @@ function createFormState(definition) {
       };
     });
   };
-  const receiptTypesEnabled = isTransaction ? definition.enableReceiptTypes !== false : false;
-  const receiptTaxTypesEnabled = isTransaction ? definition.enableReceiptTaxTypes !== false : false;
-  const paymentMethodsEnabled = isTransaction ? definition.enablePaymentMethods !== false : false;
-  const receiptItemsEnabled = isTransaction ? definition.enableReceiptItems !== false : false;
+  const receiptTypesEnabled = isTransaction ? supportsItems && definition.enableReceiptTypes !== false : false;
+  const receiptTaxTypesEnabled = isTransaction
+    ? supportsItems && definition.enableReceiptTaxTypes !== false
+    : false;
+  const paymentMethodsEnabled = isTransaction
+    ? supportsMultiplePayments && definition.enablePaymentMethods !== false
+    : false;
+  const receiptItemsEnabled = isTransaction ? supportsItems && definition.enableReceiptItems !== false : false;
   const allowMultipleReceiptTypes = receiptTypesEnabled
     ? definition.allowMultipleReceiptTypes !== false
     : false;
@@ -986,6 +1043,10 @@ function createFormState(definition) {
         return list;
       })()
     : [];
+  const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
+  const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
+  const requestSchemaFallback = '{}';
+
   return {
     id: definition.id || '',
     name: definition.name || '',
@@ -994,7 +1055,7 @@ function createFormState(definition) {
     path: definition.path || '',
     parametersText: toPrettyJson(definition.parameters, '[]'),
     requestDescription: definition.requestBody?.description || '',
-    requestSchemaText: toPrettyJson(definition.requestBody?.schema, '{}'),
+    requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
     responseDescription: definition.responseBody?.description || '',
     responseSchemaText: toPrettyJson(definition.responseBody?.schema, '{}'),
     fieldDescriptionsText: toPrettyJson(definition.fieldDescriptions, '{}'),
@@ -1002,26 +1063,22 @@ function createFormState(definition) {
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     testable: Boolean(definition.testable),
     testServerUrl: definition.testServerUrl || '',
+    testServerUrlProduction: definition.testServerUrlProduction || '',
+    authEndpointId: definition.authEndpointId || '',
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
     usage: rawUsage,
     defaultForForm: isTransaction ? Boolean(definition.defaultForForm) : false,
     supportsMultipleReceipts: isTransaction ? Boolean(definition.supportsMultipleReceipts) : false,
-    supportsMultiplePayments: isTransaction ? Boolean(definition.supportsMultiplePayments) : false,
-    supportsItems: isTransaction
-      ? definition.supportsItems !== undefined
-        ? Boolean(definition.supportsItems)
-        : definition.posApiType === 'STOCK_QR'
-          ? false
-          : true
-      : false,
+    supportsMultiplePayments,
+    supportsItems,
     enableReceiptTypes: receiptTypesEnabled,
     allowMultipleReceiptTypes,
     receiptTypeTemplates,
     receiptTypes: receiptTypesEnabled
       ? resolvedReceiptTypes.length > 0
         ? resolvedReceiptTypes
-        : DEFAULT_RECEIPT_TYPES.slice()
+        : []
       : [],
     enableReceiptTaxTypes: receiptTaxTypesEnabled,
     allowMultipleReceiptTaxTypes,
@@ -1029,7 +1086,7 @@ function createFormState(definition) {
     taxTypes: receiptTaxTypesEnabled
       ? resolvedTaxTypes.length > 0
         ? resolvedTaxTypes
-        : DEFAULT_TAX_TYPES.slice()
+        : []
       : [],
     enablePaymentMethods: paymentMethodsEnabled,
     allowMultiplePaymentMethods,
@@ -1037,7 +1094,7 @@ function createFormState(definition) {
     paymentMethods: paymentMethodsEnabled
       ? resolvedPaymentMethods.length > 0
         ? resolvedPaymentMethods
-        : DEFAULT_PAYMENT_METHODS.slice()
+        : []
       : [],
     enableReceiptItems: receiptItemsEnabled,
     allowMultipleReceiptItems,
@@ -1075,6 +1132,534 @@ function validateEndpoint(endpoint, existingIds, originalId) {
   }
 }
 
+function parseScalarValue(text) {
+  if (text === 'null') return null;
+  if (text === 'true') return true;
+  if (text === 'false') return false;
+  const asNumber = Number(text);
+  if (!Number.isNaN(asNumber) && text.trim() !== '') {
+    return asNumber;
+  }
+  if (
+    (text.startsWith('{') && text.endsWith('}')) ||
+    (text.startsWith('[') && text.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      // ignore
+    }
+  }
+  return text;
+}
+
+function parseLooseYaml(text) {
+  const lines = text.replace(/\t/g, '  ').split(/\r?\n/);
+  const filtered = lines
+    .map((line) => line.replace(/#.*$/, ''))
+    .map((line) => ({ indent: line.match(/^ */)[0].length, content: line.trim() }))
+    .filter((line) => line.content);
+
+  function walk(startIndex, expectedIndent) {
+    let index = startIndex;
+    let result = null;
+    while (index < filtered.length) {
+      const { indent, content } = filtered[index];
+      if (indent < expectedIndent) break;
+      if (indent > expectedIndent) {
+        index += 1;
+        continue;
+      }
+
+      if (content.startsWith('- ')) {
+        if (!Array.isArray(result)) result = [];
+        const valuePart = content.slice(2).trim();
+        if (!valuePart) {
+          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
+          result.push(child);
+          index = nextIndex;
+          continue;
+        }
+        if (valuePart.includes(':') && !valuePart.startsWith('{') && !valuePart.startsWith('[')) {
+          const [keyPart, rest] = valuePart.split(/:(.*)/);
+          const base = {};
+          if (rest && rest.trim()) {
+            base[keyPart.trim()] = parseScalarValue(rest.trim());
+          }
+          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
+          result.push({ ...base, ...(child && typeof child === 'object' ? child : {}) });
+          index = nextIndex;
+          continue;
+        }
+        result.push(parseScalarValue(valuePart));
+        index += 1;
+        continue;
+      }
+
+      if (content.includes(':')) {
+        if (!result || Array.isArray(result)) {
+          if (result === null) result = {};
+        }
+        const [keyPart, rest] = content.split(/:(.*)/);
+        const key = keyPart.trim();
+        const remaining = (rest || '').trim();
+        if (!remaining) {
+          const [child, nextIndex] = walk(index + 1, expectedIndent + 2);
+          result[key] = child;
+          index = nextIndex;
+          continue;
+        }
+        result[key] = parseScalarValue(remaining);
+        index += 1;
+        continue;
+      }
+
+      index += 1;
+    }
+    return [result, index];
+  }
+
+  const [parsed] = walk(0, filtered[0]?.indent ?? 0);
+  return parsed;
+}
+
+function parseApiSpecText(text) {
+  const trimmed = text.trim();
+  if (!trimmed) throw new Error('Specification file is empty');
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // fall through to YAML parsing
+  }
+  const parsed = parseLooseYaml(trimmed);
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Unable to parse the supplied specification file');
+  }
+  return parsed;
+}
+
+function normalizeParametersFromSpec(params) {
+  const list = Array.isArray(params) ? params : [];
+  const deduped = [];
+  const seen = new Set();
+  list.forEach((param) => {
+    if (!param || typeof param !== 'object') return;
+    const name = typeof param.name === 'string' ? param.name.trim() : '';
+    const loc = typeof param.in === 'string' ? param.in.trim() : '';
+    if (!name || !loc) return;
+    const key = `${name}:${loc}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    deduped.push({
+      name,
+      in: loc,
+      required: Boolean(param.required),
+      description: param.description || '',
+      example:
+        param.example ?? param.default ?? param.testValue
+        ?? param.sample ?? (param.examples && Object.values(param.examples)[0]?.value),
+      ...(param.default !== undefined ? { default: param.default } : {}),
+      ...(param.testValue !== undefined ? { testValue: param.testValue } : {}),
+      ...(param.sample !== undefined ? { sample: param.sample } : {}),
+    });
+  });
+  return deduped;
+}
+
+function extractRequestExample(requestBody) {
+  if (!requestBody || typeof requestBody !== 'object') return undefined;
+  const content = requestBody.content || {};
+  const mediaType =
+    content['application/json'] || content['*/*'] || Object.values(content)[0] || null;
+  if (!mediaType) return undefined;
+  if (mediaType.example !== undefined) return mediaType.example;
+  if (mediaType.examples) {
+    const first = Object.values(mediaType.examples).find((entry) => entry && entry.value !== undefined);
+    if (first) return first.value;
+  }
+  if (mediaType.schema && typeof mediaType.schema === 'object') {
+    if (mediaType.schema.example !== undefined) return mediaType.schema.example;
+    if (mediaType.schema.default !== undefined) return mediaType.schema.default;
+  }
+  return undefined;
+}
+
+function inferPosApiTypeFromHints(tags = [], path = '', summary = '') {
+  const text = `${tags.join(' ')} ${path} ${summary}`.toLowerCase();
+  if (path.includes('/protocol/openid-connect/token') || /auth|token/.test(text)) {
+    return 'AUTH';
+  }
+  if (path.includes('/api/info') || text.includes('info') || text.includes('lookup')) {
+    return 'LOOKUP';
+  }
+  if (text.includes('stock') || text.includes('qr')) return 'STOCK_QR';
+  if (path.includes('/rest/')) {
+    if (text.includes('b2b') || text.includes('sale') || text.includes('invoice')) return 'B2B_SALE';
+    if (text.includes('purchase')) return 'B2B_PURCHASE';
+    return 'B2C';
+  }
+  if (text.includes('purchase')) return 'B2B_PURCHASE';
+  if (text.includes('sale') || text.includes('invoice') || text.includes('b2b')) return 'B2B_SALE';
+  if (text.includes('b2c') || text.includes('receipt') || text.includes('transaction')) return 'B2C';
+  return '';
+}
+
+function extractOperationsFromOpenApi(spec) {
+  if (!spec || typeof spec !== 'object') return [];
+  const paths = spec.paths && typeof spec.paths === 'object' ? spec.paths : {};
+  const serverUrl =
+    Array.isArray(spec.servers) && spec.servers.length && spec.servers[0]?.url
+      ? spec.servers[0].url
+      : '';
+  const entries = [];
+  Object.entries(paths).forEach(([path, definition]) => {
+    if (!definition || typeof definition !== 'object') return;
+    const sharedParams = normalizeParametersFromSpec(definition.parameters);
+    Object.entries(definition).forEach(([methodKey, operation]) => {
+      const method = methodKey.toUpperCase();
+      if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return;
+      const op = operation && typeof operation === 'object' ? operation : {};
+      const opParams = normalizeParametersFromSpec([...(op.parameters || []), ...sharedParams]);
+      const example = extractRequestExample(op.requestBody);
+      const idSource = op.operationId || `${method}-${path}`;
+      const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
+      entries.push({
+        id: id || `${method}-${entries.length + 1}`,
+        name: op.summary || op.operationId || `${method} ${path}`,
+        method,
+        path,
+        summary: op.summary || op.description || '',
+        parameters: opParams,
+        requestExample: example,
+        posApiType: inferPosApiTypeFromHints(op.tags || [], path, op.summary || op.description || ''),
+        serverUrl,
+        tags: Array.isArray(op.tags) ? op.tags : [],
+      });
+    });
+  });
+  return entries;
+}
+
+function parsePostmanUrl(urlObj) {
+  const detectPathParams = (rawPath) => {
+    const params = new Set();
+    const colonMatches = rawPath.match(/:\w+/g) || [];
+    colonMatches.forEach((segment) => params.add(segment.slice(1)));
+    const braceMatches = rawPath.match(/{{\s*([\w-]+)\s*}}/g) || [];
+    braceMatches.forEach((segment) => {
+      const key = segment.replace(/^{+|}+$/g, '').replace(/\s+/g, '');
+      if (key) params.add(key);
+    });
+    const normalizedMatches = rawPath.match(/{([^}]+)}/g) || [];
+    normalizedMatches.forEach((segment) => {
+      const key = segment.replace(/^{|}$/g, '');
+      if (key) params.add(key);
+    });
+    return Array.from(params);
+  };
+
+  if (!urlObj) return { path: '/', query: [], baseUrl: '', pathParams: [] };
+  if (typeof urlObj === 'string') {
+    const urlString = urlObj.startsWith('http') ? urlObj : `https://placeholder.local${urlObj}`;
+    try {
+      const parsed = new URL(urlString);
+      const path = parsed.pathname || '/';
+      const query = [];
+      parsed.searchParams.forEach((value, key) => {
+        query.push({ name: key, in: 'query', value });
+      });
+      const baseUrl = `${parsed.protocol}//${parsed.host}`;
+      return { path, query, baseUrl, pathParams: detectPathParams(path) };
+    } catch {
+      return { path: '/', query: [], baseUrl: '', pathParams: [] };
+    }
+  }
+  const pathParts = Array.isArray(urlObj.path) ? urlObj.path : [];
+  const rawPath = `/${pathParts.join('/')}`;
+  const normalizedPath = rawPath.replace(/\/:([\w-]+)/g, '/{$1}').replace(/{{\s*([\w-]+)\s*}}/g, '{$1}');
+  const query = Array.isArray(urlObj.query)
+    ? urlObj.query.map((entry) => ({
+      name: entry.key,
+      in: 'query',
+      example: entry.value,
+      default: entry?.value,
+      description: entry?.description || '',
+    }))
+    : [];
+  const host = Array.isArray(urlObj.host) ? urlObj.host.join('.') : '';
+  const protocol = Array.isArray(urlObj.protocol) ? urlObj.protocol[0] : urlObj.protocol;
+  const baseUrl = host ? `${protocol || 'https'}://${host}` : '';
+  return { path: normalizedPath || '/', query, baseUrl, pathParams: detectPathParams(rawPath) };
+}
+
+function extractOperationsFromPostman(spec) {
+  const items = spec?.item;
+  if (!Array.isArray(items)) return [];
+  const entries = [];
+
+  const variables = Array.isArray(spec?.variable)
+    ? spec.variable
+      .map((variable) => (typeof variable?.key === 'string' ? variable.key.trim() : ''))
+      .filter(Boolean)
+    : [];
+
+  function buildSchemaFromExample(example) {
+    const detectType = (value) => {
+      if (value === null) return 'null';
+      if (Array.isArray(value)) return 'array';
+      return typeof value;
+    };
+
+    const walkSchema = (value) => {
+      const type = detectType(value);
+      switch (type) {
+        case 'object': {
+          const properties = {};
+          Object.entries(value).forEach(([key, val]) => {
+            properties[key] = walkSchema(val);
+          });
+          const required = Object.keys(properties);
+          return { type: 'object', properties, required };
+        }
+        case 'array': {
+          const first = value.length ? walkSchema(value[0]) : {};
+          return { type: 'array', items: first };
+        }
+        case 'number':
+          return { type: Number.isInteger(value) ? 'integer' : 'number' };
+        case 'boolean':
+          return { type: 'boolean' };
+        case 'null':
+          return { type: 'string', nullable: true };
+        default:
+          return { type: 'string' };
+      }
+    };
+
+    return walkSchema(example);
+  }
+
+  function mergeExampleSchemas(examples) {
+    if (!Array.isArray(examples) || examples.length === 0) return undefined;
+    const objectExamples = examples.filter((item) => item && typeof item === 'object' && !Array.isArray(item));
+    if (!objectExamples.length) return undefined;
+    const properties = {};
+    const counts = {};
+    objectExamples.forEach((obj) => {
+      Object.entries(obj).forEach(([key, value]) => {
+        properties[key] = buildSchemaFromExample(value);
+        counts[key] = (counts[key] || 0) + 1;
+      });
+    });
+    const required = Object.keys(counts).filter((key) => counts[key] === objectExamples.length);
+    return {
+      type: 'object',
+      properties,
+      ...(required.length ? { required } : {}),
+    };
+  }
+
+  function parseRequestBody(body) {
+    if (!body || typeof body !== 'object') return {};
+    if (body.mode === 'raw') {
+      const rawText = typeof body.raw === 'string' ? body.raw.trim() : '';
+      if (!rawText) return {};
+      try {
+        const parsed = JSON.parse(rawText);
+        return { requestExample: parsed, requestSchema: buildSchemaFromExample(parsed) };
+      } catch {
+        return { requestExample: body.raw };
+      }
+    }
+    if (body.mode === 'urlencoded' && Array.isArray(body.urlencoded)) {
+      const example = {};
+      body.urlencoded
+        .filter((entry) => !entry?.disabled)
+        .forEach((entry) => {
+          const key = entry?.key || '';
+          example[key] = entry?.value ?? '';
+        });
+      return { requestExample: example, requestSchema: buildSchemaFromExample(example) };
+    }
+    if (body.mode === 'formdata' && Array.isArray(body.formdata)) {
+      const example = {};
+      const schemaProperties = {};
+      body.formdata
+        .filter((entry) => !entry?.disabled)
+        .forEach((entry) => {
+          const key = entry?.key || '';
+          if (!key) return;
+          if (entry.type === 'file') {
+            example[key] = entry?.src || 'file';
+            schemaProperties[key] = { type: 'string', format: 'binary' };
+          } else {
+            example[key] = entry?.value ?? '';
+            schemaProperties[key] = { type: 'string' };
+          }
+        });
+      const requestSchema = Object.keys(schemaProperties).length
+        ? { type: 'object', properties: schemaProperties, required: Object.keys(schemaProperties) }
+        : undefined;
+      return { requestExample: example, requestSchema };
+    }
+    return {};
+  }
+
+  function parseResponses(responses = []) {
+    const examples = [];
+    const jsonBodies = [];
+    responses
+      .filter((resp) => resp && resp.body)
+      .forEach((resp) => {
+        const headers = Array.isArray(resp.header)
+          ? resp.header.reduce((acc, h) => {
+            if (h?.key) acc[h.key] = h?.value;
+            return acc;
+          }, {})
+          : {};
+        const contentType = headers['Content-Type'] || headers['content-type'] || '';
+        let parsedBody = resp.body;
+        if (/json/i.test(contentType)) {
+          try {
+            parsedBody = JSON.parse(resp.body);
+            if (parsedBody && typeof parsedBody === 'object') {
+              jsonBodies.push(parsedBody);
+            }
+          } catch {
+            // leave as-is
+          }
+        }
+        examples.push({
+          status: resp.code || resp.status,
+          name: resp.name || resp.status || '',
+          body: parsedBody,
+          headers,
+        });
+      });
+    const responseSchema = jsonBodies.length ? mergeExampleSchemas(jsonBodies) : undefined;
+    return { examples, responseSchema };
+  }
+
+  function walk(list, folderTags = [], folderPath = []) {
+    list.forEach((item) => {
+      if (item?.item) {
+        walk(item.item, [...folderTags, item.name || ''], [...folderPath, item.name || '']);
+        return;
+      }
+      if (!item?.request) return;
+      const method = (item.request.method || 'GET').toUpperCase();
+      const { path, query, baseUrl, pathParams } = parsePostmanUrl(item.request.url || '/');
+      const body = item.request.body;
+      const { requestExample, requestSchema } = parseRequestBody(body);
+      const { examples: responseExamples, responseSchema } = parseResponses(item.response);
+      const parameters = normalizeParametersFromSpec([
+        ...query,
+        ...pathParams.map((name) => ({ name, in: 'path', required: true })),
+        ...(Array.isArray(item.request.header)
+          ? item.request.header.map((header) => ({
+            name: header?.key,
+            in: 'header',
+            required: header?.disabled === false || header?.required === true,
+            example: header?.value,
+            description: header?.description || '',
+          }))
+          : []),
+      ]);
+      const idSource = `${method}-${path}`;
+      const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
+      const description = item.request.description || item.description || '';
+      const posApiType = inferPosApiTypeFromHints(folderTags, path, item.request.description || '');
+      const usage = posApiType === 'AUTH' ? 'auth' : posApiType === 'LOOKUP' ? 'info' : 'transaction';
+      const requestBody = requestSchema
+        ? { schema: requestSchema, description }
+        : usage === 'transaction'
+          ? undefined
+          : { schema: {}, description };
+      entries.push({
+        id: id || `${method}-${entries.length + 1}`,
+        name: item.name || `${method} ${path}`,
+        method,
+        path,
+        summary: description,
+        parameters,
+        requestExample,
+        requestBody,
+        responseBody: responseSchema
+          ? {
+            schema: responseSchema,
+            description: responseExamples?.[0]?.name || responseExamples?.[0]?.status || '',
+          }
+          : undefined,
+        responseExamples,
+        posApiType,
+        usage,
+        serverUrl: baseUrl,
+        tags: [...folderPath],
+        variables,
+      });
+    });
+  }
+
+  walk(items, []);
+  return entries;
+}
+
+function buildDraftParameterDefaults(parameters) {
+  const values = {};
+  const envFallbacks = {
+    client_id: '{{POSAPI_CLIENT_ID}}',
+    client_secret: '{{POSAPI_CLIENT_SECRET}}',
+    username: '{{POSAPI_USERNAME}}',
+    password: '{{POSAPI_PASSWORD}}',
+  };
+  parameters.forEach((param) => {
+    if (!param?.name) return;
+    const candidates = [param.example, param.default, param.sample];
+    const hit = candidates.find((val) => val !== undefined && val !== null);
+    if (hit !== undefined && hit !== null) {
+      values[param.name] = hit;
+      return;
+    }
+    const normalizedName = typeof param.name === 'string' ? param.name.toLowerCase() : param.name;
+    const envKey = envFallbacks[normalizedName];
+    if (envKey) {
+      values[param.name] = envKey;
+    }
+  });
+  return values;
+}
+
+function buildFilledParams(parameters, providedValues = {}) {
+  const byLocation = { path: {}, query: {}, header: {} };
+  if (!Array.isArray(parameters)) return byLocation;
+  parameters.forEach((param) => {
+    const name = typeof param?.name === 'string' ? param.name : '';
+    const loc = typeof param?.in === 'string' ? param.in : 'query';
+    if (!name) return;
+    const raw = providedValues[name];
+    if (raw === undefined || raw === null || `${raw}`.trim() === '') return;
+    if (loc === 'path') {
+      byLocation.path[name] = raw;
+    } else if (loc === 'header') {
+      byLocation.header[name] = raw;
+    } else {
+      byLocation.query[name] = raw;
+    }
+  });
+  return byLocation;
+}
+
+function groupParametersByLocation(parameters = []) {
+  const groups = { path: [], query: [], header: [] };
+  parameters.forEach((param) => {
+    const loc = typeof param?.in === 'string' ? param.in : 'query';
+    if (loc === 'path') groups.path.push(param);
+    else if (loc === 'header') groups.header.push(param);
+    else groups.query.push(param);
+  });
+  return groups;
+}
+
 export default function PosApiAdmin() {
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
@@ -1084,6 +1669,8 @@ export default function PosApiAdmin() {
   const [status, setStatus] = useState('');
   const [usageFilter, setUsageFilter] = useState('all');
   const [testState, setTestState] = useState({ running: false, error: '', result: null });
+  const [testEnvironment, setTestEnvironment] = useState('staging');
+  const [useCachedToken, setUseCachedToken] = useState(true);
   const [docExamples, setDocExamples] = useState([]);
   const [selectedDocBlock, setSelectedDocBlock] = useState('');
   const [docFieldDescriptions, setDocFieldDescriptions] = useState({});
@@ -1092,11 +1679,25 @@ export default function PosApiAdmin() {
   const [requestBuilderError, setRequestBuilderError] = useState('');
   const [sampleImportText, setSampleImportText] = useState('');
   const [sampleImportError, setSampleImportError] = useState('');
+  const [importSpecText, setImportSpecText] = useState('');
+  const [importDrafts, setImportDrafts] = useState([]);
+  const [importError, setImportError] = useState('');
+  const [importStatus, setImportStatus] = useState('');
+  const [selectedImportId, setSelectedImportId] = useState('');
+  const [importAuthEndpointId, setImportAuthEndpointId] = useState('');
+  const [importTestValues, setImportTestValues] = useState({});
+  const [importRequestBody, setImportRequestBody] = useState('');
+  const [importTestResult, setImportTestResult] = useState(null);
+  const [importTestRunning, setImportTestRunning] = useState(false);
+  const [importTestError, setImportTestError] = useState('');
+  const [importUseCachedToken, setImportUseCachedToken] = useState(true);
+  const [importBaseUrl, setImportBaseUrl] = useState('');
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
   const [taxTypeListText, setTaxTypeListText] = useState(DEFAULT_TAX_TYPES.join(', '));
   const [taxTypeListError, setTaxTypeListError] = useState('');
   const taxTypeInputDirtyRef = useRef(false);
+  const importAuthSelectionDirtyRef = useRef(false);
   const [activeTab, setActiveTab] = useState('endpoints');
   const [infoSyncSettings, setInfoSyncSettings] = useState({
     autoSyncEnabled: false,
@@ -1122,7 +1723,7 @@ export default function PosApiAdmin() {
     const filtered = normalized.filter(
       (endpoint) => usageFilter === 'all' || endpoint.usage === usageFilter,
     );
-    const usageOrder = ['transaction', 'info', 'admin'];
+    const usageOrder = ['transaction', 'info', 'admin', 'auth'];
     return usageOrder
       .map((usage) => {
         const label = formatUsageLabel(usage);
@@ -1184,6 +1785,16 @@ export default function PosApiAdmin() {
       })
       .filter(Boolean);
   }, [endpoints, usageFilter]);
+
+  const activeImportDraft = useMemo(
+    () => importDrafts.find((entry) => entry.id === selectedImportId) || importDrafts[0] || null,
+    [importDrafts, selectedImportId],
+  );
+
+  const activeImportParameterGroups = useMemo(
+    () => groupParametersByLocation(activeImportDraft?.parameters || []),
+    [activeImportDraft],
+  );
 
   const infoSyncEndpointOptions = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
@@ -1259,10 +1870,14 @@ export default function PosApiAdmin() {
   }, [formState.responseSchemaText]);
 
   const isTransactionUsage = formState.usage === 'transaction';
-  const receiptTypesEnabled = isTransactionUsage && formState.enableReceiptTypes !== false;
-  const receiptTaxTypesEnabled = isTransactionUsage && formState.enableReceiptTaxTypes !== false;
-  const paymentMethodsEnabled = isTransactionUsage && formState.enablePaymentMethods !== false;
-  const receiptItemsEnabled = isTransactionUsage && formState.enableReceiptItems !== false;
+  const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
+  const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
+  const receiptTypesEnabled = isTransactionUsage && supportsItems && formState.enableReceiptTypes !== false;
+  const receiptTaxTypesEnabled = isTransactionUsage && supportsItems && formState.enableReceiptTaxTypes !== false;
+  const paymentMethodsEnabled = isTransactionUsage
+    ? supportsMultiplePayments && formState.enablePaymentMethods !== false
+    : false;
+  const receiptItemsEnabled = isTransactionUsage && supportsItems && formState.enableReceiptItems !== false;
 
   const formReceiptTypes = useMemo(() => {
     if (!receiptTypesEnabled) return [];
@@ -1288,7 +1903,7 @@ export default function PosApiAdmin() {
     return DEFAULT_PAYMENT_METHODS;
   }, [formState.paymentMethods, paymentMethodsEnabled]);
 
-  const formSupportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
+  const formSupportsItems = supportsItems;
 
   const requestFieldHints = useMemo(
     () =>
@@ -1308,7 +1923,6 @@ export default function PosApiAdmin() {
     [formState.responseFieldsText],
   );
 
-  const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
     : [];
@@ -1353,15 +1967,30 @@ export default function PosApiAdmin() {
     return PAYMENT_TYPES.filter((payment) => unique.includes(payment.value));
   }, [paymentMethodsEnabled, selectedPaymentMethods]);
 
+  const authEndpointOptions = useMemo(
+    () => endpoints.filter((endpoint) => endpoint?.posApiType === 'AUTH'),
+    [endpoints],
+  );
+
+  const resolvedTestServerUrl = ((testEnvironment === 'production'
+    ? formState.testServerUrlProduction || formState.testServerUrl
+    : formState.testServerUrl || formState.testServerUrlProduction
+  ) || '').trim();
+  const hasTestServerUrl = Boolean(resolvedTestServerUrl);
+
   const supportsMultipleReceipts = isTransactionUsage && Boolean(formState.supportsMultipleReceipts);
-  const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
   const receiptTypeOptions = receiptTypesEnabled && formReceiptTypes.length > 0
-    ? POSAPI_TYPES.filter((type) => formReceiptTypes.includes(type.value))
-    : POSAPI_TYPES;
+    ? POSAPI_TRANSACTION_TYPES.filter((type) => formReceiptTypes.includes(type.value))
+    : POSAPI_TRANSACTION_TYPES;
   const taxTypeOptions = allowedTaxTypes.length > 0 ? allowedTaxTypes : TAX_TYPES;
   const paymentTypeOptions = allowedPaymentTypes.length > 0 ? allowedPaymentTypes : PAYMENT_TYPES;
 
   useEffect(() => {
+    if (!isTransactionUsage) {
+      setRequestBuilder(null);
+      setRequestBuilderError('');
+      return;
+    }
     if (builderSyncRef.current) {
       builderSyncRef.current = false;
       return;
@@ -1383,7 +2012,7 @@ export default function PosApiAdmin() {
       setRequestBuilder(null);
       setRequestBuilderError(err.message || 'Invalid JSON');
     }
-  }, [formState.requestSchemaText]);
+  }, [formState.requestSchemaText, isTransactionUsage]);
 
   useEffect(() => {
     const payments = Array.isArray(requestBuilder?.payments) ? requestBuilder.payments : [];
@@ -1508,10 +2137,66 @@ export default function PosApiAdmin() {
     });
   };
 
+  const handleUsageChange = (value) => {
+    const normalized = VALID_USAGE_VALUES.has(value) ? value : 'transaction';
+    const nextType = normalized === 'info'
+      ? 'LOOKUP'
+      : normalized === 'admin'
+        ? 'ADMIN'
+        : normalized === 'auth'
+          ? 'AUTH'
+          : TRANSACTION_POSAPI_TYPES.has(formState.posApiType)
+            ? formState.posApiType
+            : '';
+    const isTransactionType = normalized === 'transaction';
+    setFormState((prev) => ({
+      ...prev,
+      usage: normalized,
+      posApiType: nextType,
+      supportsItems: isTransactionType ? prev.supportsItems !== false : false,
+      supportsMultiplePayments: isTransactionType ? prev.supportsMultiplePayments : false,
+      supportsMultipleReceipts: isTransactionType ? prev.supportsMultipleReceipts : false,
+      enableReceiptTypes: isTransactionType ? prev.enableReceiptTypes : false,
+      enableReceiptTaxTypes: isTransactionType ? prev.enableReceiptTaxTypes : false,
+      enablePaymentMethods: isTransactionType ? prev.enablePaymentMethods : false,
+      enableReceiptItems: isTransactionType ? prev.enableReceiptItems : false,
+    }));
+    if (!isTransactionType) {
+      setRequestBuilder(null);
+      setRequestBuilderError('');
+    }
+  };
+
   const handleTypeChange = (type) => {
-    setFormState((prev) => ({ ...prev, posApiType: type }));
+    const nextUsage = 'transaction';
+    const isTransactionType = true;
+    setFormState((prev) => ({
+      ...prev,
+      posApiType: type,
+      usage: nextUsage,
+      supportsItems: prev.supportsItems,
+      supportsMultiplePayments: prev.supportsMultiplePayments,
+      supportsMultipleReceipts: prev.supportsMultipleReceipts,
+      enableReceiptTypes: prev.enableReceiptTypes,
+      enableReceiptTaxTypes: prev.enableReceiptTaxTypes,
+      enablePaymentMethods: prev.enablePaymentMethods,
+      enableReceiptItems: prev.enableReceiptItems,
+      allowMultiplePaymentMethods: prev.allowMultiplePaymentMethods,
+      allowMultipleReceiptTypes: prev.allowMultipleReceiptTypes,
+      allowMultipleReceiptTaxTypes: prev.allowMultipleReceiptTaxTypes,
+      allowMultipleReceiptItems: prev.allowMultipleReceiptItems,
+      requestSchemaText: prev.requestSchemaText,
+      requestFieldsText: prev.requestFieldsText,
+    }));
     if (!type) return;
-    updateRequestBuilder((prev) => normaliseBuilderForType(prev, type, supportsItems));
+    updateRequestBuilder((prev) => normaliseBuilderForType(prev, type, supportsItems, supportsMultiplePayments));
+  };
+
+  const handleResetRequestSchema = () => {
+    builderSyncRef.current = true;
+    setRequestBuilder(null);
+    setRequestBuilderError('');
+    setFormState((prev) => ({ ...prev, requestSchemaText: '{}' }));
   };
 
   const handleBuilderFieldChange = (field, value) => {
@@ -1951,12 +2636,15 @@ export default function PosApiAdmin() {
   }, [requestBuilder]);
 
   const paymentsBalanced = useMemo(() => {
+    if (!supportsMultiplePayments) return true;
     const totalAmount = Number(requestBuilder?.totalAmount || 0);
     return Math.abs(paymentsTotal - totalAmount) < 0.01;
-  }, [paymentsTotal, requestBuilder]);
+  }, [paymentsTotal, requestBuilder, supportsMultiplePayments]);
 
   const isReceiptType = formState.posApiType && formState.posApiType !== 'STOCK_QR';
   const isStockType = formState.posApiType === 'STOCK_QR';
+  const receiptBuilderEnabled = isReceiptType && supportsItems;
+  const paymentBuilderEnabled = isReceiptType && supportsMultiplePayments;
 
   useEffect(() => {
     if (!formState.posApiType) return;
@@ -1964,7 +2652,12 @@ export default function PosApiAdmin() {
       if (!prev || prev.type === formState.posApiType) {
         return prev;
       }
-      const next = normaliseBuilderForType(prev, formState.posApiType, supportsItems);
+      const next = normaliseBuilderForType(
+        prev,
+        formState.posApiType,
+        supportsItems,
+        supportsMultiplePayments,
+      );
       builderSyncRef.current = true;
       setFormState((prevState) => ({
         ...prevState,
@@ -1972,7 +2665,30 @@ export default function PosApiAdmin() {
       }));
       return next;
     });
-  }, [formState.posApiType, supportsItems]);
+  }, [formState.posApiType, supportsItems, supportsMultiplePayments]);
+
+  useEffect(() => {
+    if (!formState.authEndpointId && authEndpointOptions.length > 0) {
+      setFormState((prev) => ({ ...prev, authEndpointId: prev.authEndpointId || authEndpointOptions[0].id }));
+    }
+    if (importAuthSelectionDirtyRef.current) return;
+    const isAuthDraft = activeImportDraft?.posApiType === 'AUTH' || formState.posApiType === 'AUTH';
+    if (isAuthDraft) {
+      if (importAuthEndpointId !== '') {
+        setImportAuthEndpointId('');
+      }
+      return;
+    }
+    if (!importAuthEndpointId && authEndpointOptions.length > 0) {
+      setImportAuthEndpointId(authEndpointOptions[0].id || '');
+    }
+  }, [
+    activeImportDraft?.posApiType,
+    authEndpointOptions,
+    formState.authEndpointId,
+    formState.posApiType,
+    importAuthEndpointId,
+  ]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1998,6 +2714,8 @@ export default function PosApiAdmin() {
         if (normalized.length > 0) {
           setSelectedId(normalized[0].id);
           setFormState(createFormState(normalized[0]));
+          setTestEnvironment('staging');
+          setImportAuthEndpointId(normalized[0].authEndpointId || '');
         }
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -2125,42 +2843,24 @@ export default function PosApiAdmin() {
     setSelectedId(id);
     const definition = endpoints.find((ep) => ep.id === id);
     setFormState(createFormState(definition));
+    setTestEnvironment('staging');
+    setImportAuthEndpointId(definition?.authEndpointId || '');
   }
 
   function handleChange(field, value) {
     setFormState((prev) => {
-      const next = { ...prev, [field]: value };
       if (field === 'usage') {
-        if (value !== 'transaction') {
-          next.defaultForForm = false;
-          next.supportsMultipleReceipts = false;
-          next.supportsMultiplePayments = false;
-          next.supportsItems = false;
-          next.receiptTypes = [];
-          next.taxTypes = [];
-          next.paymentMethods = [];
-          next.enableReceiptTypes = false;
-          next.enableReceiptTaxTypes = false;
-          next.enablePaymentMethods = false;
-          next.enableReceiptItems = false;
-          next.receiptItemTemplates = [];
-        } else {
-          next.supportsItems = true;
-          next.receiptTypes = DEFAULT_RECEIPT_TYPES.slice();
-          next.taxTypes = DEFAULT_TAX_TYPES.slice();
-          next.paymentMethods = DEFAULT_PAYMENT_METHODS.slice();
-          next.enableReceiptTypes = true;
-          next.enableReceiptTaxTypes = true;
-          next.enablePaymentMethods = true;
-          next.enableReceiptItems = true;
-          if (!Array.isArray(next.receiptItemTemplates) || next.receiptItemTemplates.length === 0) {
-            next.receiptItemTemplates = [''];
-          }
-        }
+        handleUsageChange(value);
+        return prev;
       }
+      const next = { ...prev, [field]: value };
       if (field === 'supportsItems' && value === false) {
         next.supportsMultipleReceipts = false;
         next.enableReceiptItems = false;
+      }
+      if (field === 'supportsMultiplePayments' && value === false) {
+        next.enablePaymentMethods = false;
+        next.paymentMethods = [];
       }
       if (field === 'enableReceiptTypes' && value === true) {
         if (!Array.isArray(next.receiptTypes) || next.receiptTypes.length === 0) {
@@ -2207,6 +2907,23 @@ export default function PosApiAdmin() {
           ? next.receiptItemTemplates.slice(0, 1)
           : [];
       }
+      if (field === 'posApiType') {
+        const inferredUsage = value === 'AUTH'
+          ? 'auth'
+          : value === 'ADMIN'
+            ? 'admin'
+            : value === 'LOOKUP'
+              ? 'info'
+              : next.usage;
+        if (inferredUsage !== next.usage) {
+          next.usage = inferredUsage;
+          const allowedTypes = USAGE_TYPE_OPTIONS[inferredUsage] || [];
+          const allowedCodes = new Set(allowedTypes.map((type) => type.value));
+          if (!allowedCodes.has(value)) {
+            next.posApiType = USAGE_DEFAULT_TYPE[inferredUsage] ?? '';
+          }
+        }
+      }
       return next;
     });
     if (field !== 'docUrl') {
@@ -2228,7 +2945,7 @@ export default function PosApiAdmin() {
       posApiType: type,
       receiptTypes: nextReceiptTypes,
     }));
-    updateRequestBuilder(() => normaliseBuilderForType(cloned, type, supportsItems));
+    updateRequestBuilder(() => normaliseBuilderForType(cloned, type, supportsItems, supportsMultiplePayments));
     setStatus(`Loaded ${formatTypeLabel(type)} sample payload into the builder.`);
     setSampleImportError('');
   }
@@ -2256,9 +2973,14 @@ export default function PosApiAdmin() {
     }
     try {
       const parsed = JSON.parse(trimmed);
-      const targetType = parsed?.type || formState.posApiType || 'B2C_RECEIPT';
+      const targetType = parsed?.type || formState.posApiType || 'B2C';
       resetTestState();
-      updateRequestBuilder(() => normaliseBuilderForType(parsed, targetType, supportsItems));
+      updateRequestBuilder(() => normaliseBuilderForType(
+        parsed,
+        targetType,
+        supportsItems,
+        supportsMultiplePayments,
+      ));
       const nextReceiptTypes = Array.isArray(formState.receiptTypes)
         ? Array.from(new Set([...formState.receiptTypes, targetType]))
         : [targetType];
@@ -2288,6 +3010,213 @@ export default function PosApiAdmin() {
       setSampleImportError('Failed to read the selected file.');
     };
     reader.readAsText(file);
+  }
+
+  function resetImportTestState() {
+    setImportTestResult(null);
+    setImportTestError('');
+    setImportTestRunning(false);
+  }
+
+  function prepareDraftDefaults(draft) {
+    if (!draft) return;
+    importAuthSelectionDirtyRef.current = false;
+    setSelectedImportId(draft.id || '');
+    setImportTestValues(buildDraftParameterDefaults(draft.parameters || []));
+    if (draft.requestExample !== undefined) {
+      if (typeof draft.requestExample === 'string') {
+        setImportRequestBody(draft.requestExample);
+      } else {
+        try {
+          setImportRequestBody(JSON.stringify(draft.requestExample, null, 2));
+        } catch {
+          setImportRequestBody(String(draft.requestExample));
+        }
+      }
+    } else if (draft.requestBody?.schema) {
+      setImportRequestBody(toPrettyJson(draft.requestBody.schema, ''));
+    } else {
+      setImportRequestBody('');
+    }
+    if (draft.serverUrl) {
+      setImportBaseUrl((prev) => prev || draft.serverUrl);
+    }
+    if (!importAuthEndpointId && formState.authEndpointId) {
+      setImportAuthEndpointId(formState.authEndpointId);
+    }
+    resetImportTestState();
+  }
+
+  async function applyImportedSpec({ files = [], inlineText = '' }) {
+    const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+    const trimmedText = (inlineText || '').trim();
+    if (normalizedFiles.length === 0 && !trimmedText) {
+      setImportError('Upload or paste an OpenAPI/Postman specification first.');
+      return;
+    }
+    try {
+      setImportError('');
+      setImportStatus('Parsing specification files…');
+      resetImportTestState();
+      const formData = new FormData();
+      normalizedFiles.forEach((file) => formData.append('files', file));
+      if (trimmedText) {
+        formData.append('files', new Blob([trimmedText], { type: 'text/plain' }), 'pasted-spec.yaml');
+      }
+      const res = await fetch(`${API_BASE}/posapi/endpoints/import/parse`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || 'Failed to parse the supplied file(s).');
+      }
+      const data = await res.json();
+      const operations = Array.isArray(data?.operations) ? data.operations : [];
+      if (!operations.length) {
+        throw new Error('No operations were found in the supplied files.');
+      }
+      setImportDrafts(operations);
+      const fileCount = normalizedFiles.length + (trimmedText ? 1 : 0);
+      setImportStatus(`Found ${operations.length} operations from ${fileCount} file(s). Select one to test.`);
+      const first = operations[0];
+      prepareDraftDefaults(first);
+      setImportSpecText(trimmedText);
+    } catch (err) {
+      setImportError(err.message || 'Failed to parse the supplied files.');
+      setImportDrafts([]);
+      setImportStatus('');
+      resetImportTestState();
+    }
+  }
+
+  async function handleImportFileChange(event) {
+    const files = event.target.files ? Array.from(event.target.files) : [];
+    if (!files.length) return;
+    await applyImportedSpec({ files });
+    event.target.value = '';
+  }
+
+  function handleParseImportText() {
+    if (!importSpecText.trim()) {
+      setImportError('Paste an OpenAPI YAML/JSON or Postman collection first.');
+      return;
+    }
+    applyImportedSpec({ inlineText: importSpecText });
+  }
+
+  function handleSelectImportDraft(draftId) {
+    const draft = importDrafts.find((entry) => entry.id === draftId);
+    if (!draft) return;
+    prepareDraftDefaults(draft);
+  }
+
+  async function handleTestImportDraft() {
+    if (!activeImportDraft) {
+      setImportTestError('Select an imported operation to test.');
+      return;
+    }
+    let parsedBody;
+    if (importRequestBody.trim()) {
+      try {
+        parsedBody = JSON.parse(importRequestBody);
+      } catch (err) {
+        setImportTestError(err.message || 'Request body must be valid JSON.');
+        return;
+      }
+    }
+    resetImportTestState();
+    setImportTestRunning(true);
+    try {
+      const filteredParams = buildFilledParams(activeImportDraft.parameters || [], importTestValues);
+      const mergedParams = { ...filteredParams.path, ...filteredParams.query, ...filteredParams.header };
+      const res = await fetch(`${API_BASE}/posapi/endpoints/import/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          endpoint: {
+            id: activeImportDraft.id,
+            name: activeImportDraft.name,
+            method: activeImportDraft.method,
+            path: activeImportDraft.path,
+            parameters: activeImportDraft.parameters || [],
+            posApiType: activeImportDraft.posApiType,
+          },
+          payload: {
+            params: mergedParams,
+            pathParams: filteredParams.path,
+            queryParams: filteredParams.query,
+            headers: filteredParams.header,
+            body: parsedBody,
+          },
+          baseUrl: importBaseUrl.trim() || undefined,
+          authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
+          useCachedToken: importUseCachedToken,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.message || 'Test request failed.');
+      }
+      setImportTestResult(data);
+      setImportStatus('Test call completed. Review the response below.');
+    } catch (err) {
+      setImportTestError(err.message || 'Failed to call the imported endpoint.');
+    } finally {
+      setImportTestRunning(false);
+    }
+  }
+
+  function handleLoadDraftIntoForm() {
+    if (!activeImportDraft) return;
+    const paramsText = toPrettyJson(activeImportDraft.parameters || [], '[]');
+    const requestBodyText = toPrettyJson(activeImportDraft.requestBody?.schema, importRequestBody.trim() || '{}');
+    const responseBodyText = toPrettyJson(activeImportDraft.responseBody?.schema, '{}');
+    const requestFieldsText = toPrettyJson(activeImportDraft.requestFields, '[]');
+    const responseFieldsText = toPrettyJson(activeImportDraft.responseFields, '[]');
+    const inferredUsage = activeImportDraft.posApiType === 'AUTH'
+      ? 'auth'
+      : activeImportDraft.posApiType === 'LOOKUP'
+        ? 'info'
+        : 'transaction';
+    const draftDefinition = {
+      ...EMPTY_ENDPOINT,
+      id: activeImportDraft.id || '',
+      name: activeImportDraft.name || '',
+      method: activeImportDraft.method || 'GET',
+      path: activeImportDraft.path || '/',
+      parameters: activeImportDraft.parameters || [],
+      posApiType: activeImportDraft.posApiType || '',
+      usage: inferredUsage,
+      requestBody: activeImportDraft.requestBody,
+      responseBody: activeImportDraft.responseBody,
+      requestFields: activeImportDraft.requestFields || [],
+      responseFields: activeImportDraft.responseFields || [],
+      supportsItems: activeImportDraft.supportsItems ?? inferredUsage === 'transaction',
+      supportsMultiplePayments: activeImportDraft.supportsMultiplePayments,
+      supportsMultipleReceipts: activeImportDraft.supportsMultipleReceipts,
+      receiptTypes: activeImportDraft.receiptTypes,
+      taxTypes: activeImportDraft.taxTypes,
+      paymentMethods: activeImportDraft.paymentMethods,
+      testable: Boolean(activeImportDraft.testServerUrl || activeImportDraft.serverUrl),
+      testServerUrl: activeImportDraft.testServerUrl || activeImportDraft.serverUrl || '',
+      testServerUrlProduction: activeImportDraft.testServerUrlProduction || '',
+    };
+
+    setSelectedId('');
+    setFormState({
+      ...createFormState(draftDefinition),
+      parametersText: paramsText,
+      requestSchemaText: requestBodyText || '',
+      responseSchemaText: responseBodyText,
+      requestFieldsText,
+      responseFieldsText,
+      usage: inferredUsage,
+    });
+    setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
+    setActiveTab('endpoints');
   }
 
   function resetTestState() {
@@ -2417,19 +3346,38 @@ export default function PosApiAdmin() {
   async function handleStaticUpload(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
+    const fileName = (file.name || '').toLowerCase();
+    const mime = (file.type || '').toLowerCase();
+    const isExcel = fileName.endsWith('.xlsx') || mime.includes('sheet');
+    const isCsv = fileName.endsWith('.csv') || mime.includes('csv');
+    if (!isExcel && !isCsv) {
+      setInfoSyncError('Please upload a CSV or Excel (.xlsx) file');
+      event.target.value = '';
+      return;
+    }
     try {
       setInfoSyncLoading(true);
       setInfoSyncError('');
       const formData = new FormData();
       formData.append('file', file);
       formData.append('codeType', infoUploadCodeType);
-      const res = await fetch(`${API_BASE}/posapi/reference-codes/upload`, {
+      const endpoint = isExcel ? 'import-xlsx' : 'upload';
+      const res = await fetch(`${API_BASE}/posapi/reference-codes/${endpoint}`, {
         method: 'POST',
         credentials: 'include',
         body: formData,
       });
       if (!res.ok) {
-        throw new Error('Failed to import CSV');
+        let errorMessage = isExcel ? 'Failed to import Excel file' : 'Failed to import CSV';
+        try {
+          const errorBody = await res.json();
+          if (errorBody?.message) {
+            errorMessage = errorBody.message;
+          }
+        } catch (err) {
+          // ignore parse errors and fall back to default message
+        }
+        throw new Error(errorMessage);
       }
       const data = await res.json();
       setInfoSyncStatus(
@@ -2438,7 +3386,7 @@ export default function PosApiAdmin() {
         }, deactivated ${data.result?.deactivated || 0}.`,
       );
     } catch (err) {
-      setInfoSyncError(err.message || 'Unable to import CSV');
+      setInfoSyncError(err.message || 'Unable to import file');
     } finally {
       setInfoSyncLoading(false);
       event.target.value = '';
@@ -2450,7 +3398,7 @@ export default function PosApiAdmin() {
     if (!Array.isArray(parameters)) {
       throw new Error('Parameters must be a JSON array');
     }
-    const requestSchema = parseJsonInput(
+    let requestSchema = parseJsonInput(
       'Request body schema',
       formState.requestSchemaText,
       {},
@@ -2460,15 +3408,6 @@ export default function PosApiAdmin() {
       formState.responseSchemaText,
       {},
     );
-    const fieldDescriptions = parseJsonInput(
-      'Field descriptions',
-      formState.fieldDescriptionsText,
-      {},
-    );
-    if (fieldDescriptions && typeof fieldDescriptions !== 'object') {
-      throw new Error('Field descriptions must be a JSON object');
-    }
-
     const requestFieldsRaw = parseJsonInput(
       'Request field hints',
       formState.requestFieldsText,
@@ -2487,39 +3426,6 @@ export default function PosApiAdmin() {
       throw new Error('Response field hints must be a JSON array');
     }
 
-    const topLevelFields = parseJsonInput(
-      'Top-level mapping hints',
-      formState.topLevelFieldsText,
-      [],
-    );
-    if (!Array.isArray(topLevelFields)) {
-      throw new Error('Top-level mapping hints must be a JSON array');
-    }
-
-    const nestedPaths = parseJsonInput(
-      'Nested mapping paths',
-      formState.nestedPathsText,
-      {},
-    );
-    if (nestedPaths && typeof nestedPaths !== 'object') {
-      throw new Error('Nested mapping paths must be a JSON object');
-    }
-
-    if (
-      formState.posApiType &&
-      ['B2C_RECEIPT', 'B2B_RECEIPT', 'B2C_INVOICE', 'B2B_INVOICE', 'STOCK_QR'].includes(formState.posApiType)
-    ) {
-      Object.entries(PAYMENT_FIELD_DESCRIPTIONS).forEach(([key, value]) => {
-        if (!fieldDescriptions[key]) {
-          fieldDescriptions[key] = value;
-        }
-      });
-    }
-
-    if (requestSchema && typeof requestSchema === 'object' && formState.posApiType) {
-      requestSchema.type = formState.posApiType;
-    }
-
     const sanitizedRequestFields = requestFieldsRaw.map((entry) => {
       const normalized = normalizeHintEntry(entry);
       if (!normalized.field) {
@@ -2532,14 +3438,23 @@ export default function PosApiAdmin() {
       };
     });
 
-    const usage = VALID_USAGE_VALUES.has(formState.usage)
-      ? formState.usage
-      : 'transaction';
+    const usage = formState.posApiType === 'AUTH'
+      ? 'auth'
+      : VALID_USAGE_VALUES.has(formState.usage)
+        ? formState.usage
+        : 'transaction';
+    const resolvedPosApiType = formState.posApiType || USAGE_DEFAULT_TYPE[usage] || '';
     const isTransaction = usage === 'transaction';
-    const receiptTypesEnabled = isTransaction && formState.enableReceiptTypes !== false;
-    const receiptTaxTypesEnabled = isTransaction && formState.enableReceiptTaxTypes !== false;
-    const paymentMethodsEnabled = isTransaction && formState.enablePaymentMethods !== false;
-    const receiptItemsEnabled = isTransaction && formState.enableReceiptItems !== false;
+    const supportsItems = isTransaction ? formState.supportsItems !== false : false;
+    const supportsMultiplePayments = isTransaction ? Boolean(formState.supportsMultiplePayments) : false;
+    const receiptTypesEnabled = isTransaction && supportsItems && formState.enableReceiptTypes !== false;
+    const receiptTaxTypesEnabled = isTransaction
+      ? supportsItems && formState.enableReceiptTaxTypes !== false
+      : false;
+    const paymentMethodsEnabled = isTransaction
+      ? supportsMultiplePayments && formState.enablePaymentMethods !== false
+      : false;
+    const receiptItemsEnabled = isTransaction && supportsItems && formState.enableReceiptItems !== false;
     const allowMultipleReceiptItems = receiptItemsEnabled
       ? Boolean(formState.allowMultipleReceiptItems)
       : false;
@@ -2564,18 +3479,28 @@ export default function PosApiAdmin() {
     const receiptItemTemplates = receiptItemsEnabled
       ? buildTemplateList(formState.receiptItemTemplates, allowMultipleReceiptItems)
       : [];
+    const settingsId = usage === 'transaction' ? 'defaultTransaction' : '';
+
+    if (requestSchema && typeof requestSchema === 'object' && resolvedPosApiType) {
+      requestSchema.type = resolvedPosApiType;
+    }
+    if (isTransaction && hasObjectEntries(requestSchema)) {
+      requestSchema = applySchemaFeatureFlags(requestSchema, supportsItems, supportsMultiplePayments);
+    }
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
       category: formState.category.trim(),
       method: formState.method.trim().toUpperCase(),
       path: formState.path.trim(),
-      posApiType: formState.posApiType || '',
+      posApiType: resolvedPosApiType,
       usage,
       defaultForForm: isTransaction ? Boolean(formState.defaultForForm) : false,
+      ...(settingsId ? { settingsId } : {}),
       supportsMultipleReceipts: isTransaction ? Boolean(formState.supportsMultipleReceipts) : false,
-      supportsMultiplePayments: isTransaction ? Boolean(formState.supportsMultiplePayments) : false,
-      supportsItems: isTransaction ? Boolean(formState.supportsItems) : false,
+      supportsMultiplePayments,
+      supportsItems,
       enableReceiptTypes: receiptTypesEnabled,
       allowMultipleReceiptTypes: receiptTypesEnabled
         ? Boolean(formState.allowMultipleReceiptTypes)
@@ -2608,26 +3533,27 @@ export default function PosApiAdmin() {
         schema: responseSchema,
         description: formState.responseDescription || '',
       },
-      fieldDescriptions: fieldDescriptions || {},
       requestFields: sanitizedRequestFields,
       responseFields,
-      mappingHints: {},
       testable: Boolean(formState.testable),
       testServerUrl: formState.testServerUrl.trim(),
+      testServerUrlProduction: formState.testServerUrlProduction.trim(),
+      authEndpointId: formState.authEndpointId || '',
     };
 
-    if (topLevelFields.length > 0) {
-      endpoint.mappingHints.topLevelFields = topLevelFields;
-    }
-    if (nestedPaths && Object.keys(nestedPaths).length > 0) {
-      endpoint.mappingHints.nestedPaths = nestedPaths;
-    }
-    if (Object.keys(endpoint.mappingHints).length === 0) {
-      delete endpoint.mappingHints;
+    if (settingsId) {
+      delete endpoint.supportsMultipleReceipts;
+      delete endpoint.supportsMultiplePayments;
+      delete endpoint.receiptTypes;
+      delete endpoint.paymentMethods;
     }
 
-    const existingIds = new Set(endpoints.map((ep) => ep.id));
-    validateEndpoint(endpoint, existingIds, selectedId);
+    const existingIds = new Set(
+      endpoints
+        .filter((ep) => ep?.id && ep.id !== selectedId && ep.id !== endpoint.id)
+        .map((ep) => ep.id),
+    );
+    validateEndpoint(endpoint, existingIds, selectedId || endpoint.id);
 
     return endpoint;
   }
@@ -2640,8 +3566,11 @@ export default function PosApiAdmin() {
       resetTestState();
       const definition = buildDefinition();
       const preparedDefinition = withEndpointMetadata(definition);
-      const updated = endpoints.some((ep) => ep.id === selectedId)
-        ? endpoints.map((ep) => (ep.id === selectedId ? preparedDefinition : ep))
+      const replacementIndex = endpoints.findIndex(
+        (ep) => ep.id === selectedId || ep.id === preparedDefinition.id,
+      );
+      const updated = replacementIndex >= 0
+        ? endpoints.map((ep, index) => (index === replacementIndex ? preparedDefinition : ep))
         : [...endpoints, preparedDefinition];
 
       let normalized = updated.map(withEndpointMetadata);
@@ -2829,6 +3758,10 @@ export default function PosApiAdmin() {
     setDocFieldDescriptions({});
     setSampleImportText('');
     setSampleImportError('');
+    setTestEnvironment('staging');
+    setImportAuthEndpointId('');
+    setUseCachedToken(true);
+    setImportUseCachedToken(true);
   }
 
   async function handleTest() {
@@ -2846,13 +3779,15 @@ export default function PosApiAdmin() {
       setTestState({ running: false, error: 'Enable the testable checkbox to run tests.', result: null });
       return;
     }
-    if (!definition.testServerUrl) {
+    const selectedTestUrl = resolvedTestServerUrl;
+
+    if (!selectedTestUrl) {
       setTestState({ running: false, error: 'Test server URL is required for testing.', result: null });
       return;
     }
 
     const confirmed = window.confirm(
-      `Run a test request against ${definition.testServerUrl}? This will use the sample data shown above.`,
+      `Run a test request against ${selectedTestUrl}? This will use the sample data shown above.`,
     );
     if (!confirmed) return;
 
@@ -2862,7 +3797,12 @@ export default function PosApiAdmin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ endpoint: definition }),
+        body: JSON.stringify({
+          endpoint: definition,
+          environment: testEnvironment,
+          authEndpointId: formState.authEndpointId || '',
+          useCachedToken,
+        }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -3109,6 +4049,238 @@ export default function PosApiAdmin() {
             </p>
             {error && <div style={styles.error}>{error}</div>}
             {status && <div style={styles.status}>{status}</div>}
+            <details open style={styles.detailSection}>
+              <summary style={styles.detailSummary}>Import &amp; test from OpenAPI/collection</summary>
+              <div style={styles.detailBody}>
+                <p style={styles.sectionHelp}>
+                  Upload a government-supplied OpenAPI/Swagger YAML, JSON file or a Postman
+                  collection. We will extract the available operations so you can test them
+                  against your staging POSAPI URL before adding them to the registry.
+                </p>
+                <div style={styles.importUploadRow}>
+                  <label style={styles.sampleFileLabel}>
+                    <span>Upload specification file</span>
+                    <input
+                      type="file"
+                      accept=".yaml,.yml,.json,application/json,text/yaml,text/x-yaml"
+                      multiple
+                      onChange={handleImportFileChange}
+                      style={styles.sampleFileInput}
+                    />
+                  </label>
+                  <div style={styles.importTextColumn}>
+                    <textarea
+                      style={styles.importTextArea}
+                      placeholder="Paste OpenAPI YAML/JSON or Postman collection JSON"
+                      value={importSpecText}
+                      onChange={(e) => setImportSpecText(e.target.value)}
+                      rows={4}
+                    />
+                    <button type="button" onClick={handleParseImportText} style={styles.smallButton}>
+                      Parse pasted text
+                    </button>
+                  </div>
+                </div>
+                {importError && <div style={styles.error}>{importError}</div>}
+                {importStatus && <div style={styles.status}>{importStatus}</div>}
+                {importDrafts.length > 0 && (
+                  <div style={styles.importGrid}>
+                    <div style={styles.importDraftList}>
+                      {importDrafts.map((draft) => {
+                        const methodColor = METHOD_BADGES[draft.method] || '#94a3b8';
+                        const typeLabel = draft.posApiType ? formatTypeLabel(draft.posApiType) : '';
+                        return (
+                          <button
+                            key={draft.id}
+                            type="button"
+                            onClick={() => handleSelectImportDraft(draft.id)}
+                            style={{
+                              ...styles.importDraftButton,
+                              ...(activeImportDraft?.id === draft.id ? styles.importDraftButtonActive : {}),
+                            }}
+                          >
+                            <div style={styles.importDraftTitle}>{draft.name || draft.id}</div>
+                            <div style={styles.badgeStack}>
+                              <span style={badgeStyle(methodColor)}>{draft.method}</span>
+                              {typeLabel && (
+                                <span
+                                  style={{ ...badgeStyle(TYPE_BADGES[draft.posApiType] || '#1f2937'), textTransform: 'none' }}
+                                >
+                                  {typeLabel}
+                                </span>
+                              )}
+                            </div>
+                            <div style={styles.importDraftPath}>{draft.path}</div>
+                            {draft.summary && (
+                              <div style={styles.importDraftSummary}>{draft.summary}</div>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {activeImportDraft && (
+                      <div style={styles.importDraftPanel}>
+                          <div style={styles.importDraftHeader}>
+                            <div>
+                              <div style={styles.importDraftHeading}>
+                                {activeImportDraft.name || activeImportDraft.id}
+                              </div>
+                              <div style={styles.importDraftPath}>{activeImportDraft.path}</div>
+                              {activeImportDraft.summary && (
+                                <div style={styles.importDraftSummary}>{activeImportDraft.summary}</div>
+                              )}
+                              {activeImportDraft.validation?.state === 'incomplete' && (
+                                <div style={styles.previewErrorBox}>
+                                  This draft is incomplete. {activeImportDraft.validation.issues?.join(' ') || ''}
+                                </div>
+                              )}
+                            </div>
+                            <button type="button" onClick={handleLoadDraftIntoForm} style={styles.smallButton}>
+                              Load into editor
+                            </button>
+                          </div>
+                        <div style={styles.importFieldRow}>
+                          <label style={styles.label}>
+                            Staging base URL
+                            <input
+                              type="text"
+                              value={importBaseUrl}
+                              onChange={(e) => setImportBaseUrl(e.target.value)}
+                              placeholder="https://posapi-test.tax.gov.mn"
+                              style={styles.input}
+                            />
+                          </label>
+                          <label style={styles.label}>
+                            Token endpoint
+                            <select
+                              value={importAuthEndpointId}
+                              onChange={(e) => {
+                                importAuthSelectionDirtyRef.current = true;
+                                setImportAuthEndpointId(e.target.value);
+                              }}
+                              style={styles.input}
+                            >
+                              <option value="">Use editor selection</option>
+                              {authEndpointOptions.map((endpoint) => (
+                                <option key={`import-auth-${endpoint.id}`} value={endpoint.id}>
+                                  {endpoint.name || endpoint.id}
+                                </option>
+                              ))}
+                            </select>
+                            <span style={styles.fieldHelp}>
+                              Choose which AUTH endpoint to call before testing this imported request.
+                            </span>
+                            <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+                              <input
+                                type="checkbox"
+                                checked={importUseCachedToken}
+                                onChange={(e) => setImportUseCachedToken(e.target.checked)}
+                              />
+                              <span>Use last successful token</span>
+                            </label>
+                          </label>
+                        </div>
+                        <div style={styles.importFieldRow}>
+                          <div style={styles.importParamsHeader}>Parameters</div>
+                          {(!activeImportDraft.parameters || activeImportDraft.parameters.length === 0) && (
+                            <div style={styles.sectionHelp}>No query, path, or header parameters defined.</div>
+                          )}
+                          {['path', 'query', 'header'].map((loc) => {
+                            const items = activeImportParameterGroups[loc] || [];
+                            if (!items.length) return null;
+                            const title =
+                              loc === 'path'
+                                ? 'Path parameters'
+                                : loc === 'header'
+                                  ? 'Header parameters'
+                                  : 'Query parameters';
+                            return (
+                              <div key={`${activeImportDraft.id}-${loc}`} style={{ marginBottom: '0.5rem' }}>
+                                <div style={{ fontWeight: 600, marginBottom: '0.35rem' }}>{title}</div>
+                                <div style={styles.importParamGrid}>
+                                  {items.map((param) => (
+                                    <label key={`${activeImportDraft.id}-${param.name}-${loc}`} style={styles.label}>
+                                      {param.name}
+                                    <input
+                                      type="text"
+                                      value={importTestValues[param.name] ?? ''}
+                                      onChange={(e) =>
+                                        setImportTestValues((prev) => ({
+                                          ...prev,
+                                          [param.name]: e.target.value,
+                                        }))
+                                      }
+                                      placeholder={param.description || param.example || ''}
+                                      style={styles.input}
+                                    />
+                                    <select
+                                      style={styles.input}
+                                      value=""
+                                      onChange={(e) => {
+                                        const selected = e.target.value;
+                                        if (!selected) return;
+                                        setImportTestValues((prev) => ({
+                                          ...prev,
+                                          [param.name]: `{{${selected}}}`,
+                                        }));
+                                      }}
+                                    >
+                                      <option value="">Use environment variable…</option>
+                                      {ENV_VARIABLE_OPTIONS.map((opt) => (
+                                        <option key={`${param.name}-${opt}`} value={opt}>
+                                          {opt}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <div style={styles.paramMeta}>
+                                      {loc} {param.required ? '• required' : ''}
+                                    </div>
+                                  </label>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={styles.importFieldRow}>
+                          <div style={styles.importParamsHeader}>Request body</div>
+                          <textarea
+                            style={styles.sampleTextarea}
+                            placeholder="Optional JSON body for testing"
+                            value={importRequestBody}
+                            onChange={(e) => setImportRequestBody(e.target.value)}
+                            rows={6}
+                          />
+                        </div>
+                        <div style={styles.importActionsRow}>
+                          <button
+                            type="button"
+                            onClick={handleTestImportDraft}
+                            style={styles.smallButton}
+                            disabled={importTestRunning}
+                          >
+                            {importTestRunning ? 'Testing…' : 'Call staging endpoint'}
+                          </button>
+                          {importTestError && <div style={styles.previewErrorBox}>{importTestError}</div>}
+                        </div>
+                        {importTestResult && (
+                          <div style={styles.importResultBox}>
+                            <div style={styles.importResultTitle}>Request</div>
+                            <pre style={styles.samplePre}>{
+                              JSON.stringify(importTestResult.request || {}, null, 2)
+                            }</pre>
+                            <div style={styles.importResultTitle}>Response</div>
+                            <pre style={styles.samplePre}>{
+                              JSON.stringify(importTestResult.response || {}, null, 2)
+                            }</pre>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </details>
             {formState.usage === 'transaction' && (
               <div style={styles.capabilitiesBox}>
                 <div style={styles.capabilitiesRow}>
@@ -3204,7 +4376,7 @@ export default function PosApiAdmin() {
             Usage
             <select
               value={formState.usage}
-              onChange={(e) => handleChange('usage', e.target.value)}
+              onChange={(e) => handleUsageChange(e.target.value)}
               style={styles.input}
             >
               {USAGE_OPTIONS.map((option) => (
@@ -3270,22 +4442,31 @@ export default function PosApiAdmin() {
               )}
             </span>
           </label>
-          <label style={styles.label}>
-            POSAPI type
-            <select
-              value={formState.posApiType}
-              onChange={(e) => handleTypeChange(e.target.value)}
-              style={styles.input}
-            >
-              <option value="">Select a type…</option>
-              {POSAPI_TYPES.map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          {isTransactionUsage && (
+          {isTransactionUsage ? (
+            <label style={styles.label}>
+              POSAPI type
+              <select
+                value={formState.posApiType}
+                onChange={(e) => handleTypeChange(e.target.value)}
+                style={styles.input}
+              >
+                <option value="">Select a type…</option>
+                {(USAGE_TYPE_OPTIONS[formState.usage] || POSAPI_TRANSACTION_TYPES).map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div style={styles.label}>
+              <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>POSAPI type</div>
+              <div style={styles.toggleStateHelper}>
+                {formatTypeLabel(formState.posApiType) || 'Auto-selected from usage'}
+              </div>
+            </div>
+          )}
+          {isTransactionUsage && supportsItems && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
                 <label style={styles.checkboxLabel}>
@@ -3315,7 +4496,7 @@ export default function PosApiAdmin() {
                     Choose the transaction types this endpoint accepts at runtime.
                   </span>
                   <div style={styles.multiSelectOptions}>
-                    {POSAPI_TYPES.map((type) => {
+                    {POSAPI_TRANSACTION_TYPES.map((type) => {
                       const checked = Array.isArray(formState.receiptTypes)
                         ? formState.receiptTypes.includes(type.value)
                         : false;
@@ -3352,7 +4533,7 @@ export default function PosApiAdmin() {
                             onChange={(e) =>
                               handleTemplateTextChange('receiptTypeTemplates', code, e.target.value)
                             }
-                            placeholder="{\n  &quot;type&quot;: &quot;B2C_RECEIPT&quot;,\n  &quot;totalAmount&quot;: 0\n}"
+                            placeholder="{\n  &quot;type&quot;: &quot;B2C&quot;,\n  &quot;totalAmount&quot;: 0\n}"
                           />
                         </div>
                       ))}
@@ -3368,7 +4549,7 @@ export default function PosApiAdmin() {
               )}
             </div>
           )}
-          {isTransactionUsage && (
+          {isTransactionUsage && supportsItems && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
                 <label style={styles.checkboxLabel}>
@@ -3433,7 +4614,7 @@ export default function PosApiAdmin() {
               )}
             </div>
           )}
-          {isTransactionUsage && (
+          {isTransactionUsage && supportsItems && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
                 <label style={styles.checkboxLabel}>
@@ -3536,7 +4717,7 @@ export default function PosApiAdmin() {
               )}
             </div>
           )}
-          {isTransactionUsage && (
+          {isTransactionUsage && supportsMultiplePayments && (
             <div style={styles.labelFull}>
               <div style={styles.featureToggleRow}>
                 <label style={styles.checkboxLabel}>
@@ -3655,17 +4836,23 @@ export default function PosApiAdmin() {
               <span style={styles.sectionBadge}>{formatTypeLabel(formState.posApiType)}</span>
             )}
           </div>
-          {!formState.posApiType && (
+          {!isTransactionUsage && (
+            <p style={styles.sectionHelp}>
+              Structured builder is available only for transaction endpoints. Edit the JSON schema directly for
+              admin or lookup endpoints.
+            </p>
+          )}
+          {isTransactionUsage && !formState.posApiType && (
             <p style={styles.sectionHelp}>
               Select a POSAPI type to load guided templates for receipts, invoices, and stock QR payloads.
             </p>
           )}
-          {requestBuilderError && (
+          {isTransactionUsage && requestBuilderError && (
             <div style={styles.previewErrorBox}>
               <strong>Invalid request JSON:</strong> {requestBuilderError}
             </div>
           )}
-          {formState.posApiType && requestBuilder && (
+          {isTransactionUsage && formState.posApiType && requestBuilder && (
             <>
               <details open style={styles.detailSection}>
                 <summary style={styles.detailSummary}>Header &amp; totals</summary>
@@ -3779,7 +4966,7 @@ export default function PosApiAdmin() {
                 </div>
               </details>
 
-              {formState.usage === 'transaction' && (
+              {formState.usage === 'transaction' && receiptBuilderEnabled && (
                 <details open style={styles.detailSection}>
                   <summary style={styles.detailSummary}>Receipt &amp; invoice samples</summary>
                   <div style={styles.detailBody}>
@@ -3798,7 +4985,7 @@ export default function PosApiAdmin() {
                       ))}
                     </ul>
                     <div style={styles.sampleGrid}>
-                      {POSAPI_TYPES.map((type) => {
+                      {POSAPI_TRANSACTION_TYPES.map((type) => {
                         const sample = RECEIPT_SAMPLE_PAYLOADS[type.value];
                         if (!sample) return null;
                         const pretty = JSON.stringify(sample, null, 2);
@@ -3835,7 +5022,7 @@ export default function PosApiAdmin() {
                           value={sampleImportText}
                           onChange={(e) => setSampleImportText(e.target.value)}
                           style={styles.sampleTextarea}
-                          placeholder={`{\n  "type": "B2C_RECEIPT",\n  "receipts": []\n}`}
+                          placeholder={`{\n  "type": "B2C",\n  "receipts": []\n}`}
                           rows={6}
                         />
                       </label>
@@ -3859,7 +5046,7 @@ export default function PosApiAdmin() {
                 </details>
               )}
 
-              {isReceiptType && receiptItemsEnabled && (
+              {receiptBuilderEnabled && receiptItemsEnabled && (
                 <details open style={styles.detailSection}>
                   <summary style={styles.detailSummary}>Receipts by tax type</summary>
                   <div style={styles.detailBody}>
@@ -4152,7 +5339,14 @@ export default function PosApiAdmin() {
                 </details>
               )}
 
-              {isReceiptType && (
+              {isReceiptType && !receiptBuilderEnabled && (
+                <div style={styles.toggleStateHelper}>
+                  Receipt groups and items are disabled for this endpoint. Enable "Includes receipt items" to
+                  configure receipt details.
+                </div>
+              )}
+
+              {paymentBuilderEnabled && (
                 <details open style={styles.detailSection}>
                   <summary style={styles.detailSummary}>Payments</summary>
                   <div style={styles.detailBody}>
@@ -4267,6 +5461,13 @@ export default function PosApiAdmin() {
                     </button>
                   </div>
                 </details>
+              )}
+
+              {isReceiptType && !paymentBuilderEnabled && (
+                <div style={styles.toggleStateHelper}>
+                  Payment inputs are hidden for this endpoint. Enable "Supports multiple payment methods" to
+                  configure payment details.
+                </div>
               )}
 
               {isStockType && (
@@ -4401,6 +5602,14 @@ export default function PosApiAdmin() {
         </label>
         <label style={styles.labelFull}>
           Request body schema (JSON)
+          <div style={styles.inlineActionRow}>
+            <button type="button" style={styles.smallButton} onClick={handleResetRequestSchema}>
+              Reset to empty object
+            </button>
+            <span style={styles.inlineActionHint}>
+              Clears the structured builder for non-transaction endpoints and removes receipt defaults.
+            </span>
+          </div>
           <textarea
             value={formState.requestSchemaText}
             onChange={(e) => handleChange('requestSchemaText', e.target.value)}
@@ -4573,7 +5782,7 @@ export default function PosApiAdmin() {
         </label>
         <div style={styles.inlineFields}>
           <label style={{ ...styles.label, flex: 1 }}>
-            Test server URL
+            Staging test server URL
             <input
               type="text"
               value={formState.testServerUrl}
@@ -4582,14 +5791,80 @@ export default function PosApiAdmin() {
               placeholder="https://posapi-test.tax.gov.mn"
             />
           </label>
-          <label style={{ ...styles.checkboxLabel, marginTop: '1.5rem' }}>
+          <label style={{ ...styles.label, flex: 1 }}>
+            Production test server URL
             <input
-              type="checkbox"
-              checked={formState.testable}
-              onChange={(e) => handleChange('testable', e.target.checked)}
+              type="text"
+              value={formState.testServerUrlProduction}
+              onChange={(e) => handleChange('testServerUrlProduction', e.target.value)}
+              style={styles.input}
+              placeholder="https://posapi.tax.gov.mn"
             />
-            Testable endpoint
           </label>
+        </div>
+        <div style={styles.inlineFields}>
+          <label style={{ ...styles.label, flex: 1 }}>
+            Token endpoint
+            <select
+              value={formState.authEndpointId}
+              onChange={(e) => handleChange('authEndpointId', e.target.value)}
+              style={styles.input}
+            >
+              <option value="">Select an AUTH endpoint…</option>
+              {authEndpointOptions.map((endpoint) => (
+                <option key={endpoint.id} value={endpoint.id}>
+                  {endpoint.name || endpoint.id}
+                </option>
+              ))}
+            </select>
+            <span style={styles.fieldHelp}>
+              Used by the test harness to fetch a bearer token before calling the endpoint.
+            </span>
+            <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+              <input
+                type="checkbox"
+                checked={useCachedToken}
+                onChange={(e) => setUseCachedToken(e.target.checked)}
+              />
+              <span>Use last successful token when testing</span>
+            </label>
+          </label>
+          <div style={{ ...styles.label, flex: 1 }}>
+            <div style={styles.radioRow}>
+              <span>Test environment</span>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name="testEnvironment"
+                  value="staging"
+                  checked={testEnvironment === 'staging'}
+                  onChange={(e) => setTestEnvironment(e.target.value)}
+                />
+                Staging
+              </label>
+              <label style={styles.radioLabel}>
+                <input
+                  type="radio"
+                  name="testEnvironment"
+                  value="production"
+                  checked={testEnvironment === 'production'}
+                  onChange={(e) => setTestEnvironment(e.target.value)}
+                />
+                Production
+              </label>
+              <label style={{ ...styles.checkboxLabel, marginLeft: 'auto' }}>
+                <input
+                  type="checkbox"
+                  checked={formState.testable}
+                  onChange={(e) => handleChange('testable', e.target.checked)}
+                />
+                Testable endpoint
+              </label>
+            </div>
+            <div style={styles.fieldHelp}>
+              Selected URL: {resolvedTestServerUrl || 'Not set'}
+            </div>
+          </div>
         </div>
 
         <div style={styles.previewSection}>
@@ -4707,7 +5982,7 @@ export default function PosApiAdmin() {
               loading ||
               testState.running ||
               !formState.testable ||
-              !formState.testServerUrl.trim()
+              !hasTestServerUrl
             }
             style={styles.testButton}
           >
@@ -4900,8 +6175,11 @@ export default function PosApiAdmin() {
               )}
             </div>
             <div style={styles.infoCard}>
-              <h3 style={{ marginTop: 0 }}>Upload static lists (CSV)</h3>
-              <p>Select the code type and upload a CSV with columns <code>code,name</code>.</p>
+              <h3 style={{ marginTop: 0 }}>Upload static lists (CSV or Excel)</h3>
+              <p>
+                Select the code type and upload a CSV or Excel (.xlsx) file with columns
+                <code>code,name</code>.
+              </p>
               <div style={styles.inlineFields}>
                 <label style={{ ...styles.label, flex: 1 }}>
                   Code type
@@ -4918,8 +6196,13 @@ export default function PosApiAdmin() {
                   </select>
                 </label>
                 <label style={{ ...styles.label, flex: 1 }}>
-                  CSV file
-                  <input type="file" accept=".csv,text/csv" onChange={handleStaticUpload} style={styles.input} />
+                  CSV or Excel file
+                  <input
+                    type="file"
+                    accept=".csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xlsx"
+                    onChange={handleStaticUpload}
+                    style={styles.input}
+                  />
                 </label>
               </div>
             </div>
@@ -5341,6 +6624,116 @@ const styles = {
     gap: '0.75rem',
     alignItems: 'center',
   },
+  importUploadRow: {
+    display: 'grid',
+    gridTemplateColumns: '220px 1fr',
+    gap: '1rem',
+    alignItems: 'start',
+    marginTop: '0.5rem',
+  },
+  importTextColumn: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  importTextArea: {
+    width: '100%',
+    borderRadius: '6px',
+    border: '1px solid #cbd5f5',
+    padding: '0.75rem',
+    fontFamily: 'inherit',
+    resize: 'vertical',
+  },
+  importGrid: {
+    display: 'grid',
+    gridTemplateColumns: '260px 1fr',
+    gap: '1rem',
+    marginTop: '1rem',
+  },
+  importDraftList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  importDraftButton: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem',
+    background: '#fff',
+    textAlign: 'left',
+    cursor: 'pointer',
+  },
+  importDraftButtonActive: {
+    borderColor: '#2563eb',
+    boxShadow: '0 0 0 2px rgba(37,99,235,0.15)',
+  },
+  importDraftTitle: {
+    fontWeight: 700,
+    marginBottom: '0.25rem',
+  },
+  importDraftPath: {
+    fontSize: '0.85rem',
+    color: '#334155',
+    wordBreak: 'break-all',
+  },
+  importDraftSummary: {
+    fontSize: '0.85rem',
+    color: '#475569',
+    marginTop: '0.25rem',
+  },
+  importDraftPanel: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#f8fafc',
+  },
+  importDraftHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '0.75rem',
+    marginBottom: '0.75rem',
+  },
+  importDraftHeading: {
+    fontSize: '1.1rem',
+    margin: 0,
+  },
+  importFieldRow: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    marginBottom: '0.75rem',
+  },
+  importParamsHeader: {
+    fontWeight: 700,
+    color: '#0f172a',
+  },
+  importParamGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+    gap: '0.75rem',
+  },
+  paramMeta: {
+    fontSize: '0.8rem',
+    color: '#475569',
+  },
+  importActionsRow: {
+    display: 'flex',
+    gap: '0.75rem',
+    alignItems: 'center',
+    marginTop: '0.5rem',
+  },
+  importResultBox: {
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem',
+    marginTop: '0.5rem',
+  },
+  importResultTitle: {
+    fontWeight: 700,
+    marginBottom: '0.25rem',
+  },
   sampleFileLabel: {
     display: 'inline-flex',
     alignItems: 'center',
@@ -5699,6 +7092,23 @@ const styles = {
   checkboxHint: {
     fontSize: '0.75rem',
     color: '#64748b',
+  },
+  fieldHelp: {
+    display: 'block',
+    fontSize: '0.82rem',
+    color: '#475569',
+    marginTop: '0.25rem',
+  },
+  radioRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.75rem',
+  },
+  radioLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    fontWeight: 600,
   },
   docFetcher: {
     marginTop: '1.5rem',

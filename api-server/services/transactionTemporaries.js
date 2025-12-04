@@ -15,6 +15,11 @@ import {
   createColumnLookup,
 } from './posApiPersistence.js';
 import { logUserAction } from './userActivityLog.js';
+import {
+  saveEbarimtInvoiceSnapshot,
+  persistEbarimtInvoiceResponse,
+} from './ebarimtInvoiceStore.js';
+import { getMerchantById } from './merchantService.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
 let ensurePromise = null;
@@ -106,6 +111,44 @@ function safeJsonParse(value, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+function isDynamicSqlTriggerError(err) {
+  if (!err) return false;
+  const message = String(err.sqlMessage || err.message || '').toLowerCase();
+  return err.errno === 1336 || message.includes('dynamic sql is not allowed');
+}
+
+function formatDbErrorDetails(err) {
+  return {
+    errno: err?.errno ?? null,
+    code: err?.code || null,
+    sqlState: err?.sqlState || null,
+    message: err?.sqlMessage || err?.message || null,
+  };
+}
+
+function attachDynamicSqlErrorDetails(err, context = {}) {
+  const details = {
+    ...formatDbErrorDetails(err),
+    ...context,
+  };
+  const codeParts = [];
+  if (details.errno !== null && details.errno !== undefined) {
+    codeParts.push(`errno=${details.errno}`);
+  }
+  if (details.code) {
+    codeParts.push(`code=${details.code}`);
+  }
+  if (details.sqlState) {
+    codeParts.push(`sqlState=${details.sqlState}`);
+  }
+  const suffix = codeParts.length > 0 ? ` (${codeParts.join(', ')})` : '';
+  const formattedMessage = `${details.message || 'Dynamic SQL trigger error'}${suffix}`;
+  const enriched = new Error(formattedMessage);
+  enriched.status = err?.status || err?.statusCode || 400;
+  enriched.details = details;
+  return enriched;
 }
 
 function isPlainObject(value) {
@@ -337,6 +380,27 @@ async function insertNotification(
   );
 }
 
+function mergeCalculatedValues(cleanedValues, payload) {
+  const base = isPlainObject(cleanedValues) ? { ...cleanedValues } : {};
+  if (!payload || typeof payload !== 'object') return base;
+
+  const candidates = [
+    payload.calculatedValues,
+    payload.recalculatedValues,
+    payload.values?.calculatedValues,
+    payload.values?.recalculatedValues,
+  ];
+
+  for (const candidate of candidates) {
+    if (!isPlainObject(candidate)) continue;
+    Object.entries(candidate).forEach(([key, value]) => {
+      if (value === undefined) return;
+      base[key] = value;
+    });
+  }
+  return base;
+}
+
 export async function createTemporarySubmission({
   tableName,
   formName,
@@ -402,6 +466,7 @@ export async function createTemporarySubmission({
     const insertDepartmentId = departmentPrefSpecified
       ? normalizedDepartmentPref ?? null
       : fallbackDepartment ?? null;
+    const cleanedWithCalculated = mergeCalculatedValues(cleanedValues, payload);
     const [result] = await conn.query(
       `INSERT INTO \`${TEMP_TABLE}\`
         (company_id, table_name, form_name, config_name, module_key, payload_json,
@@ -416,7 +481,7 @@ export async function createTemporarySubmission({
         moduleKey ?? null,
         safeJsonStringify(payload),
         safeJsonStringify(rawValues),
-        safeJsonStringify(cleanedValues),
+        safeJsonStringify(cleanedWithCalculated),
         normalizedCreator,
         reviewerEmpId,
         insertBranchId,
@@ -455,6 +520,13 @@ export async function createTemporarySubmission({
     try {
       await conn.query('ROLLBACK');
     } catch {}
+    if (isDynamicSqlTriggerError(err)) {
+      throw attachDynamicSqlErrorDetails(err, {
+        table: row?.table_name || null,
+        temporaryId: id,
+        reviewerEmpId: normalizedReviewer,
+      });
+    }
     throw err;
   } finally {
     conn.release();
@@ -684,6 +756,7 @@ export async function promoteTemporarySubmission(
     throw err;
   }
   const conn = await pool.getConnection();
+  let row = null;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
@@ -691,7 +764,7 @@ export async function promoteTemporarySubmission(
       `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? FOR UPDATE`,
       [id],
     );
-    const row = rows[0];
+    row = rows[0];
     if (!row) {
       const err = new Error('Temporary submission not found');
       err.status = 404;
@@ -727,6 +800,8 @@ export async function promoteTemporarySubmission(
     pushCandidate(cleanedOverride);
     pushCandidate(safeJsonParse(row.cleaned_values_json));
     pushCandidate(payloadJson?.cleanedValues);
+    pushCandidate(payloadJson?.calculatedValues);
+    pushCandidate(payloadJson?.recalculatedValues);
     pushCandidate(payloadJson?.values);
     pushCandidate(payloadJson);
     pushCandidate(safeJsonParse(row.raw_values_json));
@@ -747,10 +822,26 @@ export async function promoteTemporarySubmission(
       }
     }
 
-    const sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
+    let sanitizedValues = { ...(sanitizedCleaned?.values || {}) };
     const sanitationWarnings = Array.isArray(sanitizedCleaned?.warnings)
       ? sanitizedCleaned.warnings
       : [];
+
+    const errorRevokedFields = Array.isArray(payloadJson?.errorRevokedFieldsOnly)
+      ? payloadJson.errorRevokedFieldsOnly
+          .map((field) => (typeof field === 'string' ? field.trim() : ''))
+          .filter(Boolean)
+      : [];
+    if (errorRevokedFields.length > 0) {
+      const revokedLookup = new Set(
+        errorRevokedFields.map((field) => field.toLowerCase()),
+      );
+      sanitizedValues = Object.fromEntries(
+        Object.entries(sanitizedValues).filter(
+          ([key]) => !revokedLookup.has(String(key || '').toLowerCase()),
+        ),
+      );
+    }
 
     if (Object.keys(sanitizedValues).length === 0) {
       const err = new Error('Temporary submission is missing promotable values');
@@ -832,16 +923,90 @@ export async function promoteTemporarySubmission(
       companyId: row.company_id ?? null,
       changedBy: normalizedReviewer,
     };
-    const inserted = await insertTableRow(
-      row.table_name,
-      sanitizedValues,
-      undefined,
-      undefined,
-      false,
-      normalizedReviewer,
-      { conn, mutationContext },
-    );
-    const insertedId = inserted?.id ?? null;
+    const shouldSkipTriggers =
+      payloadJson?.skipTriggerOnPromote === true ||
+      errorRevokedFields.length > 0;
+    const skipTriggers = shouldSkipTriggers;
+    let skipSessionEnabled = false;
+    let insertedId = null;
+    try {
+      if (skipTriggers) {
+        await conn.query('SET @skip_triggers = 1;');
+        skipSessionEnabled = true;
+      }
+      try {
+        const inserted = await insertTableRow(
+          row.table_name,
+          sanitizedValues,
+          undefined,
+          undefined,
+          false,
+          normalizedReviewer,
+          { conn, mutationContext },
+        );
+        insertedId = inserted?.id ?? null;
+      } catch (err) {
+        if (!isDynamicSqlTriggerError(err)) {
+          throw err;
+        }
+        console.warn('Dynamic SQL trigger error during promotion, applying fallback insert', {
+          table: row.table_name,
+          id,
+          error: err,
+        });
+        let recordForInsert = sanitizedValues;
+        if (!skipSessionEnabled) {
+          await conn.query('SET @skip_triggers = 1;');
+          skipSessionEnabled = true;
+        }
+        try {
+          const inserted = await insertTableRow(
+            row.table_name,
+            recordForInsert,
+            undefined,
+            undefined,
+            false,
+            normalizedReviewer,
+            { conn, mutationContext },
+          );
+          insertedId = inserted?.id ?? null;
+        } catch (skipErr) {
+          if (!isDynamicSqlTriggerError(skipErr)) {
+            throw skipErr;
+          }
+          console.warn(
+            'Dynamic SQL trigger error persisted after skip trigger session flag, falling back to direct insert',
+            {
+              table: row.table_name,
+              id,
+              error: skipErr,
+            },
+          );
+        }
+        if (insertedId === null) {
+          const keys = Object.keys(recordForInsert);
+          if (keys.length === 0) {
+            throw err;
+          }
+          const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
+          const placeholders = keys.map(() => '?').join(', ');
+          const params = keys.map((k) => recordForInsert[k]);
+          const [fallbackResult] = await conn.query(
+            `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
+            params,
+          );
+          insertedId = fallbackResult?.insertId ?? null;
+        }
+      }
+    } finally {
+      if (skipSessionEnabled) {
+        try {
+          await conn.query('SET @skip_triggers = NULL;');
+        } catch (cleanupErr) {
+          console.error('Failed to reset skip triggers session variable', cleanupErr);
+        }
+      }
+    }
     const promotedId = insertedId ? String(insertedId) : null;
     if (formName && formCfg) {
       try {
@@ -869,16 +1034,30 @@ export async function promoteTemporarySubmission(
               );
             }
           }
+          const merchantId = masterRecord?.merchant_id ?? masterRecord?.merchantId ?? null;
+          const merchantInfo = merchantId ? await getMerchantById(merchantId) : null;
+          if (!merchantInfo) {
+            throw new Error('Merchant information is required for POSAPI submissions');
+          }
           const receiptType =
             formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
           const payload = await buildReceiptFromDynamicTransaction(
             masterRecord,
             mapping,
             receiptType,
-            { typeField: formCfg.posApiTypeField },
+            { typeField: formCfg.posApiTypeField, merchantInfo },
           );
           if (payload) {
             try {
+              const invoiceId = insertedId
+                ? await saveEbarimtInvoiceSnapshot({
+                    masterTable: row.table_name,
+                    masterId: insertedId,
+                    record: masterRecord,
+                    payload,
+                    merchantInfo,
+                  })
+                : null;
               const posApiResponse = await sendReceipt(payload, { endpoint });
               if (posApiResponse && insertedId) {
                 const columnNames = Array.isArray(columns)
@@ -909,6 +1088,11 @@ export async function promoteTemporarySubmission(
                       error: updateErr,
                     });
                   }
+                }
+                if (invoiceId) {
+                  await persistEbarimtInvoiceResponse(invoiceId, posApiResponse, {
+                    fieldsFromPosApi: formCfg.fieldsFromPosApi,
+                  });
                 }
               }
             } catch (posErr) {
@@ -1010,6 +1194,13 @@ export async function promoteTemporarySubmission(
     try {
       await conn.query('ROLLBACK');
     } catch {}
+    if (isDynamicSqlTriggerError(err)) {
+      throw attachDynamicSqlErrorDetails(err, {
+        table: row?.table_name || null,
+        temporaryId: id,
+        reviewerEmpId: normalizedReviewer,
+      });
+    }
     throw err;
   } finally {
     conn.release();

@@ -155,6 +155,7 @@ app.use("/api/pos_txn_layout", posTxnLayoutRoutes);
 app.use("/api/pos_txn_pending", posTxnPendingRoutes);
 app.use("/api/pos_txn_post", posTxnPostRoutes);
 app.use("/api/pos_txn_ebarimt", posTxnEbarimtRoutes);
+app.use("/api/pos-txn-ebarimt", posTxnEbarimtRoutes);
 app.use("/api/transaction_ebarimt", transactionEbarimtRoutes);
 app.use("/api/views", viewsRoutes);
 app.use("/api/procedures", requireAuth, procedureRoutes);

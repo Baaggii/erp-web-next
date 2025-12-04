@@ -1,0 +1,651 @@
+{
+	"info": {
+		"_postman_id": "24a971a2-db4f-436f-80ad-f2349e1e2858",
+		"name": "ИБАРИМТ нэвтрэлт Copy",
+		"description": "> Нэгдсэн нэвтрэлтийн системийн API\r\n",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50289897",
+		"_collection_link": "https://baaggiii-7271699.postman.co/workspace/Bujika-Bujak's-Workspace~d63a1c60-c52a-4563-8b5d-414b12bae27c/collection/50289897-24a971a2-db4f-436f-80ad-f2349e1e2858?action=share&source=collection_link&creator=50289897"
+	},
+	"item": [
+		{
+			"name": "protocol",
+			"item": [
+				{
+					"name": "openid-connect",
+					"item": [
+						{
+							"name": "token",
+							"item": [
+								{
+									"name": "Token авах",
+									"request": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/x-www-form-urlencoded"
+											},
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "urlencoded",
+											"urlencoded": [
+												{
+													"key": "grant_type",
+													"value": "password"
+												},
+												{
+													"key": "client_id",
+													"value": "vatps",
+													"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+												},
+												{
+													"key": "username",
+													"value": "АА10010110 эсвэл easy-register-test",
+													"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+												},
+												{
+													"key": "password",
+													"value": "Test@123",
+													"description": "Нууц үг"
+												}
+											]
+										},
+										"url": {
+											"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+											"protocol": "https",
+											"host": [
+												"st",
+												"auth",
+												"itc",
+												"gov",
+												"mn"
+											],
+											"path": [
+												"auth",
+												"realms",
+												"Staging",
+												"protocol",
+												"openid-connect",
+												"token"
+											]
+										},
+										"description": "> Token авах хэсгийн танилцуулга\r\n\r\n<!-- theme: warning -->\r\n> Сервисийн хариу амжилттай бол зөвхөн `access_token` ийг авч ашиглана уу"
+									},
+									"response": [
+										{
+											"name": "Хүсэлтийн жишээ",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "password"
+														},
+														{
+															"key": "client_id",
+															"value": "vatps",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "АА10010110 эсвэл easy-register-test",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "Test@123",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"access_token\": \"string\",\n  \"expires_in\": \"string\",\n  \"refresh_expires_in\": \"string\",\n  \"refresh_token\": \"string\",\n  \"token_type\": \"string\",\n  \"not-before-policy\": \"string\",\n  \"session_state\": \"string\",\n  \"scope\": \"string\"\n}"
+										},
+										{
+											"name": "Хялбар бүртгэлийн токен авах",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "password"
+														},
+														{
+															"key": "client_id",
+															"value": "vatps",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "АА10010110 эсвэл easy-register-test",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "Test@123",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"access_token\": \"string\",\n  \"expires_in\": \"string\",\n  \"refresh_expires_in\": \"string\",\n  \"refresh_token\": \"string\",\n  \"token_type\": \"string\",\n  \"not-before-policy\": \"string\",\n  \"session_state\": \"string\",\n  \"scope\": \"string\"\n}"
+										},
+										{
+											"name": "Серисийн хариуны жишээ",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "password"
+														},
+														{
+															"key": "client_id",
+															"value": "vatps",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "АА10010110 эсвэл easy-register-test",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "Test@123",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "Unauthorized",
+											"code": 401,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"error\": \"invalid_client\",\n  \"error_description\": \"Invalid client or Invalid client credentials\"\n}"
+										},
+										{
+											"name": "Нэвтрэх нэр эсвэл нууц үг буруу үеийн жишээ",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "password"
+														},
+														{
+															"key": "client_id",
+															"value": "vatps",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "АА10010110 эсвэл easy-register-test",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "Test@123",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "Unauthorized",
+											"code": 401,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"error\": \"invalid_grant\",\n  \"error_description\": \"Invalid user credentials\"\n}"
+										},
+										{
+											"name": "Token авах",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "password"
+														},
+														{
+															"key": "client_id",
+															"value": "vatps",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "easy-register-test",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "Test@123",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": null,
+											"header": [
+												{
+													"key": "Server",
+													"value": "nginx"
+												},
+												{
+													"key": "Date",
+													"value": "Sun, 30 Nov 2025 09:19:58 GMT"
+												},
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												},
+												{
+													"key": "Transfer-Encoding",
+													"value": "chunked"
+												},
+												{
+													"key": "Connection",
+													"value": "keep-alive"
+												},
+												{
+													"key": "Vary",
+													"value": "Accept-Encoding"
+												},
+												{
+													"key": "Cache-Control",
+													"value": "no-store"
+												},
+												{
+													"key": "Pragma",
+													"value": "no-cache"
+												},
+												{
+													"key": "Referrer-Policy",
+													"value": "no-referrer"
+												},
+												{
+													"key": "Referrer-Policy",
+													"value": "origin"
+												},
+												{
+													"key": "Strict-Transport-Security",
+													"value": "max-age=63072000; includeSubDomains; preload"
+												},
+												{
+													"key": "Strict-Transport-Security",
+													"value": "max-age=31536000; includeSubDomains; preload"
+												},
+												{
+													"key": "X-Content-Type-Options",
+													"value": "nosniff"
+												},
+												{
+													"key": "X-Frame-Options",
+													"value": "SAMEORIGIN"
+												},
+												{
+													"key": "X-XSS-Protection",
+													"value": "1; mode=block"
+												},
+												{
+													"key": "X-XSS-Protection",
+													"value": "1; mode=block"
+												},
+												{
+													"key": "Access-Control-Allow-Methods",
+													"value": "GET, POST, OPTIONS"
+												},
+												{
+													"key": "Content-Encoding",
+													"value": "gzip"
+												}
+											],
+											"cookie": [],
+											"body": "{\n    \"access_token\": \"eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJpTGdEalFZcDM0TTlfbXJieWNaVG92eXRpMEFVVk9NUWNYdy0xbHAzbk9vIn0.eyJleHAiOjE3NjQ1MjMxOTgsImlhdCI6MTc2NDQ5NDM5OCwianRpIjoiODZiNDNkOTQtMmVkZS00MmIyLTgwMzctMTgwY2EwN2Q0N2RkIiwiaXNzIjoiaHR0cHM6Ly9zdC5hdXRoLml0Yy5nb3YubW4vYXV0aC9yZWFsbXMvU3RhZ2luZyIsImF1ZCI6ImFjY291bnQiLCJzdWIiOiI4ZmM1Y2E2MC1iZTliLTQ0ZDgtODZjMy1iNWE0MzZmNzliNDgiLCJ0eXAiOiJCZWFyZXIiLCJhenAiOiJ2YXRwcyIsInNlc3Npb25fc3RhdGUiOiI4MTE4NDU4Ni00OThmLTRlNTMtODU1ZS02Y2RjMjBlMWFkNmMiLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJ1bWFfYXV0aG9yaXphdGlvbiJdfSwicmVzb3VyY2VfYWNjZXNzIjp7InZhdHBzIjp7InJvbGVzIjpbIkVBU1ktUkVHSVNURVIiXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsInNpZCI6IjgxMTg0NTg2LTQ5OGYtNGU1My04NTVlLTZjZGMyMGUxYWQ2YyIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJuYW1lIjoi0KLQtdGB0YIg0KLQtdGB0YIiLCJncm91cHMiOlsiL3ZhdHBzL2Vhc3ktcmVnaXN0ZXIiXSwicHJlZmVycmVkX3VzZXJuYW1lIjoiZWFzeS1yZWdpc3Rlci10ZXN0IiwiZ2l2ZW5fbmFtZSI6ItCi0LXRgdGCIiwiZmFtaWx5X25hbWUiOiLQotC10YHRgiIsImVtYWlsIjoidHNvb21vb19ta3NAeWFob28uY29tIn0.pXE1GG_Md5rVbzU1FJCcAOmvLC9aheea99MwSALr4BNNyNwlxfzRS24qYuOu4RNLlj1v1c-y8v8jh1gCgUrgtclP0Nm8k8gS1EdeFq8AlImGuLswg02pHy9IOJ3yJHc7xJ7JWIw3mL2OS-b3Ddu5ix1_ZJgBTfnpSBnE5dhnOjaAsv3eB04-wxodjzApwY0y0A-77mpZgSD5WaiV2AM0dZl1jMZFBY4f_KX54dAu4Wxz9JUH3RjrqTwVqUXoZc7ZRCC0zzkA4o69mcCEJs9jGltbhvCCwAcNtevpGzpFg0kgVTT27vfywBLrwb2I0liJJvvoYE4m8-txfSVuqlDIqA\",\n    \"expires_in\": 28800,\n    \"refresh_expires_in\": 36000,\n    \"refresh_token\": \"eyJhbGciOiJIUzUxMiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJlMjMyODBlYS1iMzZhLTQ3MjEtODJhNi05OTIzOTE0YzQ3YTcifQ.eyJleHAiOjE3NjQ1MzAzOTgsImlhdCI6MTc2NDQ5NDM5OCwianRpIjoiNTNlODA1Y2UtOTQ1MS00NTc4LWE0ZjQtYTU3MjVkNTdjMzY5IiwiaXNzIjoiaHR0cHM6Ly9zdC5hdXRoLml0Yy5nb3YubW4vYXV0aC9yZWFsbXMvU3RhZ2luZyIsImF1ZCI6Imh0dHBzOi8vc3QuYXV0aC5pdGMuZ292Lm1uL2F1dGgvcmVhbG1zL1N0YWdpbmciLCJzdWIiOiI4ZmM1Y2E2MC1iZTliLTQ0ZDgtODZjMy1iNWE0MzZmNzliNDgiLCJ0eXAiOiJSZWZyZXNoIiwiYXpwIjoidmF0cHMiLCJzZXNzaW9uX3N0YXRlIjoiODExODQ1ODYtNDk4Zi00ZTUzLTg1NWUtNmNkYzIwZTFhZDZjIiwic2NvcGUiOiJwcm9maWxlIGVtYWlsIiwic2lkIjoiODExODQ1ODYtNDk4Zi00ZTUzLTg1NWUtNmNkYzIwZTFhZDZjIn0.hWKPq4ozeFo5ZvGTqeuyAr2Uf_A3pSK87ervPRWI59m7SVTxWfl0TDnO2gmbAnc53GTyz-Fx2KFY1A0dKmC6Yw\",\n    \"token_type\": \"Bearer\",\n    \"not-before-policy\": 1602433585,\n    \"session_state\": \"81184586-498f-4e53-855e-6cdc20e1ad6c\",\n    \"scope\": \"profile email\"\n}"
+										},
+										{
+											"name": "Token авах",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/x-www-form-urlencoded"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "urlencoded",
+													"urlencoded": [
+														{
+															"key": "grant_type",
+															"value": "password"
+														},
+														{
+															"key": "client_id",
+															"value": "vatps",
+															"description": "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+														},
+														{
+															"key": "username",
+															"value": "АА10010110",
+															"description": "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+														},
+														{
+															"key": "password",
+															"value": "Test@123",
+															"description": "Нууц үг"
+														}
+													]
+												},
+												"url": {
+													"raw": "https://st.auth.itc.gov.mn/auth/realms/Staging/protocol/openid-connect/token",
+													"protocol": "https",
+													"host": [
+														"st",
+														"auth",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"auth",
+														"realms",
+														"Staging",
+														"protocol",
+														"openid-connect",
+														"token"
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": null,
+											"header": [
+												{
+													"key": "Server",
+													"value": "nginx"
+												},
+												{
+													"key": "Date",
+													"value": "Sun, 30 Nov 2025 09:20:22 GMT"
+												},
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												},
+												{
+													"key": "Transfer-Encoding",
+													"value": "chunked"
+												},
+												{
+													"key": "Connection",
+													"value": "keep-alive"
+												},
+												{
+													"key": "Vary",
+													"value": "Accept-Encoding"
+												},
+												{
+													"key": "Cache-Control",
+													"value": "no-store"
+												},
+												{
+													"key": "Pragma",
+													"value": "no-cache"
+												},
+												{
+													"key": "Referrer-Policy",
+													"value": "no-referrer"
+												},
+												{
+													"key": "Referrer-Policy",
+													"value": "origin"
+												},
+												{
+													"key": "Strict-Transport-Security",
+													"value": "max-age=63072000; includeSubDomains; preload"
+												},
+												{
+													"key": "Strict-Transport-Security",
+													"value": "max-age=31536000; includeSubDomains; preload"
+												},
+												{
+													"key": "X-Content-Type-Options",
+													"value": "nosniff"
+												},
+												{
+													"key": "X-Frame-Options",
+													"value": "SAMEORIGIN"
+												},
+												{
+													"key": "X-XSS-Protection",
+													"value": "1; mode=block"
+												},
+												{
+													"key": "X-XSS-Protection",
+													"value": "1; mode=block"
+												},
+												{
+													"key": "Access-Control-Allow-Methods",
+													"value": "GET, POST, OPTIONS"
+												},
+												{
+													"key": "Content-Encoding",
+													"value": "gzip"
+												}
+											],
+											"cookie": [],
+											"body": "{\n    \"access_token\": \"eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJpTGdEalFZcDM0TTlfbXJieWNaVG92eXRpMEFVVk9NUWNYdy0xbHAzbk9vIn0.eyJleHAiOjE3NjQ1MjMyMjIsImlhdCI6MTc2NDQ5NDQyMiwianRpIjoiNjg3ZmVhZTEtN2NmYy00NzNiLTk4ZDAtNzQxMjNmMGM4NGZlIiwiaXNzIjoiaHR0cHM6Ly9zdC5hdXRoLml0Yy5nb3YubW4vYXV0aC9yZWFsbXMvU3RhZ2luZyIsImF1ZCI6ImFjY291bnQiLCJzdWIiOiI4ZDAxM2U3Ni1hZTQ1LTRjMjQtODhmNi0wMDE2NjMwMjg4ZWUiLCJ0eXAiOiJCZWFyZXIiLCJhenAiOiJ2YXRwcyIsInNlc3Npb25fc3RhdGUiOiJkOTQxMWY1OC05MGUxLTRhYmUtYTY5NS0wMGRhYmZlODZlMTAiLCJyZWFsbV9hY2Nlc3MiOnsicm9sZXMiOlsib2ZmbGluZV9hY2Nlc3MiLCJ1bWFfYXV0aG9yaXphdGlvbiJdfSwicmVzb3VyY2VfYWNjZXNzIjp7InZhdHBzIjp7InJvbGVzIjpbIkJBTksiXX0sImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoicHJvZmlsZSBlbWFpbCIsInNpZCI6ImQ5NDExZjU4LTkwZTEtNGFiZS1hNjk1LTAwZGFiZmU4NmUxMCIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW4iOiLQkNCQMTAwMTAxMTAiLCJuYW1lIjoiVXNlciBUZXN0IiwicHJlZmVycmVkX3VzZXJuYW1lIjoi0LDQsDEwMDEwMTEwIiwiZ2l2ZW5fbmFtZSI6IlVzZXIiLCJmYW1pbHlfbmFtZSI6IlRlc3QiLCJlbWFpbCI6InRlc3Q5OTU1OTk1NUB0ZXN0LmNvbSJ9.gU7vnn5ndsK6NqnYDck3IX_tQsN9oGUC4CSzRvbfrQrNBPnzGhsg0rdO0UYeR6ViN7fJzf3b-AJiRgfLf5D0L3WTPctWJZDBkmBkVsWM6nse3CHpnn72Mb7Wr95C2A064eeh7b-rCiyyQnb4Vp4U1UYs_5t3ixt5WI4ulZuabQJLJovUGiJrhcf7MhCrYCFRRKfwTcE_2lEsIvXOHeHooDijun_7K57EmtzDusq0j_47EHco6MuUzNF8ucR5uTynATkLplAjuBQB3TZ6Jg4B9XxzWfy49J7bOwrUhlyd5wjIi0M3t46sKuFfCj8rCRRJ54vzVcb1lrcv1mLFPmhjTA\",\n    \"expires_in\": 28800,\n    \"refresh_expires_in\": 36000,\n    \"refresh_token\": \"eyJhbGciOiJIUzUxMiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJlMjMyODBlYS1iMzZhLTQ3MjEtODJhNi05OTIzOTE0YzQ3YTcifQ.eyJleHAiOjE3NjQ1MzA0MjIsImlhdCI6MTc2NDQ5NDQyMiwianRpIjoiZWUyOGE5MTItZWRhNC00YWNhLTk4ZjAtNTg3OTQyYmUwMmQ1IiwiaXNzIjoiaHR0cHM6Ly9zdC5hdXRoLml0Yy5nb3YubW4vYXV0aC9yZWFsbXMvU3RhZ2luZyIsImF1ZCI6Imh0dHBzOi8vc3QuYXV0aC5pdGMuZ292Lm1uL2F1dGgvcmVhbG1zL1N0YWdpbmciLCJzdWIiOiI4ZDAxM2U3Ni1hZTQ1LTRjMjQtODhmNi0wMDE2NjMwMjg4ZWUiLCJ0eXAiOiJSZWZyZXNoIiwiYXpwIjoidmF0cHMiLCJzZXNzaW9uX3N0YXRlIjoiZDk0MTFmNTgtOTBlMS00YWJlLWE2OTUtMDBkYWJmZTg2ZTEwIiwic2NvcGUiOiJwcm9maWxlIGVtYWlsIiwic2lkIjoiZDk0MTFmNTgtOTBlMS00YWJlLWE2OTUtMDBkYWJmZTg2ZTEwIn0.TdSqOccPTSs1PXPYekAk2lSkXxlUSoZFNm7mHuHmOd_EUZUEDa3ZjQw4TI9_mAQ2tTwueCliZQZE9xwSeuSQgA\",\n    \"token_type\": \"Bearer\",\n    \"not-before-policy\": 1602433585,\n    \"session_state\": \"d9411f58-90e1-4abe-a695-00dabfe86e10\",\n    \"scope\": \"profile email\"\n}"
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "/"
+		}
+	]
+}

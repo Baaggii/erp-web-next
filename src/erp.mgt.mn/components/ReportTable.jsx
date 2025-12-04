@@ -63,7 +63,7 @@ export default function ReportTable({
   fieldTypeMap = {},
   onSnapshotReady,
 }) {
-  const { user, branch, department } = useContext(AuthContext);
+  const { user, company } = useContext(AuthContext);
   const generalConfig = useGeneralConfig();
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
@@ -73,6 +73,7 @@ export default function ReportTable({
   const [labelEdits, setLabelEdits] = useState({});
   const [txnInfo, setTxnInfo] = useState(null);
   const [columnFilters, setColumnFilters] = useState({});
+  const [frozenColumns, setFrozenColumns] = useState(0);
 
   const columns = useMemo(
     () => (rows && rows.length ? Object.keys(rows[0]) : []),
@@ -207,6 +208,25 @@ export default function ReportTable({
     });
     return map;
   }, [columns, sorted, placeholders]);
+
+  useEffect(() => {
+    setFrozenColumns((prev) => {
+      if (prev > columns.length) return columns.length;
+      if (prev < 0) return 0;
+      return prev;
+    });
+  }, [columns]);
+
+  const stickyOffsets = useMemo(() => {
+    const offsets = {};
+    let left = 0;
+    columns.forEach((col, idx) => {
+      if (idx >= frozenColumns) return;
+      offsets[col] = left;
+      left += columnWidths[col] || ch(12);
+    });
+    return offsets;
+  }, [columns, frozenColumns, columnWidths]);
 
   const numericColumns = useMemo(
     () =>
@@ -389,8 +409,7 @@ export default function ReportTable({
       extraConditions,
       session: {
         empid: user?.empid,
-        branch_id: branch,
-        department_id: department,
+        company_id: company,
       },
     };
     setTxnInfo({ loading: true, col, value, data: [], sql: '', displayFields: [] });
@@ -548,7 +567,15 @@ export default function ReportTable({
         )}
       </h4>
       {paramText && <div style={{ marginTop: '0.25rem' }}>{paramText}</div>}
-      <div style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center' }}>
+      <div
+        style={{
+          marginBottom: '0.5rem',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+          flexWrap: 'wrap',
+        }}
+      >
         <input
           type="text"
           value={search}
@@ -556,15 +583,46 @@ export default function ReportTable({
           placeholder="Search"
           style={{ marginRight: '0.5rem' }}
         />
+        {columns.length > 0 && (
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <span>Freeze first</span>
+            <input
+              type="number"
+              min="0"
+              max={columns.length}
+              value={frozenColumns}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                if (Number.isNaN(val)) return;
+                const clamped = Math.min(Math.max(0, val), columns.length);
+                setFrozenColumns(clamped);
+              }}
+              style={{ width: '4rem' }}
+            />
+            <span>column{frozenColumns === 1 ? '' : 's'}</span>
+          </label>
+        )}
       </div>
-      <div className="table-container overflow-x-auto">
+      <div
+        className="table-container overflow-auto"
+        style={{
+          position: 'relative',
+          maxWidth: '100%',
+          maxHeight: '70vh',
+          overflow: 'auto',
+          border: '1px solid #d1d5db',
+          borderRadius: '0.5rem',
+          background: '#fff',
+          boxShadow: '0 1px 2px rgba(0, 0, 0, 0.05)',
+        }}
+      >
         <table
           className="table-manager"
           style={{
             borderCollapse: 'collapse',
             tableLayout: 'fixed',
             minWidth: '1200px',
-            maxWidth: '2000px',
+            width: 'max-content',
           }}
         >
           <thead className="table-manager sticky-header">
@@ -588,6 +646,15 @@ export default function ReportTable({
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     cursor: 'pointer',
+                    ...(col in stickyOffsets
+                      ? {
+                          position: 'sticky',
+                          left: stickyOffsets[col],
+                          zIndex: 20,
+                          background: '#e5e7eb',
+                          boxShadow: '1px 0 0 #d1d5db',
+                        }
+                      : {}),
                     ...(columnWidths[col] <= ch(8)
                       ? {
                           writingMode: 'vertical-rl',
@@ -620,6 +687,15 @@ export default function ReportTable({
                     resize: 'horizontal',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
+                    ...(col in stickyOffsets
+                      ? {
+                          position: 'sticky',
+                          left: stickyOffsets[col],
+                          zIndex: 15,
+                          background: '#f9fafb',
+                          boxShadow: '1px 0 0 #d1d5db',
+                        }
+                      : {}),
                   }}
                 >
                   <input
@@ -650,6 +726,13 @@ export default function ReportTable({
                     style.overflow = 'hidden';
                     style.textOverflow = 'ellipsis';
                   }
+                  if (col in stickyOffsets) {
+                    style.position = 'sticky';
+                    style.left = stickyOffsets[col];
+                    style.background = '#fff';
+                    style.zIndex = 5;
+                    style.boxShadow = '1px 0 0 #d1d5db';
+                  }
                   return (
                     <td
                       key={col}
@@ -676,6 +759,15 @@ export default function ReportTable({
                       border: '1px solid #d1d5db',
                       textAlign: columnAlign[col],
                       fontWeight: 'bold',
+                      ...(col in stickyOffsets
+                        ? {
+                            position: 'sticky',
+                            left: stickyOffsets[col],
+                            background: '#f3f4f6',
+                            zIndex: 6,
+                            boxShadow: '1px 0 0 #d1d5db',
+                          }
+                        : {}),
                     }}
                   >
                     {idx === 0

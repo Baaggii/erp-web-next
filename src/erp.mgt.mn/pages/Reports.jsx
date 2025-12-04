@@ -3258,7 +3258,14 @@ export default function Reports() {
   }, [approvalModalOpen, approvalRefreshKey, canReviewApprovals, user?.empid]);
 
   return (
-    <div>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        height: '100%',
+        minHeight: 0,
+      }}
+    >
       <h2>Тайлан</h2>
       <div style={{ marginBottom: '0.5rem' }}>
         <select
@@ -3406,23 +3413,34 @@ export default function Reports() {
         </div>
       )}
       {result && (
-        <>
-          <ReportTable
-            procedure={result.name}
-            params={result.params}
-            rows={result.rows}
-            buttonPerms={buttonPerms}
-            fieldTypeMap={result.fieldTypeMap}
-            onSnapshotReady={handleSnapshotReady}
-          />
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.25rem',
+            flex: '1 1 auto',
+            minHeight: 0,
+          }}
+        >
+          <div style={{ flex: '1 1 auto', minHeight: 0 }}>
+            <ReportTable
+              procedure={result.name}
+              params={result.params}
+              rows={result.rows}
+              buttonPerms={buttonPerms}
+              fieldTypeMap={result.fieldTypeMap}
+              onSnapshotReady={handleSnapshotReady}
+            />
+          </div>
           {canRequestApproval && (
             <div
               style={{
-                marginTop: '1.5rem',
+                marginTop: '0.25rem',
                 border: '1px solid #d1d5db',
                 borderRadius: '0.5rem',
                 padding: '1rem',
                 background: '#f9fafb',
+                flexShrink: 0,
               }}
             >
               <h4 style={{ marginTop: 0 }}>Request report approval</h4>
@@ -3793,7 +3811,7 @@ export default function Reports() {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
       <Modal
         open={Boolean(pendingExclusion)}

@@ -1,6 +1,7 @@
 import { getSettings } from '../../db/index.js';
 import { getEndpointById, loadEndpoints } from './posApiRegistry.js';
 import { createColumnLookup } from './posApiPersistence.js';
+import { resolveReferenceCodeValue } from './referenceCodeLookup.js';
 
 function trimEndSlash(url) {
   if (!url) return '';
@@ -54,6 +55,25 @@ function toStringValue(value) {
 
 let cachedBaseUrl = '';
 let cachedBaseUrlLoaded = false;
+const tokenCache = new Map();
+
+function cacheToken(endpointId, token, expiresInSeconds) {
+  if (!endpointId || !token) return;
+  const ttl = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? expiresInSeconds : 300;
+  const expiresAt = Date.now() + ttl * 1000 - 30000;
+  tokenCache.set(endpointId, { token, expiresAt });
+}
+
+function getCachedToken(endpointId) {
+  if (!endpointId) return null;
+  const entry = tokenCache.get(endpointId);
+  if (!entry || !entry.token) return null;
+  if (entry.expiresAt && entry.expiresAt <= Date.now()) {
+    tokenCache.delete(endpointId);
+    return null;
+  }
+  return entry.token;
+}
 
 export async function getPosApiBaseUrl() {
   if (cachedBaseUrlLoaded && cachedBaseUrl) {
@@ -570,6 +590,17 @@ function normalizeItemEntry(item, options = {}) {
   if (!next.taxType && options.defaultTaxType) {
     next.taxType = options.defaultTaxType;
   }
+  const taxReasonCandidate = item.taxReasonCode ?? item.tax_reason_code;
+  if (taxReasonCandidate !== undefined) {
+    const reasonValue = toStringValue(taxReasonCandidate);
+    if (reasonValue) next.taxReasonCode = reasonValue;
+  }
+  const barcodeTypeCandidate =
+    item.barcodeType ?? item.barCodeType ?? item.barcode_type;
+  if (barcodeTypeCandidate !== undefined) {
+    const barcodeValue = toStringValue(barcodeTypeCandidate);
+    if (barcodeValue) next.barcodeType = barcodeValue;
+  }
   return next;
 }
 
@@ -648,6 +679,82 @@ function normalizePaymentEntry(entry) {
     if (parsedPaidAmount !== null) next.amount = parsedPaidAmount;
   }
   return next;
+}
+
+async function normalizeItemReferenceCodes(item) {
+  if (!item || typeof item !== 'object') return item;
+  const next = { ...item };
+  if (next.classificationCode) {
+    const resolvedClassification = await resolveReferenceCodeValue(
+      'classification',
+      next.classificationCode,
+    );
+    if (resolvedClassification?.code) next.classificationCode = resolvedClassification.code;
+  }
+  if (next.taxType) {
+    const resolvedTaxType = await resolveReferenceCodeValue('tax_type', next.taxType);
+    if (resolvedTaxType?.code) next.taxType = resolvedTaxType.code;
+  }
+  if (next.taxReasonCode) {
+    const resolvedReason = await resolveReferenceCodeValue(
+      'tax_reason',
+      next.taxReasonCode,
+    );
+    if (resolvedReason?.code) next.taxReasonCode = resolvedReason.code;
+  }
+  if (next.barcodeType) {
+    const resolvedBarcode = await resolveReferenceCodeValue(
+      'barcode_type',
+      next.barcodeType,
+    );
+    if (resolvedBarcode?.code) next.barcodeType = resolvedBarcode.code;
+  }
+  return next;
+}
+
+async function normalizeReceiptsWithReferenceCodes(receipts) {
+  if (!Array.isArray(receipts) || receipts.length === 0) return receipts || [];
+  const normalized = [];
+  for (const receipt of receipts) {
+    if (!receipt || typeof receipt !== 'object') {
+      normalized.push(receipt);
+      continue;
+    }
+    if (!Array.isArray(receipt.items) || receipt.items.length === 0) {
+      normalized.push(receipt);
+      continue;
+    }
+    const normalizedItems = [];
+    for (const item of receipt.items) {
+      normalizedItems.push(await normalizeItemReferenceCodes(item));
+    }
+    normalized.push({ ...receipt, items: normalizedItems });
+  }
+  return normalized;
+}
+
+async function normalizePaymentsWithReferenceCodes(payments) {
+  if (!Array.isArray(payments) || payments.length === 0) return payments || [];
+  const normalized = [];
+  for (const payment of payments) {
+    if (!payment || typeof payment !== 'object') {
+      normalized.push(payment);
+      continue;
+    }
+    const next = { ...payment };
+    const resolved = await resolveReferenceCodeValue(
+      'payment_code',
+      next.type ?? next.code ?? next.method,
+    );
+    if (resolved?.code) {
+      next.type = resolved.code;
+      next.code = resolved.code;
+    } else if (!next.type) {
+      next.type = 'CASH';
+    }
+    normalized.push(next);
+  }
+  return normalized;
 }
 
 function normalizeReceiptEntry(entry, options = {}) {
@@ -738,11 +845,18 @@ function normalizeReceiptEntry(entry, options = {}) {
 }
 
 const POSAPI_TYPE_VALUES = new Set([
-  'B2C_RECEIPT',
-  'B2B_RECEIPT',
-  'B2C_INVOICE',
-  'B2B_INVOICE',
+  'B2C',
+  'B2B_SALE',
+  'B2B_PURCHASE',
   'STOCK_QR',
+]);
+
+const LEGACY_RECEIPT_TYPE_ALIASES = new Map([
+  ['B2C_RECEIPT', 'B2C'],
+  ['B2C_INVOICE', 'B2C'],
+  ['B2B_RECEIPT', 'B2B_SALE'],
+  ['B2B_INVOICE', 'B2B_SALE'],
+  ['B2B', 'B2B_SALE'],
 ]);
 
 function normalizeReceiptTypeValue(value) {
@@ -751,6 +865,9 @@ function normalizeReceiptTypeValue(value) {
   const normalized = str.trim().toUpperCase().replace(/[\s-]+/g, '_');
   if (POSAPI_TYPE_VALUES.has(normalized)) {
     return normalized;
+  }
+  if (LEGACY_RECEIPT_TYPE_ALIASES.has(normalized)) {
+    return LEGACY_RECEIPT_TYPE_ALIASES.get(normalized);
   }
   return '';
 }
@@ -891,15 +1008,17 @@ function resolveReceiptType({
     return 'STOCK_QR';
   }
 
-  const flavor = detectDocumentFlavor({ mapping, record, columnLookup });
-
-  if (customerTin) return `B2B_${flavor}`;
-  if (consumerNo) return `B2C_${flavor}`;
+  if (customerTin) return 'B2B_SALE';
+  if (consumerNo) return 'B2C';
 
   const envType = normalizeReceiptTypeValue(process.env.POSAPI_RECEIPT_TYPE);
   if (envType) return envType;
 
-  return flavor === 'INVOICE' ? 'B2C_INVOICE' : 'B2C_RECEIPT';
+  const flavor = detectDocumentFlavor({ mapping, record, columnLookup });
+  if (flavor === 'INVOICE' && customerTin) {
+    return 'B2B_SALE';
+  }
+  return 'B2C';
 }
 
 function applyAdditionalMappings(
@@ -938,34 +1057,81 @@ export async function resolvePosApiEndpoint(endpointId) {
   return fallback;
 }
 
-async function posApiFetch(path, { method = 'GET', body, token, headers } = {}) {
-  const baseUrl = await getPosApiBaseUrl();
-  const url = `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
+async function resolveAuthEndpoint(authEndpointId) {
+  if (authEndpointId) {
+    const endpoint = await getEndpointById(authEndpointId);
+    if (endpoint && endpoint.posApiType === 'AUTH') return endpoint;
+  }
+  const endpoints = await loadEndpoints();
+  return endpoints.find((entry) => entry?.posApiType === 'AUTH') || null;
+}
+
+function resolveTestServerUrl(definition, environment = 'staging') {
+  if (!definition || typeof definition !== 'object') return '';
+  const trimmedEnv = environment === 'production' ? 'production' : 'staging';
+  const prodUrl = toStringValue(definition.testServerUrlProduction || '');
+  const stagingUrl = toStringValue(definition.testServerUrl || '');
+  if (trimmedEnv === 'production') return prodUrl || stagingUrl;
+  return stagingUrl || prodUrl;
+}
+
+async function posApiFetch(path, { method = 'GET', body, token, headers, baseUrl, debug } = {}) {
+  const resolvedBaseUrl = baseUrl ? trimEndSlash(baseUrl) : await getPosApiBaseUrl();
+  const url = `${resolvedBaseUrl}${path.startsWith('/') ? path : `/${path}`}`;
   const fetchFn = await getFetch();
   const res = await fetchFn(url, {
     method,
     headers: {
+      Accept: 'application/json, text/plain;q=0.9, */*;q=0.5',
       ...(headers || {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
     body,
   });
+
+  const rawText = await res.text();
+  const contentType = res.headers.get('content-type') || '';
+  let parsedBody = rawText;
+  if (contentType.includes('application/json')) {
+    try {
+      parsedBody = rawText ? JSON.parse(rawText) : null;
+    } catch {
+      parsedBody = rawText;
+    }
+  }
+
   if (!res.ok) {
-    const text = await res.text();
     const err = new Error(
-      `POSAPI request failed with status ${res.status}: ${text || res.statusText}`,
+      `POSAPI request failed with status ${res.status}: ${rawText || res.statusText}`,
     );
     err.status = res.status;
+    err.responseBody = parsedBody;
     throw err;
   }
-  const contentType = res.headers.get('content-type') || '';
-  if (contentType.includes('application/json')) {
-    return res.json();
+
+  if (debug) {
+    const headerEntries = {};
+    res.headers.forEach((value, key) => {
+      headerEntries[key] = value;
+    });
+    return {
+      ok: res.ok,
+      status: res.status,
+      statusText: res.statusText,
+      headers: headerEntries,
+      bodyText: rawText,
+      bodyJson: typeof parsedBody === 'object' ? parsedBody : null,
+      url,
+    };
   }
-  return res.text();
+
+  return parsedBody;
 }
 
-export async function getPosApiToken() {
+async function fetchEnvPosApiToken({ useCachedToken = true } = {}) {
+  const cached = useCachedToken ? getCachedToken('ENV_FALLBACK') : null;
+  if (cached) return cached;
+
   const requiredEnv = [
     'POSAPI_AUTH_URL',
     'POSAPI_AUTH_REALM',
@@ -1016,7 +1182,74 @@ export async function getPosApiToken() {
   if (!json?.access_token) {
     throw new Error('POSAPI token response missing access_token');
   }
+  const expiresIn = toNumber(json.expires_in || json.expiresIn) || 300;
+  cacheToken('ENV_FALLBACK', json.access_token, expiresIn);
   return json.access_token;
+}
+
+async function fetchTokenFromAuthEndpoint(authEndpoint, { baseUrl, payload, useCachedToken = true } = {}) {
+  if (!authEndpoint?.id) return fetchEnvPosApiToken({ useCachedToken });
+  const cached = useCachedToken ? getCachedToken(authEndpoint.id) : null;
+  if (cached) return cached;
+
+  const requestPayload =
+    payload && typeof payload === 'object'
+      ? payload
+      : authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object'
+        ? authEndpoint.requestBody.schema
+        : {};
+  let targetBaseUrl = toStringValue(baseUrl);
+  if (!targetBaseUrl) {
+    try {
+      targetBaseUrl = await getPosApiBaseUrl();
+    } catch {
+      targetBaseUrl = '';
+    }
+  }
+  if (!targetBaseUrl) {
+    targetBaseUrl = resolveTestServerUrl(authEndpoint);
+  }
+  if (!targetBaseUrl) {
+    targetBaseUrl = await getPosApiBaseUrl();
+  }
+  const result = await invokePosApiEndpoint(authEndpoint.id, requestPayload, {
+    endpoint: authEndpoint,
+    baseUrl: targetBaseUrl,
+    debug: true,
+    skipAuth: true,
+  });
+  const response = result?.response?.bodyJson || result?.response?.bodyText || result?.response;
+  const parsed =
+    typeof response === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(response);
+          } catch {
+            return {};
+          }
+        })()
+      : response;
+  const token = parsed?.access_token || parsed?.id_token;
+  if (!token) {
+    throw new Error('Authentication endpoint did not return an access_token');
+  }
+  const expiresIn = toNumber(parsed?.expires_in || parsed?.expiresIn) || 300;
+  cacheToken(authEndpoint.id, token, expiresIn);
+  return token;
+}
+
+export async function getPosApiToken(options = {}) {
+  const optionBag = options && typeof options === 'object' ? options : {};
+  const authEndpointId = optionBag.authEndpointId || null;
+  const authEndpoint = await resolveAuthEndpoint(authEndpointId);
+  if (authEndpoint) {
+    return fetchTokenFromAuthEndpoint(authEndpoint, {
+      baseUrl: optionBag.baseUrl,
+      payload: optionBag.authPayload,
+      useCachedToken: optionBag.useCachedToken !== false,
+    });
+  }
+  return fetchEnvPosApiToken({ useCachedToken: optionBag.useCachedToken !== false });
 }
 
 export async function buildReceiptFromDynamicTransaction(
@@ -1028,6 +1261,7 @@ export async function buildReceiptFromDynamicTransaction(
   if (!record || typeof record !== 'object') return null;
   const normalizedMapping = normalizeMapping(mapping);
   const columnLookup = createColumnLookup(record);
+  const merchantInfo = options.merchantInfo || null;
   const receiptGroupMapping =
     normalizedMapping[RECEIPT_GROUP_MAPPING_KEY] || {};
   const paymentMethodMapping =
@@ -1083,15 +1317,28 @@ export async function buildReceiptFromDynamicTransaction(
   );
 
   const branchNo =
+    toStringValue(
+      merchantInfo?.branch_no ?? merchantInfo?.branchNo ?? merchantInfo?.branch,
+    ) ||
     toStringValue(getColumnValue(columnLookup, record, normalizedMapping.branchNo)) ||
     toStringValue(readEnvVar('POSAPI_BRANCH_NO'));
   const merchantTin =
+    toStringValue(
+      merchantInfo?.tax_registration_no ??
+        merchantInfo?.merchant_tin ??
+        merchantInfo?.taxRegistrationNo ??
+        merchantInfo?.tin,
+    ) ||
     toStringValue(getColumnValue(columnLookup, record, normalizedMapping.merchantTin)) ||
     toStringValue(readEnvVar('POSAPI_MERCHANT_TIN'));
   const posNo =
+    toStringValue(
+      merchantInfo?.pos_no ?? merchantInfo?.pos_registration_no ?? merchantInfo?.posNo,
+    ) ||
     toStringValue(getColumnValue(columnLookup, record, normalizedMapping.posNo)) ||
     toStringValue(readEnvVar('POSAPI_POS_NO'));
   const districtCode =
+    toStringValue(merchantInfo?.district_code ?? merchantInfo?.districtCode) ||
     toStringValue(getColumnValue(columnLookup, record, normalizedMapping.districtCode)) ||
     toStringValue(readEnvVar('POSAPI_DISTRICT_CODE'));
 
@@ -1411,7 +1658,7 @@ export async function buildReceiptFromDynamicTransaction(
     inventoryFlagField: options.inventoryFlagField,
   });
 
-  const receiptsPayload = receipts.length
+  let receiptsPayload = receipts.length
     ? receipts.map((receipt) => {
         if (!receipt || typeof receipt !== 'object') return receipt;
         if (!receipt.taxType && taxType) {
@@ -1428,6 +1675,10 @@ export async function buildReceiptFromDynamicTransaction(
           items: items.length ? items : [],
         },
       ];
+
+  receiptsPayload = await normalizeReceiptsWithReferenceCodes(receiptsPayload);
+  const normalizedPayments = await normalizePaymentsWithReferenceCodes(payments);
+  payments = normalizedPayments;
 
   const payload = {
     branchNo,
@@ -1488,7 +1739,18 @@ export async function buildReceiptFromDynamicTransaction(
 export async function invokePosApiEndpoint(endpointId, payload = {}, options = {}) {
   const optionBag =
     options && typeof options === 'object' ? options : { headers: {}, endpoint: null };
-  const endpoint = optionBag.endpoint || (await resolvePosApiEndpoint(endpointId));
+  const {
+    headers: optionHeaders,
+    endpoint: endpointOverride,
+    baseUrl,
+    debug,
+    authEndpointId,
+    authPayload,
+    environment,
+    skipAuth,
+    useCachedToken = true,
+  } = optionBag;
+  const endpoint = endpointOverride || (await resolvePosApiEndpoint(endpointId));
   const method = (endpoint?.method || 'GET').toUpperCase();
   let path = (endpoint?.path || '/').trim() || '/';
   const params = Array.isArray(endpoint?.parameters) ? endpoint.parameters : [];
@@ -1533,21 +1795,70 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
     bodyPayload = restPayload;
   }
 
-  const headers = { ...(optionBag.headers || {}) };
+  const headers = { ...(optionHeaders || {}) };
   let body;
   if (bodyPayload !== undefined && method !== 'GET' && method !== 'HEAD') {
-    if (!headers['Content-Type']) {
-      headers['Content-Type'] = 'application/json';
+    if (endpoint?.posApiType === 'AUTH') {
+      headers['Content-Type'] = 'application/x-www-form-urlencoded';
+      const paramsForm = new URLSearchParams();
+      Object.entries(bodyPayload || {}).forEach(([key, value]) => {
+        if (value === undefined || value === null) return;
+        paramsForm.set(key, String(value));
+      });
+      body = paramsForm.toString();
+    } else {
+      if (!headers['Content-Type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+      body = JSON.stringify(bodyPayload);
     }
-    body = JSON.stringify(bodyPayload);
   }
 
-  return posApiFetch(path, {
-    method,
-    body,
-    token: await getPosApiToken(),
-    headers,
-  });
+  const requestBaseUrl = baseUrl || resolveTestServerUrl(endpoint, environment) || (await getPosApiBaseUrl());
+  const requestUrl = `${trimEndSlash(requestBaseUrl)}${path.startsWith('/') ? path : `/${path}`}`;
+
+  let token = null;
+  if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
+    token = await getPosApiToken({
+      authEndpointId,
+      baseUrl: requestBaseUrl,
+      authPayload,
+      useCachedToken,
+    });
+  }
+
+  try {
+    const response = await posApiFetch(path, {
+      method,
+      body,
+      token,
+      headers,
+      baseUrl: requestBaseUrl,
+      debug,
+    });
+    if (debug) {
+      return {
+        response,
+        request: {
+          method,
+          url: requestUrl,
+          headers,
+          body: bodyPayload ?? null,
+        },
+      };
+    }
+    return response;
+  } catch (err) {
+    if (debug) {
+      err.request = {
+        method,
+        url: requestUrl,
+        headers,
+        body: bodyPayload ?? null,
+      };
+    }
+    throw err;
+  }
 }
 
 export async function sendReceipt(payload, options = {}) {
@@ -1557,7 +1868,7 @@ export async function sendReceipt(payload, options = {}) {
   const endpoint = options.endpoint || (await resolvePosApiEndpoint(options.endpointId));
   const method = (endpoint?.method || 'POST').toUpperCase();
   const path = endpoint?.path || '/rest/receipt';
-  const token = await getPosApiToken();
+  const token = await getPosApiToken({ authEndpointId: endpoint?.authEndpointId });
   const headers = { ...(options.headers || {}) };
   if (method !== 'GET' && method !== 'HEAD') {
     headers['Content-Type'] = headers['Content-Type'] || 'application/json';

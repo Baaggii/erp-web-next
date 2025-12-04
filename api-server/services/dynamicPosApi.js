@@ -9,6 +9,11 @@ import {
   computePosApiUpdates,
   createColumnLookup,
 } from './posApiPersistence.js';
+import {
+  saveEbarimtInvoiceSnapshot,
+  persistEbarimtInvoiceResponse,
+} from './ebarimtInvoiceStore.js';
+import { getMerchantById } from './merchantService.js';
 
 function normalizeName(value) {
   if (typeof value !== 'string') return '';
@@ -113,6 +118,14 @@ export async function issueDynamicTransactionEbarimt(
     throw err;
   }
 
+  const merchantId = record?.merchant_id ?? record?.merchantId ?? null;
+  const merchantInfo = merchantId ? await getMerchantById(merchantId) : null;
+  if (!merchantInfo) {
+    const err = new Error('Merchant information is required for POSAPI submissions');
+    err.status = 400;
+    throw err;
+  }
+
   const companyColumn = findColumn(record, ['company_id']);
   if (
     companyColumn &&
@@ -133,6 +146,7 @@ export async function issueDynamicTransactionEbarimt(
   const receiptType = formCfg.posApiType || process.env.POSAPI_RECEIPT_TYPE || '';
   const payload = await buildReceiptFromDynamicTransaction(record, mapping, receiptType, {
     typeField: formCfg.posApiTypeField,
+    merchantInfo,
   });
   if (!payload) {
     const err = new Error('POSAPI receipt payload could not be generated from the transaction');
@@ -140,10 +154,23 @@ export async function issueDynamicTransactionEbarimt(
     throw err;
   }
 
+  const invoiceId = await saveEbarimtInvoiceSnapshot({
+    masterTable: tableName,
+    masterId: recordId,
+    record,
+    payload,
+    merchantInfo,
+  });
+
   const response = await sendReceipt(payload, { endpoint });
   await persistPosApiDetails(tableName, pkColumn, recordId, response, record, {
     fieldsFromPosApi: formCfg.fieldsFromPosApi,
   });
+  if (invoiceId) {
+    await persistEbarimtInvoiceResponse(invoiceId, response, {
+      fieldsFromPosApi: formCfg.fieldsFromPosApi,
+    });
+  }
 
-  return { id: recordId, posApi: { payload, response } };
+  return { id: recordId, ebarimtInvoiceId: invoiceId, posApi: { payload, response } };
 }

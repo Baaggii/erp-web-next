@@ -1,0 +1,1887 @@
+{
+	"info": {
+		"_postman_id": "faa8a1f3-0f4c-4c14-b836-51d3bda994b5",
+		"name": "PosAPI 3.0 системийн API холболт зааврууд Copy",
+		"description": "---\r\nstoplight-id: 8mw1byololjkv \r\n---\r\n\r\n## ЦАХИМ ТӨЛБӨРИЙН БАРИМТЫН СИСТЕМ POS API 3.0\r\n\r\n### Танилцуулга \r\n\r\n<!-- theme: none -->\r\n\r\n> **1.1. Хэрэглэгчийн систем болон PosAPI нь REST service ашиглан мэдээлэл солилцдог болсон нь өмнөх хувилбараас давуу талтай.**\r\n> PosAPI 2.0 хувилбар нь програмын сан байдлаар хөгжүүлэгдсэн бөгөөд хэрэглэгчийн системд суурилж ажилладаг. Иймд тухайн хэрэглэгчийн системээс хэт хамааралтай, өөрчлөлт шинэчлэлтийг хийх боломжгүй байдаг. PosAPI 3.0-н хувьд бие даасан тусдаа service application тул хэрэглэгчийн системээс үл хамааран ажилладаг. Энэ нь дээрх 2.0 хувилбар дээр гарч байсан алдаа дутагдлыг арилгаж өгч байна.PosAPI 2.0 нь хэрэглэгчийн системийн нэг хэсэг болж ажиллахын тулд мэдээллийг function ашиглан солилцдог байсныг 3.0 хувилбар дээр өөрчлөн REST WebService ашиглан солилцдог болсон. Мөн хэрэглэгчийн систем болон PosAPI-н хоорондоо Server-Client хэлбэрээр ажиллах бүрэн боломжийг нээж өгсөн.\r\n\r\n- [POS API 3.0 татах (Бодит орчин)](https://share.itc.gov.mn/share/developer/PosService_3.0.10-Prod.zip)\r\n- [POS API 3.0 татах (Хөгжүүлэлтийн орчин)](https://share.itc.gov.mn/share/developer/ST_PosService_3.0.10-Staging.zip)\r\n\r\n<!-- theme: none -->\r\n\r\n> **1.2. Нэг PosAPI-г хэд хэдэн этгээд ашиглан,баримтын мэдээлэл солилцох боломжийг бүрдүүлсэн.**\r\n> PosAPI 2.0 хувилбар нь зөвхөн нэг иргэн, ААН-ийн баримтыг хүлээн авах боломжтой байсан. Энэ нь > > сервер шийдэл бүхий хэрэглэгчийн системийн хувьд төвөгтэй шийдэл юм. Харин PosAPI 3.0 хувилбарын > хувьд энэхүү асуудлыг бүрэн шийдвэрлэсэн.\r\n> PosAPI 3.0 хувилбар нь өөр дээрээ нэг болон түүнээс дээш тооны ААН, иргэнийг бүртгэн,тэдгээрийн > баримтыг бүртгэх боломжтой болсон.\r\n\r\n### PosAPI тохируулах: \r\n\r\n> PosAPI нь суусны дараа анхны байдлаар тохируулах шаардлагатай. “posapi.ini” файлд тухайн PosAPI-н үндсэн тохиргоо байрлах ба “P101.poi, P102.poi” файлуудад ажиллагааны тохиргоо байрлах ба нууцлагдсан байна.\r\n\r\nҮндсэн тохиргооны тайлбар /posapi.ini файл/\r\n\r\n| Нэр              | Талбар                                                                        |\r\n| ---------------- | ----------------------------------------------------------------------------- |\r\n| authUrl          | Тухайн PosAPI-н нэгдсэн нэвтрэлттэй холбогдох тохиргоо./Өөрчлөх шаардлагагүй/ |\r\n| authRealm        | Тухайн PosAPI-н нэгдсэн нэвтрэлттэй холбогдох тохиргоо./Өөрчлөх шаардлагагүй/ |\r\n| authClientId     | Тухайн PosAPI-н нэгдсэн нэвтрэлттэй холбогдох тохиргоо./Өөрчлөх шаардлагагүй/ |\r\n| authClientSecret | Тухайн PosAPI-н нэгдсэн нэвтрэлттэй холбогдох тохиргоо./Өөрчлөх шаардлагагүй/ |\r\n| ebarimtUrl       | Ebarimt системтэй холбогдох хаяг. /Өөрчлөх шаардлагагүй/                      |\r\n| db               | Өгөгдлийн сангийн driver.                                                     |\r\n| dbHost           | Өгөгдлийн сангийн хаяг. /Хэрэв QSQLITE бол файлын зам байна/                  |\r\n| dbPort           | Өгөгдлийн сангийн port. /Хэрэв QSQLITE бол бөглөхгүй/                         |\r\n| dbUser           | Өгөгдлийн сангийн хэрэглэгчийн нэр. /Хэрэв QSQLITE бол бөглөхгүй/             |\r\n| dbPass           | Өгөгдлийн сангийн нууц үг. /Хэрэв QSQLITE бол бөглөхгүй/                      |\r\n| dbName           | Өгөгдлийн сангийн баазын нэр. /Хэрэв QSQLITE бол бөглөхгүй/                   |\r\n| dbOptions        | Өгөгдлийн сангийн нэмэлт тохиргоо. /Хэрэв QSQLITE бол бөглөхгүй/              |\r\n| workDir          | PosAPI-н ажиллагааны хавтас                                                   |\r\n| webServiceHost   | PosAPI-н ажиллах сүлжээний IP address                                         |\r\n| webServicePort   | PosAPI-н ажиллах сүлжээний port                                               |\r\n\r\n<!-- theme: none -->\r\n⚠ Анхаарах зүйлс:\r\n\"workDir\" хавтсанд байрлах тохиргооны файлууд тогтмол өөрчлөгдөж байдаг тул PosAPI-г ажиллуулж буй хэрэглэгч нь унших, бичих эрхтэй байх шаардлагатай. Уг хавтсыг \"FREEZE\" хийж болохгүй\r\n\r\nPosAPI-н дэмжиж ажиллах өгөгдлийн сангууд ба driver-ууд\r\n\r\n| Нэр     | Талбар                        |\r\n| ------- | ----------------------------- |\r\n| QMYSQL  | MySQL эсвэл MariaDB           |\r\n| QPSQL   | PostgreSQL                    |\r\n| QODBC   | ODBC for Microsoft SQL Server |\r\n| QSQLITE | SQLite version 3              |\r\n\r\n⚠ Анхаарах зүйл:\r\nPosAPI нь ачаалагдах үедээ өгөгдлийн сангийн хүснэгтүүдийг автоматаар үүсгэдэг. Тиймээс уг тохиргоог хийх хэрэглэгч нь хүснэгт үүсгэх эрхтэй байх шаардлагатай.\r\nСүлжээний тохиргоо:\r\n\r\nТохиргоо | Шаардлага\r\n---------|----------\r\n Хадгалах сан (Storage) | Хамгийн багадаа 1GB сул зайтай байх \r\n Сүлжээний хурд | Хамгийн багадаа 80 Mbps \r\n Хандах эрхийн нөхцөл | Зөвхөн Монгол Улсын сүлжээнээс хандах боломжтой /Гадаадаас холбогдох бол Монгол IP-тэй VPN ашиглана./\r\n\r\n>Зөвшөөрөгдсөн IP хаягууд /Network/: \r\nДомэйн | Серверийн IP \r\n---------|----------\r\n api.ebarimt.mn  | 103.17.108.216, 103.17.108.217\r\n auth.itc.gov.mn | 103.87.69.75, 103.87.69.76\r\n> PosAPI нь үндсэн тохиргоогоор SQLITE баазыг сонгосон байдаг бөгөөд уг тохиргоо нь цөөн тооны баримт үйлддэг хэрэглэгчийн системд илүү тохиромжтой байдаг. Харин олон тооны баримт үйлддэг хэрэглэгчийн системд SQLITE бааз нь зохимжгүй бөгөөд бусад төрлийн баазыг ашиглах нь илүү үр дүнтэй.\r\n\r\n### PosAPI идэвхжүүлэх:\r\n\r\n> PosAPI суулгасны дараа идэвхгүй төлөвт байдаг ба уг төлөвт аль ч сервисийг дуудсан ажиллахгүй. Идэвхжүүлэхийн тулд PosAPI систем рүү оператор эрх бүхий иргэн нэвтэрч орох шаардлагатай. Хэрэв нэвтрэх үйлдэл хийгдсэн бол PosAPI ийг идэвхжүүлэх процесс дуудагдаж, тухайн PosAPI-г нэвтэрсэн операторын бүртгэлд бүртгэж шинээр сугалааны дугаар авна.\r\n\r\n![image001.png](../assets/images/image001.png)\r\n\r\nPosAPI-руу хандах port нь posapi.ini файлд тохируулсан port байна /default port: 7080/.\r\nМөн тухайн иргэн нь хэд хэдэн операторын эрхтэй байж болох бөгөөд PosAPI-г идэвхжүүлэхдээ зөвхөн нэг оператороо сонгон идэвхжүүлнэ\r\n\r\n![image002.png](../assets/images/image002.png)\r\n\r\nPosAPI амжилттай идэвхэжсэн үед дараах байдлаар харагдана.\r\n\r\n![es.png](../assets/images/es.png)\r\n\r\n> Эм, эмнэлгийн хэрэгслийн чанар, аюулгүй байдал, хангамж, хүртээмжийг нэгдсэн цахим тогтолцоогоор хянах, цахимжилтыг эрчимжүүлэх зорилгоор шинэчлэн батлагдсан Эм, эмнэлгийн хэрэгслийн тухай 11 дүгээр зүйлийн 11.1.7, 47 дугаар зүйлийн 47.11.1, 47.12 зүйлд тус тус заасны дагуу эм, эмнэлгийн хэрэгсэл борлуулагч этгээд нь эм, эмнэлгийн хэрэгслийн цувралын дугаар, стандарт код, тоо хэмжээг төлбөрийн баримтад тусган, цахим санд хадгалах боломжийг бүрдүүлсэн. Дээрх өөрчлөлтийн дагуу тухайн төрлийн бүтээгдэхүүн борлуулагч \"Эмийн сан\"-ийн PosAPI системд \"Посын нөхцөл\" хэсгийн \"Эмийн сан\" сонголтыг сонгон хадгална. Мөн төлбөрийн баримт үүсгэх JSON-д цувралын дугаарыг нэмэлтээр оруулна.\r\n\r\nАнхаарах зүйлс :\r\n\r\n1. Эмийн сангийн POSAPI 3.0 холболт бол заавал эмийн сан гэсэн checkbox сонголтыг идэвхжүүлж хадгалах.\r\n2. Эмийн сан check хийсэн үед эмийн бүтээгдэхүүнүүдийн хамт нэг дэд баримтад илгээнэ\r\n3. \"data\":{\"lotNo\":\"эмийн бүтээгдэхүүний цувралын дугаар\"} илгээхийг анхаарна уу.\r\n\r\n<!-- theme: warning -->\r\n\r\n### Кодын жагсаалт:\r\n\r\n- [Бүтээгдэхүүн үйлчилгээний нэгдсэн ангиллын код](https://share.itc.gov.mn/share/developer/gs1\\_gs1.xlsx)\r\n\r\n### Өөрчлөлтийн түүх\r\n\r\n| № | Хувилбар | Огноо | Тайлбар | Хариуцагч |\r\n| -------- | ------- | ------- | ------- | ------- |\r\n| 1  | 1.0.0 | 03/31/2025 | Гарын авлага боловсруулав | Б.Мөнгөнчимэг   |",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50289897",
+		"_collection_link": "https://baaggiii-7271699.postman.co/workspace/Bujika-Bujak's-Workspace~d63a1c60-c52a-4563-8b5d-414b12bae27c/collection/50289897-faa8a1f3-0f4c-4c14-b836-51d3bda994b5?action=share&source=collection_link&creator=50289897"
+	},
+	"item": [
+		{
+			"name": "rest",
+			"item": [
+				{
+					"name": "receipt",
+					"item": [
+						{
+							"name": "Төлбөрийн баримт хадгалах",
+							"request": {
+								"method": "POST",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									},
+									{
+										"key": "Accept",
+										"value": "application/soap+xml"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"branchNo\": \"001\",\n  \"totalAmount\": 5600,\n  \"totalVAT\": 500,\n  \"totalCityTax\": 100,\n  \"districtCode\": \"2501\",\n  \"merchantTin\": \"110718991986\",\n  \"posNo\": \"001\",\n  \"customerTin\": null,\n  \"consumerNo\": \"10038071\",\n  \"type\": \"B2C_RECEIPT\",\n  \"inactiveId\": null,\n  \"reportMonth\": null,\n  \"billIdSuffix\": \"01\",\n  \"receipts\": [\n    {\n      \"totalAmount\": 5600,\n      \"taxType\": \"VAT_ABLE\",\n      \"merchantTin\": \"110718991986\",\n      \"customerTin\": null,\n      \"totalVAT\": 500,\n      \"totalCityTax\": 100,\n      \"invoiceId\": null,\n      \"bankAccountNo\": \"\",\n      \"iBan\": \"\",\n      \"items\": [\n        {\n          \"name\": \"Талх\",\n          \"barCode\": \"19059010880001\",\n          \"barCodeType\": \"GS1\",\n          \"classificationCode\": \"2349010\",\n          \"taxProductCode\": null,\n          \"measureUnit\": \"senlovesfits\",\n          \"qty\": 1,\n          \"unitPrice\": 5000,\n          \"totalVAT\": 500,\n          \"totalCityTax\": 100,\n          \"totalAmount\": 5600\n        }\n      ]\n    }\n  ],\n  \"payments\": [\n    {\n      \"code\": \"CASH\",\n      \"status\": \"PAID\",\n      \"paidAmount\": 5600\n    }\n  ]\n}",
+									"options": {
+										"raw": {
+											"headerFamily": "json",
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://:baseUrl/rest/receipt",
+									"protocol": "http",
+									"port": "baseUrl",
+									"path": [
+										"rest",
+										"receipt"
+									],
+									"variable": [
+										{
+											"key": "baseUrl",
+											"value": ""
+										}
+									]
+								},
+								"description": ">Энэхүү сервис нь хэрэглэгчийн системээс борлуулалтын мэдээллийг хүлээн авч, дараах мэдээллүүдийг нэмж боловсруулан буцаана: \r\n*ДДТД\r\n*Сугалааны дугаар\r\n*Баримт хэвлэсэн огноо\r\n*Баримтын код\r\n*QrCode\r\n\r\n⚠️ **Анхаарах зүйлс:**\r\n<!-- theme: warning -->\r\n>Эдгээр буцаасан мэдээллүүдээс lottery болон qrData талбаруудын мэдээллийг төлбөрийн баримтанд хэвлэхээс өөрөөр ямар ч хэлбэрээр хадгалахыг хориглоно."
+							},
+							"response": [
+								{
+									"name": "Төлбөрийн баримт B2C_RECEIPT",
+									"originalRequest": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Accept",
+												"value": "application/soap+xml"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"branchNo\": \"001\",\n  \"totalAmount\": 5600,\n  \"totalVAT\": 500,\n  \"totalCityTax\": 100,\n  \"districtCode\": \"2501\",\n  \"merchantTin\": \"110718991986\",\n  \"posNo\": \"001\",\n  \"customerTin\": null,\n  \"consumerNo\": \"10038071\",\n  \"type\": \"B2C_RECEIPT\",\n  \"inactiveId\": null,\n  \"reportMonth\": null,\n  \"billIdSuffix\": \"01\",\n  \"receipts\": [\n    {\n      \"totalAmount\": 5600,\n      \"taxType\": \"VAT_ABLE\",\n      \"merchantTin\": \"110718991986\",\n      \"customerTin\": null,\n      \"totalVAT\": 500,\n      \"totalCityTax\": 100,\n      \"invoiceId\": null,\n      \"bankAccountNo\": \"\",\n      \"iBan\": \"\",\n      \"items\": [\n        {\n          \"name\": \"Талх\",\n          \"barCode\": \"19059010880001\",\n          \"barCodeType\": \"GS1\",\n          \"classificationCode\": \"2349010\",\n          \"taxProductCode\": null,\n          \"measureUnit\": \"senlovesfits\",\n          \"qty\": 1,\n          \"unitPrice\": 5000,\n          \"totalVAT\": 500,\n          \"totalCityTax\": 100,\n          \"totalAmount\": 5600\n        }\n      ]\n    }\n  ],\n  \"payments\": [\n    {\n      \"code\": \"CASH\",\n      \"status\": \"PAID\",\n      \"paidAmount\": 5600\n    }\n  ]\n}",
+											"options": {
+												"raw": {
+													"headerFamily": "json",
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "http://:baseUrl/rest/receipt",
+											"protocol": "http",
+											"port": "baseUrl",
+											"path": [
+												"rest",
+												"receipt"
+											],
+											"variable": [
+												{
+													"key": "baseUrl",
+													"value": ""
+												}
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "xml",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/soap+xml"
+										}
+									],
+									"cookie": [],
+									"body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<element>\n  <id>(string)</id>\n  <posId>(number)</posId>\n  <status>(string)</status>\n  <message>(string)</message>\n  <qrDate>(string)</qrDate>\n  <lottery>(string)</lottery>\n  <date>(string)</date>\n  <easy>(string)</easy>\n  <receipts>\n    <id>(string)</id>\n    <bankAccountId>(number)</bankAccountId>\n  </receipts>\n  <receipts>\n    <id>(string)</id>\n    <bankAccountId>(number)</bankAccountId>\n  </receipts>\n</element>"
+								},
+								{
+									"name": "Төлбөрийн баримт  B2B_RECEIPT",
+									"originalRequest": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Accept",
+												"value": "application/soap+xml"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"branchNo\": \"001\",\n  \"totalAmount\": 5000,\n  \"totalVAT\": 0,\n  \"totalCityTax\": 0,\n  \"districtCode\": \"2501\",\n  \"merchantTin\": \"110718991986\",\n  \"posNo\": \"001\",\n  \"customerTin\": \"110718991986\",\n  \"consumerNo\": \"\",\n  \"type\": \"B2B_RECEIPT\",\n  \"inactiveId\": null,\n  \"invoiceId\": null,\n  \"reportMonth\": null,\n  \"billIdSuffix\": \"01\",\n  \"receipts\": [\n    {\n      \"totalAmount\": 5000,\n      \"taxType\": \"VAT_FREE\",\n      \"merchantTin\": \"110718991986\",\n      \"customerTin\": null,\n      \"totalVAT\": 0,\n      \"totalCityTax\": 0,\n      \"bankAccountNo\": null,\n      \"iBan\": null,\n      \"items\": [\n        {\n          \"name\": \":Дээж сүү\",\n          \"barCode\": \"8654000102657\",\n          \"barCodeType\": \"GS1\",\n          \"classificationCode\": \"2349010\",\n          \"taxProductCode\": \"320\",\n          \"measureUnit\": \"senlovesfits\",\n          \"qty\": 1,\n          \"unitPrice\": 5000,\n          \"totalVAT\": 0,\n          \"totalCityTax\": 0,\n          \"totalAmount\": 5000\n        }\n      ]\n    }\n  ],\n  \"payments\": [\n    {\n      \"code\": \"CASH\",\n      \"status\": \"PAID\",\n      \"paidAmount\": 5000\n    }\n  ]\n}",
+											"options": {
+												"raw": {
+													"headerFamily": "json",
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "http://:baseUrl/rest/receipt",
+											"protocol": "http",
+											"port": "baseUrl",
+											"path": [
+												"rest",
+												"receipt"
+											],
+											"variable": [
+												{
+													"key": "baseUrl",
+													"value": ""
+												}
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "xml",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/soap+xml"
+										}
+									],
+									"cookie": [],
+									"body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<element>\n  <id>(string)</id>\n  <posId>(number)</posId>\n  <status>(string)</status>\n  <message>(string)</message>\n  <qrDate>(string)</qrDate>\n  <lottery>(string)</lottery>\n  <date>(string)</date>\n  <easy>(string)</easy>\n  <receipts>\n    <id>(string)</id>\n    <bankAccountId>(number)</bankAccountId>\n  </receipts>\n  <receipts>\n    <id>(string)</id>\n    <bankAccountId>(number)</bankAccountId>\n  </receipts>\n</element>"
+								},
+								{
+									"name": "Төлбөрийн баримт B2C_INVOICE",
+									"originalRequest": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Accept",
+												"value": "application/soap+xml"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"branchNo\": \"001\",\n  \"totalAmount\": 5000,\n  \"totalVAT\": 0,\n  \"totalCityTax\": 0,\n  \"districtCode\": \"2501\",\n  \"merchantTin\": \"110718991986\",\n  \"posNo\": \"001\",\n  \"customerTin\": null,\n  \"consumerNo\": \"\",\n  \"type\": \"B2C_INVOICE\",\n  \"inactiveId\": null,\n  \"invoiceId\": null,\n  \"reportMonth\": null,\n  \"billIdSuffix\": \"01\",\n  \"receipts\": [\n    {\n      \"totalAmount\": 5000,\n      \"taxType\": \"VAT_ZERO\",\n      \"merchantTin\": \"110718991986\",\n      \"customerTin\": null,\n      \"totalVAT\": 0,\n      \"totalCityTax\": 0,\n      \"bankAccountNo\": \"1111111111\",\n      \"iBan\": \"1001000151111111111\",\n      \"items\": [\n        {\n          \"name\": \"Таван толгой - Хятад улсын Ганц модны боомт\",\n          \"barCode\": null,\n          \"barCodeType\": \"UNDEFINED\",\n          \"classificationCode\": \"6511905\",\n          \"measureUnit\": \"senlovesfits\",\n          \"taxProductCode\": \"502\",\n          \"qty\": 1,\n          \"unitPrice\": 5000,\n          \"totalVAT\": 0,\n          \"totalCityTax\": 0,\n          \"totalAmount\": 5000\n        }\n      ]\n    }\n  ],\n  \"payments\": [\n    {\n      \"code\": \"CASH\",\n      \"status\": \"PAID\",\n      \"paidAmount\": 5000\n    }\n  ]\n}",
+											"options": {
+												"raw": {
+													"headerFamily": "json",
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "http://:baseUrl/rest/receipt",
+											"protocol": "http",
+											"port": "baseUrl",
+											"path": [
+												"rest",
+												"receipt"
+											],
+											"variable": [
+												{
+													"key": "baseUrl",
+													"value": ""
+												}
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "xml",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/soap+xml"
+										}
+									],
+									"cookie": [],
+									"body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<element>\n  <id>(string)</id>\n  <posId>(number)</posId>\n  <status>(string)</status>\n  <message>(string)</message>\n  <qrDate>(string)</qrDate>\n  <lottery>(string)</lottery>\n  <date>(string)</date>\n  <easy>(string)</easy>\n  <receipts>\n    <id>(string)</id>\n    <bankAccountId>(number)</bankAccountId>\n  </receipts>\n  <receipts>\n    <id>(string)</id>\n    <bankAccountId>(number)</bankAccountId>\n  </receipts>\n</element>"
+								},
+								{
+									"name": "Төлбөрийн баримт B2B_INVOICE",
+									"originalRequest": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Accept",
+												"value": "application/soap+xml"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"branchNo\": \"001\",\n  \"totalAmount\": 1120,\n  \"totalVAT\": 100,\n  \"totalCityTax\": 20,\n  \"districtCode\": \"0101\",\n  \"merchantTin\": \"37900846788\",\n  \"posNo\": \"123456\",\n  \"customerTin\": \"37900846788\",\n  \"consumerNo\": \"10038071\",\n  \"type\": \"B2B_RECEIPT\",\n  \"inactiveId\": \"string\",\n  \"invoiceId\": \"string\",\n  \"reportMonth\": \"string\",\n  \"billIdSuffix\": \"string\",\n  \"data\": {},\n  \"receipts\": [\n    {\n      \"totalAmount\": 1120,\n      \"totalVAT\": 100,\n      \"totalCityTax\": 20,\n      \"taxType\": \"VAT_ABLE\",\n      \"merchantTin\": \"37900846788\",\n      \"bankAccountNo\": \"string\",\n      \"iBan\": \"100100015121212121111\",\n      \"data\": {},\n      \"items\": [\n        {\n          \"name\": \"Бичгийн Цаас А4\",\n          \"barCode\": \"0123456789012\",\n          \"barCodeType\": \"GS1\",\n          \"classificationCode\": \"3212911\",\n          \"taxProductCode\": \"string\",\n          \"measureUnit\": \"string\",\n          \"qty\": 1,\n          \"unitPrice\": 1120,\n          \"totalVAT\": 100,\n          \"totalCityTax\": 20,\n          \"totalAmount\": 1120,\n          \"data\": {\n            \"lotNo\": \"string\",\n            \"stockQR\": [\n              \"BF6B1FBA86FB4C41ADDBB01C09C024F5\"\n            ]\n          }\n        }\n      ]\n    }\n  ],\n  \"payments\": [\n    {\n      \"code\": \"string\",\n      \"exchangeCode\": \"string\",\n      \"status\": \"string\",\n      \"paidAmount\": 1120,\n      \"data\": {}\n    }\n  ]\n}",
+											"options": {
+												"raw": {
+													"headerFamily": "json",
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "http://:baseUrl/rest/receipt",
+											"protocol": "http",
+											"port": "baseUrl",
+											"path": [
+												"rest",
+												"receipt"
+											],
+											"variable": [
+												{
+													"key": "baseUrl",
+													"value": ""
+												}
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "xml",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/soap+xml"
+										}
+									],
+									"cookie": [],
+									"body": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<element>\n  <id>(string)</id>\n  <posId>(number)</posId>\n  <status>(string)</status>\n  <message>(string)</message>\n  <qrDate>(string)</qrDate>\n  <lottery>(string)</lottery>\n  <date>(string)</date>\n  <easy>(string)</easy>\n  <receipts>\n    <id>(string)</id>\n    <bankAccountId>(number)</bankAccountId>\n  </receipts>\n  <receipts>\n    <id>(string)</id>\n    <bankAccountId>(number)</bankAccountId>\n  </receipts>\n</element>"
+								},
+								{
+									"name": "Төлбөрийн баримт хадгалах",
+									"originalRequest": {
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Accept",
+												"value": "application/soap+xml"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"branchNo\": \"001\",\n  \"totalAmount\": 5600,\n  \"totalVAT\": 500,\n  \"totalCityTax\": 100,\n  \"districtCode\": \"2501\",\n  \"merchantTin\": \"37900846788\",\n  \"posNo\": \"001\",\n  \"customerTin\": null,\n  \"consumerNo\": \"10038071\",\n  \"type\": \"B2C_RECEIPT\",\n  \"inactiveId\": null,\n  \"reportMonth\": null,\n  \"billIdSuffix\": \"01\",\n  \"receipts\": [\n    {\n      \"totalAmount\": 5600,\n      \"taxType\": \"VAT_ABLE\",\n      \"merchantTin\": \"37900846788\",\n      \"customerTin\": null,\n      \"totalVAT\": 500,\n      \"totalCityTax\": 100,\n      \"invoiceId\": null,\n      \"bankAccountNo\": \"\",\n      \"iBan\": \"\",\n      \"items\": [\n        {\n          \"name\": \"Талх\",\n          \"barCode\": \"19059010880001\",\n          \"barCodeType\": \"GS1\",\n          \"classificationCode\": \"2349010\",\n          \"taxProductCode\": null,\n          \"measureUnit\": \"senlovesfits\",\n          \"qty\": 1,\n          \"unitPrice\": 5000,\n          \"totalVAT\": 500,\n          \"totalCityTax\": 100,\n          \"totalAmount\": 5600\n        }\n      ]\n    }\n  ],\n  \"payments\": [\n    {\n      \"code\": \"CASH\",\n      \"status\": \"PAID\",\n      \"paidAmount\": 5600\n    }\n  ]\n}",
+											"options": {
+												"raw": {
+													"headerFamily": "json",
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "http://202.131.1.57:7080/rest/receipt",
+											"protocol": "http",
+											"host": [
+												"202",
+												"131",
+												"1",
+												"57"
+											],
+											"port": "7080",
+											"path": [
+												"rest",
+												"receipt"
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": null,
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json; charset=UTF-8"
+										},
+										{
+											"key": "Vary",
+											"value": "Origin"
+										},
+										{
+											"key": "Date",
+											"value": "Sun, 30 Nov 2025 09:29:11 GMT"
+										},
+										{
+											"key": "Content-Length",
+											"value": "992"
+										}
+									],
+									"cookie": [],
+									"body": "{\n    \"id\": \"037900846788001094590000010011560\",\n    \"version\": \"3.2.16\",\n    \"totalAmount\": 5600,\n    \"totalVAT\": 500,\n    \"totalCityTax\": 100,\n    \"branchNo\": \"001\",\n    \"districtCode\": \"2501\",\n    \"merchantTin\": \"37900846788\",\n    \"posNo\": \"001\",\n    \"consumerNo\": \"10038071\",\n    \"type\": \"B2C_RECEIPT\",\n    \"receipts\": [\n        {\n            \"id\": \"037900846788001094590000110011560\",\n            \"totalAmount\": 5600,\n            \"taxType\": \"VAT_ABLE\",\n            \"items\": [\n                {\n                    \"name\": \"Талх\",\n                    \"barCode\": \"19059010880001\",\n                    \"barCodeType\": \"GS1\",\n                    \"classificationCode\": \"2349010\",\n                    \"measureUnit\": \"senlovesfits\",\n                    \"qty\": 1,\n                    \"unitPrice\": 5000,\n                    \"totalAmount\": 5600,\n                    \"totalVAT\": 500,\n                    \"totalCityTax\": 100\n                }\n            ],\n            \"merchantTin\": \"37900846788\",\n            \"totalVAT\": 500,\n            \"totalCityTax\": 100\n        }\n    ],\n    \"payments\": [\n        {\n            \"code\": \"CASH\",\n            \"paidAmount\": 5600,\n            \"status\": \"PAID\"\n        }\n    ],\n    \"posId\": 101320579,\n    \"status\": \"SUCCESS\",\n    \"qrData\": \"30892326523954653321035662352890700726218104001622958380972725796221015728286474419026284340833935831706344460333602357489298739088603149609008213582412666890507440297648233929346058209660199552348267\",\n    \"lottery\": \"HN 90188555\",\n    \"date\": \"2025-11-30 09:29:03\",\n    \"easy\": false\n}"
+								}
+							]
+						},
+						{
+							"name": "Төлбөрийн баримт буцаах",
+							"request": {
+								"method": "DELETE",
+								"header": [
+									{
+										"key": "Content-Type",
+										"value": "application/json"
+									}
+								],
+								"body": {
+									"mode": "raw",
+									"raw": "{\n  \"id\": \"string\",\n  \"date\": \"2014-02-13\"\n}",
+									"options": {
+										"raw": {
+											"headerFamily": "json",
+											"language": "json"
+										}
+									}
+								},
+								"url": {
+									"raw": "http://:baseUrl/rest/receipt",
+									"protocol": "http",
+									"port": "baseUrl",
+									"path": [
+										"rest",
+										"receipt"
+									],
+									"variable": [
+										{
+											"key": "baseUrl",
+											"value": ""
+										}
+									]
+								},
+								"description": ">Энэхүү сервис нь барааны буцаалт хийгдсэн болон алдаатай үүссэн Хувь хүн (B2C_RECEIPT) руу шивсэн төлбөрийн баримтыг системд идэвхгүй болгох зориулалттай.\r\n\r\n\r\n⚠️ Анхаарах зүйлс:\r\n\r\n<!-- theme: warning -->\r\n\r\n* Зөвхөн иргэн баталгаажуулаагүй баримтыг идэвхгүй болгох боломжтой.\r\n* Хэрэв баталгаажсан баримт буцаагдсан бол баримт \"Баталгаажаагүй буцаалт\" гэсэн төлөвтэй болж,\r\n* Иргэн өөрийн ИБАРИМТ аппликейшнээс зөвшөөрсний дараа тухайн баримт идэвхгүй болно."
+							},
+							"response": []
+						}
+					]
+				},
+				{
+					"name": "info",
+					"item": [
+						{
+							"name": "Ажиллагааны мэдээлэл хүлээн авах",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "http://:baseUrl/rest/info",
+									"protocol": "http",
+									"port": "baseUrl",
+									"path": [
+										"rest",
+										"info"
+									],
+									"variable": [
+										{
+											"key": "baseUrl",
+											"value": ""
+										}
+									]
+								},
+								"description": "Энэхүү сервис нь \"PosAPI 3.0\" системийн тохиргоо болон ажиллагааны талаарх мэдээллийг лавлахад зориулагдсан."
+							},
+							"response": [
+								{
+									"name": "OK",
+									"originalRequest": {
+										"method": "GET",
+										"header": [
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "http://:baseUrl/rest/info",
+											"protocol": "http",
+											"port": "baseUrl",
+											"path": [
+												"rest",
+												"info"
+											],
+											"variable": [
+												{
+													"key": "baseUrl",
+													"value": ""
+												}
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"body": "{\n  \"operatorName\": \"string\",\n  \"operatorTIN\": \"string\",\n  \"posId\": 3535.840029393158,\n  \"posNo\": \"string\",\n  \"lastSentDate\": \"string\",\n  \"leftLotteries\": 6315,\n  \"appInfo\": {\n    \"applicationDir\": \"string\",\n    \"currentDir\": \"string\",\n    \"database\": \"string\",\n    \"database-host\": \"string\",\n    \"workDir\": \"string\"\n  },\n  \"merchants\": [\n    {\n      \"name\": \"string\",\n      \"tin\": \"string\",\n      \"customers\": [\n        {\n          \"name\": \"string\",\n          \"tin\": \"string\",\n          \"vatPayer\": \"string\"\n        },\n        {\n          \"name\": \"string\",\n          \"tin\": \"string\",\n          \"vatPayer\": \"string\"\n        }\n      ]\n    },\n    {\n      \"name\": \"string\",\n      \"tin\": \"string\",\n      \"customers\": [\n        {\n          \"name\": \"string\",\n          \"tin\": \"string\",\n          \"vatPayer\": \"string\"\n        },\n        {\n          \"name\": \"string\",\n          \"tin\": \"string\",\n          \"vatPayer\": \"string\"\n        }\n      ]\n    }\n  ]\n}"
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "sendData",
+					"item": [
+						{
+							"name": "Төлбөрийн баримтын нэгдсэн системд мэдээлэл илгээх",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "http://:baseUrl/rest/sendData",
+									"protocol": "http",
+									"port": "baseUrl",
+									"path": [
+										"rest",
+										"sendData"
+									],
+									"variable": [
+										{
+											"key": "baseUrl",
+											"value": ""
+										}
+									]
+								},
+								"description": ">Сервисийг заавал дуудах шаардлагагүй бөгөөд PosAPI систем нь тодорхой хугацаанд автоматаар энэхүү үйлдлийг гүйцэтгэдэг. 🔄 Хэрэв PosAPI-д хамааралтай өөрчлөлт нэгдсэн систем талд гарсан бол энэ сервисийг дуудснаар тухайн өөрчлөлтийг local баазад хадгалах боломжтой."
+							},
+							"response": [
+								{
+									"name": "OK",
+									"originalRequest": {
+										"method": "GET",
+										"header": [
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "http://:baseUrl/rest/sendData",
+											"protocol": "http",
+											"port": "baseUrl",
+											"path": [
+												"rest",
+												"sendData"
+											],
+											"variable": [
+												{
+													"key": "baseUrl",
+													"value": ""
+												}
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"body": "{}"
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "bankAccounts",
+					"item": [
+						{
+							"name": "Банкны дансны мэдээлэл лавлах",
+							"request": {
+								"method": "GET",
+								"header": [
+									{
+										"key": "Accept",
+										"value": "application/json"
+									}
+								],
+								"url": {
+									"raw": "http://:baseUrl/rest/bankAccounts?tin=string",
+									"protocol": "http",
+									"port": "baseUrl",
+									"path": [
+										"rest",
+										"bankAccounts"
+									],
+									"query": [
+										{
+											"key": "tin",
+											"value": "string",
+											"description": "Хувь хүн хуулийн этгээдийн татвар төлөгчийн дугаар"
+										}
+									],
+									"variable": [
+										{
+											"key": "baseUrl",
+											"value": ""
+										}
+									]
+								},
+								"description": ">Банкны дансны мэдээлэл лавлах сервис нь Оператор компанид хэрэглэгчээр бүртгэгдсэн \"Мерчант\" болон түүний \"Түрээслэгч\"-ийн Local баазын \"bankaccount\" хүснэгт-д бүртгэгдсэн идэвхтэй дансны мэдээллийг лавлахад зориулагдсан. \r\n\r\n<!-- theme: warning -->\r\n\r\n>PosAPI 3.0 систем дэх дансны мэдээлэл шинэчлэх тухай\r\n\r\n✅ PosAPI 3.0 систем нь local баазын \"bankaccount\" дээр дансны мэдээллийг хадгалж, уг өгөгдөлд үндэслэн баримтын дансыг үүсгэдэг.\r\n\r\n🔄 Дансны мэдээлэл хэрхэн шинэчлэгддэг вэ?\r\n\r\nПосАПИ дахь дансны мэдээлэл өөрчлөгдвөл баримт илгээх (/senddata/) үйлдэл хийгдэх үед\r\n\r\n1️⃣ Дансны дугааруудыг Оператор-Ибаримт систем дэх бүртгэлтэй тулган шалгана.\r\n\r\n2️⃣ Хэрэв өөрчлөлт илэрвэл автоматаар шинэчлэнэ.\r\n\r\n⚠ Анхаарах зүйлс:\r\n\r\nНэг ПосАПИ баримт илгээх (/senddata/) үйлдэл хийснээр зөвхөн тухайн ПосАПИ-гийн дансны мэдээлэл шинэчлэгдэнэ.\r\n\r\nБусад ПосАПИ-д энэ өөрчлөлт нөлөөлөхгүй тул, хэрэв таны аль нэг бүртгэлтэй Мерчантын дансны мэдээлэл өөрчлөгдвөл тухайн өөрчлөгдсөн Мерчант бүртгэгдсэн ПосАПИ тус бүрт баримт илгээж, шинэчлэл хийх шаардлагатай.\r\n\r\nИймд дансны мэдээлэл өөрчлөгдсөн тохиолдолд бүх холбогдох ПосАПИ дээр шинэчлэл хийхээ\r\n\r\n> \" \"Баримт илгээх\" үйлдэл хийсэн Local бааз дахь дансны мэдээлэл шинэчлэгдэхгүй бол Мерчант болон түүний түрээслэгч нь системд дансаа бүртгээгүй, эсвэл мэдээллээ шинэчлээгүй байх магадлалтай.\r\n\r\n✅ Шийдэл:\r\n\r\n\"Цахим татварын систем\"-д нэвтэрч, дансаа бүртгэх эсвэл өөрчилнө.\r\n\r\nE-invoice системийн \"Баримт үүсгэх\" цонхны \"Банкны мэдээлэл\" хэсгээс <i class=\"fa-solid fa-download\"></i> товчийг дарж, мэдээллээ шинэчлэн татна.\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n\r\n"
+							},
+							"response": [
+								{
+									"name": "OK",
+									"originalRequest": {
+										"method": "GET",
+										"header": [
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "http://:baseUrl/rest/bankAccounts?tin=string",
+											"protocol": "http",
+											"port": "baseUrl",
+											"path": [
+												"rest",
+												"bankAccounts"
+											],
+											"query": [
+												{
+													"key": "tin",
+													"value": "string",
+													"description": "Хувь хүн хуулийн этгээдийн татвар төлөгчийн дугаар"
+												}
+											],
+											"variable": [
+												{
+													"key": "baseUrl",
+													"value": ""
+												}
+											]
+										}
+									},
+									"status": "OK",
+									"code": 200,
+									"_postman_previewlanguage": "json",
+									"header": [
+										{
+											"key": "Content-Type",
+											"value": "application/json"
+										}
+									],
+									"cookie": [],
+									"body": "[\n  {\n    \"id\": 0,\n    \"tin\": \"string\",\n    \"bankAccountNo\": \"string\",\n    \"bankAccountName\": \"string\",\n    \"bankId\": 0,\n    \"bankName\": \"string\",\n    \"data\": {}\n  }\n]"
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "api",
+			"item": [
+				{
+					"name": "tpi",
+					"item": [
+						{
+							"name": "receipt",
+							"item": [
+								{
+									"name": "saveOprMerchants",
+									"item": [
+										{
+											"name": "Оператороос мерчант бүртгэх хүсэлт илгээх",
+											"request": {
+												"auth": {
+													"type": "bearer",
+													"bearer": [
+														{
+															"key": "token",
+															"value": "{{bearerToken}}",
+															"type": "string"
+														}
+													]
+												},
+												"method": "POST",
+												"header": [
+													{
+														"key": "X-API-KEY",
+														"value": "Туршилтын орчинд ашиглах: 9406e79323ec0fed4e560342bce72221107a808b",
+														"description": "Posapi@itc.gov.mn рүү хүсэлт илгээн авна"
+													},
+													{
+														"key": "Content-Type",
+														"value": "application/json"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "raw",
+													"raw": "{\n  \"posNo\": \"10****99\",\n  \"merchantTins\": [\n    \"770*****076\",\n    \"830*****855\"\n  ]\n}",
+													"options": {
+														"raw": {
+															"headerFamily": "json",
+															"language": "json"
+														}
+													}
+												},
+												"url": {
+													"raw": "https://api.ebarimt.mn/api/tpi/receipt/saveOprMerchants",
+													"protocol": "https",
+													"host": [
+														"api",
+														"ebarimt",
+														"mn"
+													],
+													"path": [
+														"api",
+														"tpi",
+														"receipt",
+														"saveOprMerchants"
+													]
+												},
+												"description": ">Энэхүү сервис нь \"Хэрэглэгчийн систем нийлүүлэгч\" (Оператор компани) өөрийн системээс \"Мерчант\" (Борлуулагч) бүртгэх хүсэлт үүсгэх боломжийг бүрдүүлнэ[Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth.yaml/paths/~1protocol~1openid-connect~1token/post)"
+											},
+											"response": [
+												{
+													"name": "OK",
+													"originalRequest": {
+														"method": "POST",
+														"header": [
+															{
+																"key": "X-API-KEY",
+																"value": "Туршилтын орчинд ашиглах: 9406e79323ec0fed4e560342bce72221107a808b",
+																"description": "Posapi@itc.gov.mn рүү хүсэлт илгээн авна"
+															},
+															{
+																"key": "Content-Type",
+																"value": "application/json"
+															},
+															{
+																"key": "Accept",
+																"value": "application/json"
+															},
+															{
+																"key": "Authorization",
+																"value": "Bearer <token>",
+																"description": "Added as a part of security scheme: bearer"
+															}
+														],
+														"body": {
+															"mode": "raw",
+															"raw": "{\n  \"posNo\": \"10****99\",\n  \"merchantTins\": [\n    \"770*****076\",\n    \"830*****855\"\n  ]\n}",
+															"options": {
+																"raw": {
+																	"headerFamily": "json",
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/tpi/receipt/saveOprMerchants",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"tpi",
+																"receipt",
+																"saveOprMerchants"
+															]
+														}
+													},
+													"status": "OK",
+													"code": 200,
+													"_postman_previewlanguage": "json",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/json"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"msg\": \"Мерчант бүртгэх хүсэлт амжилттай илгээгдлээ\",\n  \"status\": 200,\n  \"code\": null,\n  \"data\": null\n}"
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "inventory",
+					"item": [
+						{
+							"name": "stock",
+							"item": [
+								{
+									"name": "getStockQr",
+									"item": [
+										{
+											"name": "ОАТ барааны баркодын мэдээлэл лавлах /QR/",
+											"request": {
+												"auth": {
+													"type": "bearer",
+													"bearer": [
+														{
+															"key": "token",
+															"value": "{{bearerToken}}",
+															"type": "string"
+														}
+													]
+												},
+												"method": "GET",
+												"header": [
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"url": {
+													"raw": "https://st-service.itc.gov.mn/api/inventory/stock/getStockQr?stockQr=BF6B1FBA86FB4C41ADDBB01C09C024F5",
+													"protocol": "https",
+													"host": [
+														"st-service",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"api",
+														"inventory",
+														"stock",
+														"getStockQr"
+													],
+													"query": [
+														{
+															"key": "stockQr",
+															"value": "BF6B1FBA86FB4C41ADDBB01C09C024F5",
+															"description": "Тэмдгийн QR"
+														}
+													]
+												},
+												"description": ">Онцгой албан татварын тэмдэг бүхий барааны баркод болон бусад дэлгэрэнгүй мэдээллийг \"Тэмдгийн QR ID\" ашиглан лавлах бол энэхүү сервисийг ашиглах ба PosAPI 3.0 системийн \"PosAPI-руу төлбөрийн баримт хадгалах сервис\" /post-rest-receipt/-ийн stockQR талбарт хадгалах өгөгдлийг лавлахад ашиглагдана. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)"
+											},
+											"response": [
+												{
+													"name": "OK",
+													"originalRequest": {
+														"method": "GET",
+														"header": [
+															{
+																"key": "Accept",
+																"value": "application/json"
+															},
+															{
+																"key": "Authorization",
+																"value": "Bearer <token>",
+																"description": "Added as a part of security scheme: bearer"
+															}
+														],
+														"url": {
+															"raw": "https://st-service.itc.gov.mn/api/inventory/stock/getStockQr?stockQr=BF6B1FBA86FB4C41ADDBB01C09C024F5",
+															"protocol": "https",
+															"host": [
+																"st-service",
+																"itc",
+																"gov",
+																"mn"
+															],
+															"path": [
+																"api",
+																"inventory",
+																"stock",
+																"getStockQr"
+															],
+															"query": [
+																{
+																	"key": "stockQr",
+																	"value": "BF6B1FBA86FB4C41ADDBB01C09C024F5",
+																	"description": "Тэмдгийн QR"
+																}
+															]
+														}
+													},
+													"status": "OK",
+													"code": 200,
+													"_postman_previewlanguage": "json",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/json"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"barcode\": \"8656170014754\",\n  \"barcodeName\": \"Архи Ерөөл 0.75 л\",\n  \"cpcd\": \"2413150\",\n  \"productTypeCode\": \"02\",\n  \"productTypeName\": \"Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа\",\n  \"productCategory\": \"Эх орны үйлдвэр\",\n  \"productPercent\": 38,\n  \"productSize\": 750,\n  \"unitCode\": \"гр\"\n}"
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "info",
+					"item": [
+						{
+							"name": "check",
+							"item": [
+								{
+									"name": "getBranchInfo",
+									"item": [
+										{
+											"name": "District_code лавлах",
+											"request": {
+												"method": "GET",
+												"header": [
+													{
+														"key": "Accept",
+														"value": "application/javascript"
+													}
+												],
+												"url": {
+													"raw": "https://api.ebarimt.mn/api/info/check/getBranchInfo",
+													"protocol": "https",
+													"host": [
+														"api",
+														"ebarimt",
+														"mn"
+													],
+													"path": [
+														"api",
+														"info",
+														"check",
+														"getBranchInfo"
+													]
+												},
+												"description": ">Цахим төлбөрийн баримтын систем (PosAPI)-ээс үүсгэж буй төлбөрийн баримтын үйл ажиллагаа явуулж буй байршлын мэдээллийг \"districtCode\" гэсэн баганад бөглөн илгээдэг. Энэ талбарт бөглөсөн байршлын татварын алба болон дэд албаны кодын жагсаалтын мэдээллийг энэхүү сервисээс авах боломжтой.\r\n\r\n>Жишээ: Номин холдинг ХХК-ийн Архангай аймгийн Чулуут сум дахь салбараас үүсгэсэн баримтын \"districtCode\"-г 0102 гэж бөглөн илгээнэ."
+											},
+											"response": [
+												{
+													"name": "OK",
+													"originalRequest": {
+														"method": "GET",
+														"header": [
+															{
+																"key": "Accept",
+																"value": "application/javascript"
+															}
+														],
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/info/check/getBranchInfo",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"info",
+																"check",
+																"getBranchInfo"
+															]
+														}
+													},
+													"status": "OK",
+													"code": 200,
+													"_postman_previewlanguage": "text",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/javascript"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"status\": 200,\n  \"msg\": \"Амжилттай\",\n  \"data\": {\n    \"branchCode\": \"01\",\n    \"branchName\": \"Архангай\",\n    \"subBranchCode\": \"02\",\n    \"subBranchName\": \"Чулуут\"\n  }\n}"
+												},
+												{
+													"name": "Internal Server Error",
+													"originalRequest": {
+														"method": "GET",
+														"header": [],
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/info/check/getBranchInfo",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"info",
+																"check",
+																"getBranchInfo"
+															]
+														}
+													},
+													"status": "Internal Server Error",
+													"code": 500,
+													"_postman_previewlanguage": "text",
+													"header": [],
+													"cookie": [],
+													"body": ""
+												}
+											]
+										}
+									]
+								},
+								{
+									"name": "getTinInfo",
+									"item": [
+										{
+											"name": "Татвар төлөгчийн дугаар лавлах /ТIN, Civil_id/",
+											"request": {
+												"method": "GET",
+												"header": [
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"url": {
+													"raw": "https://api.ebarimt.mn/api/info/check/getTinInfo?regNo=string",
+													"protocol": "https",
+													"host": [
+														"api",
+														"ebarimt",
+														"mn"
+													],
+													"path": [
+														"api",
+														"info",
+														"check",
+														"getTinInfo"
+													],
+													"query": [
+														{
+															"key": "regNo",
+															"value": "string",
+															"description": "Татвар төлөгчийн регистрийн дугаар"
+														}
+													]
+												},
+												"description": ">Татвар төлөгчийн дугаар лавлах сервис /ТIN, Civil_id/: Шинэчлэн батлагдсан Хувь хүний мэдээлэл хамгаалах тухай хууль, Татварын ерөнхий хуульд заасны дагуу татвар төлөгчийг татварын системүүдэд бүртгэхдээ “Татвар төлөгчийн дугаар” ашиглахаар болсон. Дээрх хуулийн дагуу систем нийлүүлэгч нь PosApi 3.0 системд борлуулагчийг бүртгэхдээ “Хуулийн этгээд”-ийн хувьд ТИН дугаар, “Хувь хүн”-ий хувьд Civil_id-г ашиглах ба энэхүү сервис нь татвар төлөгчийн дугаарыг регистрийн дугаараар лавлах боломжийг бүрдүүлсэн."
+											},
+											"response": [
+												{
+													"name": "OK",
+													"originalRequest": {
+														"method": "GET",
+														"header": [
+															{
+																"key": "Accept",
+																"value": "application/json"
+															}
+														],
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/info/check/getTinInfo?regNo=string",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"info",
+																"check",
+																"getTinInfo"
+															],
+															"query": [
+																{
+																	"key": "regNo",
+																	"value": "string",
+																	"description": "Татвар төлөгчийн регистрийн дугаар"
+																}
+															]
+														}
+													},
+													"status": "OK",
+													"code": 200,
+													"_postman_previewlanguage": "json",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/json"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"status\": 200,\n  \"msg\": \"Амжилттай\",\n  \"data\": 31654321554\n}"
+												}
+											]
+										}
+									]
+								},
+								{
+									"name": "getInfo",
+									"item": [
+										{
+											"name": "Бүртгэлийн мэдээлэл лавлах",
+											"request": {
+												"method": "GET",
+												"header": [
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"url": {
+													"raw": "https://api.ebarimt.mn/api/info/check/getInfo?tin=31654321554",
+													"protocol": "https",
+													"host": [
+														"api",
+														"ebarimt",
+														"mn"
+													],
+													"path": [
+														"api",
+														"info",
+														"check",
+														"getInfo"
+													],
+													"query": [
+														{
+															"key": "tin",
+															"value": "31654321554",
+															"description": "ТИН дугаар"
+														}
+													]
+												},
+												"description": ">Энэхүү сервис нь “Татвар төлөгчийн дугаар”-аар тухайн этгээдийн татварын бүртгэл, мэдээллийн нэгдсэн санд байх бүртгэлийн мэдээллийг дамжуулах үүрэгтэй ба хэрэглэгчийн систем нийлүүлэгч нь өөрийн хөгжүүлж буй системд холбон ашиглах боломжтой.\r\n\r\n[Регистрийн дугаар ашилан TIN дугаар авах бол дарна уу.](ebarimt.yaml/paths/~1api~1info~1check~1getTinInfo/get)"
+											},
+											"response": [
+												{
+													"name": "OK",
+													"originalRequest": {
+														"method": "GET",
+														"header": [
+															{
+																"key": "Accept",
+																"value": "application/json"
+															}
+														],
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/info/check/getInfo?tin=31654321554",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"info",
+																"check",
+																"getInfo"
+															],
+															"query": [
+																{
+																	"key": "tin",
+																	"value": "31654321554",
+																	"description": "ТИН дугаар"
+																}
+															]
+														}
+													},
+													"status": "OK",
+													"code": 200,
+													"_postman_previewlanguage": "json",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/json"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"msg\": \"Амжилттай\",\n  \"status\": 200,\n  \"data\": {\n    \"name\": \"ТЕСТИЙН ХЭРЭГЛЭГЧ 1\",\n    \"freeProject\": false,\n    \"cityPayer\": true,\n    \"vatPayer\": true,\n    \"found\": true,\n    \"vatpayerRegisteredDate\": \"2019-02-16\",\n    \"isGovernment\": false\n  }\n}"
+												}
+											]
+										}
+									]
+								},
+								{
+									"name": "barcode",
+									"item": [
+										{
+											"name": "v2",
+											"item": [
+												{
+													"name": "{p4}",
+													"item": [
+														{
+															"name": "{p5}",
+															"item": [
+																{
+																	"name": "{p1}",
+																	"item": [
+																		{
+																			"name": "{p2}",
+																			"item": [
+																				{
+																					"name": "{p3}",
+																					"item": [
+																						{
+																							"name": "{p6}",
+																							"item": [
+																								{
+																									"name": "БҮНА, бараа бүтээгдэхүүний ангилал, баркод лавлах",
+																									"request": {
+																										"method": "GET",
+																										"header": [
+																											{
+																												"key": "Accept",
+																												"value": "application/json"
+																											}
+																										],
+																										"url": {
+																											"raw": "https://api.ebarimt.mn/api/info/check/barcode/v2/:p4/:p5/:p1/:p2/:p3/:p6",
+																											"protocol": "https",
+																											"host": [
+																												"api",
+																												"ebarimt",
+																												"mn"
+																											],
+																											"path": [
+																												"api",
+																												"info",
+																												"check",
+																												"barcode",
+																												"v2",
+																												":p4",
+																												":p5",
+																												":p1",
+																												":p2",
+																												":p3",
+																												":p6"
+																											],
+																											"variable": [
+																												{
+																													"key": "p4",
+																													"value": "0111",
+																													"description": "Өмнөх ангийн дугаар"
+																												},
+																												{
+																													"key": "p5",
+																													"value": "01111",
+																													"description": "Өмнөх дэд ангийн дугаар"
+																												},
+																												{
+																													"key": "p1",
+																													"value": "0",
+																													"description": "Өмнөх салбарын дугаар"
+																												},
+																												{
+																													"key": "p2",
+																													"value": "01",
+																													"description": "Өмнөх дэд салбарын дугаар"
+																												},
+																												{
+																													"key": "p3",
+																													"value": "011",
+																													"description": "Өмнөх Бүлгийн дугаар"
+																												},
+																												{
+																													"key": "p6",
+																													"value": "0111100",
+																													"description": "Өмнөх БҮНА код"
+																												}
+																											]
+																										},
+																										"description": ">Энэхүү сервис нь Цахим төлбөрийн баримтын системийн PosAPI 3.0 хувилбарыг ашиглагч хэрэглэгчдэд зориулан Бараа, Үйлчилгээний Нэгдсэн Ангилал (БҮНА)-ын түвшин тус бүр болон тухайн ангилалд хамаарах баркодын мэдээллийг лавлах, ашиглах зориулалттай болно.\r\n🔍 Энэхүү сервис нь Бараа, Үйлчилгээний Нэгдсэн Ангилал (БҮНА)-ын шатлалтай бүтэцтэй ангиллын мэдээллийг үе шаттайгаар лавлах боломжийг хэрэглэгчдэд олгодог.\r\n\r\n1️⃣Сервисийг ямар нэгэн параметргүйгээр дуудсан тохиолдолд хамгийн дээд түвшний ангилал болох \"Салбар\"-ын жагсаалтыг буцаана.\r\n\r\n2️⃣Салбарын код-ыг параметрээр илгээх үед тухайн салбарт хамаарах \"Дэд салбар\"-уудын жагсаалт ирнэ.\r\n\r\n3️⃣Дэд салбарын код-ыг параметрт оруулснаар уг дэд салбарт хамаарах \"Бүлэг\" ангиллын мэдээллийг буцаана.\r\n\r\n4️⃣Бүлгийн код-ыг параметрт оруулахад холбогдох \"Анги\",\"Дэд анги\" цаашлаад \"БҮНА код\", эцэст нь тухайн БҮНА кодын ангилалд багтах барааны баркодын жагсаалтыг харуулна.\r\n\r\n5️⃣Ийм байдлаар шат дараатайгаар ангиллын кодыг параметрт дамжуулан илгээснээр БҮНА-ийн бүтэцтэй уялдсан \"Баркод\"-ын мэдээллийг авах боломжтой."
+																									},
+																									"response": [
+																										{
+																											"name": "Салбарын JSON",
+																											"originalRequest": {
+																												"method": "GET",
+																												"header": [
+																													{
+																														"key": "Accept",
+																														"value": "application/json"
+																													}
+																												],
+																												"url": {
+																													"raw": "https://api.ebarimt.mn/api/info/check/barcode/v2/:p4/:p5/:p1/:p2/:p3/:p6",
+																													"protocol": "https",
+																													"host": [
+																														"api",
+																														"ebarimt",
+																														"mn"
+																													],
+																													"path": [
+																														"api",
+																														"info",
+																														"check",
+																														"barcode",
+																														"v2",
+																														":p4",
+																														":p5",
+																														":p1",
+																														":p2",
+																														":p3",
+																														":p6"
+																													],
+																													"variable": [
+																														{
+																															"key": "p1",
+																															"value": "0",
+																															"description": "Өмнөх салбарын дугаар"
+																														},
+																														{
+																															"key": "p2",
+																															"value": "01",
+																															"description": "Өмнөх дэд салбарын дугаар"
+																														},
+																														{
+																															"key": "p3",
+																															"value": "011",
+																															"description": "Өмнөх Бүлгийн дугаар"
+																														},
+																														{
+																															"key": "p4",
+																															"value": "0111",
+																															"description": "Өмнөх ангийн дугаар"
+																														},
+																														{
+																															"key": "p5",
+																															"value": "01111",
+																															"description": "Өмнөх дэд ангийн дугаар"
+																														},
+																														{
+																															"key": "p6",
+																															"value": "0111100",
+																															"description": "Өмнөх БҮНА код"
+																														}
+																													]
+																												}
+																											},
+																											"status": "OK",
+																											"code": 200,
+																											"_postman_previewlanguage": "json",
+																											"header": [
+																												{
+																													"key": "Content-Type",
+																													"value": "application/json"
+																												}
+																											],
+																											"cookie": [],
+																											"body": "[\n  [\n    \"0\",\n    \"Хөдөө аж ахуй, ойн аж ахуй, загас агнуурын бүтээгдэхүүн \"\n  ],\n  [\n    \"1\",\n    \"Хүдэр, эрдэс бодис, цахилгаан, хий, ус\"\n  ],\n  [\n    \"2\",\n    \"Хүнсний бүтээгдэхүүн, ундаа, тамхи; нэхмэл даавуу, хувцас, арьс ширэн бүтээгдэхүүн\"\n  ],\n  [\n    \"3\",\n    \"Металл бүтээгдэхүүн болон машин, тоног төхөөрөмжөөс бусад төрлийн тээвэрлэж болох бараа, бүтээгдэхүүн\"\n  ],\n  [\n    \"4\",\n    \"Металл бүтээгдэхүүн, машин, тоног төхөөрөмж\"\n  ],\n  [\n    \"5\",\n    \"Барилга, барилгын ажил, үйлчилгээ\"\n  ],\n  [\n    \"6\",\n    \"Худалдаа, зочид буудал, хүнс, ундаа, тээврийн болон ус, цахилгаан хангамжийн үйлчилгээ\"\n  ],\n  [\n    \"7\",\n    \"Санхүү, түүнтэй холбогдох үйлчилгээ,үл хөдлөх хөрөнгийн үйлчилгээ, түрээсийн болон лизингийн үйлчилгээ\"\n  ],\n  [\n    \"8\",\n    \"Бизнес, үйлдвэрлэлийн үйлчилгээ\"\n  ],\n  [\n    \"9\",\n    \"Нийгэм, хамт олон, бие хүнд үзүүлэх үйлчилгээ\"\n  ]\n]"
+																										},
+																										{
+																											"name": "Дэд салбар",
+																											"originalRequest": {
+																												"method": "GET",
+																												"header": [
+																													{
+																														"key": "Accept",
+																														"value": "application/json"
+																													}
+																												],
+																												"url": {
+																													"raw": "https://api.ebarimt.mn/api/info/check/barcode/v2/:p4/:p5/:p1/:p2/:p3/:p6",
+																													"protocol": "https",
+																													"host": [
+																														"api",
+																														"ebarimt",
+																														"mn"
+																													],
+																													"path": [
+																														"api",
+																														"info",
+																														"check",
+																														"barcode",
+																														"v2",
+																														":p4",
+																														":p5",
+																														":p1",
+																														":p2",
+																														":p3",
+																														":p6"
+																													],
+																													"variable": [
+																														{
+																															"key": "p1",
+																															"value": "0",
+																															"description": "Өмнөх салбарын дугаар"
+																														},
+																														{
+																															"key": "p2",
+																															"value": "01",
+																															"description": "Өмнөх дэд салбарын дугаар"
+																														},
+																														{
+																															"key": "p3",
+																															"value": "011",
+																															"description": "Өмнөх Бүлгийн дугаар"
+																														},
+																														{
+																															"key": "p4",
+																															"value": "0111",
+																															"description": "Өмнөх ангийн дугаар"
+																														},
+																														{
+																															"key": "p5",
+																															"value": "01111",
+																															"description": "Өмнөх дэд ангийн дугаар"
+																														},
+																														{
+																															"key": "p6",
+																															"value": "0111100",
+																															"description": "Өмнөх БҮНА код"
+																														}
+																													]
+																												}
+																											},
+																											"status": "OK",
+																											"code": 200,
+																											"_postman_previewlanguage": "json",
+																											"header": [
+																												{
+																													"key": "Content-Type",
+																													"value": "application/json"
+																												}
+																											],
+																											"cookie": [],
+																											"body": "[\n  [\n    \"01\",\n    \"Хөдөө аж ахуйн бүтээгдэхүүн, цэцэрлэгжүүлэлт\"\n  ],\n  [\n    \"02\",\n    \"Мал, амьтан, тэдгээрийн гаралтай бүтээгдэхүүн махыг оруулахгүйгээр\"\n  ],\n  [\n    \"03\",\n    \"Ойн аж ахуй, мод бэлтгэл\"\n  ],\n  [\n    \"04\",\n    \"Загас, загасан бүтээгдэхүүн\"\n  ]\n]"
+																										},
+																										{
+																											"name": "Бүлэг",
+																											"originalRequest": {
+																												"method": "GET",
+																												"header": [
+																													{
+																														"key": "Accept",
+																														"value": "application/json"
+																													}
+																												],
+																												"url": {
+																													"raw": "https://api.ebarimt.mn/api/info/check/barcode/v2/:p4/:p5/:p1/:p2/:p3/:p6",
+																													"protocol": "https",
+																													"host": [
+																														"api",
+																														"ebarimt",
+																														"mn"
+																													],
+																													"path": [
+																														"api",
+																														"info",
+																														"check",
+																														"barcode",
+																														"v2",
+																														":p4",
+																														":p5",
+																														":p1",
+																														":p2",
+																														":p3",
+																														":p6"
+																													],
+																													"variable": [
+																														{
+																															"key": "p1",
+																															"value": "0",
+																															"description": "Өмнөх салбарын дугаар"
+																														},
+																														{
+																															"key": "p2",
+																															"value": "01",
+																															"description": "Өмнөх дэд салбарын дугаар"
+																														},
+																														{
+																															"key": "p3",
+																															"value": "011",
+																															"description": "Өмнөх Бүлгийн дугаар"
+																														},
+																														{
+																															"key": "p4",
+																															"value": "0111",
+																															"description": "Өмнөх ангийн дугаар"
+																														},
+																														{
+																															"key": "p5",
+																															"value": "01111",
+																															"description": "Өмнөх дэд ангийн дугаар"
+																														},
+																														{
+																															"key": "p6",
+																															"value": "0111100",
+																															"description": "Өмнөх БҮНА код"
+																														}
+																													]
+																												}
+																											},
+																											"status": "OK",
+																											"code": 200,
+																											"_postman_previewlanguage": "json",
+																											"header": [
+																												{
+																													"key": "Content-Type",
+																													"value": "application/json"
+																												}
+																											],
+																											"cookie": [],
+																											"body": "[\n  [\n    \"011\",\n    \"Үр тариа\"\n  ],\n  [\n    \"012\",\n    \"Хүнсний ногоо\"\n  ],\n  [\n    \"013\",\n    \"Жимс, самар\"\n  ],\n  [\n    \"014\",\n    \"Тослог ургамлын үр, жимс\"\n  ],\n  [\n    \"015\",\n    \"Хүнсэнд хэрэглэдэг цардууллаг үндсэн үрт ба булцуут ургамал\"\n  ],\n  [\n    \"016\",\n    \"Сэргээх, тайвшруулах болон амтлаг, анхилуун ургамал\"\n  ],\n  [\n    \"017\",\n    \"Хатаасан төрөл бүрийн буурцагт ургамал \"\n  ],\n  [\n    \"018\",\n    \"Чихрийн ургамал\"\n  ],\n  [\n    \"019\",\n    \"Тэжээлийн ургамал, хөвөнгийн ургамал, амьд ургамал, бэлтгэсэн цэцэг, цэцгийн баглаа, боловсруулаагүй тамхи болон байгалийн каучук\"\n  ]\n]"
+																										},
+																										{
+																											"name": "Анги",
+																											"originalRequest": {
+																												"method": "GET",
+																												"header": [
+																													{
+																														"key": "Accept",
+																														"value": "application/json"
+																													}
+																												],
+																												"url": {
+																													"raw": "https://api.ebarimt.mn/api/info/check/barcode/v2/:p4/:p5/:p1/:p2/:p3/:p6",
+																													"protocol": "https",
+																													"host": [
+																														"api",
+																														"ebarimt",
+																														"mn"
+																													],
+																													"path": [
+																														"api",
+																														"info",
+																														"check",
+																														"barcode",
+																														"v2",
+																														":p4",
+																														":p5",
+																														":p1",
+																														":p2",
+																														":p3",
+																														":p6"
+																													],
+																													"variable": [
+																														{
+																															"key": "p1",
+																															"value": "0",
+																															"description": "Өмнөх салбарын дугаар"
+																														},
+																														{
+																															"key": "p2",
+																															"value": "01",
+																															"description": "Өмнөх дэд салбарын дугаар"
+																														},
+																														{
+																															"key": "p3",
+																															"value": "011",
+																															"description": "Өмнөх Бүлгийн дугаар"
+																														},
+																														{
+																															"key": "p4",
+																															"value": "0111",
+																															"description": "Өмнөх ангийн дугаар"
+																														},
+																														{
+																															"key": "p5",
+																															"value": "01111",
+																															"description": "Өмнөх дэд ангийн дугаар"
+																														},
+																														{
+																															"key": "p6",
+																															"value": "0111100",
+																															"description": "Өмнөх БҮНА код"
+																														}
+																													]
+																												}
+																											},
+																											"status": "OK",
+																											"code": 200,
+																											"_postman_previewlanguage": "json",
+																											"header": [
+																												{
+																													"key": "Content-Type",
+																													"value": "application/json"
+																												}
+																											],
+																											"cookie": [],
+																											"body": "[\n  [\n    \"0111\",\n    \"Улаан буудай\"\n  ],\n  [\n    \"0112\",\n    \"Эрдэнэ шиш\"\n  ],\n  [\n    \"0113\",\n    \"Цагаан будаа\"\n  ],\n  [\n    \"0114\",\n    \"Сорго будаа\"\n  ],\n  [\n    \"0115\",\n    \"Арвай\"\n  ],\n  [\n    \"0116\",\n    \"Хөх тариа\"\n  ],\n  [\n    \"0117\",\n    \"Хошуу тариа\"\n  ],\n  [\n    \"0118\",\n    \"Бог будаа, шар будаа\"\n  ],\n  [\n    \"0119\",\n    \"Бусад төрлийн үр тариа\"\n  ]\n]"
+																										},
+																										{
+																											"name": "Дэд анги",
+																											"originalRequest": {
+																												"method": "GET",
+																												"header": [
+																													{
+																														"key": "Accept",
+																														"value": "application/json"
+																													}
+																												],
+																												"url": {
+																													"raw": "https://api.ebarimt.mn/api/info/check/barcode/v2/:p4/:p5/:p1/:p2/:p3/:p6",
+																													"protocol": "https",
+																													"host": [
+																														"api",
+																														"ebarimt",
+																														"mn"
+																													],
+																													"path": [
+																														"api",
+																														"info",
+																														"check",
+																														"barcode",
+																														"v2",
+																														":p4",
+																														":p5",
+																														":p1",
+																														":p2",
+																														":p3",
+																														":p6"
+																													],
+																													"variable": [
+																														{
+																															"key": "p1",
+																															"value": "0",
+																															"description": "Өмнөх салбарын дугаар"
+																														},
+																														{
+																															"key": "p2",
+																															"value": "01",
+																															"description": "Өмнөх дэд салбарын дугаар"
+																														},
+																														{
+																															"key": "p3",
+																															"value": "011",
+																															"description": "Өмнөх Бүлгийн дугаар"
+																														},
+																														{
+																															"key": "p4",
+																															"value": "0111",
+																															"description": "Өмнөх ангийн дугаар"
+																														},
+																														{
+																															"key": "p5",
+																															"value": "01111",
+																															"description": "Өмнөх дэд ангийн дугаар"
+																														},
+																														{
+																															"key": "p6",
+																															"value": "0111100",
+																															"description": "Өмнөх БҮНА код"
+																														}
+																													]
+																												}
+																											},
+																											"status": "OK",
+																											"code": 200,
+																											"_postman_previewlanguage": "json",
+																											"header": [
+																												{
+																													"key": "Content-Type",
+																													"value": "application/json"
+																												}
+																											],
+																											"cookie": [],
+																											"body": "[\n  [\n    \"01111\",\n    \"Улаан буудай, үрийн\"\n  ],\n  [\n    \"01112\",\n    \"Бусад төрлийн улаан буудай\"\n  ]\n]"
+																										},
+																										{
+																											"name": "БҮНА код",
+																											"originalRequest": {
+																												"method": "GET",
+																												"header": [
+																													{
+																														"key": "Accept",
+																														"value": "application/json"
+																													}
+																												],
+																												"url": {
+																													"raw": "https://api.ebarimt.mn/api/info/check/barcode/v2/:p4/:p5/:p1/:p2/:p3/:p6",
+																													"protocol": "https",
+																													"host": [
+																														"api",
+																														"ebarimt",
+																														"mn"
+																													],
+																													"path": [
+																														"api",
+																														"info",
+																														"check",
+																														"barcode",
+																														"v2",
+																														":p4",
+																														":p5",
+																														":p1",
+																														":p2",
+																														":p3",
+																														":p6"
+																													],
+																													"variable": [
+																														{
+																															"key": "p1",
+																															"value": "0",
+																															"description": "Өмнөх салбарын дугаар"
+																														},
+																														{
+																															"key": "p2",
+																															"value": "01",
+																															"description": "Өмнөх дэд салбарын дугаар"
+																														},
+																														{
+																															"key": "p3",
+																															"value": "011",
+																															"description": "Өмнөх Бүлгийн дугаар"
+																														},
+																														{
+																															"key": "p4",
+																															"value": "0111",
+																															"description": "Өмнөх ангийн дугаар"
+																														},
+																														{
+																															"key": "p5",
+																															"value": "01111",
+																															"description": "Өмнөх дэд ангийн дугаар"
+																														},
+																														{
+																															"key": "p6",
+																															"value": "0111100",
+																															"description": "Өмнөх БҮНА код"
+																														}
+																													]
+																												}
+																											},
+																											"status": "OK",
+																											"code": 200,
+																											"_postman_previewlanguage": "json",
+																											"header": [
+																												{
+																													"key": "Content-Type",
+																													"value": "application/json"
+																												}
+																											],
+																											"cookie": [],
+																											"body": "[\n  [\n    \"0111100\",\n    \"Улаан буудай  үрийн\"\n  ]\n]"
+																										},
+																										{
+																											"name": "Баркод",
+																											"originalRequest": {
+																												"method": "GET",
+																												"header": [
+																													{
+																														"key": "Accept",
+																														"value": "application/json"
+																													}
+																												],
+																												"url": {
+																													"raw": "https://api.ebarimt.mn/api/info/check/barcode/v2/:p4/:p5/:p1/:p2/:p3/:p6",
+																													"protocol": "https",
+																													"host": [
+																														"api",
+																														"ebarimt",
+																														"mn"
+																													],
+																													"path": [
+																														"api",
+																														"info",
+																														"check",
+																														"barcode",
+																														"v2",
+																														":p4",
+																														":p5",
+																														":p1",
+																														":p2",
+																														":p3",
+																														":p6"
+																													],
+																													"variable": [
+																														{
+																															"key": "p1",
+																															"value": "0",
+																															"description": "Өмнөх салбарын дугаар"
+																														},
+																														{
+																															"key": "p2",
+																															"value": "01",
+																															"description": "Өмнөх дэд салбарын дугаар"
+																														},
+																														{
+																															"key": "p3",
+																															"value": "011",
+																															"description": "Өмнөх Бүлгийн дугаар"
+																														},
+																														{
+																															"key": "p4",
+																															"value": "0111",
+																															"description": "Өмнөх ангийн дугаар"
+																														},
+																														{
+																															"key": "p5",
+																															"value": "01111",
+																															"description": "Өмнөх дэд ангийн дугаар"
+																														},
+																														{
+																															"key": "p6",
+																															"value": "0111100",
+																															"description": "Өмнөх БҮНА код"
+																														}
+																													]
+																												}
+																											},
+																											"status": "OK",
+																											"code": 200,
+																											"_postman_previewlanguage": "json",
+																											"header": [
+																												{
+																													"key": "Content-Type",
+																													"value": "application/json"
+																												}
+																											],
+																											"cookie": [],
+																											"body": "[\n  [\n    \"800888883000\",\n    \"Тест\",\n    \"2022-07-17\"\n  ],\n  [\n    \"8101888888000\",\n    \"Тест1\",\n    \"2022-07-17\"\n  ]\n]"
+																										}
+																									]
+																								}
+																							]
+																						}
+																					]
+																				}
+																			]
+																		}
+																	]
+																}
+															]
+														}
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "receipt",
+					"item": [
+						{
+							"name": "receipt",
+							"item": [
+								{
+									"name": "getProductTaxCode",
+									"item": [
+										{
+											"name": "VAT_FREE, VAT_ZERO, NO_VAT бараа, үйлчилгээний код лавлах",
+											"request": {
+												"method": "GET",
+												"header": [
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"url": {
+													"raw": "https://api.ebarimt.mn/api/receipt/receipt/getProductTaxCode",
+													"protocol": "https",
+													"host": [
+														"api",
+														"ebarimt",
+														"mn"
+													],
+													"path": [
+														"api",
+														"receipt",
+														"receipt",
+														"getProductTaxCode"
+													]
+												},
+												"description": ">Нэмэгдсэн өртгийн албан татвар /НӨАТ-аас чөлөөлөгдөх, НӨАТ-н 0 хувь хэрэглэх/, Аж ахуйн нэгжийн орлогын албан татвараас чөлөөлөгдөх хуулийн кодыг жагсаалтаар авах бол энэхүү сервисийг ашиглах ба PosAPI 3.0 системийн \"PosAPI-руу төлбөрийн баримт хадгалах сервис\" /post-rest-receipt/-ийн taxProductCode талбарт хадгалах өгөгдлийг лавлахад ашиглагдана. "
+											},
+											"response": [
+												{
+													"name": "OK",
+													"originalRequest": {
+														"method": "GET",
+														"header": [
+															{
+																"key": "Accept",
+																"value": "application/json"
+															}
+														],
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/receipt/receipt/getProductTaxCode",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"receipt",
+																"receipt",
+																"getProductTaxCode"
+															]
+														}
+													},
+													"status": "OK",
+													"code": 200,
+													"_postman_previewlanguage": "json",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/json"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"msg\": \"Амжилттай\",\n  \"status\": 200,\n  \"data\": [\n    {\n      \"startDate\": \"2016-01-01\",\n      \"endDate\": \"2024-12-31\",\n      \"taxProductCode\": \"43401\",\n      \"taxProductName\": \"Импортоор оруулж байгаа болон дотооддоо худалдан борлуулсан хөдөө аж ахуйн зориулалттай шинэ трактор, комбайн, машин механизм, гурилын болон бордооны үйлдвэрийн тоног төхөөрөмж, усалгааны тоног төхөөрөмж, ойн аж ахуйн техник, тоног төхөөрөмж\",\n      \"taxTypeCode\": 2,\n      \"taxTypeName\": \"VAT_FREE\"\n    }\n  ]\n}"
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "/"
+		}
+	]
+}

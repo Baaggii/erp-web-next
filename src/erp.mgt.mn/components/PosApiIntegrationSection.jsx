@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useState } from 'react';
 import {
   POS_API_FIELDS,
   POS_API_ITEM_FIELDS,
@@ -48,6 +48,7 @@ export default function PosApiIntegrationSection({
   onEnsureColumnsLoaded = () => {},
   onPosApiOptionsChange = () => {},
 }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const endpointCandidates = useMemo(() => {
     const list = [];
     const addEndpoint = (endpoint, usageFallback = 'other') => {
@@ -148,6 +149,34 @@ export default function PosApiIntegrationSection({
     return next;
   }, [endpointCandidates, config.posApiEndpointId, config.posApiEndpointMeta, config.posApiMapping]);
 
+  useEffect(() => {
+    if (!selectedEndpoint) return;
+    setConfig((current) => {
+      const defaults = {
+        posApiEnableReceiptTypes: selectedEndpoint.enableReceiptTypes !== false,
+        posApiEnableReceiptItems:
+          selectedEndpoint.supportsItems !== false && selectedEndpoint.enableReceiptItems !== false,
+        posApiEnableReceiptTaxTypes: selectedEndpoint.enableReceiptTaxTypes !== false,
+        posApiEnablePaymentMethods: selectedEndpoint.enablePaymentMethods !== false,
+        posApiAllowMultipleReceiptTypes: selectedEndpoint.allowMultipleReceiptTypes !== false,
+        posApiAllowMultipleReceiptTaxTypes: selectedEndpoint.allowMultipleReceiptTaxTypes !== false,
+        posApiAllowMultiplePaymentMethods:
+          selectedEndpoint.supportsMultiplePayments === false
+            ? false
+            : selectedEndpoint.allowMultiplePaymentMethods !== false,
+      };
+      let changed = false;
+      const next = { ...current };
+      Object.entries(defaults).forEach(([key, value]) => {
+        if (current[key] === undefined && value !== undefined) {
+          next[key] = value;
+          changed = true;
+        }
+      });
+      return changed ? next : current;
+    });
+  }, [selectedEndpoint, setConfig]);
+
   const endpointSupportsItems = selectedEndpoint?.supportsItems !== false;
   const endpointReceiptItemsEnabled = selectedEndpoint
     ? selectedEndpoint.enableReceiptItems !== false
@@ -189,13 +218,21 @@ export default function PosApiIntegrationSection({
   const supportsItems = config.posApiEnabled && receiptItemsToggleValue;
 
   const receiptTypesAllowMultiple = receiptTypesFeatureEnabled
-    ? selectedEndpoint?.allowMultipleReceiptTypes !== false
+    ? typeof config.posApiAllowMultipleReceiptTypes === 'boolean'
+      ? config.posApiAllowMultipleReceiptTypes
+      : selectedEndpoint?.allowMultipleReceiptTypes !== false
     : true;
   const receiptTaxTypesAllowMultiple = receiptTaxTypesFeatureEnabled
-    ? selectedEndpoint?.allowMultipleReceiptTaxTypes !== false
+    ? typeof config.posApiAllowMultipleReceiptTaxTypes === 'boolean'
+      ? config.posApiAllowMultipleReceiptTaxTypes
+      : selectedEndpoint?.allowMultipleReceiptTaxTypes !== false
     : true;
   const paymentMethodsAllowMultiple = paymentMethodsFeatureEnabled
-    ? selectedEndpoint?.allowMultiplePaymentMethods !== false
+    ? selectedEndpoint?.supportsMultiplePayments === false
+      ? false
+      : typeof config.posApiAllowMultiplePaymentMethods === 'boolean'
+        ? config.posApiAllowMultiplePaymentMethods
+        : selectedEndpoint?.allowMultiplePaymentMethods !== false
     : true;
 
   const endpointReceiptTypes = useMemo(() => {
@@ -742,75 +779,154 @@ export default function PosApiIntegrationSection({
                 disabled={!config.posApiEnabled}
               />
               <small style={{ color: '#666' }}>
-                Optional column containing the POSAPI type (e.g., B2C_RECEIPT).
+                Optional column containing the POSAPI type (e.g., B2C).
               </small>
             </label>
           </div>
-          <div
+          <details
+            open={showAdvanced}
+            onToggle={(event) => setShowAdvanced(event.target.open)}
             style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '1rem',
-              marginBottom: '1rem',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '0.75rem',
+              background: '#f8fafc',
+              marginBottom: '0.5rem',
             }}
           >
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={receiptTypesToggleValue}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    posApiEnableReceiptTypes: e.target.checked,
-                  }))
-                }
-                disabled={!endpointReceiptTypesEnabled}
-              />
-              <span>Enable receipt types</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={receiptItemsToggleValue}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    posApiEnableReceiptItems: e.target.checked,
-                  }))
-                }
-                disabled={!endpointSupportsItems || !endpointReceiptItemsEnabled}
-              />
-              <span>Enable receipt items</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={receiptTaxTypesToggleValue}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    posApiEnableReceiptTaxTypes: e.target.checked,
-                  }))
-                }
-                disabled={!endpointReceiptTaxTypesEnabled}
-              />
-              <span>Enable receipt tax types</span>
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <input
-                type="checkbox"
-                checked={paymentMethodsToggleValue}
-                onChange={(e) =>
-                  setConfig((c) => ({
-                    ...c,
-                    posApiEnablePaymentMethods: e.target.checked,
-                  }))
-                }
-                disabled={!endpointPaymentMethodsEnabled}
-              />
-              <span>Enable payment methods</span>
-            </label>
-          </div>
+            <summary style={{ fontWeight: 600, cursor: 'pointer' }}>Advanced POSAPI options</summary>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.75rem',
+                marginTop: '0.5rem',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                }}
+              >
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={receiptTypesToggleValue}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnableReceiptTypes: e.target.checked,
+                      }))
+                    }
+                    disabled={!endpointReceiptTypesEnabled}
+                  />
+                  <span>Enable receipt types</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={receiptItemsToggleValue}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnableReceiptItems: e.target.checked,
+                      }))
+                    }
+                    disabled={!endpointSupportsItems || !endpointReceiptItemsEnabled}
+                  />
+                  <span>Enable receipt items</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={receiptTaxTypesToggleValue}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnableReceiptTaxTypes: e.target.checked,
+                      }))
+                    }
+                    disabled={!endpointReceiptTaxTypesEnabled}
+                  />
+                  <span>Enable receipt tax types</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={paymentMethodsToggleValue}
+                    onChange={(e) =>
+                      setConfig((c) => ({
+                        ...c,
+                        posApiEnablePaymentMethods: e.target.checked,
+                      }))
+                    }
+                    disabled={!endpointPaymentMethodsEnabled}
+                  />
+                  <span>Enable payment methods</span>
+                </label>
+              </div>
+              <div
+                style={{
+                  display: 'flex',
+                  flexWrap: 'wrap',
+                  gap: '1rem',
+                }}
+              >
+                {receiptTypesFeatureEnabled && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={receiptTypesAllowMultiple}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          posApiAllowMultipleReceiptTypes: e.target.checked,
+                        }))
+                      }
+                      disabled={!receiptTypesFeatureEnabled}
+                    />
+                    <span>Allow multiple receipt types</span>
+                  </label>
+                )}
+                {receiptTaxTypesFeatureEnabled && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={receiptTaxTypesAllowMultiple}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          posApiAllowMultipleReceiptTaxTypes: e.target.checked,
+                        }))
+                      }
+                      disabled={!receiptTaxTypesFeatureEnabled}
+                    />
+                    <span>Allow multiple receipt tax types</span>
+                  </label>
+                )}
+                {paymentMethodsFeatureEnabled && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <input
+                      type="checkbox"
+                      checked={paymentMethodsAllowMultiple}
+                      onChange={(e) =>
+                        setConfig((c) => ({
+                          ...c,
+                          posApiAllowMultiplePaymentMethods: e.target.checked,
+                        }))
+                      }
+                      disabled={
+                        !paymentMethodsFeatureEnabled || selectedEndpoint?.supportsMultiplePayments === false
+                      }
+                    />
+                    <span>Allow multiple payments</span>
+                  </label>
+                )}
+              </div>
+            </div>
+          </details>
         </>
       )}
       {config.posApiEnabled && (

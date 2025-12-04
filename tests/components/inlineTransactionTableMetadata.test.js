@@ -988,7 +988,9 @@ if (typeof mock?.import !== 'function') {
       reactMock.render(InlineTransactionTable, {
         fields: ['company_id', 'dept_id'],
         labels: { company_id: 'Company', dept_id: 'Dept' },
-        rows: [{ company_id: 'COMP-1', dept_id: '' }],
+        rows: [
+          { company_id: { value: 'COMP-1', label: 'Acme Co' }, dept_id: '' },
+        ],
         disabledFields: [],
         defaultValues: {},
         onRowsChange: () => {},
@@ -1023,7 +1025,6 @@ if (typeof mock?.import !== 'function') {
       const deptCall = selectCalls.find((props) => props.table === 'departments');
       assert.ok(deptCall, 'relation AsyncSearchSelect should render');
       assert.deepEqual(deptCall.filters, { company_id: 'COMP-1' });
-      assert.deepEqual(deptCall.exactFilters, ['company_id']);
       assert.equal(deptCall.shouldFetch, true);
     } finally {
       global.fetch = originalFetch;
@@ -1096,7 +1097,6 @@ if (typeof mock?.import !== 'function') {
       const deptCall = selectCalls.find((props) => props.table === 'departments');
       assert.ok(deptCall, 'relation AsyncSearchSelect should render');
       assert.equal(deptCall.filters, undefined);
-      assert.equal(deptCall.exactFilters, undefined);
       assert.equal(deptCall.shouldFetch, false);
     } finally {
       global.fetch = originalFetch;
@@ -1145,7 +1145,9 @@ if (typeof mock?.import !== 'function') {
         tableName: 'items',
         fields: ['company_id', 'dept_id'],
         labels: { company_id: 'Company', dept_id: 'Dept' },
-        rows: [{ company_id: 'COMP-1', dept_id: '' }],
+        rows: [
+          { company_id: { value: 'COMP-1', label: 'Acme Co' }, dept_id: '' },
+        ],
         disabledFields: [],
         defaultValues: {},
         onRowsChange: () => {},

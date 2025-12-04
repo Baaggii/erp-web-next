@@ -1458,12 +1458,7 @@ const TableManager = forwardRef(function TableManager({
 
     const fetchTableRows = (tableName, tenantInfo) => {
       if (!tableName) return Promise.resolve([]);
-      const cacheKey = [
-        tableName.toLowerCase(),
-        company ?? '',
-        branch ?? '',
-        department ?? '',
-      ].join('|');
+      const cacheKey = [tableName.toLowerCase(), company ?? ''].join('|');
       if (tableRowsCache.has(cacheKey)) return tableRowsCache.get(cacheKey);
       const promise = (async () => {
         const info = tenantInfo || (await fetchTenantInfo(tableName));
@@ -1474,14 +1469,8 @@ const TableManager = forwardRef(function TableManager({
         const rows = [];
         while (!canceled) {
           const params = new URLSearchParams({ page, perPage });
-          if (!isShared) {
-            if (tenantKeys.includes('company_id') && company != null)
-              params.set('company_id', company);
-            if (tenantKeys.includes('branch_id') && branch != null)
-              params.set('branch_id', branch);
-            if (tenantKeys.includes('department_id') && department != null)
-              params.set('department_id', department);
-          }
+          if (!isShared && tenantKeys.includes('company_id') && company != null)
+            params.set('company_id', company);
           let res;
           try {
             res = await fetch(
@@ -1696,6 +1685,9 @@ const TableManager = forwardRef(function TableManager({
           ...(rel.combinationTargetColumn
             ? { combinationTargetColumn: rel.combinationTargetColumn }
             : {}),
+          ...(Object.keys(nestedDisplayLookups || {}).length > 0
+            ? { nestedLookups: nestedDisplayLookups }
+            : {}),
         },
         options,
         rows: optionRows,
@@ -1757,6 +1749,12 @@ const TableManager = forwardRef(function TableManager({
           relationMap[key] = {
             table: r.REFERENCED_TABLE_NAME,
             column: r.REFERENCED_COLUMN_NAME,
+            ...(r.combinationSourceColumn
+              ? { combinationSourceColumn: r.combinationSourceColumn }
+              : {}),
+            ...(r.combinationTargetColumn
+              ? { combinationTargetColumn: r.combinationTargetColumn }
+              : {}),
           };
         });
         setRelations(relationMap);
@@ -2288,32 +2286,6 @@ const TableManager = forwardRef(function TableManager({
           companyKey,
         );
       }
-      if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
-        const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
-        const rowBranchId =
-          branchKey != null ? normalizedRow[branchKey] : normalizedRow.branch_id;
-        appendTenantParam(
-          params,
-          'branch_id',
-          localCaseMap,
-          rowBranchId,
-          branchKey,
-        );
-      }
-      if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
-        const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
-        const rowDepartmentId =
-          departmentKey != null
-            ? normalizedRow[departmentKey]
-            : normalizedRow.department_id;
-        appendTenantParam(
-          params,
-          'department_id',
-          localCaseMap,
-          rowDepartmentId,
-          departmentKey,
-        );
-      }
     }
     if (txnToastEnabled) {
       const paramEntries = Array.from(params.entries());
@@ -2543,32 +2515,6 @@ const TableManager = forwardRef(function TableManager({
               companyKey,
             );
           }
-          if (hasTenantKey(tenantInfo, 'branch_id', localCaseMap)) {
-            const branchKey = resolveCanonicalKey('branch_id', localCaseMap);
-            const rowBranchId =
-              branchKey != null ? normalizedRow[branchKey] : normalizedRow.branch_id;
-            appendTenantParam(
-              params,
-              'branch_id',
-              localCaseMap,
-              rowBranchId,
-              branchKey,
-            );
-          }
-          if (hasTenantKey(tenantInfo, 'department_id', localCaseMap)) {
-            const departmentKey = resolveCanonicalKey('department_id', localCaseMap);
-            const rowDepartmentId =
-              departmentKey != null
-                ? normalizedRow[departmentKey]
-                : normalizedRow.department_id;
-            appendTenantParam(
-              params,
-              'department_id',
-              localCaseMap,
-              rowDepartmentId,
-              departmentKey,
-            );
-          }
         }
         const url = `/api/tables/${encodeURIComponent(table)}/${encodeURIComponent(id)}/references${
           params.toString() ? `?${params.toString()}` : ''
@@ -2618,6 +2564,308 @@ const TableManager = forwardRef(function TableManager({
     e.stopPropagation();
     setCtxMenu({ x: e.clientX, y: e.clientY, value });
   }
+
+  const hydrateDisplayFromWrappedRelations = useCallback(
+    function hydrateDisplayFromWrappedRelations(values, seen = new WeakSet()) {
+      if (!values || typeof values !== 'object') return values || {};
+      if (seen.has(values)) return values;
+      seen.add(values);
+
+      const hasMeaningfulValue = (val) => {
+        if (val === undefined || val === null) return false;
+        if (typeof val === 'string') return val.trim().length > 0;
+        return true;
+      };
+
+      const collectWrapperDisplay = (val) => {
+        if (val === undefined || val === null) return null;
+        if (Array.isArray(val)) {
+          for (const item of val) {
+            const display = collectWrapperDisplay(item);
+            if (display) return display;
+          }
+          return null;
+        }
+        if (val && typeof val === 'object') {
+          const displayEntries = {};
+          Object.entries(val).forEach(([k, v]) => {
+            if (k === 'value') return;
+            if (v !== undefined && v !== null) {
+              displayEntries[k] = v;
+            }
+          });
+          if (Object.keys(displayEntries).length > 0) return displayEntries;
+          if (Object.prototype.hasOwnProperty.call(val, 'value')) {
+            return collectWrapperDisplay(val.value);
+          }
+        }
+        return null;
+      };
+
+      let hydrated = values;
+      const ensureHydrated = () => {
+        if (hydrated === values) {
+          hydrated = { ...values };
+        }
+      };
+
+      Object.entries(relationConfigs || {}).forEach(([rawField, config]) => {
+        if (!config || !Array.isArray(config.displayFields) || config.displayFields.length === 0) {
+          return;
+        }
+        const canonicalField = resolveCanonicalKey(rawField);
+        if (!canonicalField) return;
+        const relationValue =
+          hydrated === values ? values[canonicalField] : hydrated[canonicalField];
+        if (!hasMeaningfulValue(relationValue)) return;
+        const wrapperDisplay = collectWrapperDisplay(relationValue);
+        if (!wrapperDisplay) return;
+
+        const wrapperKeyMap = {};
+        Object.entries(wrapperDisplay).forEach(([k, v]) => {
+          wrapperKeyMap[k.toLowerCase()] = v;
+        });
+
+        config.displayFields.forEach((displayField) => {
+          if (typeof displayField !== 'string' || !displayField.trim()) return;
+          const canonicalDisplay = resolveCanonicalKey(displayField);
+          if (!canonicalDisplay) return;
+          const currentValue =
+            hydrated === values ? values[canonicalDisplay] : hydrated[canonicalDisplay];
+          if (hasMeaningfulValue(currentValue)) return;
+          const displayLookup =
+            wrapperKeyMap[displayField.toLowerCase()] ||
+            wrapperKeyMap[canonicalDisplay.toLowerCase()] ||
+            wrapperKeyMap.label ||
+            wrapperKeyMap.name ||
+            wrapperKeyMap.title ||
+            wrapperKeyMap.text;
+          if (displayLookup !== undefined) {
+            ensureHydrated();
+            hydrated[canonicalDisplay] = displayLookup;
+          }
+        });
+      });
+
+      Object.entries(hydrated).forEach(([key, val]) => {
+        if (Array.isArray(val)) {
+          const mapped = val.map((item) => {
+            if (!item || typeof item !== 'object') return item;
+            return hydrateDisplayFromWrappedRelations(item, seen);
+          });
+          const hasChanges = mapped.some((item, idx) => !Object.is(item, val[idx]));
+          if (hasChanges) {
+            ensureHydrated();
+            hydrated[key] = mapped;
+          }
+        } else if (val && typeof val === 'object') {
+          const nested = hydrateDisplayFromWrappedRelations(val, seen);
+          if (!Object.is(nested, val)) {
+            ensureHydrated();
+            hydrated[key] = nested;
+          }
+        }
+      });
+
+      return hydrated;
+    },
+    [relationConfigs, resolveCanonicalKey],
+  );
+
+  const resolveRelationDisplayValue = useCallback(
+    function resolveRelationDisplayValue(row, displayField, config, rowKeyMap) {
+      if (!row || typeof displayField !== 'string' || displayField.trim().length === 0)
+        return undefined;
+      const keyMap = rowKeyMap
+        ? rowKeyMap
+        : Object.keys(row || {}).reduce((acc, key) => {
+            acc[key.toLowerCase()] = key;
+            return acc;
+          }, {});
+      const lookupKey = keyMap[displayField.toLowerCase()];
+      if (!lookupKey) return undefined;
+      let displayValue = row[lookupKey];
+      if (displayValue === undefined || displayValue === null) return undefined;
+      const nestedLookup = config?.nestedLookups?.[displayField.toLowerCase()];
+      if (nestedLookup) {
+        const mapped =
+          nestedLookup[displayValue] !== undefined
+            ? nestedLookup[displayValue]
+            : nestedLookup[String(displayValue)];
+        if (mapped !== undefined) {
+          displayValue = mapped;
+        }
+      }
+      return displayValue;
+    },
+    [],
+  );
+
+  const populateRelationDisplayFields = useCallback(
+    function populateRelationDisplayFields(values, seen = new WeakSet()) {
+      if (!values || typeof values !== 'object') return values || {};
+
+      const hasMeaningfulValue = (val) => {
+        if (val === undefined || val === null) return false;
+        if (typeof val === 'string') return val.trim().length > 0;
+        return true;
+      };
+
+      const getRelationRow = (fieldKey, value) => {
+        if (value === undefined || value === null) return null;
+        const relationId = resolveScopeId(value);
+        const map = refRows[fieldKey] || refRows[resolveCanonicalKey(fieldKey)];
+        if (!map || typeof map !== 'object') return null;
+        if (relationId !== undefined && relationId !== null) {
+          if (Object.prototype.hasOwnProperty.call(map, relationId)) {
+            return map[relationId];
+          }
+          const strRelationId = String(relationId).trim();
+          if (
+            strRelationId &&
+            Object.prototype.hasOwnProperty.call(map, strRelationId)
+          ) {
+            return map[strRelationId];
+          }
+        }
+        return null;
+      };
+
+      let hydrated = values;
+      const ensureHydrated = () => {
+        if (hydrated === values) {
+          hydrated = { ...values };
+        }
+      };
+
+      Object.entries(relationConfigs || {}).forEach(([rawField, config]) => {
+        if (!config || !Array.isArray(config.displayFields) || config.displayFields.length === 0) {
+          return;
+        }
+        const canonicalField = resolveCanonicalKey(rawField);
+        if (!canonicalField) return;
+        const relationValue =
+          hydrated === values ? values[canonicalField] : hydrated[canonicalField];
+        if (!hasMeaningfulValue(relationValue)) return;
+        const relationRow = getRelationRow(canonicalField, relationValue);
+        if (!relationRow || typeof relationRow !== 'object') return;
+        const rowKeyMap = {};
+        Object.keys(relationRow).forEach((key) => {
+          rowKeyMap[key.toLowerCase()] = key;
+        });
+        config.displayFields.forEach((displayField) => {
+          if (typeof displayField !== 'string' || !displayField.trim()) return;
+          const canonicalDisplay = resolveCanonicalKey(displayField);
+          if (!canonicalDisplay) return;
+          const currentValue =
+            hydrated === values ? values[canonicalDisplay] : hydrated[canonicalDisplay];
+          if (hasMeaningfulValue(currentValue)) return;
+          const displayValue = resolveRelationDisplayValue(
+            relationRow,
+            displayField,
+            config,
+            rowKeyMap,
+          );
+          if (!hasMeaningfulValue(displayValue)) return;
+          ensureHydrated();
+          hydrated[canonicalDisplay] = displayValue;
+        });
+      });
+
+      Object.entries(hydrated).forEach(([key, val]) => {
+        if (Array.isArray(val)) {
+          const mapped = val.map((item) => {
+            if (!item || typeof item !== 'object') return item;
+            if (seen.has(item)) return item;
+            seen.add(item);
+            return populateRelationDisplayFields(item, seen);
+          });
+          const hasChanges = mapped.some((item, idx) => !Object.is(item, val[idx]));
+          if (hasChanges) {
+            ensureHydrated();
+            hydrated[key] = mapped;
+          }
+        } else if (val && typeof val === 'object') {
+          if (seen.has(val)) return;
+          seen.add(val);
+          const nested = populateRelationDisplayFields(val, seen);
+          if (!Object.is(nested, val)) {
+            ensureHydrated();
+            hydrated[key] = nested;
+          }
+        }
+      });
+
+      return hydrated;
+    },
+    [refRows, relationConfigs, resolveCanonicalKey, resolveRelationDisplayValue],
+  );
+
+  const mergeDisplayFallbacks = useCallback(
+    function mergeDisplayFallbacks(primary, fallback, seen = new WeakSet()) {
+      const hasMeaningfulValue = (val) => {
+        if (val === undefined || val === null) return false;
+        if (typeof val === 'string') return val.trim().length > 0;
+        return true;
+      };
+
+      if (primary === fallback) return primary;
+      if (!fallback || typeof fallback !== 'object') {
+        return primary ?? fallback;
+      }
+      if (fallback instanceof Date) return primary ?? fallback;
+      if (typeof File !== 'undefined' && fallback instanceof File) return primary;
+      if (typeof Blob !== 'undefined' && fallback instanceof Blob) return primary;
+
+      if (Array.isArray(primary) || Array.isArray(fallback)) {
+        const primaryArr = Array.isArray(primary) ? primary : [];
+        const fallbackArr = Array.isArray(fallback) ? fallback : [];
+        const maxLength = Math.max(primaryArr.length, fallbackArr.length);
+        let merged = primaryArr;
+        for (let i = 0; i < maxLength; i += 1) {
+          const next = mergeDisplayFallbacks(primaryArr[i], fallbackArr[i], seen);
+          if (!Object.is(next, primaryArr[i])) {
+            if (merged === primaryArr) merged = [...primaryArr];
+            merged[i] = next;
+          }
+        }
+        return merged;
+      }
+
+      if (!primary || typeof primary !== 'object') {
+        return hasMeaningfulValue(primary) ? primary : fallback;
+      }
+
+      if (seen.has(fallback)) return primary;
+      seen.add(fallback);
+
+      let merged = primary;
+      Object.entries(fallback).forEach(([key, fallbackVal]) => {
+        const primaryVal = primary[key];
+        if (!hasMeaningfulValue(primaryVal) && hasMeaningfulValue(fallbackVal)) {
+          if (merged === primary) merged = { ...primary };
+          merged[key] = fallbackVal;
+          return;
+        }
+        if (
+          primaryVal &&
+          typeof primaryVal === 'object' &&
+          fallbackVal &&
+          typeof fallbackVal === 'object'
+        ) {
+          const nested = mergeDisplayFallbacks(primaryVal, fallbackVal, seen);
+          if (!Object.is(nested, primaryVal)) {
+            if (merged === primary) merged = { ...primary };
+            merged[key] = nested;
+          }
+        }
+      });
+
+      return merged;
+    },
+    [],
+  );
+
 
   async function loadSearch(term, pg = 1) {
     const params = new URLSearchParams({ page: pg, pageSize: 20 });
@@ -2685,9 +2933,9 @@ const TableManager = forwardRef(function TableManager({
           });
           conf.displayFields.forEach((df) => {
             const key = resolveCanonicalKey(df);
-            const rk = rowKeyMap[df.toLowerCase()];
-            if (key && rk && row[rk] !== undefined) {
-              next[key] = row[rk];
+            const displayValue = resolveRelationDisplayValue(row, df, conf, rowKeyMap);
+            if (key && displayValue !== undefined) {
+              next[key] = displayValue;
             }
           });
         }
@@ -3240,8 +3488,6 @@ const TableManager = forwardRef(function TableManager({
     const submittedAt = new Date().toISOString();
     const baseTenant = {
       company_id: company ?? null,
-      branch_id: branch ?? null,
-      department_id: department ?? null,
     };
     const baseRequest = {
       table,
@@ -3976,9 +4222,11 @@ const TableManager = forwardRef(function TableManager({
           (candidate) =>
             candidate && typeof candidate === 'object' && !Array.isArray(candidate),
         );
-        const normalizedValues = normalizeToCanonical(
-          stripTemporaryLabelValue(baseValues || {}),
+        const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
+        const normalizedValues = populateRelationDisplayFields(
+          normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
         );
+        const mergedValues = mergeDisplayFallbacks(normalizedValues, hydratedValues);
 
         const rowSources = [
           entry?.payload?.gridRows,
@@ -3990,17 +4238,25 @@ const TableManager = forwardRef(function TableManager({
         const baseRows = rowSources.find((rows) => Array.isArray(rows));
         const sanitizedRows = Array.isArray(baseRows)
           ? baseRows.map((row) => {
-              const stripped = stripTemporaryLabelValue(row);
+              const hydratedRow = hydrateDisplayFromWrappedRelations(row);
+              const stripped = stripTemporaryLabelValue(hydratedRow);
               if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
-                return normalizeToCanonical(stripped);
+                const canonical = normalizeToCanonical(stripped);
+                const populated = populateRelationDisplayFields(canonical);
+                return mergeDisplayFallbacks(populated, hydratedRow);
               }
               return stripped ?? {};
             })
           : [];
 
-        return { values: normalizedValues, rows: sanitizedRows };
+        return { values: mergedValues, rows: sanitizedRows };
       },
-      [normalizeToCanonical],
+      [
+        hydrateDisplayFromWrappedRelations,
+        mergeDisplayFallbacks,
+        normalizeToCanonical,
+        populateRelationDisplayFields,
+      ],
     );
 
     const openTemporaryPromotion = useCallback(
@@ -4840,6 +5096,21 @@ const TableManager = forwardRef(function TableManager({
 
   const showReviewActions = canReviewTemporary && temporaryScope === 'review';
   const showCreatorActions = canCreateTemporary && temporaryScope === 'created';
+
+  const temporaryDetailColumns = useMemo(() => {
+    const valueKeys = new Set();
+    temporaryList.forEach((entry) => {
+      const { values: normalizedValues } = buildTemporaryFormState(entry);
+      Object.keys(normalizedValues || {}).forEach((key) => {
+        if (key) {
+          valueKeys.add(key);
+        }
+      });
+    });
+
+    const mergedColumns = columns.length > 0 ? [...columns, ...valueKeys] : [...valueKeys];
+    return Array.from(new Set(mergedColumns.filter(Boolean)));
+  }, [buildTemporaryFormState, columns, temporaryList]);
 
   let detailHeaderRendered = false;
 
@@ -6243,27 +6514,8 @@ const TableManager = forwardRef(function TableManager({
                       const reviewNotes = entry?.reviewNotes || entry?.review_notes || '';
                       const reviewedAt = entry?.reviewedAt || entry?.reviewed_at || null;
                       const reviewedBy = entry?.reviewedBy || entry?.reviewed_by || '';
-                      const valueSources = [
-                        entry?.cleanedValues,
-                        entry?.payload?.cleanedValues,
-                        entry?.payload?.values,
-                        entry?.values,
-                        entry?.rawValues,
-                      ];
-                      const baseValues = valueSources.find(
-                        (candidate) =>
-                          candidate &&
-                          typeof candidate === 'object' &&
-                          !Array.isArray(candidate),
-                      );
-                      const normalizedValues = normalizeToCanonical(
-                        stripTemporaryLabelValue(baseValues || {}),
-                      );
-                      const detailColumnsSource =
-                        columns.length > 0 ? columns : Object.keys(normalizedValues || {});
-                      const detailColumns = Array.from(
-                        new Set((detailColumnsSource || []).filter(Boolean)),
-                      );
+                      const { values: normalizedValues } = buildTemporaryFormState(entry);
+                      const detailColumns = temporaryDetailColumns;
                       const rowBackgroundColor = isFocused
                         ? '#fef9c3'
                         : isActiveDraft

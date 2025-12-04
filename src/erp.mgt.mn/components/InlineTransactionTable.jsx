@@ -22,6 +22,7 @@ import {
   extractArrayMetadata,
   createGeneratedColumnPipeline,
 } from '../utils/transactionValues.js';
+import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 
 const currencyFmt = new Intl.NumberFormat('en-US', {
   minimumFractionDigits: 2,
@@ -386,6 +387,46 @@ function InlineTransactionTable(
     });
     return map;
   }, [relationConfigsKey, columnCaseMapKey]);
+  const normalizedRelationData = React.useMemo(() => {
+    if (!relationData || typeof relationData !== 'object') return {};
+    const map = {};
+    Object.entries(relationData).forEach(([key, value]) => {
+      if (!key) return;
+      map[key] = value;
+      const lower = key.toLowerCase();
+      if (!map[lower]) map[lower] = value;
+      const mapped = columnCaseMap[lower];
+      if (mapped) map[mapped] = value;
+    });
+    return map;
+  }, [relationData, columnCaseMapKey, columnCaseMap]);
+  const getRelationRowMap = React.useCallback(
+    (field) => {
+      if (!field) return null;
+      const direct = normalizedRelationData[field];
+      if (direct && typeof direct === 'object') return direct;
+      const lower = String(field).toLowerCase();
+      const lowerMatch = normalizedRelationData[lower];
+      if (lowerMatch && typeof lowerMatch === 'object') return lowerMatch;
+      return null;
+    },
+    [normalizedRelationData],
+  );
+  const getRelationRow = React.useCallback(
+    (field, rawValue) => {
+      const map = getRelationRowMap(field);
+      if (!map || rawValue === undefined || rawValue === null) return null;
+      if (Object.prototype.hasOwnProperty.call(map, rawValue)) {
+        return map[rawValue];
+      }
+      const stringKey = String(rawValue);
+      if (Object.prototype.hasOwnProperty.call(map, stringKey)) {
+        return map[stringKey];
+      }
+      return null;
+    },
+    [getRelationRowMap],
+  );
   const relationConfigMapKey = React.useMemo(
     () => JSON.stringify(relationConfigMap || {}),
     [relationConfigMap],
@@ -539,9 +580,10 @@ function InlineTransactionTable(
       const targetField = config?.combinationTargetColumn;
       if (!sourceField || !targetField) return null;
       const mappedSource = columnCaseMap[String(sourceField).toLowerCase()] || sourceField;
-      const value =
+      const rawValue =
         getRowValueCaseInsensitive(rowObj, mappedSource) ??
         getRowValueCaseInsensitive(rowObj, sourceField);
+      const value = extractCombinationFilterValue(rawValue);
       if (value === undefined || value === null || value === '') return null;
       return { [targetField]: value };
     },
@@ -570,14 +612,14 @@ function InlineTransactionTable(
       if (filterValue === undefined || filterValue === null || filterValue === '') {
         return hasCombination ? [] : options;
       }
-      const columnRows = relationData[column];
+      const columnRows = getRelationRowMap(column);
       if (!columnRows || typeof columnRows !== 'object') return options;
       const normalizedFilter = String(filterValue);
       return options.filter((opt) => {
         if (!opt) return false;
         const rawValue =
           typeof opt.value === 'object' && opt.value !== null ? opt.value.value : opt.value;
-        const row = columnRows?.[rawValue];
+        const row = columnRows?.[rawValue] ?? columnRows?.[String(rawValue)];
         if (!row || typeof row !== 'object') return false;
         const targetValue = getRowValueCaseInsensitive(row, targetColumn);
         if (targetValue === undefined || targetValue === null || targetValue === '') {
@@ -589,7 +631,7 @@ function InlineTransactionTable(
     [
       relationConfigMap,
       autoSelectConfigs,
-      relationData,
+      getRelationRowMap,
       resolveCombinationFilters,
       getRowValueCaseInsensitive,
     ],
@@ -1610,7 +1652,7 @@ function InlineTransactionTable(
       ? conf.idField || conf.column
       : auto?.idField || viewDisplays[viewTbl]?.idField || col;
     if (!table || val === undefined || val === '') return;
-    let row = relationData[col]?.[val];
+    let row = getRelationRow(col, val);
     if (!row) {
       try {
         const res = await fetch(
@@ -1833,8 +1875,8 @@ function InlineTransactionTable(
           if (val && typeof val === 'object' && 'value' in val) {
             val = val.value;
           }
-          if (conf && conf.displayFields && relationData[field]?.[val]) {
-            const ref = relationData[field][val];
+          const ref = getRelationRow(field, val);
+          if (conf && conf.displayFields && ref) {
             conf.displayFields.forEach((df) => {
               const key = columnCaseMap[df.toLowerCase()];
               if (key && ref[df] !== undefined) {
@@ -2178,39 +2220,25 @@ function InlineTransactionTable(
     if (fieldDisabled) {
       let display = typeof val === 'object' ? val.label || val.value : val;
       const rawVal = typeof val === 'object' ? val.value : val;
-      if (
-        relationConfigMap[f] &&
-        rawVal !== undefined &&
-        relationData[f]?.[rawVal]
-      ) {
-        const row = relationData[f][rawVal];
+      const relationRow = rawVal !== undefined ? getRelationRow(f, rawVal) : null;
+      if (relationConfigMap[f] && relationRow) {
         const parts = [rawVal];
         (relationConfigMap[f].displayFields || []).forEach((df) => {
-          if (row[df] !== undefined) parts.push(row[df]);
+          if (relationRow[df] !== undefined) parts.push(relationRow[df]);
         });
         display = parts.join(' - ');
-      } else if (
-        viewSourceMap[f] &&
-        rawVal !== undefined &&
-        relationData[f]?.[rawVal]
-      ) {
-        const row = relationData[f][rawVal];
+      } else if (viewSourceMap[f] && relationRow) {
         const cfg = viewDisplays[viewSourceMap[f]] || {};
         const parts = [rawVal];
         (cfg.displayFields || []).forEach((df) => {
-          if (row[df] !== undefined) parts.push(row[df]);
+          if (relationRow[df] !== undefined) parts.push(relationRow[df]);
         });
         display = parts.join(' - ');
-      } else if (
-        autoSelectConfigs[f] &&
-        rawVal !== undefined &&
-        relationData[f]?.[rawVal]
-      ) {
-        const row = relationData[f][rawVal];
+      } else if (autoSelectConfigs[f] && relationRow) {
         const cfg = autoSelectConfigs[f];
         const parts = [rawVal];
         (cfg.displayFields || []).forEach((df) => {
-          if (row[df] !== undefined) parts.push(row[df]);
+          if (relationRow[df] !== undefined) parts.push(relationRow[df]);
         });
         display = parts.join(' - ');
       }
@@ -2254,10 +2282,9 @@ function InlineTransactionTable(
       const hasCombination = Boolean(
         conf?.combinationSourceColumn && conf?.combinationTargetColumn,
       );
-      const targetColumn = conf?.combinationTargetColumn;
       const combinationReady = isCombinationFilterReady(
         hasCombination,
-        targetColumn,
+        conf?.combinationTargetColumn,
         comboFilters,
       );
       const inputVal = typeof val === 'object' ? val.value : val;
@@ -2279,9 +2306,6 @@ function InlineTransactionTable(
           inputStyle={inputStyle}
           companyId={company}
           filters={comboFilters || undefined}
-          exactFilters={
-            combinationReady && targetColumn ? [targetColumn] : undefined
-          }
           shouldFetch={combinationReady}
         />
       );
@@ -2316,10 +2340,9 @@ function InlineTransactionTable(
       const hasCombination = Boolean(
         cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
       );
-      const targetColumn = cfg?.combinationTargetColumn;
       const combinationReady = isCombinationFilterReady(
         hasCombination,
-        targetColumn,
+        cfg?.combinationTargetColumn,
         comboFilters,
       );
       const inputVal = typeof val === 'object' ? val.value : val;
@@ -2344,9 +2367,6 @@ function InlineTransactionTable(
           inputStyle={inputStyle}
           companyId={company}
           filters={comboFilters || undefined}
-          exactFilters={
-            combinationReady && targetColumn ? [targetColumn] : undefined
-          }
           shouldFetch={combinationReady}
         />
       );
@@ -2357,10 +2377,9 @@ function InlineTransactionTable(
       const hasCombination = Boolean(
         cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
       );
-      const targetColumn = cfg?.combinationTargetColumn;
       const combinationReady = isCombinationFilterReady(
         hasCombination,
-        targetColumn,
+        cfg?.combinationTargetColumn,
         comboFilters,
       );
       const inputVal = typeof val === 'object' ? val.value : val;
@@ -2383,9 +2402,6 @@ function InlineTransactionTable(
           inputStyle={inputStyle}
           companyId={company}
           filters={comboFilters || undefined}
-          exactFilters={
-            combinationReady && targetColumn ? [targetColumn] : undefined
-          }
           shouldFetch={combinationReady}
         />
       );

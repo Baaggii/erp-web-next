@@ -13,16 +13,11 @@ import {
   applyGeneratedColumnEvaluators,
   createGeneratedColumnEvaluator,
 } from '../utils/generatedColumns.js';
+import extractCombinationFilterValue from '../utils/extractCombinationFilterValue.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
-const DEFAULT_RECEIPT_TYPES = [
-  'B2C_RECEIPT',
-  'B2B_RECEIPT',
-  'B2C_INVOICE',
-  'B2B_INVOICE',
-  'STOCK_QR',
-];
+const DEFAULT_RECEIPT_TYPES = ['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'STOCK_QR'];
 
 function normalizeRelationOptionKey(value) {
   if (value === undefined || value === null) return null;
@@ -684,7 +679,8 @@ const RowFormModal = function RowFormModal({
       if (!sourceField || !targetField) return null;
       const mappedSource =
         columnCaseMap[String(sourceField).toLowerCase()] || sourceField;
-      const value = formVals[mappedSource];
+      const rawValue = formVals[mappedSource];
+      const value = extractCombinationFilterValue(rawValue);
       if (value === undefined || value === null || value === '') return null;
       return { [targetField]: value };
     },
@@ -3061,10 +3057,9 @@ const RowFormModal = function RowFormModal({
         const hasCombination = Boolean(
           conf?.combinationSourceColumn && conf?.combinationTargetColumn,
         );
-        const targetColumn = conf?.combinationTargetColumn;
         const combinationReady = isCombinationFilterReady(
           hasCombination,
-          targetColumn,
+          conf?.combinationTargetColumn,
           comboFilters,
         );
         return (
@@ -3104,9 +3099,6 @@ const RowFormModal = function RowFormModal({
               inputStyle={inputStyle}
               companyId={company}
               filters={comboFilters || undefined}
-              exactFilters={
-                combinationReady && targetColumn ? [targetColumn] : undefined
-              }
               shouldFetch={combinationReady}
             />
           )
@@ -3120,10 +3112,9 @@ const RowFormModal = function RowFormModal({
         const hasCombination = Boolean(
           cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
         );
-        const targetColumn = cfg?.combinationTargetColumn;
         const combinationReady = isCombinationFilterReady(
           hasCombination,
-          targetColumn,
+          cfg?.combinationTargetColumn,
           comboFilters,
         );
         return (
@@ -3164,9 +3155,6 @@ const RowFormModal = function RowFormModal({
               inputStyle={inputStyle}
               companyId={company}
               filters={comboFilters || undefined}
-              exactFilters={
-                combinationReady && targetColumn ? [targetColumn] : undefined
-              }
               shouldFetch={combinationReady}
             />
           )
@@ -3179,10 +3167,9 @@ const RowFormModal = function RowFormModal({
         const hasCombination = Boolean(
           cfg?.combinationSourceColumn && cfg?.combinationTargetColumn,
         );
-        const targetColumn = cfg?.combinationTargetColumn;
         const combinationReady = isCombinationFilterReady(
           hasCombination,
-          targetColumn,
+          cfg?.combinationTargetColumn,
           comboFilters,
         );
         return (
@@ -3223,9 +3210,6 @@ const RowFormModal = function RowFormModal({
               inputStyle={inputStyle}
               companyId={company}
               filters={comboFilters || undefined}
-              exactFilters={
-                combinationReady && targetColumn ? [targetColumn] : undefined
-              }
               shouldFetch={combinationReady}
             />
           )

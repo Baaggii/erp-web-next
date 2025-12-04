@@ -286,7 +286,7 @@ if (!haveReact) {
             onCancel: () => {},
             onSubmit: () => {},
             columns: ['company_id', 'dept_id'],
-            row: { company_id: 'COMP-1' },
+            row: { company_id: { value: 'COMP-1', label: 'Acme Co' } },
             relationConfigs: {
               dept_id: {
                 table: 'departments',
@@ -303,7 +303,6 @@ if (!haveReact) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       assert.ok(selectProps[0]);
       assert.deepEqual(selectProps[0].filters, { company_id: 'COMP-1' });
-      assert.deepEqual(selectProps[0].exactFilters, ['company_id']);
       assert.equal(selectProps[0].shouldFetch, true);
     } finally {
       root.unmount();
@@ -373,7 +372,6 @@ if (!haveReact) {
       await new Promise((resolve) => setTimeout(resolve, 0));
       assert.ok(selectProps[0]);
       assert.equal(selectProps[0].filters, undefined);
-      assert.equal(selectProps[0].exactFilters, undefined);
       assert.equal(selectProps[0].shouldFetch, false);
     } finally {
       root.unmount();
@@ -420,7 +418,7 @@ if (!haveReact) {
             onCancel: () => {},
             onSubmit: () => {},
             columns: ['company_id', 'dept_id'],
-            row: { company_id: 'COMP-1' },
+            row: { company_id: { value: 'COMP-1', label: 'Acme Co' } },
             relations: {
               dept_id: [
                 { value: '1', label: 'North' },
