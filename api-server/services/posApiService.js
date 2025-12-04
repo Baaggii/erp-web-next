@@ -60,12 +60,11 @@ const tokenCache = new Map();
 function cacheToken(endpointId, token, expiresInSeconds) {
   if (!endpointId || !token) return;
   const ttl = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0 ? expiresInSeconds : 300;
-  const fetchedAt = Date.now();
-  const expiresAt = fetchedAt + ttl * 1000 - 30000;
-  tokenCache.set(endpointId, { token, expiresAt, fetchedAt, ttl });
+  const expiresAt = Date.now() + ttl * 1000 - 30000;
+  tokenCache.set(endpointId, { token, expiresAt });
 }
 
-function getCachedTokenEntry(endpointId) {
+function getCachedToken(endpointId) {
   if (!endpointId) return null;
   const entry = tokenCache.get(endpointId);
   if (!entry || !entry.token) return null;
@@ -73,29 +72,7 @@ function getCachedTokenEntry(endpointId) {
     tokenCache.delete(endpointId);
     return null;
   }
-  return entry;
-}
-
-function getCachedToken(endpointId) {
-  const entry = getCachedTokenEntry(endpointId);
-  return entry?.token || null;
-}
-
-export function getTokenMetadata(endpointId) {
-  const entry = getCachedTokenEntry(endpointId);
-  if (!entry) return null;
-  return {
-    token: entry.token,
-    fetchedAt: entry.fetchedAt || null,
-    expiresAt: entry.expiresAt || null,
-    ttl: entry.ttl || null,
-    isExpired: entry.expiresAt ? entry.expiresAt <= Date.now() : false,
-  };
-}
-
-export function clearCachedToken(endpointId) {
-  if (!endpointId) return false;
-  return tokenCache.delete(endpointId);
+  return entry.token;
 }
 
 export async function getPosApiBaseUrl() {
