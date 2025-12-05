@@ -237,10 +237,17 @@ function applyEnvMapToPayload(payload, envMap = {}) {
   return { payload: basePayload, warnings };
 }
 
+function normalizeUrlMode(mode, envVar) {
+  if (mode === 'env') return 'env';
+  if (mode === 'literal') return 'literal';
+  return envVar ? 'env' : 'literal';
+}
+
 function resolveEndpointUrl(definition, key, urlEnvMap = {}, warnings = []) {
   const envVar = (urlEnvMap && urlEnvMap[key]) || definition[`${key}EnvVar`];
+  const mode = normalizeUrlMode(definition[`${key}Mode`], envVar);
   const literal = typeof definition[key] === 'string' ? definition[key].trim() : '';
-  if (envVar) {
+  if (mode === 'env' && envVar) {
     const envRaw = process.env[envVar];
     if (envRaw !== undefined && envRaw !== null && envRaw !== '') {
       return String(envRaw).trim();

@@ -1212,13 +1212,15 @@ function resolveEndpointBaseUrl(definition, environment = 'staging') {
   const envMap = definition.urlEnvMap || {};
   const pickKey = (key) => {
     const envVar = envMap[key] || definition[`${key}EnvVar`];
-    if (envVar) {
+    const mode = definition[`${key}Mode`] === 'literal' ? 'literal' : envVar ? 'env' : 'literal';
+    const literal = toStringValue(definition[key] || '');
+    if (mode === 'env' && envVar) {
       const envRaw = readEnvVar(envVar);
       if (envRaw !== undefined && envRaw !== null && envRaw !== '') {
         return toStringValue(envRaw);
       }
     }
-    return toStringValue(definition[key] || '');
+    return literal;
   };
 
   const candidateKeys =
