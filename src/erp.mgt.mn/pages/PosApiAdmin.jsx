@@ -1157,6 +1157,16 @@ function buildRequestEnvMap(selections = {}) {
   }, {});
 }
 
+function buildUrlEnvMap(selections = {}) {
+  return Object.entries(selections || {}).reduce((acc, [key, entry]) => {
+    const mode = normalizeUrlMode(entry?.mode, entry?.envVar);
+    if (mode === 'env' && entry?.envVar) {
+      acc[key] = entry.envVar.trim();
+    }
+    return acc;
+  }, {});
+}
+
 function normalizeHintEntry(entry) {
   if (entry === null || entry === undefined) {
     return { field: '', required: undefined, description: '' };
@@ -3975,6 +3985,13 @@ export default function PosApiAdmin() {
     const productionServerUrlField = buildUrlField('productionServerUrl');
     const testServerUrlProductionField = buildUrlField('testServerUrlProduction');
 
+    const urlEnvMap = buildUrlEnvMap({
+      serverUrl: serverUrlField,
+      testServerUrl: testServerUrlField,
+      productionServerUrl: productionServerUrlField,
+      testServerUrlProduction: testServerUrlProductionField,
+    });
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -4036,6 +4053,7 @@ export default function PosApiAdmin() {
       testServerUrlProduction: testServerUrlProductionField.literal || productionServerUrlField.literal,
       testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
       testServerUrlProductionMode: testServerUrlProductionField.mode,
+      urlEnvMap,
       authEndpointId: formState.authEndpointId || '',
     };
 
