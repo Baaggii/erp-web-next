@@ -117,7 +117,7 @@ const DEFAULT_INFO_TABLE_OPTIONS = [
 const BASE_COMPLEX_REQUEST_SCHEMA = createReceiptTemplate('B2C');
 const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
 
-const DEFAULT_ENV_RESOLVER = (key) => key ?? '';
+const DEFAULT_ENV_RESOLVER = () => ({ found: false, value: '', error: '' });
 
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
@@ -992,32 +992,39 @@ function resolveUrlWithEnv({ literal, envVar, mode }) {
   const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
   const trimmedEnvVar = typeof envVar === 'string' ? envVar.trim() : '';
   const normalizedMode = normalizeUrlMode(mode, trimmedEnvVar);
-  if (!trimmedEnvVar || normalizedMode !== 'env') {
+  const placeholder = trimmedEnvVar ? `{{${trimmedEnvVar}}}` : '';
+
+  if (normalizedMode === 'env' && trimmedEnvVar) {
+    const resolver = typeof resolveEnvironmentVariable === 'function'
+      ? resolveEnvironmentVariable
+      : DEFAULT_ENV_RESOLVER;
+    let resolvedValue = '';
+    try {
+      const outcome = resolver(trimmedEnvVar, { parseJson: false });
+      if (outcome && typeof outcome === 'object') {
+        if (outcome.found && outcome.value !== undefined && outcome.value !== null) {
+          resolvedValue = String(outcome.value).trim();
+        }
+      } else if (typeof outcome === 'string') {
+        resolvedValue = outcome.trim();
+      }
+    } catch {
+      // Ignore resolution errors; fall back below.
+    }
+
+    const resolved = resolvedValue || trimmedLiteral || placeholder || '';
     return {
-      resolved: trimmedLiteral,
-      missing: false,
+      resolved,
+      missing: normalizedMode === 'env' && !resolvedValue && !trimmedLiteral,
       mode: normalizedMode,
       envVar: trimmedEnvVar,
       literal: trimmedLiteral,
     };
   }
-  const resolver = typeof resolveEnvironmentVariable === 'function' ? resolveEnvironmentVariable : null;
-  const resolution = resolver ? resolver(trimmedEnvVar, { parseJson: false }) : null;
-  const found = Boolean(resolution && typeof resolution === 'object' && resolution.found);
-  let resolvedValue = found ? resolution.value : trimmedLiteral || `{{${trimmedEnvVar}}}`;
-  if (resolvedValue === undefined || resolvedValue === null) {
-    resolvedValue = '';
-  }
-  if (typeof resolvedValue !== 'string') {
-    try {
-      resolvedValue = String(resolvedValue);
-    } catch {
-      resolvedValue = '';
-    }
-  }
+
   return {
-    resolved: resolvedValue,
-    missing: !found,
+    resolved: trimmedLiteral,
+    missing: false,
     mode: normalizedMode,
     envVar: trimmedEnvVar,
     literal: trimmedLiteral,
@@ -2384,7 +2391,6 @@ export default function PosApiAdmin() {
     const envVarValue = rawSelection.envVar || '';
     const literalValue = rawSelection.literal || '';
     const resolvedValue = resolvedSelection.resolved || literalValue;
-    const envMissing = envMode && resolvedSelection.envVar && resolvedSelection.missing;
     return (
       <label style={{ ...styles.label, flex: 1 }}>
         {label}
@@ -2434,12 +2440,6 @@ export default function PosApiAdmin() {
                 style={styles.input}
               />
               <div style={styles.fieldHelp}>Resolved URL: {resolvedValue || 'Not set'}</div>
-              {envMissing && (
-                <div style={styles.hintError}>
-                  Environment variable {resolvedSelection.envVar} is not available; the fallback URL will be
-                  used instead.
-                </div>
-              )}
             </div>
           ) : (
             <div style={styles.urlEnvFields}>
@@ -3610,12 +3610,6 @@ export default function PosApiAdmin() {
       setImportTestError('Provide a staging base URL or environment variable to run the test.');
       return;
     }
-    if (baseUrlResolution.mode === 'env' && baseUrlResolution.missing && !baseUrlResolution.literal) {
-      setImportTestError(
-        `Environment variable ${baseUrlResolution.envVar} is not configured. Add a fallback URL or set the variable.`,
-      );
-      return;
-    }
     let parsedBody;
     if (importRequestBody.trim()) {
       try {
@@ -4399,15 +4393,6 @@ export default function PosApiAdmin() {
       return;
     }
 
-    if (activeTestSelection.mode === 'env' && activeTestSelection.missing && !activeTestSelection.literal) {
-      setTestState({
-        running: false,
-        error: `Environment variable ${activeTestSelection.envVar} is not configured and no fallback URL is set.`,
-        result: null,
-      });
-      return;
-    }
-
     const now = Date.now();
     const cachedTokenExpired = tokenMeta.expiresAt ? now > tokenMeta.expiresAt : false;
     const effectiveUseCachedToken = useCachedToken && !cachedTokenExpired;
@@ -4422,15 +4407,7 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
-      const endpointForTest = {
-        ...definition,
-        serverUrl: resolvedUrlSelections.serverUrl.resolved || definition.serverUrl,
-        testServerUrl: selectedTestUrl || definition.testServerUrl,
-        productionServerUrl:
-          resolvedUrlSelections.productionServerUrl.resolved || definition.productionServerUrl,
-        testServerUrlProduction:
-          resolvedUrlSelections.testServerUrlProduction.resolved || definition.testServerUrlProduction,
-      };
+      const endpointForTest = { ...definition };
 
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
         method: 'POST',
@@ -4831,14 +4808,6 @@ export default function PosApiAdmin() {
                                   <div style={styles.fieldHelp}>
                                     Resolved URL: {resolvedImportBaseSelection.resolved || 'Not set'}
                                   </div>
-                                  {resolvedImportBaseSelection.missing
-                                    && resolvedImportBaseSelection.envVar
-                                    && !resolvedImportBaseSelection.literal && (
-                                      <div style={styles.hintError}>
-                                        Environment variable {resolvedImportBaseSelection.envVar} is not available; the fallback URL
-                                        will be used instead.
-                                      </div>
-                                  )}
                                 </div>
                               ) : (
                                 <div style={styles.urlEnvFields}>
