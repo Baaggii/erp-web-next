@@ -117,6 +117,8 @@ const DEFAULT_INFO_TABLE_OPTIONS = [
 const BASE_COMPLEX_REQUEST_SCHEMA = createReceiptTemplate('B2C');
 const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
 
+const DEFAULT_ENV_RESOLVER = (key) => key ?? '';
+
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
 }
@@ -1897,6 +1899,23 @@ export default function PosApiAdmin() {
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+    const originalResolver = window.resolveEnvironmentVariable;
+    if (typeof originalResolver !== 'function') {
+      window.resolveEnvironmentVariable = DEFAULT_ENV_RESOLVER;
+    }
+    return () => {
+      if (window.resolveEnvironmentVariable === DEFAULT_ENV_RESOLVER) {
+        if (typeof originalResolver === 'function') {
+          window.resolveEnvironmentVariable = originalResolver;
+        } else {
+          delete window.resolveEnvironmentVariable;
+        }
+      }
+    };
+  }, []);
 
   const groupedEndpoints = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
