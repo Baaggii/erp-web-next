@@ -3981,31 +3981,6 @@ export default function PosApiAdmin() {
     const productionServerUrlField = buildUrlField('productionServerUrl');
     const testServerUrlProductionField = buildUrlField('testServerUrlProduction');
 
-    const resolvedServerUrl = resolveUrlWithEnv(serverUrlField).resolved?.trim() || '';
-    const resolvedTestServerUrl = resolveUrlWithEnv(testServerUrlField).resolved?.trim() || '';
-    const resolvedProductionServerUrl = resolveUrlWithEnv(productionServerUrlField).resolved?.trim() || '';
-    const resolvedTestServerUrlProduction = resolveUrlWithEnv(testServerUrlProductionField).resolved?.trim() || '';
-
-    const effectiveServerUrl = resolvedServerUrl || serverUrlField.literal;
-    const effectiveProductionServerUrl = resolvedProductionServerUrl
-      || resolvedTestServerUrlProduction
-      || resolvedServerUrl
-      || productionServerUrlField.literal
-      || testServerUrlProductionField.literal;
-    const effectiveTestServerUrlProduction = resolvedTestServerUrlProduction
-      || resolvedProductionServerUrl
-      || resolvedTestServerUrl
-      || testServerUrlProductionField.literal
-      || productionServerUrlField.literal
-      || testServerUrlField.literal;
-    const effectiveTestServerUrl = resolvedTestServerUrl
-      || resolvedTestServerUrlProduction
-      || resolvedProductionServerUrl
-      || resolvedServerUrl
-      || testServerUrlField.literal
-      || testServerUrlProductionField.literal
-      || productionServerUrlField.literal;
-
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -4055,16 +4030,16 @@ export default function PosApiAdmin() {
       requestFields: sanitizedRequestFields,
       responseFields,
       testable: Boolean(formState.testable),
-      serverUrl: effectiveServerUrl,
+      serverUrl: serverUrlField.literal,
       serverUrlEnvVar: serverUrlField.envVar,
       serverUrlMode: serverUrlField.mode,
-      testServerUrl: effectiveTestServerUrl,
+      testServerUrl: testServerUrlField.literal,
       testServerUrlEnvVar: testServerUrlField.envVar,
       testServerUrlMode: testServerUrlField.mode,
-      productionServerUrl: effectiveProductionServerUrl,
+      productionServerUrl: productionServerUrlField.literal || testServerUrlProductionField.literal,
       productionServerUrlEnvVar: productionServerUrlField.envVar,
       productionServerUrlMode: productionServerUrlField.mode,
-      testServerUrlProduction: effectiveTestServerUrlProduction,
+      testServerUrlProduction: testServerUrlProductionField.literal || productionServerUrlField.literal,
       testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
       testServerUrlProductionMode: testServerUrlProductionField.mode,
       authEndpointId: formState.authEndpointId || '',
