@@ -1955,6 +1955,8 @@ export default function PosApiAdmin() {
   const [importTestError, setImportTestError] = useState('');
   const [importUseCachedToken, setImportUseCachedToken] = useState(true);
   const [importBaseUrl, setImportBaseUrl] = useState('');
+  const [importBaseUrlEnvVar, setImportBaseUrlEnvVar] = useState('');
+  const [importBaseUrlMode, setImportBaseUrlMode] = useState('literal');
   const [requestFieldValues, setRequestFieldValues] = useState({});
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
@@ -2332,6 +2334,20 @@ export default function PosApiAdmin() {
         Object.entries(urlSelections).map(([key, entry]) => [key, resolveUrlWithEnv(entry)]),
       ),
     [urlSelections],
+  );
+
+  const importBaseUrlSelection = useMemo(
+    () => ({
+      literal: importBaseUrl,
+      envVar: importBaseUrlEnvVar,
+      mode: normalizeUrlMode(importBaseUrlMode, importBaseUrlEnvVar),
+    }),
+    [importBaseUrl, importBaseUrlEnvVar, importBaseUrlMode],
+  );
+
+  const resolvedImportBaseSelection = useMemo(
+    () => resolveUrlWithEnv(importBaseUrlSelection),
+    [importBaseUrlSelection],
   );
 
   const resolvedTestServerUrl = ((testEnvironment === 'production'
@@ -3508,7 +3524,9 @@ export default function PosApiAdmin() {
       || draft.productionServerUrl
       || draft.testServerUrlProduction;
     if (preferredBaseUrl) {
-      setImportBaseUrl((prev) => prev || preferredBaseUrl);
+      setImportBaseUrl(preferredBaseUrl);
+      setImportBaseUrlEnvVar('');
+      setImportBaseUrlMode('literal');
     }
     if (!importAuthEndpointId && formState.authEndpointId) {
       setImportAuthEndpointId(formState.authEndpointId);
@@ -3586,6 +3604,18 @@ export default function PosApiAdmin() {
       setImportTestError('Select an imported operation to test.');
       return;
     }
+    const baseUrlResolution = resolveUrlWithEnv(importBaseUrlSelection);
+    const resolvedBaseUrl = (baseUrlResolution.resolved || '').trim();
+    if (!resolvedBaseUrl) {
+      setImportTestError('Provide a staging base URL or environment variable to run the test.');
+      return;
+    }
+    if (baseUrlResolution.mode === 'env' && baseUrlResolution.missing && !baseUrlResolution.literal) {
+      setImportTestError(
+        `Environment variable ${baseUrlResolution.envVar} is not configured. Add a fallback URL or set the variable.`,
+      );
+      return;
+    }
     let parsedBody;
     if (importRequestBody.trim()) {
       try {
@@ -3620,7 +3650,7 @@ export default function PosApiAdmin() {
             headers: filteredParams.header,
             body: parsedBody,
           },
-          baseUrl: importBaseUrl.trim() || undefined,
+          baseUrl: resolvedBaseUrl || undefined,
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
           useCachedToken: importUseCachedToken,
         }),
@@ -4322,6 +4352,9 @@ export default function PosApiAdmin() {
     setDocFieldDescriptions({});
     setSampleImportText('');
     setSampleImportError('');
+    setImportBaseUrl('');
+    setImportBaseUrlEnvVar('');
+    setImportBaseUrlMode('literal');
     setTestEnvironment('staging');
     setImportAuthEndpointId('');
     setUseCachedToken(true);
@@ -4346,9 +4379,32 @@ export default function PosApiAdmin() {
       return;
     }
     const selectedTestUrl = resolvedTestServerUrl;
+    const testUrlCandidates = testEnvironment === 'production'
+      ? [
+          resolvedUrlSelections.productionServerUrl,
+          resolvedUrlSelections.testServerUrlProduction,
+          resolvedUrlSelections.testServerUrl,
+        ]
+      : [
+          resolvedUrlSelections.testServerUrl,
+          resolvedUrlSelections.testServerUrlProduction,
+          resolvedUrlSelections.productionServerUrl,
+        ];
+    const activeTestSelection = testUrlCandidates.find((entry) => (entry?.resolved || '').trim())
+      || testUrlCandidates[0]
+      || {};
 
     if (!selectedTestUrl) {
       setTestState({ running: false, error: 'Test server URL is required for testing.', result: null });
+      return;
+    }
+
+    if (activeTestSelection.mode === 'env' && activeTestSelection.missing && !activeTestSelection.literal) {
+      setTestState({
+        running: false,
+        error: `Environment variable ${activeTestSelection.envVar} is not configured and no fallback URL is set.`,
+        result: null,
+      });
       return;
     }
 
@@ -4366,12 +4422,22 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
+      const endpointForTest = {
+        ...definition,
+        serverUrl: resolvedUrlSelections.serverUrl.resolved || definition.serverUrl,
+        testServerUrl: selectedTestUrl || definition.testServerUrl,
+        productionServerUrl:
+          resolvedUrlSelections.productionServerUrl.resolved || definition.productionServerUrl,
+        testServerUrlProduction:
+          resolvedUrlSelections.testServerUrlProduction.resolved || definition.testServerUrlProduction,
+      };
+
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          endpoint: definition,
+          endpoint: endpointForTest,
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
@@ -4719,13 +4785,76 @@ export default function PosApiAdmin() {
                         <div style={styles.importFieldRow}>
                           <label style={styles.label}>
                             Staging base URL
-                            <input
-                              type="text"
-                              value={importBaseUrl}
-                              onChange={(e) => setImportBaseUrl(e.target.value)}
-                              placeholder="https://posapi-test.tax.gov.mn"
-                              style={styles.input}
-                            />
+                            <div style={styles.urlFieldControls}>
+                              <div style={styles.requestFieldModes}>
+                                <label style={styles.radioLabel}>
+                                  <input
+                                    type="radio"
+                                    name="import-base-mode"
+                                    checked={importBaseUrlSelection.mode !== 'env'}
+                                    onChange={() => setImportBaseUrlMode('literal')}
+                                  />
+                                  Literal URL
+                                </label>
+                                <label style={styles.radioLabel}>
+                                  <input
+                                    type="radio"
+                                    name="import-base-mode"
+                                    checked={importBaseUrlSelection.mode === 'env'}
+                                    onChange={() => setImportBaseUrlMode('env')}
+                                  />
+                                  Environment variable
+                                </label>
+                              </div>
+                              {importBaseUrlSelection.mode === 'env' ? (
+                                <div style={styles.urlEnvFields}>
+                                  <input
+                                    type="text"
+                                    list="env-options-import-base"
+                                    value={importBaseUrlEnvVar}
+                                    onChange={(e) => setImportBaseUrlEnvVar(e.target.value)}
+                                    placeholder="Enter environment variable name"
+                                    style={styles.input}
+                                  />
+                                  <datalist id="env-options-import-base">
+                                    {envVariableOptions.map((opt) => (
+                                      <option key={`import-base-${opt}`} value={opt} />
+                                    ))}
+                                  </datalist>
+                                  <input
+                                    type="text"
+                                    value={importBaseUrl}
+                                    onChange={(e) => setImportBaseUrl(e.target.value)}
+                                    placeholder="https://posapi-test.tax.gov.mn"
+                                    style={styles.input}
+                                  />
+                                  <div style={styles.fieldHelp}>
+                                    Resolved URL: {resolvedImportBaseSelection.resolved || 'Not set'}
+                                  </div>
+                                  {resolvedImportBaseSelection.missing
+                                    && resolvedImportBaseSelection.envVar
+                                    && !resolvedImportBaseSelection.literal && (
+                                      <div style={styles.hintError}>
+                                        Environment variable {resolvedImportBaseSelection.envVar} is not available; the fallback URL
+                                        will be used instead.
+                                      </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <div style={styles.urlEnvFields}>
+                                  <input
+                                    type="text"
+                                    value={importBaseUrl}
+                                    onChange={(e) => setImportBaseUrl(e.target.value)}
+                                    placeholder="https://posapi-test.tax.gov.mn"
+                                    style={styles.input}
+                                  />
+                                  <div style={styles.fieldHelp}>
+                                    Resolved URL: {resolvedImportBaseSelection.resolved || 'Not set'}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
                           </label>
                           <label style={styles.label}>
                             Token endpoint
