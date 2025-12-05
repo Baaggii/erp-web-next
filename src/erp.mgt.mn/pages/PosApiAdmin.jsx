@@ -3624,6 +3624,11 @@ export default function PosApiAdmin() {
       setImportTestError('Select an imported operation to test.');
       return;
     }
+    const selectedAuthEndpointId = (importAuthEndpointId || formState.authEndpointId || '').trim();
+    if (selectedAuthEndpointId && !authEndpointOptions.some((ep) => ep.id === selectedAuthEndpointId)) {
+      setImportTestError('The selected token endpoint is not implemented. Add it under the AUTH tab first.');
+      return;
+    }
     const baseUrlResolution = resolveUrlWithEnv(importBaseUrlSelection);
     const resolvedBaseUrl = (baseUrlResolution.resolved || '').trim();
     if (!baseUrlResolution.hasValue) {
@@ -3671,7 +3676,7 @@ export default function PosApiAdmin() {
           },
           baseUrl: resolvedBaseUrl || undefined,
           environment: testEnvironment,
-          authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
+          authEndpointId: selectedAuthEndpointId,
           useCachedToken: importUseCachedToken,
         }),
       });
@@ -4424,6 +4429,15 @@ export default function PosApiAdmin() {
     const effectiveUseCachedToken = useCachedToken && !cachedTokenExpired;
     if (cachedTokenExpired) {
       setStatus('Cached token expired; refreshing before running the test.');
+    }
+
+    if (formState.authEndpointId && !authEndpointOptions.some((ep) => ep.id === formState.authEndpointId)) {
+      setTestState({
+        running: false,
+        error: 'The selected token endpoint is not implemented. Add an AUTH endpoint or clear the selection.',
+        result: null,
+      });
+      return;
     }
 
     const confirmed = window.confirm(
