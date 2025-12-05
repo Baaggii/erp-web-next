@@ -237,6 +237,31 @@ function applyEnvMapToPayload(payload, envMap = {}) {
   return { payload: basePayload, warnings };
 }
 
+function resolveEndpointUrl(definition, key, urlEnvMap = {}, warnings = []) {
+  const envVar = (urlEnvMap && urlEnvMap[key]) || definition[`${key}EnvVar`];
+  const literal = typeof definition[key] === 'string' ? definition[key].trim() : '';
+  if (envVar) {
+    const envRaw = process.env[envVar];
+    if (envRaw !== undefined && envRaw !== null && envRaw !== '') {
+      return String(envRaw).trim();
+    }
+    warnings.push(`Environment variable ${envVar} is not set; using literal value for ${key}.`);
+  }
+  return literal;
+}
+
+function pickTestBaseUrl(definition, environment, urlEnvMap = {}, warnings = []) {
+  const candidateKeys =
+    environment === 'production'
+      ? ['productionServerUrl', 'testServerUrlProduction', 'testServerUrl', 'serverUrl']
+      : ['testServerUrl', 'testServerUrlProduction', 'productionServerUrl', 'serverUrl'];
+  for (const key of candidateKeys) {
+    const resolved = resolveEndpointUrl(definition, key, urlEnvMap, warnings);
+    if (resolved) return resolved;
+  }
+  return '';
+}
+
 function buildTestUrl(definition) {
   const base = (definition.testServerUrl || '').trim();
   if (!base) {
@@ -1455,10 +1480,9 @@ router.post('/test', requireAuth, async (req, res, next) => {
     }
 
     const environment = req.body?.environment === 'production' ? 'production' : 'staging';
-    const testBaseUrl =
-      environment === 'production'
-        ? definition.testServerUrlProduction || definition.testServerUrl
-        : definition.testServerUrl || definition.testServerUrlProduction;
+    const urlEnvMap = definition.urlEnvMap || {};
+    const warnings = [];
+    const testBaseUrl = pickTestBaseUrl(definition, environment, urlEnvMap, warnings);
     if (!testBaseUrl || typeof testBaseUrl !== 'string') {
       res.status(400).json({ message: 'Test server URL is required' });
       return;
@@ -1489,6 +1513,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
       payload,
       definition.requestEnvMap,
     );
+    const combinedWarnings = [...warnings, ...envWarnings];
 
     const selectedAuthEndpoint =
       typeof req.body?.authEndpointId === 'string' && req.body.authEndpointId.trim()
@@ -1506,7 +1531,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
         useCachedToken: req.body?.useCachedToken !== false,
         environment,
       });
-      const responsePayload = envWarnings.length ? { ...result, envWarnings } : result;
+      const responsePayload = combinedWarnings.length ? { ...result, envWarnings: combinedWarnings } : result;
       res.json(responsePayload);
     } catch (err) {
       if (err?.status) {
