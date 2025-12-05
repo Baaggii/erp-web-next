@@ -1553,10 +1553,19 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
     const endpoint = req.body?.endpoint;
     const payload = req.body?.payload;
     const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
+    const baseUrlSelection = req.body?.baseUrlSelection;
+    const warnings = [];
+    const resolvedBaseUrl =
+      resolveUrlSelection(baseUrlSelection, warnings, 'baseUrl')
+      || baseUrl;
     const authEndpointId =
       typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
     if (!endpoint || typeof endpoint !== 'object') {
       res.status(400).json({ message: 'endpoint object is required' });
+      return;
+    }
+    if (!resolvedBaseUrl) {
+      res.status(400).json({ message: 'Provide a staging base URL or environment variable to run the test.' });
       return;
     }
     const sanitized = {
@@ -1589,15 +1598,17 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
     try {
       const result = await invokePosApiEndpoint(sanitized.id, mappedPayload, {
         endpoint: sanitized,
-        baseUrl: baseUrl || undefined,
+        baseUrl: resolvedBaseUrl || undefined,
         debug: true,
         authEndpointId,
         useCachedToken: req.body?.useCachedToken !== false,
       });
+      const responsePayload = warnings.length ? { ...result, envWarnings: warnings } : result;
       res.json({
         ok: true,
-        request: result.request,
-        response: result.response,
+        request: responsePayload.request,
+        response: responsePayload.response,
+        envWarnings: responsePayload.envWarnings,
         endpoint: sanitized,
       });
     } catch (err) {
