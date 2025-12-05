@@ -1873,8 +1873,10 @@ const TableManager = forwardRef(function TableManager({
       params.set('dir', sort.dir);
     }
     Object.entries(filters).forEach(([k, v]) => {
-      if (v !== '' && v !== null && v !== undefined && validCols.has(k))
-        params.set(k, v);
+      const resolved = resolveFilterValue(k, v);
+      if (resolved !== null && resolved !== undefined && resolved !== '' && validCols.has(k)) {
+        params.set(k, resolved);
+      }
     });
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
@@ -1926,6 +1928,7 @@ const TableManager = forwardRef(function TableManager({
     page,
     perPage,
     filters,
+    resolveFilterValue,
     sort,
     refreshId,
     localRefresh,
@@ -3078,6 +3081,7 @@ const TableManager = forwardRef(function TableManager({
     setPage(1);
     setSelectedRows(new Set());
   }
+
 
   async function issueTransactionEbarimt(recordId) {
     if (!formConfig?.posApiEnabled) return null;
@@ -4800,6 +4804,48 @@ const TableManager = forwardRef(function TableManager({
       relationOpts[c] = refData[c];
     }
   });
+  const relationSearchIndex = useMemo(() => {
+    const index = {};
+    Object.entries(relationOpts).forEach(([col, opts]) => {
+      index[col] = opts
+        .filter(Boolean)
+        .map((o) => {
+          const valueStr = o?.value !== undefined && o?.value !== null ? String(o.value) : '';
+          const labelStr = o?.label !== undefined && o?.label !== null ? String(o.label) : '';
+          const cleanedLabel = labelStr.replace(/\s+/g, ' ').trim();
+          return {
+            value: valueStr,
+            label: cleanedLabel,
+            search: `${valueStr} ${cleanedLabel}`.trim().toLowerCase(),
+          };
+        })
+        .filter((entry) => entry.value || entry.label);
+    });
+    return index;
+  }, [relationOpts]);
+  function resolveFilterValue(column, rawValue) {
+    if (rawValue === undefined || rawValue === null) return null;
+    const stringValue = typeof rawValue === 'string' ? rawValue : String(rawValue);
+    const trimmedValue = stringValue.trim();
+    if (!trimmedValue) return null;
+
+    const searchEntries = relationSearchIndex[column];
+    if (Array.isArray(searchEntries) && searchEntries.length > 0) {
+      const searchTerm = trimmedValue.toLowerCase();
+      const matchedValues = searchEntries
+        .filter((entry) => entry.search.includes(searchTerm))
+        .map((entry) => entry.value)
+        .filter((val) => val !== undefined && val !== null && `${val}`.trim() !== '');
+      const uniqueValues = Array.from(
+        new Set([trimmedValue, ...matchedValues.map((val) => String(val))]),
+      ).filter((val) => val.trim());
+      if (uniqueValues.length > 0) {
+        return uniqueValues.join(',');
+      }
+    }
+
+    return trimmedValue;
+  }
   const labelMap = {};
   Object.entries(relationOpts).forEach(([col, opts]) => {
     labelMap[col] = {};
@@ -5862,18 +5908,33 @@ const TableManager = forwardRef(function TableManager({
               }}
             >
                 {Array.isArray(relationOpts[c]) ? (
-                  <select
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  >
-                    <option value=""></option>
-                    {relationOpts[c].map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <input
+                      list={`filter-${slugify(String(c))}-options`}
+                      value={filters[c] || ''}
+                      onChange={(e) => handleFilterChange(c, e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                    <datalist id={`filter-${slugify(String(c))}-options`}>
+                      <option value=""></option>
+                      {relationOpts[c].map((o) => {
+                        const optionLabel = `${o?.label ?? o?.value ?? ''}`
+                          .replace(/\s+/g, ' ')
+                          .trim();
+                        const optionValue = o?.value ?? '';
+                        return (
+                          <option
+                            key={optionValue || optionLabel}
+                            value={optionValue}
+                            label={optionLabel}
+                            title={optionLabel}
+                          >
+                            {optionLabel}
+                          </option>
+                        );
+                      })}
+                    </datalist>
+                  </>
                 ) : (
                   <input
                     value={filters[c] || ''}
