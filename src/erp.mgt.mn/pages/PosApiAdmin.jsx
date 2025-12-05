@@ -2005,47 +2005,6 @@ export default function PosApiAdmin() {
     }
   }
 
-  function announceTokenRequestOutcome(result, { requestLabel } = {}) {
-    if (!result || typeof result !== 'object') return;
-    const tokenRequest = result.tokenRequest || result.authRequest || result.token?.request;
-    const tokenResponse = result.tokenResponse || result.authResponse || result.token?.response;
-    const tokenStatus = result.tokenStatus ?? result.authStatus ?? result.token?.status;
-    if (!tokenRequest && !tokenResponse && tokenStatus === undefined) return;
-
-    const statusCode = tokenResponse?.status ?? tokenResponse?.statusCode;
-    const statusText = tokenResponse?.statusText || '';
-    const okFromResponse = tokenResponse?.ok ?? tokenResponse?.success;
-    const success =
-      okFromResponse !== undefined
-        ? Boolean(okFromResponse)
-        : tokenStatus !== undefined
-          ? tokenStatus === true || tokenStatus === 'success'
-          : typeof statusCode === 'number'
-            ? statusCode >= 200 && statusCode < 300
-            : undefined;
-
-    const label =
-      requestLabel
-      || tokenRequest?.url
-      || tokenRequest?.path
-      || tokenRequest?.endpoint
-      || '';
-
-    const messageParts = [];
-    messageParts.push(success === false ? 'Token request failed' : 'Token request completed');
-    if (label) messageParts.push(`for ${label}`);
-    if (statusCode !== undefined) {
-      messageParts.push(`(status ${statusCode}${statusText ? ` ${statusText}` : ''})`);
-    }
-
-    const message = messageParts.join(' ');
-    if (success === false) {
-      showToast(message, 'error');
-    } else {
-      showToast(message, success ? 'success' : 'info');
-    }
-  }
-
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
     const originalResolver = window.resolveEnvironmentVariable;
