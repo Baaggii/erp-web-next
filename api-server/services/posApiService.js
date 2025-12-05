@@ -1113,13 +1113,32 @@ async function resolveAuthEndpoint(authEndpointId) {
   return endpoints.find((entry) => entry?.posApiType === 'AUTH') || null;
 }
 
-function resolveTestServerUrl(definition, environment = 'staging') {
+function resolveEndpointBaseUrl(definition, environment = 'staging') {
   if (!definition || typeof definition !== 'object') return '';
   const trimmedEnv = environment === 'production' ? 'production' : 'staging';
-  const prodUrl = toStringValue(definition.testServerUrlProduction || '');
-  const stagingUrl = toStringValue(definition.testServerUrl || '');
-  if (trimmedEnv === 'production') return prodUrl || stagingUrl;
-  return stagingUrl || prodUrl;
+  const envMap = definition.urlEnvMap || {};
+  const pickKey = (key) => {
+    const envVar = envMap[key] || definition[`${key}EnvVar`];
+    if (envVar) {
+      const envRaw = readEnvVar(envVar);
+      if (envRaw !== undefined && envRaw !== null && envRaw !== '') {
+        return toStringValue(envRaw);
+      }
+    }
+    return toStringValue(definition[key] || '');
+  };
+
+  const candidateKeys =
+    trimmedEnv === 'production'
+      ? ['productionServerUrl', 'testServerUrlProduction', 'testServerUrl', 'serverUrl']
+      : ['testServerUrl', 'testServerUrlProduction', 'productionServerUrl', 'serverUrl'];
+
+  for (const key of candidateKeys) {
+    const value = pickKey(key);
+    if (value) return value;
+  }
+
+  return '';
 }
 
 async function posApiFetch(path, { method = 'GET', body, token, headers, baseUrl, debug } = {}) {
@@ -1234,7 +1253,10 @@ async function fetchEnvPosApiToken({ useCachedToken = true } = {}) {
   return json.access_token;
 }
 
-async function fetchTokenFromAuthEndpoint(authEndpoint, { baseUrl, payload, useCachedToken = true } = {}) {
+async function fetchTokenFromAuthEndpoint(
+  authEndpoint,
+  { baseUrl, payload, useCachedToken = true, environment = 'staging' } = {},
+) {
   if (!authEndpoint?.id) return fetchEnvPosApiToken({ useCachedToken });
   const cached = useCachedToken ? getCachedToken(authEndpoint.id) : null;
   if (cached) return cached;
@@ -1254,7 +1276,7 @@ async function fetchTokenFromAuthEndpoint(authEndpoint, { baseUrl, payload, useC
     }
   }
   if (!targetBaseUrl) {
-    targetBaseUrl = resolveTestServerUrl(authEndpoint);
+    targetBaseUrl = resolveEndpointBaseUrl(authEndpoint, environment);
   }
   if (!targetBaseUrl) {
     targetBaseUrl = await getPosApiBaseUrl();
@@ -1294,6 +1316,7 @@ export async function getPosApiToken(options = {}) {
       baseUrl: optionBag.baseUrl,
       payload: optionBag.authPayload,
       useCachedToken: optionBag.useCachedToken !== false,
+      environment: optionBag.environment,
     });
   }
   return fetchEnvPosApiToken({ useCachedToken: optionBag.useCachedToken !== false });
@@ -1868,7 +1891,8 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
     }
   }
 
-  const requestBaseUrl = baseUrl || resolveTestServerUrl(endpoint, environment) || (await getPosApiBaseUrl());
+  const requestBaseUrl =
+    baseUrl || resolveEndpointBaseUrl(endpoint, environment) || (await getPosApiBaseUrl());
   const requestUrl = `${trimEndSlash(requestBaseUrl)}${path.startsWith('/') ? path : `/${path}`}`;
 
   let token = null;
@@ -1878,6 +1902,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
       baseUrl: requestBaseUrl,
       authPayload,
       useCachedToken,
+      environment,
     });
   }
 
