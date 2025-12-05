@@ -140,6 +140,123 @@ function coerceParamValue(param) {
   return String(hit);
 }
 
+function tokenizeFieldPath(path) {
+  if (typeof path !== 'string' || !path.trim()) return [];
+  return path
+    .split('.')
+    .map((segment) => {
+      const trimmed = segment.trim();
+      if (!trimmed) return null;
+      const arrayMatch = /^(.*)\[\]$/.exec(trimmed);
+      if (arrayMatch) {
+        return { key: arrayMatch[1], isArray: true };
+      }
+      return { key: trimmed, isArray: false };
+    })
+    .filter(Boolean);
+}
+
+function setValueAtTokens(target, tokens, value) {
+  if (!target || typeof target !== 'object' || !tokens.length) return false;
+  let current = target;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (!token?.key || typeof current !== 'object' || current === null) {
+      return false;
+    }
+    const isLast = index === tokens.length - 1;
+    if (isLast) {
+      if (token.isArray) {
+        current[token.key] = Array.isArray(current[token.key]) ? current[token.key] : [];
+        if (!current[token.key].length) {
+          current[token.key].push(value);
+        } else {
+          current[token.key][0] = value;
+        }
+      } else {
+        current[token.key] = value;
+      }
+      return true;
+    }
+
+    const nextContainer = token.isArray ? [] : {};
+    if (current[token.key] === undefined || current[token.key] === null) {
+      current[token.key] = token.isArray ? [nextContainer] : nextContainer;
+    }
+    if (token.isArray) {
+      current[token.key] = Array.isArray(current[token.key]) ? current[token.key] : [];
+      if (!current[token.key].length) {
+        current[token.key].push(nextContainer);
+      }
+      const nextValue = current[token.key][0];
+      current[token.key][0] = typeof nextValue === 'object' && nextValue !== null ? nextValue : nextContainer;
+      current = current[token.key][0];
+    } else {
+      if (typeof current[token.key] !== 'object' || current[token.key] === null) {
+        current[token.key] = nextContainer;
+      }
+      current = current[token.key];
+    }
+  }
+  return true;
+}
+
+function parseEnvValue(rawValue) {
+  if (rawValue === undefined || rawValue === null) return rawValue;
+  if (typeof rawValue !== 'string') return rawValue;
+  const trimmed = rawValue.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
+function applyEnvMapToPayload(payload, envMap = {}) {
+  const basePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? JSON.parse(JSON.stringify(payload))
+    : {};
+  const target =
+    basePayload.body && typeof basePayload.body === 'object' && !Array.isArray(basePayload.body)
+      ? basePayload.body
+      : basePayload;
+  const warnings = [];
+
+  Object.entries(envMap || {}).forEach(([fieldPath, envVar]) => {
+    if (!fieldPath || !envVar) return;
+    const envRaw = process.env[envVar];
+    if (envRaw === undefined || envRaw === null || envRaw === '') {
+      warnings.push(`Environment variable ${envVar} is not set; using literal value for ${fieldPath}.`);
+      return;
+    }
+    const parsed = parseEnvValue(envRaw);
+    if (parsed !== null && typeof parsed === 'object') {
+      warnings.push(`Environment variable ${envVar} must resolve to a primitive value; skipping ${fieldPath}.`);
+      return;
+    }
+    const tokens = tokenizeFieldPath(fieldPath);
+    if (!tokens.length || !setValueAtTokens(target, tokens, parsed)) {
+      warnings.push(`Could not apply environment variable ${envVar} to ${fieldPath}.`);
+    }
+  });
+
+  return { payload: basePayload, warnings };
+}
+
+function resolveEnvBackedString(literal, envVar, warnings = [], label = 'value') {
+  const fallback = typeof literal === 'string' ? literal.trim() : '';
+  if (!envVar || typeof envVar !== 'string' || !envVar.trim()) return fallback;
+  const raw = process.env[envVar.trim()];
+  if (raw === undefined || raw === null || raw === '') {
+    warnings.push(`Environment variable ${envVar} is not set; using literal ${label}.`);
+    return fallback;
+  }
+  return String(raw).trim();
+}
+
 function buildTestUrl(definition) {
   const base = (definition.testServerUrl || '').trim();
   if (!base) {
@@ -1289,10 +1406,36 @@ router.post('/test', requireAuth, async (req, res, next) => {
     }
 
     const environment = req.body?.environment === 'production' ? 'production' : 'staging';
-    const testBaseUrl =
+    const envWarnings = [];
+    const preferredBaseUrl =
       environment === 'production'
-        ? definition.testServerUrlProduction || definition.testServerUrl
-        : definition.testServerUrl || definition.testServerUrlProduction;
+        ? resolveEnvBackedString(
+            definition.testServerUrlProduction,
+            definition.testServerUrlProductionEnvVar,
+            envWarnings,
+            'production test server URL',
+          )
+        : resolveEnvBackedString(
+            definition.testServerUrl,
+            definition.testServerUrlEnvVar,
+            envWarnings,
+            'staging test server URL',
+          );
+    const fallbackBaseUrl =
+      environment === 'production'
+        ? resolveEnvBackedString(
+            definition.testServerUrl,
+            definition.testServerUrlEnvVar,
+            envWarnings,
+            'staging test server URL',
+          )
+        : resolveEnvBackedString(
+            definition.testServerUrlProduction,
+            definition.testServerUrlProductionEnvVar,
+            envWarnings,
+            'production test server URL',
+          );
+    const testBaseUrl = preferredBaseUrl || fallbackBaseUrl;
     if (!testBaseUrl || typeof testBaseUrl !== 'string') {
       res.status(400).json({ message: 'Test server URL is required' });
       return;
@@ -1319,6 +1462,12 @@ router.post('/test', requireAuth, async (req, res, next) => {
       }
     }
 
+    const { payload: mappedPayload, warnings: envPayloadWarnings } = applyEnvMapToPayload(
+      payload,
+      definition.requestEnvMap,
+    );
+    envWarnings.push(...envPayloadWarnings);
+
     const selectedAuthEndpoint =
       typeof req.body?.authEndpointId === 'string' && req.body.authEndpointId.trim()
         ? req.body.authEndpointId.trim()
@@ -1327,7 +1476,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
           : '';
 
     try {
-      const result = await invokePosApiEndpoint(definition.id || 'draftEndpoint', payload, {
+      const result = await invokePosApiEndpoint(definition.id || 'draftEndpoint', mappedPayload, {
         endpoint: definition,
         baseUrl: testBaseUrl,
         debug: true,
@@ -1335,7 +1484,8 @@ router.post('/test', requireAuth, async (req, res, next) => {
         useCachedToken: req.body?.useCachedToken !== false,
         environment,
       });
-      res.json(result);
+      const responsePayload = envWarnings.length ? { ...result, envWarnings } : result;
+      res.json(responsePayload);
     } catch (err) {
       if (err?.status) {
         const status = err.status === 401 || err.status === 403 ? 502 : err.status;
@@ -1355,7 +1505,14 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
     if (!guard) return;
     const endpoint = req.body?.endpoint;
     const payload = req.body?.payload;
+    const envWarnings = [];
     const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
+    const resolvedBaseUrl = resolveEnvBackedString(
+      baseUrl,
+      typeof req.body?.baseUrlEnvVar === 'string' ? req.body.baseUrlEnvVar : '',
+      envWarnings,
+      'import test server URL',
+    );
     const authEndpointId =
       typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
     if (!endpoint || typeof endpoint !== 'object') {
@@ -1371,6 +1528,7 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
         ? endpoint.parameters.filter(Boolean)
         : [],
       posApiType: endpoint.posApiType || undefined,
+      requestEnvMap: endpoint.requestEnvMap || {},
     };
     const inputPayload = payload && typeof payload === 'object' ? payload : {};
     const paramsBag = inputPayload.params && typeof inputPayload.params === 'object'
@@ -1383,10 +1541,15 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
       combinedPayload.body = bodyPayload;
     }
 
+    const { payload: mappedPayload } = applyEnvMapToPayload(
+      combinedPayload,
+      sanitized.requestEnvMap,
+    );
+
     try {
-      const result = await invokePosApiEndpoint(sanitized.id, combinedPayload, {
+      const result = await invokePosApiEndpoint(sanitized.id, mappedPayload, {
         endpoint: sanitized,
-        baseUrl: baseUrl || undefined,
+        baseUrl: resolvedBaseUrl || undefined,
         debug: true,
         authEndpointId,
         useCachedToken: req.body?.useCachedToken !== false,
@@ -1396,6 +1559,7 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
         request: result.request,
         response: result.response,
         endpoint: sanitized,
+        ...(envWarnings.length ? { envWarnings } : {}),
       });
     } catch (err) {
       const status = err?.status || 502;
