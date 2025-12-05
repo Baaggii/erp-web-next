@@ -997,8 +997,11 @@ function resolveUrlWithEnv({ literal, envVar, mode }) {
   const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
   const trimmedEnvVar = normalizeEnvVarName(envVar);
   const normalizedMode = normalizeUrlMode(mode, trimmedEnvVar);
+  const hasEnvVar = normalizedMode === 'env' && Boolean(trimmedEnvVar);
   return {
-    resolved: trimmedLiteral || (trimmedEnvVar && `{{${trimmedEnvVar}}}`) || '',
+    resolved: trimmedLiteral,
+    display: trimmedLiteral || (hasEnvVar ? `(env: ${trimmedEnvVar})` : ''),
+    hasValue: Boolean(trimmedLiteral || hasEnvVar),
     missing: false,
     mode: normalizedMode,
     envVar: trimmedEnvVar,
@@ -2368,7 +2371,22 @@ export default function PosApiAdmin() {
       || resolvedUrlSelections.productionServerUrl.resolved
   ) || '').trim();
 
-  const hasTestServerUrl = Boolean(resolvedTestServerUrl);
+  const resolvedTestSelection = (testEnvironment === 'production'
+    ? [
+        resolvedUrlSelections.productionServerUrl,
+        resolvedUrlSelections.testServerUrlProduction,
+        resolvedUrlSelections.testServerUrl,
+      ]
+    : [
+        resolvedUrlSelections.testServerUrl,
+        resolvedUrlSelections.testServerUrlProduction,
+        resolvedUrlSelections.productionServerUrl,
+      ]).find((entry) => entry?.hasValue)
+    || null;
+
+  const selectedTestUrl = resolvedTestSelection?.display || resolvedTestSelection?.resolved || '';
+
+  const hasTestServerUrl = Boolean(resolvedTestSelection?.hasValue || resolvedTestServerUrl);
   const urlEnvironmentVariables = useMemo(
     () => Object.values(urlSelections).map((entry) => entry.envVar).filter(Boolean),
     [urlSelections],
@@ -2392,7 +2410,7 @@ export default function PosApiAdmin() {
     const envMode = mode === 'env';
     const envVarValue = rawSelection.envVar || '';
     const literalValue = rawSelection.literal || '';
-    const resolvedValue = resolvedSelection.resolved || literalValue;
+    const resolvedValue = resolvedSelection.display || resolvedSelection.resolved || literalValue;
     return (
       <label style={{ ...styles.label, flex: 1 }}>
         {label}
@@ -3608,7 +3626,7 @@ export default function PosApiAdmin() {
     }
     const baseUrlResolution = resolveUrlWithEnv(importBaseUrlSelection);
     const resolvedBaseUrl = (baseUrlResolution.resolved || '').trim();
-    if (!resolvedBaseUrl) {
+    if (!baseUrlResolution.hasValue) {
       setImportTestError('Provide a staging base URL or environment variable to run the test.');
       return;
     }
@@ -3638,6 +3656,11 @@ export default function PosApiAdmin() {
             path: activeImportDraft.path,
             parameters: activeImportDraft.parameters || [],
             posApiType: activeImportDraft.posApiType,
+            testServerUrl: importBaseUrl,
+            urlEnvMap:
+              importBaseUrlSelection.mode === 'env' && importBaseUrlEnvVar
+                ? { testServerUrl: importBaseUrlEnvVar.trim() }
+                : {},
           },
           payload: {
             params: mergedParams,
@@ -3647,6 +3670,7 @@ export default function PosApiAdmin() {
             body: parsedBody,
           },
           baseUrl: resolvedBaseUrl || undefined,
+          environment: testEnvironment,
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
           useCachedToken: importUseCachedToken,
         }),
@@ -4383,23 +4407,14 @@ export default function PosApiAdmin() {
       setTestState({ running: false, error: 'Enable the testable checkbox to run tests.', result: null });
       return;
     }
-    const selectedTestUrl = resolvedTestServerUrl;
-    const testUrlCandidates = testEnvironment === 'production'
-      ? [
-          resolvedUrlSelections.productionServerUrl,
-          resolvedUrlSelections.testServerUrlProduction,
-          resolvedUrlSelections.testServerUrl,
-        ]
-      : [
-          resolvedUrlSelections.testServerUrl,
-          resolvedUrlSelections.testServerUrlProduction,
-          resolvedUrlSelections.productionServerUrl,
-        ];
-    const activeTestSelection = testUrlCandidates.find((entry) => (entry?.resolved || '').trim())
-      || testUrlCandidates[0]
+
+    const activeTestSelection = resolvedTestSelection
+      || (testEnvironment === 'production'
+        ? resolvedUrlSelections.productionServerUrl
+        : resolvedUrlSelections.testServerUrl)
       || {};
 
-    if (!selectedTestUrl) {
+    if (!activeTestSelection?.hasValue) {
       setTestState({ running: false, error: 'Test server URL is required for testing.', result: null });
       return;
     }
@@ -4412,7 +4427,7 @@ export default function PosApiAdmin() {
     }
 
     const confirmed = window.confirm(
-      `Run a test request against ${selectedTestUrl}? This will use the sample data shown above.`,
+      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use the sample data shown above.`,
     );
     if (!confirmed) return;
 
@@ -4817,7 +4832,7 @@ export default function PosApiAdmin() {
                                     style={styles.input}
                                   />
                                   <div style={styles.fieldHelp}>
-                                    Resolved URL: {resolvedImportBaseSelection.resolved || 'Not set'}
+                                    Resolved URL: {resolvedImportBaseSelection.display || 'Not set'}
                                   </div>
                                 </div>
                               ) : (
@@ -4830,7 +4845,7 @@ export default function PosApiAdmin() {
                                     style={styles.input}
                                   />
                                   <div style={styles.fieldHelp}>
-                                    Resolved URL: {resolvedImportBaseSelection.resolved || 'Not set'}
+                                    Resolved URL: {resolvedImportBaseSelection.display || 'Not set'}
                                   </div>
                                 </div>
                               )}
@@ -6630,11 +6645,11 @@ export default function PosApiAdmin() {
                 Testable endpoint
               </label>
             </div>
-            <div style={styles.fieldHelp}>
-              Selected URL: {resolvedTestServerUrl || 'Not set'}
+              <div style={styles.fieldHelp}>
+              Selected URL: {selectedTestUrl || resolvedTestServerUrl || 'Not set'}
+              </div>
             </div>
           </div>
-        </div>
 
         <div style={styles.previewSection}>
           <div style={styles.previewCard}>
