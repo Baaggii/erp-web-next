@@ -5862,22 +5862,18 @@ const TableManager = forwardRef(function TableManager({
               }}
             >
                 {Array.isArray(relationOpts[c]) ? (
-                  <>
-                    <input
-                      list={`filter-${slugify(String(c))}-options`}
-                      value={filters[c] || ''}
-                      onChange={(e) => handleFilterChange(c, e.target.value)}
-                      style={{ width: '100%' }}
-                    />
-                    <datalist id={`filter-${slugify(String(c))}-options`}>
-                      <option value=""></option>
-                      {relationOpts[c].map((o) => (
-                        <option key={o.value || o.label} value={o.value}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </datalist>
-                  </>
+                  <select
+                    value={filters[c] || ''}
+                    onChange={(e) => handleFilterChange(c, e.target.value)}
+                    style={{ width: '100%' }}
+                  >
+                    <option value=""></option>
+                    {relationOpts[c].map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
                 ) : (
                   <input
                     value={filters[c] || ''}
