@@ -3151,7 +3151,7 @@ const TableManager = forwardRef(function TableManager({
 
   async function handleSubmit(values, options = {}) {
     const { issueEbarimt = false } = options || {};
-    if (!['temporary-promote', 'temporary-promote-bulk'].includes(requestType) && !canPostTransactions) {
+    if (requestType !== 'temporary-promote' && !canPostTransactions) {
       addToast(
         t(
           'temporary_post_not_allowed',
@@ -3266,85 +3266,6 @@ const TableManager = forwardRef(function TableManager({
         addToast(t('edit_request_failed', 'Edit request failed'), 'error');
       }
       return;
-    }
-
-    if (requestType === 'temporary-promote-bulk') {
-      const entries = pendingTemporaryPromotion?.entries || [];
-      const ids =
-        pendingTemporaryPromotion?.ids ||
-        entries.map((entry) => getTemporaryId(entry)).filter(Boolean);
-      if (!ids || ids.length === 0) {
-        addToast(
-          t('temporary_promote_missing', 'Unable to promote temporary submission'),
-          'error',
-        );
-        return false;
-      }
-
-      const successIds = [];
-      const failedIds = [];
-
-      for (const temporaryId of ids) {
-        const ok = await promoteTemporary(temporaryId, {
-          skipConfirm: true,
-          silent: true,
-          overrideValues: cleaned,
-        });
-        if (ok) {
-          successIds.push(temporaryId);
-        } else {
-          failedIds.push(temporaryId);
-        }
-      }
-
-      if (successIds.length > 0 && failedIds.length === 0) {
-        addToast(
-          t(
-            'temporary_promoted_multiple',
-            'Promoted {{count}} temporary submissions',
-            { count: successIds.length },
-          ),
-          'success',
-        );
-      } else if (successIds.length > 0 && failedIds.length > 0) {
-        addToast(
-          t(
-            'temporary_promoted_partial',
-            'Promoted {{success}} temporary submissions; {{failed}} failed',
-            { success: successIds.length, failed: failedIds.length },
-          ),
-          'warning',
-        );
-      } else if (failedIds.length > 0) {
-        addToast(
-          t(
-            'temporary_promote_failed',
-            'Failed to promote temporary',
-          ),
-          'error',
-        );
-      }
-
-      await refreshTemporarySummary();
-      await fetchTemporaryList('review');
-      setLocalRefresh((r) => r + 1);
-
-      setTemporarySelection((prev) => {
-        if (!prev || prev.size === 0) return prev;
-        const next = new Set(prev);
-        successIds.forEach((id) => next.delete(id));
-        return next;
-      });
-
-      setShowForm(false);
-      setEditing(null);
-      setIsAdding(false);
-      setGridRows([]);
-      setRequestType(null);
-      setPendingTemporaryPromotion(null);
-      setActiveTemporaryDraftId(null);
-
-      return failedIds.length === 0;
     }
 
     if (requestType === 'temporary-promote') {
@@ -4283,15 +4204,6 @@ const TableManager = forwardRef(function TableManager({
         if (!silent) {
           addToast(message, 'error');
         }
-        if (!silent) {
-          try {
-            await refreshTemporarySummary();
-            await fetchTemporaryList('review');
-            setLocalRefresh((r) => r + 1);
-          } catch (refreshErr) {
-            console.error('Failed to refresh temporary list after promote error', refreshErr);
-          }
-        }
         return false;
       }
       if (!silent) {
@@ -4331,91 +4243,62 @@ const TableManager = forwardRef(function TableManager({
       console.error(err);
       if (!silent) {
         addToast(t('temporary_promote_failed', 'Failed to promote temporary'), 'error');
-        try {
-          await refreshTemporarySummary();
-          await fetchTemporaryList('review');
-          setLocalRefresh((r) => r + 1);
-        } catch (refreshErr) {
-          console.error('Failed to refresh temporary list after promote error', refreshErr);
-        }
       }
       return false;
     }
   }
 
     const buildTemporaryFormState = useCallback(
-      (entryOrEntries) => {
-        const entries = Array.isArray(entryOrEntries)
-          ? entryOrEntries.filter(Boolean)
-          : entryOrEntries
-          ? [entryOrEntries]
-          : [];
-
-        if (entries.length === 0) {
+      (entry) => {
+        if (!entry) {
           return { values: {}, rows: [] };
         }
 
-        const normalizeEntry = (entry) => {
-          if (!entry) return { values: {}, rows: [] };
-          const valueSources = [
-            entry?.cleanedValues,
-            entry?.payload?.cleanedValues,
-            entry?.payload?.values,
-            entry?.values,
-            entry?.rawValues,
-          ];
-          const baseValues = valueSources.find(
-            (candidate) =>
-              candidate && typeof candidate === 'object' && !Array.isArray(candidate),
-          );
-          const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
-          const canonicalHydratedValues = normalizeToCanonical(hydratedValues);
-          const normalizedValues = populateRelationDisplayFields(
-            normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
-          );
-          const mergedValues = mergeDisplayFallbacks(normalizedValues, canonicalHydratedValues);
-          const finalizedValues = populateRelationDisplayFields(mergedValues);
+        const valueSources = [
+          entry?.cleanedValues,
+          entry?.payload?.cleanedValues,
+          entry?.payload?.values,
+          entry?.values,
+          entry?.rawValues,
+        ];
+        const baseValues = valueSources.find(
+          (candidate) =>
+            candidate && typeof candidate === 'object' && !Array.isArray(candidate),
+        );
+        const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
+        const canonicalHydratedValues = normalizeToCanonical(hydratedValues);
+        const normalizedValues = populateRelationDisplayFields(
+          normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
+        );
+        const mergedValues = mergeDisplayFallbacks(normalizedValues, canonicalHydratedValues);
+        const finalizedValues = populateRelationDisplayFields(mergedValues);
 
-          const rowSources = [
-            entry?.payload?.gridRows,
-            entry?.payload?.values?.rows,
-            entry?.cleanedValues?.rows,
-            entry?.values?.rows,
-            entry?.rawValues?.rows,
-          ];
-          const baseRows = rowSources.find((rows) => Array.isArray(rows));
-          const sanitizedRows = Array.isArray(baseRows)
-            ? baseRows.map((row) => {
-                const hydratedRow = hydrateDisplayFromWrappedRelations(row);
-                const stripped = stripTemporaryLabelValue(hydratedRow);
-                if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
-                  const canonical = normalizeToCanonical(stripped);
-                  const populated = populateRelationDisplayFields(canonical);
-                  const mergedRow = mergeDisplayFallbacks(
-                    populated,
-                    normalizeToCanonical(hydratedRow),
-                  );
-                  return populateRelationDisplayFields(mergedRow);
-                }
-                return stripped ?? {};
-              })
-            : [];
+        const rowSources = [
+          entry?.payload?.gridRows,
+          entry?.payload?.values?.rows,
+          entry?.cleanedValues?.rows,
+          entry?.values?.rows,
+          entry?.rawValues?.rows,
+        ];
+        const baseRows = rowSources.find((rows) => Array.isArray(rows));
+        const sanitizedRows = Array.isArray(baseRows)
+          ? baseRows.map((row) => {
+              const hydratedRow = hydrateDisplayFromWrappedRelations(row);
+              const stripped = stripTemporaryLabelValue(hydratedRow);
+              if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
+                const canonical = normalizeToCanonical(stripped);
+                const populated = populateRelationDisplayFields(canonical);
+                const mergedRow = mergeDisplayFallbacks(
+                  populated,
+                  normalizeToCanonical(hydratedRow),
+                );
+                return populateRelationDisplayFields(mergedRow);
+              }
+              return stripped ?? {};
+            })
+          : [];
 
-          return { values: finalizedValues, rows: sanitizedRows };
-        };
-
-        let mergedValues = null;
-        const mergedRows = [];
-
-        entries.forEach((entry) => {
-          const { values, rows } = normalizeEntry(entry);
-          mergedValues = mergedValues ? { ...values, ...mergedValues } : values;
-          if (Array.isArray(rows) && rows.length > 0) {
-            mergedRows.push(...rows);
-          }
-        });
-
-        return { values: mergedValues || {}, rows: mergedRows };
+        return { values: finalizedValues, rows: sanitizedRows };
       },
       [
         hydrateDisplayFromWrappedRelations,
@@ -4434,78 +4317,42 @@ const TableManager = forwardRef(function TableManager({
           setTemporaryPromotionQueue([]);
         }
         await ensureColumnMeta();
+          const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
 
-        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
-
-        setPendingTemporaryPromotion({ id: temporaryId, entry, entries: [entry] });
-        setEditing(normalizedValues);
-        setGridRows(sanitizedRows);
-        setIsAdding(true);
-        setRequestType('temporary-promote');
-        setShowTemporaryModal(false);
-        setShowForm(true);
-      },
-      [
-        buildTemporaryFormState,
-        ensureColumnMeta,
+          setPendingTemporaryPromotion({ id: temporaryId, entry });
+          setEditing(normalizedValues);
+          setGridRows(sanitizedRows);
+          setIsAdding(true);
+          setRequestType('temporary-promote');
+          setShowTemporaryModal(false);
+          setShowForm(true);
+        },
+        [
+          buildTemporaryFormState,
+          ensureColumnMeta,
         setEditing,
         setGridRows,
         setIsAdding,
         setRequestType,
         setShowTemporaryModal,
-        setShowForm,
-        setTemporaryPromotionQueue,
-      ],
-    );
-
-    const openBulkTemporaryPromotion = useCallback(
-      async (entries) => {
-        if (!Array.isArray(entries) || entries.length === 0) return;
-        const ids = entries.map((e) => getTemporaryId(e)).filter(Boolean);
-        if (ids.length === 0) return;
-        await ensureColumnMeta();
-        setTemporaryPromotionQueue([]);
-
-        const { values: normalizedValues, rows: sanitizedRows } =
-          buildTemporaryFormState(entries);
-
-        setPendingTemporaryPromotion({ ids, entries });
-        setEditing(normalizedValues);
-        setGridRows(sanitizedRows);
-        setIsAdding(true);
-        setRequestType('temporary-promote-bulk');
-        setShowTemporaryModal(false);
-        setShowForm(true);
-      },
-      [
-        buildTemporaryFormState,
-        ensureColumnMeta,
-        setEditing,
-        setGridRows,
-        setIsAdding,
-        setRequestType,
-        setShowTemporaryModal,
-        setShowForm,
-        setPendingTemporaryPromotion,
-        setTemporaryPromotionQueue,
-      ],
-    );
+      setShowForm,
+      setTemporaryPromotionQueue,
+    ],
+  );
 
   useEffect(() => {
     if (!promotionHydrationNeededRef.current) return;
-    if (!['temporary-promote', 'temporary-promote-bulk'].includes(requestType)) return;
-    const pendingEntries =
-      pendingTemporaryPromotion?.entries ||
-      (pendingTemporaryPromotion?.entry ? [pendingTemporaryPromotion.entry] : []);
-    if (pendingEntries.length === 0) return;
+    if (requestType !== 'temporary-promote') return;
+    if (!pendingTemporaryPromotion?.entry) return;
     if (!showForm) return;
 
     const hasRelations = relationConfigs && Object.keys(relationConfigs).length > 0;
     const hasRefRows = refRows && Object.keys(refRows).length > 0;
     if (!hasRelations && !hasRefRows) return;
 
-    const { values: normalizedValues, rows: sanitizedRows } =
-      buildTemporaryFormState(pendingEntries);
+    const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(
+      pendingTemporaryPromotion.entry,
+    );
     setEditing(normalizedValues);
     setGridRows(sanitizedRows);
     promotionHydrationNeededRef.current = false;
@@ -4684,12 +4531,14 @@ const TableManager = forwardRef(function TableManager({
     ) {
       return;
     }
-    await openBulkTemporaryPromotion(pendingEntries);
+    const [firstEntry, ...remaining] = pendingEntries;
+    setTemporaryPromotionQueue(remaining);
+    await openTemporaryPromotion(firstEntry, { resetQueue: false });
   }, [
     canSelectTemporaries,
     temporarySelection,
     temporaryList,
-    openBulkTemporaryPromotion,
+    openTemporaryPromotion,
     addToast,
     t,
   ]);
