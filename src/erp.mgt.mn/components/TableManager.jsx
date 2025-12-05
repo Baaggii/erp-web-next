@@ -27,6 +27,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
+import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
@@ -5857,30 +5858,59 @@ const TableManager = forwardRef(function TableManager({
                 minWidth: columnWidths[c],
                 maxWidth: MAX_WIDTH,
                 resize: 'horizontal',
-                overflow: 'hidden',
+                overflow: 'visible',
                 textOverflow: 'ellipsis',
               }}
             >
-                {Array.isArray(relationOpts[c]) ? (
-                  <select
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  >
-                    <option value=""></option>
-                    {relationOpts[c].map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  />
-                )}
+                {(() => {
+                  const relationConfig = relationConfigs[c];
+                  if (relationConfig?.table) {
+                    const searchColumn =
+                      relationConfig.idField || relationConfig.column || c;
+                    const searchColumns = [
+                      searchColumn,
+                      ...(relationConfig.displayFields || []),
+                    ];
+                    return (
+                      <AsyncSearchSelect
+                        table={relationConfig.table}
+                        searchColumn={searchColumn}
+                        searchColumns={searchColumns}
+                        labelFields={relationConfig.displayFields || []}
+                        idField={searchColumn}
+                        value={filters[c] || ''}
+                        onChange={(val) => handleFilterChange(c, val ?? '')}
+                        disableAutoWidth
+                        inputStyle={{ width: '100%', minHeight: '2rem' }}
+                      />
+                    );
+                  }
+
+                  if (Array.isArray(relationOpts[c])) {
+                    return (
+                      <select
+                        value={filters[c] || ''}
+                        onChange={(e) => handleFilterChange(c, e.target.value)}
+                        style={{ width: '100%' }}
+                      >
+                        <option value=""></option>
+                        {relationOpts[c].map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  }
+
+                  return (
+                    <input
+                      value={filters[c] || ''}
+                      onChange={(e) => handleFilterChange(c, e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  );
+                })()}
               </th>
             ))}
             <th style={{ width: '24rem', minWidth: '24rem' }}></th>

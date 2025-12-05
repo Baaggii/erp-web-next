@@ -35,6 +35,7 @@ export default function AsyncSearchSelect({
   onKeyDown,
   inputRef,
   onFocus,
+  disableAutoWidth = false,
   inputStyle = {},
   companyId,
   shouldFetch = true,
@@ -637,8 +638,16 @@ export default function AsyncSearchSelect({
     const optIndex = options.indexOf(opt);
     if (optIndex >= 0) setHighlight(optIndex);
     e.preventDefault();
+    onChange(opt.value, opt.label);
+    setInput(String(opt.value));
+    setLabel(opt.label || '');
+    if (internalRef.current) internalRef.current.value = String(opt.value);
+    chosenRef.current = opt;
     actionRef.current = { type: 'enter', matched: true, option: opt, query };
     setShow(false);
+    if (onSelect) {
+      setTimeout(() => onSelect(opt), 0);
+    }
   }
 
   function handleBlur() {
@@ -760,18 +769,22 @@ export default function AsyncSearchSelect({
         onFocus={(e) => {
           setShow(true);
           if (onFocus) onFocus(e);
-          e.target.style.width = 'auto';
-          const max = parseFloat(inputStyle.maxWidth) || 150;
-          const min = parseFloat(inputStyle.minWidth) || 60;
-          const w = Math.min(e.target.scrollWidth + 2, max);
-          e.target.style.width = `${Math.max(min, w)}px`;
+          if (!disableAutoWidth && !inputStyle.width) {
+            e.target.style.width = 'auto';
+            const max = parseFloat(inputStyle.maxWidth) || 150;
+            const min = parseFloat(inputStyle.minWidth) || 60;
+            const w = Math.min(e.target.scrollWidth + 2, max);
+            e.target.style.width = `${Math.max(min, w)}px`;
+          }
         }}
         onInput={(e) => {
-          e.target.style.width = 'auto';
-          const max = parseFloat(inputStyle.maxWidth) || 150;
-          const min = parseFloat(inputStyle.minWidth) || 60;
-          const w = Math.min(e.target.scrollWidth + 2, max);
-          e.target.style.width = `${Math.max(min, w)}px`;
+          if (!disableAutoWidth && !inputStyle.width) {
+            e.target.style.width = 'auto';
+            const max = parseFloat(inputStyle.maxWidth) || 150;
+            const min = parseFloat(inputStyle.minWidth) || 60;
+            const w = Math.min(e.target.scrollWidth + 2, max);
+            e.target.style.width = `${Math.max(min, w)}px`;
+          }
         }}
         onBlur={handleBlur}
         onKeyDown={(e) => {
