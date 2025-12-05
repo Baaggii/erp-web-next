@@ -854,6 +854,21 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [columnMeta]);
 
+  const shouldApplyFilter = useCallback(
+    (key, value) => {
+      if (value === '' || value === null || value === undefined) return false;
+      const typ = fieldTypeMap[key];
+      if (typ === 'date') return /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+      if (typ === 'datetime')
+        return /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?$/.test(
+          String(value),
+        );
+      if (typ === 'time') return /^\d{2}:\d{2}(?::\d{2})?$/.test(String(value));
+      return true;
+    },
+    [fieldTypeMap],
+  );
+
   const generatedCols = useMemo(
     () =>
       new Set(
@@ -1873,8 +1888,7 @@ const TableManager = forwardRef(function TableManager({
       params.set('dir', sort.dir);
     }
     Object.entries(filters).forEach(([k, v]) => {
-      if (v !== '' && v !== null && v !== undefined && validCols.has(k))
-        params.set(k, v);
+      if (validCols.has(k) && shouldApplyFilter(k, v)) params.set(k, v);
     });
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
@@ -3270,12 +3284,9 @@ const TableManager = forwardRef(function TableManager({
 
     if (requestType === 'temporary-promote-bulk') {
       const entries = pendingTemporaryPromotion?.entries || [];
-      const ids = Array.from(
-        new Set(
-          pendingTemporaryPromotion?.ids ||
-            entries.map((entry) => getTemporaryId(entry)).filter(Boolean),
-        ),
-      );
+      const ids =
+        pendingTemporaryPromotion?.ids ||
+        entries.map((entry) => getTemporaryId(entry)).filter(Boolean);
       if (!ids || ids.length === 0) {
         addToast(
           t('temporary_promote_missing', 'Unable to promote temporary submission'),
@@ -3284,24 +3295,14 @@ const TableManager = forwardRef(function TableManager({
         return false;
       }
 
-      const normalizedById = new Map();
-      entries.forEach((entry) => {
-        const id = getTemporaryId(entry);
-        if (!id || normalizedById.has(id)) return;
-        const { values: normalizedValues } = normalizeTemporaryEntry(entry);
-        normalizedById.set(id, normalizedValues || {});
-      });
-
       const successIds = [];
       const failedIds = [];
 
       for (const temporaryId of ids) {
-        const baseValues = normalizedById.get(temporaryId) || {};
-        const { rows: _rows, Rows: _Rows, ...rest } = baseValues || {};
         const ok = await promoteTemporary(temporaryId, {
           skipConfirm: true,
           silent: true,
-          overrideValues: { ...rest, ...cleaned },
+          overrideValues: cleaned,
         });
         if (ok) {
           successIds.push(temporaryId);
@@ -3428,7 +3429,7 @@ const TableManager = forwardRef(function TableManager({
           params.set('dir', sort.dir);
         }
         Object.entries(filters).forEach(([k, v]) => {
-          if (v) params.set(k, v);
+          if (shouldApplyFilter(k, v)) params.set(k, v);
         });
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
           credentials: 'include',
@@ -3771,7 +3772,7 @@ const TableManager = forwardRef(function TableManager({
         params.set('dir', sort.dir);
       }
       Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.set(k, v);
+        if (shouldApplyFilter(k, v)) params.set(k, v);
       });
       const data = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -3982,7 +3983,7 @@ const TableManager = forwardRef(function TableManager({
       params.set('dir', sort.dir);
     }
     Object.entries(filters).forEach(([k, v]) => {
-      if (v) params.set(k, v);
+      if (shouldApplyFilter(k, v)) params.set(k, v);
     });
     const dataRes = await fetch(
       `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -4356,53 +4357,79 @@ const TableManager = forwardRef(function TableManager({
     }
   }
 
-    const normalizeTemporaryEntry = useCallback(
-      (entry) => {
-        if (!entry) return { values: {}, rows: [] };
-        const valueSources = [
-          entry?.cleanedValues,
-          entry?.payload?.cleanedValues,
-          entry?.payload?.values,
-          entry?.values,
-          entry?.rawValues,
-        ];
-        const baseValues = valueSources.find(
-          (candidate) => candidate && typeof candidate === 'object' && !Array.isArray(candidate),
-        );
-        const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
-        const canonicalHydratedValues = normalizeToCanonical(hydratedValues);
-        const normalizedValues = populateRelationDisplayFields(
-          normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
-        );
-        const mergedValues = mergeDisplayFallbacks(normalizedValues, canonicalHydratedValues);
-        const finalizedValues = populateRelationDisplayFields(mergedValues);
-
-        const rowSources = [
-          entry?.payload?.gridRows,
-          entry?.payload?.values?.rows,
-          entry?.cleanedValues?.rows,
-          entry?.values?.rows,
-          entry?.rawValues?.rows,
-        ];
-        const baseRows = rowSources.find((rows) => Array.isArray(rows));
-        const sanitizedRows = Array.isArray(baseRows)
-          ? baseRows.map((row) => {
-              const hydratedRow = hydrateDisplayFromWrappedRelations(row);
-              const stripped = stripTemporaryLabelValue(hydratedRow);
-              if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
-                const canonical = normalizeToCanonical(stripped);
-                const populated = populateRelationDisplayFields(canonical);
-                const mergedRow = mergeDisplayFallbacks(
-                  populated,
-                  normalizeToCanonical(hydratedRow),
-                );
-                return populateRelationDisplayFields(mergedRow);
-              }
-              return stripped ?? {};
-            })
+    const buildTemporaryFormState = useCallback(
+      (entryOrEntries) => {
+        const entries = Array.isArray(entryOrEntries)
+          ? entryOrEntries.filter(Boolean)
+          : entryOrEntries
+          ? [entryOrEntries]
           : [];
 
-        return { values: finalizedValues, rows: sanitizedRows };
+        if (entries.length === 0) {
+          return { values: {}, rows: [] };
+        }
+
+        const normalizeEntry = (entry) => {
+          if (!entry) return { values: {}, rows: [] };
+          const valueSources = [
+            entry?.cleanedValues,
+            entry?.payload?.cleanedValues,
+            entry?.payload?.values,
+            entry?.values,
+            entry?.rawValues,
+          ];
+          const baseValues = valueSources.find(
+            (candidate) =>
+              candidate && typeof candidate === 'object' && !Array.isArray(candidate),
+          );
+          const hydratedValues = hydrateDisplayFromWrappedRelations(baseValues || {});
+          const canonicalHydratedValues = normalizeToCanonical(hydratedValues);
+          const normalizedValues = populateRelationDisplayFields(
+            normalizeToCanonical(stripTemporaryLabelValue(hydratedValues)),
+          );
+          const mergedValues = mergeDisplayFallbacks(normalizedValues, canonicalHydratedValues);
+          const finalizedValues = populateRelationDisplayFields(mergedValues);
+
+          const rowSources = [
+            entry?.payload?.gridRows,
+            entry?.payload?.values?.rows,
+            entry?.cleanedValues?.rows,
+            entry?.values?.rows,
+            entry?.rawValues?.rows,
+          ];
+          const baseRows = rowSources.find((rows) => Array.isArray(rows));
+          const sanitizedRows = Array.isArray(baseRows)
+            ? baseRows.map((row) => {
+                const hydratedRow = hydrateDisplayFromWrappedRelations(row);
+                const stripped = stripTemporaryLabelValue(hydratedRow);
+                if (stripped && typeof stripped === 'object' && !Array.isArray(stripped)) {
+                  const canonical = normalizeToCanonical(stripped);
+                  const populated = populateRelationDisplayFields(canonical);
+                  const mergedRow = mergeDisplayFallbacks(
+                    populated,
+                    normalizeToCanonical(hydratedRow),
+                  );
+                  return populateRelationDisplayFields(mergedRow);
+                }
+                return stripped ?? {};
+              })
+            : [];
+
+          return { values: finalizedValues, rows: sanitizedRows };
+        };
+
+        let mergedValues = null;
+        const mergedRows = [];
+
+        entries.forEach((entry) => {
+          const { values, rows } = normalizeEntry(entry);
+          mergedValues = mergedValues ? { ...values, ...mergedValues } : values;
+          if (Array.isArray(rows) && rows.length > 0) {
+            mergedRows.push(...rows);
+          }
+        });
+
+        return { values: mergedValues || {}, rows: mergedRows };
       },
       [
         hydrateDisplayFromWrappedRelations,
@@ -4413,7 +4440,7 @@ const TableManager = forwardRef(function TableManager({
       ],
     );
 
-    const buildMergedTemporaryFormState = useCallback(
+    const buildTemporaryFormState = useCallback(
       (entryOrEntries) => {
         const entries = Array.isArray(entryOrEntries)
           ? entryOrEntries.filter(Boolean)
@@ -4451,7 +4478,7 @@ const TableManager = forwardRef(function TableManager({
         }
         await ensureColumnMeta();
 
-        const { values: normalizedValues, rows: sanitizedRows } = buildMergedTemporaryFormState(entry);
+        const { values: normalizedValues, rows: sanitizedRows } = buildTemporaryFormState(entry);
 
         setPendingTemporaryPromotion({ id: temporaryId, entry, entries: [entry] });
         setEditing(normalizedValues);
@@ -4462,7 +4489,7 @@ const TableManager = forwardRef(function TableManager({
         setShowForm(true);
       },
       [
-        buildMergedTemporaryFormState,
+        buildTemporaryFormState,
         ensureColumnMeta,
         setEditing,
         setGridRows,
@@ -4483,7 +4510,7 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryPromotionQueue([]);
 
         const { values: normalizedValues, rows: sanitizedRows } =
-          buildMergedTemporaryFormState(entries);
+          buildTemporaryFormState(entries);
 
         setPendingTemporaryPromotion({ ids, entries });
         setEditing(normalizedValues);
@@ -4494,7 +4521,7 @@ const TableManager = forwardRef(function TableManager({
         setShowForm(true);
       },
       [
-        buildMergedTemporaryFormState,
+        buildTemporaryFormState,
         ensureColumnMeta,
         setEditing,
         setGridRows,
@@ -4521,7 +4548,7 @@ const TableManager = forwardRef(function TableManager({
     if (!hasRelations && !hasRefRows) return;
 
     const { values: normalizedValues, rows: sanitizedRows } =
-      buildMergedTemporaryFormState(pendingEntries);
+      buildTemporaryFormState(pendingEntries);
     setEditing(normalizedValues);
     setGridRows(sanitizedRows);
     promotionHydrationNeededRef.current = false;
@@ -5878,18 +5905,22 @@ const TableManager = forwardRef(function TableManager({
               }}
             >
                 {Array.isArray(relationOpts[c]) ? (
-                  <select
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  >
-                    <option value=""></option>
-                    {relationOpts[c].map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <input
+                      list={`relation-filter-${c}`}
+                      value={filters[c] || ''}
+                      onChange={(e) => handleFilterChange(c, e.target.value)}
+                      style={{ width: '100%' }}
+                      placeholder={t('search_relation_filter', 'Type to search...')}
+                    />
+                    <datalist id={`relation-filter-${c}`}>
+                      {relationOpts[c].map((o) => (
+                        <option key={o.value} value={o.value} label={o.label}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </datalist>
+                  </>
                 ) : (
                   <input
                     value={filters[c] || ''}
