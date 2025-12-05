@@ -386,6 +386,13 @@ function withEndpointMetadata(endpoint) {
     taxTypes,
     paymentMethods,
     notes: typeof endpoint.notes === 'string' ? endpoint.notes : '',
+    serverUrl: typeof endpoint.serverUrl === 'string' ? endpoint.serverUrl : '',
+    productionServerUrl: typeof endpoint.productionServerUrl === 'string'
+      ? endpoint.productionServerUrl
+      : typeof endpoint.testServerUrlProduction === 'string'
+        ? endpoint.testServerUrlProduction
+        : '',
+    testServerUrl: typeof endpoint.testServerUrl === 'string' ? endpoint.testServerUrl : '',
     testServerUrlProduction: typeof endpoint.testServerUrlProduction === 'string'
       ? endpoint.testServerUrlProduction
       : '',
@@ -421,7 +428,9 @@ const EMPTY_ENDPOINT = {
   requestFieldsText: '[]',
   responseFieldsText: '[]',
   testable: false,
+  serverUrl: '',
   testServerUrl: '',
+  productionServerUrl: '',
   testServerUrlProduction: '',
   authEndpointId: '',
   docUrl: '',
@@ -1016,7 +1025,13 @@ function setValueAtPath(target, path, value) {
 function buildRequestSampleFromSelections(
   baseSample,
   selections,
-  { preferPlaceholders = false, fallbackToLiteral = true, onError, useEnvPlaceholders = true } = {},
+  {
+    resolveEnv = false,
+    preferPlaceholders = false,
+    fallbackToLiteral = true,
+    onError,
+    useEnvPlaceholders = true,
+  } = {},
 ) {
   const result = baseSample && typeof baseSample === 'object' && !Array.isArray(baseSample)
     ? { ...baseSample }
@@ -1026,12 +1041,52 @@ function buildRequestSampleFromSelections(
     const mode = entry?.mode || 'literal';
     const placeholder = entry?.envVar ? `{{${entry.envVar}}}` : '';
     if (mode === 'env' && entry?.envVar) {
-      const sampleValue = useEnvPlaceholders
-        ? placeholder
-        : entry?.literal !== undefined && entry.literal !== null
-          ? entry.literal
-          : '';
-      setValueAtPath(result, fieldPath, sampleValue);
+      if (!resolveEnv) {
+        const sampleValue = useEnvPlaceholders
+          ? placeholder
+          : entry?.literal !== undefined && entry.literal !== null
+            ? entry.literal
+            : '';
+        setValueAtPath(result, fieldPath, sampleValue);
+        return;
+      }
+
+      const { found, value, error } = resolveEnvironmentVariable(entry.envVar, { parseJson: true });
+      if (!found) {
+        const fallbackValue = fallbackToLiteral && entry?.literal !== undefined && entry.literal !== ''
+          ? parseScalarValue(entry.literal)
+          : placeholder;
+        if (typeof onError === 'function') {
+          const fallbackLabel = fallbackToLiteral ? 'literal' : 'placeholder';
+          onError(
+            error
+              ? `Environment variable ${entry.envVar} is invalid: ${error}`
+              : `Environment variable ${entry.envVar} is not configured; using ${fallbackLabel} value for ${fieldPath}.`,
+          );
+        }
+        if (!setValueAtPath(result, fieldPath, fallbackValue) && typeof onError === 'function') {
+          onError(`Could not assign environment value for ${fieldPath}.`);
+        }
+        return;
+        }
+
+      const parsedValue = preferPlaceholders ? placeholder : value;
+      if (!isPrimitiveValue(parsedValue)) {
+        const fallbackValue = fallbackToLiteral && entry?.literal !== undefined && entry.literal !== ''
+          ? parseScalarValue(entry.literal)
+          : placeholder;
+        if (typeof onError === 'function') {
+          const fallbackLabel = fallbackToLiteral ? 'literal' : 'placeholder';
+          onError(
+            `Environment variable ${entry.envVar} must resolve to a primitive value; using ${fallbackLabel} value for ${fieldPath}.`,
+          );
+        }
+        setValueAtPath(result, fieldPath, fallbackValue);
+        return;
+      }
+      if (!setValueAtPath(result, fieldPath, parsedValue) && typeof onError === 'function') {
+        onError(`Could not assign environment value for ${fieldPath}.`);
+      }
       return;
     }
     if (mode === 'literal') {
@@ -1178,7 +1233,9 @@ function createFormState(definition) {
     requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     testable: Boolean(definition.testable),
+    serverUrl: definition.serverUrl || '',
     testServerUrl: definition.testServerUrl || '',
+    productionServerUrl: definition.productionServerUrl || definition.testServerUrlProduction || '',
     testServerUrlProduction: definition.testServerUrlProduction || '',
     authEndpointId: definition.authEndpointId || '',
     docUrl: '',
@@ -2138,8 +2195,8 @@ export default function PosApiAdmin() {
   );
 
   const resolvedTestServerUrl = ((testEnvironment === 'production'
-    ? formState.testServerUrlProduction || formState.testServerUrl
-    : formState.testServerUrl || formState.testServerUrlProduction
+    ? formState.productionServerUrl || formState.testServerUrlProduction || formState.testServerUrl
+    : formState.testServerUrl || formState.testServerUrlProduction || formState.productionServerUrl
   ) || '').trim();
   const hasTestServerUrl = Boolean(resolvedTestServerUrl);
   const envVariableOptions = useMemo(
@@ -3213,8 +3270,13 @@ export default function PosApiAdmin() {
     } else {
       setImportRequestBody('');
     }
-    const draftBaseUrl = draft.testServerUrl || draft.serverUrl || '';
-    setImportBaseUrl(draftBaseUrl);
+    const preferredBaseUrl = draft.testServerUrl
+      || draft.serverUrl
+      || draft.productionServerUrl
+      || draft.testServerUrlProduction;
+    if (preferredBaseUrl) {
+      setImportBaseUrl((prev) => prev || preferredBaseUrl);
+    }
     if (!importAuthEndpointId && formState.authEndpointId) {
       setImportAuthEndpointId(formState.authEndpointId);
     }
@@ -3345,50 +3407,60 @@ export default function PosApiAdmin() {
 
   function handleLoadDraftIntoForm() {
     if (!activeImportDraft) return;
-    const paramsText = toPrettyJson(activeImportDraft.parameters || [], '[]');
-    const requestBodyText = toPrettyJson(activeImportDraft.requestBody?.schema, importRequestBody.trim() || '{}');
-    const responseBodyText = toPrettyJson(activeImportDraft.responseBody?.schema, '{}');
-    const requestFieldsText = toPrettyJson(activeImportDraft.requestFields, '[]');
-    const responseFieldsText = toPrettyJson(activeImportDraft.responseFields, '[]');
+
     const inferredUsage = activeImportDraft.posApiType === 'AUTH'
       ? 'auth'
       : activeImportDraft.posApiType === 'LOOKUP'
         ? 'info'
-        : 'transaction';
+        : activeImportDraft.posApiType === 'ADMIN'
+          ? 'admin'
+          : 'transaction';
+
     const draftDefinition = {
       ...EMPTY_ENDPOINT,
+      ...activeImportDraft,
       id: activeImportDraft.id || '',
       name: activeImportDraft.name || '',
       method: activeImportDraft.method || 'GET',
       path: activeImportDraft.path || '/',
-      parameters: activeImportDraft.parameters || [],
-      posApiType: activeImportDraft.posApiType || '',
       usage: inferredUsage,
+      posApiType: activeImportDraft.posApiType || '',
+      parameters: activeImportDraft.parameters || [],
       requestBody: activeImportDraft.requestBody,
       responseBody: activeImportDraft.responseBody,
       requestFields: activeImportDraft.requestFields || [],
       responseFields: activeImportDraft.responseFields || [],
+      mappingHints: activeImportDraft.mappingHints || {},
       supportsItems: activeImportDraft.supportsItems ?? inferredUsage === 'transaction',
-      supportsMultiplePayments: activeImportDraft.supportsMultiplePayments,
-      supportsMultipleReceipts: activeImportDraft.supportsMultipleReceipts,
-      receiptTypes: activeImportDraft.receiptTypes,
-      taxTypes: activeImportDraft.taxTypes,
-      paymentMethods: activeImportDraft.paymentMethods,
-      testable: Boolean(activeImportDraft.testServerUrl || activeImportDraft.serverUrl),
+      supportsMultiplePayments: activeImportDraft.supportsMultiplePayments ?? false,
+      supportsMultipleReceipts: activeImportDraft.supportsMultipleReceipts ?? false,
+      receiptTypes: activeImportDraft.receiptTypes || [],
+      taxTypes: activeImportDraft.taxTypes || [],
+      paymentMethods: activeImportDraft.paymentMethods || [],
+      requestEnvMap: activeImportDraft.requestEnvMap || {},
+      serverUrl: activeImportDraft.serverUrl || activeImportDraft.testServerUrl || '',
       testServerUrl: activeImportDraft.testServerUrl || activeImportDraft.serverUrl || '',
-      testServerUrlProduction: activeImportDraft.testServerUrlProduction || '',
+      productionServerUrl:
+        activeImportDraft.productionServerUrl
+        || activeImportDraft.testServerUrlProduction
+        || '',
+      testServerUrlProduction:
+        activeImportDraft.testServerUrlProduction
+        || activeImportDraft.productionServerUrl
+        || '',
+      authEndpointId: activeImportDraft.authEndpointId || '',
+      testable: Boolean(
+        activeImportDraft.testServerUrl
+          || activeImportDraft.serverUrl
+          || activeImportDraft.productionServerUrl,
+      ),
     };
 
+    const nextState = createFormState(draftDefinition);
+
     setSelectedId('');
-    setFormState({
-      ...createFormState(draftDefinition),
-      parametersText: paramsText,
-      requestSchemaText: requestBodyText || '',
-      responseSchemaText: responseBodyText,
-      requestFieldsText,
-      responseFieldsText,
-      usage: inferredUsage,
-    });
+    setRequestFieldValues({});
+    setFormState(nextState);
     setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
     setActiveTab('endpoints');
   }
@@ -3711,8 +3783,12 @@ export default function PosApiAdmin() {
       requestFields: sanitizedRequestFields,
       responseFields,
       testable: Boolean(formState.testable),
+      serverUrl: formState.serverUrl.trim(),
       testServerUrl: formState.testServerUrl.trim(),
-      testServerUrlProduction: formState.testServerUrlProduction.trim(),
+      productionServerUrl: formState.productionServerUrl.trim()
+        || formState.testServerUrlProduction.trim(),
+      testServerUrlProduction: formState.testServerUrlProduction.trim()
+        || formState.productionServerUrl.trim(),
       authEndpointId: formState.authEndpointId || '',
     };
 
@@ -3944,7 +4020,8 @@ export default function PosApiAdmin() {
     if (!fieldPath) return;
     setRequestFieldValues((prev) => {
       const current = prev[fieldPath] || { mode: 'literal', literal: '', envVar: '' };
-      const nextEntry = { ...current, ...updates };
+      const trimmedEnvVar = typeof updates.envVar === 'string' ? updates.envVar.trim() : updates.envVar;
+      const nextEntry = { ...current, ...updates, ...(trimmedEnvVar !== undefined ? { envVar: trimmedEnvVar } : {}) };
       const nextSelections = { ...prev, [fieldPath]: nextEntry };
       syncRequestSampleFromSelections(nextSelections);
       setFormState((prevState) => ({
@@ -5929,6 +6006,9 @@ export default function PosApiAdmin() {
                     literal: '',
                     envVar: '',
                   };
+                  const envVarMissing = selection.mode === 'env'
+                    && selection.envVar
+                    && !resolveEnvironmentVariable(selection.envVar, { parseJson: false }).found;
                   return (
                     <li key={`request-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
                       <div style={styles.hintFieldRow}>
@@ -5986,15 +6066,13 @@ export default function PosApiAdmin() {
                               type="text"
                               list={`env-options-${fieldLabel}`}
                               value={selection.envVar || ''}
-                              autoComplete="off"
-                              spellCheck={false}
                               onChange={(e) =>
                                 handleRequestFieldValueChange(fieldLabel, {
                                   envVar: e.target.value,
                                   mode: 'env',
                                 })
                               }
-                              placeholder="Type or select environment variable…"
+                              placeholder="Enter environment variable name"
                               style={styles.input}
                             />
                             <datalist id={`env-options-${fieldLabel}`}>
@@ -6011,6 +6089,12 @@ export default function PosApiAdmin() {
                               placeholder="Fallback literal (used if the environment variable is missing)"
                               style={styles.input}
                             />
+                            {envVarMissing && selection.envVar && (
+                              <div style={styles.hintError}>
+                                Environment variable {selection.envVar} is not available; the fallback
+                                literal will be sent instead.
+                              </div>
+                            )}
                           </div>
                         )}
                         <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
@@ -6093,6 +6177,16 @@ export default function PosApiAdmin() {
         </label>
         <div style={styles.inlineFields}>
           <label style={{ ...styles.label, flex: 1 }}>
+            Default server URL
+            <input
+              type="text"
+              value={formState.serverUrl}
+              onChange={(e) => handleChange('serverUrl', e.target.value)}
+              style={styles.input}
+              placeholder="https://posapi.tax.gov.mn"
+            />
+          </label>
+          <label style={{ ...styles.label, flex: 1 }}>
             Staging test server URL
             <input
               type="text"
@@ -6102,18 +6196,18 @@ export default function PosApiAdmin() {
               placeholder="https://posapi-test.tax.gov.mn"
             />
           </label>
+        </div>
+        <div style={styles.inlineFields}>
           <label style={{ ...styles.label, flex: 1 }}>
-            Production test server URL
+            Production server URL
             <input
               type="text"
-              value={formState.testServerUrlProduction}
-              onChange={(e) => handleChange('testServerUrlProduction', e.target.value)}
+              value={formState.productionServerUrl || formState.testServerUrlProduction}
+              onChange={(e) => handleChange('productionServerUrl', e.target.value)}
               style={styles.input}
               placeholder="https://posapi.tax.gov.mn"
             />
           </label>
-        </div>
-        <div style={styles.inlineFields}>
           <label style={{ ...styles.label, flex: 1 }}>
             Token endpoint
             <select
