@@ -988,9 +988,14 @@ function normalizeUrlMode(mode, envVar) {
   return envVar ? 'env' : 'literal';
 }
 
+function normalizeEnvVarName(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/^{{\s*/, '').replace(/\s*}}$/, '').trim();
+}
+
 function resolveUrlWithEnv({ literal, envVar, mode }) {
   const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
-  const trimmedEnvVar = typeof envVar === 'string' ? envVar.trim() : '';
+  const trimmedEnvVar = normalizeEnvVarName(envVar);
   const normalizedMode = normalizeUrlMode(mode, trimmedEnvVar);
   return {
     resolved: trimmedLiteral || (trimmedEnvVar && `{{${trimmedEnvVar}}}`) || '',
@@ -1276,6 +1281,29 @@ function createFormState(definition) {
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
 
+  const buildUrlFieldState = (key, fallbackLiteral = '') => {
+    const literalCandidate = definition[key];
+    const literal = typeof literalCandidate === 'string' && literalCandidate
+      ? literalCandidate
+      : fallbackLiteral;
+    const envVarFromMap = normalizeEnvVarName(definition.urlEnvMap?.[key]);
+    const envVarFromField = normalizeEnvVarName(definition[`${key}EnvVar`]);
+    const envVar = envVarFromMap || envVarFromField;
+    const mode = normalizeUrlMode(definition[`${key}Mode`], envVar);
+    return { literal, envVar, mode };
+  };
+
+  const serverUrlField = buildUrlFieldState('serverUrl');
+  const testServerUrlField = buildUrlFieldState('testServerUrl');
+  const productionServerUrlField = buildUrlFieldState(
+    'productionServerUrl',
+    definition.testServerUrlProduction || '',
+  );
+  const testServerUrlProductionField = buildUrlFieldState(
+    'testServerUrlProduction',
+    definition.productionServerUrl || '',
+  );
+
   return {
     id: definition.id || '',
     name: definition.name || '',
@@ -1291,24 +1319,18 @@ function createFormState(definition) {
     requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     testable: Boolean(definition.testable),
-    serverUrl: definition.serverUrl || '',
-    serverUrlEnvVar: definition.serverUrlEnvVar || '',
-    serverUrlMode: normalizeUrlMode(definition.serverUrlMode, definition.serverUrlEnvVar),
-    testServerUrl: definition.testServerUrl || '',
-    testServerUrlEnvVar: definition.testServerUrlEnvVar || '',
-    testServerUrlMode: normalizeUrlMode(definition.testServerUrlMode, definition.testServerUrlEnvVar),
-    productionServerUrl: definition.productionServerUrl || definition.testServerUrlProduction || '',
-    productionServerUrlEnvVar: definition.productionServerUrlEnvVar || '',
-    productionServerUrlMode: normalizeUrlMode(
-      definition.productionServerUrlMode,
-      definition.productionServerUrlEnvVar,
-    ),
-    testServerUrlProduction: definition.testServerUrlProduction || '',
-    testServerUrlProductionEnvVar: definition.testServerUrlProductionEnvVar || '',
-    testServerUrlProductionMode: normalizeUrlMode(
-      definition.testServerUrlProductionMode,
-      definition.testServerUrlProductionEnvVar,
-    ),
+    serverUrl: serverUrlField.literal,
+    serverUrlEnvVar: serverUrlField.envVar,
+    serverUrlMode: serverUrlField.mode,
+    testServerUrl: testServerUrlField.literal,
+    testServerUrlEnvVar: testServerUrlField.envVar,
+    testServerUrlMode: testServerUrlField.mode,
+    productionServerUrl: productionServerUrlField.literal,
+    productionServerUrlEnvVar: productionServerUrlField.envVar,
+    productionServerUrlMode: productionServerUrlField.mode,
+    testServerUrlProduction: testServerUrlProductionField.literal,
+    testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
+    testServerUrlProductionMode: testServerUrlProductionField.mode,
     authEndpointId: definition.authEndpointId || '',
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
@@ -4301,11 +4323,12 @@ export default function PosApiAdmin() {
     if (!fieldKey) return;
     const envVarKey = `${fieldKey}EnvVar`;
     const modeKey = `${fieldKey}Mode`;
-    const trimmedEnvVar = typeof updates.envVar === 'string' ? updates.envVar.trim() : updates.envVar;
+    const hasEnvVarUpdate = Object.prototype.hasOwnProperty.call(updates, 'envVar');
+    const trimmedEnvVar = hasEnvVarUpdate ? normalizeEnvVarName(updates.envVar) : undefined;
     setFormState((prev) => ({
       ...prev,
       ...(updates.literal !== undefined ? { [fieldKey]: updates.literal } : {}),
-      ...(trimmedEnvVar !== undefined ? { [envVarKey]: trimmedEnvVar } : {}),
+      ...(hasEnvVarUpdate ? { [envVarKey]: trimmedEnvVar } : {}),
       ...(updates.mode ? { [modeKey]: updates.mode } : {}),
     }));
     resetTestState();
