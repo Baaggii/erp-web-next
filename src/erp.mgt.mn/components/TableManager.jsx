@@ -5917,22 +5917,11 @@ const TableManager = forwardRef(function TableManager({
                     />
                     <datalist id={`filter-${slugify(String(c))}-options`}>
                       <option value=""></option>
-                      {relationOpts[c].map((o) => {
-                        const optionLabel = `${o?.label ?? o?.value ?? ''}`
-                          .replace(/\s+/g, ' ')
-                          .trim();
-                        const optionValue = o?.value ?? '';
-                        return (
-                          <option
-                            key={optionValue || optionLabel}
-                            value={optionValue}
-                            label={optionLabel}
-                            title={optionLabel}
-                          >
-                            {optionLabel}
-                          </option>
-                        );
-                      })}
+                      {relationOpts[c].map((o) => (
+                        <option key={o.value || o.label} value={o.value}>
+                          {o.label}
+                        </option>
+                      ))}
                     </datalist>
                   </>
                 ) : (

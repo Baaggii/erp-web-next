@@ -3298,9 +3298,8 @@ export default function PosApiAdmin() {
     } else {
       setImportRequestBody('');
     }
-    if (draft.serverUrl) {
-      setImportBaseUrl((prev) => prev || draft.serverUrl);
-    }
+    const draftBaseUrl = draft.testServerUrl || draft.serverUrl || '';
+    setImportBaseUrl(draftBaseUrl);
     if (!importAuthEndpointId && formState.authEndpointId) {
       setImportAuthEndpointId(formState.authEndpointId);
     }
