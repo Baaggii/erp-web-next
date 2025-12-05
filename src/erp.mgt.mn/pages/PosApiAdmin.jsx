@@ -3704,19 +3704,9 @@ export default function PosApiAdmin() {
           useCachedToken: importUseCachedToken,
         }),
       });
-      const rawText = await res.text();
-      let data = null;
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        // ignore parse errors; handled below
-      }
-      announceTokenRequestOutcome(data, { requestLabel: selectedAuthEndpointId });
+      const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.message || rawText || 'Test request failed.');
-      }
-      if (!data || typeof data !== 'object') {
-        throw new Error('Failed to parse test response.');
+        throw new Error(data?.message || 'Test request failed.');
       }
       const responseStatus = data?.response?.status ?? res.status;
       const responseText = data?.response?.statusText || res.statusText || '';
@@ -4518,21 +4508,20 @@ export default function PosApiAdmin() {
           useCachedToken: effectiveUseCachedToken,
         }),
       });
-      const rawText = await res.text();
-      let data = null;
-      try {
-        data = JSON.parse(rawText);
-      } catch {
-        // ignore parse failure
-      }
-      announceTokenRequestOutcome(data, { requestLabel: formState.authEndpointId });
       if (!res.ok) {
-        const message = data?.message || rawText || 'Test request failed';
-        throw new Error(message);
+        const text = await res.text();
+        let message = text;
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && typeof parsed === 'object' && parsed.message) {
+            message = parsed.message;
+          }
+        } catch {
+          // ignore parse failure
+        }
+        throw new Error(message || 'Test request failed');
       }
-      if (!data || typeof data !== 'object') {
-        throw new Error('Failed to parse test response');
-      }
+      const data = await res.json();
       if (Array.isArray(data.envWarnings) && data.envWarnings.length) {
         setStatus(data.envWarnings.join(' '));
         showToast(data.envWarnings.join(' '), 'info');
