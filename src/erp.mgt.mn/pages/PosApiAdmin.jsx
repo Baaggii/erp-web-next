@@ -988,12 +988,20 @@ function normalizeUrlMode(mode, envVar) {
   return envVar ? 'env' : 'literal';
 }
 
+function normalizeEnvVarName(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/^{{\s*/, '').replace(/\s*}}$/, '').trim();
+}
+
 function resolveUrlWithEnv({ literal, envVar, mode }) {
   const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
-  const trimmedEnvVar = typeof envVar === 'string' ? envVar.trim() : '';
+  const trimmedEnvVar = normalizeEnvVarName(envVar);
   const normalizedMode = normalizeUrlMode(mode, trimmedEnvVar);
+  const hasEnvVar = normalizedMode === 'env' && Boolean(trimmedEnvVar);
   return {
-    resolved: trimmedLiteral || (trimmedEnvVar && `{{${trimmedEnvVar}}}`) || '',
+    resolved: trimmedLiteral,
+    display: trimmedLiteral || (hasEnvVar ? `(env: ${trimmedEnvVar})` : ''),
+    hasValue: Boolean(trimmedLiteral || hasEnvVar),
     missing: false,
     mode: normalizedMode,
     envVar: trimmedEnvVar,
@@ -1276,6 +1284,29 @@ function createFormState(definition) {
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
 
+  const buildUrlFieldState = (key, fallbackLiteral = '') => {
+    const literalCandidate = definition[key];
+    const literal = typeof literalCandidate === 'string' && literalCandidate
+      ? literalCandidate
+      : fallbackLiteral;
+    const envVarFromMap = normalizeEnvVarName(definition.urlEnvMap?.[key]);
+    const envVarFromField = normalizeEnvVarName(definition[`${key}EnvVar`]);
+    const envVar = envVarFromMap || envVarFromField;
+    const mode = normalizeUrlMode(definition[`${key}Mode`], envVar);
+    return { literal, envVar, mode };
+  };
+
+  const serverUrlField = buildUrlFieldState('serverUrl');
+  const testServerUrlField = buildUrlFieldState('testServerUrl');
+  const productionServerUrlField = buildUrlFieldState(
+    'productionServerUrl',
+    definition.testServerUrlProduction || '',
+  );
+  const testServerUrlProductionField = buildUrlFieldState(
+    'testServerUrlProduction',
+    definition.productionServerUrl || '',
+  );
+
   return {
     id: definition.id || '',
     name: definition.name || '',
@@ -1291,24 +1322,18 @@ function createFormState(definition) {
     requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     testable: Boolean(definition.testable),
-    serverUrl: definition.serverUrl || '',
-    serverUrlEnvVar: definition.serverUrlEnvVar || '',
-    serverUrlMode: normalizeUrlMode(definition.serverUrlMode, definition.serverUrlEnvVar),
-    testServerUrl: definition.testServerUrl || '',
-    testServerUrlEnvVar: definition.testServerUrlEnvVar || '',
-    testServerUrlMode: normalizeUrlMode(definition.testServerUrlMode, definition.testServerUrlEnvVar),
-    productionServerUrl: definition.productionServerUrl || definition.testServerUrlProduction || '',
-    productionServerUrlEnvVar: definition.productionServerUrlEnvVar || '',
-    productionServerUrlMode: normalizeUrlMode(
-      definition.productionServerUrlMode,
-      definition.productionServerUrlEnvVar,
-    ),
-    testServerUrlProduction: definition.testServerUrlProduction || '',
-    testServerUrlProductionEnvVar: definition.testServerUrlProductionEnvVar || '',
-    testServerUrlProductionMode: normalizeUrlMode(
-      definition.testServerUrlProductionMode,
-      definition.testServerUrlProductionEnvVar,
-    ),
+    serverUrl: serverUrlField.literal,
+    serverUrlEnvVar: serverUrlField.envVar,
+    serverUrlMode: serverUrlField.mode,
+    testServerUrl: testServerUrlField.literal,
+    testServerUrlEnvVar: testServerUrlField.envVar,
+    testServerUrlMode: testServerUrlField.mode,
+    productionServerUrl: productionServerUrlField.literal,
+    productionServerUrlEnvVar: productionServerUrlField.envVar,
+    productionServerUrlMode: productionServerUrlField.mode,
+    testServerUrlProduction: testServerUrlProductionField.literal,
+    testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
+    testServerUrlProductionMode: testServerUrlProductionField.mode,
     authEndpointId: definition.authEndpointId || '',
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
@@ -2346,7 +2371,22 @@ export default function PosApiAdmin() {
       || resolvedUrlSelections.productionServerUrl.resolved
   ) || '').trim();
 
-  const hasTestServerUrl = Boolean(resolvedTestServerUrl);
+  const resolvedTestSelection = (testEnvironment === 'production'
+    ? [
+        resolvedUrlSelections.productionServerUrl,
+        resolvedUrlSelections.testServerUrlProduction,
+        resolvedUrlSelections.testServerUrl,
+      ]
+    : [
+        resolvedUrlSelections.testServerUrl,
+        resolvedUrlSelections.testServerUrlProduction,
+        resolvedUrlSelections.productionServerUrl,
+      ]).find((entry) => entry?.hasValue)
+    || null;
+
+  const selectedTestUrl = resolvedTestSelection?.display || resolvedTestSelection?.resolved || '';
+
+  const hasTestServerUrl = Boolean(resolvedTestSelection?.hasValue || resolvedTestServerUrl);
   const urlEnvironmentVariables = useMemo(
     () => Object.values(urlSelections).map((entry) => entry.envVar).filter(Boolean),
     [urlSelections],
@@ -2370,7 +2410,7 @@ export default function PosApiAdmin() {
     const envMode = mode === 'env';
     const envVarValue = rawSelection.envVar || '';
     const literalValue = rawSelection.literal || '';
-    const resolvedValue = resolvedSelection.resolved || literalValue;
+    const resolvedValue = resolvedSelection.display || resolvedSelection.resolved || literalValue;
     return (
       <label style={{ ...styles.label, flex: 1 }}>
         {label}
@@ -3586,7 +3626,7 @@ export default function PosApiAdmin() {
     }
     const baseUrlResolution = resolveUrlWithEnv(importBaseUrlSelection);
     const resolvedBaseUrl = (baseUrlResolution.resolved || '').trim();
-    if (!resolvedBaseUrl) {
+    if (!baseUrlResolution.hasValue) {
       setImportTestError('Provide a staging base URL or environment variable to run the test.');
       return;
     }
@@ -3616,6 +3656,11 @@ export default function PosApiAdmin() {
             path: activeImportDraft.path,
             parameters: activeImportDraft.parameters || [],
             posApiType: activeImportDraft.posApiType,
+            testServerUrl: importBaseUrl,
+            urlEnvMap:
+              importBaseUrlSelection.mode === 'env' && importBaseUrlEnvVar
+                ? { testServerUrl: importBaseUrlEnvVar.trim() }
+                : {},
           },
           payload: {
             params: mergedParams,
@@ -3625,6 +3670,7 @@ export default function PosApiAdmin() {
             body: parsedBody,
           },
           baseUrl: resolvedBaseUrl || undefined,
+          environment: testEnvironment,
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
           useCachedToken: importUseCachedToken,
         }),
@@ -4301,11 +4347,12 @@ export default function PosApiAdmin() {
     if (!fieldKey) return;
     const envVarKey = `${fieldKey}EnvVar`;
     const modeKey = `${fieldKey}Mode`;
-    const trimmedEnvVar = typeof updates.envVar === 'string' ? updates.envVar.trim() : updates.envVar;
+    const hasEnvVarUpdate = Object.prototype.hasOwnProperty.call(updates, 'envVar');
+    const trimmedEnvVar = hasEnvVarUpdate ? normalizeEnvVarName(updates.envVar) : undefined;
     setFormState((prev) => ({
       ...prev,
       ...(updates.literal !== undefined ? { [fieldKey]: updates.literal } : {}),
-      ...(trimmedEnvVar !== undefined ? { [envVarKey]: trimmedEnvVar } : {}),
+      ...(hasEnvVarUpdate ? { [envVarKey]: trimmedEnvVar } : {}),
       ...(updates.mode ? { [modeKey]: updates.mode } : {}),
     }));
     resetTestState();
@@ -4360,23 +4407,14 @@ export default function PosApiAdmin() {
       setTestState({ running: false, error: 'Enable the testable checkbox to run tests.', result: null });
       return;
     }
-    const selectedTestUrl = resolvedTestServerUrl;
-    const testUrlCandidates = testEnvironment === 'production'
-      ? [
-          resolvedUrlSelections.productionServerUrl,
-          resolvedUrlSelections.testServerUrlProduction,
-          resolvedUrlSelections.testServerUrl,
-        ]
-      : [
-          resolvedUrlSelections.testServerUrl,
-          resolvedUrlSelections.testServerUrlProduction,
-          resolvedUrlSelections.productionServerUrl,
-        ];
-    const activeTestSelection = testUrlCandidates.find((entry) => (entry?.resolved || '').trim())
-      || testUrlCandidates[0]
+
+    const activeTestSelection = resolvedTestSelection
+      || (testEnvironment === 'production'
+        ? resolvedUrlSelections.productionServerUrl
+        : resolvedUrlSelections.testServerUrl)
       || {};
 
-    if (!selectedTestUrl) {
+    if (!activeTestSelection?.hasValue) {
       setTestState({ running: false, error: 'Test server URL is required for testing.', result: null });
       return;
     }
@@ -4389,7 +4427,7 @@ export default function PosApiAdmin() {
     }
 
     const confirmed = window.confirm(
-      `Run a test request against ${selectedTestUrl}? This will use the sample data shown above.`,
+      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use the sample data shown above.`,
     );
     if (!confirmed) return;
 
@@ -4794,7 +4832,7 @@ export default function PosApiAdmin() {
                                     style={styles.input}
                                   />
                                   <div style={styles.fieldHelp}>
-                                    Resolved URL: {resolvedImportBaseSelection.resolved || 'Not set'}
+                                    Resolved URL: {resolvedImportBaseSelection.display || 'Not set'}
                                   </div>
                                 </div>
                               ) : (
@@ -4807,7 +4845,7 @@ export default function PosApiAdmin() {
                                     style={styles.input}
                                   />
                                   <div style={styles.fieldHelp}>
-                                    Resolved URL: {resolvedImportBaseSelection.resolved || 'Not set'}
+                                    Resolved URL: {resolvedImportBaseSelection.display || 'Not set'}
                                   </div>
                                 </div>
                               )}
@@ -6607,11 +6645,11 @@ export default function PosApiAdmin() {
                 Testable endpoint
               </label>
             </div>
-            <div style={styles.fieldHelp}>
-              Selected URL: {resolvedTestServerUrl || 'Not set'}
+              <div style={styles.fieldHelp}>
+              Selected URL: {selectedTestUrl || resolvedTestServerUrl || 'Not set'}
+              </div>
             </div>
           </div>
-        </div>
 
         <div style={styles.previewSection}>
           <div style={styles.previewCard}>
