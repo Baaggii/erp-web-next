@@ -992,38 +992,8 @@ function resolveUrlWithEnv({ literal, envVar, mode }) {
   const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
   const trimmedEnvVar = typeof envVar === 'string' ? envVar.trim() : '';
   const normalizedMode = normalizeUrlMode(mode, trimmedEnvVar);
-  const placeholder = trimmedEnvVar ? `{{${trimmedEnvVar}}}` : '';
-
-  if (normalizedMode === 'env' && trimmedEnvVar) {
-    const resolver = typeof resolveEnvironmentVariable === 'function'
-      ? resolveEnvironmentVariable
-      : DEFAULT_ENV_RESOLVER;
-    let resolvedValue = '';
-    try {
-      const outcome = resolver(trimmedEnvVar, { parseJson: false });
-      if (outcome && typeof outcome === 'object') {
-        if (outcome.found && outcome.value !== undefined && outcome.value !== null) {
-          resolvedValue = String(outcome.value).trim();
-        }
-      } else if (typeof outcome === 'string') {
-        resolvedValue = outcome.trim();
-      }
-    } catch {
-      // Ignore resolution errors; fall back below.
-    }
-
-    const resolved = resolvedValue || trimmedLiteral || placeholder || '';
-    return {
-      resolved,
-      missing: normalizedMode === 'env' && !resolvedValue && !trimmedLiteral,
-      mode: normalizedMode,
-      envVar: trimmedEnvVar,
-      literal: trimmedLiteral,
-    };
-  }
-
   return {
-    resolved: trimmedLiteral,
+    resolved: trimmedLiteral || (trimmedEnvVar && `{{${trimmedEnvVar}}}`) || '',
     missing: false,
     mode: normalizedMode,
     envVar: trimmedEnvVar,
@@ -4425,8 +4395,7 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
-      const urlEnvMap = buildUrlEnvMap(urlSelections);
-      const endpointForTest = { ...definition, urlEnvMap };
+      const endpointForTest = { ...definition };
 
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
         method: 'POST',
