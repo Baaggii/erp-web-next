@@ -988,24 +988,38 @@ function normalizeUrlMode(mode, envVar) {
   return envVar ? 'env' : 'literal';
 }
 
+function extractEnvVarFromTemplate(value) {
+  const normalized = normalizeEnvVarName(value);
+  if (!normalized) return '';
+  if (!normalized.startsWith('POSAPI_')) return '';
+  return normalized;
+}
+
 function normalizeEnvVarName(value) {
   if (typeof value !== 'string') return '';
   return value.replace(/^{{\s*/, '').replace(/\s*}}$/, '').trim();
 }
 
-function resolveUrlWithEnv({ literal, envVar, mode }) {
-  const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
-  const trimmedEnvVar = normalizeEnvVarName(envVar);
-  const normalizedMode = normalizeUrlMode(mode, trimmedEnvVar);
-  const hasEnvVar = normalizedMode === 'env' && Boolean(trimmedEnvVar);
+function normalizeUrlSelection(selection = {}) {
+  const trimmedLiteral = typeof selection.literal === 'string' ? selection.literal.trim() : '';
+  const detectedEnvVar = extractEnvVarFromTemplate(trimmedLiteral);
+  const envVar = normalizeEnvVarName(selection.envVar || detectedEnvVar);
+  const mode = normalizeUrlMode(selection.mode, envVar);
+  const literal = mode === 'env' && envVar && trimmedLiteral === `{{${envVar}}}` ? '' : trimmedLiteral;
+  return { literal, envVar, mode };
+}
+
+function resolveUrlWithEnv(selection = {}) {
+  const normalized = normalizeUrlSelection(selection);
+  const hasEnvVar = normalized.mode === 'env' && Boolean(normalized.envVar);
   return {
-    resolved: trimmedLiteral,
-    display: trimmedLiteral || (hasEnvVar ? `(env: ${trimmedEnvVar})` : ''),
-    hasValue: Boolean(trimmedLiteral || hasEnvVar),
+    resolved: normalized.literal,
+    display: normalized.literal || (hasEnvVar ? `(env: ${normalized.envVar})` : ''),
+    hasValue: Boolean(normalized.literal || hasEnvVar),
     missing: false,
-    mode: normalizedMode,
-    envVar: trimmedEnvVar,
-    literal: trimmedLiteral,
+    mode: normalized.mode,
+    envVar: normalized.envVar,
+    literal: normalized.literal,
   };
 }
 
@@ -1167,9 +1181,9 @@ function buildRequestEnvMap(selections = {}) {
 
 function buildUrlEnvMap(selections = {}) {
   return Object.entries(selections || {}).reduce((acc, [key, entry]) => {
-    const mode = normalizeUrlMode(entry?.mode, entry?.envVar);
-    if (mode === 'env' && entry?.envVar) {
-      acc[key] = entry.envVar.trim();
+    const normalized = normalizeUrlSelection(entry || {});
+    if (normalized.mode === 'env' && normalized.envVar) {
+      acc[key] = normalized.envVar.trim();
     }
     return acc;
   }, {});
@@ -1291,9 +1305,12 @@ function createFormState(definition) {
       : fallbackLiteral;
     const envVarFromMap = normalizeEnvVarName(definition.urlEnvMap?.[key]);
     const envVarFromField = normalizeEnvVarName(definition[`${key}EnvVar`]);
-    const envVar = envVarFromMap || envVarFromField;
-    const mode = normalizeUrlMode(definition[`${key}Mode`], envVar);
-    return { literal, envVar, mode };
+    const normalized = normalizeUrlSelection({
+      literal,
+      envVar: envVarFromMap || envVarFromField,
+      mode: definition[`${key}Mode`],
+    });
+    return normalized;
   };
 
   const serverUrlField = buildUrlFieldState('serverUrl');
@@ -2312,7 +2329,7 @@ export default function PosApiAdmin() {
 
   const urlSelections = useMemo(
     () => {
-      const buildSelection = (field) => ({
+      const buildSelection = (field) => normalizeUrlSelection({
         literal: formState[field] || '',
         envVar: formState[`${field}EnvVar`] || '',
         mode: formState[`${field}Mode`],
@@ -2349,7 +2366,7 @@ export default function PosApiAdmin() {
   );
 
   const importBaseUrlSelection = useMemo(
-    () => ({
+    () => normalizeUrlSelection({
       literal: importBaseUrl,
       envVar: importBaseUrlEnvVar,
       mode: normalizeUrlMode(importBaseUrlMode, importBaseUrlEnvVar),
@@ -4020,10 +4037,11 @@ export default function PosApiAdmin() {
     const buildUrlField = (key) => {
       const envVarKey = `${key}EnvVar`;
       const modeKey = `${key}Mode`;
-      const literalValue = (formState[key] || '').trim();
-      const envVarValue = (formState[envVarKey] || '').trim();
-      const modeValue = normalizeUrlMode(formState[modeKey], envVarValue);
-      return { literal: literalValue, envVar: envVarValue, mode: modeValue };
+      return normalizeUrlSelection({
+        literal: formState[key] || '',
+        envVar: formState[envVarKey] || '',
+        mode: formState[modeKey],
+      });
     };
 
     const serverUrlField = buildUrlField('serverUrl');
