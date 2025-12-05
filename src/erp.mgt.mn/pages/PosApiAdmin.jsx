@@ -997,13 +997,9 @@ function resolveUrlWithEnv({ literal, envVar, mode }) {
   const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
   const trimmedEnvVar = normalizeEnvVarName(envVar);
   const normalizedMode = normalizeUrlMode(mode, trimmedEnvVar);
-  const resolved = normalizedMode === 'env' && trimmedEnvVar
-    ? trimmedLiteral || trimmedEnvVar
-    : trimmedLiteral;
-
   return {
-    resolved,
-    missing: normalizedMode === 'env' ? !trimmedEnvVar : false,
+    resolved: trimmedLiteral || (trimmedEnvVar && `{{${trimmedEnvVar}}}`) || '',
+    missing: false,
     mode: normalizedMode,
     envVar: trimmedEnvVar,
     literal: trimmedLiteral,
@@ -1169,9 +1165,8 @@ function buildRequestEnvMap(selections = {}) {
 function buildUrlEnvMap(selections = {}) {
   return Object.entries(selections || {}).reduce((acc, [key, entry]) => {
     const mode = normalizeUrlMode(entry?.mode, entry?.envVar);
-    const normalizedEnv = normalizeEnvVarName(entry?.envVar);
-    if (mode === 'env' && normalizedEnv) {
-      acc[key] = normalizedEnv;
+    if (mode === 'env' && entry?.envVar) {
+      acc[key] = entry.envVar.trim();
     }
     return acc;
   }, {});
@@ -2397,12 +2392,7 @@ export default function PosApiAdmin() {
     const envMode = mode === 'env';
     const envVarValue = rawSelection.envVar || '';
     const literalValue = rawSelection.literal || '';
-    const resolvedValue = resolvedSelection.resolved || literalValue || envVarValue;
-    const envHelpText = envMode
-      ? envVarValue
-        ? `Uses environment variable ${envVarValue} on the server${literalValue ? ` with path ${literalValue}` : ''}.`
-        : 'Select an environment variable name. The server will resolve it when calling the endpoint.'
-      : resolvedValue || 'Not set';
+    const resolvedValue = resolvedSelection.resolved || literalValue;
     return (
       <label style={{ ...styles.label, flex: 1 }}>
         {label}
@@ -2451,7 +2441,7 @@ export default function PosApiAdmin() {
                 placeholder={placeholder}
                 style={styles.input}
               />
-              <div style={styles.fieldHelp}>Server-resolved URL: {envHelpText}</div>
+              <div style={styles.fieldHelp}>Resolved URL: {resolvedValue || 'Not set'}</div>
             </div>
           ) : (
             <div style={styles.urlEnvFields}>
@@ -4428,8 +4418,7 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
-      const urlEnvMap = buildUrlEnvMap(urlSelections);
-      const endpointForTest = { ...definition, urlEnvMap };
+      const endpointForTest = { ...definition };
 
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
         method: 'POST',
