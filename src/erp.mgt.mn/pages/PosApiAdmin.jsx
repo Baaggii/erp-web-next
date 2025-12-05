@@ -972,7 +972,12 @@ function parseHintPreview(text, arrayErrorMessage) {
   }
 }
 
-const DEFAULT_POSAPI_ENV_VARS = ['POSAPI_CLIENT_ID', 'POSAPI_CLIENT_SECRET'];
+const DEFAULT_POSAPI_ENV_VARS = [
+  'POSAPI_CLIENT_ID',
+  'POSAPI_CLIENT_SECRET',
+  'POSAPI_USERNAME',
+  'POSAPI_PASSWORD',
+];
 
 function listPosApiEnvVariables(extraKeys = []) {
   const keys = new Set(DEFAULT_POSAPI_ENV_VARS);
@@ -991,6 +996,15 @@ function normalizeUrlMode(mode, envVar) {
 function normalizeEnvVarName(value) {
   if (typeof value !== 'string') return '';
   return value.replace(/^{{\s*/, '').replace(/\s*}}$/, '').trim();
+}
+
+function extractEnvVarPlaceholder(value) {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  const normalized = normalizeEnvVarName(trimmed);
+  if (!normalized || !normalized.startsWith('POSAPI_')) return '';
+  const hasBraces = /^{{\s*POSAPI_[^}]+\s*}}$/.test(trimmed);
+  const isBareEnvVar = trimmed === normalized;
+  return hasBraces || isBareEnvVar ? normalized : '';
 }
 
 function resolveUrlWithEnv({ literal, envVar, mode }) {
@@ -1165,6 +1179,29 @@ function buildRequestEnvMap(selections = {}) {
   }, {});
 }
 
+function validateRequestEnvVars(envMap = {}, posApiType = '') {
+  if (posApiType !== 'AUTH') return;
+  const allowed = {
+    client_id: new Set(['POSAPI_CLIENT_ID']),
+    client_secret: new Set(['POSAPI_CLIENT_SECRET']),
+    username: new Set(['POSAPI_USERNAME']),
+    password: new Set(['POSAPI_PASSWORD']),
+  };
+  const errors = [];
+  Object.entries(envMap || {}).forEach(([fieldPath, envVar]) => {
+    const normalizedField = typeof fieldPath === 'string' ? fieldPath.toLowerCase() : '';
+    const allowedSet = allowed[normalizedField];
+    if (allowedSet && !allowedSet.has(envVar)) {
+      errors.push(`Environment variable for ${fieldPath} must be ${Array.from(allowedSet).join(' or ')}.`);
+    }
+  });
+  if (errors.length) {
+    const err = new Error(errors[0]);
+    err.details = errors;
+    throw err;
+  }
+}
+
 function buildUrlEnvMap(selections = {}) {
   return Object.entries(selections || {}).reduce((acc, [key, entry]) => {
     const mode = normalizeUrlMode(entry?.mode, entry?.envVar);
@@ -1291,9 +1328,10 @@ function createFormState(definition) {
       : fallbackLiteral;
     const envVarFromMap = normalizeEnvVarName(definition.urlEnvMap?.[key]);
     const envVarFromField = normalizeEnvVarName(definition[`${key}EnvVar`]);
-    const envVar = envVarFromMap || envVarFromField;
+    const envVarFromPlaceholder = extractEnvVarPlaceholder(literal);
+    const envVar = envVarFromMap || envVarFromField || envVarFromPlaceholder;
     const mode = normalizeUrlMode(definition[`${key}Mode`], envVar);
-    return { literal, envVar, mode };
+    return { literal: envVarFromPlaceholder ? '' : literal, envVar, mode };
   };
 
   const serverUrlField = buildUrlFieldState('serverUrl');
@@ -4021,9 +4059,13 @@ export default function PosApiAdmin() {
       const envVarKey = `${key}EnvVar`;
       const modeKey = `${key}Mode`;
       const literalValue = (formState[key] || '').trim();
-      const envVarValue = (formState[envVarKey] || '').trim();
+      const envVarFromPlaceholder = extractEnvVarPlaceholder(literalValue);
+      const envVarValue = (formState[envVarKey] || envVarFromPlaceholder || '').trim();
       const modeValue = normalizeUrlMode(formState[modeKey], envVarValue);
-      return { literal: literalValue, envVar: envVarValue, mode: modeValue };
+      const literal = envVarFromPlaceholder && literalValue === `{{${envVarFromPlaceholder}}}`
+        ? ''
+        : literalValue;
+      return { literal, envVar: envVarValue, mode: modeValue };
     };
 
     const serverUrlField = buildUrlField('serverUrl');
@@ -4102,6 +4144,8 @@ export default function PosApiAdmin() {
       urlEnvMap,
       authEndpointId: formState.authEndpointId || '',
     };
+
+    validateRequestEnvVars(endpoint.requestEnvMap, endpoint.posApiType);
 
     if (settingsId) {
       delete endpoint.supportsMultipleReceipts;
