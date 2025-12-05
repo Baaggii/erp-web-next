@@ -4365,20 +4365,6 @@ function MainWindow({ title }) {
 
 function TabPanel({ tabKey, active, children }) {
   const loading = useIsLoading(tabKey);
-  const [showSpinner, setShowSpinner] = React.useState(false);
-
-  React.useEffect(() => {
-    let timer = null;
-    if (loading) {
-      timer = window.setTimeout(() => setShowSpinner(true), 150);
-    } else {
-      setShowSpinner(false);
-    }
-    return () => {
-      if (timer) window.clearTimeout(timer);
-    };
-  }, [loading]);
-
   return (
     <div
       style={{
@@ -4390,7 +4376,7 @@ function TabPanel({ tabKey, active, children }) {
         flex: '1 1 auto',
       }}
     >
-      {showSpinner && <Spinner />}
+      {loading && <Spinner />}
       <div style={styles.tabPanelContent}>{children}</div>
     </div>
   );
