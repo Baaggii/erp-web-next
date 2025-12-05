@@ -55,6 +55,99 @@ function toStringValue(value) {
 
 const ENV_PLACEHOLDER_REGEX = /^\s*\{\{\s*(POSAPI_[A-Z0-9_]+)\s*}}\s*$/;
 
+function tokenizeFieldPath(path) {
+  if (typeof path !== 'string' || !path.trim()) return [];
+  return path
+    .split('.')
+    .map((segment) => {
+      const trimmed = segment.trim();
+      if (!trimmed) return null;
+      const arrayMatch = /^(.*)\[\]$/.exec(trimmed);
+      if (arrayMatch) {
+        return { key: arrayMatch[1], isArray: true };
+      }
+      return { key: trimmed, isArray: false };
+    })
+    .filter(Boolean);
+}
+
+function setValueAtTokens(target, tokens, value) {
+  if (!target || typeof target !== 'object' || !tokens.length) return false;
+  let current = target;
+  tokens.forEach((token, index) => {
+    if (!token?.key) return;
+    const isLast = index === tokens.length - 1;
+    if (isLast) {
+      if (token.isArray) {
+        current[token.key] = Array.isArray(current[token.key]) ? current[token.key] : [];
+        if (!current[token.key].length) {
+          current[token.key].push(value);
+        } else {
+          current[token.key][0] = value;
+        }
+      } else {
+        current[token.key] = value;
+      }
+      return;
+    }
+
+    const nextContainer = token.isArray ? [] : {};
+    if (current[token.key] === undefined || current[token.key] === null) {
+      current[token.key] = token.isArray ? [nextContainer] : nextContainer;
+    }
+    if (token.isArray) {
+      current[token.key] = Array.isArray(current[token.key]) ? current[token.key] : [];
+      if (!current[token.key].length) {
+        current[token.key].push(nextContainer);
+      }
+      current = current[token.key][0];
+    } else {
+      if (typeof current[token.key] !== 'object') {
+        current[token.key] = nextContainer;
+      }
+      current = current[token.key];
+    }
+  });
+  return true;
+}
+
+function parseEnvValue(rawValue) {
+  if (rawValue === undefined || rawValue === null) return rawValue;
+  if (typeof rawValue !== 'string') return rawValue;
+  const trimmed = rawValue.trim();
+  if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return trimmed;
+    }
+  }
+  return trimmed;
+}
+
+function applyEnvMapToPayload(payload, envMap = {}) {
+  const basePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
+    ? JSON.parse(JSON.stringify(payload))
+    : {};
+  const target =
+    basePayload.body && typeof basePayload.body === 'object' && !Array.isArray(basePayload.body)
+      ? basePayload.body
+      : basePayload;
+
+  Object.entries(envMap || {}).forEach(([fieldPath, envVar]) => {
+    if (!fieldPath || !envVar) return;
+    const envRaw = process.env[envVar];
+    if (envRaw === undefined || envRaw === null || envRaw === '') {
+      return;
+    }
+    const parsed = parseEnvValue(envRaw);
+    const tokens = tokenizeFieldPath(fieldPath);
+    setValueAtTokens(target, tokens, parsed);
+  });
+
+  return { payload: basePayload };
+}
+
 function coerceEnvPlaceholderValue(envVar, rawValue, path = '') {
   if (rawValue === undefined || rawValue === null || rawValue === '') {
     const err = new Error(`Environment variable ${envVar} is not configured for POSAPI requests`);
@@ -1267,6 +1360,7 @@ async function fetchTokenFromAuthEndpoint(
       : authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object'
         ? authEndpoint.requestBody.schema
         : {};
+  const mappedPayload = applyEnvMapToPayload(requestPayload, authEndpoint.requestEnvMap).payload;
   let targetBaseUrl = toStringValue(baseUrl);
   if (!targetBaseUrl) {
     try {
@@ -1281,7 +1375,7 @@ async function fetchTokenFromAuthEndpoint(
   if (!targetBaseUrl) {
     targetBaseUrl = await getPosApiBaseUrl();
   }
-  const result = await invokePosApiEndpoint(authEndpoint.id, requestPayload, {
+  const result = await invokePosApiEndpoint(authEndpoint.id, mappedPayload, {
     endpoint: authEndpoint,
     baseUrl: targetBaseUrl,
     debug: true,
