@@ -159,11 +159,8 @@ function tokenizeFieldPath(path) {
 function setValueAtTokens(target, tokens, value) {
   if (!target || typeof target !== 'object' || !tokens.length) return false;
   let current = target;
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (!token?.key || typeof current !== 'object' || current === null) {
-      return false;
-    }
+  tokens.forEach((token, index) => {
+    if (!token?.key) return;
     const isLast = index === tokens.length - 1;
     if (isLast) {
       if (token.isArray) {
@@ -176,7 +173,7 @@ function setValueAtTokens(target, tokens, value) {
       } else {
         current[token.key] = value;
       }
-      return true;
+      return;
     }
 
     const nextContainer = token.isArray ? [] : {};
@@ -188,16 +185,14 @@ function setValueAtTokens(target, tokens, value) {
       if (!current[token.key].length) {
         current[token.key].push(nextContainer);
       }
-      const nextValue = current[token.key][0];
-      current[token.key][0] = typeof nextValue === 'object' && nextValue !== null ? nextValue : nextContainer;
       current = current[token.key][0];
     } else {
-      if (typeof current[token.key] !== 'object' || current[token.key] === null) {
+      if (typeof current[token.key] !== 'object') {
         current[token.key] = nextContainer;
       }
       current = current[token.key];
     }
-  }
+  });
   return true;
 }
 
@@ -233,10 +228,6 @@ function applyEnvMapToPayload(payload, envMap = {}) {
       return;
     }
     const parsed = parseEnvValue(envRaw);
-    if (parsed !== null && typeof parsed === 'object') {
-      warnings.push(`Environment variable ${envVar} must resolve to a primitive value; skipping ${fieldPath}.`);
-      return;
-    }
     const tokens = tokenizeFieldPath(fieldPath);
     if (!tokens.length || !setValueAtTokens(target, tokens, parsed)) {
       warnings.push(`Could not apply environment variable ${envVar} to ${fieldPath}.`);
@@ -765,9 +756,13 @@ function pickTestServers(operation, specServers) {
   const staging = servers.find((server) => /staging|dev|test/i.test(server.url));
   const productionCandidate = servers.find((server) => server !== staging);
   const fallback = servers[0];
+  const resolvedTest = staging?.url || fallback?.url || '';
+  const resolvedProd = productionCandidate?.url || servers[1]?.url || resolvedTest;
   return {
-    testServerUrl: staging?.url || fallback?.url || '',
-    testServerUrlProduction: productionCandidate?.url || servers[1]?.url || '',
+    serverUrl: fallback?.url || '',
+    testServerUrl: resolvedTest,
+    productionServerUrl: resolvedProd,
+    testServerUrlProduction: resolvedProd,
   };
 }
 
@@ -931,7 +926,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         requestExample,
         posApiType: inferredPosApiType,
         posApiCategory: inferredCategory || inferredPosApiType,
-        serverUrl: serverSelection.testServerUrl || '',
+        serverUrl: serverSelection.serverUrl || serverSelection.testServerUrl || '',
         tags: Array.isArray(op.tags) ? op.tags : [],
         requestBody: requestSchema ? { schema: requestSchema, description: requestDescription } : undefined,
         responseBody: responseSchema ? { schema: responseSchema, description: responseDescription } : undefined,
@@ -954,8 +949,10 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         ...(requestDetails.flags.supportsItems !== undefined ? { supportsItems: requestDetails.flags.supportsItems } : {}),
         ...(serverSelection.testServerUrl
           ? {
+            serverUrl: serverSelection.serverUrl || serverSelection.testServerUrl,
             testServerUrl: serverSelection.testServerUrl,
             testServerUrlProduction: serverSelection.testServerUrlProduction,
+            productionServerUrl: serverSelection.productionServerUrl,
             testable: true,
           }
           : {}),
@@ -976,7 +973,17 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
   return entries;
 }
 
-function parsePostmanUrl(urlObj) {
+function replacePostmanVariables(text, variableLookup = {}) {
+  if (!text) return '';
+  return text.replace(/{{\s*([^}]+)\s*}}/g, (_, key) => {
+    const trimmedKey = key.trim();
+    return Object.prototype.hasOwnProperty.call(variableLookup, trimmedKey)
+      ? variableLookup[trimmedKey]
+      : `{{${trimmedKey}}}`;
+  });
+}
+
+function parsePostmanUrl(urlObj, variableLookup = {}) {
   const detectPathParams = (rawPath) => {
     const params = new Set();
     const colonMatches = rawPath.match(/:\w+/g) || [];
@@ -996,7 +1003,8 @@ function parsePostmanUrl(urlObj) {
 
   if (!urlObj) return { path: '/', query: [], baseUrl: '', pathParams: [] };
   if (typeof urlObj === 'string') {
-    const urlString = urlObj.startsWith('http') ? urlObj : `https://placeholder.local${urlObj}`;
+    const resolvedUrl = replacePostmanVariables(urlObj, variableLookup);
+    const urlString = resolvedUrl.startsWith('http') ? resolvedUrl : `https://placeholder.local${resolvedUrl}`;
     try {
       const parsed = new URL(urlString);
       const path = parsed.pathname || '/';
@@ -1024,8 +1032,38 @@ function parsePostmanUrl(urlObj) {
     : [];
   const host = Array.isArray(urlObj.host) ? urlObj.host.join('.') : '';
   const protocol = Array.isArray(urlObj.protocol) ? urlObj.protocol[0] : urlObj.protocol;
-  const baseUrl = host ? `${protocol || 'https'}://${host}` : '';
+  const resolvedHost = replacePostmanVariables(host, variableLookup);
+  const resolvedProtocol = replacePostmanVariables(protocol || 'https', variableLookup) || 'https';
+  const baseUrl = resolvedHost ? `${resolvedProtocol}://${resolvedHost}` : '';
   return { path: normalizedPath || '/', query, baseUrl, pathParams: detectPathParams(rawPath) };
+}
+
+function pickPostmanServers(baseUrl, variables = {}) {
+  const urlCandidates = new Set();
+  const tryAdd = (value) => {
+    if (typeof value !== 'string') return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    if (/^https?:\/\//i.test(trimmed) || trimmed.startsWith('{{')) {
+      urlCandidates.add(trimmed);
+    }
+  };
+
+  tryAdd(baseUrl);
+  Object.values(variables || {}).forEach((val) => tryAdd(val));
+
+  const urls = Array.from(urlCandidates.values());
+  const fallback = urls[0] || '';
+  const staging = urls.find((url) => /staging|dev|test/i.test(url));
+  const production = urls.find((url) => /prod|live/i.test(url));
+  const altProduction = urls.find((url) => url !== staging && url !== fallback);
+  const resolvedProd = production || altProduction || fallback;
+
+  return {
+    serverUrl: fallback,
+    testServerUrl: staging || fallback,
+    productionServerUrl: resolvedProd,
+  };
 }
 
 function extractOperationsFromPostman(spec, meta = {}) {
@@ -1038,6 +1076,14 @@ function extractOperationsFromPostman(spec, meta = {}) {
       .map((variable) => (typeof variable?.key === 'string' ? variable.key.trim() : ''))
       .filter(Boolean)
     : [];
+  const variableLookup = Array.isArray(spec?.variable)
+    ? spec.variable.reduce((acc, variable) => {
+      if (typeof variable?.key === 'string' && variable.key.trim()) {
+        acc[variable.key.trim()] = variable?.value;
+      }
+      return acc;
+    }, {})
+    : {};
 
   function parseRequestBody(body) {
     if (!body || typeof body !== 'object') return {};
@@ -1128,7 +1174,10 @@ function extractOperationsFromPostman(spec, meta = {}) {
       }
       if (!item?.request) return;
       const method = (item.request.method || 'GET').toUpperCase();
-      const { path, query, baseUrl, pathParams } = parsePostmanUrl(item.request.url || '/');
+      const { path, query, baseUrl, pathParams } = parsePostmanUrl(
+        item.request.url || '/',
+        variableLookup,
+      );
       const body = item.request.body;
       const { requestExample, requestSchema } = parseRequestBody(body);
       const { examples: responseExamples, responseSchema } = parseResponses(item.response);
@@ -1151,6 +1200,8 @@ function extractOperationsFromPostman(spec, meta = {}) {
       const requestDetails = buildRequestDetails(requestSchema, 'application/json');
       const responseDetails = buildResponseDetails(responseSchema);
       const description = item.request.description || item.description || '';
+      const serverSelection = pickPostmanServers(baseUrl, variableLookup);
+
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: item.name || `${method} ${path}`,
@@ -1160,7 +1211,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
         parameters,
         requestExample,
         posApiType,
-        serverUrl: baseUrl,
+        serverUrl: serverSelection.serverUrl || baseUrl,
         tags: [...folderPath],
         requestBody: requestSchema ? { schema: requestSchema, description } : undefined,
         responseBody: responseSchema
@@ -1185,6 +1236,15 @@ function extractOperationsFromPostman(spec, meta = {}) {
           ? { supportsMultiplePayments: requestDetails.flags.supportsMultiplePayments }
           : {}),
         ...(requestDetails.flags.supportsItems !== undefined ? { supportsItems: requestDetails.flags.supportsItems } : {}),
+        ...(serverSelection.serverUrl
+          ? {
+            serverUrl: serverSelection.serverUrl,
+            testServerUrl: serverSelection.testServerUrl,
+            productionServerUrl: serverSelection.productionServerUrl,
+            testServerUrlProduction: serverSelection.productionServerUrl,
+            testable: Boolean(serverSelection.testServerUrl || serverSelection.productionServerUrl),
+          }
+          : {}),
         validation: posApiType ? { state: 'ok' } : {
           state: 'incomplete',
           issues: ['POSAPI type could not be determined automatically.'],
