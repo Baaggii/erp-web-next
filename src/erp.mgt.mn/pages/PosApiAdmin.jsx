@@ -974,6 +974,8 @@ function parseHintPreview(text, arrayErrorMessage) {
 
 const DEFAULT_POSAPI_ENV_VARS = ['POSAPI_CLIENT_ID', 'POSAPI_CLIENT_SECRET'];
 
+const URL_ENV_PLACEHOLDER_REGEX = /^\s*{{\s*([A-Z0-9_]+)\s*}}\s*(.*)$/;
+
 function listPosApiEnvVariables(extraKeys = []) {
   const keys = new Set(DEFAULT_POSAPI_ENV_VARS);
   (extraKeys || [])
@@ -2347,7 +2349,7 @@ export default function PosApiAdmin() {
 
   const importBaseUrlSelection = useMemo(
     () => ({
-      literal: importBaseUrl,
+      literal: stripUrlPlaceholder(importBaseUrl, importBaseUrlEnvVar),
       envVar: importBaseUrlEnvVar,
       mode: normalizeUrlMode(importBaseUrlMode, importBaseUrlEnvVar),
     }),
@@ -3524,8 +3526,21 @@ export default function PosApiAdmin() {
     const preferredBaseUrl = draft.testServerUrl
       || draft.serverUrl
       || draft.productionServerUrl
-      || draft.testServerUrlProduction;
-    if (preferredBaseUrl) {
+      || draft.testServerUrlProduction
+      || '';
+    const detectedEnv = extractEnvVarFromUrl(preferredBaseUrl);
+    const draftEnvVar = normalizeEnvVarName(
+      draft.urlEnvMap?.testServerUrl
+        || draft.urlEnvMap?.serverUrl
+        || draft.testServerUrlEnvVar
+        || draft.serverUrlEnvVar
+        || detectedEnv.envVar,
+    );
+    if (draftEnvVar) {
+      setImportBaseUrlEnvVar(draftEnvVar);
+      setImportBaseUrl(stripUrlPlaceholder(preferredBaseUrl, draftEnvVar));
+      setImportBaseUrlMode('env');
+    } else if (preferredBaseUrl) {
       setImportBaseUrl(preferredBaseUrl);
       setImportBaseUrlEnvVar('');
       setImportBaseUrlMode('literal');
@@ -3606,9 +3621,13 @@ export default function PosApiAdmin() {
       setImportTestError('Select an imported operation to test.');
       return;
     }
-    const baseUrlResolution = resolveUrlWithEnv(importBaseUrlSelection);
-    const resolvedBaseUrl = (baseUrlResolution.resolved || '').trim();
-    if (!resolvedBaseUrl) {
+    const normalizedBaseSelection = {
+      ...importBaseUrlSelection,
+      envVar: normalizeEnvVarName(importBaseUrlSelection.envVar),
+      literal: stripUrlPlaceholder(importBaseUrlSelection.literal, importBaseUrlSelection.envVar),
+    };
+    const hasBaseSelection = Boolean(normalizedBaseSelection.literal || normalizedBaseSelection.envVar);
+    if (!hasBaseSelection) {
       setImportTestError('Provide a staging base URL or environment variable to run the test.');
       return;
     }
@@ -3626,19 +3645,32 @@ export default function PosApiAdmin() {
     try {
       const filteredParams = buildFilledParams(activeImportDraft.parameters || [], importTestValues);
       const mergedParams = { ...filteredParams.path, ...filteredParams.query, ...filteredParams.header };
+      const selectionEnvMap = buildUrlEnvMap({ testServerUrl: normalizedBaseSelection });
+      const mergedUrlEnvMap = { ...(activeImportDraft.urlEnvMap || {}), ...selectionEnvMap };
+      const endpointForTest = {
+        id: activeImportDraft.id,
+        name: activeImportDraft.name,
+        method: activeImportDraft.method,
+        path: activeImportDraft.path,
+        parameters: activeImportDraft.parameters || [],
+        posApiType: activeImportDraft.posApiType,
+        requestEnvMap: activeImportDraft.requestEnvMap || {},
+        testServerUrl:
+          normalizedBaseSelection.literal
+          || activeImportDraft.testServerUrl
+          || activeImportDraft.serverUrl
+          || '',
+        serverUrl: activeImportDraft.serverUrl || '',
+        productionServerUrl: activeImportDraft.productionServerUrl || '',
+        testServerUrlProduction: activeImportDraft.testServerUrlProduction || '',
+        urlEnvMap: mergedUrlEnvMap,
+      };
       const res = await fetch(`${API_BASE}/posapi/endpoints/import/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          endpoint: {
-            id: activeImportDraft.id,
-            name: activeImportDraft.name,
-            method: activeImportDraft.method,
-            path: activeImportDraft.path,
-            parameters: activeImportDraft.parameters || [],
-            posApiType: activeImportDraft.posApiType,
-          },
+          endpoint: endpointForTest,
           payload: {
             params: mergedParams,
             pathParams: filteredParams.path,
@@ -3646,9 +3678,11 @@ export default function PosApiAdmin() {
             headers: filteredParams.header,
             body: parsedBody,
           },
-          baseUrl: resolvedBaseUrl || undefined,
+          baseUrlSelection: normalizedBaseSelection,
+          baseUrl: normalizedBaseSelection.literal || undefined,
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
           useCachedToken: importUseCachedToken,
+          environment: 'staging',
         }),
       });
       const data = await res.json();
@@ -3996,7 +4030,7 @@ export default function PosApiAdmin() {
     const buildUrlField = (key) => {
       const envVarKey = `${key}EnvVar`;
       const modeKey = `${key}Mode`;
-      const literalValue = (formState[key] || '').trim();
+      const literalValue = stripUrlPlaceholder(formState[key], formState[envVarKey]);
       const envVarValue = (formState[envVarKey] || '').trim();
       const modeValue = normalizeUrlMode(formState[modeKey], envVarValue);
       return { literal: literalValue, envVar: envVarValue, mode: modeValue };
