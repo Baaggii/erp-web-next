@@ -27,6 +27,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
+import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
@@ -271,16 +272,75 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 
 function applyDateParams(params, filter) {
   if (!filter) return;
-  const rangeMatch = filter.match(
+  const trimmed = String(filter).trim();
+  if (!trimmed) return;
+
+  const rangeMatch = trimmed.match(
     /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/,
   );
   if (rangeMatch) {
     params.set('date_from', `${rangeMatch[1]} 00:00:00`);
     params.set('date_to', `${rangeMatch[2]} 23:59:59`);
-  } else if (/^\d{4}-\d{2}-\d{2}$/.test(filter)) {
-    params.set('date_from', `${filter} 00:00:00`);
-    params.set('date_to', `${filter} 23:59:59`);
+    return;
   }
+
+  const monthMatch = trimmed.match(/^(\d{4})-(\d{2})$/);
+  if (monthMatch) {
+    const year = Number(monthMatch[1]);
+    const month = Number(monthMatch[2]);
+    if (Number.isNaN(year) || Number.isNaN(month) || month < 1 || month > 12) {
+      return;
+    }
+    const lastDay = new Date(year, month, 0).getDate();
+    params.set('date_from', `${monthMatch[1]}-${monthMatch[2]}-01 00:00:00`);
+    params.set('date_to', `${monthMatch[1]}-${monthMatch[2]}-${String(lastDay).padStart(2, '0')} 23:59:59`);
+    return;
+  }
+
+  if (/^\d{4}$/.test(trimmed)) {
+    params.set('date_from', `${trimmed}-01-01 00:00:00`);
+    params.set('date_to', `${trimmed}-12-31 23:59:59`);
+    return;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    params.set('date_from', `${trimmed} 00:00:00`);
+    params.set('date_to', `${trimmed} 23:59:59`);
+  }
+}
+
+function isValidDateFilterValue(filter) {
+  if (filter === undefined || filter === null) return true;
+  const trimmed = String(filter).trim();
+  if (!trimmed) return true;
+  if (/^\d{4}$/.test(trimmed)) return true;
+  if (/^(\d{4})-(0[1-9]|1[0-2])$/.test(trimmed)) return true;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return true;
+  return /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/.test(trimmed);
+}
+
+function buildDateQueryValue(filter) {
+  if (!isValidDateFilterValue(filter)) return null;
+  const trimmed = String(filter ?? '').trim();
+  if (!trimmed) return '';
+  const rangeMatch = trimmed.match(
+    /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/,
+  );
+  if (rangeMatch) return trimmed;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const monthMatch = trimmed.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  if (monthMatch) {
+    const year = Number(monthMatch[1]);
+    const month = Number(monthMatch[2]);
+    const lastDay = new Date(year, month, 0).getDate();
+    return `${monthMatch[1]}-${monthMatch[2]}-01-${monthMatch[1]}-${monthMatch[2]}-${String(
+      lastDay,
+    ).padStart(2, '0')}`;
+  }
+  if (/^\d{4}$/.test(trimmed)) {
+    return `${trimmed}-01-01-${trimmed}-12-31`;
+  }
+  return null;
 }
 
 const actionCellStyle = {
@@ -777,6 +837,16 @@ const TableManager = forwardRef(function TableManager({
       return resolveWithMap(alias, caseMap || columnCaseMap);
     },
     [columnCaseMap],
+  );
+
+  const dateFieldSet = useMemo(
+    () =>
+      new Set(
+        (formConfig?.dateField || [])
+          .map((name) => resolveCanonicalKey(name))
+          .filter(Boolean),
+      ),
+    [formConfig?.dateField, resolveCanonicalKey],
   );
 
   const normalizeToCanonical = useCallback(
@@ -1872,10 +1942,26 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
+    let hasInvalidDateFilter = false;
     Object.entries(filters).forEach(([k, v]) => {
-      if (v !== '' && v !== null && v !== undefined && validCols.has(k))
-        params.set(k, v);
+      if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
+        if (dateFieldSet.has(k)) {
+          if (isValidDateFilterValue(v)) {
+            const normalized = buildDateQueryValue(v);
+            if (normalized !== null) {
+              params.set(k, normalized);
+            } else {
+              hasInvalidDateFilter = true;
+            }
+          } else {
+            hasInvalidDateFilter = true;
+          }
+        } else {
+          params.set(k, v);
+        }
+      }
     });
+    if (hasInvalidDateFilter) return;
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
     })
@@ -1937,7 +2023,7 @@ const TableManager = forwardRef(function TableManager({
 
   useEffect(() => {
     setSelectedRows(new Set());
-  }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
+  }, [table, page, perPage, filters, sort, refreshId, localRefresh, dateFieldSet]);
 
   useEffect(() => {
     if (!table || !Array.isArray(rows) || rows.length === 0) {
@@ -5857,30 +5943,59 @@ const TableManager = forwardRef(function TableManager({
                 minWidth: columnWidths[c],
                 maxWidth: MAX_WIDTH,
                 resize: 'horizontal',
-                overflow: 'hidden',
+                overflow: 'visible',
                 textOverflow: 'ellipsis',
               }}
             >
-                {Array.isArray(relationOpts[c]) ? (
-                  <select
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  >
-                    <option value=""></option>
-                    {relationOpts[c].map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  />
-                )}
+                {(() => {
+                  const relationConfig = relationConfigs[c];
+                  if (relationConfig?.table) {
+                    const searchColumn =
+                      relationConfig.idField || relationConfig.column || c;
+                    const searchColumns = [
+                      searchColumn,
+                      ...(relationConfig.displayFields || []),
+                    ];
+                    return (
+                      <AsyncSearchSelect
+                        table={relationConfig.table}
+                        searchColumn={searchColumn}
+                        searchColumns={searchColumns}
+                        labelFields={relationConfig.displayFields || []}
+                        idField={searchColumn}
+                        value={filters[c] || ''}
+                        onChange={(val) => handleFilterChange(c, val ?? '')}
+                        disableAutoWidth
+                        inputStyle={{ width: '100%', minHeight: '2rem' }}
+                      />
+                    );
+                  }
+
+                  if (Array.isArray(relationOpts[c])) {
+                    return (
+                      <select
+                        value={filters[c] || ''}
+                        onChange={(e) => handleFilterChange(c, e.target.value)}
+                        style={{ width: '100%' }}
+                      >
+                        <option value=""></option>
+                        {relationOpts[c].map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  }
+
+                  return (
+                    <input
+                      value={filters[c] || ''}
+                      onChange={(e) => handleFilterChange(c, e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  );
+                })()}
               </th>
             ))}
             <th style={{ width: '24rem', minWidth: '24rem' }}></th>
