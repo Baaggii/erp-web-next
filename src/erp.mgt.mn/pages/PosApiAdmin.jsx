@@ -3659,6 +3659,12 @@ export default function PosApiAdmin() {
       setImportTestError('The selected token endpoint is not implemented. Add it under the AUTH tab first.');
       return;
     }
+      const resolvedImportAuthEndpointId = (importAuthEndpointId || formState.authEndpointId || '').trim();
+      if (resolvedImportAuthEndpointId && !authEndpointOptions.some((ep) => ep.id === resolvedImportAuthEndpointId)) {
+        setImportTestError('The selected token endpoint is not implemented. Add it under the AUTH tab first.');
+        emitToast('The selected token endpoint is not implemented. Add it under the AUTH tab first.', 'error');
+        return;
+      }
     const baseUrlResolution = resolveUrlWithEnv(importBaseUrlSelection);
     const resolvedBaseUrl = (baseUrlResolution.resolved || '').trim();
     if (!baseUrlResolution.hasValue) {
