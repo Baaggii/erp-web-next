@@ -3648,6 +3648,17 @@ export default function PosApiAdmin() {
       emitToast('Select an imported operation to test before running staging calls.', 'error');
       return;
     }
+    const selectedAuthEndpointId = (importAuthEndpointId || formState.authEndpointId || '').trim();
+    if (selectedAuthEndpointId && !authEndpointOptions.some((ep) => ep.id === selectedAuthEndpointId)) {
+      setImportTestError('The selected token endpoint is not implemented. Add it under the AUTH tab first.');
+      emitToast('The selected token endpoint is not implemented. Add it under the AUTH tab first.', 'error');
+      return;
+    }
+    const selectedAuthEndpointId = (importAuthEndpointId || formState.authEndpointId || '').trim();
+    if (selectedAuthEndpointId && !authEndpointOptions.some((ep) => ep.id === selectedAuthEndpointId)) {
+      setImportTestError('The selected token endpoint is not implemented. Add it under the AUTH tab first.');
+      return;
+    }
       const resolvedImportAuthEndpointId = (importAuthEndpointId || formState.authEndpointId || '').trim();
       if (resolvedImportAuthEndpointId && !authEndpointOptions.some((ep) => ep.id === resolvedImportAuthEndpointId)) {
         setImportTestError('The selected token endpoint is not implemented. Add it under the AUTH tab first.');
@@ -3678,11 +3689,11 @@ export default function PosApiAdmin() {
       'info',
     );
     emitToast(
-        resolvedImportAuthEndpointId
-          ? `Token endpoint ${resolvedImportAuthEndpointId} found – ${importUseCachedToken ? 'reusing cached token' : 'requesting a fresh token'}.`
-          : 'No token endpoint selected – request will run without authentication.',
-        resolvedImportAuthEndpointId ? 'success' : 'info',
-      );
+      selectedAuthEndpointId
+        ? `Token endpoint ${selectedAuthEndpointId} found – ${importUseCachedToken ? 'reusing cached token' : 'requesting a fresh token'}.`
+        : 'No token endpoint selected – request will run without authentication.',
+      selectedAuthEndpointId ? 'success' : 'info',
+    );
     toastRequestBodyPreview(parsedBody ?? importRequestBody, 'Request body preview');
     try {
       const filteredParams = buildFilledParams(activeImportDraft.parameters || [], importTestValues);
@@ -3714,7 +3725,7 @@ export default function PosApiAdmin() {
           },
           baseUrl: resolvedBaseUrl || undefined,
           environment: testEnvironment,
-            authEndpointId: resolvedImportAuthEndpointId,
+          authEndpointId: selectedAuthEndpointId,
           useCachedToken: importUseCachedToken,
         }),
       });
@@ -4487,6 +4498,15 @@ export default function PosApiAdmin() {
         result: null,
       });
       emitToast('The selected token endpoint is not implemented. Add an AUTH endpoint or clear the selection.', 'error');
+      return;
+    }
+
+    if (formState.authEndpointId && !authEndpointOptions.some((ep) => ep.id === formState.authEndpointId)) {
+      setTestState({
+        running: false,
+        error: 'The selected token endpoint is not implemented. Add an AUTH endpoint or clear the selection.',
+        result: null,
+      });
       return;
     }
 
