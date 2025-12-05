@@ -869,52 +869,6 @@ const TableManager = forwardRef(function TableManager({
     [fieldTypeMap],
   );
 
-  const resolveRelationFilterValue = useCallback(
-    (key, value) => {
-      const options = relationOpts[key];
-      if (!Array.isArray(options)) return value;
-
-      const stringValue =
-        typeof value === 'string' ? value.trim() : value === undefined ? '' : String(value);
-      if (stringValue === '') return value;
-
-      const directMatch = options.some(
-        (opt) => opt && String(opt.value) === stringValue,
-      );
-      if (directMatch) return stringValue;
-
-      const lowered = stringValue.toLowerCase();
-      const matchingValues = Array.from(
-        new Set(
-          options
-            .filter((opt) => opt?.label && opt.label.toLowerCase().includes(lowered))
-            .map((opt) => opt.value)
-            .map((val) => (val === undefined || val === null ? '' : String(val)))
-            .filter((val) => val !== ''),
-        ),
-      );
-
-      if (matchingValues.length === 0) return null;
-      if (matchingValues.length === 1) return matchingValues[0];
-      return matchingValues.join(',');
-    },
-    [relationOpts],
-  );
-
-  const appendFiltersToParams = useCallback(
-    (params, filterMap, options = {}) => {
-      const { allowedKeys } = options;
-      Object.entries(filterMap).forEach(([k, v]) => {
-        if (allowedKeys && !allowedKeys.has(k)) return;
-        if (!shouldApplyFilter(k, v)) return;
-        const resolved = resolveRelationFilterValue(k, v);
-        if (resolved === null || resolved === undefined || resolved === '') return;
-        params.set(k, resolved);
-      });
-    },
-    [resolveRelationFilterValue, shouldApplyFilter],
-  );
-
   const generatedCols = useMemo(
     () =>
       new Set(
@@ -1933,7 +1887,9 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    appendFiltersToParams(params, filters, { allowedKeys: validCols });
+    Object.entries(filters).forEach(([k, v]) => {
+      if (validCols.has(k) && shouldApplyFilter(k, v)) params.set(k, v);
+    });
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
     })
@@ -3472,7 +3428,9 @@ const TableManager = forwardRef(function TableManager({
           params.set('sort', sort.column);
           params.set('dir', sort.dir);
         }
-        appendFiltersToParams(params, filters);
+        Object.entries(filters).forEach(([k, v]) => {
+          if (shouldApplyFilter(k, v)) params.set(k, v);
+        });
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
           credentials: 'include',
         }).then((r) => r.json());
@@ -3813,7 +3771,9 @@ const TableManager = forwardRef(function TableManager({
         params.set('sort', sort.column);
         params.set('dir', sort.dir);
       }
-      appendFiltersToParams(params, filters);
+      Object.entries(filters).forEach(([k, v]) => {
+        if (shouldApplyFilter(k, v)) params.set(k, v);
+      });
       const data = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include' },
@@ -4022,7 +3982,9 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    appendFiltersToParams(params, filters);
+    Object.entries(filters).forEach(([k, v]) => {
+      if (shouldApplyFilter(k, v)) params.set(k, v);
+    });
     const dataRes = await fetch(
       `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
       {
