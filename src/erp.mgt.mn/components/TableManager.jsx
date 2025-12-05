@@ -854,6 +854,21 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [columnMeta]);
 
+  const shouldApplyFilter = useCallback(
+    (key, value) => {
+      if (value === '' || value === null || value === undefined) return false;
+      const typ = fieldTypeMap[key];
+      if (typ === 'date') return /^\d{4}-\d{2}-\d{2}$/.test(String(value));
+      if (typ === 'datetime')
+        return /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?$/.test(
+          String(value),
+        );
+      if (typ === 'time') return /^\d{2}:\d{2}(?::\d{2})?$/.test(String(value));
+      return true;
+    },
+    [fieldTypeMap],
+  );
+
   const generatedCols = useMemo(
     () =>
       new Set(
@@ -1873,8 +1888,7 @@ const TableManager = forwardRef(function TableManager({
       params.set('dir', sort.dir);
     }
     Object.entries(filters).forEach(([k, v]) => {
-      if (v !== '' && v !== null && v !== undefined && validCols.has(k))
-        params.set(k, v);
+      if (validCols.has(k) && shouldApplyFilter(k, v)) params.set(k, v);
     });
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
@@ -3415,7 +3429,7 @@ const TableManager = forwardRef(function TableManager({
           params.set('dir', sort.dir);
         }
         Object.entries(filters).forEach(([k, v]) => {
-          if (v) params.set(k, v);
+          if (shouldApplyFilter(k, v)) params.set(k, v);
         });
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
           credentials: 'include',
@@ -3758,7 +3772,7 @@ const TableManager = forwardRef(function TableManager({
         params.set('dir', sort.dir);
       }
       Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.set(k, v);
+        if (shouldApplyFilter(k, v)) params.set(k, v);
       });
       const data = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -3969,7 +3983,7 @@ const TableManager = forwardRef(function TableManager({
       params.set('dir', sort.dir);
     }
     Object.entries(filters).forEach(([k, v]) => {
-      if (v) params.set(k, v);
+      if (shouldApplyFilter(k, v)) params.set(k, v);
     });
     const dataRes = await fetch(
       `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
@@ -5862,18 +5876,22 @@ const TableManager = forwardRef(function TableManager({
               }}
             >
                 {Array.isArray(relationOpts[c]) ? (
-                  <select
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  >
-                    <option value=""></option>
-                    {relationOpts[c].map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <input
+                      list={`relation-filter-${c}`}
+                      value={filters[c] || ''}
+                      onChange={(e) => handleFilterChange(c, e.target.value)}
+                      style={{ width: '100%' }}
+                      placeholder={t('search_relation_filter', 'Type to search...')}
+                    />
+                    <datalist id={`relation-filter-${c}`}>
+                      {relationOpts[c].map((o) => (
+                        <option key={o.value} value={o.value} label={o.label}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </datalist>
+                  </>
                 ) : (
                   <input
                     value={filters[c] || ''}
