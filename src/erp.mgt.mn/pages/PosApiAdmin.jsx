@@ -943,53 +943,14 @@ function parseHintPreview(text, arrayErrorMessage) {
   }
 }
 
-function getEnvironmentSources() {
-  const sources = [];
-  if (typeof window !== 'undefined' && window && window.__ENV__) {
-    sources.push(['window', window.__ENV__]);
-  }
-  if (typeof import.meta !== 'undefined' && import.meta.env) {
-    sources.push(['importMeta', import.meta.env]);
-  }
-  if (typeof process !== 'undefined' && process.env) {
-    sources.push(['process', process.env]);
-  }
-  return sources;
-}
+const DEFAULT_POSAPI_ENV_VARS = ['POSAPI_CLIENT_ID', 'POSAPI_CLIENT_SECRET'];
 
 function listPosApiEnvVariables(extraKeys = []) {
-  const keys = new Set();
-  getEnvironmentSources().forEach(([, env]) => {
-    Object.keys(env || {})
-      .filter((key) => key && key.startsWith('POSAPI_'))
-      .forEach((key) => keys.add(key));
-  });
+  const keys = new Set(DEFAULT_POSAPI_ENV_VARS);
   (extraKeys || [])
     .filter((key) => key && key.startsWith('POSAPI_'))
     .forEach((key) => keys.add(key));
   return Array.from(keys).sort();
-}
-
-function resolveEnvironmentVariable(key, { parseJson = true } = {}) {
-  if (!key) return { found: false, value: undefined };
-  for (const [, env] of getEnvironmentSources()) {
-    if (env && Object.prototype.hasOwnProperty.call(env, key) && env[key] !== undefined) {
-      const raw = env[key];
-      if (!parseJson || typeof raw !== 'string') {
-        return { found: true, value: raw };
-      }
-      const trimmed = raw.trim();
-      if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
-        try {
-          return { found: true, value: JSON.parse(trimmed) };
-        } catch (err) {
-          return { found: false, value: undefined, error: err?.message || 'Invalid JSON in environment variable' };
-        }
-      }
-      return { found: true, value: raw };
-    }
-  }
-  return { found: false, value: undefined };
 }
 
 function tokenizeFieldPath(path) {
