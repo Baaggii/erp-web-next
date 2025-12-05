@@ -1098,9 +1098,22 @@ function buildRequestSampleFromSelections(
           onError(`Could not assign environment value for ${fieldPath}.`);
         }
         return;
-      }
+        }
 
       const parsedValue = preferPlaceholders ? placeholder : value;
+      if (!isPrimitiveValue(parsedValue)) {
+        const fallbackValue = fallbackToLiteral && entry?.literal !== undefined && entry.literal !== ''
+          ? parseScalarValue(entry.literal)
+          : placeholder;
+        if (typeof onError === 'function') {
+          const fallbackLabel = fallbackToLiteral ? 'literal' : 'placeholder';
+          onError(
+            `Environment variable ${entry.envVar} must resolve to a primitive value; using ${fallbackLabel} value for ${fieldPath}.`,
+          );
+        }
+        setValueAtPath(result, fieldPath, fallbackValue);
+        return;
+      }
       if (!setValueAtPath(result, fieldPath, parsedValue) && typeof onError === 'function') {
         onError(`Could not assign environment value for ${fieldPath}.`);
       }
@@ -1340,6 +1353,10 @@ function parseScalarValue(text) {
     }
   }
   return text;
+}
+
+function isPrimitiveValue(value) {
+  return value === null || ['string', 'number', 'boolean'].includes(typeof value);
 }
 
 function parseLooseYaml(text) {
