@@ -254,9 +254,8 @@ function applyEnvMapToPayload(payload, envMap = {}) {
 }
 
 function resolveEndpointUrl(definition, key, urlEnvMap = {}, warnings = []) {
-  const envVarRaw = (urlEnvMap && urlEnvMap[key]) || definition[`${key}EnvVar`];
-  const envVar = normalizeEnvVarName(envVarRaw);
-  const literal = stripEnvPlaceholder(definition[key], envVar);
+  const envVar = (urlEnvMap && urlEnvMap[key]) || definition[`${key}EnvVar`];
+  const literal = typeof definition[key] === 'string' ? definition[key].trim() : '';
   if (envVar) {
     const envRaw = process.env[envVar];
     if (envRaw !== undefined && envRaw !== null && envRaw !== '') {
@@ -264,22 +263,6 @@ function resolveEndpointUrl(definition, key, urlEnvMap = {}, warnings = []) {
     }
     warnings.push(`Environment variable ${envVar} is not set; using literal value for ${key}.`);
   }
-  return literal;
-}
-
-function resolveUrlSelection(selection, warnings = [], label = 'URL') {
-  const envVar = typeof selection?.envVar === 'string' ? selection.envVar.trim() : '';
-  const literal = typeof selection?.literal === 'string' ? selection.literal.trim() : '';
-  const mode = selection?.mode === 'env' || (!selection?.mode && envVar) ? 'env' : 'literal';
-
-  if (mode === 'env' && envVar) {
-    const envRaw = process.env[envVar];
-    if (envRaw !== undefined && envRaw !== null && String(envRaw).trim() !== '') {
-      return String(envRaw).trim();
-    }
-    warnings.push(`Environment variable ${envVar} is not set; using literal value for ${label}.`);
-  }
-
   return literal;
 }
 

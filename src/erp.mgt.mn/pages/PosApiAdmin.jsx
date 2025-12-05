@@ -995,37 +995,13 @@ function normalizeEnvVarName(value) {
   return value.replace(/^{{\s*/, '').replace(/\s*}}$/, '').trim();
 }
 
-function stripUrlPlaceholder(literal, envVarHint = '') {
-  const trimmed = typeof literal === 'string' ? literal.trim() : '';
-  if (!trimmed) return '';
-  const normalizedHint = normalizeEnvVarName(envVarHint);
-  const match = URL_ENV_PLACEHOLDER_REGEX.exec(trimmed);
-  if (match && (!normalizedHint || normalizeEnvVarName(match[1]) === normalizedHint)) {
-    return (match[2] || '').trim();
-  }
-  return trimmed;
-}
-
-function extractEnvVarFromUrl(literal) {
-  const trimmed = typeof literal === 'string' ? literal.trim() : '';
-  const match = URL_ENV_PLACEHOLDER_REGEX.exec(trimmed);
-  if (match) {
-    return { envVar: normalizeEnvVarName(match[1]), literal: (match[2] || '').trim() };
-  }
-  return { envVar: '', literal: trimmed };
-}
-
 function resolveUrlWithEnv({ literal, envVar, mode }) {
+  const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
   const trimmedEnvVar = normalizeEnvVarName(envVar);
-  const trimmedLiteral = stripUrlPlaceholder(literal, trimmedEnvVar);
   const normalizedMode = normalizeUrlMode(mode, trimmedEnvVar);
-  const resolved = normalizedMode === 'env' && trimmedEnvVar
-    ? trimmedLiteral || trimmedEnvVar
-    : trimmedLiteral;
-
   return {
-    resolved,
-    missing: normalizedMode === 'env' ? !trimmedEnvVar : false,
+    resolved: trimmedLiteral || (trimmedEnvVar && `{{${trimmedEnvVar}}}`) || '',
+    missing: false,
     mode: normalizedMode,
     envVar: trimmedEnvVar,
     literal: trimmedLiteral,
@@ -1191,9 +1167,8 @@ function buildRequestEnvMap(selections = {}) {
 function buildUrlEnvMap(selections = {}) {
   return Object.entries(selections || {}).reduce((acc, [key, entry]) => {
     const mode = normalizeUrlMode(entry?.mode, entry?.envVar);
-    const normalizedEnv = normalizeEnvVarName(entry?.envVar);
-    if (mode === 'env' && normalizedEnv) {
-      acc[key] = normalizedEnv;
+    if (mode === 'env' && entry?.envVar) {
+      acc[key] = entry.envVar.trim();
     }
     return acc;
   }, {});
@@ -1309,14 +1284,15 @@ function createFormState(definition) {
   const requestSchemaFallback = '{}';
 
   const buildUrlFieldState = (key, fallbackLiteral = '') => {
-    const literalCandidate = typeof definition[key] === 'string' ? definition[key] : '';
-    const detectedEnv = extractEnvVarFromUrl(literalCandidate);
-    const envVarFromMap = normalizeEnvVarName(
-      definition.urlEnvMap?.[key] || definition[`${key}EnvVar`] || detectedEnv.envVar,
-    );
-    const literal = detectedEnv.literal || fallbackLiteral || literalCandidate || '';
-    const mode = normalizeUrlMode(definition[`${key}Mode`], envVarFromMap);
-    return { literal, envVar: envVarFromMap, mode };
+    const literalCandidate = definition[key];
+    const literal = typeof literalCandidate === 'string' && literalCandidate
+      ? literalCandidate
+      : fallbackLiteral;
+    const envVarFromMap = normalizeEnvVarName(definition.urlEnvMap?.[key]);
+    const envVarFromField = normalizeEnvVarName(definition[`${key}EnvVar`]);
+    const envVar = envVarFromMap || envVarFromField;
+    const mode = normalizeUrlMode(definition[`${key}Mode`], envVar);
+    return { literal, envVar, mode };
   };
 
   const serverUrlField = buildUrlFieldState('serverUrl');
@@ -2418,12 +2394,7 @@ export default function PosApiAdmin() {
     const envMode = mode === 'env';
     const envVarValue = rawSelection.envVar || '';
     const literalValue = rawSelection.literal || '';
-    const resolvedValue = resolvedSelection.resolved || literalValue || envVarValue;
-    const envHelpText = envMode
-      ? envVarValue
-        ? `Uses environment variable ${envVarValue} on the server${literalValue ? ` with path ${literalValue}` : ''}.`
-        : 'Select an environment variable name. The server will resolve it when calling the endpoint.'
-      : resolvedValue || 'Not set';
+    const resolvedValue = resolvedSelection.resolved || literalValue;
     return (
       <label style={{ ...styles.label, flex: 1 }}>
         {label}
@@ -2472,7 +2443,7 @@ export default function PosApiAdmin() {
                 placeholder={placeholder}
                 style={styles.input}
               />
-              <div style={styles.fieldHelp}>Server-resolved URL: {envHelpText}</div>
+              <div style={styles.fieldHelp}>Resolved URL: {resolvedValue || 'Not set'}</div>
             </div>
           ) : (
             <div style={styles.urlEnvFields}>
@@ -4481,8 +4452,7 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
-      const urlEnvMap = buildUrlEnvMap(urlSelections);
-      const endpointForTest = { ...definition, urlEnvMap };
+      const endpointForTest = { ...definition };
 
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
         method: 'POST',
