@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useToast } from '../context/ToastContext.jsx';
 import { API_BASE } from '../utils/apiBase.js';
 
 const POSAPI_TRANSACTION_TYPES = [
@@ -1936,6 +1937,7 @@ function groupParametersByLocation(parameters = []) {
 }
 
 export default function PosApiAdmin() {
+  const { addToast } = useToast();
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [formState, setFormState] = useState({ ...EMPTY_ENDPOINT });
@@ -1996,6 +1998,27 @@ export default function PosApiAdmin() {
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
+
+  function emitToast(message, type = 'info') {
+    if (!message) return;
+    addToast(message, type);
+  }
+
+  function formatBodySnippet(rawBody) {
+    if (rawBody === undefined || rawBody === null) return '';
+    if (typeof rawBody === 'string') return rawBody;
+    try {
+      return JSON.stringify(rawBody, null, 2);
+    } catch (err) {
+      return String(rawBody);
+    }
+  }
+
+  function toastRequestBodyPreview(rawBody, context = 'Request body') {
+    const text = formatBodySnippet(rawBody).trim();
+    const snippet = text.length > 360 ? `${text.slice(0, 360)}…` : text;
+    emitToast(`${context}: ${snippet || 'No body provided'}`, 'info');
+  }
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -3622,12 +3645,20 @@ export default function PosApiAdmin() {
   async function handleTestImportDraft() {
     if (!activeImportDraft) {
       setImportTestError('Select an imported operation to test.');
+      emitToast('Select an imported operation to test before running staging calls.', 'error');
+      return;
+    }
+    const selectedAuthEndpointId = (importAuthEndpointId || formState.authEndpointId || '').trim();
+    if (selectedAuthEndpointId && !authEndpointOptions.some((ep) => ep.id === selectedAuthEndpointId)) {
+      setImportTestError('The selected token endpoint is not implemented. Add it under the AUTH tab first.');
+      emitToast('The selected token endpoint is not implemented. Add it under the AUTH tab first.', 'error');
       return;
     }
     const baseUrlResolution = resolveUrlWithEnv(importBaseUrlSelection);
     const resolvedBaseUrl = (baseUrlResolution.resolved || '').trim();
     if (!baseUrlResolution.hasValue) {
       setImportTestError('Provide a staging base URL or environment variable to run the test.');
+      emitToast('Provide a staging base URL or environment variable to run the staging test.', 'error');
       return;
     }
     let parsedBody;
@@ -3636,11 +3667,23 @@ export default function PosApiAdmin() {
         parsedBody = JSON.parse(importRequestBody);
       } catch (err) {
         setImportTestError(err.message || 'Request body must be valid JSON.');
+        emitToast(err.message || 'Request body must be valid JSON.', 'error');
         return;
       }
     }
     resetImportTestState();
     setImportTestRunning(true);
+    emitToast(
+      `Calling staging endpoint ${activeImportDraft.method} ${activeImportDraft.path} at ${resolvedBaseUrl} (${testEnvironment}).`,
+      'info',
+    );
+    emitToast(
+      selectedAuthEndpointId
+        ? `Token endpoint ${selectedAuthEndpointId} found – ${importUseCachedToken ? 'reusing cached token' : 'requesting a fresh token'}.`
+        : 'No token endpoint selected – request will run without authentication.',
+      selectedAuthEndpointId ? 'success' : 'info',
+    );
+    toastRequestBodyPreview(parsedBody ?? importRequestBody, 'Request body preview');
     try {
       const filteredParams = buildFilledParams(activeImportDraft.parameters || [], importTestValues);
       const mergedParams = { ...filteredParams.path, ...filteredParams.query, ...filteredParams.header };
@@ -3671,18 +3714,25 @@ export default function PosApiAdmin() {
           },
           baseUrl: resolvedBaseUrl || undefined,
           environment: testEnvironment,
-          authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
+          authEndpointId: selectedAuthEndpointId,
           useCachedToken: importUseCachedToken,
         }),
       });
       const data = await res.json();
       if (!res.ok) {
+        emitToast(`Staging call failed (${res.status}).`, 'error');
         throw new Error(data?.message || 'Test request failed.');
       }
+      emitToast(
+        `Staging call succeeded (${data?.response?.status || res.status || 'unknown status'}).`,
+        'success',
+      );
+      emitToast(`Checked staging endpoint with environment ${testEnvironment} at ${resolvedBaseUrl}.`, 'success');
       setImportTestResult(data);
       setImportStatus('Test call completed. Review the response below.');
     } catch (err) {
       setImportTestError(err.message || 'Failed to call the imported endpoint.');
+      emitToast(err.message || 'Failed to call the imported endpoint.', 'error');
     } finally {
       setImportTestRunning(false);
     }
@@ -4400,11 +4450,13 @@ export default function PosApiAdmin() {
       definition = buildDefinition();
     } catch (err) {
       setError(err.message || 'Failed to prepare endpoint');
+      emitToast(err.message || 'Failed to prepare endpoint for testing.', 'error');
       return;
     }
 
     if (!definition.testable) {
       setTestState({ running: false, error: 'Enable the testable checkbox to run tests.', result: null });
+      emitToast('Enable the testable checkbox to run endpoint tests.', 'error');
       return;
     }
 
@@ -4416,6 +4468,7 @@ export default function PosApiAdmin() {
 
     if (!activeTestSelection?.hasValue) {
       setTestState({ running: false, error: 'Test server URL is required for testing.', result: null });
+      emitToast('Test server URL is required before running endpoint tests.', 'error');
       return;
     }
 
@@ -4424,6 +4477,17 @@ export default function PosApiAdmin() {
     const effectiveUseCachedToken = useCachedToken && !cachedTokenExpired;
     if (cachedTokenExpired) {
       setStatus('Cached token expired; refreshing before running the test.');
+      emitToast('Cached token expired; requesting a fresh token.', 'info');
+    }
+
+    if (formState.authEndpointId && !authEndpointOptions.some((ep) => ep.id === formState.authEndpointId)) {
+      setTestState({
+        running: false,
+        error: 'The selected token endpoint is not implemented. Add an AUTH endpoint or clear the selection.',
+        result: null,
+      });
+      emitToast('The selected token endpoint is not implemented. Add an AUTH endpoint or clear the selection.', 'error');
+      return;
     }
 
     const confirmed = window.confirm(
@@ -4433,6 +4497,17 @@ export default function PosApiAdmin() {
 
     try {
       setTestState({ running: true, error: '', result: null });
+      emitToast(
+        `Testing ${definition.method} ${definition.path} against ${selectedTestUrl || activeTestSelection.display} (${testEnvironment}).`,
+        'info',
+      );
+      emitToast(
+        formState.authEndpointId
+          ? `Token endpoint ${formState.authEndpointId} found – ${effectiveUseCachedToken ? 'reusing cached token' : 'requesting a fresh token'}.`
+          : 'No token endpoint configured – request will run without authentication.',
+        formState.authEndpointId ? 'success' : 'info',
+      );
+      toastRequestBodyPreview(formState.requestSchemaText, 'Request body preview');
       const endpointForTest = { ...definition };
 
       const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
@@ -4457,17 +4532,25 @@ export default function PosApiAdmin() {
         } catch {
           // ignore parse failure
         }
+        emitToast(`Endpoint test failed (${res.status}).`, 'error');
         throw new Error(message || 'Test request failed');
       }
       const data = await res.json();
       if (Array.isArray(data.envWarnings) && data.envWarnings.length) {
         setStatus(data.envWarnings.join(' '));
+        data.envWarnings.forEach((warning) => emitToast(warning, 'info'));
       }
       updateTokenMetaFromResult(data);
+      emitToast(
+        `Endpoint test succeeded (${data?.response?.status || res.status || 'unknown status'}) for ${definition.id || definition.path}.`,
+        'success',
+      );
+      emitToast(`Tested against environment ${testEnvironment}.`, 'success');
       setTestState({ running: false, error: '', result: data });
     } catch (err) {
       console.error(err);
       setTestState({ running: false, error: err.message || 'Failed to run test', result: null });
+      emitToast(err.message || 'Failed to run endpoint test.', 'error');
     }
   }
 
