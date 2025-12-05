@@ -210,22 +210,6 @@ function parseEnvValue(rawValue) {
   return trimmed;
 }
 
-function normalizeEnvVarName(value) {
-  if (typeof value !== 'string') return '';
-  return value.replace(/^{{\s*/, '').replace(/\s*}}$/, '').trim();
-}
-
-function stripEnvPlaceholder(literal, envVar = '') {
-  const normalizedLiteral = typeof literal === 'string' ? literal.trim() : '';
-  if (!normalizedLiteral) return '';
-  const normalizedEnv = normalizeEnvVarName(envVar);
-  const match = /^\s*\{\{\s*([A-Z0-9_]+)\s*}}\s*(.*)$/i.exec(normalizedLiteral);
-  if (match && (!normalizedEnv || normalizeEnvVarName(match[1]) === normalizedEnv)) {
-    return (match[2] || '').trim();
-  }
-  return normalizedLiteral;
-}
-
 function applyEnvMapToPayload(payload, envMap = {}) {
   const basePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
     ? JSON.parse(JSON.stringify(payload))
@@ -1568,18 +1552,12 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
     if (!guard) return;
     const endpoint = req.body?.endpoint;
     const payload = req.body?.payload;
+    const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
+    const authEndpointId =
+      typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
     if (!endpoint || typeof endpoint !== 'object') {
       res.status(400).json({ message: 'endpoint object is required' });
       return;
-    }
-    const baseUrl = stripEnvPlaceholder(req.body?.baseUrl);
-    const baseUrlSelection = req.body?.baseUrlSelection;
-    const environment = req.body?.environment === 'production' ? 'production' : 'staging';
-    const warnings = [];
-    const urlEnvMap = { ...(endpoint?.urlEnvMap || {}) };
-    const selectionEnvVar = normalizeEnvVarName(baseUrlSelection?.envVar);
-    if (selectionEnvVar && !urlEnvMap.testServerUrl) {
-      urlEnvMap.testServerUrl = selectionEnvVar;
     }
     const sanitized = {
       id: endpoint.id || 'draftEndpoint',
@@ -1589,27 +1567,9 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
       parameters: Array.isArray(endpoint.parameters)
         ? endpoint.parameters.filter(Boolean)
         : [],
-      posApiType: endpoint.posApiType || endpoint.posapiType || undefined,
+      posApiType: endpoint.posApiType || undefined,
       requestEnvMap: endpoint.requestEnvMap || {},
-      serverUrl: stripEnvPlaceholder(endpoint.serverUrl),
-      testServerUrl: stripEnvPlaceholder(endpoint.testServerUrl || baseUrl),
-      productionServerUrl: stripEnvPlaceholder(endpoint.productionServerUrl),
-      testServerUrlProduction: stripEnvPlaceholder(endpoint.testServerUrlProduction),
-      urlEnvMap,
     };
-    if (!urlEnvMap.testServerUrl && selectionEnvVar) {
-      sanitized.urlEnvMap.testServerUrl = selectionEnvVar;
-    }
-    if (baseUrlSelection?.mode === 'literal' && baseUrlSelection?.literal && !sanitized.testServerUrl) {
-      sanitized.testServerUrl = stripEnvPlaceholder(baseUrlSelection.literal);
-    }
-    const resolvedBaseUrl = pickTestBaseUrl(sanitized, environment, sanitized.urlEnvMap, warnings);
-    const authEndpointId =
-      typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
-    if (!resolvedBaseUrl) {
-      res.status(400).json({ message: 'Provide a staging base URL or environment variable to run the test.' });
-      return;
-    }
     const inputPayload = payload && typeof payload === 'object' ? payload : {};
     const paramsBag = inputPayload.params && typeof inputPayload.params === 'object'
       ? inputPayload.params
@@ -1621,29 +1581,23 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
       combinedPayload.body = bodyPayload;
     }
 
-    const { payload: mappedPayload, warnings: envWarnings } = applyEnvMapToPayload(
+    const { payload: mappedPayload } = applyEnvMapToPayload(
       combinedPayload,
       sanitized.requestEnvMap,
     );
-    const combinedWarnings = [...warnings, ...(envWarnings || [])];
 
     try {
       const result = await invokePosApiEndpoint(sanitized.id, mappedPayload, {
         endpoint: sanitized,
-        baseUrl: resolvedBaseUrl || undefined,
+        baseUrl: baseUrl || undefined,
         debug: true,
         authEndpointId,
         useCachedToken: req.body?.useCachedToken !== false,
-        environment,
       });
-      const responsePayload = combinedWarnings.length
-        ? { ...result, envWarnings: combinedWarnings }
-        : result;
       res.json({
         ok: true,
-        request: responsePayload.request,
-        response: responsePayload.response,
-        envWarnings: responsePayload.envWarnings,
+        request: result.request,
+        response: result.response,
         endpoint: sanitized,
       });
     } catch (err) {
