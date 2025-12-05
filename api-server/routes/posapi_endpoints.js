@@ -210,6 +210,22 @@ function parseEnvValue(rawValue) {
   return trimmed;
 }
 
+function normalizeEnvVarName(value) {
+  if (typeof value !== 'string') return '';
+  return value.replace(/^{{\s*/, '').replace(/\s*}}$/, '').trim();
+}
+
+function stripEnvPlaceholder(literal, envVar = '') {
+  const normalizedLiteral = typeof literal === 'string' ? literal.trim() : '';
+  if (!normalizedLiteral) return '';
+  const normalizedEnv = normalizeEnvVarName(envVar);
+  const match = /^\s*\{\{\s*([A-Z0-9_]+)\s*}}\s*(.*)$/i.exec(normalizedLiteral);
+  if (match && (!normalizedEnv || normalizeEnvVarName(match[1]) === normalizedEnv)) {
+    return (match[2] || '').trim();
+  }
+  return normalizedLiteral;
+}
+
 function applyEnvMapToPayload(payload, envMap = {}) {
   const basePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
     ? JSON.parse(JSON.stringify(payload))
@@ -235,6 +251,48 @@ function applyEnvMapToPayload(payload, envMap = {}) {
   });
 
   return { payload: basePayload, warnings };
+}
+
+function resolveEndpointUrl(definition, key, urlEnvMap = {}, warnings = []) {
+  const envVarRaw = (urlEnvMap && urlEnvMap[key]) || definition[`${key}EnvVar`];
+  const envVar = normalizeEnvVarName(envVarRaw);
+  const literal = stripEnvPlaceholder(definition[key], envVar);
+  if (envVar) {
+    const envRaw = process.env[envVar];
+    if (envRaw !== undefined && envRaw !== null && envRaw !== '') {
+      return String(envRaw).trim();
+    }
+    warnings.push(`Environment variable ${envVar} is not set; using literal value for ${key}.`);
+  }
+  return literal;
+}
+
+function resolveUrlSelection(selection, warnings = [], label = 'URL') {
+  const envVar = typeof selection?.envVar === 'string' ? selection.envVar.trim() : '';
+  const literal = typeof selection?.literal === 'string' ? selection.literal.trim() : '';
+  const mode = selection?.mode === 'env' || (!selection?.mode && envVar) ? 'env' : 'literal';
+
+  if (mode === 'env' && envVar) {
+    const envRaw = process.env[envVar];
+    if (envRaw !== undefined && envRaw !== null && String(envRaw).trim() !== '') {
+      return String(envRaw).trim();
+    }
+    warnings.push(`Environment variable ${envVar} is not set; using literal value for ${label}.`);
+  }
+
+  return literal;
+}
+
+function pickTestBaseUrl(definition, environment, urlEnvMap = {}, warnings = []) {
+  const candidateKeys =
+    environment === 'production'
+      ? ['productionServerUrl', 'testServerUrlProduction', 'testServerUrl', 'serverUrl']
+      : ['testServerUrl', 'testServerUrlProduction', 'productionServerUrl', 'serverUrl'];
+  for (const key of candidateKeys) {
+    const resolved = resolveEndpointUrl(definition, key, urlEnvMap, warnings);
+    if (resolved) return resolved;
+  }
+  return '';
 }
 
 function buildTestUrl(definition) {
@@ -1455,10 +1513,9 @@ router.post('/test', requireAuth, async (req, res, next) => {
     }
 
     const environment = req.body?.environment === 'production' ? 'production' : 'staging';
-    const testBaseUrl =
-      environment === 'production'
-        ? definition.testServerUrlProduction || definition.testServerUrl
-        : definition.testServerUrl || definition.testServerUrlProduction;
+    const urlEnvMap = definition.urlEnvMap || {};
+    const warnings = [];
+    const testBaseUrl = pickTestBaseUrl(definition, environment, urlEnvMap, warnings);
     if (!testBaseUrl || typeof testBaseUrl !== 'string') {
       res.status(400).json({ message: 'Test server URL is required' });
       return;
@@ -1489,6 +1546,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
       payload,
       definition.requestEnvMap,
     );
+    const combinedWarnings = [...warnings, ...envWarnings];
 
     const selectedAuthEndpoint =
       typeof req.body?.authEndpointId === 'string' && req.body.authEndpointId.trim()
@@ -1506,7 +1564,7 @@ router.post('/test', requireAuth, async (req, res, next) => {
         useCachedToken: req.body?.useCachedToken !== false,
         environment,
       });
-      const responsePayload = envWarnings.length ? { ...result, envWarnings } : result;
+      const responsePayload = combinedWarnings.length ? { ...result, envWarnings: combinedWarnings } : result;
       res.json(responsePayload);
     } catch (err) {
       if (err?.status) {
@@ -1527,12 +1585,18 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
     if (!guard) return;
     const endpoint = req.body?.endpoint;
     const payload = req.body?.payload;
-    const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
-    const authEndpointId =
-      typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
     if (!endpoint || typeof endpoint !== 'object') {
       res.status(400).json({ message: 'endpoint object is required' });
       return;
+    }
+    const baseUrl = stripEnvPlaceholder(req.body?.baseUrl);
+    const baseUrlSelection = req.body?.baseUrlSelection;
+    const environment = req.body?.environment === 'production' ? 'production' : 'staging';
+    const warnings = [];
+    const urlEnvMap = { ...(endpoint?.urlEnvMap || {}) };
+    const selectionEnvVar = normalizeEnvVarName(baseUrlSelection?.envVar);
+    if (selectionEnvVar && !urlEnvMap.testServerUrl) {
+      urlEnvMap.testServerUrl = selectionEnvVar;
     }
     const sanitized = {
       id: endpoint.id || 'draftEndpoint',
@@ -1542,9 +1606,27 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
       parameters: Array.isArray(endpoint.parameters)
         ? endpoint.parameters.filter(Boolean)
         : [],
-      posApiType: endpoint.posApiType || undefined,
+      posApiType: endpoint.posApiType || endpoint.posapiType || undefined,
       requestEnvMap: endpoint.requestEnvMap || {},
+      serverUrl: stripEnvPlaceholder(endpoint.serverUrl),
+      testServerUrl: stripEnvPlaceholder(endpoint.testServerUrl || baseUrl),
+      productionServerUrl: stripEnvPlaceholder(endpoint.productionServerUrl),
+      testServerUrlProduction: stripEnvPlaceholder(endpoint.testServerUrlProduction),
+      urlEnvMap,
     };
+    if (!urlEnvMap.testServerUrl && selectionEnvVar) {
+      sanitized.urlEnvMap.testServerUrl = selectionEnvVar;
+    }
+    if (baseUrlSelection?.mode === 'literal' && baseUrlSelection?.literal && !sanitized.testServerUrl) {
+      sanitized.testServerUrl = stripEnvPlaceholder(baseUrlSelection.literal);
+    }
+    const resolvedBaseUrl = pickTestBaseUrl(sanitized, environment, sanitized.urlEnvMap, warnings);
+    const authEndpointId =
+      typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
+    if (!resolvedBaseUrl) {
+      res.status(400).json({ message: 'Provide a staging base URL or environment variable to run the test.' });
+      return;
+    }
     const inputPayload = payload && typeof payload === 'object' ? payload : {};
     const paramsBag = inputPayload.params && typeof inputPayload.params === 'object'
       ? inputPayload.params
@@ -1556,23 +1638,29 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
       combinedPayload.body = bodyPayload;
     }
 
-    const { payload: mappedPayload } = applyEnvMapToPayload(
+    const { payload: mappedPayload, warnings: envWarnings } = applyEnvMapToPayload(
       combinedPayload,
       sanitized.requestEnvMap,
     );
+    const combinedWarnings = [...warnings, ...(envWarnings || [])];
 
     try {
       const result = await invokePosApiEndpoint(sanitized.id, mappedPayload, {
         endpoint: sanitized,
-        baseUrl: baseUrl || undefined,
+        baseUrl: resolvedBaseUrl || undefined,
         debug: true,
         authEndpointId,
         useCachedToken: req.body?.useCachedToken !== false,
+        environment,
       });
+      const responsePayload = combinedWarnings.length
+        ? { ...result, envWarnings: combinedWarnings }
+        : result;
       res.json({
         ok: true,
-        request: result.request,
-        response: result.response,
+        request: responsePayload.request,
+        response: responsePayload.response,
+        envWarnings: responsePayload.envWarnings,
         endpoint: sanitized,
       });
     } catch (err) {
