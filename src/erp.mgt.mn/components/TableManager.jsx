@@ -854,6 +854,111 @@ const TableManager = forwardRef(function TableManager({
     return map;
   }, [columnMeta]);
 
+  const normalizeDateFilterValue = useCallback((value, type = 'date') => {
+    if (value === null || value === undefined) return null;
+    const stringValue = typeof value === 'string' ? value.trim() : String(value);
+    if (!stringValue) return null;
+
+    const buildRange = (start, end) =>
+      type === 'datetime'
+        ? `${start} 00:00:00-${end} 23:59:59`
+        : `${start}-${end}`;
+
+    const rangeMatch = stringValue.match(
+      /^(\d{4})-(\d{2})-(\d{2})-(\d{4})-(\d{2})-(\d{2})$/,
+    );
+    if (rangeMatch) {
+      const start = `${rangeMatch[1]}-${rangeMatch[2]}-${rangeMatch[3]}`;
+      const end = `${rangeMatch[4]}-${rangeMatch[5]}-${rangeMatch[6]}`;
+      return buildRange(start, end);
+    }
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(stringValue)) return stringValue;
+    if (
+      type === 'datetime' &&
+      /^\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?$/.test(stringValue)
+    )
+      return stringValue;
+
+    const monthMatch = stringValue.match(/^(\d{4})-(\d{2})$/);
+    if (monthMatch) {
+      const [year, month] = [Number(monthMatch[1]), Number(monthMatch[2])];
+      if (Number.isNaN(year) || Number.isNaN(month) || month < 1 || month > 12)
+        return null;
+      const lastDay = new Date(year, month, 0).getDate();
+      const start = `${year}-${monthMatch[2]}-01`;
+      const end = `${year}-${monthMatch[2]}-${String(lastDay).padStart(2, '0')}`;
+      return buildRange(start, end);
+    }
+
+    const yearMatch = stringValue.match(/^(\d{4})$/);
+    if (yearMatch) {
+      const year = Number(yearMatch[1]);
+      if (Number.isNaN(year)) return null;
+      const start = `${year}-01-01`;
+      const end = `${year}-12-31`;
+      return buildRange(start, end);
+    }
+
+    return null;
+  }, []);
+
+  const resolveRelationFilterValue = useCallback(
+    (key, value) => {
+      const options = relationOpts[key];
+      if (!Array.isArray(options)) return value;
+
+      const stringValue =
+        typeof value === 'string' ? value.trim() : value === undefined ? '' : String(value);
+      if (stringValue === '') return value;
+
+      const directMatch = options.some(
+        (opt) => opt && String(opt.value) === stringValue,
+      );
+      if (directMatch) return stringValue;
+
+      const lowered = stringValue.toLowerCase();
+      const matchingValues = Array.from(
+        new Set(
+          options
+            .filter((opt) => opt?.label && opt.label.toLowerCase().includes(lowered))
+            .map((opt) => opt.value)
+            .map((val) => (val === undefined || val === null ? '' : String(val)))
+            .filter((val) => val !== ''),
+        ),
+      );
+
+      if (matchingValues.length === 0) return null;
+      if (matchingValues.length === 1) return matchingValues[0];
+      return matchingValues.join(',');
+    },
+    [relationOpts],
+  );
+
+  const appendFiltersToParams = useCallback(
+    (params, filterMap, options = {}) => {
+      const { allowedKeys } = options;
+      Object.entries(filterMap).forEach(([k, v]) => {
+        if (allowedKeys && !allowedKeys.has(k)) return;
+        if (v === '' || v === null || v === undefined) return;
+
+        const typ = fieldTypeMap[k];
+        let next = v;
+        if (typ === 'date' || typ === 'datetime') {
+          next = normalizeDateFilterValue(v, typ);
+          if (!next) return;
+        } else if (typ === 'time') {
+          if (!/^\d{2}:\d{2}(?::\d{2})?$/.test(String(v))) return;
+        }
+
+        const resolved = resolveRelationFilterValue(k, next);
+        if (resolved === null || resolved === undefined || resolved === '') return;
+        params.set(k, resolved);
+      });
+    },
+    [fieldTypeMap, normalizeDateFilterValue, resolveRelationFilterValue],
+  );
+
   const generatedCols = useMemo(
     () =>
       new Set(
@@ -1872,10 +1977,7 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v !== '' && v !== null && v !== undefined && validCols.has(k))
-        params.set(k, v);
-    });
+    appendFiltersToParams(params, filters, { allowedKeys: validCols });
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
     })
@@ -3414,9 +3516,7 @@ const TableManager = forwardRef(function TableManager({
           params.set('sort', sort.column);
           params.set('dir', sort.dir);
         }
-        Object.entries(filters).forEach(([k, v]) => {
-          if (v) params.set(k, v);
-        });
+        appendFiltersToParams(params, filters);
         const data = await fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
           credentials: 'include',
         }).then((r) => r.json());
@@ -3757,9 +3857,7 @@ const TableManager = forwardRef(function TableManager({
         params.set('sort', sort.column);
         params.set('dir', sort.dir);
       }
-      Object.entries(filters).forEach(([k, v]) => {
-        if (v) params.set(k, v);
-      });
+      appendFiltersToParams(params, filters);
       const data = await fetch(
         `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
         { credentials: 'include' },
@@ -3968,9 +4066,7 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v) params.set(k, v);
-    });
+    appendFiltersToParams(params, filters);
     const dataRes = await fetch(
       `/api/tables/${encodeURIComponent(table)}?${params.toString()}`,
       {
@@ -5862,18 +5958,22 @@ const TableManager = forwardRef(function TableManager({
               }}
             >
                 {Array.isArray(relationOpts[c]) ? (
-                  <select
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  >
-                    <option value=""></option>
-                    {relationOpts[c].map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
+                  <>
+                    <input
+                      list={`relation-filter-${c}`}
+                      value={filters[c] || ''}
+                      onChange={(e) => handleFilterChange(c, e.target.value)}
+                      style={{ width: '100%' }}
+                      placeholder={t('search_relation_filter', 'Type to search...')}
+                    />
+                    <datalist id={`relation-filter-${c}`}>
+                      {relationOpts[c].map((o) => (
+                        <option key={o.value} value={o.value} label={o.label}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </datalist>
+                  </>
                 ) : (
                   <input
                     value={filters[c] || ''}
