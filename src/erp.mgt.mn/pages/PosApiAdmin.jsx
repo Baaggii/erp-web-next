@@ -117,7 +117,7 @@ const DEFAULT_INFO_TABLE_OPTIONS = [
 const BASE_COMPLEX_REQUEST_SCHEMA = createReceiptTemplate('B2C');
 const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TRANSACTION', 'STOCK_QR']);
 
-const DEFAULT_ENV_RESOLVER = (key) => key ?? '';
+const DEFAULT_ENV_RESOLVER = () => ({ found: false, value: '', error: '' });
 
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
