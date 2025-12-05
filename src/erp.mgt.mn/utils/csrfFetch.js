@@ -33,9 +33,34 @@ function currentKey() {
 async function getToken() {
   if (!tokenPromise) {
     tokenPromise = fetch(`${API_BASE}/csrf-token`, { credentials: 'include' })
-      .then(res => res.json())
-      .then(data => data.csrfToken)
-      .catch(() => undefined);
+      .then(async res => {
+        if (!res.ok) {
+          throw new Error(res.statusText || 'Failed to fetch token');
+        }
+        const data = await res.json();
+        const token = data?.csrfToken;
+        if (!token) {
+          throw new Error('Missing CSRF token in response');
+        }
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: { message: 'CSRF token retrieved successfully.', type: 'success' },
+          })
+        );
+        return token;
+      })
+      .catch(err => {
+        tokenPromise = undefined;
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: `CSRF token request failed: ${err?.message || 'Unknown error'}`,
+              type: 'error',
+            },
+          })
+        );
+        return undefined;
+      });
   }
   return tokenPromise;
 }
