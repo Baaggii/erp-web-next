@@ -4436,36 +4436,7 @@ const TableManager = forwardRef(function TableManager({
         mergeDisplayFallbacks,
         normalizeToCanonical,
         populateRelationDisplayFields,
-        stripTemporaryLabelValue,
       ],
-    );
-
-    const buildTemporaryFormState = useCallback(
-      (entryOrEntries) => {
-        const entries = Array.isArray(entryOrEntries)
-          ? entryOrEntries.filter(Boolean)
-          : entryOrEntries
-          ? [entryOrEntries]
-          : [];
-
-        if (entries.length === 0) {
-          return { values: {}, rows: [] };
-        }
-
-        let mergedValues = null;
-        const mergedRows = [];
-
-        entries.forEach((entry) => {
-          const { values, rows } = normalizeTemporaryEntry(entry);
-          mergedValues = mergedValues ? { ...values, ...mergedValues } : values;
-          if (Array.isArray(rows) && rows.length > 0) {
-            mergedRows.push(...rows);
-          }
-        });
-
-        return { values: mergedValues || {}, rows: mergedRows };
-      },
-      [normalizeTemporaryEntry],
     );
 
     const openTemporaryPromotion = useCallback(
