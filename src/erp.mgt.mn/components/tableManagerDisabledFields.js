@@ -16,7 +16,7 @@ export function resolveDisabledFieldState({
       ? canonicalizeFormFields
       : (fields) => fields;
 
-  if (requestType === 'temporary-promote' || requestType === 'temporary-promote-bulk') {
+  if (requestType === 'temporary-promote') {
     const canonicalized = canonicalizer(Array.from(new Set([...formColumns]))) || [];
     return { disabledFields: canonicalized, bypassGuardDefaults };
   }

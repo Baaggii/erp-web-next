@@ -35,6 +35,7 @@ export default function AsyncSearchSelect({
   onKeyDown,
   inputRef,
   onFocus,
+  disableAutoWidth = false,
   inputStyle = {},
   companyId,
   shouldFetch = true,
@@ -637,21 +638,21 @@ export default function AsyncSearchSelect({
     const optIndex = options.indexOf(opt);
     if (optIndex >= 0) setHighlight(optIndex);
     e.preventDefault();
+    onChange(opt.value, opt.label);
+    setInput(String(opt.value));
+    setLabel(opt.label || '');
+    if (internalRef.current) internalRef.current.value = String(opt.value);
+    chosenRef.current = opt;
     actionRef.current = { type: 'enter', matched: true, option: opt, query };
     setShow(false);
+    if (onSelect) {
+      setTimeout(() => onSelect(opt), 0);
+    }
   }
 
   function handleBlur() {
     setTimeout(() => setShow(false), 100);
   }
-
-  const toggleDropdown = useCallback(() => {
-    setShow((prev) => {
-      if (prev) return false;
-      setHighlight(-1);
-      return true;
-    });
-  }, []);
 
   const dropdown =
     show && menuRect && typeof document !== 'undefined'
@@ -749,78 +750,69 @@ export default function AsyncSearchSelect({
       ref={containerRef}
       style={{ position: 'relative', zIndex: show ? 1 : 'auto', overflow: 'visible' }}
     >
-      <div style={{ display: 'flex', gap: '0.25rem', alignItems: 'center' }}>
-        <input
-          ref={(el) => {
-            internalRef.current = el;
-            if (typeof inputRef === 'function') inputRef(el);
-            else if (inputRef) inputRef.current = el;
-          }}
-          value={input}
-          onChange={(e) => {
-            pendingLookupRef.current = null;
-            forcedLocalSearchRef.current = '';
-            setInput(e.target.value);
-            setLabel('');
-            onChange(e.target.value);
-            setHighlight(-1);
-          }}
-          onFocus={(e) => {
-            if (onFocus) onFocus(e);
+      <input
+        ref={(el) => {
+          internalRef.current = el;
+          if (typeof inputRef === 'function') inputRef(el);
+          else if (inputRef) inputRef.current = el;
+        }}
+        value={input}
+        onChange={(e) => {
+          pendingLookupRef.current = null;
+          forcedLocalSearchRef.current = '';
+          setInput(e.target.value);
+          setLabel('');
+          onChange(e.target.value);
+          setShow(true);
+          setHighlight(-1);
+        }}
+        onFocus={(e) => {
+          setShow(true);
+          if (onFocus) onFocus(e);
+          if (!disableAutoWidth && !inputStyle.width) {
             e.target.style.width = 'auto';
             const max = parseFloat(inputStyle.maxWidth) || 150;
             const min = parseFloat(inputStyle.minWidth) || 60;
             const w = Math.min(e.target.scrollWidth + 2, max);
             e.target.style.width = `${Math.max(min, w)}px`;
-          }}
-          onInput={(e) => {
+          }
+        }}
+        onInput={(e) => {
+          if (!disableAutoWidth && !inputStyle.width) {
             e.target.style.width = 'auto';
             const max = parseFloat(inputStyle.maxWidth) || 150;
             const min = parseFloat(inputStyle.minWidth) || 60;
             const w = Math.min(e.target.scrollWidth + 2, max);
             e.target.style.width = `${Math.max(min, w)}px`;
-          }}
-          onBlur={handleBlur}
-          onKeyDown={(e) => {
-            handleSelectKeyDown(e);
-            if (actionRef.current?.type === 'enter') {
-              if (actionRef.current.matched && actionRef.current.option) {
-                e.selectedOption = actionRef.current.option;
-                e.lookupMatched = true;
-              } else if (actionRef.current.matched === false) {
-                e.lookupMatched = false;
-                e.lookupQuery = actionRef.current.query;
-              } else if (actionRef.current.matched === 'pending') {
-                e.lookupPending = true;
-                e.lookupQuery = actionRef.current.query;
-              }
-            } else if (chosenRef.current) {
-              e.selectedOption = chosenRef.current;
+          }
+        }}
+        onBlur={handleBlur}
+        onKeyDown={(e) => {
+          handleSelectKeyDown(e);
+          if (actionRef.current?.type === 'enter') {
+            if (actionRef.current.matched && actionRef.current.option) {
+              e.selectedOption = actionRef.current.option;
               e.lookupMatched = true;
+            } else if (actionRef.current.matched === false) {
+              e.lookupMatched = false;
+              e.lookupQuery = actionRef.current.query;
+            } else if (actionRef.current.matched === 'pending') {
+              e.lookupPending = true;
+              e.lookupQuery = actionRef.current.query;
             }
-            if (onKeyDown) onKeyDown(e);
-            chosenRef.current = null;
-            actionRef.current = null;
-          }}
-          disabled={disabled}
-          style={{ padding: '0.5rem', ...inputStyle }}
-          title={input}
-          {...rest}
-        />
-        <button
-          type="button"
-          onMouseDown={(e) => {
-            e.preventDefault();
-            toggleDropdown();
-            if (internalRef.current) internalRef.current.focus();
-          }}
-          aria-label="Toggle dropdown"
-          style={{ padding: '0.5rem', cursor: 'pointer' }}
-          disabled={disabled}
-        >
-          ▾
-        </button>
-      </div>
+          } else if (chosenRef.current) {
+            e.selectedOption = chosenRef.current;
+            e.lookupMatched = true;
+          }
+          if (onKeyDown) onKeyDown(e);
+          chosenRef.current = null;
+          actionRef.current = null;
+        }}
+        disabled={disabled}
+        style={{ padding: '0.5rem', ...inputStyle }}
+        title={input}
+        {...rest}
+      />
       {dropdown}
       {displayLabel && (
         <div style={{ fontSize: '0.8rem', color: '#555' }}>{displayLabel}</div>
