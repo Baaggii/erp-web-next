@@ -434,8 +434,6 @@ const EMPTY_ENDPOINT = {
   testServerUrl: '',
   productionServerUrl: '',
   testServerUrlProduction: '',
-  testServerUrlProductionMode: 'literal',
-  testServerUrlProductionEnvVar: '',
   authEndpointId: '',
   docUrl: '',
   posApiType: '',
@@ -1222,20 +1220,6 @@ function createFormState(definition) {
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
 
-  const testServerUrlEnvVar = typeof definition.testServerUrlEnvVar === 'string'
-    ? definition.testServerUrlEnvVar
-    : '';
-  const testServerUrlProductionEnvVar = typeof definition.testServerUrlProductionEnvVar === 'string'
-    ? definition.testServerUrlProductionEnvVar
-    : '';
-  const normalizedTestServerMode = definition.testServerUrlMode === 'env' || testServerUrlEnvVar
-    ? 'env'
-    : 'literal';
-  const normalizedProdTestServerMode =
-    definition.testServerUrlProductionMode === 'env' || testServerUrlProductionEnvVar
-      ? 'env'
-      : 'literal';
-
   return {
     id: definition.id || '',
     name: definition.name || '',
@@ -1255,8 +1239,6 @@ function createFormState(definition) {
     testServerUrl: definition.testServerUrl || '',
     productionServerUrl: definition.productionServerUrl || definition.testServerUrlProduction || '',
     testServerUrlProduction: definition.testServerUrlProduction || '',
-    testServerUrlProductionMode: normalizedProdTestServerMode,
-    testServerUrlProductionEnvVar,
     authEndpointId: definition.authEndpointId || '',
     docUrl: '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
@@ -1890,8 +1872,6 @@ export default function PosApiAdmin() {
   const [importTestError, setImportTestError] = useState('');
   const [importUseCachedToken, setImportUseCachedToken] = useState(true);
   const [importBaseUrl, setImportBaseUrl] = useState('');
-  const [importBaseUrlMode, setImportBaseUrlMode] = useState('literal');
-  const [importBaseUrlEnvVar, setImportBaseUrlEnvVar] = useState('');
   const [requestFieldValues, setRequestFieldValues] = useState({});
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
@@ -3427,7 +3407,6 @@ export default function PosApiAdmin() {
             body: parsedBody,
           },
           baseUrl: importBaseUrl.trim() || undefined,
-          baseUrlEnvVar: importBaseUrlMode === 'env' ? importBaseUrlEnvVar.trim() : '',
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
           useCachedToken: importUseCachedToken,
         }),
@@ -4097,9 +4076,6 @@ export default function PosApiAdmin() {
     setSampleImportError('');
     setTestEnvironment('staging');
     setImportAuthEndpointId('');
-    setImportBaseUrl('');
-    setImportBaseUrlMode('literal');
-    setImportBaseUrlEnvVar('');
     setUseCachedToken(true);
     setImportUseCachedToken(true);
     setRequestFieldValues({});
@@ -4495,67 +4471,13 @@ export default function PosApiAdmin() {
                         <div style={styles.importFieldRow}>
                           <label style={styles.label}>
                             Staging base URL
-                            <div style={styles.requestFieldControls}>
-                              <div style={styles.requestFieldModes}>
-                                <label style={styles.radioLabel}>
-                                  <input
-                                    type="radio"
-                                    name="import-base-url-mode"
-                                    checked={importBaseUrlMode === 'literal'}
-                                    onChange={() => handleImportBaseUrlChange({ mode: 'literal' })}
-                                  />
-                                  Literal value
-                                </label>
-                                <label style={styles.radioLabel}>
-                                  <input
-                                    type="radio"
-                                    name="import-base-url-mode"
-                                    checked={importBaseUrlMode === 'env'}
-                                    onChange={() => handleImportBaseUrlChange({ mode: 'env' })}
-                                  />
-                                  Environment variable
-                                </label>
-                              </div>
-                              {importBaseUrlMode === 'literal' ? (
-                                <input
-                                  type="text"
-                                  value={importBaseUrl}
-                                  onChange={(e) => handleImportBaseUrlChange({ literal: e.target.value })}
-                                  placeholder="https://posapi-test.tax.gov.mn"
-                                  style={styles.input}
-                                />
-                              ) : (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
-                                  <input
-                                    type="text"
-                                    list="env-options-import-base"
-                                    value={importBaseUrlEnvVar}
-                                    autoComplete="off"
-                                    spellCheck={false}
-                                    onChange={(e) =>
-                                      handleImportBaseUrlChange({
-                                        envVar: e.target.value,
-                                        mode: 'env',
-                                      })
-                                    }
-                                    placeholder="Type or select environment variable…"
-                                    style={styles.input}
-                                  />
-                                  <datalist id="env-options-import-base">
-                                    {envVariableOptions.map((opt) => (
-                                      <option key={`env-import-base-${opt}`} value={opt} />
-                                    ))}
-                                  </datalist>
-                                  <input
-                                    type="text"
-                                    value={importBaseUrl}
-                                    onChange={(e) => handleImportBaseUrlChange({ literal: e.target.value })}
-                                    placeholder="Fallback literal (used if the environment variable is missing)"
-                                    style={styles.input}
-                                  />
-                                </div>
-                              )}
-                            </div>
+                            <input
+                              type="text"
+                              value={importBaseUrl}
+                              onChange={(e) => setImportBaseUrl(e.target.value)}
+                              placeholder="https://posapi-test.tax.gov.mn"
+                              style={styles.input}
+                            />
                           </label>
                           <label style={styles.label}>
                             Token endpoint
@@ -6285,67 +6207,13 @@ export default function PosApiAdmin() {
           </label>
           <label style={{ ...styles.label, flex: 1 }}>
             Staging test server URL
-            <div style={styles.requestFieldControls}>
-              <div style={styles.requestFieldModes}>
-                <label style={styles.radioLabel}>
-                  <input
-                    type="radio"
-                    name="test-server-url-mode"
-                    checked={formState.testServerUrlMode === 'literal'}
-                    onChange={() => handleEnvBackedUrlChange('testServerUrl', { mode: 'literal' })}
-                  />
-                  Literal value
-                </label>
-                <label style={styles.radioLabel}>
-                  <input
-                    type="radio"
-                    name="test-server-url-mode"
-                    checked={formState.testServerUrlMode === 'env'}
-                    onChange={() => handleEnvBackedUrlChange('testServerUrl', { mode: 'env' })}
-                  />
-                  Environment variable
-                </label>
-              </div>
-              {formState.testServerUrlMode === 'literal' ? (
-                <input
-                  type="text"
-                  value={formState.testServerUrl}
-                  onChange={(e) => handleEnvBackedUrlChange('testServerUrl', { literal: e.target.value })}
-                  style={styles.input}
-                  placeholder="https://posapi-test.tax.gov.mn"
-                />
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
-                  <input
-                    type="text"
-                    list="env-options-test-server"
-                    value={formState.testServerUrlEnvVar || ''}
-                    autoComplete="off"
-                    spellCheck={false}
-                    onChange={(e) =>
-                      handleEnvBackedUrlChange('testServerUrl', {
-                        envVar: e.target.value,
-                        mode: 'env',
-                      })
-                    }
-                    style={styles.input}
-                    placeholder="Type or select environment variable…"
-                  />
-                  <datalist id="env-options-test-server">
-                    {envVariableOptions.map((opt) => (
-                      <option key={`env-test-server-${opt}`} value={opt} />
-                    ))}
-                  </datalist>
-                  <input
-                    type="text"
-                    value={formState.testServerUrl}
-                    onChange={(e) => handleEnvBackedUrlChange('testServerUrl', { literal: e.target.value })}
-                    style={styles.input}
-                    placeholder="Fallback literal (used if the environment variable is missing)"
-                  />
-                </div>
-              )}
-            </div>
+            <input
+              type="text"
+              value={formState.testServerUrl}
+              onChange={(e) => handleChange('testServerUrl', e.target.value)}
+              style={styles.input}
+              placeholder="https://posapi-test.tax.gov.mn"
+            />
           </label>
         </div>
         <div style={styles.inlineFields}>

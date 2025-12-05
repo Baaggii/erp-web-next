@@ -1455,36 +1455,10 @@ router.post('/test', requireAuth, async (req, res, next) => {
     }
 
     const environment = req.body?.environment === 'production' ? 'production' : 'staging';
-    const envWarnings = [];
-    const preferredBaseUrl =
+    const testBaseUrl =
       environment === 'production'
-        ? resolveEnvBackedString(
-            definition.testServerUrlProduction,
-            definition.testServerUrlProductionEnvVar,
-            envWarnings,
-            'production test server URL',
-          )
-        : resolveEnvBackedString(
-            definition.testServerUrl,
-            definition.testServerUrlEnvVar,
-            envWarnings,
-            'staging test server URL',
-          );
-    const fallbackBaseUrl =
-      environment === 'production'
-        ? resolveEnvBackedString(
-            definition.testServerUrl,
-            definition.testServerUrlEnvVar,
-            envWarnings,
-            'staging test server URL',
-          )
-        : resolveEnvBackedString(
-            definition.testServerUrlProduction,
-            definition.testServerUrlProductionEnvVar,
-            envWarnings,
-            'production test server URL',
-          );
-    const testBaseUrl = preferredBaseUrl || fallbackBaseUrl;
+        ? definition.testServerUrlProduction || definition.testServerUrl
+        : definition.testServerUrl || definition.testServerUrlProduction;
     if (!testBaseUrl || typeof testBaseUrl !== 'string') {
       res.status(400).json({ message: 'Test server URL is required' });
       return;
@@ -1553,14 +1527,7 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
     if (!guard) return;
     const endpoint = req.body?.endpoint;
     const payload = req.body?.payload;
-    const envWarnings = [];
     const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
-    const resolvedBaseUrl = resolveEnvBackedString(
-      baseUrl,
-      typeof req.body?.baseUrlEnvVar === 'string' ? req.body.baseUrlEnvVar : '',
-      envWarnings,
-      'import test server URL',
-    );
     const authEndpointId =
       typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
     if (!endpoint || typeof endpoint !== 'object') {
@@ -1597,7 +1564,7 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
     try {
       const result = await invokePosApiEndpoint(sanitized.id, mappedPayload, {
         endpoint: sanitized,
-        baseUrl: resolvedBaseUrl || undefined,
+        baseUrl: baseUrl || undefined,
         debug: true,
         authEndpointId,
         useCachedToken: req.body?.useCachedToken !== false,
@@ -1607,7 +1574,6 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
         request: result.request,
         response: result.response,
         endpoint: sanitized,
-        ...(envWarnings.length ? { envWarnings } : {}),
       });
     } catch (err) {
       const status = err?.status || 502;
