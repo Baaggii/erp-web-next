@@ -284,6 +284,14 @@ function applyDateParams(params, filter) {
   }
 }
 
+function isValidDateFilterValue(filter) {
+  if (filter === undefined || filter === null) return true;
+  const trimmed = String(filter).trim();
+  if (!trimmed) return true;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return true;
+  return /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/.test(trimmed);
+}
+
 const actionCellStyle = {
   padding: '0.5rem',
   border: '1px solid #d1d5db',
@@ -778,6 +786,16 @@ const TableManager = forwardRef(function TableManager({
       return resolveWithMap(alias, caseMap || columnCaseMap);
     },
     [columnCaseMap],
+  );
+
+  const dateFieldSet = useMemo(
+    () =>
+      new Set(
+        (formConfig?.dateField || [])
+          .map((name) => resolveCanonicalKey(name))
+          .filter(Boolean),
+      ),
+    [formConfig?.dateField, resolveCanonicalKey],
   );
 
   const normalizeToCanonical = useCallback(
@@ -1873,10 +1891,21 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
+    let hasInvalidDateFilter = false;
     Object.entries(filters).forEach(([k, v]) => {
-      if (v !== '' && v !== null && v !== undefined && validCols.has(k))
-        params.set(k, v);
+      if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
+        if (dateFieldSet.has(k)) {
+          if (isValidDateFilterValue(v)) {
+            params.set(k, v);
+          } else {
+            hasInvalidDateFilter = true;
+          }
+        } else {
+          params.set(k, v);
+        }
+      }
     });
+    if (hasInvalidDateFilter) return;
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
     })
@@ -1938,7 +1967,7 @@ const TableManager = forwardRef(function TableManager({
 
   useEffect(() => {
     setSelectedRows(new Set());
-  }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
+  }, [table, page, perPage, filters, sort, refreshId, localRefresh, dateFieldSet]);
 
   useEffect(() => {
     if (!table || !Array.isArray(rows) || rows.length === 0) {
