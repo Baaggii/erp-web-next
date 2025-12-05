@@ -159,11 +159,8 @@ function tokenizeFieldPath(path) {
 function setValueAtTokens(target, tokens, value) {
   if (!target || typeof target !== 'object' || !tokens.length) return false;
   let current = target;
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    if (!token?.key || typeof current !== 'object' || current === null) {
-      return false;
-    }
+  tokens.forEach((token, index) => {
+    if (!token?.key) return;
     const isLast = index === tokens.length - 1;
     if (isLast) {
       if (token.isArray) {
@@ -176,7 +173,7 @@ function setValueAtTokens(target, tokens, value) {
       } else {
         current[token.key] = value;
       }
-      return true;
+      return;
     }
 
     const nextContainer = token.isArray ? [] : {};
@@ -188,16 +185,14 @@ function setValueAtTokens(target, tokens, value) {
       if (!current[token.key].length) {
         current[token.key].push(nextContainer);
       }
-      const nextValue = current[token.key][0];
-      current[token.key][0] = typeof nextValue === 'object' && nextValue !== null ? nextValue : nextContainer;
       current = current[token.key][0];
     } else {
-      if (typeof current[token.key] !== 'object' || current[token.key] === null) {
+      if (typeof current[token.key] !== 'object') {
         current[token.key] = nextContainer;
       }
       current = current[token.key];
     }
-  }
+  });
   return true;
 }
 
@@ -233,10 +228,6 @@ function applyEnvMapToPayload(payload, envMap = {}) {
       return;
     }
     const parsed = parseEnvValue(envRaw);
-    if (parsed !== null && typeof parsed === 'object') {
-      warnings.push(`Environment variable ${envVar} must resolve to a primitive value; skipping ${fieldPath}.`);
-      return;
-    }
     const tokens = tokenizeFieldPath(fieldPath);
     if (!tokens.length || !setValueAtTokens(target, tokens, parsed)) {
       warnings.push(`Could not apply environment variable ${envVar} to ${fieldPath}.`);
