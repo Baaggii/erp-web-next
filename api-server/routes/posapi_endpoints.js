@@ -1552,6 +1552,7 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
     if (!guard) return;
     const endpoint = req.body?.endpoint;
     const payload = req.body?.payload;
+    const environment = req.body?.environment === 'production' ? 'production' : 'staging';
     const baseUrl = typeof req.body?.baseUrl === 'string' ? req.body.baseUrl.trim() : '';
     const authEndpointId =
       typeof req.body?.authEndpointId === 'string' ? req.body.authEndpointId.trim() : '';
@@ -1569,6 +1570,11 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
         : [],
       posApiType: endpoint.posApiType || undefined,
       requestEnvMap: endpoint.requestEnvMap || {},
+      urlEnvMap: endpoint.urlEnvMap || {},
+      testServerUrl: endpoint.testServerUrl || baseUrl,
+      productionServerUrl: endpoint.productionServerUrl,
+      testServerUrlProduction: endpoint.testServerUrlProduction,
+      serverUrl: endpoint.serverUrl,
     };
     const inputPayload = payload && typeof payload === 'object' ? payload : {};
     const paramsBag = inputPayload.params && typeof inputPayload.params === 'object'
@@ -1586,10 +1592,17 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
       sanitized.requestEnvMap,
     );
 
+    const warnings = [];
+    const baseUrlForTest = pickTestBaseUrl(sanitized, environment, sanitized.urlEnvMap, warnings);
+    if (!baseUrlForTest) {
+      res.status(400).json({ message: 'Test server URL is required' });
+      return;
+    }
+
     try {
       const result = await invokePosApiEndpoint(sanitized.id, mappedPayload, {
         endpoint: sanitized,
-        baseUrl: baseUrl || undefined,
+        baseUrl: baseUrlForTest,
         debug: true,
         authEndpointId,
         useCachedToken: req.body?.useCachedToken !== false,
@@ -1599,6 +1612,7 @@ router.post('/import/test', requireAuth, async (req, res, next) => {
         request: result.request,
         response: result.response,
         endpoint: sanitized,
+        envWarnings: warnings.length ? warnings : undefined,
       });
     } catch (err) {
       const status = err?.status || 502;
