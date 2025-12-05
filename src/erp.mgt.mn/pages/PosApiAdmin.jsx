@@ -3638,8 +3638,6 @@ export default function PosApiAdmin() {
             path: activeImportDraft.path,
             parameters: activeImportDraft.parameters || [],
             posApiType: activeImportDraft.posApiType,
-            requestEnvMap: activeImportDraft.requestEnvMap || {},
-            urlEnvMap: activeImportDraft.urlEnvMap || {},
           },
           payload: {
             params: mergedParams,
@@ -3648,8 +3646,7 @@ export default function PosApiAdmin() {
             headers: filteredParams.header,
             body: parsedBody,
           },
-          baseUrlSelection: importBaseUrlSelection,
-          baseUrl: baseUrlResolution.literal || undefined,
+          baseUrl: resolvedBaseUrl || undefined,
           authEndpointId: importAuthEndpointId || formState.authEndpointId || '',
           useCachedToken: importUseCachedToken,
         }),
