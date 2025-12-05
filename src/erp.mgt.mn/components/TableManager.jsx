@@ -272,16 +272,75 @@ const currencyFmt = new Intl.NumberFormat('en-US', {
 
 function applyDateParams(params, filter) {
   if (!filter) return;
-  const rangeMatch = filter.match(
+  const trimmed = String(filter).trim();
+  if (!trimmed) return;
+
+  const rangeMatch = trimmed.match(
     /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/,
   );
   if (rangeMatch) {
     params.set('date_from', `${rangeMatch[1]} 00:00:00`);
     params.set('date_to', `${rangeMatch[2]} 23:59:59`);
-  } else if (/^\d{4}-\d{2}-\d{2}$/.test(filter)) {
-    params.set('date_from', `${filter} 00:00:00`);
-    params.set('date_to', `${filter} 23:59:59`);
+    return;
   }
+
+  const monthMatch = trimmed.match(/^(\d{4})-(\d{2})$/);
+  if (monthMatch) {
+    const year = Number(monthMatch[1]);
+    const month = Number(monthMatch[2]);
+    if (Number.isNaN(year) || Number.isNaN(month) || month < 1 || month > 12) {
+      return;
+    }
+    const lastDay = new Date(year, month, 0).getDate();
+    params.set('date_from', `${monthMatch[1]}-${monthMatch[2]}-01 00:00:00`);
+    params.set('date_to', `${monthMatch[1]}-${monthMatch[2]}-${String(lastDay).padStart(2, '0')} 23:59:59`);
+    return;
+  }
+
+  if (/^\d{4}$/.test(trimmed)) {
+    params.set('date_from', `${trimmed}-01-01 00:00:00`);
+    params.set('date_to', `${trimmed}-12-31 23:59:59`);
+    return;
+  }
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+    params.set('date_from', `${trimmed} 00:00:00`);
+    params.set('date_to', `${trimmed} 23:59:59`);
+  }
+}
+
+function isValidDateFilterValue(filter) {
+  if (filter === undefined || filter === null) return true;
+  const trimmed = String(filter).trim();
+  if (!trimmed) return true;
+  if (/^\d{4}$/.test(trimmed)) return true;
+  if (/^(\d{4})-(0[1-9]|1[0-2])$/.test(trimmed)) return true;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return true;
+  return /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/.test(trimmed);
+}
+
+function buildDateQueryValue(filter) {
+  if (!isValidDateFilterValue(filter)) return null;
+  const trimmed = String(filter ?? '').trim();
+  if (!trimmed) return '';
+  const rangeMatch = trimmed.match(
+    /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/,
+  );
+  if (rangeMatch) return trimmed;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const monthMatch = trimmed.match(/^(\d{4})-(0[1-9]|1[0-2])$/);
+  if (monthMatch) {
+    const year = Number(monthMatch[1]);
+    const month = Number(monthMatch[2]);
+    const lastDay = new Date(year, month, 0).getDate();
+    return `${monthMatch[1]}-${monthMatch[2]}-01-${monthMatch[1]}-${monthMatch[2]}-${String(
+      lastDay,
+    ).padStart(2, '0')}`;
+  }
+  if (/^\d{4}$/.test(trimmed)) {
+    return `${trimmed}-01-01-${trimmed}-12-31`;
+  }
+  return null;
 }
 
 function isValidDateFilterValue(filter) {
