@@ -19,7 +19,6 @@ import RowImageUploadModal from './RowImageUploadModal.jsx';
 import ImageSearchModal from './ImageSearchModal.jsx';
 import Modal from './Modal.jsx';
 import CustomDatePicker from './CustomDatePicker.jsx';
-import SearchSelect from './SearchSelect.jsx';
 import formatTimestamp from '../utils/formatTimestamp.js';
 import buildImageName from '../utils/buildImageName.js';
 import slugify from '../utils/slugify.js';
@@ -5858,26 +5857,31 @@ const TableManager = forwardRef(function TableManager({
                 minWidth: columnWidths[c],
                 maxWidth: MAX_WIDTH,
                 resize: 'horizontal',
-                overflow: 'visible',
+                overflow: 'hidden',
                 textOverflow: 'ellipsis',
               }}
             >
-              {Array.isArray(relationOpts[c]) ? (
-                <SearchSelect
-                  value={filters[c] || ''}
-                  onChange={(val) => handleFilterChange(c, val)}
-                  options={relationOpts[c]}
-                  placeholder={`Filter ${labels[c] || c}`}
-                  usePortal
-                />
-              ) : (
-                <input
-                  value={filters[c] || ''}
-                  onChange={(e) => handleFilterChange(c, e.target.value)}
-                  style={{ width: '100%' }}
-                />
-              )}
-            </th>
+                {Array.isArray(relationOpts[c]) ? (
+                  <select
+                    value={filters[c] || ''}
+                    onChange={(e) => handleFilterChange(c, e.target.value)}
+                    style={{ width: '100%' }}
+                  >
+                    <option value=""></option>
+                    {relationOpts[c].map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={filters[c] || ''}
+                    onChange={(e) => handleFilterChange(c, e.target.value)}
+                    style={{ width: '100%' }}
+                  />
+                )}
+              </th>
             ))}
             <th style={{ width: '24rem', minWidth: '24rem' }}></th>
           </tr>
