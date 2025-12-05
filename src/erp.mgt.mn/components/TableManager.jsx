@@ -27,6 +27,7 @@ import useGeneralConfig from '../hooks/useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 import { useTranslation } from 'react-i18next';
 import TooltipWrapper from './TooltipWrapper.jsx';
+import AsyncSearchSelect from './AsyncSearchSelect.jsx';
 import normalizeDateInput from '../utils/normalizeDateInput.js';
 import { evaluateTransactionFormAccess } from '../utils/transactionFormAccess.js';
 import {
@@ -281,6 +282,14 @@ function applyDateParams(params, filter) {
     params.set('date_from', `${filter} 00:00:00`);
     params.set('date_to', `${filter} 23:59:59`);
   }
+}
+
+function isValidDateFilterValue(filter) {
+  if (filter === undefined || filter === null) return true;
+  const trimmed = String(filter).trim();
+  if (!trimmed) return true;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return true;
+  return /^(\d{4}-\d{2}-\d{2})-(\d{4}-\d{2}-\d{2})$/.test(trimmed);
 }
 
 const actionCellStyle = {
@@ -777,6 +786,16 @@ const TableManager = forwardRef(function TableManager({
       return resolveWithMap(alias, caseMap || columnCaseMap);
     },
     [columnCaseMap],
+  );
+
+  const dateFieldSet = useMemo(
+    () =>
+      new Set(
+        (formConfig?.dateField || [])
+          .map((name) => resolveCanonicalKey(name))
+          .filter(Boolean),
+      ),
+    [formConfig?.dateField, resolveCanonicalKey],
   );
 
   const normalizeToCanonical = useCallback(
@@ -1872,10 +1891,21 @@ const TableManager = forwardRef(function TableManager({
       params.set('sort', sort.column);
       params.set('dir', sort.dir);
     }
+    let hasInvalidDateFilter = false;
     Object.entries(filters).forEach(([k, v]) => {
-      if (v !== '' && v !== null && v !== undefined && validCols.has(k))
-        params.set(k, v);
+      if (v !== '' && v !== null && v !== undefined && validCols.has(k)) {
+        if (dateFieldSet.has(k)) {
+          if (isValidDateFilterValue(v)) {
+            params.set(k, v);
+          } else {
+            hasInvalidDateFilter = true;
+          }
+        } else {
+          params.set(k, v);
+        }
+      }
     });
+    if (hasInvalidDateFilter) return;
     fetch(`/api/tables/${encodeURIComponent(table)}?${params.toString()}`, {
       credentials: 'include',
     })
@@ -1937,7 +1967,7 @@ const TableManager = forwardRef(function TableManager({
 
   useEffect(() => {
     setSelectedRows(new Set());
-  }, [table, page, perPage, filters, sort, refreshId, localRefresh]);
+  }, [table, page, perPage, filters, sort, refreshId, localRefresh, dateFieldSet]);
 
   useEffect(() => {
     if (!table || !Array.isArray(rows) || rows.length === 0) {
@@ -5857,30 +5887,59 @@ const TableManager = forwardRef(function TableManager({
                 minWidth: columnWidths[c],
                 maxWidth: MAX_WIDTH,
                 resize: 'horizontal',
-                overflow: 'hidden',
+                overflow: 'visible',
                 textOverflow: 'ellipsis',
               }}
             >
-                {Array.isArray(relationOpts[c]) ? (
-                  <select
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  >
-                    <option value=""></option>
-                    {relationOpts[c].map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <input
-                    value={filters[c] || ''}
-                    onChange={(e) => handleFilterChange(c, e.target.value)}
-                    style={{ width: '100%' }}
-                  />
-                )}
+                {(() => {
+                  const relationConfig = relationConfigs[c];
+                  if (relationConfig?.table) {
+                    const searchColumn =
+                      relationConfig.idField || relationConfig.column || c;
+                    const searchColumns = [
+                      searchColumn,
+                      ...(relationConfig.displayFields || []),
+                    ];
+                    return (
+                      <AsyncSearchSelect
+                        table={relationConfig.table}
+                        searchColumn={searchColumn}
+                        searchColumns={searchColumns}
+                        labelFields={relationConfig.displayFields || []}
+                        idField={searchColumn}
+                        value={filters[c] || ''}
+                        onChange={(val) => handleFilterChange(c, val ?? '')}
+                        disableAutoWidth
+                        inputStyle={{ width: '100%', minHeight: '2rem' }}
+                      />
+                    );
+                  }
+
+                  if (Array.isArray(relationOpts[c])) {
+                    return (
+                      <select
+                        value={filters[c] || ''}
+                        onChange={(e) => handleFilterChange(c, e.target.value)}
+                        style={{ width: '100%' }}
+                      >
+                        <option value=""></option>
+                        {relationOpts[c].map((o) => (
+                          <option key={o.value} value={o.value}>
+                            {o.label}
+                          </option>
+                        ))}
+                      </select>
+                    );
+                  }
+
+                  return (
+                    <input
+                      value={filters[c] || ''}
+                      onChange={(e) => handleFilterChange(c, e.target.value)}
+                      style={{ width: '100%' }}
+                    />
+                  );
+                })()}
               </th>
             ))}
             <th style={{ width: '24rem', minWidth: '24rem' }}></th>
