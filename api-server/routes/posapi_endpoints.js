@@ -123,10 +123,10 @@ function coerceParamValue(param) {
   if (!param) return '';
   const candidates = [
     param.testValue,
+    param.value,
     param.example,
     param.default,
     param.sample,
-    param.value,
   ];
   const hit = candidates.find((candidate) => candidate !== undefined && candidate !== null);
   if (hit === undefined || hit === null) return '';
