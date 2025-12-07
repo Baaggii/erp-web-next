@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { API_BASE } from '../utils/apiBase.js';
 import { useToast } from '../context/ToastContext.jsx';
 
@@ -442,8 +442,6 @@ const EMPTY_ENDPOINT = {
   method: 'GET',
   path: '',
   parametersText: '[]',
-  parameterDefaults: { path: {}, query: {}, header: {} },
-  parameterValues: { path: {}, query: {}, header: {} },
   requestDescription: '',
   requestSchemaText: '{}',
   responseDescription: '',
@@ -1180,28 +1178,22 @@ function buildUrlEnvMap(selections = {}) {
 
 function normalizeHintEntry(entry) {
   if (entry === null || entry === undefined) {
-    return { field: '', required: undefined, description: '', label: '', location: '', source: 'body' };
+    return { field: '', required: undefined, description: '' };
   }
   if (typeof entry === 'string') {
-    return { field: entry, required: undefined, description: '', label: '', location: '', source: 'body' };
+    return { field: entry, required: undefined, description: '' };
   }
   if (typeof entry === 'object') {
     return {
       field: typeof entry.field === 'string' ? entry.field : '',
       required: typeof entry.required === 'boolean' ? entry.required : undefined,
       description: typeof entry.description === 'string' ? entry.description : '',
-      label: typeof entry.label === 'string' ? entry.label : '',
-      location: typeof entry.location === 'string' ? entry.location : '',
-      source: typeof entry.source === 'string' ? entry.source : 'body',
     };
   }
   return {
     field: String(entry),
     required: undefined,
     description: '',
-    label: '',
-    location: '',
-    source: 'body',
   };
 }
 
@@ -1323,12 +1315,6 @@ function createFormState(definition) {
     method: definition.method || 'GET',
     path: definition.path || '',
     parametersText: toPrettyJson(definition.parameters, '[]'),
-    parameterDefaults: normalizeParameterDefaultGroups(
-      definition.parameterDefaults || definition.parameterValues || {},
-    ),
-    parameterValues: normalizeParameterDefaultGroups(
-      definition.parameterValues || definition.parameterDefaults || {},
-    ),
     requestDescription: definition.requestBody?.description || '',
     requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
     responseDescription: definition.responseBody?.description || '',
@@ -1919,78 +1905,6 @@ function buildDraftParameterDefaults(parameters) {
   return values;
 }
 
-function normalizeParameterDefaultGroups(values = {}) {
-  return {
-    path: values.path && typeof values.path === 'object' ? values.path : {},
-    query: values.query && typeof values.query === 'object' ? values.query : {},
-    header: values.header && typeof values.header === 'object' ? values.header : {},
-  };
-}
-
-function buildParameterHints(parametersText = '', existingDefaults = {}) {
-  const trimmed = (parametersText || '').trim();
-  if (!trimmed) return { state: 'empty', items: [], error: '' };
-  try {
-    const parsed = JSON.parse(trimmed);
-    if (!Array.isArray(parsed)) {
-      return { state: 'error', items: [], error: 'Parameters must be a JSON array' };
-    }
-    const items = parsed
-      .filter((param) => param && typeof param === 'object')
-      .map((param) => {
-        const location = typeof param.in === 'string' ? param.in : 'query';
-        const name = typeof param.name === 'string' ? param.name : '';
-        const key = `param:${location}:${name || 'unnamed'}`;
-        const labelPrefix = location === 'path'
-          ? 'Path'
-          : location === 'header'
-            ? 'Header'
-            : 'Query';
-        const defaultValue = existingDefaults?.[location]?.[name]
-          ?? param.example
-          ?? param.default
-          ?? param.sample;
-        return {
-          field: key,
-          label: `${labelPrefix} parameter: ${name || '(unnamed)'}`,
-          required: typeof param.required === 'boolean' ? param.required : undefined,
-          description: param.description || '',
-          source: 'parameter',
-          location,
-          name,
-          defaultValue,
-        };
-      });
-    return { state: 'ok', items, error: '' };
-  } catch (err) {
-    return { state: 'error', items: [], error: err.message || 'Invalid parameters JSON' };
-  }
-}
-
-function buildParameterDefaultsFromSelections(parameterHints = [], selections = {}) {
-  const grouped = { path: {}, query: {}, header: {} };
-  parameterHints.forEach((hint) => {
-    if (!hint || hint.source !== 'parameter') return;
-    const selection = selections[hint.field];
-    const mode = selection?.mode === 'env' && selection.envVar ? 'env' : 'literal';
-    const rawValue = mode === 'env'
-      ? selection?.envVar
-      : selection?.literal ?? hint.defaultValue;
-    if (rawValue === undefined || rawValue === null) return;
-    const normalizedLocation = hint.location === 'path'
-      ? 'path'
-      : hint.location === 'header'
-        ? 'header'
-        : 'query';
-    const valueToStore = mode === 'env' ? `{{${rawValue}}}` : rawValue;
-    if (`${valueToStore}`.trim() === '') return;
-    if (hint.name) {
-      grouped[normalizedLocation][hint.name] = valueToStore;
-    }
-  });
-  return grouped;
-}
-
 function buildFilledParams(parameters, providedValues = {}) {
   const byLocation = { path: {}, query: {}, header: {} };
   if (!Array.isArray(parameters)) return byLocation;
@@ -2295,60 +2209,13 @@ export default function PosApiAdmin() {
 
   const formSupportsItems = supportsItems;
 
-  const parameterFieldHints = useMemo(
-    () => buildParameterHints(formState.parametersText, formState.parameterDefaults),
-    [formState.parametersText, formState.parameterDefaults],
-  );
-
-  const bodyRequestFieldHints = useMemo(
+  const requestFieldHints = useMemo(
     () =>
       parseHintPreview(
         formState.requestFieldsText,
         'Request field hints must be a JSON array',
       ),
     [formState.requestFieldsText],
-  );
-
-  const requestFieldHints = useMemo(() => {
-    if (parameterFieldHints.state === 'error') return parameterFieldHints;
-    if (bodyRequestFieldHints.state === 'error') return bodyRequestFieldHints;
-    const combined = [];
-    if (parameterFieldHints.state === 'ok') {
-      combined.push(...parameterFieldHints.items);
-    }
-    if (bodyRequestFieldHints.state === 'ok') {
-      combined.push(...bodyRequestFieldHints.items);
-    }
-    if (combined.length === 0) {
-      return { state: 'empty', items: [], error: '' };
-    }
-    return { state: 'ok', items: combined, error: '' };
-  }, [bodyRequestFieldHints, parameterFieldHints]);
-
-  const parameterFieldKeys = useMemo(
-    () => new Set(
-      parameterFieldHints.state === 'ok'
-        ? parameterFieldHints.items.map((hint) => hint.field)
-        : [],
-    ),
-    [parameterFieldHints],
-  );
-
-  const filterBodySelections = useCallback(
-    (selections = {}) =>
-      Object.fromEntries(
-        Object.entries(selections || {}).filter(([field]) => !parameterFieldKeys.has(field)),
-      ),
-    [parameterFieldKeys],
-  );
-
-  const buildSelectionParameterDefaults = useCallback(
-    (selections = {}) =>
-      buildParameterDefaultsFromSelections(
-        parameterFieldHints.state === 'ok' ? parameterFieldHints.items : [],
-        selections,
-      ),
-    [parameterFieldHints],
   );
 
   const responseFieldHints = useMemo(
@@ -2377,9 +2244,7 @@ export default function PosApiAdmin() {
         if (!fieldPath || seenFields.has(fieldPath)) return;
         seenFields.add(fieldPath);
         if (next[fieldPath]) return;
-        const currentValue = normalized.source === 'parameter'
-          ? hint.defaultValue
-          : readValueAtPath(parsedSample, fieldPath);
+        const currentValue = readValueAtPath(parsedSample, fieldPath);
         if (typeof formState.requestEnvMap?.[fieldPath] === 'string') {
           next[fieldPath] = {
             mode: 'env',
@@ -2398,25 +2263,11 @@ export default function PosApiAdmin() {
         changed = true;
       });
       if (changed) {
-        const bodySelections = filterBodySelections(next);
-        syncRequestSampleFromSelections(bodySelections);
-        const parameterDefaults = buildSelectionParameterDefaults(next);
-        setFormState((prevState) => ({
-          ...prevState,
-          requestEnvMap: buildRequestEnvMap(next),
-          parameterDefaults,
-          parameterValues: parameterDefaults,
-        }));
+        syncRequestSampleFromSelections(next);
       }
       return changed ? next : prev;
     });
-  }, [
-    buildSelectionParameterDefaults,
-    filterBodySelections,
-    formState.requestEnvMap,
-    formState.requestSchemaText,
-    requestFieldHints.items,
-  ]);
+  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldHints.items]);
 
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
@@ -4151,8 +4002,6 @@ export default function PosApiAdmin() {
       };
     });
 
-    const parameterDefaults = buildSelectionParameterDefaults(requestFieldValues);
-
     const usage = formState.posApiType === 'AUTH'
       ? 'auth'
       : VALID_USAGE_VALUES.has(formState.usage)
@@ -4261,8 +4110,6 @@ export default function PosApiAdmin() {
       receiptItemTemplates,
       notes: formState.notes ? formState.notes.trim() : '',
       parameters,
-      parameterDefaults,
-      parameterValues: parameterDefaults,
       requestBody: {
         schema: requestSchema,
         description: formState.requestDescription || '',
@@ -4522,14 +4369,10 @@ export default function PosApiAdmin() {
       const trimmedEnvVar = typeof updates.envVar === 'string' ? updates.envVar.trim() : updates.envVar;
       const nextEntry = { ...current, ...updates, ...(trimmedEnvVar !== undefined ? { envVar: trimmedEnvVar } : {}) };
       const nextSelections = { ...prev, [fieldPath]: nextEntry };
-      const bodySelections = filterBodySelections(nextSelections);
-      const parameterDefaults = buildSelectionParameterDefaults(nextSelections);
-      syncRequestSampleFromSelections(bodySelections);
+      syncRequestSampleFromSelections(nextSelections);
       setFormState((prevState) => ({
         ...prevState,
         requestEnvMap: buildRequestEnvMap(nextSelections),
-        parameterDefaults,
-        parameterValues: parameterDefaults,
       }));
       return nextSelections;
     });
@@ -6608,9 +6451,7 @@ export default function PosApiAdmin() {
               )}
             </div>
             {requestFieldHints.state === 'empty' && (
-              <p style={styles.hintEmpty}>
-                Add request field hints above or declare query/path parameters to edit their sample values.
-              </p>
+              <p style={styles.hintEmpty}>Add request field hints in the JSON textarea above.</p>
             )}
             {requestFieldHints.state === 'error' && (
               <div style={styles.hintError}>{requestFieldHints.error}</div>
@@ -6620,7 +6461,6 @@ export default function PosApiAdmin() {
                 {requestFieldHints.items.map((hint, index) => {
                   const normalized = normalizeHintEntry(hint);
                   const fieldLabel = normalized.field || '(unnamed field)';
-                  const displayLabel = normalized.label || fieldLabel;
                   const selection = requestFieldValues[fieldLabel] || {
                     mode: 'literal',
                     literal: '',
@@ -6632,26 +6472,7 @@ export default function PosApiAdmin() {
                   return (
                     <li key={`request-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
                       <div style={styles.hintFieldRow}>
-                        <span style={styles.hintField}>{displayLabel}</span>
-                        {normalized.location && (
-                          <span
-                            style={{
-                              ...styles.hintBadge,
-                              background:
-                                normalized.location === 'path'
-                                  ? '#0ea5e9'
-                                  : normalized.location === 'header'
-                                    ? '#334155'
-                                    : '#6366f1',
-                            }}
-                          >
-                            {normalized.location === 'path'
-                              ? 'Path param'
-                              : normalized.location === 'header'
-                                ? 'Header param'
-                                : 'Query param'}
-                          </span>
-                        )}
+                        <span style={styles.hintField}>{fieldLabel}</span>
                         {typeof normalized.required === 'boolean' && (
                           <span
                             style={{
