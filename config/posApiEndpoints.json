@@ -349,7 +349,8 @@
       }
     ],
     "testable": true,
-    "testServerUrl": "https://posapi-test.tax.gov.mn"
+    "testServerUrl": "https://st-api.ebarimt.mn",
+    "productionServerUrl": "https://api.ebarimt.mn"
   },
   {
     "id": "getInformation",
@@ -437,7 +438,8 @@
       }
     ],
     "testable": true,
-    "testServerUrl": "https://posapi-test.tax.gov.mn"
+    "testServerUrl": "https://st-api.ebarimt.mn",
+    "productionServerUrl": "https://api.ebarimt.mn"
   },
   {
     "id": "getDistrictCodes",
@@ -483,7 +485,8 @@
       }
     ],
     "testable": true,
-    "testServerUrl": "https://posapi-test.tax.gov.mn"
+    "testServerUrl": "https://st-api.ebarimt.mn",
+    "productionServerUrl": "https://api.ebarimt.mn"
   },
   {
     "id": "getVatTaxTypes",
@@ -524,7 +527,8 @@
       }
     ],
     "testable": true,
-    "testServerUrl": "https://posapi-test.tax.gov.mn"
+    "testServerUrl": "https://st-api.ebarimt.mn",
+    "productionServerUrl": "https://api.ebarimt.mn"
   },
   {
     "id": "getBankAccountInfo",

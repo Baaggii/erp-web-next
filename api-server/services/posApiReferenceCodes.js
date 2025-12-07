@@ -267,10 +267,51 @@ function parseCodesFromEndpoint(endpointId, response) {
   return [];
 }
 
+function normalizeUrlMode(mode, envVar) {
+  if (mode === 'env') return 'env';
+  if (mode === 'literal') return 'literal';
+  return envVar ? 'env' : 'literal';
+}
+
+function resolveEndpointUrl(definition, key, urlEnvMap = {}, warnings = []) {
+  const envVar = (urlEnvMap && urlEnvMap[key]) || definition?.[`${key}EnvVar`];
+  const mode = normalizeUrlMode(definition?.[`${key}Mode`], envVar);
+  const literal = typeof definition?.[key] === 'string' ? definition[key].trim() : '';
+  if (mode === 'env' && envVar) {
+    const envRaw = process.env[envVar];
+    if (envRaw !== undefined && envRaw !== null && envRaw !== '') {
+      return String(envRaw).trim();
+    }
+    warnings.push(`Environment variable ${envVar} is not set; using literal value for ${key}.`);
+  }
+  return literal;
+}
+
+function resolveReferenceBaseUrl(definition, environment = 'staging', warnings = []) {
+  if (!definition || typeof definition !== 'object') return '';
+  const trimmedEnv = environment === 'production' ? 'production' : 'staging';
+  const urlEnvMap = definition.urlEnvMap || {};
+  const candidateKeys =
+    trimmedEnv === 'production'
+      ? ['productionServerUrl', 'testServerUrlProduction', 'testServerUrl', 'serverUrl']
+      : ['testServerUrl', 'testServerUrlProduction', 'productionServerUrl', 'serverUrl'];
+
+  for (const key of candidateKeys) {
+    const resolved = resolveEndpointUrl(definition, key, urlEnvMap, warnings);
+    if (resolved) return resolved;
+  }
+
+  return '';
+}
+
 export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   const startedAt = new Date();
   const settings = await loadSyncSettings();
   const endpoints = await loadEndpoints();
+  const environment =
+    options.environment === 'production' || process.env.NODE_ENV === 'production'
+      ? 'production'
+      : 'staging';
   const normalizedUsage = VALID_SYNC_USAGES.has(options.usage)
     ? options.usage
     : settings.usage || DEFAULT_SETTINGS.usage;
@@ -292,10 +333,20 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
     successful: 0,
   };
   const errors = [];
+  const warnings = [];
 
   for (const endpoint of infoEndpoints) {
     try {
-      const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
+      const endpointWarnings = [];
+      const baseUrl = resolveReferenceBaseUrl(endpoint, environment, endpointWarnings);
+      warnings.push(
+        ...endpointWarnings.map((message) => ({ endpoint: endpoint.id, message, type: 'warning' })),
+      );
+      if (!baseUrl) {
+        throw new Error('Base URL is required for POSAPI lookup endpoints');
+      }
+
+      const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint, baseUrl, environment });
       const codes = parseCodesFromEndpoint(endpoint.id, response);
       summary.successful += 1;
       if (!codes.length) continue;
@@ -323,6 +374,7 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
     durationMs,
     ...summary,
     errors,
+    warnings,
     trigger,
   };
   await appendSyncLog(logEntry);
