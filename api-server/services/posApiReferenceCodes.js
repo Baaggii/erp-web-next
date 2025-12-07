@@ -248,23 +248,42 @@ async function upsertReferenceCodes(codeType, codes) {
   return { added, updated, deactivated };
 }
 
-function parseCodesFromEndpoint(endpointId, response) {
+function readPath(obj, path) {
+  if (!path) return obj;
+  return String(path)
+    .split('.')
+    .reduce((acc, key) => (acc && typeof acc === 'object' ? acc[key] : undefined), obj);
+}
+
+function parseCodesFromEndpoint(endpoint, response) {
   if (!response || typeof response !== 'object') return [];
-  if (endpointId === 'getDistrictCodes' && Array.isArray(response.districts)) {
-    return response.districts.map((entry) => ({
-      code_type: 'district',
-      code: entry.code,
-      name: entry.name || entry.city,
-    }));
-  }
-  if (endpointId === 'getVatTaxTypes' && Array.isArray(response.vatTaxTypes)) {
-    return response.vatTaxTypes.map((entry) => ({
-      code_type: 'tax_reason',
-      code: entry.code,
-      name: entry.description,
-    }));
-  }
-  return [];
+  const mapping = endpoint?.referenceCodeMapping;
+  if (!mapping) return [];
+
+  const baseResponse =
+    typeof response === 'object' && Object.prototype.hasOwnProperty.call(response, 'data')
+      ? response.data
+      : response;
+
+  const listCandidate = mapping.listPath ? readPath(baseResponse, mapping.listPath) : baseResponse;
+  const list = Array.isArray(listCandidate) ? listCandidate : Array.isArray(baseResponse) ? baseResponse : null;
+  if (!Array.isArray(list)) return [];
+
+  return list
+    .map((entry) => {
+      if (!entry || typeof entry !== 'object') return null;
+      const code = readPath(entry, mapping.codeField || mapping.codePath || 'code');
+      const nameFields = [mapping.nameField || mapping.namePath || 'name']
+        .concat(mapping.fallbackNameFields || [])
+        .filter(Boolean);
+      const name = nameFields.map((field) => readPath(entry, field)).find(Boolean);
+      const codeType =
+        mapping.codeType || (mapping.codeTypeField ? readPath(entry, mapping.codeTypeField) : null);
+
+      if (!codeType || !code || !name) return null;
+      return { code_type: codeType, code, name };
+    })
+    .filter(Boolean);
 }
 
 export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
@@ -296,7 +315,7 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   for (const endpoint of infoEndpoints) {
     try {
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
-      const codes = parseCodesFromEndpoint(endpoint.id, response);
+      const codes = parseCodesFromEndpoint(endpoint, response);
       summary.successful += 1;
       if (!codes.length) continue;
       const grouped = codes.reduce((acc, entry) => {

@@ -447,6 +447,13 @@
     "path": "/rest/getDistrictCode",
     "parameters": [],
     "usage": "info",
+    "referenceCodeMapping": {
+      "codeType": "district",
+      "listPath": "districts",
+      "codeField": "code",
+      "nameField": "name",
+      "fallbackNameFields": ["city"]
+    },
     "requestBody": {
       "schema": {},
       "description": "No request body required for this lookup."
@@ -493,6 +500,12 @@
     "path": "/rest/vat_tax_type",
     "parameters": [],
     "usage": "info",
+    "referenceCodeMapping": {
+      "codeType": "tax_reason",
+      "listPath": "vatTaxTypes",
+      "codeField": "code",
+      "nameField": "description"
+    },
     "requestBody": {
       "schema": {},
       "description": "No request body required for this lookup."
