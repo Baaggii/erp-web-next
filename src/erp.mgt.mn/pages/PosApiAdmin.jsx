@@ -2173,6 +2173,22 @@ export default function PosApiAdmin() {
     }
   }, [formState.responseSchemaText]);
 
+  const { queryParameters, parametersError } = useMemo(() => {
+    const text = (formState.parametersText || '').trim();
+    if (!text) return { queryParameters: [], parametersError: '' };
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        return { queryParameters: [], parametersError: 'Parameters must be a JSON array.' };
+      }
+      const filtered = parsed.filter(Boolean);
+      const byLocation = filtered.filter((param) => (param?.in || 'query') === 'query');
+      return { queryParameters: byLocation, parametersError: '' };
+    } catch (err) {
+      return { queryParameters: [], parametersError: err.message || 'Invalid parameters JSON' };
+    }
+  }, [formState.parametersText]);
+
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
   const supportsMultiplePayments = isTransactionUsage && Boolean(formState.supportsMultiplePayments);
@@ -3438,6 +3454,30 @@ export default function PosApiAdmin() {
     if (field !== 'docUrl') {
       resetTestState();
     }
+  }
+
+  function handleQueryParamValueChange(name, location, value) {
+    setFormState((prev) => {
+      let parsed;
+      try {
+        parsed = JSON.parse(prev.parametersText || '[]');
+        if (!Array.isArray(parsed)) return prev;
+      } catch {
+        return prev;
+      }
+
+      const normalizedLoc = location || 'query';
+      const nextParams = parsed.map((param) => {
+        const loc = param?.in || 'query';
+        if ((param?.name || '') === name && loc === normalizedLoc) {
+          return { ...param, testValue: value, value };
+        }
+        return param;
+      });
+
+      return { ...prev, parametersText: toPrettyJson(nextParams, '[]') };
+    });
+    resetTestState();
   }
 
   function handleApplySamplePayload(type) {
@@ -5594,6 +5634,40 @@ export default function PosApiAdmin() {
               rows={6}
             />
           </label>
+          {parametersError && <div style={styles.inputError}>{parametersError}</div>}
+          {!parametersError && queryParameters.length > 0 && (
+            <div style={styles.queryParamPanel}>
+              <div style={styles.importParamsHeader}>Query parameters</div>
+              <div style={styles.sectionHelp}>
+                Provide sample values for query parameters. They will be saved with the endpoint and used when
+                running test calls.
+              </div>
+              <div style={styles.importParamGrid}>
+                {queryParameters.map((param, index) => {
+                  const value = param?.testValue ?? param?.value ?? '';
+                  const placeholder = param?.description || param?.example || '';
+                  return (
+                    <label
+                      key={`query-param-${param?.name || 'param'}-${index}`}
+                      style={styles.label}
+                    >
+                      {param?.name || '(unnamed parameter)'}
+                      <input
+                        type="text"
+                        value={value}
+                        onChange={(e) =>
+                          handleQueryParamValueChange(param?.name || '', param?.in || 'query', e.target.value)
+                        }
+                        placeholder={placeholder}
+                        style={styles.input}
+                      />
+                      <div style={styles.paramMeta}>Query {param?.required ? '• required' : ''}</div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <label style={styles.labelFull}>
             Notes / guidance
             <textarea
@@ -7565,6 +7639,13 @@ const styles = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
     gap: '0.75rem',
+  },
+  queryParamPanel: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '0.75rem',
+    background: '#f8fafc',
+    marginBottom: '0.75rem',
   },
   paramMeta: {
     fontSize: '0.8rem',
