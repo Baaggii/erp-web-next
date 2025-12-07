@@ -442,7 +442,6 @@ const EMPTY_ENDPOINT = {
   method: 'GET',
   path: '',
   parametersText: '[]',
-  parameterDefaults: {},
   requestDescription: '',
   requestSchemaText: '{}',
   responseDescription: '',
@@ -1089,14 +1088,13 @@ function buildRequestSampleFromSelections(
     fallbackToLiteral = true,
     onError,
     useEnvPlaceholders = true,
-    skipPaths = new Set(),
   } = {},
 ) {
   const result = baseSample && typeof baseSample === 'object' && !Array.isArray(baseSample)
     ? { ...baseSample }
     : {};
   Object.entries(selections || {}).forEach(([fieldPath, entry]) => {
-    if (!fieldPath || skipPaths.has(fieldPath)) return;
+    if (!fieldPath) return;
     const mode = entry?.mode || 'literal';
     const placeholder = entry?.envVar ? `{{${entry.envVar}}}` : '';
     if (mode === 'env' && entry?.envVar) {
@@ -1317,9 +1315,6 @@ function createFormState(definition) {
     method: definition.method || 'GET',
     path: definition.path || '',
     parametersText: toPrettyJson(definition.parameters, '[]'),
-    parameterDefaults: normalizeParameterDefaults(
-      definition.parameterDefaults || definition.parameterValues,
-    ),
     requestDescription: definition.requestBody?.description || '',
     requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
     responseDescription: definition.responseBody?.description || '',
@@ -1885,7 +1880,7 @@ function extractOperationsFromPostman(spec) {
   return entries;
 }
 
-function buildDraftParameterDefaults(parameters, providedDefaults = {}) {
+function buildDraftParameterDefaults(parameters) {
   const values = {};
   const envFallbacks = {
     client_id: '{{POSAPI_CLIENT_ID}}',
@@ -1895,10 +1890,6 @@ function buildDraftParameterDefaults(parameters, providedDefaults = {}) {
   };
   parameters.forEach((param) => {
     if (!param?.name) return;
-    if (providedDefaults && Object.prototype.hasOwnProperty.call(providedDefaults, param.name)) {
-      values[param.name] = providedDefaults[param.name];
-      return;
-    }
     const candidates = [param.example, param.default, param.sample];
     const hit = candidates.find((val) => val !== undefined && val !== null);
     if (hit !== undefined && hit !== null) {
@@ -1912,37 +1903,6 @@ function buildDraftParameterDefaults(parameters, providedDefaults = {}) {
     }
   });
   return values;
-}
-
-function normalizeParameterDefaults(map) {
-  if (!map || typeof map !== 'object') return {};
-  return Object.entries(map).reduce((acc, [key, value]) => {
-    if (typeof key !== 'string') return acc;
-    acc[key] = value;
-    return acc;
-  }, {});
-}
-
-function extractEnvVarPlaceholder(value) {
-  if (typeof value !== 'string') return '';
-  const match = value.match(/^{{\s*([^}]+)\s*}}$/);
-  return match ? match[1].trim() : '';
-}
-
-function buildParameterFieldPath(param) {
-  const name = typeof param?.name === 'string' ? param.name.trim() : '';
-  const loc = typeof param?.in === 'string' ? param.in.trim() : '';
-  const normalizedLoc = loc === 'path' ? 'path' : loc === 'header' ? 'header' : 'query';
-  return name ? `${normalizedLoc}.${name}` : '';
-}
-
-function selectionToParameterValue(selection) {
-  if (!selection) return '';
-  if (selection.mode === 'env' && selection.envVar) {
-    return `{{${selection.envVar}}}`;
-  }
-  if (selection.mode === 'env') return '';
-  return selection.literal ?? '';
 }
 
 function buildFilledParams(parameters, providedValues = {}) {
@@ -2258,22 +2218,6 @@ export default function PosApiAdmin() {
     [formState.requestFieldsText],
   );
 
-  const parameterPreview = useMemo(() => {
-    const text = (formState.parametersText || '').trim();
-    if (!text) return { state: 'empty', items: [], error: '' };
-    try {
-      const parsed = JSON.parse(text);
-      if (!Array.isArray(parsed)) {
-        return { state: 'error', items: [], error: 'Parameters must be a JSON array' };
-      }
-      const normalized = normalizeParametersFromSpec(parsed);
-      if (!normalized.length) return { state: 'empty', items: [], error: '' };
-      return { state: 'ok', items: normalized, error: '' };
-    } catch (err) {
-      return { state: 'error', items: [], error: err.message || 'Invalid JSON' };
-    }
-  }, [formState.parametersText]);
-
   const responseFieldHints = useMemo(
     () =>
       parseHintPreview(
@@ -2282,73 +2226,6 @@ export default function PosApiAdmin() {
       ),
     [formState.responseFieldsText],
   );
-
-  const parameterFieldEntries = useMemo(() => {
-    if (parameterPreview.state !== 'ok') return [];
-    return parameterPreview.items.map((param) => ({
-      fieldPath: buildParameterFieldPath(param),
-      displayName: param.name,
-      required: Boolean(param.required),
-      description: param.description || '',
-      source: 'parameter',
-      location: typeof param.in === 'string' ? param.in : 'query',
-      paramName: param.name,
-      example: param.example ?? param.default ?? param.sample ?? '',
-    }));
-  }, [parameterPreview]);
-
-  const parameterFieldPaths = useMemo(
-    () => new Set(parameterFieldEntries.map((entry) => entry.fieldPath).filter(Boolean)),
-    [parameterFieldEntries],
-  );
-
-  const parameterFieldIndex = useMemo(() => {
-    const map = new Map();
-    parameterFieldEntries.forEach((entry) => {
-      if (entry.fieldPath) {
-        map.set(entry.fieldPath, entry);
-      }
-    });
-    return map;
-  }, [parameterFieldEntries]);
-
-  const parameterDefaultValues = useMemo(
-    () => buildDraftParameterDefaults(parameterPreview.items || [], formState.parameterDefaults),
-    [formState.parameterDefaults, parameterPreview.items],
-  );
-
-  const requestFieldEntries = useMemo(() => {
-    const entries = [];
-    if (requestFieldHints.state === 'ok') {
-      requestFieldHints.items.forEach((hint) => {
-        const normalized = normalizeHintEntry(hint);
-        if (!normalized.field) return;
-        entries.push({
-          fieldPath: normalized.field,
-          displayName: normalized.field,
-          required: typeof normalized.required === 'boolean' ? normalized.required : undefined,
-          description: normalized.description || '',
-          source: 'body',
-          location: 'body',
-        });
-      });
-    }
-    if (parameterFieldEntries.length) {
-      entries.push(...parameterFieldEntries);
-    }
-    return entries;
-  }, [parameterFieldHints, parameterFieldEntries]);
-
-  const requestFieldState = useMemo(() => {
-    if (requestFieldHints.state === 'error') {
-      return { state: 'error', items: [], error: requestFieldHints.error };
-    }
-    if (parameterPreview.state === 'error') {
-      return { state: 'error', items: [], error: parameterPreview.error };
-    }
-    if (!requestFieldEntries.length) return { state: 'empty', items: [], error: '' };
-    return { state: 'ok', items: requestFieldEntries, error: '' };
-  }, [parameterPreview.error, parameterPreview.state, requestFieldEntries, requestFieldHints.error, requestFieldHints.state]);
 
   useEffect(() => {
     const seenFields = new Set();
@@ -2361,24 +2238,12 @@ export default function PosApiAdmin() {
     setRequestFieldValues((prev) => {
       const next = { ...prev };
       let changed = false;
-      requestFieldEntries.forEach((entry) => {
-        const fieldPath = entry.fieldPath;
+      requestFieldHints.items.forEach((hint) => {
+        const normalized = normalizeHintEntry(hint);
+        const fieldPath = normalized.field;
         if (!fieldPath || seenFields.has(fieldPath)) return;
         seenFields.add(fieldPath);
         if (next[fieldPath]) return;
-        if (entry.source === 'parameter') {
-          const defaultValue = parameterDefaultValues[entry.paramName];
-          const envVarPlaceholder = extractEnvVarPlaceholder(defaultValue);
-          if (envVarPlaceholder) {
-            next[fieldPath] = { mode: 'env', envVar: envVarPlaceholder, literal: '' };
-          } else if (defaultValue !== undefined && defaultValue !== null) {
-            next[fieldPath] = { mode: 'literal', literal: String(defaultValue) };
-          } else {
-            next[fieldPath] = { mode: 'literal', literal: '' };
-          }
-          changed = true;
-          return;
-        }
         const currentValue = readValueAtPath(parsedSample, fieldPath);
         if (typeof formState.requestEnvMap?.[fieldPath] === 'string') {
           next[fieldPath] = {
@@ -2398,17 +2263,11 @@ export default function PosApiAdmin() {
         changed = true;
       });
       if (changed) {
-        syncRequestSampleFromSelections(next, { skipPaths: parameterFieldPaths });
+        syncRequestSampleFromSelections(next);
       }
       return changed ? next : prev;
     });
-  }, [
-    formState.requestEnvMap,
-    formState.requestSchemaText,
-    parameterDefaultValues,
-    parameterFieldPaths,
-    requestFieldEntries,
-  ]);
+  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldHints.items]);
 
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
@@ -4103,16 +3962,6 @@ export default function PosApiAdmin() {
     if (!Array.isArray(parameters)) {
       throw new Error('Parameters must be a JSON array');
     }
-    const parameterDefaults = normalizeParameterDefaults(formState.parameterDefaults);
-    const allowedParamNames = new Set(
-      parameters.map((param) => (typeof param?.name === 'string' ? param.name : '')).filter(Boolean),
-    );
-    const filteredParameterDefaults = Object.entries(parameterDefaults).reduce((acc, [key, value]) => {
-      if (allowedParamNames.has(key)) {
-        acc[key] = value;
-      }
-      return acc;
-    }, {});
     let requestSchema = parseJsonInput(
       'Request body schema',
       formState.requestSchemaText,
@@ -4261,8 +4110,6 @@ export default function PosApiAdmin() {
       receiptItemTemplates,
       notes: formState.notes ? formState.notes.trim() : '',
       parameters,
-      parameterDefaults: filteredParameterDefaults,
-      parameterValues: filteredParameterDefaults,
       requestBody: {
         schema: requestSchema,
         description: formState.requestDescription || '',
@@ -4496,7 +4343,7 @@ export default function PosApiAdmin() {
     setStatus(`Applied ${selected.label} to ${target} schema`);
   }
 
-  function syncRequestSampleFromSelections(nextSelections, { skipPaths = parameterFieldPaths } = {}) {
+  function syncRequestSampleFromSelections(nextSelections) {
     let baseSample = {};
     try {
       baseSample = JSON.parse(formState.requestSchemaText || '{}');
@@ -4506,7 +4353,6 @@ export default function PosApiAdmin() {
     const updated = buildRequestSampleFromSelections(baseSample, nextSelections, {
       resolveEnv: false,
       useEnvPlaceholders: false,
-      skipPaths,
     });
     try {
       const formatted = JSON.stringify(updated, null, 2);
@@ -4518,32 +4364,16 @@ export default function PosApiAdmin() {
 
   function handleRequestFieldValueChange(fieldPath, updates) {
     if (!fieldPath) return;
-    const parameterEntry = parameterFieldIndex.get(fieldPath);
     setRequestFieldValues((prev) => {
       const current = prev[fieldPath] || { mode: 'literal', literal: '', envVar: '' };
       const trimmedEnvVar = typeof updates.envVar === 'string' ? updates.envVar.trim() : updates.envVar;
       const nextEntry = { ...current, ...updates, ...(trimmedEnvVar !== undefined ? { envVar: trimmedEnvVar } : {}) };
       const nextSelections = { ...prev, [fieldPath]: nextEntry };
-      const bodySelections = Object.fromEntries(
-        Object.entries(nextSelections).filter(([key]) => !parameterFieldPaths.has(key)),
-      );
-      syncRequestSampleFromSelections(nextSelections, { skipPaths: parameterFieldPaths });
-      setFormState((prevState) => {
-        const nextParameterDefaults = normalizeParameterDefaults(prevState.parameterDefaults);
-        if (parameterEntry) {
-          const resolvedValue = selectionToParameterValue(nextEntry);
-          if (resolvedValue === undefined || resolvedValue === '') {
-            delete nextParameterDefaults[parameterEntry.paramName];
-          } else {
-            nextParameterDefaults[parameterEntry.paramName] = resolvedValue;
-          }
-        }
-        return {
-          ...prevState,
-          requestEnvMap: buildRequestEnvMap(bodySelections),
-          ...(parameterEntry ? { parameterDefaults: nextParameterDefaults } : {}),
-        };
-      });
+      syncRequestSampleFromSelections(nextSelections);
+      setFormState((prevState) => ({
+        ...prevState,
+        requestEnvMap: buildRequestEnvMap(nextSelections),
+      }));
       return nextSelections;
     });
   }
@@ -6616,25 +6446,22 @@ export default function PosApiAdmin() {
           <div style={styles.hintCard}>
             <div style={styles.hintHeader}>
               <h3 style={styles.hintTitle}>Request fields</h3>
-              {requestFieldState.state === 'ok' && (
-                <span style={styles.hintCount}>{requestFieldState.items.length} fields</span>
+              {requestFieldHints.state === 'ok' && (
+                <span style={styles.hintCount}>{requestFieldHints.items.length} fields</span>
               )}
             </div>
-            {requestFieldState.state === 'empty' && (
-              <p style={styles.hintEmpty}>
-                Add request field hints in the JSON textarea above or define query/path parameters in the
-                parameters JSON.
-              </p>
+            {requestFieldHints.state === 'empty' && (
+              <p style={styles.hintEmpty}>Add request field hints in the JSON textarea above.</p>
             )}
-            {requestFieldState.state === 'error' && (
-              <div style={styles.hintError}>{requestFieldState.error}</div>
+            {requestFieldHints.state === 'error' && (
+              <div style={styles.hintError}>{requestFieldHints.error}</div>
             )}
-            {requestFieldState.state === 'ok' && (
+            {requestFieldHints.state === 'ok' && (
               <ul style={styles.hintList}>
-                {requestFieldState.items.map((entry, index) => {
-                  const fieldKey = entry.fieldPath || entry.displayName || '(unnamed field)';
-                  const fieldLabel = entry.displayName || entry.fieldPath || '(unnamed field)';
-                  const selection = requestFieldValues[fieldKey] || {
+                {requestFieldHints.items.map((hint, index) => {
+                  const normalized = normalizeHintEntry(hint);
+                  const fieldLabel = normalized.field || '(unnamed field)';
+                  const selection = requestFieldValues[fieldLabel] || {
                     mode: 'literal',
                     literal: '',
                     envVar: '',
@@ -6642,47 +6469,43 @@ export default function PosApiAdmin() {
                   const envVarMissing = selection.mode === 'env'
                     && selection.envVar
                     && !resolveEnvironmentVariable(selection.envVar, { parseJson: false }).found;
-                  const placeholder = entry.example || entry.description || 'Enter sample value';
                   return (
-                    <li key={`request-hint-${fieldKey}-${index}`} style={styles.hintItem}>
+                    <li key={`request-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
                       <div style={styles.hintFieldRow}>
                         <span style={styles.hintField}>{fieldLabel}</span>
-                        {typeof entry.required === 'boolean' && (
+                        {typeof normalized.required === 'boolean' && (
                           <span
                             style={{
                               ...styles.hintBadge,
-                              ...(entry.required
+                              ...(normalized.required
                                 ? styles.hintBadgeRequired
                                 : styles.hintBadgeOptional),
                             }}
                           >
-                            {entry.required ? 'Required' : 'Optional'}
+                            {normalized.required ? 'Required' : 'Optional'}
                           </span>
                         )}
                       </div>
-                      <div style={styles.paramMeta}>
-                        {entry.source === 'parameter' ? `${entry.location} parameter` : 'Request body'}
-                      </div>
-                      {entry.description && (
-                        <p style={styles.hintDescription}>{entry.description}</p>
+                      {normalized.description && (
+                        <p style={styles.hintDescription}>{normalized.description}</p>
                       )}
                       <div style={styles.requestFieldControls}>
                         <div style={styles.requestFieldModes}>
                           <label style={styles.radioLabel}>
                             <input
                               type="radio"
-                              name={`request-field-mode-${fieldKey}`}
+                              name={`request-field-mode-${fieldLabel}`}
                               checked={selection.mode === 'literal'}
-                              onChange={() => handleRequestFieldValueChange(fieldKey, { mode: 'literal' })}
+                              onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'literal' })}
                             />
                             Literal value
                           </label>
                           <label style={styles.radioLabel}>
                             <input
                               type="radio"
-                              name={`request-field-mode-${fieldKey}`}
+                              name={`request-field-mode-${fieldLabel}`}
                               checked={selection.mode === 'env'}
-                              onChange={() => handleRequestFieldValueChange(fieldKey, { mode: 'env' })}
+                              onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'env' })}
                             />
                             Environment variable
                           </label>
@@ -6692,19 +6515,19 @@ export default function PosApiAdmin() {
                             type="text"
                             value={selection.literal ?? ''}
                             onChange={(e) =>
-                              handleRequestFieldValueChange(fieldKey, { literal: e.target.value })
+                              handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
                             }
-                            placeholder={placeholder}
+                            placeholder="Enter sample value"
                             style={styles.input}
                           />
                         ) : (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
                             <input
                               type="text"
-                              list={`env-options-${fieldKey}`}
+                              list={`env-options-${fieldLabel}`}
                               value={selection.envVar || ''}
                               onChange={(e) =>
-                                handleRequestFieldValueChange(fieldKey, {
+                                handleRequestFieldValueChange(fieldLabel, {
                                   envVar: e.target.value,
                                   mode: 'env',
                                 })
@@ -6712,16 +6535,16 @@ export default function PosApiAdmin() {
                               placeholder="Enter environment variable name"
                               style={styles.input}
                             />
-                            <datalist id={`env-options-${fieldKey}`}>
+                            <datalist id={`env-options-${fieldLabel}`}>
                               {envVariableOptions.map((opt) => (
-                                <option key={`env-${fieldKey}-${opt}`} value={opt} />
+                                <option key={`env-${fieldLabel}-${opt}`} value={opt} />
                               ))}
                             </datalist>
                             <input
                               type="text"
                               value={selection.literal ?? ''}
                               onChange={(e) =>
-                                handleRequestFieldValueChange(fieldKey, { literal: e.target.value })
+                                handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
                               }
                               placeholder="Fallback literal (used if the environment variable is missing)"
                               style={styles.input}
