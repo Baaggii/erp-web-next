@@ -527,8 +527,6 @@ const EMPTY_ENDPOINT = {
   topLevelFieldsText: '[]',
   nestedPathsText: '{}',
   notes: '',
-  adminImplemented: false,
-  adminImplementationNotes: '',
   requestEnvMap: {},
 };
 
@@ -1542,8 +1540,6 @@ function createFormState(definition) {
     topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
-    adminImplemented: Boolean(definition.adminImplemented),
-    adminImplementationNotes: definition.adminImplementationNotes || '',
     requestEnvMap: definition.requestEnvMap || {},
   };
 }
@@ -2183,16 +2179,6 @@ export default function PosApiAdmin() {
   const [infoTableFields, setInfoTableFields] = useState({});
   const [infoTableFieldLoading, setInfoTableFieldLoading] = useState({});
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
-  const [adminUtilitySelection, setAdminUtilitySelection] = useState('');
-  const [adminParameterValues, setAdminParameterValues] = useState({});
-  const [adminNotesDrafts, setAdminNotesDrafts] = useState({});
-  const [adminTestResult, setAdminTestResult] = useState(null);
-  const [adminTestError, setAdminTestError] = useState('');
-  const [adminTestRunning, setAdminTestRunning] = useState(false);
-  const [adminEnvironment, setAdminEnvironment] = useState('staging');
-  const [adminAuthEndpointId, setAdminAuthEndpointId] = useState('');
-  const [adminActivityLog, setAdminActivityLog] = useState([]);
-  const [adminUseCachedToken, setAdminUseCachedToken] = useState(true);
   const builderSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
 
@@ -2440,10 +2426,6 @@ export default function PosApiAdmin() {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
   }, [formState.responseSchemaText]);
-
-  const selectedAdminValues = selectedAdminEndpoint
-    ? adminParameterValues[selectedAdminEndpoint.id] || {}
-    : {};
 
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
@@ -4529,10 +4511,6 @@ export default function PosApiAdmin() {
       allowMultipleReceiptItems,
       receiptItemTemplates,
       notes: formState.notes ? formState.notes.trim() : '',
-      adminImplemented: Boolean(formState.adminImplemented),
-      adminImplementationNotes: formState.adminImplementationNotes
-        ? formState.adminImplementationNotes.trim()
-        : '',
       parameters: parametersWithValues,
       requestBody: {
         schema: requestSchema,
@@ -5002,16 +4980,6 @@ export default function PosApiAdmin() {
           onClick={() => setActiveTab('endpoints')}
         >
           Endpoints
-        </button>
-        <button
-          type="button"
-          style={{
-            ...styles.tabButton,
-            ...(activeTab === 'admin' ? styles.tabButtonActive : {}),
-          }}
-          onClick={() => setActiveTab('admin')}
-        >
-          Admin utilities
         </button>
         <button
           type="button"
@@ -6111,29 +6079,6 @@ export default function PosApiAdmin() {
               placeholder="Explain when to use this endpoint"
             />
           </label>
-          {formState.usage !== 'transaction' && (
-            <div style={styles.inlineFields}>
-              <label style={{ ...styles.checkboxLabel, marginBottom: 0 }}>
-                <input
-                  type="checkbox"
-                  checked={formState.adminImplemented}
-                  onChange={(e) => handleChange('adminImplemented', e.target.checked)}
-                />
-                <span>Mark this admin/lookup endpoint as implemented</span>
-              </label>
-              <label style={{ ...styles.label, flex: 1 }}>
-                Implementation notes
-                <textarea
-                  value={formState.adminImplementationNotes}
-                  onChange={(e) => handleChange('adminImplementationNotes', e.target.value)}
-                  style={styles.textarea}
-                  rows={3}
-                  placeholder="Who implemented this endpoint and what parameters are required?"
-                />
-                <span style={styles.checkboxHint}>Shared with the Admin utilities workspace below.</span>
-              </label>
-            </div>
-          )}
         </div>
 
         <section style={styles.builderSection}>
@@ -7483,298 +7428,6 @@ export default function PosApiAdmin() {
           </div>
         )}
       </div>
-        </div>
-      )}
-
-      {activeTab === 'admin' && (
-        <div style={styles.adminContainer}>
-          <div style={styles.adminSidebar}>
-            <h2 style={{ marginTop: 0 }}>Admin utilities</h2>
-            <p style={styles.helpText}>
-              Manage non-transaction and non-token endpoints, run quick lookups, and capture
-              implementation notes for administrators.
-            </p>
-            <div style={styles.adminList}>
-              {adminUtilityEndpoints.length === 0 && (
-                <div style={styles.sectionHelp}>No admin or lookup endpoints configured yet.</div>
-              )}
-              {adminUtilityEndpoints.map((endpoint) => {
-                const methodColor = METHOD_BADGES[endpoint.method] || '#94a3b8';
-                const typeLabel = formatTypeLabel(endpoint.posApiType || endpoint._type);
-                const usageLabel = formatUsageLabel(endpoint.usage);
-                return (
-                  <button
-                    key={`admin-${endpoint.id}`}
-                    type="button"
-                    onClick={() => setAdminUtilitySelection(endpoint.id)}
-                    style={{
-                      ...styles.adminListButton,
-                      ...(endpoint.id === adminUtilitySelection ? styles.adminListButtonActive : {}),
-                    }}
-                  >
-                    <div style={styles.adminListTitle}>{endpoint.name || endpoint.id}</div>
-                    <div style={styles.badgeStack}>
-                      <span style={badgeStyle(methodColor)}>{endpoint.method}</span>
-                      {usageLabel && (
-                        <span style={{ ...badgeStyle(USAGE_BADGES[endpoint.usage] || '#0ea5e9'), textTransform: 'none' }}>
-                          {usageLabel}
-                        </span>
-                      )}
-                      {typeLabel && (
-                        <span style={{ ...badgeStyle(TYPE_BADGES[endpoint.posApiType] || '#1f2937'), textTransform: 'none' }}>
-                          {typeLabel}
-                        </span>
-                      )}
-                      {endpoint.adminImplemented && (
-                        <span style={{ ...badgeStyle('#15803d'), textTransform: 'none' }}>Implemented</span>
-                      )}
-                    </div>
-                    <div style={styles.adminListPath}>{endpoint.path}</div>
-                    {endpoint.adminImplementationNotes && (
-                      <div style={styles.adminListNotes}>{endpoint.adminImplementationNotes}</div>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          <div style={styles.adminContent}>
-            {!selectedAdminEndpoint && (
-              <div style={styles.sectionHelp}>Select an admin or lookup endpoint to manage.</div>
-            )}
-            {selectedAdminEndpoint && (
-              <>
-                <div style={styles.adminHeader}>
-                  <div>
-                    <div style={styles.adminTitleRow}>
-                      <h2 style={styles.adminHeading}>{selectedAdminEndpoint.name || selectedAdminEndpoint.id}</h2>
-                      <div style={styles.badgeStack}>
-                        <span style={badgeStyle(METHOD_BADGES[selectedAdminEndpoint.method] || '#94a3b8')}>
-                          {selectedAdminEndpoint.method}
-                        </span>
-                        <span style={{ ...badgeStyle(USAGE_BADGES[selectedAdminEndpoint.usage] || '#0ea5e9'), textTransform: 'none' }}>
-                          {formatUsageLabel(selectedAdminEndpoint.usage)}
-                        </span>
-                        {selectedAdminEndpoint.posApiType && (
-                          <span style={{ ...badgeStyle(TYPE_BADGES[selectedAdminEndpoint.posApiType] || '#1f2937'), textTransform: 'none' }}>
-                            {formatTypeLabel(selectedAdminEndpoint.posApiType)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div style={styles.adminPath}>{selectedAdminEndpoint.method} {selectedAdminEndpoint.path}</div>
-                    {selectedAdminEndpoint.adminImplemented && (
-                      <div style={styles.implementedTag}>Marked as implemented</div>
-                    )}
-                    {selectedAdminEndpoint.adminImplementationNotes && (
-                      <div style={styles.helpText}>{selectedAdminEndpoint.adminImplementationNotes}</div>
-                    )}
-                  </div>
-                </div>
-
-                <div style={styles.inlineFields}>
-                  <label style={{ ...styles.label, flex: 1 }}>
-                    Environment
-                    <select
-                      value={adminEnvironment}
-                      onChange={(e) => setAdminEnvironment(e.target.value)}
-                      style={styles.input}
-                    >
-                      <option value="staging">Staging / test</option>
-                      <option value="production">Production</option>
-                    </select>
-                  </label>
-                  <label style={{ ...styles.label, flex: 1 }}>
-                    Token endpoint (optional)
-                    <select
-                      value={adminAuthEndpointId}
-                      onChange={(e) => setAdminAuthEndpointId(e.target.value)}
-                      style={styles.input}
-                    >
-                      <option value="">No token</option>
-                      {authEndpointOptions.map((endpoint) => (
-                        <option key={`admin-auth-${endpoint.id}`} value={endpoint.id}>
-                          {endpoint.name || endpoint.id}
-                        </option>
-                      ))}
-                    </select>
-                    <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
-                      <input
-                        type="checkbox"
-                        checked={adminUseCachedToken}
-                        onChange={(e) => setAdminUseCachedToken(e.target.checked)}
-                      />
-                      <span>Reuse cached token when available</span>
-                    </label>
-                  </label>
-                </div>
-
-                <div style={styles.adminParamsCard}>
-                  <div style={styles.adminParamsHeader}>
-                    <h3 style={{ margin: 0 }}>Endpoint parameters</h3>
-                    <div style={styles.helpText}>Provide values before invoking POSAPI lookup-style calls.</div>
-                  </div>
-                  {(!selectedAdminEndpoint.parameters || selectedAdminEndpoint.parameters.length === 0) && (
-                    <div style={styles.sectionHelp}>No query, path, or header parameters defined.</div>
-                  )}
-                  {['path', 'query', 'header'].map((loc) => {
-                    const items = adminParameterGroups[loc] || [];
-                    if (!items.length) return null;
-                    const title = loc === 'path'
-                      ? 'Path parameters'
-                      : loc === 'header'
-                        ? 'Header parameters'
-                        : 'Query parameters';
-                    return (
-                      <div key={`${selectedAdminEndpoint.id}-${loc}`} style={styles.adminParamGroup}>
-                        <div style={styles.adminParamTitle}>{title}</div>
-                        <div style={styles.adminParamGrid}>
-                          {items.map((param) => (
-                            <label key={`${selectedAdminEndpoint.id}-${param.name}-${loc}`} style={styles.label}>
-                              {param.name}
-                              <input
-                                type="text"
-                                value={selectedAdminValues[param.name] ?? ''}
-                                onChange={(e) =>
-                                  setAdminParameterValues((prev) => ({
-                                    ...prev,
-                                    [selectedAdminEndpoint.id]: {
-                                      ...(prev[selectedAdminEndpoint.id] || {}),
-                                      [param.name]: e.target.value,
-                                    },
-                                  }))
-                                }
-                                placeholder={param.description || param.example || ''}
-                                style={styles.input}
-                              />
-                              <div style={styles.paramMeta}>
-                                {loc} {param.required ? '• required' : ''}
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div style={styles.inlineFields}>
-                  <label style={{ ...styles.label, flex: 1 }}>
-                    Implementation notes
-                    <textarea
-                      value={adminNotesDrafts[selectedAdminEndpoint.id] || ''}
-                      onChange={(e) =>
-                        setAdminNotesDrafts((prev) => ({
-                          ...prev,
-                          [selectedAdminEndpoint.id]: e.target.value,
-                        }))
-                      }
-                      style={styles.textarea}
-                      rows={3}
-                      placeholder="Document parameters, pre-requisites, or usage tips for admins"
-                    />
-                  </label>
-                </div>
-
-                <div style={styles.adminActions}>
-                  <button type="button" style={styles.smallButton} onClick={handleAdminSaveNotes}>
-                    Save notes
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.smallButton}
-                    onClick={handleAdminMarkImplemented}
-                    disabled={selectedAdminEndpoint.adminImplemented}
-                  >
-                    {selectedAdminEndpoint.adminImplemented ? 'Already implemented' : 'Mark implemented'}
-                  </button>
-                  <button
-                    type="button"
-                    style={styles.smallButton}
-                    onClick={handleAdminCall}
-                    disabled={adminTestRunning}
-                  >
-                    {adminTestRunning ? 'Calling…' : 'Run admin endpoint'}
-                  </button>
-                </div>
-                {adminTestError && <div style={styles.error}>{adminTestError}</div>}
-                {adminTestResult && (
-                  <div style={styles.adminResultBox}>
-                    <div style={styles.adminResultHeader}>
-                      <div>Result</div>
-                      <span style={{
-                        ...styles.statusPill,
-                        ...(adminTestResult.response?.ok ? styles.statusPillSuccess : styles.statusPillError),
-                      }}>
-                        {adminTestResult.response?.status || 'Unknown'} {adminTestResult.response?.statusText || ''}
-                      </span>
-                    </div>
-                    <div style={styles.adminResultGrid}>
-                      <div>
-                        <h4 style={styles.testColumnTitle}>Request</h4>
-                        <div style={styles.metaList}>
-                          <div style={styles.metaRow}>
-                            <span style={styles.metaKey}>Method</span>
-                            <span>{adminTestResult.request?.method}</span>
-                          </div>
-                          <div style={styles.metaRow}>
-                            <span style={styles.metaKey}>URL</span>
-                            <span style={styles.wrapText}>{adminTestResult.request?.url}</span>
-                          </div>
-                        </div>
-                        {adminTestResult.request?.body && (
-                          <pre style={styles.codeBlock}>
-                            {JSON.stringify(adminTestResult.request.body, null, 2)}
-                          </pre>
-                        )}
-                      </div>
-                      <div>
-                        <h4 style={styles.testColumnTitle}>Response</h4>
-                        {adminTestResult.response?.bodyJson ? (
-                          <pre style={styles.codeBlock}>
-                            {JSON.stringify(adminTestResult.response.bodyJson, null, 2)}
-                          </pre>
-                        ) : (
-                          <pre style={styles.codeBlock}>{adminTestResult.response?.bodyText}</pre>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div style={styles.logsCard}>
-                  <h3 style={{ marginTop: 0 }}>Admin activity log</h3>
-                  {adminActivityLog.length === 0 && (
-                    <p style={{ margin: 0 }}>No admin activity recorded in this session.</p>
-                  )}
-                  {adminActivityLog.length > 0 && (
-                    <table style={styles.logTable}>
-                      <thead>
-                        <tr>
-                          <th>Date</th>
-                          <th>Action</th>
-                          <th>Endpoint</th>
-                          <th>Status</th>
-                          <th>Details</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {adminActivityLog.map((log, index) => (
-                          <tr key={`${log.endpointId}-${log.timestamp}-${index}`}>
-                            <td>{new Date(log.timestamp).toLocaleString()}</td>
-                            <td>{log.action}</td>
-                            <td>{log.endpointName}</td>
-                            <td>{log.status}</td>
-                            <td>{log.details}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              </>
-            )}
-          </div>
         </div>
       )}
 
@@ -9293,140 +8946,5 @@ const styles = {
   statusPillError: {
     background: '#fee2e2',
     color: '#991b1b',
-  },
-  adminContainer: {
-    display: 'grid',
-    gridTemplateColumns: '320px 1fr',
-    gap: '1rem',
-    alignItems: 'flex-start',
-  },
-  adminSidebar: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    padding: '1rem',
-    background: '#f8fafc',
-    maxHeight: 'calc(100vh - 160px)',
-    overflowY: 'auto',
-  },
-  adminList: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-  },
-  adminListButton: {
-    width: '100%',
-    textAlign: 'left',
-    border: '1px solid #e2e8f0',
-    background: '#fff',
-    borderRadius: '8px',
-    padding: '0.75rem',
-    cursor: 'pointer',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35rem',
-  },
-  adminListButtonActive: {
-    borderColor: '#2563eb',
-    background: '#e0f2fe',
-  },
-  adminListTitle: {
-    fontWeight: 700,
-    color: '#0f172a',
-  },
-  adminListPath: {
-    fontSize: '0.9rem',
-    color: '#334155',
-  },
-  adminListNotes: {
-    fontSize: '0.85rem',
-    color: '#475569',
-  },
-  adminContent: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    padding: '1rem',
-    background: '#fff',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '1rem',
-  },
-  adminHeader: {
-    borderBottom: '1px solid #e2e8f0',
-    paddingBottom: '0.75rem',
-  },
-  adminTitleRow: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '0.75rem',
-  },
-  adminHeading: {
-    margin: 0,
-  },
-  adminPath: {
-    marginTop: '0.25rem',
-    color: '#334155',
-    fontWeight: 600,
-  },
-  implementedTag: {
-    marginTop: '0.35rem',
-    display: 'inline-block',
-    background: '#dcfce7',
-    color: '#166534',
-    padding: '0.25rem 0.5rem',
-    borderRadius: '6px',
-    fontWeight: 700,
-    fontSize: '0.85rem',
-  },
-  adminParamsCard: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-    padding: '1rem',
-    background: '#f8fafc',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-  },
-  adminParamsHeader: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.25rem',
-  },
-  adminParamGroup: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35rem',
-  },
-  adminParamTitle: {
-    fontWeight: 700,
-    color: '#0f172a',
-  },
-  adminParamGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '0.75rem',
-  },
-  adminActions: {
-    display: 'flex',
-    gap: '0.75rem',
-    flexWrap: 'wrap',
-    alignItems: 'center',
-  },
-  adminResultBox: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    padding: '1rem',
-    background: '#fff',
-  },
-  adminResultHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: '0.75rem',
-  },
-  adminResultGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-    gap: '0.75rem',
   },
 };
