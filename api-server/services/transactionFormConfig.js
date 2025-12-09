@@ -351,6 +351,34 @@ function sanitizeEndpointForClient(endpoint) {
           .filter(Boolean)
       : [];
 
+  const sanitizeParameters = (list) =>
+    Array.isArray(list)
+      ? list
+          .map((entry) => {
+            if (!entry || typeof entry !== 'object') return null;
+            const name = typeof entry.name === 'string' ? entry.name.trim() : '';
+            if (!name) return null;
+            const location = typeof entry.in === 'string' ? entry.in.trim() : '';
+            return {
+              name,
+              in: location || undefined,
+              required: Boolean(entry.required),
+              description:
+                typeof entry.description === 'string' ? entry.description : undefined,
+              example:
+                entry.example !== undefined && entry.example !== null
+                  ? entry.example
+                  : undefined,
+              default:
+                entry.default !== undefined && entry.default !== null
+                  ? entry.default
+                  : undefined,
+              enum: Array.isArray(entry.enum) ? entry.enum.filter(Boolean) : undefined,
+            };
+          })
+          .filter(Boolean)
+      : [];
+
   const sanitized = {
     id: typeof endpoint.id === 'string' ? endpoint.id : '',
     name: typeof endpoint.name === 'string' ? endpoint.name : '',
@@ -377,6 +405,9 @@ function sanitizeEndpointForClient(endpoint) {
   if (derivedHints) {
     sanitized.mappingHints = derivedHints;
   }
+
+  const parameters = sanitizeParameters(endpoint.parameters);
+  if (parameters.length) sanitized.parameters = parameters;
 
   if (endpoint.receiptTypeDescriptions) {
     sanitized.receiptTypeDescriptions = endpoint.receiptTypeDescriptions;
