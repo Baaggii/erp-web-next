@@ -1216,14 +1216,15 @@ const RowFormModal = function RowFormModal({
           throw new Error(message || res.statusText || 'Lookup failed');
         }
         const data = await res.json();
-        setInfoResponse(data.response ?? null);
+        const responsePayload = data?.response ?? data ?? null;
+        setInfoResponse(responsePayload);
         setInfoHistory((prev) => [
           ...prev.slice(-4),
           {
             timestamp: new Date().toISOString(),
             endpointId: endpoint.id,
             payload: sanitizedPayload,
-            response: data.response ?? null,
+            response: responsePayload,
           },
         ]);
       } catch (err) {
@@ -1247,9 +1248,13 @@ const RowFormModal = function RowFormModal({
     const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
     if (!endpoint) {
       setInfoPayload({});
+      setInfoResponse(null);
+      setInfoError(null);
       return;
     }
-    setInfoPayload((prev) => buildPayloadForEndpoint(endpoint, prev));
+    setInfoPayload(buildPayloadForEndpoint(endpoint, {}));
+    setInfoResponse(null);
+    setInfoError(null);
   }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, buildPayloadForEndpoint]);
   useEffect(() => {
     if (!infoModalOpen) {
