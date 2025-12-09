@@ -449,6 +449,9 @@ const EMPTY_ENDPOINT = {
   fieldDescriptionsText: '{}',
   requestFieldsText: '[]',
   responseFieldsText: '[]',
+  examplesText: '[]',
+  preRequestScript: '',
+  testScript: '',
   testable: false,
   serverUrl: '',
   serverUrlEnvVar: '',
@@ -1011,6 +1014,15 @@ function normalizeEnvVarName(value) {
   return value.replace(/^{{\s*/, '').replace(/\s*}}$/, '').trim();
 }
 
+function splitScriptText(text = '') {
+  const trimmed = (text || '').trim();
+  if (!trimmed) return [];
+  return trimmed
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
 function resolveUrlWithEnv({ literal, envVar, mode }) {
   const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
   const trimmedEnvVar = normalizeEnvVarName(envVar);
@@ -1238,7 +1250,7 @@ function buildRequestFieldDisplayFromState(state) {
 
   if (parameterPreview.state === 'ok') {
     parameterPreview.items
-      .filter((param) => param.name && ['query', 'path'].includes(param.in))
+      .filter((param) => param.name && ['query', 'path', 'header'].includes(param.in))
       .forEach((param) => {
         if (seen.has(param.name)) return;
         seen.add(param.name);
@@ -1433,6 +1445,15 @@ function createFormState(definition) {
     fieldDescriptionsText: toPrettyJson(definition.fieldDescriptions, '{}'),
     requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
+    examplesText: toPrettyJson(definition.examples, '[]'),
+    preRequestScript:
+      Array.isArray(definition.scripts?.preRequest)
+        ? definition.scripts.preRequest.join('\n\n')
+        : definition.preRequestScript || '',
+    testScript:
+      Array.isArray(definition.scripts?.test)
+        ? definition.scripts.test.join('\n\n')
+        : definition.testScript || '',
     testable: Boolean(definition.testable),
     serverUrl: serverUrlField.literal,
     serverUrlEnvVar: serverUrlField.envVar,
@@ -2088,6 +2109,8 @@ export default function PosApiAdmin() {
   const [importTestResult, setImportTestResult] = useState(null);
   const [importTestRunning, setImportTestRunning] = useState(false);
   const [importTestError, setImportTestError] = useState('');
+  const [importSelectedExampleKey, setImportSelectedExampleKey] = useState('');
+  const [importExampleResponse, setImportExampleResponse] = useState(null);
   const [importUseCachedToken, setImportUseCachedToken] = useState(true);
   const [importBaseUrl, setImportBaseUrl] = useState('');
   const [importBaseUrlEnvVar, setImportBaseUrlEnvVar] = useState('');
@@ -3680,10 +3703,42 @@ export default function PosApiAdmin() {
     setImportTestRunning(false);
   }
 
+  function applyImportExample(example, draft) {
+    if (!example) return;
+    const targetDraft = draft || activeImportDraft;
+    setImportSelectedExampleKey(example.key || example.name || '');
+    const baseDefaults = buildDraftParameterDefaults(targetDraft?.parameters || []);
+    const nextValues = { ...baseDefaults };
+    (example.request?.queryParams || []).forEach((param) => {
+      if (!param?.name) return;
+      nextValues[param.name] = param.value ?? param.example ?? '';
+    });
+    if (example.request?.headers) {
+      Object.entries(example.request.headers).forEach(([name, value]) => {
+        nextValues[name] = value ?? '';
+      });
+    }
+    setImportTestValues(nextValues);
+    if (example.request?.body !== undefined) {
+      try {
+        setImportRequestBody(
+          typeof example.request.body === 'string'
+            ? example.request.body
+            : JSON.stringify(example.request.body, null, 2),
+        );
+      } catch {
+        setImportRequestBody(String(example.request.body));
+      }
+    }
+    setImportExampleResponse(example.response || null);
+  }
+
   function prepareDraftDefaults(draft) {
     if (!draft) return;
     importAuthSelectionDirtyRef.current = false;
     setSelectedImportId(draft.id || '');
+    setImportSelectedExampleKey('');
+    setImportExampleResponse(null);
     setImportTestValues(buildDraftParameterDefaults(draft.parameters || []));
     if (draft.requestExample !== undefined) {
       if (typeof draft.requestExample === 'string') {
@@ -3711,6 +3766,9 @@ export default function PosApiAdmin() {
     }
     if (!importAuthEndpointId && formState.authEndpointId) {
       setImportAuthEndpointId(formState.authEndpointId);
+    }
+    if (Array.isArray(draft.examples) && draft.examples.length > 0) {
+      applyImportExample(draft.examples[0], draft);
     }
     resetImportTestState();
   }
@@ -3901,6 +3959,8 @@ export default function PosApiAdmin() {
       responseBody: activeImportDraft.responseBody,
       requestFields: activeImportDraft.requestFields || [],
       responseFields: activeImportDraft.responseFields || [],
+      examples: activeImportDraft.examples || [],
+      scripts: activeImportDraft.scripts || {},
       mappingHints: activeImportDraft.mappingHints || {},
       supportsItems: activeImportDraft.supportsItems ?? inferredUsage === 'transaction',
       supportsMultiplePayments: activeImportDraft.supportsMultiplePayments ?? false,
@@ -4177,6 +4237,16 @@ export default function PosApiAdmin() {
       throw new Error('Response field hints must be a JSON array');
     }
 
+    const examples = parseJsonInput('Examples', formState.examplesText, []);
+    if (!Array.isArray(examples)) {
+      throw new Error('Examples must be a JSON array');
+    }
+
+    const scripts = {
+      preRequest: splitScriptText(formState.preRequestScript),
+      test: splitScriptText(formState.testScript),
+    };
+
     const sanitizedRequestFields = requestFieldsRaw.map((entry) => {
       const normalized = normalizeHintEntry(entry);
       if (!normalized.field) {
@@ -4308,6 +4378,8 @@ export default function PosApiAdmin() {
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: sanitizedRequestFields,
       responseFields,
+      examples,
+      scripts,
       testable: Boolean(formState.testable),
       serverUrl: serverUrlField.literal,
       serverUrlEnvVar: serverUrlField.envVar,
@@ -5230,6 +5302,53 @@ export default function PosApiAdmin() {
                             );
                           })}
                         </div>
+                        {Array.isArray(activeImportDraft.examples) && activeImportDraft.examples.length > 0 && (
+                          <div style={styles.importFieldRow}>
+                            <div style={styles.importParamsHeader}>Examples</div>
+                            <div style={styles.importParamGrid}>
+                              <label style={styles.label}>
+                                Select example
+                                <select
+                                  style={styles.input}
+                                  value={importSelectedExampleKey}
+                                  onChange={(e) => {
+                                    const selected = activeImportDraft.examples.find(
+                                      (ex) => ex.key === e.target.value || ex.name === e.target.value,
+                                    );
+                                    if (selected) {
+                                      applyImportExample(selected);
+                                    } else {
+                                      setImportSelectedExampleKey(e.target.value);
+                                    }
+                                  }}
+                                >
+                                  <option value="">Choose…</option>
+                                  {activeImportDraft.examples.map((example) => (
+                                    <option key={example.key || example.name} value={example.key || example.name}>
+                                      {example.name || example.key}
+                                    </option>
+                                  ))}
+                                </select>
+                                <span style={styles.fieldHelp}>
+                                  Applying an example fills parameters, headers, and body with sample values.
+                                </span>
+                              </label>
+                              {importExampleResponse && (
+                                <div style={styles.previewCard}>
+                                  <div style={styles.previewHeader}>
+                                    <strong>Expected response</strong>
+                                    <span style={{ ...styles.statusPill, ...styles.statusPillSuccess }}>
+                                      {importExampleResponse.status || 'Unknown'}
+                                    </span>
+                                  </div>
+                                  <pre style={styles.samplePre}>
+                                    {JSON.stringify(importExampleResponse.body, null, 2)}
+                                  </pre>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
                         <div style={styles.importFieldRow}>
                           <div style={styles.importParamsHeader}>Request body</div>
                           <textarea
@@ -6630,6 +6749,35 @@ export default function PosApiAdmin() {
             onChange={(e) => handleChange('responseSchemaText', e.target.value)}
             style={styles.textarea}
             rows={10}
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Examples (JSON array)
+          <textarea
+            value={formState.examplesText}
+            onChange={(e) => handleChange('examplesText', e.target.value)}
+            style={styles.textarea}
+            rows={6}
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Pre-request script
+          <textarea
+            value={formState.preRequestScript}
+            onChange={(e) => handleChange('preRequestScript', e.target.value)}
+            style={styles.textarea}
+            rows={4}
+            placeholder="Captured from Postman collection events"
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Test script
+          <textarea
+            value={formState.testScript}
+            onChange={(e) => handleChange('testScript', e.target.value)}
+            style={styles.textarea}
+            rows={4}
+            placeholder="Postman test scripts preserved for reference"
           />
         </label>
         <label style={styles.labelFull}>
