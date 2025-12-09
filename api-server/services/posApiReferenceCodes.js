@@ -20,6 +20,7 @@ const DEFAULT_SETTINGS = {
   usage: 'all',
   endpointIds: [],
   tables: [],
+  fieldMappings: {},
 };
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -83,6 +84,35 @@ function normalizeUsage(value) {
   return normalized || 'transaction';
 }
 
+function sanitizeIdentifier(name) {
+  const normalized = String(name || '').trim();
+  if (!normalized) return '';
+  return /^[a-zA-Z0-9_]+$/.test(normalized) ? normalized : '';
+}
+
+function sanitizeFieldMappings(raw, allowedTables = []) {
+  const result = {};
+  if (!raw || typeof raw !== 'object') return result;
+  const allowedSet = new Set((allowedTables || []).map((value) => String(value || '').trim()).filter(Boolean));
+  Object.entries(raw).forEach(([endpointId, mappings]) => {
+    const normalizedEndpoint = String(endpointId || '').trim();
+    if (!normalizedEndpoint || !mappings || typeof mappings !== 'object') return;
+    const tableMap = {};
+    Object.entries(mappings).forEach(([sourceField, target]) => {
+      const normalizedField = String(sourceField || '').trim();
+      const targetTable = sanitizeIdentifier(target?.table);
+      const targetColumn = sanitizeIdentifier(target?.column);
+      if (!normalizedField || !targetTable || !targetColumn) return;
+      if (allowedSet.size > 0 && !allowedSet.has(targetTable)) return;
+      tableMap[normalizedField] = { table: targetTable, column: targetColumn };
+    });
+    if (Object.keys(tableMap).length > 0) {
+      result[normalizedEndpoint] = tableMap;
+    }
+  });
+  return result;
+}
+
 function sanitizeIdList(list) {
   return Array.isArray(list)
     ? Array.from(
@@ -127,7 +157,7 @@ export async function loadSyncSettings() {
               .map((value) => value.trim())
               .filter(Boolean),
           ),
-        )
+      )
       : DEFAULT_SETTINGS.endpointIds,
     tables: Array.isArray(settings.tables)
       ? Array.from(
@@ -139,6 +169,7 @@ export async function loadSyncSettings() {
           ),
         )
       : DEFAULT_SETTINGS.tables,
+    fieldMappings: sanitizeFieldMappings(settings.fieldMappings, settings.tables),
   };
 }
 
@@ -168,6 +199,7 @@ export async function saveSyncSettings(settings) {
         )
       : DEFAULT_SETTINGS.tables,
   };
+  sanitized.fieldMappings = sanitizeFieldMappings(settings?.fieldMappings, sanitized.tables);
   await writeJson(settingsPath, sanitized);
   return sanitized;
 }
@@ -267,6 +299,96 @@ function parseCodesFromEndpoint(endpointId, response) {
   return [];
 }
 
+function extractResponseRecords(response) {
+  if (Array.isArray(response)) return response;
+  if (response && typeof response === 'object') {
+    const arrayProps = Object.values(response).find((value) => Array.isArray(value));
+    if (Array.isArray(arrayProps)) return arrayProps;
+  }
+  return [response];
+}
+
+function resolveValue(obj, path) {
+  if (!path) return undefined;
+  const segments = String(path)
+    .split('.')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  let current = obj;
+  for (const segment of segments) {
+    if (current === undefined || current === null) return undefined;
+    const isArraySegment = segment.endsWith('[]');
+    const key = isArraySegment ? segment.slice(0, -2) : segment;
+    const next = key ? current[key] : current;
+    if (next === undefined || next === null) return undefined;
+    if (isArraySegment) {
+      if (Array.isArray(next)) {
+        current = next[0];
+      } else {
+        current = next;
+      }
+    } else {
+      current = next;
+    }
+  }
+  return current;
+}
+
+async function applyFieldMappings({ response, mappings }) {
+  if (!response || !mappings || typeof mappings !== 'object') return { rows: 0 };
+  const mappedRowsByTable = {};
+  const records = extractResponseRecords(response);
+  Object.entries(mappings).forEach(([sourceField, target]) => {
+    if (!sourceField || !target || typeof target !== 'object') return;
+    const { table, column } = target;
+    if (!table || !column) return;
+    if (!mappedRowsByTable[table]) mappedRowsByTable[table] = new Map();
+    const tableMap = mappedRowsByTable[table];
+    records.forEach((record) => {
+      if (record === undefined || record === null) return;
+      const value = resolveValue(record, sourceField);
+      if (value === undefined || value === null) return;
+      const serialized = typeof value === 'object' ? JSON.stringify(value) : value;
+      const compositeKey = JSON.stringify(record);
+      const existing = tableMap.get(compositeKey) || {};
+      existing[column] = serialized;
+      tableMap.set(compositeKey, existing);
+    });
+  });
+
+  let totalRows = 0;
+  for (const [table, rowMap] of Object.entries(mappedRowsByTable)) {
+    const rows = Array.from(rowMap.values());
+    if (rows.length === 0) continue;
+    const columns = Array.from(
+      new Set(
+        rows
+          .map((row) => Object.keys(row))
+          .flat()
+          .map((name) => sanitizeIdentifier(name))
+          .filter(Boolean),
+      ),
+    );
+    if (columns.length === 0) continue;
+    const escapedColumns = columns.map((col) => `\`${col}\``).join(',');
+    const placeholders = `(${columns.map(() => '?').join(',')})`;
+    const values = [];
+    rows.forEach((row) => {
+      columns.forEach((col) => {
+        values.push(row[col] ?? null);
+      });
+    });
+    const sql = `INSERT INTO \`${table}\` (${escapedColumns}) VALUES ${rows
+      .map(() => placeholders)
+      .join(',')} ON DUPLICATE KEY UPDATE ${columns
+      .map((col) => `\`${col}\` = VALUES(\`${col}\`)`)
+      .join(',')}`;
+    const [result] = await pool.query(sql, values);
+    totalRows += Number(result?.affectedRows) || rows.length;
+  }
+  return { rows: totalRows };
+}
+
 export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   const startedAt = new Date();
   const settings = await loadSyncSettings();
@@ -277,6 +399,16 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   const desiredUsage = normalizeUsage(normalizedUsage);
   const selectedEndpointIds = sanitizeIdList(
     Object.prototype.hasOwnProperty.call(options, 'endpointIds') ? options.endpointIds : settings.endpointIds,
+  );
+  const targetTables =
+    Object.prototype.hasOwnProperty.call(options, 'tables') && Array.isArray(options.tables)
+      ? options.tables
+      : settings.tables;
+  const fieldMappings = sanitizeFieldMappings(
+    Object.prototype.hasOwnProperty.call(options, 'fieldMappings')
+      ? options.fieldMappings
+      : settings.fieldMappings,
+    targetTables,
   );
   const infoEndpoints = endpoints
     .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
@@ -296,6 +428,12 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   for (const endpoint of infoEndpoints) {
     try {
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
+      if (fieldMappings[endpoint.id]) {
+        const result = await applyFieldMappings({ response, mappings: fieldMappings[endpoint.id] });
+        summary.updated += Number(result?.rows) || 0;
+        summary.successful += 1;
+        continue;
+      }
       const codes = parseCodesFromEndpoint(endpoint.id, response);
       summary.successful += 1;
       if (!codes.length) continue;
