@@ -574,6 +574,36 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [columns]);
+  const isHeaderLocation = React.useCallback((value) => {
+    if (typeof value !== 'string') return false;
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'header' || normalized === 'headers';
+  }, []);
+  const isHeaderParameter = React.useCallback(
+    (param) => {
+      if (!param || typeof param !== 'object') return false;
+      const locationCandidates = [
+        param.in,
+        param.location,
+        param.loc,
+        param.scope,
+        param.place,
+        param.target,
+        param.position,
+        param.type,
+        param.paramType,
+      ];
+      if (locationCandidates.some((candidate) => isHeaderLocation(candidate))) return true;
+      const name =
+        (typeof param.name === 'string' && param.name) ||
+        (typeof param.field === 'string' && param.field) ||
+        '';
+      if (!name) return false;
+      const lower = name.toLowerCase();
+      return lower === 'accept' || lower === 'authorization' || lower === 'content-type';
+    },
+    [isHeaderLocation],
+  );
   const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
   const defaultValuesKey = React.useMemo(
     () => JSON.stringify(defaultValues || {}),
@@ -798,14 +828,18 @@ const RowFormModal = function RowFormModal({
         const parameterFields = Array.isArray(entry.parameters)
           ? entry.parameters
               .map((param) => {
+                if (isHeaderParameter(param)) return null;
                 const field = typeof param.name === 'string' ? param.name : '';
                 if (!field) return null;
                 const description =
                   typeof param.description === 'string' && param.description
                     ? param.description
                     : undefined;
-                const location = typeof param.in === 'string' && param.in ? param.in : '';
-                const suffix = location ? ` (${location})` : '';
+                const locationRaw =
+                  (typeof param.in === 'string' && param.in) ||
+                  (typeof param.location === 'string' && param.location) ||
+                  '';
+                const suffix = locationRaw ? ` (${locationRaw})` : '';
                 return {
                   field,
                   required: Boolean(param.required),
@@ -814,7 +848,17 @@ const RowFormModal = function RowFormModal({
               })
               .filter(Boolean)
           : [];
-        const requestFields = Array.isArray(entry.requestFields) ? entry.requestFields : [];
+        const requestFields = Array.isArray(entry.requestFields)
+          ? entry.requestFields.filter((field) => {
+              if (!field || typeof field !== 'object') return true;
+              if (isHeaderParameter(field)) return false;
+              const locationRaw =
+                (typeof field.location === 'string' && field.location) ||
+                (typeof field.in === 'string' && field.in) ||
+                '';
+              return !isHeaderLocation(locationRaw);
+            })
+          : [];
         const combinedRequestFields = [...requestFields];
         parameterFields.forEach((param) => {
           if (combinedRequestFields.some((field) => field?.field === param.field)) return;
@@ -1216,14 +1260,15 @@ const RowFormModal = function RowFormModal({
           throw new Error(message || res.statusText || 'Lookup failed');
         }
         const data = await res.json();
-        setInfoResponse(data.response ?? null);
+        const responsePayload = data?.response ?? data ?? null;
+        setInfoResponse(responsePayload);
         setInfoHistory((prev) => [
           ...prev.slice(-4),
           {
             timestamp: new Date().toISOString(),
             endpointId: endpoint.id,
             payload: sanitizedPayload,
-            response: data.response ?? null,
+            response: responsePayload,
           },
         ]);
       } catch (err) {
@@ -1247,9 +1292,16 @@ const RowFormModal = function RowFormModal({
     const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
     if (!endpoint) {
       setInfoPayload({});
+      setInfoResponse(null);
+      setInfoError(null);
+      setInfoLoading(false);
       return;
     }
-    setInfoPayload((prev) => buildPayloadForEndpoint(endpoint, prev));
+    const nextPayload = buildPayloadForEndpoint(endpoint, {});
+    setInfoPayload(nextPayload);
+    setInfoResponse(null);
+    setInfoError(null);
+    setInfoLoading(false);
   }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, buildPayloadForEndpoint]);
   useEffect(() => {
     if (!infoModalOpen) {
@@ -1273,6 +1325,31 @@ const RowFormModal = function RowFormModal({
     setInfoError(null);
     setInfoResponse(null);
   }, []);
+  const resetInfoEndpointState = useCallback(
+    (endpointId) => {
+      const endpoint = infoEndpoints.find((entry) => entry.id === endpointId);
+      if (!endpoint) {
+        setInfoPayload({});
+        setInfoResponse(null);
+        setInfoError(null);
+        setInfoLoading(false);
+        return;
+      }
+      const nextPayload = buildPayloadForEndpoint(endpoint, {});
+      setInfoPayload(nextPayload);
+      setInfoResponse(null);
+      setInfoError(null);
+      setInfoLoading(false);
+    },
+    [infoEndpoints, buildPayloadForEndpoint],
+  );
+  const handleChangeActiveInfoEndpoint = useCallback(
+    (endpointId) => {
+      setActiveInfoEndpointId(endpointId);
+      resetInfoEndpointState(endpointId);
+    },
+    [resetInfoEndpointState],
+  );
   const openInfoModalForEndpoint = useCallback(
     (endpointId, { autoInvoke = false } = {}) => {
       if (!endpointId) return;
@@ -3818,7 +3895,7 @@ const RowFormModal = function RowFormModal({
               <select
                 className="border border-gray-300 rounded px-2 py-1 text-sm"
                 value={activeInfoEndpointId}
-                onChange={(e) => setActiveInfoEndpointId(e.target.value)}
+                onChange={(e) => handleChangeActiveInfoEndpoint(e.target.value)}
               >
                 {infoEndpoints.map((endpoint) => {
                   const optionLabel =
