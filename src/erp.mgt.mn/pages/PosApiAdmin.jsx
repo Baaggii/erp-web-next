@@ -310,9 +310,10 @@ function formatTableLabel(value) {
 }
 
 function formatTableDisplay(value, label) {
-  const baseLabel = label || formatTableLabel(value);
-  if (!value) return baseLabel;
-  return `${baseLabel} (${value})`;
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (normalized) return normalized;
+  const baseLabel = typeof label === 'string' ? label.trim() : '';
+  return baseLabel || '';
 }
 
 function buildTableOptions(tables) {
@@ -324,9 +325,17 @@ function buildTableOptions(tables) {
         return { value: table, label: formatTableDisplay(table) };
       }
       if (typeof table === 'object') {
-        const value = typeof table.value === 'string' ? table.value.trim() : '';
+        const value = [
+          table.value,
+          table.table_name,
+          table.tableName,
+          table.name,
+        ]
+          .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+          .find(Boolean);
         if (!value) return null;
-        return { value, label: formatTableDisplay(value, table.label) };
+        const label = table.label || table.table_comment || table.comment || table.description;
+        return { value, label: formatTableDisplay(value, label) };
       }
       return null;
     })
@@ -381,6 +390,10 @@ function extractFieldName(field) {
     field.column ||
     field.column_name ||
     field.columnName ||
+    field.COLUMN_NAME ||
+    field.COLUMN ||
+    field.field_name ||
+    field.fieldName ||
     field.name ||
     ''
   );
@@ -2225,6 +2238,7 @@ export default function PosApiAdmin() {
   const [importBaseUrl, setImportBaseUrl] = useState('');
   const [importBaseUrlEnvVar, setImportBaseUrlEnvVar] = useState('');
   const [importBaseUrlMode, setImportBaseUrlMode] = useState('literal');
+  const infoSyncPreloadedRef = useRef(false);
   const [requestFieldValues, setRequestFieldValues] = useState({});
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
@@ -3631,6 +3645,63 @@ export default function PosApiAdmin() {
   useEffect(() => {
     const controller = new AbortController();
     let cancelled = false;
+
+    async function preloadInfoSync() {
+      try {
+        setInfoSyncLoading(true);
+        const [settingsRes, tablesRes] = await Promise.all([
+          fetch(`${API_BASE}/posapi/reference-codes`, {
+            credentials: 'include',
+            skipLoader: true,
+            signal: controller.signal,
+          }),
+          fetch(`${API_BASE}/report_builder/tables`, {
+            credentials: 'include',
+            skipLoader: true,
+            signal: controller.signal,
+          }),
+        ]);
+        if (!settingsRes.ok || !tablesRes.ok) return;
+        const [settingsData, tableData] = await Promise.all([settingsRes.json(), tablesRes.json()]);
+        if (cancelled) return;
+        const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
+        setInfoSyncTableOptionsBase(tableOptions);
+        const usage = settingsData.settings?.usage && VALID_USAGE_VALUES.has(settingsData.settings.usage)
+          ? settingsData.settings.usage
+          : 'all';
+        const endpointIds = Array.isArray(settingsData.settings?.endpointIds)
+          ? settingsData.settings.endpointIds.filter((value) => typeof value === 'string' && value)
+          : [];
+        const tables = sanitizeTableSelection(
+          settingsData.settings?.tables,
+          tableOptions.length > 0 ? tableOptions : DEFAULT_INFO_TABLE_OPTIONS,
+        );
+        const fieldMappings = sanitizeInfoFieldMappings(settingsData.settings?.fieldMappings, tables);
+        setInfoSyncSettings((prev) => ({
+          ...prev,
+          autoSyncEnabled: Boolean(settingsData.settings?.autoSyncEnabled),
+          intervalMinutes: Number(settingsData.settings?.intervalMinutes) || 720,
+          usage,
+          endpointIds,
+          tables,
+          fieldMappings,
+        }));
+        setInfoSyncUsage(usage);
+        setInfoSyncEndpointIds(endpointIds);
+        setInfoSyncTables(tables);
+        setInfoFieldMappings(fieldMappings);
+        setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
+        infoSyncPreloadedRef.current = true;
+      } catch (err) {
+        if (!cancelled) console.warn('Unable to preload POSAPI information sync settings', err);
+      } finally {
+        if (!cancelled) setInfoSyncLoading(false);
+      }
+    }
+
+    if (!infoSyncPreloadedRef.current) {
+      preloadInfoSync();
+    }
 
     async function fetchEndpoints() {
       try {
