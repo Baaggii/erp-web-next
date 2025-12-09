@@ -798,9 +798,7 @@ const RowFormModal = function RowFormModal({
         const parameterFields = Array.isArray(entry.parameters)
           ? entry.parameters
               .map((param) => {
-                const locationRaw =
-                  typeof param.in === 'string' && param.in ? param.in : '';
-                const location = locationRaw.toLowerCase();
+                const location = typeof param.in === 'string' && param.in ? param.in : '';
                 if (location === 'header') return null;
                 const field = typeof param.name === 'string' ? param.name : '';
                 if (!field) return null;
@@ -808,7 +806,7 @@ const RowFormModal = function RowFormModal({
                   typeof param.description === 'string' && param.description
                     ? param.description
                     : undefined;
-                const suffix = locationRaw ? ` (${locationRaw})` : '';
+                const suffix = location ? ` (${location})` : '';
                 return {
                   field,
                   required: Boolean(param.required),
@@ -1263,14 +1261,11 @@ const RowFormModal = function RowFormModal({
       setInfoPayload({});
       setInfoResponse(null);
       setInfoError(null);
-      setInfoLoading(false);
       return;
     }
-    const nextPayload = buildPayloadForEndpoint(endpoint, {});
-    setInfoPayload(nextPayload);
+    setInfoPayload(buildPayloadForEndpoint(endpoint, {}));
     setInfoResponse(null);
     setInfoError(null);
-    setInfoLoading(false);
   }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, buildPayloadForEndpoint]);
   useEffect(() => {
     if (!infoModalOpen) {
