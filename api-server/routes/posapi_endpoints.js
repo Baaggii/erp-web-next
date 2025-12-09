@@ -704,6 +704,17 @@ function buildRequestDetails(schema, contentType) {
   return { requestFields, flags, enums, hasComplexity };
 }
 
+function buildParameterFieldHints(parameters = []) {
+  return (parameters || [])
+    .filter((param) => param?.name)
+    .map((param) => ({
+      field: param.name,
+      required: Boolean(param.required),
+      description: param.description || `${param.in} parameter`,
+      location: param.in,
+    }));
+}
+
 function buildResponseDetails(schema) {
   if (!schema || typeof schema !== 'object') return { responseFields: [], hasComplexity: false };
   const fields = [];
@@ -920,7 +931,11 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       const requestExample = isFormUrlEncoded ? buildFormEncodedExample(requestSchema) : example;
       const requestDetails = buildRequestDetails(requestSchema, contentType);
       const responseDetails = buildResponseDetails(responseSchema);
-      const requestFields = isFormUrlEncoded ? formFields : requestDetails.requestFields;
+      const parameterFields = buildParameterFieldHints(opParams);
+      const requestFields = dedupeFieldEntries([
+        ...(isFormUrlEncoded ? formFields : requestDetails.requestFields),
+        ...parameterFields,
+      ]);
       const responseFields = responseDetails.responseFields;
       const posHints = requestSchema ? analysePosApiRequest(requestSchema, requestExample) : {};
       const idSource = op.operationId || `${method}-${path}`;
@@ -1013,6 +1028,20 @@ function replacePostmanVariables(text, variableLookup = {}) {
       ? variableLookup[trimmedKey]
       : `{{${trimmedKey}}}`;
   });
+}
+
+function extractPostmanScripts(events = []) {
+  const scripts = { preRequest: [], test: [] };
+  if (!Array.isArray(events)) return scripts;
+  events.forEach((event) => {
+    const target = event?.listen === 'prerequest' ? 'preRequest' : event?.listen === 'test' ? 'test' : null;
+    if (!target) return;
+    const lines = Array.isArray(event?.script?.exec) ? event.script.exec : [];
+    if (lines.length) {
+      scripts[target].push(lines.join('\n'));
+    }
+  });
+  return scripts;
 }
 
 function parsePostmanUrl(urlObj, variableLookup = {}) {
@@ -1198,6 +1227,60 @@ function extractOperationsFromPostman(spec, meta = {}) {
     return { examples, responseSchema };
   }
 
+  function parseExampleRequest(request = {}) {
+    const method = (request.method || '').toUpperCase() || 'GET';
+    const { path, query, baseUrl, pathParams } = parsePostmanUrl(request.url || '/', variableLookup);
+    const headers = Array.isArray(request.header)
+      ? request.header.reduce((acc, header) => {
+        if (header?.key) acc[header.key] = header?.value ?? '';
+        return acc;
+      }, {})
+      : {};
+    const { requestExample } = parseRequestBody(request.body);
+    return {
+      method,
+      baseUrl,
+      path,
+      pathParams,
+      queryParams: query,
+      headers,
+      body: requestExample,
+    };
+  }
+
+  function buildPostmanExamples(item) {
+    if (!Array.isArray(item?.response) || item.response.length === 0) return [];
+    return item.response.map((resp, index) => {
+      const request = resp.originalRequest || item.request || {};
+      const headers = Array.isArray(resp.header)
+        ? resp.header.reduce((acc, h) => {
+          if (h?.key) acc[h.key] = h?.value;
+          return acc;
+        }, {})
+        : {};
+      const parsedRequest = parseExampleRequest(request);
+      const contentType = headers['Content-Type'] || headers['content-type'] || '';
+      let parsedBody = resp.body;
+      if (/json/i.test(contentType)) {
+        try {
+          parsedBody = JSON.parse(resp.body);
+        } catch {
+          // ignore parsing errors
+        }
+      }
+      return {
+        key: resp.name || resp.status || `example-${index + 1}`,
+        name: resp.name || resp.status || `Example ${index + 1}`,
+        request: parsedRequest,
+        response: {
+          status: resp.code || resp.status,
+          headers,
+          body: parsedBody,
+        },
+      };
+    });
+  }
+
   function walk(list, folderTags = [], folderPath = []) {
     list.forEach((item) => {
       if (item?.item) {
@@ -1213,6 +1296,8 @@ function extractOperationsFromPostman(spec, meta = {}) {
       const body = item.request.body;
       const { requestExample, requestSchema } = parseRequestBody(body);
       const { examples: responseExamples, responseSchema } = parseResponses(item.response);
+      const examples = buildPostmanExamples(item);
+      const scripts = extractPostmanScripts(item.event || []);
       const parameters = normalizeParametersFromSpec([
         ...query,
         ...pathParams.map((name) => ({ name, in: 'path', required: true })),
@@ -1230,6 +1315,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
       const posApiType = classifyPosApiType(folderTags, path, item.request.description || '');
       const requestDetails = buildRequestDetails(requestSchema, 'application/json');
+      const parameterFields = buildParameterFieldHints(parameters);
       const responseDetails = buildResponseDetails(responseSchema);
       const description = item.request.description || item.description || '';
       const serverSelection = pickPostmanServers(baseUrl, variableLookup);
@@ -1253,7 +1339,9 @@ function extractOperationsFromPostman(spec, meta = {}) {
           }
           : undefined,
         responseExamples,
-        requestFields: requestDetails.requestFields,
+        examples,
+        scripts,
+        requestFields: dedupeFieldEntries([...requestDetails.requestFields, ...parameterFields]),
         responseFields: responseDetails.responseFields,
         ...(Array.isArray(requestDetails.enums.receiptTypes) && requestDetails.enums.receiptTypes.length
           ? { receiptTypes: requestDetails.enums.receiptTypes }
