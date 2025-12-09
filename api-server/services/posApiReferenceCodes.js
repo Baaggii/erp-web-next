@@ -113,6 +113,42 @@ function sanitizeFieldMappings(raw, allowedTables = []) {
   return result;
 }
 
+function extractEndpointFieldMappings(endpoint, allowedTables = []) {
+  const mappings = {};
+  if (!endpoint || typeof endpoint !== 'object') return mappings;
+  const allowedSet = new Set(
+    (allowedTables || [])
+      .map((value) => sanitizeIdentifier(value))
+      .filter(Boolean),
+  );
+
+  const addMapping = (field, target) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    const table = sanitizeIdentifier(target?.table);
+    const column = sanitizeIdentifier(target?.column);
+    if (!normalizedField || !table || !column) return;
+    if (allowedSet.size > 0 && !allowedSet.has(table)) return;
+    mappings[normalizedField] = { table, column };
+  };
+
+  const responseFields = Array.isArray(endpoint.responseFields) ? endpoint.responseFields : [];
+  responseFields.forEach((entry) => {
+    const field = typeof entry?.field === 'string'
+      ? entry.field
+      : typeof entry === 'string'
+        ? entry
+        : '';
+    const mapping = entry?.mapTo || entry?.mapping || entry?.target;
+    if (mapping) addMapping(field, mapping);
+  });
+
+  if (endpoint.responseFieldMappings && typeof endpoint.responseFieldMappings === 'object') {
+    Object.entries(endpoint.responseFieldMappings).forEach(([field, target]) => addMapping(field, target));
+  }
+
+  return mappings;
+}
+
 function sanitizeIdList(list) {
   return Array.isArray(list)
     ? Array.from(
@@ -428,8 +464,12 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
   for (const endpoint of infoEndpoints) {
     try {
       const response = await invokePosApiEndpoint(endpoint.id, {}, { endpoint });
-      if (fieldMappings[endpoint.id]) {
-        const result = await applyFieldMappings({ response, mappings: fieldMappings[endpoint.id] });
+      const endpointMappings = extractEndpointFieldMappings(endpoint, targetTables);
+      const mappings = Object.keys(endpointMappings).length
+        ? endpointMappings
+        : fieldMappings[endpoint.id];
+      if (mappings) {
+        const result = await applyFieldMappings({ response, mappings });
         summary.updated += Number(result?.rows) || 0;
         summary.successful += 1;
         continue;
