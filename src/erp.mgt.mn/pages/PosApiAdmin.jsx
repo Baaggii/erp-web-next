@@ -2179,6 +2179,15 @@ export default function PosApiAdmin() {
   const [infoTableFields, setInfoTableFields] = useState({});
   const [infoTableFieldLoading, setInfoTableFieldLoading] = useState({});
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
+  const [adminSelectionId, setAdminSelectionId] = useState('');
+  const [adminParamValues, setAdminParamValues] = useState({});
+  const [adminRequestBody, setAdminRequestBody] = useState('');
+  const [adminResult, setAdminResult] = useState(null);
+  const [adminError, setAdminError] = useState('');
+  const [adminRunning, setAdminRunning] = useState(false);
+  const [adminHistory, setAdminHistory] = useState([]);
+  const [adminUseCachedToken, setAdminUseCachedToken] = useState(true);
+  const [adminAuthEndpointId, setAdminAuthEndpointId] = useState('');
   const builderSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
 
@@ -2273,6 +2282,24 @@ export default function PosApiAdmin() {
       .filter(Boolean);
   }, [endpoints, usageFilter]);
 
+  const adminEndpoints = useMemo(() => {
+    return endpoints
+      .map(withEndpointMetadata)
+      .filter((endpoint) => endpoint.usage !== 'transaction' && endpoint.usage !== 'auth');
+  }, [endpoints]);
+
+  const activeAdminEndpoint = useMemo(() => {
+    if (!adminSelectionId) return adminEndpoints[0] || null;
+    return (
+      adminEndpoints.find((endpoint) => endpoint.id === adminSelectionId) || adminEndpoints[0] || null
+    );
+  }, [adminEndpoints, adminSelectionId]);
+
+  const adminParameterDefaults = useMemo(
+    () => buildDraftParameterDefaults(activeAdminEndpoint?.parameters || []),
+    [activeAdminEndpoint],
+  );
+
   const activeImportDraft = useMemo(
     () => importDrafts.find((entry) => entry.id === selectedImportId) || importDrafts[0] || null,
     [importDrafts, selectedImportId],
@@ -2282,6 +2309,42 @@ export default function PosApiAdmin() {
     () => groupParametersByLocation(activeImportDraft?.parameters || []),
     [activeImportDraft],
   );
+
+  useEffect(() => {
+    if (adminEndpoints.length === 0) {
+      setAdminSelectionId('');
+      setAdminParamValues({});
+      setAdminRequestBody('');
+      return;
+    }
+    if (!adminSelectionId || !adminEndpoints.some((endpoint) => endpoint.id === adminSelectionId)) {
+      setAdminSelectionId(adminEndpoints[0].id);
+    }
+  }, [adminEndpoints, adminSelectionId]);
+
+  useEffect(() => {
+    if (!activeAdminEndpoint) {
+      setAdminParamValues({});
+      setAdminRequestBody('');
+      setAdminAuthEndpointId('');
+      return;
+    }
+    setAdminParamValues((prev) => {
+      if (prev._endpointId === activeAdminEndpoint.id) return prev;
+      const defaults = buildDraftParameterDefaults(activeAdminEndpoint.parameters || []);
+      return { ...defaults, _endpointId: activeAdminEndpoint.id };
+    });
+    setAdminRequestBody((prev) => {
+      if (prev && adminResult?.endpointId === activeAdminEndpoint.id) return prev;
+      if (!activeAdminEndpoint.requestExample) return '';
+      try {
+        return JSON.stringify(activeAdminEndpoint.requestExample, null, 2);
+      } catch {
+        return prev;
+      }
+    });
+    setAdminAuthEndpointId((prev) => prev || activeAdminEndpoint.authEndpointId || '');
+  }, [activeAdminEndpoint, adminResult]);
 
   const infoSyncEndpointOptions = useMemo(() => {
     const normalized = endpoints.map(withEndpointMetadata);
@@ -3582,45 +3645,6 @@ export default function PosApiAdmin() {
           tableOptions.length > 0 ? tableOptions : DEFAULT_INFO_TABLE_OPTIONS,
         );
         const fieldMappings = sanitizeInfoFieldMappings(settingsData.settings?.fieldMappings, tables);
-        if (tables.length > 0) {
-          setInfoTableFieldLoading((prev) => tables.reduce(
-            (acc, table) => ({ ...acc, [table]: true }),
-            { ...prev },
-          ));
-          const fieldEntries = await Promise.all(
-            tables.map(async (table) => {
-              try {
-                const res = await fetch(`${API_BASE}/report_builder/fields?table=${encodeURIComponent(table)}`, {
-                  credentials: 'include',
-                  skipLoader: true,
-                  signal: controller.signal,
-                });
-                const data = await res.json();
-                if (!res.ok) return null;
-                return [table, Array.isArray(data.fields) ? data.fields : []];
-              } catch (err) {
-                if (err?.name === 'AbortError') return null;
-                return [table, []];
-              }
-            }),
-          );
-          setInfoTableFields((prev) => {
-            const next = { ...prev };
-            fieldEntries.forEach((entry) => {
-              if (entry && entry[0]) {
-                next[entry[0]] = entry[1] || [];
-              }
-            });
-            return next;
-          });
-          setInfoTableFieldLoading((prev) => {
-            const next = { ...prev };
-            tables.forEach((table) => {
-              next[table] = false;
-            });
-            return next;
-          });
-        }
         setInfoSyncSettings({
           autoSyncEnabled: Boolean(settingsData.settings?.autoSyncEnabled),
           intervalMinutes: Number(settingsData.settings?.intervalMinutes) || 720,
@@ -4836,6 +4860,132 @@ export default function PosApiAdmin() {
     });
   }
 
+  function handleAdminParamChange(name, value) {
+    if (!name) return;
+    setAdminParamValues((prev) => ({
+      ...prev,
+      [name]: value,
+      _endpointId: activeAdminEndpoint?.id || prev._endpointId,
+    }));
+  }
+
+  function buildAdminTestEndpoint() {
+    if (!activeAdminEndpoint) {
+      throw new Error('Select a non-transaction endpoint to manage');
+    }
+    let parsedBody = null;
+    if (adminRequestBody && adminRequestBody.trim()) {
+      try {
+        parsedBody = JSON.parse(adminRequestBody);
+      } catch {
+        throw new Error('Request body must be valid JSON');
+      }
+    }
+    const parameters = Array.isArray(activeAdminEndpoint.parameters)
+      ? activeAdminEndpoint.parameters.map((param) => {
+        const name = typeof param?.name === 'string' ? param.name : '';
+        const value = name ? adminParamValues[name] ?? adminParameterDefaults[name] : undefined;
+        return {
+          ...param,
+          ...(value !== undefined && value !== null && `${value}`.trim() !== ''
+            ? { testValue: value }
+            : param?.testValue
+              ? { testValue: param.testValue }
+              : {}),
+        };
+      })
+      : [];
+
+    const endpointForTest = { ...activeAdminEndpoint, parameters };
+    if (parsedBody !== null) {
+      endpointForTest.requestExample = parsedBody;
+      if (!endpointForTest.requestBody) {
+        endpointForTest.requestBody = { schema: parsedBody };
+      }
+    }
+    return endpointForTest;
+  }
+
+  async function handleRunAdminEndpoint() {
+    if (!activeAdminEndpoint) {
+      setAdminError('Add at least one lookup/admin utility endpoint in the registry first.');
+      return;
+    }
+    let endpointForTest;
+    try {
+      endpointForTest = buildAdminTestEndpoint();
+    } catch (err) {
+      setAdminError(err.message || 'Unable to prepare endpoint for testing');
+      return;
+    }
+
+    setAdminError('');
+    setAdminRunning(true);
+    setAdminResult(null);
+    const authId = adminAuthEndpointId || endpointForTest.authEndpointId || '';
+    const historyEntryBase = {
+      timestamp: Date.now(),
+      endpointId: endpointForTest.id,
+      method: endpointForTest.method,
+      path: endpointForTest.path,
+      environment: testEnvironment,
+      parameters: Object.fromEntries(
+        Object.entries(adminParamValues || {}).filter(([key]) => key !== '_endpointId'),
+      ),
+    };
+
+    try {
+      const res = await fetch(`${API_BASE}/posapi/endpoints/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          endpoint: endpointForTest,
+          environment: testEnvironment,
+          authEndpointId: authId,
+          useCachedToken: adminUseCachedToken,
+          parameterValues: historyEntryBase.parameters,
+        }),
+      });
+      if (!res.ok) {
+        const message = await res.text();
+        throw new Error(message || 'Failed to call endpoint');
+      }
+      const data = await res.json();
+      updateTokenMetaFromResult(data);
+      const statusCode = data?.response?.status ?? res.status;
+      const ok = data?.response?.ok ?? res.ok;
+      setAdminResult({ ...data, endpointId: endpointForTest.id });
+      showToast(
+        `${endpointForTest.name || endpointForTest.id} returned ${statusCode} (${testEnvironment}).`,
+        ok ? 'success' : 'error',
+      );
+      setAdminHistory((prev) => [
+        {
+          ...historyEntryBase,
+          status: statusCode,
+          ok,
+          url: data?.request?.url || '',
+        },
+        ...prev,
+      ].slice(0, 25));
+    } catch (err) {
+      setAdminError(err.message || 'Failed to call endpoint');
+      setAdminHistory((prev) => [
+        {
+          ...historyEntryBase,
+          status: 'error',
+          ok: false,
+          url: '',
+          error: err.message || 'Failed to call endpoint',
+        },
+        ...prev,
+      ].slice(0, 25));
+    } finally {
+      setAdminRunning(false);
+    }
+  }
+
   function handleUrlFieldChange(fieldKey, updates) {
     if (!fieldKey) return;
     const envVarKey = `${fieldKey}EnvVar`;
@@ -5029,6 +5179,16 @@ export default function PosApiAdmin() {
           onClick={() => setActiveTab('info')}
         >
           POSAPI Information
+        </button>
+        <button
+          type="button"
+          style={{
+            ...styles.tabButton,
+            ...(activeTab === 'admin' ? styles.tabButtonActive : {}),
+          }}
+          onClick={() => setActiveTab('admin')}
+        >
+          Admin utilities
         </button>
       </div>
 
@@ -7470,6 +7630,273 @@ export default function PosApiAdmin() {
         </div>
       )}
 
+      {activeTab === 'admin' && (
+        <div style={styles.infoContainer}>
+          <h1>Admin &amp; lookup utilities</h1>
+          <p style={{ maxWidth: '760px' }}>
+            Manage non-transactional POSAPI endpoints, supply parameters, and test responses directly
+            from the admin console. Use this workspace to implement lookup-like functions and admin
+            utilities without modifying transaction flows.
+          </p>
+          {adminEndpoints.length === 0 && (
+            <div style={styles.warningBox}>
+              No admin or lookup endpoints are configured yet. Switch to the <strong>Endpoints</strong>
+              {' '}tab to add endpoints with usage set to Admin utility or Information lookup.
+            </div>
+          )}
+          {adminEndpoints.length > 0 && (
+            <div style={styles.adminGrid}>
+              <div style={styles.adminSidebarCard}>
+                <div style={styles.adminSidebarHeader}>
+                  <h3 style={{ margin: 0 }}>Dynamic menu</h3>
+                  <span style={styles.listGroupCount}>{adminEndpoints.length}</span>
+                </div>
+                <p style={styles.helpText}>
+                  Choose a configured endpoint to preview its details and run a live call with
+                  custom parameters.
+                </p>
+                <div style={styles.adminList}>
+                  {adminEndpoints.map((endpoint) => (
+                    <button
+                      key={`admin-${endpoint.id}`}
+                      type="button"
+                      onClick={() => setAdminSelectionId(endpoint.id)}
+                      style={{
+                        ...styles.adminListButton,
+                        ...(activeAdminEndpoint?.id === endpoint.id ? styles.listButtonActive : {}),
+                      }}
+                    >
+                      <div style={styles.adminListTitle}>{endpoint.name || endpoint.id}</div>
+                      <div style={styles.adminListMeta}>
+                        <span style={{ ...badgeStyle(METHOD_BADGES[endpoint.method] || '#94a3b8') }}>
+                          {endpoint.method}
+                        </span>
+                        <span style={{ ...badgeStyle(USAGE_BADGES[endpoint.usage] || '#0ea5e9'), textTransform: 'none' }}>
+                          {formatUsageLabel(endpoint.usage)}
+                        </span>
+                        {endpoint.posApiType && (
+                          <span style={{ ...badgeStyle(TYPE_BADGES[endpoint.posApiType] || '#475569'), textTransform: 'none' }}>
+                            {formatTypeLabel(endpoint.posApiType) || endpoint.posApiType}
+                          </span>
+                        )}
+                      </div>
+                      <div style={styles.adminListPath}>{endpoint.path}</div>
+                      {endpoint.summary && (
+                        <div style={styles.previewText}>{endpoint.summary}</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={styles.adminContentCard}>
+                <div style={styles.adminContentHeader}>
+                  <div>
+                    <h3 style={{ margin: '0 0 0.25rem 0' }}>{activeAdminEndpoint?.name || activeAdminEndpoint?.id}</h3>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                      <span style={{ ...badgeStyle(METHOD_BADGES[activeAdminEndpoint?.method] || '#94a3b8') }}>
+                        {activeAdminEndpoint?.method}
+                      </span>
+                      <span style={styles.wrapText}>{activeAdminEndpoint?.path}</span>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!activeAdminEndpoint) return;
+                        setSelectedId(activeAdminEndpoint.id);
+                        setFormState(createFormState(activeAdminEndpoint));
+                        setActiveTab('endpoints');
+                      }}
+                      style={styles.smallButton}
+                    >
+                      Edit in registry
+                    </button>
+                  </div>
+                </div>
+                {adminError && <div style={styles.error}>{adminError}</div>}
+                <div style={styles.inlineFields}>
+                  <label style={{ ...styles.label, flex: 1 }}>
+                    Auth/token endpoint (optional)
+                    <select
+                      value={adminAuthEndpointId}
+                      onChange={(e) => setAdminAuthEndpointId(e.target.value)}
+                      style={styles.input}
+                    >
+                      <option value="">Call without requesting token</option>
+                      {authEndpointOptions.map((endpoint) => (
+                        <option key={`admin-auth-${endpoint.id}`} value={endpoint.id}>
+                          {endpoint.name} ({endpoint.path})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label style={{ ...styles.checkboxLabel, alignSelf: 'flex-end' }}>
+                    <input
+                      type="checkbox"
+                      checked={adminUseCachedToken}
+                      onChange={(e) => setAdminUseCachedToken(e.target.checked)}
+                    />
+                    Re-use cached token when possible
+                  </label>
+                </div>
+                <div style={styles.inlineFields}>
+                  <label style={{ ...styles.label, flex: 1 }}>
+                    Environment
+                    <div style={styles.radioGroup}>
+                      <label style={styles.radioLabel}>
+                        <input
+                          type="radio"
+                          name="adminTestEnv"
+                          checked={testEnvironment === 'staging'}
+                          onChange={() => setTestEnvironment('staging')}
+                        />
+                        Staging / test server
+                      </label>
+                      <label style={styles.radioLabel}>
+                        <input
+                          type="radio"
+                          name="adminTestEnv"
+                          checked={testEnvironment === 'production'}
+                          onChange={() => setTestEnvironment('production')}
+                        />
+                        Production
+                      </label>
+                    </div>
+                  </label>
+                </div>
+                <div style={styles.adminParameterGrid}>
+                  {Object.entries(groupParametersByLocation(activeAdminEndpoint?.parameters || []))
+                    .map(([location, params]) => (
+                      <div key={`param-${location}`} style={styles.adminParameterColumn}>
+                        <h4 style={{ margin: '0 0 0.25rem 0' }}>
+                          {location.charAt(0).toUpperCase() + location.slice(1)} parameters
+                        </h4>
+                        {params.length === 0 && (
+                          <p style={styles.helpText}>No {location} parameters declared.</p>
+                        )}
+                        {params.map((param) => (
+                          <label key={`param-${location}-${param.name}`} style={styles.label}>
+                            {param.name}
+                            <input
+                              type="text"
+                              value={adminParamValues?.[param.name] ?? adminParameterDefaults[param.name] ?? ''}
+                              onChange={(e) => handleAdminParamChange(param.name, e.target.value)}
+                              placeholder={param.example || param.description || 'Value'}
+                              style={styles.input}
+                            />
+                            {param.description && <span style={styles.fieldHelp}>{param.description}</span>}
+                          </label>
+                        ))}
+                      </div>
+                    ))}
+                </div>
+                <label style={styles.label}>
+                  Request body (optional)
+                  <textarea
+                    style={{ ...styles.textarea, minHeight: '140px' }}
+                    placeholder="Provide JSON payload when the endpoint expects a request body"
+                    value={adminRequestBody}
+                    onChange={(e) => setAdminRequestBody(e.target.value)}
+                  />
+                </label>
+                <div style={styles.inlineFields}>
+                  <button
+                    type="button"
+                    onClick={handleRunAdminEndpoint}
+                    style={styles.primaryButton}
+                    disabled={adminRunning}
+                  >
+                    {adminRunning ? 'Running…' : 'Run endpoint'}
+                  </button>
+                  <div style={styles.helpText}>
+                    Calls use the latest server URL and parameters for the selected endpoint. Responses
+                    and errors are logged below for auditing.
+                  </div>
+                </div>
+                {adminResult && (
+                  <div style={styles.testResult}>
+                    <div style={styles.testResultHeader}>
+                      <h3 style={{ margin: 0 }}>Result</h3>
+                      <span
+                        style={{
+                          ...styles.statusPill,
+                          ...(adminResult.response?.ok ? styles.statusPillSuccess : styles.statusPillError),
+                        }}
+                      >
+                        {adminResult.response?.status} {adminResult.response?.statusText || ''}
+                      </span>
+                    </div>
+                    <div style={styles.testResultBody}>
+                      <div style={styles.testColumn}>
+                        <h4 style={styles.testColumnTitle}>Request</h4>
+                        <pre style={styles.codeBlock}>
+                          {JSON.stringify(adminResult.request || {}, null, 2)}
+                        </pre>
+                      </div>
+                      <div style={styles.testColumn}>
+                        <h4 style={styles.testColumnTitle}>Response</h4>
+                        {adminResult.response?.bodyJson ? (
+                          <pre style={styles.codeBlock}>
+                            {JSON.stringify(adminResult.response.bodyJson, null, 2)}
+                          </pre>
+                        ) : (
+                          <pre style={styles.codeBlock}>{adminResult.response?.bodyText || ''}</pre>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div style={styles.adminHistoryCard}>
+                <div style={styles.adminSidebarHeader}>
+                  <h3 style={{ margin: 0 }}>Activity log</h3>
+                  <span style={styles.listGroupCount}>{adminHistory.length}</span>
+                </div>
+                <p style={styles.helpText}>
+                  Tracks recent admin endpoint executions, including parameters and status codes.
+                </p>
+                {adminHistory.length === 0 && <p style={{ margin: 0 }}>No activity yet.</p>}
+                {adminHistory.length > 0 && (
+                  <div style={styles.historyList}>
+                    {adminHistory.map((entry) => (
+                      <div key={`${entry.endpointId}-${entry.timestamp}`} style={styles.historyRow}>
+                        <div style={styles.historyMain}>
+                          <div style={{ fontWeight: 700 }}>
+                            {entry.method} {entry.path}
+                          </div>
+                          <div style={styles.historyMeta}>
+                            <span>{new Date(entry.timestamp).toLocaleString()}</span>
+                            <span>{entry.environment}</span>
+                            {entry.url && <span style={styles.wrapText}>{entry.url}</span>}
+                          </div>
+                          {entry.parameters && Object.keys(entry.parameters).length > 0 && (
+                            <pre style={styles.historyParams}>
+                              {JSON.stringify(entry.parameters, null, 2)}
+                            </pre>
+                          )}
+                          {entry.error && <div style={styles.previewErrorBox}>{entry.error}</div>}
+                        </div>
+                        <div style={styles.historyStatus}>
+                          <span
+                            style={{
+                              ...styles.statusPill,
+                              ...(entry.ok ? styles.statusPillSuccess : styles.statusPillError),
+                            }}
+                          >
+                            {entry.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {activeTab === 'info' && (
         <div style={styles.infoContainer}>
           <h1>POSAPI Information</h1>
@@ -8971,6 +9398,162 @@ const styles = {
   },
   wrapText: {
     wordBreak: 'break-all',
+  },
+  warningBox: {
+    background: '#fff4e6',
+    border: '1px solid #fdba74',
+    color: '#7c2d12',
+    padding: '0.75rem 1rem',
+    borderRadius: '10px',
+    fontWeight: 600,
+  },
+  adminGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(260px, 1fr) 2fr minmax(260px, 1fr)',
+    gap: '1rem',
+    alignItems: 'flex-start',
+  },
+  adminSidebarCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  adminSidebarHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: '0.5rem',
+  },
+  adminList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  adminListButton: {
+    width: '100%',
+    textAlign: 'left',
+    padding: '0.75rem',
+    borderRadius: '8px',
+    border: '1px solid #e2e8f0',
+    background: '#fff',
+    cursor: 'pointer',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  adminListTitle: {
+    fontWeight: 700,
+    fontSize: '0.95rem',
+  },
+  adminListMeta: {
+    display: 'flex',
+    gap: '0.35rem',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+  },
+  adminListPath: {
+    color: '#475569',
+    fontSize: '0.85rem',
+  },
+  adminContentCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  adminContentHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  adminParameterGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: '0.75rem',
+  },
+  adminParameterColumn: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem',
+    background: '#f8fafc',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  adminHistoryCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#fff',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  historyList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    maxHeight: '520px',
+    overflow: 'auto',
+  },
+  historyRow: {
+    display: 'flex',
+    gap: '0.75rem',
+    alignItems: 'flex-start',
+    border: '1px solid #e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem',
+    background: '#f8fafc',
+  },
+  historyMain: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  historyMeta: {
+    display: 'flex',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+    color: '#475569',
+    fontSize: '0.85rem',
+  },
+  historyParams: {
+    margin: 0,
+    background: '#fff',
+    border: '1px solid #e2e8f0',
+    padding: '0.5rem',
+    borderRadius: '6px',
+    fontFamily: 'monospace',
+    fontSize: '0.85rem',
+  },
+  historyStatus: {
+    display: 'flex',
+    alignItems: 'center',
+  },
+  radioGroup: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+    padding: '0.25rem 0',
+  },
+  primaryButton: {
+    background: '#0f172a',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '6px',
+    padding: '0.6rem 1rem',
+    cursor: 'pointer',
+    fontWeight: 700,
   },
   statusPill: {
     borderRadius: '9999px',
