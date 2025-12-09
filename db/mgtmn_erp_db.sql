@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Host: localhost:3306
--- Generation Time: Nov 19, 2025 at 09:16 PM
+-- Generation Time: Dec 09, 2025 at 06:29 PM
 -- Server version: 8.0.43-cll-lve
 -- PHP Version: 8.4.14
 
@@ -1168,6 +1168,21 @@ CREATE TABLE `contractor_request` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `contract_receivable_cache`
+--
+
+CREATE TABLE `contract_receivable_cache` (
+  `g_id` int NOT NULL,
+  `rec` decimal(18,2) DEFAULT NULL,
+  `pen` decimal(18,2) DEFAULT NULL,
+  `final` decimal(18,2) DEFAULT NULL,
+  `unpaid` decimal(18,2) DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `ebarimt_api_log`
 --
 
@@ -1284,6 +1299,8 @@ CREATE TABLE `ebarimt_reference_code` (
   `code_type` enum('district','classification','tax_reason','barcode_type','payment_code') NOT NULL,
   `code` varchar(50) NOT NULL,
   `name` varchar(255) DEFAULT NULL,
+  `description_mn` varchar(255) DEFAULT NULL,
+  `description_en` varchar(255) DEFAULT NULL,
   `is_active` tinyint(1) DEFAULT '1',
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
@@ -1346,16 +1363,16 @@ CREATE TABLE `international_code` (
 -- (See below for the actual view)
 --
 CREATE TABLE `InventoryStockPerBranch` (
-`avg_cost` double(22,6)
+`company_id` int
 ,`branch_id` int
-,`company_id` int
-,`inventory_value` double
 ,`item_code` varchar(255)
-,`on_hand_qty` double(22,2)
 ,`pm_name` varchar(255)
 ,`total_in_qty` double(19,2)
-,`total_in_value` double(19,2)
 ,`total_out_qty` double(19,2)
+,`total_in_value` double(19,2)
+,`on_hand_qty` double(22,2)
+,`avg_cost` double(22,6)
+,`inventory_value` double
 );
 
 -- --------------------------------------------------------
@@ -1365,17 +1382,17 @@ CREATE TABLE `InventoryStockPerBranch` (
 -- (See below for the actual view)
 --
 CREATE TABLE `InventoryStockPerCompany` (
-`avg_cost` double(22,6)
-,`company_id` int
+`company_id` int
 ,`fifo_lifo_qty` double(19,2)
 ,`fifo_lifo_value` double(19,2)
-,`inventory_value` double
 ,`item_code` varchar(100)
-,`on_hand_qty` double(22,2)
 ,`pm_name` varchar(255)
 ,`total_in_qty` double(19,2)
-,`total_in_value` double(19,2)
 ,`total_out_qty` double(19,2)
+,`total_in_value` double(19,2)
+,`on_hand_qty` double(22,2)
+,`avg_cost` double(22,6)
+,`inventory_value` double
 );
 
 -- --------------------------------------------------------
@@ -1526,6 +1543,25 @@ CREATE TABLE `pending_request` (
   `updated_by` varchar(50) DEFAULT NULL,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   `deleted_at` timestamp NULL DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Table structure for table `pos_session`
+--
+
+CREATE TABLE `pos_session` (
+  `id` bigint UNSIGNED NOT NULL,
+  `session_uuid` varchar(36) NOT NULL,
+  `company_id` bigint NOT NULL,
+  `branch_id` bigint NOT NULL,
+  `merchant_id` bigint NOT NULL,
+  `pos_no` varchar(32) NOT NULL,
+  `device_uuid` varchar(64) DEFAULT NULL,
+  `started_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `ended_at` datetime DEFAULT NULL,
+  `current_user_id` bigint DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- --------------------------------------------------------
@@ -2850,6 +2886,8 @@ CREATE TABLE `transactions_expense` (
   `z_num` varchar(50) NOT NULL,
   `company_id` int NOT NULL,
   `branch_id` int NOT NULL,
+  `merchant_id` bigint DEFAULT NULL,
+  `pos_no` varchar(32) DEFAULT NULL,
   `ztr_transbranch` int NOT NULL,
   `z_barimt` varchar(50) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci DEFAULT NULL,
   `z_tosov_code` varchar(20) DEFAULT NULL,
@@ -3133,6 +3171,9 @@ CREATE TABLE `transactions_income` (
   `or_g_id` int DEFAULT NULL,
   `or_burtgel` int DEFAULT NULL,
   `or_chig` int DEFAULT NULL,
+  `sp_curr_receivables` decimal(15,0) DEFAULT NULL,
+  `sp_curr_penalty` decimal(15,0) DEFAULT NULL,
+  `sp_curr_receivableswithpenalty` int DEFAULT NULL,
   `or_torol` int DEFAULT NULL,
   `or_type_id` int DEFAULT NULL,
   `or_av_now` int DEFAULT NULL,
@@ -3140,6 +3181,10 @@ CREATE TABLE `transactions_income` (
   `or_date` date DEFAULT NULL,
   `orcash_or_id` int DEFAULT NULL,
   `or_or` double(15,2) NOT NULL,
+  `total_amount_without_tax` decimal(18,2) NOT NULL DEFAULT '0.00',
+  `vat_amount` decimal(18,2) NOT NULL DEFAULT '0.00',
+  `city_tax` decimal(18,2) NOT NULL DEFAULT '0.00',
+  `tax_type` enum('VATABLE','VAT_FREE','CITY_TAX_ONLY') NOT NULL DEFAULT 'VATABLE',
   `or_vallut_id` int DEFAULT NULL,
   `or_valut_choice` int DEFAULT NULL,
   `or_vat` decimal(15,0) DEFAULT NULL,
@@ -3200,7 +3245,8 @@ CREATE TABLE `transactions_income` (
   `deleted_at` timestamp NULL DEFAULT NULL,
   `ebarimt_invoice_id` int DEFAULT NULL,
   `request_id` bigint DEFAULT NULL,
-  `merchant_id` int DEFAULT NULL
+  `merchant_id` int DEFAULT NULL,
+  `pos_no` varchar(32) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 --
@@ -3267,6 +3313,39 @@ CHAR(IF(RAND() < 0.5, FLOOR(65 + RAND() * 26), FLOOR(97 + RAND() * 26)))
 )
 );
   END IF;
+END
+$$
+DELIMITER ;
+DELIMITER $$
+CREATE TRIGGER `trg_resolve_contract_receivables` BEFORE INSERT ON `transactions_income` FOR EACH ROW trigger_block: BEGIN
+
+    -- ALL DECLARES MUST COME FIRST!
+    DECLARE v_curr_receivables            DECIMAL(18,2);
+    DECLARE v_curr_penalty                DECIMAL(18,2);
+    DECLARE v_curr_receivableswithpenalty DECIMAL(18,2);
+
+    -- Skip when global skip flag is set
+    IF @skip_triggers = 1 THEN
+        LEAVE trigger_block;
+    END IF;
+
+    -- Skip when g_id = -1
+    IF NEW.or_g_id = -1 THEN
+        LEAVE trigger_block;
+    END IF;
+
+    CALL resolve_contract_receivables(
+        NEW.or_g_id,
+        NEW.or_date,
+        v_curr_receivables,
+        v_curr_penalty,
+        v_curr_receivableswithpenalty
+    );
+
+    SET NEW.sp_curr_receivables            = v_curr_receivables;
+    SET NEW.sp_curr_penalty                = v_curr_penalty;
+    SET NEW.sp_curr_receivableswithpenalty = v_curr_receivableswithpenalty;
+
 END
 $$
 DELIMITER ;
@@ -3429,6 +3508,8 @@ CREATE TABLE `transactions_inventory` (
   `bmtr_num` varchar(50) NOT NULL,
   `company_id` int NOT NULL,
   `branch_id` int NOT NULL,
+  `merchant_id` bigint DEFAULT NULL,
+  `pos_no` varchar(32) DEFAULT NULL,
   `bmtr_transbranch` int NOT NULL,
   `bmtr_pid` varchar(50) DEFAULT NULL,
   `bmtr_cid` varchar(50) DEFAULT NULL,
@@ -3850,6 +3931,8 @@ CREATE TABLE `transactions_order` (
   `id` int NOT NULL,
   `company_id` int NOT NULL,
   `branch_id` int NOT NULL,
+  `merchant_id` bigint DEFAULT NULL,
+  `pos_no` varchar(32) DEFAULT NULL,
   `ordrid` varchar(10) NOT NULL,
   `ordrdid` int NOT NULL,
   `ordrtr_transbranch` int NOT NULL,
@@ -4594,6 +4677,29 @@ CREATE TABLE `transactions_pos` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `transactions_posservices`
+--
+
+CREATE TABLE `transactions_posservices` (
+  `id` int NOT NULL,
+  `transaction_id` int NOT NULL,
+  `service_id` int NOT NULL,
+  `service_name` varchar(255) NOT NULL,
+  `measure_unit` varchar(50) DEFAULT NULL,
+  `quantity` decimal(10,2) DEFAULT '1.00',
+  `unit_price` decimal(18,2) NOT NULL,
+  `amount` decimal(18,2) NOT NULL,
+  `vat_amount` decimal(18,2) DEFAULT '0.00',
+  `city_tax` decimal(18,2) DEFAULT '0.00',
+  `bonus_amount` decimal(18,2) DEFAULT '0.00',
+  `classification_code` varchar(10) NOT NULL,
+  `tax_type` varchar(10) NOT NULL,
+  `tax_reason_code` varchar(10) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `transactions_test`
 --
 
@@ -4666,19 +4772,33 @@ CREATE TABLE `transaction_temporaries` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `transaction_vat_summary`
+--
+
+CREATE TABLE `transaction_vat_summary` (
+  `id` bigint UNSIGNED NOT NULL,
+  `transaction_id` bigint UNSIGNED NOT NULL,
+  `tax_type` enum('VAT','CITY_TAX','OTHER') NOT NULL,
+  `tax_rate` decimal(6,3) NOT NULL,
+  `tax_amount` decimal(18,2) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Stand-in structure for view `UnifiedInventoryCode`
 -- (See below for the actual view)
 --
 CREATE TABLE `UnifiedInventoryCode` (
-`categories` int
+`cost_code` varchar(100)
 ,`cost` decimal(18,2)
-,`cost_code` varchar(100)
 ,`cost_date` date
-,`manufacturer_id` bigint
-,`pm_name` varchar(255)
-,`pm_unit_id` int
 ,`primary_code` varchar(100)
 ,`selling_code` varchar(100)
+,`pm_name` varchar(255)
+,`pm_unit_id` int
+,`categories` int
+,`manufacturer_id` bigint
 ,`source_table` varchar(13)
 );
 
@@ -4689,14 +4809,14 @@ CREATE TABLE `UnifiedInventoryCode` (
 -- (See below for the actual view)
 --
 CREATE TABLE `unified_lookup` (
-`categories` int
+`cost_code` varchar(100)
 ,`cost` decimal(18,2)
-,`cost_code` varchar(100)
-,`manufacturer_id` bigint
-,`pm_name` varchar(255)
-,`pm_unit_id` int
 ,`primary_code` varchar(100)
 ,`selling_code` varchar(100)
+,`pm_name` varchar(255)
+,`pm_unit_id` int
+,`categories` int
+,`manufacturer_id` bigint
 ,`source_table` varchar(13)
 );
 
@@ -4786,19 +4906,19 @@ CREATE TABLE `user_level_permissions` (
 -- (See below for the actual view)
 --
 CREATE TABLE `view_inventory_report_summary` (
-`calculated_closing_acc` double(22,2)
-,`closing_acc` double(19,2)
-,`closing_sub` double(19,2)
-,`decrease_acc` double(19,2)
-,`decrease_sub` double(19,2)
-,`diff_vs_actual_closing_sub` double(22,2)
-,`increase_acc` double(19,2)
-,`increase_sub` double(19,2)
-,`opening_acc` double(19,2)
-,`opening_sub` double(19,2)
+`primary_code` varchar(50)
 ,`pm_name` varchar(255)
 ,`pm_unit_id` int
-,`primary_code` varchar(50)
+,`opening_acc` double(19,2)
+,`opening_sub` double(19,2)
+,`increase_acc` double(19,2)
+,`increase_sub` double(19,2)
+,`decrease_acc` double(19,2)
+,`decrease_sub` double(19,2)
+,`closing_acc` double(19,2)
+,`closing_sub` double(19,2)
+,`calculated_closing_acc` double(22,2)
+,`diff_vs_actual_closing_sub` double(22,2)
 );
 
 -- --------------------------------------------------------
@@ -4808,63 +4928,63 @@ CREATE TABLE `view_inventory_report_summary` (
 -- (See below for the actual view)
 --
 CREATE TABLE `view_transactions_income` (
-`actime` date
-,`branch_id` int
+`id` int
+,`or_num` varchar(50)
+,`ortr_transbranch` int
+,`or_o_barimt` varchar(50)
 ,`company_id` int
-,`deviceid` varchar(50)
-,`devicename` varchar(50)
-,`id` int
-,`LOCATION` varchar(50)
-,`or_av_now` int
-,`or_av_time` varchar(50)
-,`or_bank` varchar(7)
-,`or_bar_suu` varchar(17)
-,`or_bcode` varchar(50)
+,`branch_id` int
+,`or_g_id` int
 ,`or_burtgel` int
 ,`or_chig` int
-,`or_date` date
-,`or_eb` int
-,`or_emp_receiver` varchar(10)
-,`or_g_id` int
-,`or_num` varchar(50)
-,`or_o_barimt` varchar(50)
-,`or_or` double(15,2)
-,`or_orderid` varchar(102)
-,`or_org_id` varchar(10)
-,`or_other_receiver` varchar(100)
-,`or_tailbar1` varchar(65)
 ,`or_torol` int
-,`or_tur_receiver` varchar(10)
 ,`or_type_id` int
-,`or_uglug_id` varchar(15)
+,`or_av_now` int
+,`or_av_time` varchar(50)
+,`or_date` date
+,`orcash_or_id` int
+,`or_or` double(15,2)
 ,`or_vallut_id` int
 ,`or_valut_choice` int
+,`or_bar_suu` varchar(17)
+,`or_bcode` varchar(50)
+,`or_orderid` varchar(102)
+,`or_tailbar1` varchar(65)
 ,`orBurtgel_rd` varchar(27)
-,`orcash_or_id` int
+,`or_eb` int
+,`or_bank` varchar(7)
+,`or_uglug_id` varchar(15)
+,`or_emp_receiver` varchar(10)
+,`or_tur_receiver` varchar(10)
+,`or_other_receiver` varchar(100)
+,`or_org_id` varchar(10)
+,`TRTYPENAME` varchar(100)
+,`trtype` varchar(4)
+,`TransType` int
 ,`ORGANIZATION` varchar(50)
-,`ortr_check_cause` varchar(500)
-,`ortr_check_date` date
-,`ortr_check_emp` varchar(10)
-,`ortr_checkyn` varchar(500)
+,`ROOMID` varchar(10)
+,`USERID` varchar(10)
+,`LOCATION` varchar(50)
+,`deviceid` varchar(50)
+,`devicename` varchar(50)
+,`rawdata` varchar(500)
+,`actime` date
+,`rectime` date
+,`ortr_state` int
+,`ortr_id` varchar(50)
 ,`ortr_confirm` int
 ,`ortr_confirm_date` date
 ,`ortr_confirm_emp` varchar(10)
-,`ortr_del_cause` varchar(500)
-,`ortr_del_date` date
-,`ortr_del_emp` varchar(10)
-,`ortr_edit_cause` varchar(500)
 ,`ortr_edit_date` date
 ,`ortr_edit_emp` varchar(10)
-,`ortr_id` varchar(50)
-,`ortr_state` int
-,`ortr_transbranch` int
-,`rawdata` varchar(500)
-,`rectime` date
-,`ROOMID` varchar(10)
-,`TransType` int
-,`trtype` varchar(4)
-,`TRTYPENAME` varchar(100)
-,`USERID` varchar(10)
+,`ortr_edit_cause` varchar(500)
+,`ortr_del_date` date
+,`ortr_del_emp` varchar(10)
+,`ortr_del_cause` varchar(500)
+,`ortr_check_date` date
+,`ortr_checkyn` varchar(500)
+,`ortr_check_emp` varchar(10)
+,`ortr_check_cause` varchar(500)
 );
 
 --
@@ -5218,6 +5338,12 @@ ALTER TABLE `contractor_request`
   ADD KEY `idx_contractor_request_contract` (`contract_g_id`);
 
 --
+-- Indexes for table `contract_receivable_cache`
+--
+ALTER TABLE `contract_receivable_cache`
+  ADD PRIMARY KEY (`g_id`);
+
+--
 -- Indexes for table `ebarimt_api_log`
 --
 ALTER TABLE `ebarimt_api_log`
@@ -5315,6 +5441,14 @@ ALTER TABLE `payments`
 ALTER TABLE `pending_request`
   ADD PRIMARY KEY (`request_id`),
   ADD UNIQUE KEY `idx_pending_unique` (`table_name`,`record_id`,`emp_id`,`request_type`,`is_pending`);
+
+--
+-- Indexes for table `pos_session`
+--
+ALTER TABLE `pos_session`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `uniq_pos_session_uuid` (`session_uuid`),
+  ADD KEY `idx_pos_session_lookup` (`company_id`,`branch_id`,`merchant_id`);
 
 --
 -- Indexes for table `report_approvals`
@@ -5658,6 +5792,14 @@ ALTER TABLE `transactions_pos`
   ADD KEY `cashback_payment_type` (`cashback_payment_type`);
 
 --
+-- Indexes for table `transactions_posservices`
+--
+ALTER TABLE `transactions_posservices`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `transaction_id` (`transaction_id`),
+  ADD KEY `service_id` (`service_id`);
+
+--
 -- Indexes for table `transactions_test`
 --
 ALTER TABLE `transactions_test`
@@ -5682,6 +5824,12 @@ ALTER TABLE `transaction_temporaries`
   ADD KEY `idx_temp_table` (`table_name`),
   ADD KEY `idx_temp_plan_senior` (`plan_senior_empid`),
   ADD KEY `idx_temp_creator` (`created_by`);
+
+--
+-- Indexes for table `transaction_vat_summary`
+--
+ALTER TABLE `transaction_vat_summary`
+  ADD PRIMARY KEY (`id`);
 
 --
 -- Indexes for table `users`
@@ -6085,6 +6233,12 @@ ALTER TABLE `pending_request`
   MODIFY `request_id` bigint NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `pos_session`
+--
+ALTER TABLE `pos_session`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `report_approvals`
 --
 ALTER TABLE `report_approvals`
@@ -6325,6 +6479,12 @@ ALTER TABLE `transactions_pos`
   MODIFY `id` int NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT for table `transactions_posservices`
+--
+ALTER TABLE `transactions_posservices`
+  MODIFY `id` int NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT for table `transactions_test`
 --
 ALTER TABLE `transactions_test`
@@ -6340,6 +6500,12 @@ ALTER TABLE `transactions_test_detail`
 -- AUTO_INCREMENT for table `transaction_temporaries`
 --
 ALTER TABLE `transaction_temporaries`
+  MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT for table `transaction_vat_summary`
+--
+ALTER TABLE `transaction_vat_summary`
   MODIFY `id` bigint UNSIGNED NOT NULL AUTO_INCREMENT;
 
 --
@@ -6658,6 +6824,13 @@ ALTER TABLE `transactions_pos`
   ADD CONSTRAINT `transactions_pos_ibfk_5` FOREIGN KEY (`status`) REFERENCES `code_status` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_6` FOREIGN KEY (`payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT,
   ADD CONSTRAINT `transactions_pos_ibfk_8` FOREIGN KEY (`cashback_payment_type`) REFERENCES `code_cashier` (`id`) ON DELETE RESTRICT ON UPDATE RESTRICT;
+
+--
+-- Constraints for table `transactions_posservices`
+--
+ALTER TABLE `transactions_posservices`
+  ADD CONSTRAINT `transactions_posservices_ibfk_1` FOREIGN KEY (`transaction_id`) REFERENCES `transactions_pos` (`id`),
+  ADD CONSTRAINT `transactions_posservices_ibfk_2` FOREIGN KEY (`service_id`) REFERENCES `service_coding` (`id`);
 
 --
 -- Constraints for table `transactions_test_detail`
