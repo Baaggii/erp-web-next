@@ -1363,19 +1363,16 @@ async function fetchTokenFromAuthEndpoint(
         ? authEndpoint.requestBody.schema
         : {};
   const mappedPayload = applyEnvMapToPayload(requestPayload, authEndpoint.requestEnvMap).payload;
-  let targetBaseUrl = toStringValue(baseUrl);
+  let targetBaseUrl = resolveEndpointBaseUrl(authEndpoint, environment);
+  if (!targetBaseUrl && baseUrl) {
+    targetBaseUrl = toStringValue(baseUrl);
+  }
   if (!targetBaseUrl) {
     try {
       targetBaseUrl = await getPosApiBaseUrl();
     } catch {
       targetBaseUrl = '';
     }
-  }
-  if (!targetBaseUrl) {
-    targetBaseUrl = resolveEndpointBaseUrl(authEndpoint, environment);
-  }
-  if (!targetBaseUrl) {
-    targetBaseUrl = await getPosApiBaseUrl();
   }
   const result = await invokePosApiEndpoint(authEndpoint.id, mappedPayload, {
     endpoint: authEndpoint,
