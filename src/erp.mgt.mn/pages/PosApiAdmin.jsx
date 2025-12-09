@@ -309,18 +309,24 @@ function formatTableLabel(value) {
     .join(' ');
 }
 
+function formatTableDisplay(value, label) {
+  const baseLabel = label || formatTableLabel(value);
+  if (!value) return baseLabel;
+  return `${baseLabel} (${value})`;
+}
+
 function buildTableOptions(tables) {
   if (!Array.isArray(tables)) return [];
   return tables
     .map((table) => {
       if (!table) return null;
       if (typeof table === 'string') {
-        return { value: table, label: formatTableLabel(table) };
+        return { value: table, label: formatTableDisplay(table) };
       }
       if (typeof table === 'object') {
         const value = typeof table.value === 'string' ? table.value.trim() : '';
         if (!value) return null;
-        return { value, label: table.label || formatTableLabel(value) };
+        return { value, label: formatTableDisplay(value, table.label) };
       }
       return null;
     })
@@ -564,6 +570,7 @@ const EMPTY_ENDPOINT = {
   nestedPathsText: '{}',
   notes: '',
   requestEnvMap: {},
+  responseFieldMappings: {},
 };
 
 const PAYMENT_FIELD_DESCRIPTIONS = {
@@ -1297,6 +1304,37 @@ function normalizeHintEntry(entry) {
   };
 }
 
+function sanitizeResponseFieldMappings(mappings = {}) {
+  if (!mappings || typeof mappings !== 'object') return {};
+  const result = {};
+  Object.entries(mappings).forEach(([field, target]) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    const table = typeof target?.table === 'string' ? target.table.trim() : '';
+    const column = typeof target?.column === 'string' ? target.column.trim() : '';
+    if (!normalizedField || !table || !column) return;
+    result[normalizedField] = { table, column };
+  });
+  return result;
+}
+
+function extractResponseFieldMappings(definition) {
+  const explicit = sanitizeResponseFieldMappings(definition?.responseFieldMappings);
+  if (Object.keys(explicit).length > 0) return explicit;
+  const derived = {};
+  const responseFields = Array.isArray(definition?.responseFields) ? definition.responseFields : [];
+  responseFields.forEach((entry) => {
+    const normalized = normalizeHintEntry(entry);
+    const field = normalized.field;
+    const mapping = entry?.mapTo || entry?.mapping || entry?.target;
+    const table = typeof mapping?.table === 'string' ? mapping.table.trim() : '';
+    const column = typeof mapping?.column === 'string' ? mapping.column.trim() : '';
+    if (field && table && column) {
+      derived[field] = { table, column };
+    }
+  });
+  return sanitizeResponseFieldMappings(derived);
+}
+
 function buildRequestFieldDisplayFromState(state) {
   const requestFieldHints = parseHintPreview(
     state.requestFieldsText,
@@ -1577,6 +1615,7 @@ function createFormState(definition) {
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
     requestEnvMap: definition.requestEnvMap || {},
+    responseFieldMappings: extractResponseFieldMappings(definition),
   };
 }
 
@@ -2408,7 +2447,7 @@ export default function PosApiAdmin() {
         const value = option?.value;
         if (!value || seen.has(value)) return null;
         seen.add(value);
-        return { value, label: option.label || formatTableLabel(value) };
+        return { value, label: formatTableDisplay(value, option.label) };
       })
       .filter(Boolean);
   }, [infoSyncSettings.tables, infoSyncTableOptionsBase]);
@@ -2422,9 +2461,10 @@ export default function PosApiAdmin() {
         const name = extractFieldName(field);
         if (!name) return;
         const display = field.label || field.column_comment || field.description || name;
+        const tableLabel = formatTableDisplay(table);
         options.push({
           value: `${table}.${name}`,
-          label: `${formatTableLabel(table)} – ${display} (${name})`,
+          label: `${tableLabel} – ${display} (${name})`,
         });
       });
     });
@@ -2579,6 +2619,23 @@ export default function PosApiAdmin() {
       ),
     [formState.responseFieldsText],
   );
+
+  useEffect(() => {
+    if (responseFieldHints.state !== 'ok') return;
+    const allowedFields = new Set(
+      responseFieldHints.items
+        .map((entry) => normalizeHintEntry(entry).field)
+        .filter(Boolean),
+    );
+    setFormState((prev) => {
+      const current = sanitizeResponseFieldMappings(prev.responseFieldMappings);
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([field]) => allowedFields.has(field)),
+      );
+      if (JSON.stringify(next) === JSON.stringify(prev.responseFieldMappings || {})) return prev;
+      return { ...prev, responseFieldMappings: next };
+    });
+  }, [responseFieldHints]);
 
   const parameterPreview = useMemo(
     () => parseParametersPreview(formState.parametersText),
@@ -3828,6 +3885,24 @@ export default function PosApiAdmin() {
     }
   }
 
+  function handleResponseFieldMappingChange(field, value) {
+    setFormState((prev) => {
+      const current = sanitizeResponseFieldMappings(prev.responseFieldMappings);
+      const next = { ...current };
+      if (!value) {
+        delete next[field];
+      } else {
+        const [table, ...columnParts] = value.split('.');
+        const column = columnParts.join('.') || '';
+        if (table && column) {
+          next[field] = { table, column };
+        }
+      }
+      if (JSON.stringify(next) === JSON.stringify(prev.responseFieldMappings || {})) return prev;
+      return { ...prev, responseFieldMappings: next };
+    });
+  }
+
   function handleApplySamplePayload(type) {
     const sample = RECEIPT_SAMPLE_PAYLOADS[type];
     if (!sample) return;
@@ -4481,6 +4556,24 @@ export default function PosApiAdmin() {
       throw new Error('Response field hints must be a JSON array');
     }
 
+    const responseFieldMappings = sanitizeResponseFieldMappings(formState.responseFieldMappings);
+    const responseFieldsWithMapping = responseFields.map((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      const mapping = normalized.field ? responseFieldMappings[normalized.field] : null;
+      const baseEntry = entry && typeof entry === 'object' ? { ...entry } : null;
+      if (baseEntry && baseEntry.mapTo) {
+        delete baseEntry.mapTo;
+      }
+      if (!mapping || !normalized.field) return baseEntry || entry;
+      if (baseEntry) {
+        return { ...baseEntry, mapTo: mapping };
+      }
+      const base = { field: normalized.field };
+      if (typeof normalized.required === 'boolean') base.required = normalized.required;
+      if (normalized.description) base.description = normalized.description;
+      return { ...base, mapTo: mapping };
+    });
+
     const examples = parseJsonInput('Examples', formState.examplesText, []);
     if (!Array.isArray(examples)) {
       throw new Error('Examples must be a JSON array');
@@ -4621,7 +4714,10 @@ export default function PosApiAdmin() {
       },
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: sanitizedRequestFields,
-      responseFields,
+      responseFields: responseFieldsWithMapping,
+      ...(Object.keys(responseFieldMappings).length
+        ? { responseFieldMappings }
+        : {}),
       examples,
       scripts,
       testable: Boolean(formState.testable),
@@ -7332,11 +7428,20 @@ export default function PosApiAdmin() {
             {responseFieldHints.state === 'error' && (
               <div style={styles.hintError}>{responseFieldHints.error}</div>
             )}
+            {responseFieldHints.state === 'ok' && infoFieldOptions.length === 0 && (
+              <p style={styles.hintEmpty}>
+                Select tables to update in the POSAPI information tab to enable field mappings.
+              </p>
+            )}
             {responseFieldHints.state === 'ok' && (
               <ul style={styles.hintList}>
                 {responseFieldHints.items.map((hint, index) => {
                   const normalized = normalizeHintEntry(hint);
                   const fieldLabel = normalized.field || '(unnamed field)';
+                  const mapping = formState.responseFieldMappings?.[fieldLabel];
+                  const mappingValue = mapping ? `${mapping.table}.${mapping.column}` : '';
+                  const hasCustomMapping = mappingValue
+                    && !infoFieldOptions.some((option) => option.value === mappingValue);
                   return (
                     <li key={`response-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
                       <div style={styles.hintFieldRow}>
@@ -7350,13 +7455,37 @@ export default function PosApiAdmin() {
                                 : styles.hintBadgeOptional),
                             }}
                           >
-                            {normalized.required ? 'Required' : 'Optional'}
+                          {normalized.required ? 'Required' : 'Optional'}
                           </span>
                         )}
                       </div>
                       {normalized.description && (
                         <p style={styles.hintDescription}>{normalized.description}</p>
                       )}
+                      <label style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                        <span style={{ color: '#475569', fontSize: '0.9rem' }}>
+                          Map to table column
+                        </span>
+                        <select
+                          value={mappingValue}
+                          onChange={(e) => handleResponseFieldMappingChange(fieldLabel, e.target.value)}
+                          style={styles.input}
+                          disabled={infoFieldOptions.length === 0}
+                        >
+                          <option value="">Do not map</option>
+                          {infoFieldOptions.map((option) => (
+                            <option key={`map-${fieldLabel}-${option.value}`} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                          {hasCustomMapping && (
+                            <option value={mappingValue}>Current selection: {mappingValue}</option>
+                          )}
+                        </select>
+                        <span style={styles.requestFieldHint}>
+                          Uses the selected tables from the POSAPI information tab.
+                        </span>
+                      </label>
                     </li>
                   );
                 })}
@@ -8021,7 +8150,7 @@ export default function PosApiAdmin() {
                   >
                     {infoSyncTableOptions.map((table) => (
                       <option key={table.value} value={table.value}>
-                        {table.label} ({table.value})
+                        {table.label}
                       </option>
                     ))}
                   </select>
@@ -8051,84 +8180,10 @@ export default function PosApiAdmin() {
             <div style={styles.infoCard}>
               <h3 style={{ marginTop: 0 }}>Field mappings</h3>
               <p style={styles.helpText}>
-                Map endpoint response fields to columns in the selected tables. Mapped values are applied
-                during reference code refreshes for the selected endpoints.
+                Field mappings are now configured per endpoint in the Response fields panel above. Use
+                the dropdown beside each response field to map it to a column in the tables selected in
+                this POSAPI information tab.
               </p>
-              {infoSyncTables.length === 0 && (
-                <p style={{ margin: 0 }}>Select one or more tables to update to configure field mappings.</p>
-              )}
-              {infoSyncTables.length > 0 && infoMappingEndpoints.length === 0 && (
-                <p style={{ margin: 0 }}>Choose at least one endpoint to sync to enable mappings.</p>
-              )}
-              {infoSyncTables.length > 0
-                && infoMappingEndpoints.length > 0
-                && infoFieldOptions.length === 0 && (
-                  <p style={{ margin: 0 }}>Loading columns for the selected tables…</p>
-              )}
-              {infoSyncTables.length > 0 && infoMappingEndpoints.length > 0 && infoFieldOptions.length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                  {infoMappingEndpoints.map((endpoint) => {
-                    const responseFields = Array.isArray(endpoint.responseFields)
-                      ? endpoint.responseFields
-                      : [];
-                    return (
-                      <div
-                        key={`mapping-${endpoint.id}`}
-                        style={{
-                          border: '1px solid #e2e8f0',
-                          borderRadius: '8px',
-                          padding: '0.75rem',
-                          background: '#fff',
-                        }}
-                      >
-                        <div style={{ fontWeight: 700, marginBottom: '0.35rem' }}>
-                          {endpoint.name || endpoint.id}
-                        </div>
-                        <div style={{ color: '#475569', fontSize: '0.9rem', marginBottom: '0.35rem' }}>
-                          <span style={{ fontWeight: 600 }}>{endpoint.method}</span> {endpoint.path}
-                        </div>
-                        {responseFields.length === 0 && (
-                          <p style={{ margin: 0 }}>No response fields available for mapping.</p>
-                        )}
-                        {responseFields.length > 0 && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                            {responseFields.map((field) => {
-                              const fieldName = extractFieldName(field);
-                              if (!fieldName) return null;
-                              const existing = infoFieldMappings?.[endpoint.id]?.[fieldName];
-                              const value = existing ? `${existing.table}.${existing.column}` : '';
-                              return (
-                                <label
-                                  key={`${endpoint.id}-${fieldName}`}
-                                  style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}
-                                >
-                                  <span style={{ fontWeight: 600 }}>
-                                    {fieldName}
-                                    {field?.required ? ' *' : ''}
-                                    {field?.description ? ` – ${field.description}` : ''}
-                                  </span>
-                                  <select
-                                    value={value}
-                                    onChange={(e) => handleInfoFieldMappingChange(endpoint.id, fieldName, e.target.value)}
-                                    style={styles.input}
-                                  >
-                                    <option value="">Do not map</option>
-                                    {infoFieldOptions.map((option) => (
-                                      <option key={`${endpoint.id}-${fieldName}-${option.value}`} value={option.value}>
-                                        {option.label}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
             <div style={styles.infoCard}>
               <h3 style={{ marginTop: 0 }}>Upload static lists (CSV or Excel)</h3>
