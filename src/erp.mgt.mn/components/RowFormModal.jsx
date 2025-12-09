@@ -828,7 +828,8 @@ const RowFormModal = function RowFormModal({
         const parameterFields = Array.isArray(entry.parameters)
           ? entry.parameters
               .map((param) => {
-                const location = typeof param.in === 'string' && param.in ? param.in : '';
+                const locationRaw = typeof param.in === 'string' && param.in ? param.in : '';
+                const location = locationRaw.toLowerCase();
                 if (location === 'header') return null;
                 const field = typeof param.name === 'string' ? param.name : '';
                 if (!field) return null;
