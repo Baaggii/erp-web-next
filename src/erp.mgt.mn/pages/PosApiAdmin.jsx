@@ -291,34 +291,6 @@ function buildTableOptions(tables) {
     .filter(Boolean);
 }
 
-function stringifyExample(value) {
-  if (value === undefined || value === null) return '';
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return '';
-  }
-}
-
-function extractExampleBody(endpoint) {
-  if (!endpoint || typeof endpoint !== 'object') return '';
-  const requestBody = endpoint.requestBody || {};
-  const exampleCandidates = [
-    requestBody.example,
-    requestBody.sample,
-    Array.isArray(requestBody.examples) ? requestBody.examples[0] : undefined,
-  ];
-  const exampleFromExamples = Array.isArray(endpoint.examples)
-    ? endpoint.examples.find((ex) => ex && ex.request)
-    : null;
-  if (exampleFromExamples?.request) {
-    exampleCandidates.push(exampleFromExamples.request);
-  }
-  const hit = exampleCandidates.find((candidate) => candidate !== undefined && candidate !== null);
-  return stringifyExample(hit);
-}
-
 function sanitizeTableSelection(selection, options) {
   const allowedValues = Array.isArray(options) ? options.map((option) => option.value) : [];
   const allowedSet = new Set(allowedValues.filter(Boolean));
@@ -2170,19 +2142,6 @@ export default function PosApiAdmin() {
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
-  const [adminUtilityId, setAdminUtilityId] = useState('');
-  const [adminParameterValues, setAdminParameterValues] = useState({});
-  const [adminRequestBody, setAdminRequestBody] = useState('');
-  const [adminContextNote, setAdminContextNote] = useState('');
-  const [adminContextRecordId, setAdminContextRecordId] = useState('');
-  const [adminResult, setAdminResult] = useState(null);
-  const [adminHistory, setAdminHistory] = useState([]);
-  const [adminUtilityError, setAdminUtilityError] = useState('');
-  const [adminUtilityStatus, setAdminUtilityStatus] = useState('');
-  const [adminUtilityLoading, setAdminUtilityLoading] = useState(false);
-  const [adminEnvironment, setAdminEnvironment] = useState('staging');
-  const [adminUseCachedToken, setAdminUseCachedToken] = useState(true);
-  const [adminSkipAuth, setAdminSkipAuth] = useState(false);
 
   function showToast(message, type = 'info') {
     if (typeof addToast === 'function') {
@@ -2274,16 +2233,6 @@ export default function PosApiAdmin() {
       })
       .filter(Boolean);
   }, [endpoints, usageFilter]);
-
-  const adminUtilityEndpoints = useMemo(
-    () => endpoints.filter((endpoint) => endpoint.usage !== 'transaction' && endpoint.usage !== 'auth'),
-    [endpoints],
-  );
-
-  const selectedAdminUtility = useMemo(
-    () => adminUtilityEndpoints.find((ep) => ep.id === adminUtilityId) || adminUtilityEndpoints[0] || null,
-    [adminUtilityEndpoints, adminUtilityId],
-  );
 
   const activeImportDraft = useMemo(
     () => importDrafts.find((entry) => entry.id === selectedImportId) || importDrafts[0] || null,
@@ -3460,33 +3409,6 @@ export default function PosApiAdmin() {
   }, []);
 
   useEffect(() => {
-    if (!selectedAdminUtility && adminUtilityEndpoints.length > 0) {
-      setAdminUtilityId(adminUtilityEndpoints[0].id);
-      return;
-    }
-    if (!selectedAdminUtility) return;
-    setAdminUtilityId(selectedAdminUtility.id);
-    const defaults = {};
-    (selectedAdminUtility.parameters || []).forEach((param) => {
-      if (!param || typeof param.name !== 'string') return;
-      const fallback =
-        param.testValue !== undefined
-          ? param.testValue
-          : param.example !== undefined
-            ? param.example
-            : param.default !== undefined
-              ? param.default
-              : '';
-      defaults[param.name] = stringifyExample(fallback) || '';
-    });
-    setAdminParameterValues(defaults);
-    setAdminRequestBody(extractExampleBody(selectedAdminUtility));
-    setAdminUtilityError('');
-    setAdminUtilityStatus('');
-    setAdminResult(null);
-  }, [adminUtilityEndpoints, selectedAdminUtility]);
-
-  useEffect(() => {
     if (activeTab !== 'info') {
       refreshInfoSyncLogsRef.current = () => Promise.resolve();
       return undefined;
@@ -4248,122 +4170,6 @@ export default function PosApiAdmin() {
     }
   }
 
-  function buildAdminPayload() {
-    if (!selectedAdminUtility) {
-      throw new Error('Select a non-transaction endpoint to continue');
-    }
-    const payload = {};
-    (selectedAdminUtility.parameters || []).forEach((param) => {
-      if (!param || typeof param.name !== 'string') return;
-      const raw = adminParameterValues[param.name];
-      if (raw === undefined || raw === null) return;
-      const textValue = typeof raw === 'string' ? raw.trim() : raw;
-      if (textValue === '') return;
-      payload[param.name] = textValue;
-    });
-
-    if (adminRequestBody && adminRequestBody.trim()) {
-      try {
-        payload.body = JSON.parse(adminRequestBody);
-      } catch (err) {
-        throw new Error(`Request body is not valid JSON: ${err.message}`);
-      }
-    }
-
-    return payload;
-  }
-
-  function resetAdminUtilityForm() {
-    if (!selectedAdminUtility) return;
-    const defaults = {};
-    (selectedAdminUtility.parameters || []).forEach((param) => {
-      if (!param?.name) return;
-      defaults[param.name] = stringifyExample(param.testValue ?? param.example ?? param.default ?? '');
-    });
-    setAdminParameterValues(defaults);
-    setAdminRequestBody(extractExampleBody(selectedAdminUtility));
-    setAdminUtilityError('');
-    setAdminUtilityStatus('');
-    setAdminResult(null);
-  }
-
-  async function handleAdminInvoke() {
-    if (!selectedAdminUtility) {
-      setAdminUtilityError('Select an admin or lookup endpoint to continue.');
-      return;
-    }
-    let payload;
-    try {
-      payload = buildAdminPayload();
-      setAdminUtilityError('');
-      setAdminUtilityStatus('Preparing request…');
-    } catch (err) {
-      setAdminUtilityError(err.message || 'Unable to prepare payload');
-      return;
-    }
-
-    const options = {
-      environment: adminEnvironment,
-      useCachedToken: adminUseCachedToken,
-      skipAuth: adminSkipAuth,
-      authEndpointId: selectedAdminUtility.authEndpointId || undefined,
-    };
-    const context = {
-      note: adminContextNote || undefined,
-      recordId:
-        adminContextRecordId && `${adminContextRecordId}`.trim() !== ''
-          ? adminContextRecordId
-          : undefined,
-    };
-
-    try {
-      setAdminUtilityLoading(true);
-      const res = await fetch(`${API_BASE}/posapi/proxy/invoke`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ endpointId: selectedAdminUtility.id, payload, context, options }),
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || 'Failed to invoke endpoint');
-      }
-      const data = await res.json();
-      setAdminResult(data);
-      setAdminUtilityStatus('Endpoint invoked successfully.');
-      const logEntry = {
-        id: `${selectedAdminUtility.id}-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        endpointId: selectedAdminUtility.id,
-        endpointName: selectedAdminUtility.name || selectedAdminUtility.id,
-        status: 'success',
-        environment: adminEnvironment,
-        note: adminContextNote || '',
-        recordId: context.recordId,
-        payload,
-        response: data.response,
-      };
-      setAdminHistory((prev) => [logEntry, ...prev].slice(0, 25));
-    } catch (err) {
-      setAdminUtilityError(err.message || 'Failed to invoke endpoint');
-      const logEntry = {
-        id: `${selectedAdminUtility?.id || 'unknown'}-${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        endpointId: selectedAdminUtility?.id || 'unknown',
-        endpointName: selectedAdminUtility?.name || selectedAdminUtility?.id || 'Unknown endpoint',
-        status: 'error',
-        environment: adminEnvironment,
-        note: adminContextNote || '',
-        recordId: context.recordId,
-        payload,
-        error: err.message || 'Failed to invoke endpoint',
-      };
-      setAdminHistory((prev) => [logEntry, ...prev].slice(0, 25));
-    } finally {
-      setAdminUtilityLoading(false);
-    }
-  }
-
   function buildDefinition() {
     const parameters = parseJsonInput('Parameters', formState.parametersText, []);
     if (!Array.isArray(parameters)) {
@@ -5039,16 +4845,6 @@ export default function PosApiAdmin() {
           onClick={() => setActiveTab('info')}
         >
           POSAPI Information
-        </button>
-        <button
-          type="button"
-          style={{
-            ...styles.tabButton,
-            ...(activeTab === 'admin-utils' ? styles.tabButtonActive : {}),
-          }}
-          onClick={() => setActiveTab('admin-utils')}
-        >
-          Admin utilities
         </button>
       </div>
 
@@ -7490,235 +7286,6 @@ export default function PosApiAdmin() {
         </div>
       )}
 
-      {activeTab === 'admin-utils' && (
-        <div style={styles.infoContainer}>
-          <h1>Admin utilities &amp; lookups</h1>
-          <p style={{ maxWidth: '760px' }}>
-            Manage non-transaction endpoints such as lookup and admin utility calls. Implement and test
-            endpoints with custom parameters, review responses, and keep a quick history for auditing.
-          </p>
-
-          {adminUtilityEndpoints.length === 0 && (
-            <div style={styles.error}>Add a LOOKUP or ADMIN endpoint to start using this workspace.</div>
-          )}
-
-          {adminUtilityEndpoints.length > 0 && (
-            <div style={styles.adminGrid}>
-              <div style={styles.adminColumn}>
-                <label style={styles.label}>
-                  Utility endpoint
-                  <select
-                    value={selectedAdminUtility?.id || ''}
-                    onChange={(e) => setAdminUtilityId(e.target.value)}
-                    style={styles.input}
-                  >
-                    {adminUtilityEndpoints.map((endpoint) => (
-                      <option key={endpoint.id} value={endpoint.id}>
-                        {endpoint.name || endpoint.id} – {endpoint.method} {endpoint.path}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {selectedAdminUtility && (
-                  <div style={styles.adminMeta}>
-                    <div>
-                      <span style={badgeStyle(METHOD_BADGES[selectedAdminUtility.method] || '#94a3b8')}>
-                        {selectedAdminUtility.method}
-                      </span>
-                      <span
-                        style={{
-                          ...badgeStyle(TYPE_BADGES[selectedAdminUtility.posApiType] || '#1f2937'),
-                          marginLeft: '0.5rem',
-                        }}
-                      >
-                        {formatTypeLabel(selectedAdminUtility.posApiType || 'LOOKUP')}
-                      </span>
-                    </div>
-                    <div style={styles.adminPath}>{selectedAdminUtility.path}</div>
-                    {selectedAdminUtility.notes && (
-                      <div style={styles.adminNotes}>{selectedAdminUtility.notes}</div>
-                    )}
-                  </div>
-                )}
-
-                <div style={styles.inlineFields}>
-                  <label style={{ ...styles.label, flex: 1 }}>
-                    Environment
-                    <select
-                      value={adminEnvironment}
-                      onChange={(e) => setAdminEnvironment(e.target.value)}
-                      style={styles.input}
-                    >
-                      <option value="staging">Staging / test</option>
-                      <option value="production">Production</option>
-                    </select>
-                  </label>
-                  <label style={{ ...styles.label, flex: 1 }}>
-                    Context record ID
-                    <input
-                      type="text"
-                      value={adminContextRecordId}
-                      onChange={(e) => setAdminContextRecordId(e.target.value)}
-                      style={styles.input}
-                      placeholder="Optional reference for logs"
-                    />
-                  </label>
-                </div>
-                <label style={styles.label}>
-                  Admin note / description
-                  <textarea
-                    style={styles.textarea}
-                    value={adminContextNote}
-                    onChange={(e) => setAdminContextNote(e.target.value)}
-                    rows={3}
-                    placeholder="Describe the purpose of this call for future reference"
-                  />
-                </label>
-
-                <div style={styles.inlineChecks}>
-                  <label style={styles.checkboxLabel}>
-                    <input
-                      type="checkbox"
-                      checked={adminUseCachedToken}
-                      onChange={(e) => setAdminUseCachedToken(e.target.checked)}
-                    />
-                    Reuse cached token (if available)
-                  </label>
-                  <label style={styles.checkboxLabel}>
-                    <input
-                      type="checkbox"
-                      checked={adminSkipAuth}
-                      onChange={(e) => setAdminSkipAuth(e.target.checked)}
-                    />
-                    Skip token request for this call
-                  </label>
-                </div>
-
-                <div style={styles.actions}>
-                  <button
-                    type="button"
-                    onClick={handleAdminInvoke}
-                    disabled={adminUtilityLoading || !selectedAdminUtility}
-                    style={styles.refreshButton}
-                  >
-                    {adminUtilityLoading ? 'Invoking…' : 'Invoke endpoint'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={resetAdminUtilityForm}
-                    style={styles.smallButton}
-                    disabled={adminUtilityLoading}
-                  >
-                    Reset form
-                  </button>
-                </div>
-
-                {adminUtilityError && <div style={styles.error}>{adminUtilityError}</div>}
-                {adminUtilityStatus && <div style={styles.status}>{adminUtilityStatus}</div>}
-              </div>
-
-              <div style={styles.adminColumn}>
-                <h3 style={{ marginTop: 0 }}>Parameters &amp; payload</h3>
-                {selectedAdminUtility?.parameters?.length ? (
-                  <div style={styles.parameterGrid}>
-                    {selectedAdminUtility.parameters.map((param) => (
-                      <label key={param.name || param.description} style={styles.label}>
-                        {param.name} {param.required && <span style={styles.requiredMark}>*</span>}
-                        <input
-                          type="text"
-                          value={adminParameterValues[param.name] || ''}
-                          onChange={(e) => setAdminParameterValues((prev) => ({ ...prev, [param.name]: e.target.value }))}
-                          style={styles.input}
-                          placeholder={param.description || param.in || 'Parameter value'}
-                        />
-                        {param.description && (
-                          <span style={styles.checkboxHint}>Location: {param.in || 'body'} — {param.description}</span>
-                        )}
-                      </label>
-                    ))}
-                  </div>
-                ) : (
-                  <div style={styles.helpText}>No parameters configured for this endpoint.</div>
-                )}
-
-                <label style={styles.label}>
-                  Request body (JSON)
-                  <textarea
-                    style={styles.textarea}
-                    value={adminRequestBody}
-                    onChange={(e) => setAdminRequestBody(e.target.value)}
-                    rows={10}
-                    placeholder="{""body"":{}}"
-                  />
-                </label>
-              </div>
-            </div>
-          )}
-
-          {adminResult && (
-            <div style={styles.logsCard}>
-              <h3 style={{ marginTop: 0 }}>Result</h3>
-              <div style={styles.infoMeta}>
-                <div>
-                  Status:{' '}
-                  <strong>
-                    {adminResult.response?.status ?? 'N/A'} {adminResult.response?.statusText || ''}
-                  </strong>
-                </div>
-                {adminResult.request?.url && <div>Request URL: {adminResult.request.url}</div>}
-              </div>
-              <pre style={styles.codeBlock}>{JSON.stringify(adminResult.response ?? adminResult, null, 2)}</pre>
-            </div>
-          )}
-
-          {adminHistory.length > 0 && (
-            <div style={styles.logsCard}>
-              <h3 style={{ marginTop: 0 }}>Admin endpoint history</h3>
-              <table style={styles.logTable}>
-                <thead>
-                  <tr>
-                    <th style={styles.logCell}>When</th>
-                    <th style={styles.logCell}>Endpoint</th>
-                    <th style={styles.logCell}>Env</th>
-                    <th style={styles.logCell}>Status</th>
-                    <th style={styles.logCell}>Notes</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {adminHistory.map((entry) => (
-                    <tr key={entry.id}>
-                      <td style={styles.logCell}>{new Date(entry.timestamp).toLocaleString()}</td>
-                      <td style={styles.logCell}>
-                        {entry.endpointName}
-                        <div style={styles.logMeta}>{entry.endpointId}</div>
-                      </td>
-                      <td style={styles.logCell}>{entry.environment}</td>
-                      <td style={styles.logCell}>
-                        <span
-                          style={{
-                            ...styles.statusPill,
-                            ...(entry.status === 'success' ? styles.statusPillSuccess : styles.statusPillError),
-                          }}
-                        >
-                          {entry.status}
-                        </span>
-                      </td>
-                      <td style={styles.logCell}>
-                        {entry.error || entry.response?.statusText || entry.note || '—'}
-                        {entry.recordId && <div style={styles.logMeta}>Record ID: {entry.recordId}</div>}
-                        {entry.payload && (
-                          <div style={styles.logMeta}>Payload keys: {Object.keys(entry.payload).join(', ') || 'none'}</div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-
       {activeTab === 'info' && (
         <div style={styles.infoContainer}>
           <h1>POSAPI Information</h1>
@@ -7998,65 +7565,6 @@ const styles = {
   logTable: {
     width: '100%',
     borderCollapse: 'collapse',
-  },
-  logCell: {
-    padding: '0.35rem 0.5rem',
-    borderBottom: '1px solid #e2e8f0',
-    textAlign: 'left',
-    fontSize: '0.9rem',
-    verticalAlign: 'top',
-  },
-  logMeta: {
-    color: '#475569',
-    fontSize: '0.8rem',
-    marginTop: '0.15rem',
-  },
-  adminGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-    gap: '1.25rem',
-    marginTop: '1rem',
-  },
-  adminColumn: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '10px',
-    padding: '1rem',
-    background: '#f8fafc',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-  },
-  adminMeta: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35rem',
-    padding: '0.5rem 0.75rem',
-    background: '#fff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '8px',
-  },
-  adminPath: {
-    fontFamily: 'monospace',
-    fontSize: '0.9rem',
-    color: '#0f172a',
-  },
-  adminNotes: {
-    fontSize: '0.85rem',
-    color: '#475569',
-  },
-  inlineChecks: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35rem',
-    margin: '0.75rem 0',
-  },
-  parameterGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-    gap: '0.75rem',
-  },
-  requiredMark: {
-    color: '#dc2626',
   },
   sidebar: {
     width: '280px',
