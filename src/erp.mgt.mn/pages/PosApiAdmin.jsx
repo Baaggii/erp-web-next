@@ -309,6 +309,56 @@ function sanitizeTableSelection(selection, options) {
   return unique.filter((value) => allowedSet.has(value));
 }
 
+function sanitizeInfoFieldMappings(mappings, allowedTables) {
+  const result = {};
+  const allowedSet = new Set((allowedTables || []).filter(Boolean));
+  if (!mappings || typeof mappings !== 'object') return result;
+  Object.entries(mappings).forEach(([endpointId, fieldMap]) => {
+    if (!endpointId || !fieldMap || typeof fieldMap !== 'object') return;
+    const tableMap = {};
+    Object.entries(fieldMap).forEach(([sourceField, target]) => {
+      const source = typeof sourceField === 'string' ? sourceField.trim() : '';
+      const table = typeof target?.table === 'string' ? target.table.trim() : '';
+      const column = typeof target?.column === 'string' ? target.column.trim() : '';
+      if (!source || !table || !column) return;
+      if (allowedSet.size > 0 && !allowedSet.has(table)) return;
+      tableMap[source] = { table, column };
+    });
+    if (Object.keys(tableMap).length > 0) {
+      result[endpointId] = tableMap;
+    }
+  });
+  return result;
+}
+
+function sanitizeResponseFieldMappings(mappings, allowedTables) {
+  const result = {};
+  const allowedSet = new Set((allowedTables || []).filter(Boolean));
+  if (!mappings || typeof mappings !== 'object') return result;
+  Object.entries(mappings).forEach(([sourceField, target]) => {
+    const source = typeof sourceField === 'string' ? sourceField.trim() : '';
+    const table = typeof target?.table === 'string' ? target.table.trim() : '';
+    const column = typeof target?.column === 'string' ? target.column.trim() : '';
+    if (!source || !table || !column) return;
+    if (allowedSet.size > 0 && !allowedSet.has(table)) return;
+    result[source] = { table, column };
+  });
+  return result;
+}
+
+function extractFieldName(field) {
+  if (!field) return '';
+  if (typeof field === 'string') return field;
+  return (
+    field.field ||
+    field.column ||
+    field.column_name ||
+    field.columnName ||
+    field.name ||
+    ''
+  );
+}
+
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
   const usage = endpoint.posApiType === 'AUTH'
@@ -493,6 +543,7 @@ const EMPTY_ENDPOINT = {
   nestedPathsText: '{}',
   notes: '',
   requestEnvMap: {},
+  responseFieldMappings: {},
 };
 
 const PAYMENT_FIELD_DESCRIPTIONS = {
@@ -1506,6 +1557,10 @@ function createFormState(definition) {
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
     requestEnvMap: definition.requestEnvMap || {},
+    responseFieldMappings: sanitizeResponseFieldMappings(
+      definition.responseFieldMappings || definition.fieldMappings,
+      [],
+    ),
   };
 }
 
@@ -2139,6 +2194,8 @@ export default function PosApiAdmin() {
   const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
   const [infoSyncTables, setInfoSyncTables] = useState([]);
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
+  const [infoTableFields, setInfoTableFields] = useState({});
+  const [infoTableFieldLoading, setInfoTableFieldLoading] = useState({});
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const builderSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
@@ -2270,10 +2327,40 @@ export default function PosApiAdmin() {
         const value = option?.value;
         if (!value || seen.has(value)) return null;
         seen.add(value);
-        return { value, label: option.label || formatTableLabel(value) };
+        const baseLabel = option.label || formatTableLabel(value);
+        const label = baseLabel.includes(value) ? baseLabel : `${baseLabel} (${value})`;
+        return { value, label };
       })
       .filter(Boolean);
   }, [infoSyncSettings.tables, infoSyncTableOptionsBase]);
+
+  const infoTableLabelMap = useMemo(() => {
+    const map = {};
+    infoSyncTableOptions.forEach((option) => {
+      if (!option?.value) return;
+      map[option.value] = option.label || formatTableLabel(option.value);
+    });
+    return map;
+  }, [infoSyncTableOptions]);
+
+  const infoFieldOptions = useMemo(() => {
+    const options = [];
+    infoSyncTables.forEach((table) => {
+      const fields = infoTableFields[table];
+      if (!Array.isArray(fields) || fields.length === 0) return;
+      fields.forEach((field) => {
+        const name = extractFieldName(field);
+        if (!name) return;
+        const display = field.label || field.column_comment || field.description || name;
+        const tableLabel = infoTableLabelMap[table] || formatTableLabel(table);
+        options.push({
+          value: `${table}.${name}`,
+          label: `${tableLabel} – ${display} (${name})`,
+        });
+      });
+    });
+    return options;
+  }, [infoSyncTables, infoTableFields, infoTableLabelMap]);
 
   useEffect(() => {
     setInfoSyncEndpointIds((prev) => {
@@ -2294,6 +2381,41 @@ export default function PosApiAdmin() {
       return filtered;
     });
   }, [infoSyncTableOptions]);
+
+  useEffect(() => {
+    const missingTables = infoSyncTables.filter(
+      (table) => table && !infoTableFields[table] && !infoTableFieldLoading[table],
+    );
+    if (missingTables.length === 0) return undefined;
+    let cancelled = false;
+    const abortController = new AbortController();
+    missingTables.forEach((table) => {
+      setInfoTableFieldLoading((prev) => ({ ...prev, [table]: true }));
+      fetch(`${API_BASE}/report_builder/fields?table=${encodeURIComponent(table)}`, {
+        credentials: 'include',
+        skipLoader: true,
+        signal: abortController.signal,
+      })
+        .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+          if (cancelled) return;
+          if (!ok) {
+            setInfoTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+            return;
+          }
+          setInfoTableFields((prev) => ({ ...prev, [table]: Array.isArray(data.fields) ? data.fields : [] }));
+          setInfoTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setInfoTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+        });
+    });
+    return () => {
+      cancelled = true;
+      abortController.abort();
+    };
+  }, [infoSyncTables, infoTableFields, infoTableFieldLoading]);
 
   const requestPreview = useMemo(() => {
     const text = (formState.requestSchemaText || '').trim();
@@ -3471,6 +3593,45 @@ export default function PosApiAdmin() {
           settingsData.settings?.tables,
           tableOptions.length > 0 ? tableOptions : DEFAULT_INFO_TABLE_OPTIONS,
         );
+        if (tables.length > 0) {
+          setInfoTableFieldLoading((prev) => tables.reduce(
+            (acc, table) => ({ ...acc, [table]: true }),
+            { ...prev },
+          ));
+          const fieldEntries = await Promise.all(
+            tables.map(async (table) => {
+              try {
+                const res = await fetch(`${API_BASE}/report_builder/fields?table=${encodeURIComponent(table)}`, {
+                  credentials: 'include',
+                  skipLoader: true,
+                  signal: controller.signal,
+                });
+                const data = await res.json();
+                if (!res.ok) return null;
+                return [table, Array.isArray(data.fields) ? data.fields : []];
+              } catch (err) {
+                if (err?.name === 'AbortError') return null;
+                return [table, []];
+              }
+            }),
+          );
+          setInfoTableFields((prev) => {
+            const next = { ...prev };
+            fieldEntries.forEach((entry) => {
+              if (entry && entry[0]) {
+                next[entry[0]] = entry[1] || [];
+              }
+            });
+            return next;
+          });
+          setInfoTableFieldLoading((prev) => {
+            const next = { ...prev };
+            tables.forEach((table) => {
+              next[table] = false;
+            });
+            return next;
+          });
+        }
         setInfoSyncSettings({
           autoSyncEnabled: Boolean(settingsData.settings?.autoSyncEnabled),
           intervalMinutes: Number(settingsData.settings?.intervalMinutes) || 720,
@@ -4004,6 +4165,25 @@ export default function PosApiAdmin() {
     setInfoSyncSettings((prev) => ({ ...prev, [field]: value }));
   }
 
+  function handleResponseFieldMappingChange(sourceField, targetValue) {
+    if (!sourceField) return;
+    setFormState((prev) => {
+      const current = { ...(prev.responseFieldMappings || {}) };
+      if (!targetValue) {
+        delete current[sourceField];
+      } else {
+        const [table, ...rest] = targetValue.split('.');
+        const column = rest.join('.');
+        if (!table || !column || (infoSyncTables.length > 0 && !infoSyncTables.includes(table))) {
+          return prev;
+        }
+        current[sourceField] = { table, column };
+      }
+      const sanitized = sanitizeResponseFieldMappings(current, infoSyncTables);
+      return { ...prev, responseFieldMappings: sanitized };
+    });
+  }
+
   function handleInfoEndpointSelection(event) {
     const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
     setInfoSyncEndpointIds(selected);
@@ -4330,6 +4510,11 @@ export default function PosApiAdmin() {
       testServerUrlProduction: testServerUrlProductionField,
     });
 
+    const responseFieldMappings = sanitizeResponseFieldMappings(
+      formState.responseFieldMappings,
+      infoSyncTables,
+    );
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -4378,6 +4563,7 @@ export default function PosApiAdmin() {
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: sanitizedRequestFields,
       responseFields,
+      responseFieldMappings,
       examples,
       scripts,
       testable: Boolean(formState.testable),
@@ -6957,6 +7143,10 @@ export default function PosApiAdmin() {
                 {responseFieldHints.items.map((hint, index) => {
                   const normalized = normalizeHintEntry(hint);
                   const fieldLabel = normalized.field || '(unnamed field)';
+                  const mappedTarget = formState.responseFieldMappings?.[fieldLabel];
+                  const mappedValue = mappedTarget
+                    ? `${mappedTarget.table}.${mappedTarget.column}`
+                    : '';
                   return (
                     <li key={`response-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
                       <div style={styles.hintFieldRow}>
@@ -6976,6 +7166,34 @@ export default function PosApiAdmin() {
                       </div>
                       {normalized.description && (
                         <p style={styles.hintDescription}>{normalized.description}</p>
+                      )}
+                      {formState.usage === 'info' && (
+                        <div style={{ marginTop: '0.35rem' }}>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <span style={{ fontWeight: 600 }}>Map to reference table field</span>
+                            <select
+                              value={mappedValue}
+                              onChange={(e) => handleResponseFieldMappingChange(fieldLabel, e.target.value)}
+                              style={styles.input}
+                              disabled={infoSyncTables.length === 0 || infoFieldOptions.length === 0}
+                            >
+                              <option value="">Do not map</option>
+                              {infoFieldOptions.map((option) => (
+                                <option key={`response-map-${fieldLabel}-${option.value}`} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {infoSyncTables.length === 0 && (
+                            <p style={styles.hintDescription}>
+                              Choose tables to update in the Information tab to enable field mappings.
+                            </p>
+                          )}
+                          {infoSyncTables.length > 0 && infoFieldOptions.length === 0 && (
+                            <p style={styles.hintDescription}>Loading available columns…</p>
+                          )}
+                        </div>
                       )}
                     </li>
                   );
@@ -7392,18 +7610,18 @@ export default function PosApiAdmin() {
                 {infoSyncLoading ? 'Refreshing…' : 'Refresh reference codes'}
               </button>
               {infoSyncLogs[0] && (
-                <div style={styles.infoMeta}>
-                  <div>Last sync: {new Date(infoSyncLogs[0].timestamp).toLocaleString()}</div>
-                  <div>
-                    Added {infoSyncLogs[0].added || 0}, updated {infoSyncLogs[0].updated || 0},
-                    deactivated {infoSyncLogs[0].deactivated || 0}
-                  </div>
-                </div>
-              )}
+            <div style={styles.infoMeta}>
+              <div>Last sync: {new Date(infoSyncLogs[0].timestamp).toLocaleString()}</div>
+              <div>
+                Added {infoSyncLogs[0].added || 0}, updated {infoSyncLogs[0].updated || 0},
+                deactivated {infoSyncLogs[0].deactivated || 0}
+              </div>
             </div>
-            <div style={styles.infoCard}>
-              <h3 style={{ marginTop: 0 }}>Upload static lists (CSV or Excel)</h3>
-              <p>
+          )}
+        </div>
+        <div style={styles.infoCard}>
+          <h3 style={{ marginTop: 0 }}>Upload static lists (CSV or Excel)</h3>
+          <p>
                 Select the code type and upload a CSV or Excel (.xlsx) file with columns
                 <code>code,name</code>.
               </p>
