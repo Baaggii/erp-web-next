@@ -828,18 +828,15 @@ const RowFormModal = function RowFormModal({
         const parameterFields = Array.isArray(entry.parameters)
           ? entry.parameters
               .map((param) => {
-                if (isHeaderParameter(param)) return null;
+                const location = typeof param.in === 'string' && param.in ? param.in : '';
+                if (location === 'header') return null;
                 const field = typeof param.name === 'string' ? param.name : '';
                 if (!field) return null;
                 const description =
                   typeof param.description === 'string' && param.description
                     ? param.description
                     : undefined;
-                const locationRaw =
-                  (typeof param.in === 'string' && param.in) ||
-                  (typeof param.location === 'string' && param.location) ||
-                  '';
-                const suffix = locationRaw ? ` (${locationRaw})` : '';
+                const suffix = location ? ` (${location})` : '';
                 return {
                   field,
                   required: Boolean(param.required),
@@ -851,12 +848,12 @@ const RowFormModal = function RowFormModal({
         const requestFields = Array.isArray(entry.requestFields)
           ? entry.requestFields.filter((field) => {
               if (!field || typeof field !== 'object') return true;
-              if (isHeaderParameter(field)) return false;
               const locationRaw =
                 (typeof field.location === 'string' && field.location) ||
                 (typeof field.in === 'string' && field.in) ||
                 '';
-              return !isHeaderLocation(locationRaw);
+              const location = locationRaw.toLowerCase();
+              return location !== 'header';
             })
           : [];
         const combinedRequestFields = [...requestFields];
@@ -1294,14 +1291,11 @@ const RowFormModal = function RowFormModal({
       setInfoPayload({});
       setInfoResponse(null);
       setInfoError(null);
-      setInfoLoading(false);
       return;
     }
-    const nextPayload = buildPayloadForEndpoint(endpoint, {});
-    setInfoPayload(nextPayload);
+    setInfoPayload(buildPayloadForEndpoint(endpoint, {}));
     setInfoResponse(null);
     setInfoError(null);
-    setInfoLoading(false);
   }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, buildPayloadForEndpoint]);
   useEffect(() => {
     if (!infoModalOpen) {
