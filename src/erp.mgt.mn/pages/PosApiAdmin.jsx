@@ -994,7 +994,8 @@ const DEFAULT_POSAPI_ENV_VARS = ['POSAPI_CLIENT_ID', 'POSAPI_CLIENT_SECRET'];
 function listPosApiEnvVariables(extraKeys = []) {
   const keys = new Set(DEFAULT_POSAPI_ENV_VARS);
   (extraKeys || [])
-    .filter((key) => key && key.startsWith('POSAPI_'))
+    .map((key) => normalizeEnvVarName(typeof key === 'string' ? key : ''))
+    .filter(Boolean)
     .forEach((key) => keys.add(key));
   return Array.from(keys).sort();
 }
@@ -1211,6 +1212,100 @@ function normalizeHintEntry(entry) {
     required: undefined,
     description: '',
   };
+}
+
+function buildRequestFieldDisplayFromState(state) {
+  const requestFieldHints = parseHintPreview(
+    state.requestFieldsText,
+    'Request field hints must be a JSON array',
+  );
+  const parameterPreview = parseParametersPreview(state.parametersText);
+  if (requestFieldHints.state === 'error') return requestFieldHints;
+  if (parameterPreview.state === 'error') return parameterPreview;
+
+  const parameterDefaults = buildDraftParameterDefaults(parameterPreview.items || []);
+  const items = [];
+  const seen = new Set();
+
+  if (requestFieldHints.state === 'ok') {
+    requestFieldHints.items.forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (!normalized.field || seen.has(normalized.field)) return;
+      seen.add(normalized.field);
+      items.push({ ...normalized, source: 'hint' });
+    });
+  }
+
+  if (parameterPreview.state === 'ok') {
+    parameterPreview.items
+      .filter((param) => param.name && ['query', 'path'].includes(param.in))
+      .forEach((param) => {
+        if (seen.has(param.name)) return;
+        seen.add(param.name);
+        items.push({
+          field: param.name,
+          required: Boolean(param.required),
+          description: param.description || `${param.in} parameter`,
+          location: param.in,
+          source: 'parameter',
+          defaultValue:
+            param.testValue
+            ?? param.example
+            ?? param.default
+            ?? param.sample
+            ?? parameterDefaults[param.name],
+        });
+      });
+  }
+
+  if (items.length === 0) return { state: 'empty', items: [], error: '' };
+  return { state: 'ok', items, error: '' };
+}
+
+function deriveRequestFieldSelections({ requestSchemaText, requestEnvMap, displayItems }) {
+  const seenFields = new Set();
+  let parsedSample = {};
+  try {
+    parsedSample = JSON.parse(requestSchemaText || '{}');
+  } catch {
+    parsedSample = {};
+  }
+
+  const derivedSelections = {};
+
+  displayItems.forEach((entry) => {
+    const normalized = normalizeHintEntry(entry);
+    const fieldPath = normalized.field;
+    if (!fieldPath || seenFields.has(fieldPath)) return;
+    seenFields.add(fieldPath);
+
+    const currentValue = readValueAtPath(parsedSample, fieldPath);
+    const defaultValue = entry.defaultValue;
+    const applyToBody = entry.source !== 'parameter';
+    if (typeof requestEnvMap?.[fieldPath] === 'string') {
+      derivedSelections[fieldPath] = {
+        mode: 'env',
+        envVar: requestEnvMap[fieldPath],
+        literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
+        applyToBody,
+      };
+      return;
+    }
+
+    if (currentValue !== undefined && currentValue !== null) {
+      derivedSelections[fieldPath] = { mode: 'literal', literal: String(currentValue), applyToBody };
+      return;
+    }
+
+    if (defaultValue !== undefined && defaultValue !== null) {
+      derivedSelections[fieldPath] = { mode: 'literal', literal: String(defaultValue), applyToBody };
+      return;
+    }
+
+    derivedSelections[fieldPath] = { mode: 'literal', literal: '', applyToBody };
+  });
+
+  return derivedSelections;
 }
 
 function createFormState(definition) {
@@ -2263,106 +2358,37 @@ export default function PosApiAdmin() {
     [parameterPreview.items],
   );
 
-  const requestFieldDisplay = useMemo(() => {
-    if (requestFieldHints.state === 'error') return requestFieldHints;
-    if (parameterPreview.state === 'error') return parameterPreview;
-
-    const items = [];
-    const seen = new Set();
-
-    if (requestFieldHints.state === 'ok') {
-      requestFieldHints.items.forEach((entry) => {
-        const normalized = normalizeHintEntry(entry);
-        if (!normalized.field || seen.has(normalized.field)) return;
-        seen.add(normalized.field);
-        items.push({ ...normalized, source: 'hint' });
-      });
-    }
-
-    if (parameterPreview.state === 'ok') {
-      parameterPreview.items
-        .filter((param) => param.name && ['query', 'path'].includes(param.in))
-        .forEach((param) => {
-          if (seen.has(param.name)) return;
-          seen.add(param.name);
-          items.push({
-            field: param.name,
-            required: Boolean(param.required),
-            description: param.description || `${param.in} parameter`,
-            location: param.in,
-            source: 'parameter',
-            defaultValue:
-              param.testValue
-              ?? param.example
-              ?? param.default
-              ?? param.sample
-              ?? parameterDefaults[param.name],
-          });
-        });
-    }
-
-    if (items.length === 0) return { state: 'empty', items: [], error: '' };
-    return { state: 'ok', items, error: '' };
-  }, [parameterDefaults, parameterPreview, requestFieldHints]);
+  const requestFieldDisplay = useMemo(
+    () => buildRequestFieldDisplayFromState(formState),
+    [formState, parameterDefaults, parameterPreview, requestFieldHints],
+  );
 
   useEffect(() => {
-    const seenFields = new Set();
-    let parsedSample = {};
-    try {
-      parsedSample = JSON.parse(formState.requestSchemaText || '{}');
-    } catch {
-      parsedSample = {};
-    }
-
-    const derivedSelections = {};
-
-    requestFieldDisplay.items.forEach((entry) => {
-      const normalized = normalizeHintEntry(entry);
-      const fieldPath = normalized.field;
-      if (!fieldPath || seenFields.has(fieldPath)) return;
-      seenFields.add(fieldPath);
-
-      const currentValue = readValueAtPath(parsedSample, fieldPath);
-      const defaultValue = entry.defaultValue;
-      const applyToBody = entry.source !== 'parameter';
-      if (typeof formState.requestEnvMap?.[fieldPath] === 'string') {
-        derivedSelections[fieldPath] = {
-          mode: 'env',
-          envVar: formState.requestEnvMap[fieldPath],
-          literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
-          applyToBody,
-        };
-        return;
-      }
-
-      if (currentValue !== undefined && currentValue !== null) {
-        derivedSelections[fieldPath] = { mode: 'literal', literal: String(currentValue), applyToBody };
-        return;
-      }
-
-      if (defaultValue !== undefined && defaultValue !== null) {
-        derivedSelections[fieldPath] = { mode: 'literal', literal: String(defaultValue), applyToBody };
-        return;
-      }
-
-      derivedSelections[fieldPath] = { mode: 'literal', literal: '', applyToBody };
+    const derivedSelections = deriveRequestFieldSelections({
+      requestSchemaText: formState.requestSchemaText,
+      requestEnvMap: formState.requestEnvMap,
+      displayItems: requestFieldDisplay.items,
     });
 
     setRequestFieldValues((prev) => {
       const next = { ...prev };
       let changed = false;
 
+      const isSameSelection = (a = {}, b = {}) =>
+        a.mode === b.mode
+        && (a.literal ?? '') === (b.literal ?? '')
+        && (a.envVar ?? '') === (b.envVar ?? '')
+        && (a.applyToBody ?? true) === (b.applyToBody ?? true);
+
       Object.entries(derivedSelections).forEach(([fieldPath, selection]) => {
         const existing = prev[fieldPath];
-        if (
-          existing
-          && existing.mode === selection.mode
-          && (existing.literal ?? '') === (selection.literal ?? '')
-          && (existing.envVar ?? '') === (selection.envVar ?? '')
-        ) {
-          return;
-        }
-        next[fieldPath] = selection;
+        const mergedSelection = existing
+          ? { ...selection, ...existing, applyToBody: selection.applyToBody }
+          : selection;
+
+        if (existing && isSameSelection(existing, mergedSelection)) return;
+
+        next[fieldPath] = mergedSelection;
         changed = true;
       });
 
@@ -2520,8 +2546,9 @@ export default function PosApiAdmin() {
           .map((entry) => entry?.envVar)
           .filter(Boolean),
         ...urlEnvironmentVariables,
+        ...Object.values(formState.requestEnvMap || {}),
       ]),
-    [requestFieldValues, urlEnvironmentVariables],
+    [formState.requestEnvMap, requestFieldValues, urlEnvironmentVariables],
   );
 
   const renderUrlField = (label, fieldKey, placeholder) => {
@@ -3462,10 +3489,22 @@ export default function PosApiAdmin() {
     setDocFieldDescriptions({});
     setSampleImportText('');
     setSampleImportError('');
-    setRequestFieldValues({});
     setSelectedId(id);
     const definition = endpoints.find((ep) => ep.id === id);
-    setFormState(createFormState(definition));
+    const nextFormState = createFormState(definition);
+    const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
+    if (nextDisplay.state === 'ok') {
+      setRequestFieldValues(
+        deriveRequestFieldSelections({
+          requestSchemaText: nextFormState.requestSchemaText,
+          requestEnvMap: nextFormState.requestEnvMap,
+          displayItems: nextDisplay.items,
+        }),
+      );
+    } else {
+      setRequestFieldValues({});
+    }
+    setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
   }
@@ -4520,7 +4559,17 @@ export default function PosApiAdmin() {
     setRequestFieldValues((prev) => {
       const current = prev[fieldPath] || { mode: 'literal', literal: '', envVar: '' };
       const trimmedEnvVar = typeof updates.envVar === 'string' ? updates.envVar.trim() : updates.envVar;
-      const nextEntry = { ...current, ...updates, ...(trimmedEnvVar !== undefined ? { envVar: trimmedEnvVar } : {}) };
+      const nextEntry = {
+        ...current,
+        ...updates,
+        mode: updates.mode || current.mode || 'literal',
+        ...(trimmedEnvVar !== undefined ? { envVar: trimmedEnvVar } : {}),
+      };
+
+      if (updates.mode === 'literal') {
+        nextEntry.envVar = trimmedEnvVar !== undefined ? trimmedEnvVar : '';
+      }
+
       const nextSelections = { ...prev, [fieldPath]: nextEntry };
       syncRequestSampleFromSelections(nextSelections);
       setFormState((prevState) => ({
