@@ -2228,44 +2228,79 @@ export default function PosApiAdmin() {
   );
 
   useEffect(() => {
-    const seenFields = new Set();
-    let parsedSample = {};
-    try {
-      parsedSample = JSON.parse(formState.requestSchemaText || '{}');
-    } catch {
-      parsedSample = {};
-    }
     setRequestFieldValues((prev) => {
-      const next = { ...prev };
-      let changed = false;
+      const seenFields = new Set();
+      let parsedSample = {};
+      try {
+        parsedSample = JSON.parse(formState.requestSchemaText || '{}');
+      } catch {
+        parsedSample = {};
+      }
+
+      const derivedSelections = {};
+
       requestFieldHints.items.forEach((hint) => {
         const normalized = normalizeHintEntry(hint);
         const fieldPath = normalized.field;
         if (!fieldPath || seenFields.has(fieldPath)) return;
         seenFields.add(fieldPath);
-        if (next[fieldPath]) return;
+
         const currentValue = readValueAtPath(parsedSample, fieldPath);
+        let selection;
         if (typeof formState.requestEnvMap?.[fieldPath] === 'string') {
-          next[fieldPath] = {
+          selection = {
             mode: 'env',
             envVar: formState.requestEnvMap[fieldPath],
             literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
           };
-          changed = true;
+        } else if (currentValue !== undefined && currentValue !== null) {
+          selection = { mode: 'literal', literal: String(currentValue) };
+        } else {
+          selection = { mode: 'literal', literal: '' };
+        }
+
+        const existing = prev[fieldPath];
+        const existingEnvMode = existing?.mode === 'env' && !selection.envVar && selection.mode !== 'env';
+        derivedSelections[fieldPath] = existingEnvMode
+          ? { ...selection, mode: 'env', envVar: existing.envVar ?? '', literal: selection.literal ?? existing.literal ?? '' }
+          : selection;
+      });
+
+      const next = { ...prev };
+      let changed = false;
+
+      Object.entries(derivedSelections).forEach(([fieldPath, selection]) => {
+        const existing = prev[fieldPath];
+        if (
+          existing
+          && existing.mode === selection.mode
+          && (existing.literal ?? '') === (selection.literal ?? '')
+          && (existing.envVar ?? '') === (selection.envVar ?? '')
+        ) {
           return;
         }
-        if (currentValue !== undefined && currentValue !== null) {
-          next[fieldPath] = { mode: 'literal', literal: String(currentValue) };
-          changed = true;
-          return;
-        }
-        next[fieldPath] = { mode: 'literal', literal: '' };
+        next[fieldPath] = selection;
         changed = true;
       });
+
+      const derivedKeys = new Set(Object.keys(derivedSelections));
+      Object.keys(next).forEach((key) => {
+        if (!derivedKeys.has(key)) {
+          delete next[key];
+          changed = true;
+        }
+      });
+
       if (changed) {
         syncRequestSampleFromSelections(next);
+        setFormState((prevState) => ({
+          ...prevState,
+          requestEnvMap: buildRequestEnvMap(next),
+        }));
+        return next;
       }
-      return changed ? next : prev;
+
+      return prev;
     });
   }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldHints.items]);
 
