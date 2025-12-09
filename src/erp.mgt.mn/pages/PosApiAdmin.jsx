@@ -329,39 +329,8 @@ function buildTableOptions(tables) {
         return { value, label: formatTableDisplay(value, table.label) };
       }
       return null;
-    };
-
-    if (typeof table === 'string') {
-      const normalized = table.trim();
-      if (!normalized) return null;
-      return parseLabeledString(normalized) || { value: normalized, label: formatTableDisplay(normalized) };
-    }
-
-    if (typeof table === 'object') {
-      const label = typeof table.label === 'string'
-        ? table.label.trim()
-        : typeof table.description === 'string'
-          ? table.description.trim()
-          : '';
-      const parsed = parseLabeledString(label);
-      const value = typeof table.value === 'string'
-        ? table.value.trim()
-        : typeof table.table === 'string'
-          ? table.table.trim()
-          : typeof table.tableName === 'string'
-            ? table.tableName.trim()
-            : typeof table.name === 'string'
-              ? table.name.trim()
-              : parsed?.value || '';
-      if (!value) return null;
-      const description = parsed?.value === value ? parsed.description : label;
-      return { value, label: formatTableDisplay(value, description) };
-    }
-
-    return null;
-  }
-
-  return tables.map(parseTableEntry).filter(Boolean);
+    })
+    .filter(Boolean);
 }
 
 function sanitizeTableSelection(selection, options) {
@@ -2488,8 +2457,6 @@ export default function PosApiAdmin() {
     infoSyncTables.forEach((table) => {
       const fields = infoTableFields[table];
       if (!Array.isArray(fields) || fields.length === 0) return;
-      const tableOption = infoSyncTableOptions.find((option) => option.value === table);
-      const tableLabel = tableOption?.label || formatTableDisplay(table);
       fields.forEach((field) => {
         const name = extractFieldName(field);
         if (!name) return;
@@ -2502,7 +2469,7 @@ export default function PosApiAdmin() {
       });
     });
     return options;
-  }, [infoSyncTables, infoTableFields, infoSyncTableOptions]);
+  }, [infoSyncTables, infoTableFields]);
 
   const infoMappingEndpoints = useMemo(() => {
     const selected = new Set(infoSyncEndpointIds.filter(Boolean));
