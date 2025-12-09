@@ -878,6 +878,11 @@ const RowFormModal = function RowFormModal({
         );
         requestMappingsRaw.forEach((mapping) => {
           if (!mapping || typeof mapping !== 'object') return;
+          const mappingLocation =
+            (typeof mapping.location === 'string' && mapping.location) ||
+            (typeof mapping.in === 'string' && mapping.in) ||
+            '';
+          if (mappingLocation.toLowerCase() === 'header') return;
           const fieldName = typeof mapping.field === 'string' ? mapping.field : '';
           if (!fieldName) return;
           const normalized = {
