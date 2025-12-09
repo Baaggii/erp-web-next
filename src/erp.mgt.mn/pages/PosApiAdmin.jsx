@@ -120,6 +120,42 @@ const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TR
 
 const DEFAULT_ENV_RESOLVER = () => ({ found: false, value: '', error: '' });
 
+function extractUserParameters(values) {
+  if (!values || typeof values !== 'object') return {};
+  const entries = Object.entries(values).filter(([key, value]) => {
+    if (key === '_endpointId') return false;
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'string') {
+      return value.trim() !== '';
+    }
+    return true;
+  });
+  return Object.fromEntries(entries);
+}
+
+function normalizeHeaderList(headers) {
+  if (!headers) return [];
+  if (Array.isArray(headers)) {
+    return headers
+      .map((entry) => {
+        if (Array.isArray(entry) && entry.length >= 2) return { name: entry[0], value: entry[1] };
+        if (entry && typeof entry === 'object' && entry.name) return { name: entry.name, value: entry.value };
+        return null;
+      })
+      .filter((item) => item && item.name);
+  }
+  if (typeof headers === 'object') {
+    return Object.entries(headers).map(([name, value]) => ({ name, value }));
+  }
+  return [];
+}
+
+function formatDurationMs(duration) {
+  const numeric = Number(duration);
+  if (!Number.isFinite(numeric) || numeric < 0) return '';
+  return `${numeric.toLocaleString()} ms`;
+}
+
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
 }
@@ -274,26 +310,23 @@ function formatTableLabel(value) {
 }
 
 function formatTableDisplay(value, label) {
-  const baseLabel = (label || formatTableLabel(value || '')).trim();
+  const baseLabel = label || formatTableLabel(value);
   if (!value) return baseLabel;
-  if (baseLabel.includes(`(${value})`)) return baseLabel;
   return `${baseLabel} (${value})`;
 }
 
 function buildTableOptions(tables) {
   if (!Array.isArray(tables)) return [];
-  function parseTableEntry(table) {
-    if (!table) return null;
-    const parseLabeledString = (text) => {
-      const normalized = typeof text === 'string' ? text.trim() : '';
-      if (!normalized) return null;
-      const match = normalized.match(/^(.*)\(([^)]+)\)\s*$/);
-      if (match && match[2]) {
-        const value = match[2].trim();
-        const description = match[1].trim();
-        if (value) {
-          return { value, label: formatTableDisplay(value, description) };
-        }
+  return tables
+    .map((table) => {
+      if (!table) return null;
+      if (typeof table === 'string') {
+        return { value: table, label: formatTableDisplay(table) };
+      }
+      if (typeof table === 'object') {
+        const value = typeof table.value === 'string' ? table.value.trim() : '';
+        if (!value) return null;
+        return { value, label: formatTableDisplay(value, table.label) };
       }
       return null;
     };
@@ -2461,6 +2494,7 @@ export default function PosApiAdmin() {
         const name = extractFieldName(field);
         if (!name) return;
         const display = field.label || field.column_comment || field.description || name;
+        const tableLabel = formatTableDisplay(table);
         options.push({
           value: `${table}.${name}`,
           label: `${tableLabel} – ${display} (${name})`,
