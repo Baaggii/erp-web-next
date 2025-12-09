@@ -798,13 +798,14 @@ const RowFormModal = function RowFormModal({
         const parameterFields = Array.isArray(entry.parameters)
           ? entry.parameters
               .map((param) => {
+                const location = typeof param.in === 'string' && param.in ? param.in : '';
+                if (location === 'header') return null;
                 const field = typeof param.name === 'string' ? param.name : '';
                 if (!field) return null;
                 const description =
                   typeof param.description === 'string' && param.description
                     ? param.description
                     : undefined;
-                const location = typeof param.in === 'string' && param.in ? param.in : '';
                 const suffix = location ? ` (${location})` : '';
                 return {
                   field,
@@ -1216,14 +1217,15 @@ const RowFormModal = function RowFormModal({
           throw new Error(message || res.statusText || 'Lookup failed');
         }
         const data = await res.json();
-        setInfoResponse(data.response ?? null);
+        const responsePayload = data?.response ?? data ?? null;
+        setInfoResponse(responsePayload);
         setInfoHistory((prev) => [
           ...prev.slice(-4),
           {
             timestamp: new Date().toISOString(),
             endpointId: endpoint.id,
             payload: sanitizedPayload,
-            response: data.response ?? null,
+            response: responsePayload,
           },
         ]);
       } catch (err) {
@@ -1247,9 +1249,16 @@ const RowFormModal = function RowFormModal({
     const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
     if (!endpoint) {
       setInfoPayload({});
+      setInfoResponse(null);
+      setInfoError(null);
+      setInfoLoading(false);
       return;
     }
-    setInfoPayload((prev) => buildPayloadForEndpoint(endpoint, prev));
+    const nextPayload = buildPayloadForEndpoint(endpoint, {});
+    setInfoPayload(nextPayload);
+    setInfoResponse(null);
+    setInfoError(null);
+    setInfoLoading(false);
   }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, buildPayloadForEndpoint]);
   useEffect(() => {
     if (!infoModalOpen) {
@@ -1273,6 +1282,31 @@ const RowFormModal = function RowFormModal({
     setInfoError(null);
     setInfoResponse(null);
   }, []);
+  const resetInfoEndpointState = useCallback(
+    (endpointId) => {
+      const endpoint = infoEndpoints.find((entry) => entry.id === endpointId);
+      if (!endpoint) {
+        setInfoPayload({});
+        setInfoResponse(null);
+        setInfoError(null);
+        setInfoLoading(false);
+        return;
+      }
+      const nextPayload = buildPayloadForEndpoint(endpoint, {});
+      setInfoPayload(nextPayload);
+      setInfoResponse(null);
+      setInfoError(null);
+      setInfoLoading(false);
+    },
+    [infoEndpoints, buildPayloadForEndpoint],
+  );
+  const handleChangeActiveInfoEndpoint = useCallback(
+    (endpointId) => {
+      setActiveInfoEndpointId(endpointId);
+      resetInfoEndpointState(endpointId);
+    },
+    [resetInfoEndpointState],
+  );
   const openInfoModalForEndpoint = useCallback(
     (endpointId, { autoInvoke = false } = {}) => {
       if (!endpointId) return;
@@ -3818,7 +3852,7 @@ const RowFormModal = function RowFormModal({
               <select
                 className="border border-gray-300 rounded px-2 py-1 text-sm"
                 value={activeInfoEndpointId}
-                onChange={(e) => setActiveInfoEndpointId(e.target.value)}
+                onChange={(e) => handleChangeActiveInfoEndpoint(e.target.value)}
               >
                 {infoEndpoints.map((endpoint) => {
                   const optionLabel =
