@@ -2374,17 +2374,21 @@ export default function PosApiAdmin() {
       const next = { ...prev };
       let changed = false;
 
+      const isSameSelection = (a = {}, b = {}) =>
+        a.mode === b.mode
+        && (a.literal ?? '') === (b.literal ?? '')
+        && (a.envVar ?? '') === (b.envVar ?? '')
+        && (a.applyToBody ?? true) === (b.applyToBody ?? true);
+
       Object.entries(derivedSelections).forEach(([fieldPath, selection]) => {
         const existing = prev[fieldPath];
-        if (
-          existing
-          && existing.mode === selection.mode
-          && (existing.literal ?? '') === (selection.literal ?? '')
-          && (existing.envVar ?? '') === (selection.envVar ?? '')
-        ) {
-          return;
-        }
-        next[fieldPath] = selection;
+        const mergedSelection = existing
+          ? { ...selection, ...existing, applyToBody: selection.applyToBody }
+          : selection;
+
+        if (existing && isSameSelection(existing, mergedSelection)) return;
+
+        next[fieldPath] = mergedSelection;
         changed = true;
       });
 
@@ -4555,7 +4559,17 @@ export default function PosApiAdmin() {
     setRequestFieldValues((prev) => {
       const current = prev[fieldPath] || { mode: 'literal', literal: '', envVar: '' };
       const trimmedEnvVar = typeof updates.envVar === 'string' ? updates.envVar.trim() : updates.envVar;
-      const nextEntry = { ...current, ...updates, ...(trimmedEnvVar !== undefined ? { envVar: trimmedEnvVar } : {}) };
+      const nextEntry = {
+        ...current,
+        ...updates,
+        mode: updates.mode || current.mode || 'literal',
+        ...(trimmedEnvVar !== undefined ? { envVar: trimmedEnvVar } : {}),
+      };
+
+      if (updates.mode === 'literal') {
+        nextEntry.envVar = trimmedEnvVar !== undefined ? trimmedEnvVar : '';
+      }
+
       const nextSelections = { ...prev, [fieldPath]: nextEntry };
       syncRequestSampleFromSelections(nextSelections);
       setFormState((prevState) => ({
