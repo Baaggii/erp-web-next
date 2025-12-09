@@ -2336,28 +2336,6 @@ export default function PosApiAdmin() {
     [activeAdminEndpoint],
   );
 
-  const adminUserParameters = useMemo(() => extractUserParameters(adminParamValues), [adminParamValues]);
-
-  const adminResponseHeaders = useMemo(
-    () => normalizeHeaderList(adminResult?.response?.headers),
-    [adminResult],
-  );
-
-  const adminResponseStatus = adminResult?.response?.status ?? '';
-  const adminResponseStatusText = adminResult?.response?.statusText || '';
-  const adminResponseOk = adminResult?.response?.ok ?? (adminResponseStatus ? adminResponseStatus < 400 : false);
-  const adminResponseDuration = adminResult?.response?.durationMs
-    ?? adminResult?.response?.duration
-    ?? null;
-  const adminRequestUrl = adminResult?.request?.url
-    || adminResult?.request?.path
-    || activeAdminEndpoint?.path
-    || '';
-  const adminResponseBodyText = adminResult?.response?.bodyText || '';
-  const hasAdminResponseBodyText = typeof adminResponseBodyText === 'string' && adminResponseBodyText.trim() !== '';
-  const adminResultParameters = adminResult?.parameters || {};
-  const hasAdminParameters = Object.keys(adminResultParameters).length > 0;
-
   const activeImportDraft = useMemo(
     () => importDrafts.find((entry) => entry.id === selectedImportId) || importDrafts[0] || null,
     [importDrafts, selectedImportId],
@@ -4987,7 +4965,9 @@ export default function PosApiAdmin() {
       method: endpointForTest.method,
       path: endpointForTest.path,
       environment: testEnvironment,
-      parameters: adminUserParameters,
+      parameters: Object.fromEntries(
+        Object.entries(adminParamValues || {}).filter(([key]) => key !== '_endpointId'),
+      ),
     };
 
     try {
@@ -5011,13 +4991,7 @@ export default function PosApiAdmin() {
       updateTokenMetaFromResult(data);
       const statusCode = data?.response?.status ?? res.status;
       const ok = data?.response?.ok ?? res.ok;
-      setAdminResult({
-        ...data,
-        endpointId: endpointForTest.id,
-        endpointName: endpointForTest.name || endpointForTest.id,
-        environment: testEnvironment,
-        parameters: adminUserParameters,
-      });
+      setAdminResult({ ...data, endpointId: endpointForTest.id });
       showToast(
         `${endpointForTest.name || endpointForTest.id} returned ${statusCode} (${testEnvironment}).`,
         ok ? 'success' : 'error',
@@ -7883,118 +7857,27 @@ export default function PosApiAdmin() {
                       <span
                         style={{
                           ...styles.statusPill,
-                          ...(adminResponseOk ? styles.statusPillSuccess : styles.statusPillError),
+                          ...(adminResult.response?.ok ? styles.statusPillSuccess : styles.statusPillError),
                         }}
                       >
-                        {adminResponseOk ? 'Success' : 'Failed'} — {adminResponseStatus}{' '}
-                        {adminResponseStatusText}
+                        {adminResult.response?.status} {adminResult.response?.statusText || ''}
                       </span>
-                    </div>
-                    <div style={styles.metaList}>
-                      <div style={styles.metaRow}>
-                        <span style={styles.metaKey}>Environment</span>
-                        <span>{adminResult.environment || testEnvironment}</span>
-                      </div>
-                      <div style={styles.metaRow}>
-                        <span style={styles.metaKey}>URL</span>
-                        <span style={styles.wrapText}>{adminRequestUrl || 'Not provided'}</span>
-                      </div>
-                      {adminResponseDuration && (
-                        <div style={styles.metaRow}>
-                          <span style={styles.metaKey}>Duration</span>
-                          <span>{formatDurationMs(adminResponseDuration)}</span>
-                        </div>
-                      )}
                     </div>
                     <div style={styles.testResultBody}>
                       <div style={styles.testColumn}>
                         <h4 style={styles.testColumnTitle}>Request</h4>
-                        <div style={styles.metaList}>
-                          <div style={styles.metaRow}>
-                            <span style={styles.metaKey}>Method</span>
-                            <span>{adminResult.request?.method || activeAdminEndpoint?.method || '—'}</span>
-                          </div>
-                          <div style={styles.metaRow}>
-                            <span style={styles.metaKey}>Path</span>
-                            <span style={styles.wrapText}>
-                              {activeAdminEndpoint?.path
-                                || adminResult.request?.path
-                                || adminResult.request?.url
-                                || '—'}
-                            </span>
-                          </div>
-                        </div>
-                        {hasAdminParameters && (
-                          <>
-                            <h5 style={styles.subheading}>User input parameters</h5>
-                            <pre style={styles.codeBlock}>
-                              {JSON.stringify(adminResultParameters, null, 2)}
-                            </pre>
-                          </>
-                        )}
-                        {adminResult.request?.body && (
-                          <>
-                            <h5 style={styles.subheading}>Body</h5>
-                            <pre style={styles.codeBlock}>
-                              {JSON.stringify(adminResult.request.body, null, 2)}
-                            </pre>
-                          </>
-                        )}
-                        {!adminResult.request?.body && !hasAdminParameters && (
-                          <div style={styles.helpText}>No parameters or body were provided for this run.</div>
-                        )}
+                        <pre style={styles.codeBlock}>
+                          {JSON.stringify(adminResult.request || {}, null, 2)}
+                        </pre>
                       </div>
                       <div style={styles.testColumn}>
                         <h4 style={styles.testColumnTitle}>Response</h4>
-                        <div style={styles.metaList}>
-                          <div style={styles.metaRow}>
-                            <span style={styles.metaKey}>Status</span>
-                            <span>
-                              {adminResponseStatus || '—'} {adminResponseStatusText}
-                            </span>
-                          </div>
-                          {adminResult.response?.url && (
-                            <div style={styles.metaRow}>
-                              <span style={styles.metaKey}>Requested URL</span>
-                              <span style={styles.wrapText}>{adminResult.response.url}</span>
-                            </div>
-                          )}
-                          {adminResponseDuration && (
-                            <div style={styles.metaRow}>
-                              <span style={styles.metaKey}>Duration</span>
-                              <span>{formatDurationMs(adminResponseDuration)}</span>
-                            </div>
-                          )}
-                        </div>
-                        {adminResponseHeaders.length > 0 && (
-                          <>
-                            <h5 style={styles.subheading}>Headers</h5>
-                            <div style={styles.metaList}>
-                              {adminResponseHeaders.map((header) => (
-                                <div key={`admin-header-${header.name}`} style={styles.metaRow}>
-                                  <span style={styles.metaKey}>{header.name}</span>
-                                  <span style={styles.wrapText}>{`${header.value}`}</span>
-                                </div>
-                              ))}
-                            </div>
-                          </>
-                        )}
-                        {adminResult.response?.bodyJson && (
-                          <>
-                            <h5 style={styles.subheading}>Body (parsed)</h5>
-                            <pre style={styles.codeBlock}>
-                              {JSON.stringify(adminResult.response.bodyJson, null, 2)}
-                            </pre>
-                          </>
-                        )}
-                        {hasAdminResponseBodyText && (
-                          <>
-                            <h5 style={styles.subheading}>Body (raw)</h5>
-                            <pre style={styles.codeBlock}>{adminResponseBodyText}</pre>
-                          </>
-                        )}
-                        {!adminResult.response?.bodyJson && !hasAdminResponseBodyText && (
-                          <div style={styles.helpText}>No response body was returned.</div>
+                        {adminResult.response?.bodyJson ? (
+                          <pre style={styles.codeBlock}>
+                            {JSON.stringify(adminResult.response.bodyJson, null, 2)}
+                          </pre>
+                        ) : (
+                          <pre style={styles.codeBlock}>{adminResult.response?.bodyText || ''}</pre>
                         )}
                       </div>
                     </div>
