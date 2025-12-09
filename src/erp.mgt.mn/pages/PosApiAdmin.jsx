@@ -4713,15 +4713,24 @@ export default function PosApiAdmin() {
       if (!res.ok) {
         const text = await res.text();
         let message = text;
+        let requestUrl = '';
         try {
           const parsed = JSON.parse(text);
-          if (parsed && typeof parsed === 'object' && parsed.message) {
-            message = parsed.message;
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.message) {
+              message = parsed.message;
+            }
+            if (parsed.request?.url) {
+              requestUrl = parsed.request.url;
+            }
           }
         } catch {
           // ignore parse failure
         }
-        throw new Error(message || 'Test request failed');
+        const detailedMessage = requestUrl && !(message || '').includes(requestUrl)
+          ? `${message || 'Test request failed'} (Request URL: ${requestUrl})`
+          : message || 'Test request failed';
+        throw new Error(detailedMessage);
       }
       const data = await res.json();
       if (Array.isArray(data.envWarnings) && data.envWarnings.length) {
