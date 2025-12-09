@@ -2235,37 +2235,65 @@ export default function PosApiAdmin() {
     } catch {
       parsedSample = {};
     }
+
+    const derivedSelections = {};
+
+    requestFieldHints.items.forEach((hint) => {
+      const normalized = normalizeHintEntry(hint);
+      const fieldPath = normalized.field;
+      if (!fieldPath || seenFields.has(fieldPath)) return;
+      seenFields.add(fieldPath);
+
+      const currentValue = readValueAtPath(parsedSample, fieldPath);
+      if (typeof formState.requestEnvMap?.[fieldPath] === 'string') {
+        derivedSelections[fieldPath] = {
+          mode: 'env',
+          envVar: formState.requestEnvMap[fieldPath],
+          literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
+        };
+        return;
+      }
+
+      if (currentValue !== undefined && currentValue !== null) {
+        derivedSelections[fieldPath] = { mode: 'literal', literal: String(currentValue) };
+        return;
+      }
+
+      derivedSelections[fieldPath] = { mode: 'literal', literal: '' };
+    });
+
     setRequestFieldValues((prev) => {
       const next = { ...prev };
       let changed = false;
-      requestFieldHints.items.forEach((hint) => {
-        const normalized = normalizeHintEntry(hint);
-        const fieldPath = normalized.field;
-        if (!fieldPath || seenFields.has(fieldPath)) return;
-        seenFields.add(fieldPath);
-        if (next[fieldPath]) return;
-        const currentValue = readValueAtPath(parsedSample, fieldPath);
-        if (typeof formState.requestEnvMap?.[fieldPath] === 'string') {
-          next[fieldPath] = {
-            mode: 'env',
-            envVar: formState.requestEnvMap[fieldPath],
-            literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
-          };
-          changed = true;
+
+      Object.entries(derivedSelections).forEach(([fieldPath, selection]) => {
+        const existing = prev[fieldPath];
+        if (
+          existing
+          && existing.mode === selection.mode
+          && (existing.literal ?? '') === (selection.literal ?? '')
+          && (existing.envVar ?? '') === (selection.envVar ?? '')
+        ) {
           return;
         }
-        if (currentValue !== undefined && currentValue !== null) {
-          next[fieldPath] = { mode: 'literal', literal: String(currentValue) };
-          changed = true;
-          return;
-        }
-        next[fieldPath] = { mode: 'literal', literal: '' };
+        next[fieldPath] = selection;
         changed = true;
       });
+
+      const derivedKeys = new Set(Object.keys(derivedSelections));
+      Object.keys(next).forEach((key) => {
+        if (!derivedKeys.has(key)) {
+          delete next[key];
+          changed = true;
+        }
+      });
+
       if (changed) {
         syncRequestSampleFromSelections(next);
+        return next;
       }
-      return changed ? next : prev;
+
+      return prev;
     });
   }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldHints.items]);
 
