@@ -401,57 +401,20 @@ function extractFieldName(field) {
 
 function normalizeFieldList(payload) {
   if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
 
-  const entries = [];
-  const addArray = (list) => {
-    if (!Array.isArray(list)) return;
-    list.forEach((item) => {
-      if (item && typeof item === 'object') {
-        entries.push(item);
-      } else if (typeof item === 'string') {
-        entries.push({ field: item, column: item, name: item });
-      }
-    });
-  };
+  if (Array.isArray(payload.fields)) return payload.fields;
+  if (Array.isArray(payload.data?.fields)) return payload.data.fields;
+  if (Array.isArray(payload.data)) return payload.data;
 
-  const addObjectMap = (obj) => {
-    if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return;
-    Object.entries(obj).forEach(([key, value]) => {
-      if (value && typeof value === 'object') {
-        const named = extractFieldName(value);
-        entries.push(named ? value : { ...value, field: value.field || key, column: value.column || key, name: value.name || key });
-      } else if (typeof value === 'string') {
-        entries.push({ field: key, column: value || key, name: key });
-      }
-    });
-  };
+  if (payload.fields && typeof payload.fields === 'object') {
+    const values = Object.values(payload.fields);
+    if (values.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return values;
+    }
+  }
 
-  if (Array.isArray(payload)) addArray(payload);
-  addArray(payload.fields);
-  addArray(payload.data?.fields);
-  addArray(payload.data?.columns);
-  addArray(payload.columns);
-  addArray(payload.data);
-  addArray(payload.result?.fields);
-  addArray(payload.result?.columns);
-
-  addObjectMap(payload.fields);
-  addObjectMap(payload.data?.fields);
-  addObjectMap(payload.data?.columns);
-  addObjectMap(payload.result?.fields);
-  addObjectMap(payload.result?.columns);
-
-  const unique = [];
-  const seen = new Set();
-  entries.forEach((entry) => {
-    const name = extractFieldName(entry) || '';
-    const key = name ? name.toLowerCase() : JSON.stringify(entry);
-    if (seen.has(key)) return;
-    seen.add(key);
-    unique.push(entry);
-  });
-
-  return unique;
+  return [];
 }
 
 function withEndpointMetadata(endpoint) {
