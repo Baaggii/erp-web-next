@@ -795,7 +795,31 @@ const RowFormModal = function RowFormModal({
             payloadDefaults[key] = typeof val === 'string' ? val : String(val);
           });
         }
+        const parameterFields = Array.isArray(entry.parameters)
+          ? entry.parameters
+              .map((param) => {
+                const field = typeof param.name === 'string' ? param.name : '';
+                if (!field) return null;
+                const description =
+                  typeof param.description === 'string' && param.description
+                    ? param.description
+                    : undefined;
+                const location = typeof param.in === 'string' && param.in ? param.in : '';
+                const suffix = location ? ` (${location})` : '';
+                return {
+                  field,
+                  required: Boolean(param.required),
+                  description: description ? `${description}${suffix}` : suffix || undefined,
+                };
+              })
+              .filter(Boolean)
+          : [];
         const requestFields = Array.isArray(entry.requestFields) ? entry.requestFields : [];
+        const combinedRequestFields = [...requestFields];
+        parameterFields.forEach((param) => {
+          if (combinedRequestFields.some((field) => field?.field === param.field)) return;
+          combinedRequestFields.push(param);
+        });
         const responseFields = Array.isArray(entry.responseFields) ? entry.responseFields : [];
         const requestMappingsRaw = Array.isArray(override.requestMappings)
           ? override.requestMappings
@@ -806,7 +830,7 @@ const RowFormModal = function RowFormModal({
         const requestMappings = [];
         const requestPrefill = {};
         const requiredPayloadFields = new Set(
-          requestFields
+          combinedRequestFields
             .filter((field) => field && typeof field.field === 'string' && field.required)
             .map((field) => field.field),
         );
@@ -909,7 +933,8 @@ const RowFormModal = function RowFormModal({
           name: entry.name || entry.id,
           method: entry.method || 'GET',
           path: entry.path || '/',
-          requestFields,
+          parameters: parameterFields,
+          requestFields: combinedRequestFields,
           responseFields,
           displayLabel,
           quickActionLabel,
@@ -970,32 +995,37 @@ const RowFormModal = function RowFormModal({
   useEffect(() => {
     if (!infoModalOpen) return;
     const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
+    setInfoResponse(null);
+    setInfoError(null);
     if (!endpoint) {
       setInfoPayload({});
       return;
     }
+    const basePayload = buildPayloadForEndpoint(endpoint, {});
     const fields = endpoint.requestFields
       .map((item) => (item && typeof item.field === 'string' ? item.field : ''))
       .filter((field) => field);
     if (!fields.length) {
-      setInfoPayload({});
+      setInfoPayload(basePayload);
       return;
     }
-    setInfoPayload((prev) => {
-      const next = {};
-      fields.forEach((field) => {
-        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
-          next[field] = prev[field];
-        } else {
-          const auto = getFieldDefaultFromRecord(field);
-          if (auto !== '') {
-            next[field] = auto;
-          }
-        }
-      });
-      return next;
+    const nextPayload = {};
+    fields.forEach((field) => {
+      if (basePayload[field] !== undefined && basePayload[field] !== null) {
+        nextPayload[field] = basePayload[field];
+        return;
+      }
+      const auto = getFieldDefaultFromRecord(field);
+      if (auto !== '') nextPayload[field] = auto;
     });
-  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, getFieldDefaultFromRecord]);
+    setInfoPayload(nextPayload);
+  }, [
+    infoModalOpen,
+    activeInfoEndpointId,
+    infoEndpoints,
+    buildPayloadForEndpoint,
+    getFieldDefaultFromRecord,
+  ]);
   const formValsRef = useRef(formVals);
   const extraValsRef = useRef(extraVals);
   const manualOverrideRef = useRef(new Map());
@@ -1217,15 +1247,6 @@ const RowFormModal = function RowFormModal({
     },
     [infoEndpoints, activeInfoEndpointId, infoPayload, table, row],
   );
-  useEffect(() => {
-    if (!infoModalOpen) return;
-    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
-    if (!endpoint) {
-      setInfoPayload({});
-      return;
-    }
-    setInfoPayload((prev) => buildPayloadForEndpoint(endpoint, prev));
-  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, buildPayloadForEndpoint]);
   useEffect(() => {
     if (!infoModalOpen) {
       pendingInfoInvokeRef.current = null;
