@@ -1197,49 +1197,8 @@ function normalizeHintEntry(entry) {
   };
 }
 
-function parsePossiblyJson(value, fallback) {
-  if (value === undefined || value === null) return fallback;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return fallback;
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return fallback;
-    }
-  }
-  if (typeof value === 'object') return value;
-  return fallback;
-}
-
 function createFormState(definition) {
   if (!definition) return { ...EMPTY_ENDPOINT };
-  const normalizedParameters = parsePossiblyJson(definition.parameters, definition.parameters) || [];
-  const normalizedRequestBody = parsePossiblyJson(definition.requestBody, definition.requestBody) || {};
-  const normalizedResponseBody = parsePossiblyJson(definition.responseBody, definition.responseBody) || {};
-  const normalizedRequestSchema =
-    parsePossiblyJson(normalizedRequestBody.schema, normalizedRequestBody.schema) || {};
-  const normalizedResponseSchema =
-    parsePossiblyJson(normalizedResponseBody.schema, normalizedResponseBody.schema) || {};
-  const normalizedRequestFields =
-    parsePossiblyJson(definition.requestFields, definition.requestFields) || [];
-  const normalizedResponseFields =
-    parsePossiblyJson(definition.responseFields, definition.responseFields) || [];
-  const normalizedMappingHints =
-    parsePossiblyJson(definition.mappingHints, definition.mappingHints) || {};
-  const normalizedRequestEnvMap =
-    parsePossiblyJson(definition.requestEnvMap, definition.requestEnvMap) || {};
-  const normalizedFieldDescriptions =
-    parsePossiblyJson(definition.fieldDescriptions, definition.fieldDescriptions) || {};
-  const normalizedReceiptTypes =
-    parsePossiblyJson(definition.receiptTypes, definition.receiptTypes) || definition.receiptTypes;
-  const normalizedPaymentMethods =
-    parsePossiblyJson(definition.paymentMethods, definition.paymentMethods) || definition.paymentMethods;
-  const normalizedTaxTypes =
-    parsePossiblyJson(definition.taxTypes, definition.taxTypes) || definition.taxTypes;
-  const normalizedReceiptTaxTypes =
-    parsePossiblyJson(definition.receiptTaxTypes, definition.receiptTaxTypes)
-    || definition.receiptTaxTypes;
   const declaredUsage = definition.usage && VALID_USAGE_VALUES.has(definition.usage)
     ? definition.usage
     : 'transaction';
@@ -1259,16 +1218,16 @@ function createFormState(definition) {
         : true
     : false;
   const supportsMultiplePayments = isTransaction ? Boolean(definition.supportsMultiplePayments) : false;
-  const resolvedReceiptTypes = Array.isArray(normalizedReceiptTypes)
-    ? normalizedReceiptTypes.slice()
+  const resolvedReceiptTypes = Array.isArray(definition.receiptTypes)
+    ? definition.receiptTypes.slice()
     : [];
-  const resolvedPaymentMethods = Array.isArray(normalizedPaymentMethods)
-    ? normalizedPaymentMethods.slice()
+  const resolvedPaymentMethods = Array.isArray(definition.paymentMethods)
+    ? definition.paymentMethods.slice()
     : [];
-  const resolvedTaxTypes = Array.isArray(normalizedTaxTypes)
-    ? normalizedTaxTypes.slice()
-    : Array.isArray(normalizedReceiptTaxTypes)
-      ? normalizedReceiptTaxTypes.slice()
+  const resolvedTaxTypes = Array.isArray(definition.taxTypes)
+    ? definition.taxTypes.slice()
+    : Array.isArray(definition.receiptTaxTypes)
+      ? definition.receiptTaxTypes.slice()
       : [];
   const sanitizeRequestHints = (value) => {
     if (!Array.isArray(value)) return [];
@@ -1317,13 +1276,13 @@ function createFormState(definition) {
     ? (() => {
         const list = buildTemplateList(definition.receiptItemTemplates, allowMultipleReceiptItems);
         if (list.length === 0) {
-        return [''];
-      }
-      return list;
-    })()
+          return [''];
+        }
+        return list;
+      })()
     : [];
-  const hasRequestSchema = hasObjectEntries(normalizedRequestSchema);
-  const requestSchema = hasRequestSchema ? normalizedRequestSchema : {};
+  const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
+  const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
 
   const buildUrlFieldState = (key, fallbackLiteral = '') => {
@@ -1355,14 +1314,14 @@ function createFormState(definition) {
     category: definition.category || '',
     method: definition.method || 'GET',
     path: definition.path || '',
-    parametersText: toPrettyJson(normalizedParameters, '[]'),
-    requestDescription: normalizedRequestBody.description || '',
+    parametersText: toPrettyJson(definition.parameters, '[]'),
+    requestDescription: definition.requestBody?.description || '',
     requestSchemaText: toPrettyJson(requestSchema, requestSchemaFallback),
-    responseDescription: normalizedResponseBody.description || '',
-    responseSchemaText: toPrettyJson(normalizedResponseSchema, '{}'),
-    fieldDescriptionsText: toPrettyJson(normalizedFieldDescriptions, '{}'),
-    requestFieldsText: toPrettyJson(sanitizeRequestHints(normalizedRequestFields), '[]'),
-    responseFieldsText: toPrettyJson(normalizedResponseFields, '[]'),
+    responseDescription: definition.responseBody?.description || '',
+    responseSchemaText: toPrettyJson(definition.responseBody?.schema, '{}'),
+    fieldDescriptionsText: toPrettyJson(definition.fieldDescriptions, '{}'),
+    requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
+    responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     testable: Boolean(definition.testable),
     serverUrl: serverUrlField.literal,
     serverUrlEnvVar: serverUrlField.envVar,
@@ -1411,10 +1370,10 @@ function createFormState(definition) {
     enableReceiptItems: receiptItemsEnabled,
     allowMultipleReceiptItems,
     receiptItemTemplates,
-    topLevelFieldsText: toPrettyJson(normalizedMappingHints?.topLevelFields, '[]'),
-    nestedPathsText: toPrettyJson(normalizedMappingHints?.nestedPaths, '{}'),
+    topLevelFieldsText: toPrettyJson(definition.mappingHints?.topLevelFields, '[]'),
+    nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
-    requestEnvMap: normalizedRequestEnvMap,
+    requestEnvMap: definition.requestEnvMap || {},
   };
 }
 
