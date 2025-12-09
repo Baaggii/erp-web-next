@@ -528,6 +528,7 @@ const EMPTY_ENDPOINT = {
   nestedPathsText: '{}',
   notes: '',
   requestEnvMap: {},
+  responseFieldMappings: {},
 };
 
 const PAYMENT_FIELD_DESCRIPTIONS = {
@@ -1541,6 +1542,10 @@ function createFormState(definition) {
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
     requestEnvMap: definition.requestEnvMap || {},
+    responseFieldMappings: sanitizeResponseFieldMappings(
+      definition.responseFieldMappings || definition.fieldMappings,
+      [],
+    ),
   };
 }
 
@@ -2372,7 +2377,9 @@ export default function PosApiAdmin() {
         const value = option?.value;
         if (!value || seen.has(value)) return null;
         seen.add(value);
-        return { value, label: option.label || formatTableLabel(value) };
+        const baseLabel = option.label || formatTableLabel(value);
+        const label = baseLabel.includes(value) ? baseLabel : `${baseLabel} (${value})`;
+        return { value, label };
       })
       .filter(Boolean);
   }, [infoSyncSettings.tables, infoSyncTableOptionsBase]);
@@ -4538,6 +4545,11 @@ export default function PosApiAdmin() {
       testServerUrlProduction: testServerUrlProductionField,
     });
 
+    const responseFieldMappings = sanitizeResponseFieldMappings(
+      formState.responseFieldMappings,
+      infoSyncTables,
+    );
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -4586,6 +4598,7 @@ export default function PosApiAdmin() {
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: sanitizedRequestFields,
       responseFields,
+      responseFieldMappings,
       examples,
       scripts,
       testable: Boolean(formState.testable),
@@ -7301,6 +7314,10 @@ export default function PosApiAdmin() {
                 {responseFieldHints.items.map((hint, index) => {
                   const normalized = normalizeHintEntry(hint);
                   const fieldLabel = normalized.field || '(unnamed field)';
+                  const mappedTarget = formState.responseFieldMappings?.[fieldLabel];
+                  const mappedValue = mappedTarget
+                    ? `${mappedTarget.table}.${mappedTarget.column}`
+                    : '';
                   return (
                     <li key={`response-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
                       <div style={styles.hintFieldRow}>
@@ -7320,6 +7337,34 @@ export default function PosApiAdmin() {
                       </div>
                       {normalized.description && (
                         <p style={styles.hintDescription}>{normalized.description}</p>
+                      )}
+                      {formState.usage === 'info' && (
+                        <div style={{ marginTop: '0.35rem' }}>
+                          <label style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                            <span style={{ fontWeight: 600 }}>Map to reference table field</span>
+                            <select
+                              value={mappedValue}
+                              onChange={(e) => handleResponseFieldMappingChange(fieldLabel, e.target.value)}
+                              style={styles.input}
+                              disabled={infoSyncTables.length === 0 || infoFieldOptions.length === 0}
+                            >
+                              <option value="">Do not map</option>
+                              {infoFieldOptions.map((option) => (
+                                <option key={`response-map-${fieldLabel}-${option.value}`} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {infoSyncTables.length === 0 && (
+                            <p style={styles.hintDescription}>
+                              Choose tables to update in the Information tab to enable field mappings.
+                            </p>
+                          )}
+                          {infoSyncTables.length > 0 && infoFieldOptions.length === 0 && (
+                            <p style={styles.hintDescription}>Loading available columns…</p>
+                          )}
+                        </div>
                       )}
                     </li>
                   );
@@ -8003,14 +8048,12 @@ export default function PosApiAdmin() {
                 {infoSyncLoading ? 'Refreshing…' : 'Refresh reference codes'}
               </button>
               {infoSyncLogs[0] && (
-                <div style={styles.infoMeta}>
-                  <div>Last sync: {new Date(infoSyncLogs[0].timestamp).toLocaleString()}</div>
-                  <div>
-                    Added {infoSyncLogs[0].added || 0}, updated {infoSyncLogs[0].updated || 0},
-                    deactivated {infoSyncLogs[0].deactivated || 0}
-                  </div>
-                </div>
-              )}
+            <div style={styles.infoMeta}>
+              <div>Last sync: {new Date(infoSyncLogs[0].timestamp).toLocaleString()}</div>
+              <div>
+                Added {infoSyncLogs[0].added || 0}, updated {infoSyncLogs[0].updated || 0},
+                deactivated {infoSyncLogs[0].deactivated || 0}
+              </div>
             </div>
             <div style={styles.infoCard}>
               <h3 style={{ marginTop: 0 }}>Field mappings</h3>

@@ -204,6 +204,23 @@ export async function saveSyncSettings(settings) {
   return sanitized;
 }
 
+function extractEndpointFieldMappings(endpoints, allowedTables = []) {
+  const result = {};
+  const allowed = Array.isArray(allowedTables) ? allowedTables : [];
+  endpoints
+    .filter((endpoint) => endpoint?.id)
+    .forEach((endpoint) => {
+      const sanitized = sanitizeEndpointFieldMappings(
+        endpoint.responseFieldMappings || endpoint.fieldMappings,
+        allowed,
+      );
+      if (sanitized && Object.keys(sanitized).length > 0) {
+        result[endpoint.id] = sanitized;
+      }
+    });
+  return result;
+}
+
 export async function loadSyncLogs(limit = 50) {
   const logs = await readJson(logPath, []);
   if (!Array.isArray(logs)) return [];
