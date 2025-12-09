@@ -310,9 +310,10 @@ function formatTableLabel(value) {
 }
 
 function formatTableDisplay(value, label) {
-  const baseLabel = label || formatTableLabel(value);
-  if (!value) return baseLabel;
-  return `${baseLabel} (${value})`;
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (normalized) return normalized;
+  const baseLabel = typeof label === 'string' ? label.trim() : '';
+  return baseLabel || '';
 }
 
 function buildTableOptions(tables) {
@@ -389,6 +390,10 @@ function extractFieldName(field) {
     field.column ||
     field.column_name ||
     field.columnName ||
+    field.COLUMN_NAME ||
+    field.COLUMN ||
+    field.field_name ||
+    field.fieldName ||
     field.name ||
     ''
   );
