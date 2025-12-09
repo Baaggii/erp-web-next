@@ -973,6 +973,22 @@ function parseHintPreview(text, arrayErrorMessage) {
   }
 }
 
+function parseParametersPreview(text) {
+  const trimmed = (text || '').trim();
+  if (!trimmed) {
+    return { state: 'empty', items: [], error: '' };
+  }
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) {
+      return { state: 'error', items: [], error: 'Parameters must be a JSON array' };
+    }
+    return { state: 'ok', items: normalizeParametersFromSpec(parsed), error: '' };
+  } catch (err) {
+    return { state: 'error', items: [], error: err.message || 'Invalid JSON' };
+  }
+}
+
 const DEFAULT_POSAPI_ENV_VARS = ['POSAPI_CLIENT_ID', 'POSAPI_CLIENT_SECRET'];
 
 function listPosApiEnvVariables(extraKeys = []) {
@@ -1888,6 +1904,11 @@ function buildDraftParameterDefaults(parameters) {
     username: '{{POSAPI_USERNAME}}',
     password: '{{POSAPI_PASSWORD}}',
   };
+  const defaultSamples = {
+    regNo: '1234567',
+    tin: '1234567890',
+    stockQr: '0123456789012',
+  };
   parameters.forEach((param) => {
     if (!param?.name) return;
     const candidates = [param.example, param.default, param.sample];
@@ -1900,6 +1921,11 @@ function buildDraftParameterDefaults(parameters) {
     const envKey = envFallbacks[normalizedName];
     if (envKey) {
       values[param.name] = envKey;
+      return;
+    }
+    const sampleKey = Object.keys(defaultSamples).find((key) => key.toLowerCase() === normalizedName);
+    if (sampleKey) {
+      values[param.name] = defaultSamples[sampleKey];
     }
   });
   return values;
@@ -2227,45 +2253,102 @@ export default function PosApiAdmin() {
     [formState.responseFieldsText],
   );
 
+  const parameterPreview = useMemo(
+    () => parseParametersPreview(formState.parametersText),
+    [formState.parametersText],
+  );
+
+  const parameterDefaults = useMemo(
+    () => buildDraftParameterDefaults(parameterPreview.items || []),
+    [parameterPreview.items],
+  );
+
+  const requestFieldDisplay = useMemo(() => {
+    if (requestFieldHints.state === 'error') return requestFieldHints;
+    if (parameterPreview.state === 'error') return parameterPreview;
+
+    const items = [];
+    const seen = new Set();
+
+    if (requestFieldHints.state === 'ok') {
+      requestFieldHints.items.forEach((entry) => {
+        const normalized = normalizeHintEntry(entry);
+        if (!normalized.field || seen.has(normalized.field)) return;
+        seen.add(normalized.field);
+        items.push({ ...normalized, source: 'hint' });
+      });
+    }
+
+    if (parameterPreview.state === 'ok') {
+      parameterPreview.items
+        .filter((param) => param.name && ['query', 'path'].includes(param.in))
+        .forEach((param) => {
+          if (seen.has(param.name)) return;
+          seen.add(param.name);
+          items.push({
+            field: param.name,
+            required: Boolean(param.required),
+            description: param.description || `${param.in} parameter`,
+            location: param.in,
+            source: 'parameter',
+            defaultValue:
+              param.testValue
+              ?? param.example
+              ?? param.default
+              ?? param.sample
+              ?? parameterDefaults[param.name],
+          });
+        });
+    }
+
+    if (items.length === 0) return { state: 'empty', items: [], error: '' };
+    return { state: 'ok', items, error: '' };
+  }, [parameterDefaults, parameterPreview, requestFieldHints]);
+
   useEffect(() => {
-    setRequestFieldValues((prev) => {
-      const seenFields = new Set();
-      let parsedSample = {};
-      try {
-        parsedSample = JSON.parse(formState.requestSchemaText || '{}');
-      } catch {
-        parsedSample = {};
+    const seenFields = new Set();
+    let parsedSample = {};
+    try {
+      parsedSample = JSON.parse(formState.requestSchemaText || '{}');
+    } catch {
+      parsedSample = {};
+    }
+
+    const derivedSelections = {};
+
+    requestFieldDisplay.items.forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      const fieldPath = normalized.field;
+      if (!fieldPath || seenFields.has(fieldPath)) return;
+      seenFields.add(fieldPath);
+
+      const currentValue = readValueAtPath(parsedSample, fieldPath);
+      const defaultValue = entry.defaultValue;
+      const applyToBody = entry.source !== 'parameter';
+      if (typeof formState.requestEnvMap?.[fieldPath] === 'string') {
+        derivedSelections[fieldPath] = {
+          mode: 'env',
+          envVar: formState.requestEnvMap[fieldPath],
+          literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
+          applyToBody,
+        };
+        return;
       }
 
-      const derivedSelections = {};
+      if (currentValue !== undefined && currentValue !== null) {
+        derivedSelections[fieldPath] = { mode: 'literal', literal: String(currentValue), applyToBody };
+        return;
+      }
 
-      requestFieldHints.items.forEach((hint) => {
-        const normalized = normalizeHintEntry(hint);
-        const fieldPath = normalized.field;
-        if (!fieldPath || seenFields.has(fieldPath)) return;
-        seenFields.add(fieldPath);
+      if (defaultValue !== undefined && defaultValue !== null) {
+        derivedSelections[fieldPath] = { mode: 'literal', literal: String(defaultValue), applyToBody };
+        return;
+      }
 
-        const currentValue = readValueAtPath(parsedSample, fieldPath);
-        let selection;
-        if (typeof formState.requestEnvMap?.[fieldPath] === 'string') {
-          selection = {
-            mode: 'env',
-            envVar: formState.requestEnvMap[fieldPath],
-            literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
-          };
-        } else if (currentValue !== undefined && currentValue !== null) {
-          selection = { mode: 'literal', literal: String(currentValue) };
-        } else {
-          selection = { mode: 'literal', literal: '' };
-        }
+      derivedSelections[fieldPath] = { mode: 'literal', literal: '', applyToBody };
+    });
 
-        const existing = prev[fieldPath];
-        const existingEnvMode = existing?.mode === 'env' && !selection.envVar && selection.mode !== 'env';
-        derivedSelections[fieldPath] = existingEnvMode
-          ? { ...selection, mode: 'env', envVar: existing.envVar ?? '', literal: selection.literal ?? existing.literal ?? '' }
-          : selection;
-      });
-
+    setRequestFieldValues((prev) => {
       const next = { ...prev };
       let changed = false;
 
@@ -2293,16 +2376,12 @@ export default function PosApiAdmin() {
 
       if (changed) {
         syncRequestSampleFromSelections(next);
-        setFormState((prevState) => ({
-          ...prevState,
-          requestEnvMap: buildRequestEnvMap(next),
-        }));
         return next;
       }
 
       return prev;
     });
-  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldHints.items]);
+  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldDisplay.items]);
 
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
@@ -3997,6 +4076,40 @@ export default function PosApiAdmin() {
     if (!Array.isArray(parameters)) {
       throw new Error('Parameters must be a JSON array');
     }
+    const parametersWithValues = parameters.map((param) => {
+      if (!param || typeof param !== 'object') return param;
+      const selection = param?.name ? requestFieldValues[param.name] || {} : {};
+      const fallbackDefault = parameterDefaults[param?.name];
+      const literalValue = typeof selection.literal === 'string'
+        ? selection.literal
+        : selection.literal ?? '';
+      const envVarValue = selection.mode === 'env' && selection.envVar
+        ? selection.envVar
+        : formState.requestEnvMap?.[param.name];
+      const next = { ...param };
+      if (next.in === 'path') {
+        next.required = true;
+      }
+      const defaultCandidate = next.default ?? fallbackDefault;
+      if (defaultCandidate !== undefined && defaultCandidate !== null) {
+        next.default = defaultCandidate;
+      }
+      if (envVarValue) {
+        next.envVar = envVarValue;
+      }
+      if (literalValue && `${literalValue}`.trim() !== '') {
+        next.testValue = literalValue;
+        if (next.example === undefined) {
+          next.example = literalValue;
+        }
+      } else if (fallbackDefault !== undefined && fallbackDefault !== null) {
+        next.testValue = fallbackDefault;
+      }
+      if (typeof next.required !== 'boolean') {
+        next.required = Boolean(param.required);
+      }
+      return next;
+    });
     let requestSchema = parseJsonInput(
       'Request body schema',
       formState.requestSchemaText,
@@ -4144,7 +4257,7 @@ export default function PosApiAdmin() {
       allowMultipleReceiptItems,
       receiptItemTemplates,
       notes: formState.notes ? formState.notes.trim() : '',
-      parameters,
+      parameters: parametersWithValues,
       requestBody: {
         schema: requestSchema,
         description: formState.requestDescription || '',
@@ -4385,7 +4498,12 @@ export default function PosApiAdmin() {
     } catch {
       baseSample = {};
     }
-    const updated = buildRequestSampleFromSelections(baseSample, nextSelections, {
+    const activeSelections = Object.entries(nextSelections || {}).reduce((acc, [path, entry]) => {
+      if (entry?.applyToBody === false) return acc;
+      acc[path] = entry;
+      return acc;
+    }, {});
+    const updated = buildRequestSampleFromSelections(baseSample, activeSelections, {
       resolveEnv: false,
       useEnvPlaceholders: false,
     });
@@ -6412,23 +6530,31 @@ export default function PosApiAdmin() {
             placeholder="Batch of receipts with payments and items"
           />
         </label>
-        <label style={styles.labelFull}>
-          Request body schema (JSON)
-          <div style={styles.inlineActionRow}>
-            <button type="button" style={styles.smallButton} onClick={handleResetRequestSchema}>
-              Reset to empty object
-            </button>
-            <span style={styles.inlineActionHint}>
-              Clears the structured builder for non-transaction endpoints and removes receipt defaults.
-            </span>
-          </div>
-          <textarea
-            value={formState.requestSchemaText}
-            onChange={(e) => handleChange('requestSchemaText', e.target.value)}
-            style={styles.textarea}
-            rows={10}
-          />
-        </label>
+        {((formState.method || '').toUpperCase() !== 'GET') || (formState.requestSchemaText || '').trim()
+          ? (
+            <label style={styles.labelFull}>
+              Request body schema (JSON)
+              <div style={styles.inlineActionRow}>
+                <button type="button" style={styles.smallButton} onClick={handleResetRequestSchema}>
+                  Reset to empty object
+                </button>
+                <span style={styles.inlineActionHint}>
+                  Clears the structured builder for non-transaction endpoints and removes receipt defaults.
+                </span>
+              </div>
+              <textarea
+                value={formState.requestSchemaText}
+                onChange={(e) => handleChange('requestSchemaText', e.target.value)}
+                style={styles.textarea}
+                rows={10}
+              />
+            </label>
+            )
+          : (
+            <div style={styles.sectionHelp}>
+              GET requests typically do not send a body; request schema is hidden until a payload is added.
+            </div>
+          )}
         <label style={styles.labelFull}>
           Response description
           <input
@@ -6481,19 +6607,21 @@ export default function PosApiAdmin() {
           <div style={styles.hintCard}>
             <div style={styles.hintHeader}>
               <h3 style={styles.hintTitle}>Request fields</h3>
-              {requestFieldHints.state === 'ok' && (
-                <span style={styles.hintCount}>{requestFieldHints.items.length} fields</span>
+              {requestFieldDisplay.state === 'ok' && (
+                <span style={styles.hintCount}>{requestFieldDisplay.items.length} fields</span>
               )}
             </div>
-            {requestFieldHints.state === 'empty' && (
-              <p style={styles.hintEmpty}>Add request field hints in the JSON textarea above.</p>
+            {requestFieldDisplay.state === 'empty' && (
+              <p style={styles.hintEmpty}>
+                Add request field hints in the JSON textarea above. Query and path parameters are listed automatically.
+              </p>
             )}
-            {requestFieldHints.state === 'error' && (
-              <div style={styles.hintError}>{requestFieldHints.error}</div>
+            {requestFieldDisplay.state === 'error' && (
+              <div style={styles.hintError}>{requestFieldDisplay.error}</div>
             )}
-            {requestFieldHints.state === 'ok' && (
+            {requestFieldDisplay.state === 'ok' && (
               <ul style={styles.hintList}>
-                {requestFieldHints.items.map((hint, index) => {
+                {requestFieldDisplay.items.map((hint, index) => {
                   const normalized = normalizeHintEntry(hint);
                   const fieldLabel = normalized.field || '(unnamed field)';
                   const selection = requestFieldValues[fieldLabel] || {
@@ -6518,6 +6646,11 @@ export default function PosApiAdmin() {
                             }}
                           >
                             {normalized.required ? 'Required' : 'Optional'}
+                          </span>
+                        )}
+                        {hint.source === 'parameter' && (
+                          <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                            {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
                           </span>
                         )}
                       </div>
