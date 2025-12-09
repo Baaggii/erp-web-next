@@ -120,6 +120,42 @@ const TRANSACTION_POSAPI_TYPES = new Set(['B2C', 'B2B_SALE', 'B2B_PURCHASE', 'TR
 
 const DEFAULT_ENV_RESOLVER = () => ({ found: false, value: '', error: '' });
 
+function extractUserParameters(values) {
+  if (!values || typeof values !== 'object') return {};
+  const entries = Object.entries(values).filter(([key, value]) => {
+    if (key === '_endpointId') return false;
+    if (value === undefined || value === null) return false;
+    if (typeof value === 'string') {
+      return value.trim() !== '';
+    }
+    return true;
+  });
+  return Object.fromEntries(entries);
+}
+
+function normalizeHeaderList(headers) {
+  if (!headers) return [];
+  if (Array.isArray(headers)) {
+    return headers
+      .map((entry) => {
+        if (Array.isArray(entry) && entry.length >= 2) return { name: entry[0], value: entry[1] };
+        if (entry && typeof entry === 'object' && entry.name) return { name: entry.name, value: entry.value };
+        return null;
+      })
+      .filter((item) => item && item.name);
+  }
+  if (typeof headers === 'object') {
+    return Object.entries(headers).map(([name, value]) => ({ name, value }));
+  }
+  return [];
+}
+
+function formatDurationMs(duration) {
+  const numeric = Number(duration);
+  if (!Number.isFinite(numeric) || numeric < 0) return '';
+  return `${numeric.toLocaleString()} ms`;
+}
+
 function normalizeUsage(value) {
   return VALID_USAGE_VALUES.has(value) ? value : 'transaction';
 }
