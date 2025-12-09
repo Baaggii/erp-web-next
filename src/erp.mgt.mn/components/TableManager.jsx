@@ -3311,6 +3311,7 @@ const TableManager = forwardRef(function TableManager({
         skipConfirm: true,
         silent: false,
         overrideValues: cleaned,
+        promoteAsTemporary: !canPostTransactions,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -4197,7 +4198,12 @@ const TableManager = forwardRef(function TableManager({
 
   async function promoteTemporary(
     id,
-    { skipConfirm = false, silent = false, overrideValues = null } = {},
+    {
+      skipConfirm = false,
+      silent = false,
+      overrideValues = null,
+      promoteAsTemporary = false,
+    } = {},
   ) {
     if (!canReviewTemporary) return false;
     if (
@@ -4210,14 +4216,20 @@ const TableManager = forwardRef(function TableManager({
         overrideValues && typeof overrideValues === 'object'
           ? stripTemporaryLabelValue(overrideValues)
           : null;
-      const hasBody = payload && Object.keys(payload).length > 0;
+      const hasPayload = payload && Object.keys(payload).length > 0;
+      const requestBody = promoteAsTemporary || hasPayload
+        ? {
+            ...(hasPayload ? { cleanedValues: payload } : {}),
+            promoteAsTemporary,
+          }
+        : null;
       const res = await fetch(
         `${API_BASE}/transaction_temporaries/${encodeURIComponent(id)}/promote`,
         {
           method: 'POST',
-          headers: hasBody ? { 'Content-Type': 'application/json' } : undefined,
+          headers: requestBody ? { 'Content-Type': 'application/json' } : undefined,
           credentials: 'include',
-          body: hasBody ? JSON.stringify({ cleanedValues: payload }) : undefined,
+          body: requestBody ? JSON.stringify(requestBody) : undefined,
         },
       );
       let data = null;
