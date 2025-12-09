@@ -27,6 +27,7 @@ import TourBuilder from "./tours/TourBuilder.jsx";
 import TourViewer from "./tours/TourViewer.jsx";
 import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
+import { playNotificationSound } from "../utils/playNotificationSound.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -124,6 +125,12 @@ const INTERACTIVE_DESCENDANT_SELECTORS = [
 ];
 
 const REQUEST_STATUS_KEYS = ['pending', 'accepted', 'declined'];
+const NOTIFICATION_STATUS_COLORS = {
+  declined: '#ef4444',
+  pending: '#fbbf24',
+  accepted: '#34d399',
+};
+const NOTIFICATION_STATUS_ORDER = ['declined', 'pending', 'accepted'];
 
 function createEmptyStatusMap() {
   return REQUEST_STATUS_KEYS.reduce((acc, key) => {
@@ -3444,6 +3451,54 @@ export default function ERPLayout() {
   const temporaryReviewCount = Number(temporaryCounts?.review?.count) || 0;
   const temporaryReviewNewCount = Number(temporaryCounts?.review?.newCount) || 0;
 
+  const notificationStatusTotals = useMemo(
+    () => {
+      const totals = { pending: 0, accepted: 0, declined: 0 };
+      REQUEST_STATUS_KEYS.forEach((status) => {
+        const incomingNew = Number(aggregatedIncoming?.[status]?.newCount) || 0;
+        const outgoingNew = Number(aggregatedOutgoing?.[status]?.newCount) || 0;
+        totals[status] = incomingNew + outgoingNew;
+      });
+      totals.pending += temporaryCreatedNewCount + temporaryReviewNewCount;
+      return totals;
+    },
+    [
+      aggregatedIncoming,
+      aggregatedOutgoing,
+      temporaryCreatedNewCount,
+      temporaryReviewNewCount,
+    ],
+  );
+
+  const notificationColors = useMemo(() => {
+    const colors = [];
+    NOTIFICATION_STATUS_ORDER.forEach((status) => {
+      if (notificationStatusTotals[status] > 0) {
+        colors.push(NOTIFICATION_STATUS_COLORS[status]);
+      }
+    });
+    return colors;
+  }, [notificationStatusTotals]);
+
+  const selectedNotificationSound = useMemo(
+    () => (userSettings?.notificationSound || 'chime').trim(),
+    [userSettings?.notificationSound],
+  );
+
+  const notificationTotalsRef = useRef(notificationStatusTotals);
+
+  useEffect(() => {
+    const prev = notificationTotalsRef.current;
+    notificationTotalsRef.current = notificationStatusTotals;
+    if (!prev) return;
+    const hasIncrease = NOTIFICATION_STATUS_ORDER.some(
+      (status) => notificationStatusTotals[status] > (prev[status] || 0),
+    );
+    if (hasIncrease) {
+      playNotificationSound(selectedNotificationSound);
+    }
+  }, [notificationStatusTotals, selectedNotificationSound]);
+
   const temporaryValue = useMemo(
     () => ({
       counts: temporaryCounts,
@@ -3468,9 +3523,17 @@ export default function ERPLayout() {
     () => ({
       ...pendingRequestSummary.contextValue,
       temporary: temporaryValue,
+      notificationColors,
+      notificationStatusTotals,
       anyHasNew: pendingRequestSummary.requestHasNew || temporaryHasNew,
     }),
-    [pendingRequestSummary, temporaryHasNew, temporaryValue],
+    [
+      notificationColors,
+      notificationStatusTotals,
+      pendingRequestSummary,
+      temporaryHasNew,
+      temporaryValue,
+    ],
   );
 
   useEffect(() => {
@@ -3629,6 +3692,25 @@ export default function ERPLayout() {
 }
 
 /** Top header bar **/
+function NotificationDots({ colors, size = '0.55rem', gap = '0.25rem', marginRight = '0.25rem' }) {
+  if (!colors || colors.length === 0) return null;
+  return (
+    <span style={{ ...styles.notificationDotGroup, gap, marginRight }}>
+      {colors.map((color, idx) => (
+        <span
+          key={`${color}-${idx}`}
+          style={{
+            ...styles.notificationDot,
+            backgroundColor: color,
+            width: size,
+            height: size,
+          }}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function Header({
   user,
   onLogout,
@@ -3641,7 +3723,7 @@ export function Header({
 }) {
   const { session } = useContext(AuthContext);
   const { lang, setLang, t } = useContext(LangContext);
-  const { anyHasNew } = useContext(PendingRequestContext);
+  const { anyHasNew, notificationColors } = useContext(PendingRequestContext);
   const handleRefresh = () => {
     if (typeof window === 'undefined' || !window?.location) return;
     try {
@@ -3652,6 +3734,12 @@ export function Header({
       }
     }
   };
+
+  const headerNotificationColors = useMemo(() => {
+    if (notificationColors?.length) return notificationColors;
+    if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
+    return [];
+  }, [anyHasNew, notificationColors]);
 
   const workplaceLabels = useMemo(() => {
     if (!session) return [];
@@ -3795,7 +3883,7 @@ export function Header({
           }
         >
           <span style={styles.inlineButtonContent}>
-            {anyHasNew && <span style={styles.notificationDot} />}
+            <NotificationDots colors={headerNotificationColors} marginRight={0} />
             <span aria-hidden="true">🔔</span> {t('notifications', 'Notifications')}
           </span>
         </button>
@@ -3853,7 +3941,13 @@ function Sidebar({ onOpen, open, isMobile }) {
   const txnModules = useTxnModules();
   const generalConfig = useGeneralConfig();
   const headerMap = useHeaderMappings(modules.map((m) => m.module_key));
-  const { hasNew, anyHasNew } = useContext(PendingRequestContext);
+  const { hasNew, anyHasNew, notificationColors } = useContext(PendingRequestContext);
+
+  const sidebarNotificationColors = useMemo(() => {
+    if (notificationColors?.length) return notificationColors;
+    if (anyHasNew) return [NOTIFICATION_STATUS_COLORS.pending];
+    return [];
+  }, [anyHasNew, notificationColors]);
 
   if (!perms) return null;
 
@@ -3945,7 +4039,11 @@ function Sidebar({ onOpen, open, isMobile }) {
           className="menu-item"
           style={styles.menuItem({ isActive: location.pathname === '/notifications' })}
         >
-          {anyHasNew && <span style={styles.badge} />}
+          <NotificationDots
+            colors={sidebarNotificationColors}
+            size="0.55rem"
+            gap="0.2rem"
+          />
           {t('notifications', 'Notifications')}
         </button>
         {roots.map((m) =>
@@ -4451,13 +4549,18 @@ const styles = {
     alignItems: "center",
     gap: "0.35rem",
   },
+  notificationDotGroup: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "0.25rem",
+    marginRight: "0.25rem",
+  },
   notificationDot: {
     display: "inline-block",
-    width: "0.5rem",
-    height: "0.5rem",
+    width: "0.55rem",
+    height: "0.55rem",
     borderRadius: "50%",
-    backgroundColor: "#f87171",
-    marginRight: "0.25rem",
+    backgroundColor: NOTIFICATION_STATUS_COLORS.pending,
   },
   userSection: {
     display: "flex",
