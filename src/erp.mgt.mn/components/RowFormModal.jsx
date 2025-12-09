@@ -1251,14 +1251,11 @@ const RowFormModal = function RowFormModal({
       setInfoPayload({});
       setInfoResponse(null);
       setInfoError(null);
-      setInfoLoading(false);
       return;
     }
-    const nextPayload = buildPayloadForEndpoint(endpoint, {});
-    setInfoPayload(nextPayload);
+    setInfoPayload(buildPayloadForEndpoint(endpoint, {}));
     setInfoResponse(null);
     setInfoError(null);
-    setInfoLoading(false);
   }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, buildPayloadForEndpoint]);
   useEffect(() => {
     if (!infoModalOpen) {
