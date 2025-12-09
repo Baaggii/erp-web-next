@@ -815,7 +815,17 @@ const RowFormModal = function RowFormModal({
               })
               .filter(Boolean)
           : [];
-        const requestFields = Array.isArray(entry.requestFields) ? entry.requestFields : [];
+        const requestFields = Array.isArray(entry.requestFields)
+          ? entry.requestFields.filter((field) => {
+              if (!field || typeof field !== 'object') return true;
+              const locationRaw =
+                (typeof field.location === 'string' && field.location) ||
+                (typeof field.in === 'string' && field.in) ||
+                '';
+              const location = locationRaw.toLowerCase();
+              return location !== 'header';
+            })
+          : [];
         const combinedRequestFields = [...requestFields];
         parameterFields.forEach((param) => {
           if (combinedRequestFields.some((field) => field?.field === param.field)) return;
