@@ -995,37 +995,32 @@ const RowFormModal = function RowFormModal({
   useEffect(() => {
     if (!infoModalOpen) return;
     const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
-    setInfoResponse(null);
-    setInfoError(null);
     if (!endpoint) {
       setInfoPayload({});
       return;
     }
-    const basePayload = buildPayloadForEndpoint(endpoint, {});
     const fields = endpoint.requestFields
       .map((item) => (item && typeof item.field === 'string' ? item.field : ''))
       .filter((field) => field);
     if (!fields.length) {
-      setInfoPayload(basePayload);
+      setInfoPayload({});
       return;
     }
-    const nextPayload = {};
-    fields.forEach((field) => {
-      if (basePayload[field] !== undefined && basePayload[field] !== null) {
-        nextPayload[field] = basePayload[field];
-        return;
-      }
-      const auto = getFieldDefaultFromRecord(field);
-      if (auto !== '') nextPayload[field] = auto;
+    setInfoPayload((prev) => {
+      const next = {};
+      fields.forEach((field) => {
+        if (prev[field] !== undefined && prev[field] !== null && prev[field] !== '') {
+          next[field] = prev[field];
+        } else {
+          const auto = getFieldDefaultFromRecord(field);
+          if (auto !== '') {
+            next[field] = auto;
+          }
+        }
+      });
+      return next;
     });
-    setInfoPayload(nextPayload);
-  }, [
-    infoModalOpen,
-    activeInfoEndpointId,
-    infoEndpoints,
-    buildPayloadForEndpoint,
-    getFieldDefaultFromRecord,
-  ]);
+  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, getFieldDefaultFromRecord]);
   const formValsRef = useRef(formVals);
   const extraValsRef = useRef(extraVals);
   const manualOverrideRef = useRef(new Map());
@@ -1247,6 +1242,15 @@ const RowFormModal = function RowFormModal({
     },
     [infoEndpoints, activeInfoEndpointId, infoPayload, table, row],
   );
+  useEffect(() => {
+    if (!infoModalOpen) return;
+    const endpoint = infoEndpoints.find((entry) => entry.id === activeInfoEndpointId);
+    if (!endpoint) {
+      setInfoPayload({});
+      return;
+    }
+    setInfoPayload((prev) => buildPayloadForEndpoint(endpoint, prev));
+  }, [infoModalOpen, activeInfoEndpointId, infoEndpoints, buildPayloadForEndpoint]);
   useEffect(() => {
     if (!infoModalOpen) {
       pendingInfoInvokeRef.current = null;
