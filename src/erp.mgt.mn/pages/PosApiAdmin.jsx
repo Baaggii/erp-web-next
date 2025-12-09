@@ -309,6 +309,16 @@ function formatTableLabel(value) {
     .join(' ');
 }
 
+function normalizeTableValue(value) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) return '';
+  const match = normalized.match(/\(([A-Za-z0-9_]+)\)$/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  return normalized;
+}
+
 function formatTableDisplay(value, label) {
   const normalized = typeof value === 'string' ? value.trim() : '';
   if (normalized) return normalized;
@@ -322,7 +332,8 @@ function buildTableOptions(tables) {
     .map((table) => {
       if (!table) return null;
       if (typeof table === 'string') {
-        return { value: table, label: formatTableDisplay(table) };
+        const normalizedValue = normalizeTableValue(table);
+        return { value: normalizedValue, label: formatTableDisplay(normalizedValue) };
       }
       if (typeof table === 'object') {
         const value = [
@@ -334,8 +345,9 @@ function buildTableOptions(tables) {
           .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
           .find(Boolean);
         if (!value) return null;
+        const normalizedValue = normalizeTableValue(value);
         const label = table.label || table.table_comment || table.comment || table.description;
-        return { value, label: formatTableDisplay(value, label) };
+        return { value: normalizedValue, label: formatTableDisplay(normalizedValue, label) };
       }
       return null;
     })
