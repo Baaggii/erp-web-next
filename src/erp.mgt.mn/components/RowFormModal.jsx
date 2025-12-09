@@ -574,6 +574,36 @@ const RowFormModal = function RowFormModal({
     });
     return map;
   }, [columns]);
+  const isHeaderLocation = React.useCallback((value) => {
+    if (typeof value !== 'string') return false;
+    const normalized = value.trim().toLowerCase();
+    return normalized === 'header' || normalized === 'headers';
+  }, []);
+  const isHeaderParameter = React.useCallback(
+    (param) => {
+      if (!param || typeof param !== 'object') return false;
+      const locationCandidates = [
+        param.in,
+        param.location,
+        param.loc,
+        param.scope,
+        param.place,
+        param.target,
+        param.position,
+        param.type,
+        param.paramType,
+      ];
+      if (locationCandidates.some((candidate) => isHeaderLocation(candidate))) return true;
+      const name =
+        (typeof param.name === 'string' && param.name) ||
+        (typeof param.field === 'string' && param.field) ||
+        '';
+      if (!name) return false;
+      const lower = name.toLowerCase();
+      return lower === 'accept' || lower === 'authorization' || lower === 'content-type';
+    },
+    [isHeaderLocation],
+  );
   const rowKey = React.useMemo(() => JSON.stringify(row || {}), [row]);
   const defaultValuesKey = React.useMemo(
     () => JSON.stringify(defaultValues || {}),
