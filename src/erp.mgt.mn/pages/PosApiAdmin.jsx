@@ -399,6 +399,24 @@ function extractFieldName(field) {
   );
 }
 
+function normalizeFieldList(payload) {
+  if (!payload) return [];
+  if (Array.isArray(payload)) return payload;
+
+  if (Array.isArray(payload.fields)) return payload.fields;
+  if (Array.isArray(payload.data?.fields)) return payload.data.fields;
+  if (Array.isArray(payload.data)) return payload.data;
+
+  if (payload.fields && typeof payload.fields === 'object') {
+    const values = Object.values(payload.fields);
+    if (values.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return values;
+    }
+  }
+
+  return [];
+}
+
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
   const usage = endpoint.posApiType === 'AUTH'
@@ -2544,7 +2562,8 @@ export default function PosApiAdmin() {
             setInfoTableFieldLoading((prev) => ({ ...prev, [table]: false }));
             return;
           }
-          setInfoTableFields((prev) => ({ ...prev, [table]: Array.isArray(data.fields) ? data.fields : [] }));
+          const normalized = normalizeFieldList(data);
+          setInfoTableFields((prev) => ({ ...prev, [table]: normalized }));
           setInfoTableFieldLoading((prev) => ({ ...prev, [table]: false }));
         })
         .catch(() => {
