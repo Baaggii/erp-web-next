@@ -113,11 +113,6 @@ function sanitizeFieldMappings(raw, allowedTables = []) {
   return result;
 }
 
-function sanitizeEndpointFieldMappings(raw, allowedTables = []) {
-  if (!raw || typeof raw !== 'object') return {};
-  return sanitizeFieldMappings({ __temp__: raw }, allowedTables).__temp__ || {};
-}
-
 function sanitizeIdList(list) {
   return Array.isArray(list)
     ? Array.from(
@@ -426,14 +421,12 @@ export async function runReferenceCodeSync(trigger = 'manual', options = {}) {
     Object.prototype.hasOwnProperty.call(options, 'tables') && Array.isArray(options.tables)
       ? options.tables
       : settings.tables;
-  const providedFieldMappings = sanitizeFieldMappings(
+  const fieldMappings = sanitizeFieldMappings(
     Object.prototype.hasOwnProperty.call(options, 'fieldMappings')
       ? options.fieldMappings
       : settings.fieldMappings,
     targetTables,
   );
-  const endpointFieldMappings = extractEndpointFieldMappings(endpoints, targetTables);
-  const fieldMappings = { ...providedFieldMappings, ...endpointFieldMappings };
   const infoEndpoints = endpoints
     .filter((endpoint) => String(endpoint.method || '').toUpperCase() === 'GET')
     .filter((endpoint) => desiredUsage === 'all' || normalizeUsage(endpoint.usage) === desiredUsage)
