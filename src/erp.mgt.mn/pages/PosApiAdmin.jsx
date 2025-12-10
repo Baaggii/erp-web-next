@@ -2639,10 +2639,12 @@ export default function PosApiAdmin() {
         const data = await res.json();
         if (cancelled) return;
         const options = buildTableOptions(Array.isArray(data.tables) ? data.tables : []);
-        const ebarimtTables = options.filter((option) =>
-          normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
-        );
-        setTableOptions(ebarimtTables);
+        // POSAPI response mappings should work with any available table. Restricting to
+        // ebarimt_* tables prevented the dropdown from ever populating when those tables
+        // were missing, which in turn kept field mappings disabled. Keep all tables so the
+        // list always reflects the selected table set, similar to the dynamic transaction
+        // configuration screen.
+        setTableOptions(options);
       } catch (err) {
         if (!cancelled && err?.name !== 'AbortError') {
           console.warn('Unable to load POSAPI response tables', err);
