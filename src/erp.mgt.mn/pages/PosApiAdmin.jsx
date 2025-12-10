@@ -647,6 +647,7 @@ const EMPTY_ENDPOINT = {
   requestFieldsText: '[]',
   responseFieldsText: '[]',
   examplesText: '[]',
+  requestFieldVariations: [],
   preRequestScript: '',
   testScript: '',
   testable: false,
@@ -699,207 +700,6 @@ const PAYMENT_FIELD_DESCRIPTIONS = {
   'payments[].type':
     'Payment method code. Supported values: CASH, PAYMENT_CARD, BANK_TRANSFER, MOBILE_WALLET, EASY_BANK_CARD.',
   'payments[].amount': 'Amount paid with the selected payment method.',
-};
-
-const TAX_TYPE_DESCRIPTIONS = {
-  VAT_ABLE: 'Standard VAT rate applies. Include VAT and city tax totals.',
-  VAT_FREE: 'VAT exempt sale. Provide a taxProductCode reference for the exemption reason.',
-  VAT_ZERO: 'Zero-rated VAT sale (for example, exports). Provide a taxProductCode reference.',
-  NO_VAT: 'Sale that falls completely outside the VAT system.',
-};
-
-const RECEIPT_SAMPLE_PAYLOADS = {
-  B2C: createReceiptTemplate('B2C', {
-    branchNo: '001',
-    posNo: 'A01',
-    merchantTin: '12345678901',
-    consumerNo: '99001122',
-    totalAmount: 55000,
-    totalVAT: 5000,
-    totalCityTax: 500,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 55000,
-        totalVAT: 5000,
-        totalCityTax: 500,
-        items: [
-          {
-            name: 'Latte (16oz)',
-            barCode: '9770001112233',
-            barCodeType: 'EAN_13',
-            classificationCode: '5610201',
-            measureUnit: 'PCS',
-            qty: 1,
-            price: 50000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 500,
-            lotNo: '',
-          },
-          {
-            name: 'Butter croissant',
-            barCode: '9770001112240',
-            barCodeType: 'EAN_13',
-            classificationCode: '1071100',
-            measureUnit: 'PCS',
-            qty: 1,
-            price: 5000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: '',
-          },
-        ],
-      },
-    ],
-    payments: [
-      {
-        type: 'PAYMENT_CARD',
-        amount: 55000,
-        data: {
-          cardIssuer: 'VISA',
-          last4: '1234',
-          transactionId: 'A1B2C3',
-        },
-      },
-    ],
-  }),
-  B2B_PURCHASE: createReceiptTemplate('B2B_PURCHASE', {
-    branchNo: '001',
-    posNo: 'A01',
-    merchantTin: '12345678901',
-    customerTin: '88119922',
-    invoiceNo: 'INV-2024-0152',
-    invoiceDate: '2024-07-01',
-    dueDate: '2024-07-10',
-    totalAmount: 275000,
-    totalVAT: 25000,
-    totalCityTax: 2500,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 275000,
-        totalVAT: 25000,
-        totalCityTax: 2500,
-        items: [
-          {
-            name: 'Annual maintenance subscription',
-            barCode: 'SUBSCRIPTION-001',
-            barCodeType: 'EAN_13',
-            classificationCode: '6202000',
-            measureUnit: 'PKG',
-            qty: 1,
-            price: 250000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 2500,
-            lotNo: '',
-          },
-          {
-            name: 'On-site installation',
-            barCode: '',
-            barCodeType: 'EAN_13',
-            classificationCode: '6209000',
-            measureUnit: 'HRS',
-            qty: 5,
-            price: 5000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: '',
-          },
-        ],
-      },
-    ],
-    payments: [
-      { type: 'CASH', amount: 50000 },
-      { type: 'PAYMENT_CARD', amount: 225000, data: { cardIssuer: 'Mastercard', last4: '4455' } },
-    ],
-  }),
-  B2B_SALE: createReceiptTemplate('B2B_SALE', {
-    branchNo: '005',
-    posNo: 'INV-01',
-    merchantTin: '12345678901',
-    customerTin: '3021456987',
-    invoiceNo: 'INV-2024-0420',
-    invoiceDate: '2024-07-05',
-    dueDate: '2024-08-05',
-    totalAmount: 1940000,
-    totalVAT: 176000,
-    totalCityTax: 0,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 1540000,
-        totalVAT: 176000,
-        totalCityTax: 0,
-        items: [
-          {
-            name: 'Industrial cleaner (20L)',
-            barCode: 'ICLEAN-20L',
-            barCodeType: 'EAN_13',
-            classificationCode: '2815200',
-            measureUnit: 'PCS',
-            qty: 10,
-            price: 154000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: 'CLEAN-LOT-07',
-          },
-        ],
-      },
-      {
-        taxType: 'VAT_ZERO',
-        totalAmount: 400000,
-        taxProductCode: 'EXPORT-001',
-        items: [
-          {
-            name: 'Export logistics service',
-            classificationCode: '5229200',
-            measureUnit: 'SRV',
-            qty: 1,
-            price: 400000,
-            vatTaxType: 'VAT_ZERO',
-            taxProductCode: 'EXPORT-001',
-            lotNo: '',
-          },
-        ],
-      },
-    ],
-    payments: [
-      { type: 'BANK_TRANSFER', amount: 1500000 },
-      {
-        type: 'EASY_BANK_CARD',
-        amount: 440000,
-        data: {
-          rrn: '112233445566',
-          approvalCode: 'AP1234',
-          terminalId: 'TERM-0091',
-        },
-      },
-    ],
-  }),
-  STOCK_QR: {
-    ...createStockQrTemplate(),
-    branchNo: '001',
-    posNo: 'STOCK-QR',
-    merchantTin: '12345678901',
-    stockCodes: [
-      {
-        code: 'STOCK-001',
-        name: 'Finished goods pallet',
-        classificationCode: '2011000',
-        qty: 12,
-        measureUnit: 'PCS',
-        lotNo: 'FG-2024-07',
-      },
-      {
-        code: 'STOCK-RAW-01',
-        name: 'Raw material pack',
-        classificationCode: '0899000',
-        qty: 48,
-        measureUnit: 'PCS',
-        lotNo: 'RM-2024-05',
-      },
-    ],
-  },
 };
 
 function createReceiptTemplate(type, overrides = {}) {
@@ -1583,6 +1383,30 @@ function deriveRequestFieldSelections({ requestSchemaText, requestEnvMap, displa
   return derivedSelections;
 }
 
+function extractExampleFieldPaths(example, prefix = '') {
+  const paths = new Set();
+  if (Array.isArray(example)) {
+    example.forEach((item) => {
+      const childPrefix = prefix ? `${prefix}[]` : '[]';
+      extractExampleFieldPaths(item, childPrefix).forEach((path) => paths.add(path));
+    });
+    return Array.from(paths);
+  }
+  if (!example || typeof example !== 'object') {
+    if (prefix) paths.add(prefix);
+    return Array.from(paths);
+  }
+  Object.entries(example).forEach(([key, value]) => {
+    const nextPrefix = prefix ? `${prefix}.${key}` : key;
+    if (value && typeof value === 'object') {
+      extractExampleFieldPaths(value, nextPrefix).forEach((path) => paths.add(path));
+    } else {
+      paths.add(nextPrefix);
+    }
+  });
+  return Array.from(paths);
+}
+
 function createFormState(definition) {
   if (!definition) return { ...EMPTY_ENDPOINT };
   const declaredUsage = definition.usage && VALID_USAGE_VALUES.has(definition.usage)
@@ -1673,6 +1497,9 @@ function createFormState(definition) {
         }
         return list;
       })()
+    : [];
+  const requestFieldVariations = Array.isArray(definition.requestFieldVariations)
+    ? definition.requestFieldVariations
     : [];
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
@@ -1770,6 +1597,7 @@ function createFormState(definition) {
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
     requestEnvMap: definition.requestEnvMap || {},
+    requestFieldVariations,
     responseFieldMappings: extractResponseFieldMappings(definition),
     responseTables: sanitizeTableSelection(
       definition.responseTables && definition.responseTables.length > 0
@@ -2478,8 +2306,6 @@ export default function PosApiAdmin() {
   const [docMetadata, setDocMetadata] = useState({});
   const [requestBuilder, setRequestBuilder] = useState(null);
   const [requestBuilderError, setRequestBuilderError] = useState('');
-  const [sampleImportText, setSampleImportText] = useState('');
-  const [sampleImportError, setSampleImportError] = useState('');
   const [importSpecText, setImportSpecText] = useState('');
   const [importDrafts, setImportDrafts] = useState([]);
   const [importError, setImportError] = useState('');
@@ -2980,6 +2806,45 @@ export default function PosApiAdmin() {
     [parameterPreview.items],
   );
 
+  const parsedExamples = useMemo(() => {
+    try {
+      const raw = JSON.parse(formState.examplesText || '[]');
+      return Array.isArray(raw) ? raw : [];
+    } catch (err) {
+      console.warn('Unable to parse request examples', err);
+      return [];
+    }
+  }, [formState.examplesText]);
+
+  const exampleVariationChoices = useMemo(
+    () =>
+      parsedExamples.map((example, idx) => {
+        const key =
+          (example && typeof example.key === 'string' && example.key)
+          || (example && typeof example.name === 'string' && example.name)
+          || (example && typeof example.title === 'string' && example.title)
+          || `example-${idx + 1}`;
+        const label =
+          (example && typeof example.name === 'string' && example.name)
+          || (example && typeof example.title === 'string' && example.title)
+          || `Example ${idx + 1}`;
+        return { key, label, example };
+      }),
+    [parsedExamples],
+  );
+
+  useEffect(() => {
+    const allowedKeys = new Set(exampleVariationChoices.map((entry) => entry.key));
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const filtered = current.filter((entry) => allowedKeys.has(entry.key));
+      if (JSON.stringify(filtered) === JSON.stringify(current)) return prev;
+      return { ...prev, requestFieldVariations: filtered };
+    });
+  }, [exampleVariationChoices]);
+
   const requestFieldDisplay = useMemo(
     () => buildRequestFieldDisplayFromState(formState),
     [formState, parameterDefaults, parameterPreview, requestFieldHints],
@@ -3046,6 +2911,10 @@ export default function PosApiAdmin() {
   const receiptItemTemplates = Array.isArray(formState.receiptItemTemplates)
     ? formState.receiptItemTemplates
     : [];
+  const requestFieldVariations = Array.isArray(formState.requestFieldVariations)
+    ? formState.requestFieldVariations
+    : [];
+  const activeRequestFieldVariations = requestFieldVariations.filter((entry) => entry.enabled);
 
   useEffect(() => {
     if (!receiptTaxTypesEnabled) {
@@ -3551,6 +3420,65 @@ export default function PosApiAdmin() {
       items.splice(itemIndex, 1);
       receipts[receiptIndex] = { ...receipt, items };
       return { ...prev, receipts };
+    });
+  };
+
+  const handleRequestVariationToggle = (key, enabled) => {
+    const example = exampleVariationChoices.find((entry) => entry.key === key);
+    if (!example) return;
+    const examplePaths = enabled ? extractExampleFieldPaths(example.example) : [];
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const existing = current.find((entry) => entry.key === key);
+      const nextRequired = existing?.requiredFields ? { ...existing.requiredFields } : {};
+      if (enabled && !existing?.enabled) {
+        examplePaths.forEach((path) => {
+          if (path) nextRequired[path] = true;
+        });
+      }
+      const updatedEntry = {
+        key,
+        label: existing?.label || example.label,
+        enabled,
+        requiredFields: nextRequired,
+      };
+      const others = current.filter((entry) => entry.key !== key);
+      return { ...prev, requestFieldVariations: [...others, updatedEntry] };
+    });
+  };
+
+  const handleRequestVariationLabelChange = (key, label) => {
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const existing = current.find((entry) => entry.key === key);
+      const updatedEntry = existing
+        ? { ...existing, label }
+        : { key, label, enabled: true, requiredFields: {} };
+      const others = current.filter((entry) => entry.key !== key);
+      return { ...prev, requestFieldVariations: [...others, updatedEntry] };
+    });
+  };
+
+  const handleVariationRequiredToggle = (key, fieldPath, value) => {
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const updated = current.map((entry) => {
+        if (entry.key !== key) return entry;
+        const requiredFields = { ...(entry.requiredFields || {}) };
+        if (value) {
+          requiredFields[fieldPath] = true;
+        } else {
+          delete requiredFields[fieldPath];
+        }
+        return { ...entry, requiredFields };
+      });
+      return { ...prev, requestFieldVariations: updated };
     });
   };
 
@@ -4325,87 +4253,6 @@ export default function PosApiAdmin() {
     });
   }
 
-  function handleApplySamplePayload(type) {
-    const sample = RECEIPT_SAMPLE_PAYLOADS[type];
-    if (!sample) return;
-    resetTestState();
-    const cloned = deepClone(sample) || {};
-    const nextReceiptTypes = Array.isArray(formState.receiptTypes)
-      ? Array.from(new Set([...formState.receiptTypes, type]))
-      : [type];
-    setFormState((prev) => ({
-      ...prev,
-      usage: 'transaction',
-      posApiType: type,
-      receiptTypes: nextReceiptTypes,
-    }));
-    updateRequestBuilder(() => normaliseBuilderForType(cloned, type, supportsItems, supportsMultiplePayments));
-    setStatus(`Loaded ${formatTypeLabel(type)} sample payload into the builder.`);
-    setSampleImportError('');
-  }
-
-  async function handleCopySamplePayload(type) {
-    const sample = RECEIPT_SAMPLE_PAYLOADS[type];
-    if (!sample) return;
-    try {
-      if (!navigator?.clipboard) {
-        throw new Error('Clipboard API is not available in this browser.');
-      }
-      await navigator.clipboard.writeText(JSON.stringify(sample, null, 2));
-      setStatus(`Copied ${formatTypeLabel(type)} sample payload to the clipboard.`);
-      setSampleImportError('');
-    } catch (err) {
-      setSampleImportError(err.message || 'Unable to copy the sample payload.');
-    }
-  }
-
-  function handleSampleImport() {
-    const trimmed = sampleImportText.trim();
-    if (!trimmed) {
-      setSampleImportError('Provide JSON to import.');
-      return;
-    }
-    try {
-      const parsed = JSON.parse(trimmed);
-      const targetType = parsed?.type || formState.posApiType || 'B2C';
-      resetTestState();
-      updateRequestBuilder(() => normaliseBuilderForType(
-        parsed,
-        targetType,
-        supportsItems,
-        supportsMultiplePayments,
-      ));
-      const nextReceiptTypes = Array.isArray(formState.receiptTypes)
-        ? Array.from(new Set([...formState.receiptTypes, targetType]))
-        : [targetType];
-      setFormState((prev) => ({
-        ...prev,
-        usage: 'transaction',
-        posApiType: targetType,
-        receiptTypes: nextReceiptTypes,
-      }));
-      setSampleImportError('');
-      setStatus('Imported sample JSON into the request builder.');
-    } catch (err) {
-      setSampleImportError(err.message || 'Invalid JSON.');
-    }
-  }
-
-  function handleSampleFile(event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const text = typeof reader.result === 'string' ? reader.result : '';
-      setSampleImportText(text);
-      setSampleImportError('');
-    };
-    reader.onerror = () => {
-      setSampleImportError('Failed to read the selected file.');
-    };
-    reader.readAsText(file);
-  }
-
   function resetImportTestState() {
     setImportTestResult(null);
     setImportTestError('');
@@ -5034,6 +4881,17 @@ export default function PosApiAdmin() {
       combinedRequestFields.push(normalized);
     });
 
+    const sanitizedRequestFieldVariations = (requestFieldVariations || [])
+      .filter((entry) => entry && entry.key)
+      .map((entry) => ({
+        key: entry.key,
+        label: entry.label || entry.key,
+        enabled: Boolean(entry.enabled),
+        requiredFields: entry.requiredFields && typeof entry.requiredFields === 'object'
+          ? entry.requiredFields
+          : {},
+      }));
+
     const usage = formState.posApiType === 'AUTH'
       ? 'auth'
       : VALID_USAGE_VALUES.has(formState.usage)
@@ -5164,6 +5022,7 @@ export default function PosApiAdmin() {
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: combinedRequestFields,
+      requestFieldVariations: sanitizedRequestFieldVariations,
       responseFields: responseFieldsWithMapping,
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
@@ -7005,85 +6864,6 @@ export default function PosApiAdmin() {
                 </div>
               </details>
 
-              {formState.usage === 'transaction' && receiptBuilderEnabled && (
-                <details open style={styles.detailSection}>
-                  <summary style={styles.detailSummary}>Receipt &amp; invoice samples</summary>
-                  <div style={styles.detailBody}>
-                    <p style={styles.sectionHelp}>
-                      Each <code>receipts[]</code> entry must declare one of the following tax types.
-                      Create a separate receipt group when a sale mixes different tax treatments.
-                    </p>
-                    <ul style={styles.inlineList}>
-                      {TAX_TYPES.map((tax) => (
-                        <li key={`tax-${tax.value}`} style={styles.inlineListItem}>
-                          <strong>{tax.value}</strong>
-                          {TAX_TYPE_DESCRIPTIONS[tax.value]
-                            ? ` – ${TAX_TYPE_DESCRIPTIONS[tax.value]}`
-                            : ''}
-                        </li>
-                      ))}
-                    </ul>
-                    <div style={styles.sampleGrid}>
-                      {POSAPI_TRANSACTION_TYPES.map((type) => {
-                        const sample = RECEIPT_SAMPLE_PAYLOADS[type.value];
-                        if (!sample) return null;
-                        const pretty = JSON.stringify(sample, null, 2);
-                        return (
-                          <div key={`sample-${type.value}`} style={styles.sampleCard}>
-                            <div style={styles.sampleHeader}>
-                              <strong>{type.label}</strong>
-                              <div style={styles.sampleActions}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApplySamplePayload(type.value)}
-                                  style={styles.smallButton}
-                                >
-                                  Use in builder
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopySamplePayload(type.value)}
-                                  style={styles.smallSecondaryButton}
-                                >
-                                  Copy JSON
-                                </button>
-                              </div>
-                            </div>
-                            <pre style={styles.samplePre}>{pretty}</pre>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div style={styles.sampleImportContainer}>
-                      <label style={styles.sampleImportLabel}>
-                        Paste a sample JSON payload
-                        <textarea
-                          value={sampleImportText}
-                          onChange={(e) => setSampleImportText(e.target.value)}
-                          style={styles.sampleTextarea}
-                          placeholder={`{\n  "type": "B2C",\n  "receipts": []\n}`}
-                          rows={6}
-                        />
-                      </label>
-                      <div style={styles.sampleImportControls}>
-                        <button type="button" onClick={handleSampleImport} style={styles.smallButton}>
-                          Import to builder
-                        </button>
-                        <label style={styles.sampleFileLabel}>
-                          <span>Upload JSON file</span>
-                          <input
-                            type="file"
-                            accept="application/json,.json"
-                            onChange={handleSampleFile}
-                            style={styles.sampleFileInput}
-                          />
-                        </label>
-                      </div>
-                      {sampleImportError && <div style={styles.previewErrorBox}>{sampleImportError}</div>}
-                    </div>
-                  </div>
-                </details>
-              )}
 
               {receiptBuilderEnabled && receiptItemsEnabled && (
                 <details open style={styles.detailSection}>
@@ -7692,6 +7472,44 @@ export default function PosApiAdmin() {
             rows={6}
           />
         </label>
+        {exampleVariationChoices.length > 0 && (
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Request variations</h3>
+              <span style={styles.hintCount}>
+                {activeRequestFieldVariations.length} selected
+              </span>
+            </div>
+            <p style={styles.hintDescription}>
+              Mark request examples as variations to configure variation-specific required fields.
+            </p>
+            <div style={styles.variationList}>
+              {exampleVariationChoices.map((entry) => {
+                const current = requestFieldVariations.find((item) => item.key === entry.key) || {};
+                const enabled = Boolean(current.enabled);
+                return (
+                  <div key={`variation-${entry.key}`} style={styles.variationCard}>
+                    <label style={styles.checkboxLabel}>
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(e) => handleRequestVariationToggle(entry.key, e.target.checked)}
+                      />
+                      <span>{entry.label}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={current.label ?? entry.label}
+                      onChange={(e) => handleRequestVariationLabelChange(entry.key, e.target.value)}
+                      style={styles.input}
+                      placeholder="Variation label"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <label style={styles.labelFull}>
           Pre-request script
           <textarea
@@ -7864,6 +7682,35 @@ export default function PosApiAdmin() {
                           </div>
                         )}
                         <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
+                        {activeRequestFieldVariations.length > 0 && (
+                          <div style={styles.variationRequirementRow}>
+                            <span style={styles.variationRequirementLabel}>Variation must haves</span>
+                            <div style={styles.variationRequirementGrid}>
+                              {activeRequestFieldVariations.map((variation) => {
+                                const required = Boolean(variation.requiredFields?.[fieldLabel]);
+                                return (
+                                  <label
+                                    key={`variation-toggle-${variation.key}-${fieldLabel}`}
+                                    style={styles.variationRequirementToggle}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={required}
+                                      onChange={(e) =>
+                                        handleVariationRequiredToggle(
+                                          variation.key,
+                                          fieldLabel,
+                                          e.target.checked,
+                                        )
+                                      }
+                                    />
+                                    <span>{variation.label || variation.key}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </li>
                   );
@@ -9043,70 +8890,6 @@ const styles = {
     fontSize: '0.85rem',
     color: '#1f2937',
   },
-  sampleGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
-    gap: '1rem',
-    marginTop: '1rem',
-  },
-  sampleCard: {
-    border: '1px solid #e2e8f0',
-    borderRadius: '6px',
-    background: '#fff',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.5rem',
-    padding: '0.75rem',
-  },
-  sampleHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: '0.5rem',
-  },
-  sampleActions: {
-    display: 'flex',
-    gap: '0.4rem',
-  },
-  samplePre: {
-    background: '#0f172a',
-    color: '#f8fafc',
-    borderRadius: '4px',
-    padding: '0.75rem',
-    fontSize: '0.75rem',
-    maxHeight: '220px',
-    overflow: 'auto',
-  },
-  sampleImportContainer: {
-    marginTop: '1rem',
-    borderTop: '1px solid #e2e8f0',
-    paddingTop: '1rem',
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.75rem',
-  },
-  sampleImportLabel: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.4rem',
-    fontWeight: 600,
-    fontSize: '0.85rem',
-    color: '#1f2937',
-  },
-  sampleTextarea: {
-    width: '100%',
-    borderRadius: '4px',
-    border: '1px solid #cbd5f5',
-    fontFamily: 'monospace',
-    fontSize: '0.85rem',
-    padding: '0.6rem',
-  },
-  sampleImportControls: {
-    display: 'flex',
-    flexWrap: 'wrap',
-    gap: '0.75rem',
-    alignItems: 'center',
-  },
   importUploadRow: {
     display: 'grid',
     gridTemplateColumns: '220px 1fr',
@@ -9520,6 +9303,46 @@ const styles = {
   requestFieldHint: {
     color: '#475569',
     fontSize: '0.85rem',
+  },
+  variationList: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: '0.75rem',
+  },
+  variationCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '6px',
+    padding: '0.75rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+    background: '#fff',
+  },
+  variationRequirementRow: {
+    borderTop: '1px dashed #e2e8f0',
+    paddingTop: '0.35rem',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  variationRequirementLabel: {
+    color: '#475569',
+    fontSize: '0.85rem',
+    fontWeight: 600,
+  },
+  variationRequirementGrid: {
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: '0.5rem',
+  },
+  variationRequirementToggle: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '0.35rem',
+    padding: '0.25rem 0.5rem',
+    borderRadius: '6px',
+    background: '#f8fafc',
+    border: '1px solid #e2e8f0',
   },
   hintEmpty: {
     margin: 0,
