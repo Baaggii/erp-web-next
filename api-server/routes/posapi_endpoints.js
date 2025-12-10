@@ -509,7 +509,7 @@ function normalizeParametersFromSpec(params) {
     deduped.push({
       name,
       in: loc,
-      required: Boolean(param.required),
+      required: param.required ?? loc === 'path',
       description: param.description || '',
       example: param.example ?? param.default ?? param.testValue
         ?? param.sample ?? (param.examples && Object.values(param.examples)[0]?.value),
@@ -771,11 +771,11 @@ function hasComplexComposition(node, depth = 0) {
 function buildRequestDetails(schema, contentType, exampleBodies = []) {
   if (!schema || typeof schema !== 'object') {
     return {
-      requestFields: [{ field: 'request', required: false }],
+      requestFields: [],
       flags: {},
       enums: {},
       hasComplexity: false,
-      warnings: ['Request schema missing; added generic request field.'],
+      warnings: [],
     };
   }
   const fields = [];
@@ -790,9 +790,9 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
     fields.push(entry);
   };
 
-  const walk = (node, pathPrefix, requiredSet = new Set()) => {
+  const walk = (node, pathPrefix, isRequired = false) => {
     if (!node || typeof node !== 'object') {
-      if (pathPrefix) pushField(pathPrefix, node, requiredSet.size > 0);
+      if (pathPrefix) pushField(pathPrefix, node, isRequired);
       return;
     }
     const nodeType = node.type || (node.properties ? 'object' : node.items ? 'array' : undefined);
@@ -800,15 +800,15 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
       const props = node.properties && typeof node.properties === 'object' ? node.properties : {};
       const requiredForNode = new Set(Array.isArray(node.required) ? node.required : []);
       if (!Object.keys(props).length && pathPrefix) {
-        pushField(pathPrefix, node, requiredSet.size > 0 || requiredForNode.size > 0);
+        pushField(pathPrefix, node, isRequired || requiredForNode.size > 0);
       }
       Object.entries(props).forEach(([key, child]) => {
         const childPath = pathPrefix ? `${pathPrefix}.${key}` : key;
-        const isRequired = requiredForNode.has(key) || requiredSet.has(key);
-        walk(child, childPath, requiredForNode);
+        const childIsRequired = requiredForNode.has(key);
+        walk(child, childPath, childIsRequired);
         const childType = child?.type || (child?.properties ? 'object' : child?.items ? 'array' : undefined);
         if (childType !== 'object' && childType !== 'array') {
-          pushField(childPath, child, isRequired);
+          pushField(childPath, child, childIsRequired);
         }
         const enumsForChild = pickEnumValues(child);
         if (enumsForChild.length && /tax/.test(key)) enums.taxTypes.push(...enumsForChild);
@@ -829,17 +829,16 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
       if (/items$/i.test(pathPrefix)) {
         flags.supportsItems = true;
       }
-      pushField(arrayPath, node, requiredSet.size > 0);
-      walk(node.items, arrayPath, new Set(Array.isArray(node.items?.required) ? node.items.required : []));
+      pushField(arrayPath, node, isRequired);
+      walk(node.items, arrayPath, false);
       return;
     }
     if (pathPrefix) {
-      pushField(pathPrefix, node, requiredSet.size > 0);
+      pushField(pathPrefix, node, isRequired);
     }
   };
 
-  const rootRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
-  walk(schema, '', rootRequired);
+  walk(schema, '', false);
 
   const exampleFields = (exampleBodies || [])
     .filter((body) => body !== undefined)
@@ -850,10 +849,6 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
   enums.taxTypes = sanitizeCodes(enums.taxTypes, DEFAULT_TAX_TYPES);
 
   const hasComplexity = hasComplexComposition(schema);
-  if (!requestFields.length) {
-    warnings.push('Request fields could not be derived; added a generic request field.');
-    requestFields.push({ field: 'request', required: false });
-  }
   if (hasComplexity) {
     warnings.push('Some request schema elements could not be expanded automatically.');
   }
@@ -868,6 +863,7 @@ function buildParameterFieldHints(parameters = []) {
       required: Boolean(param.required),
       description: param.description || `${param.in} parameter`,
       location: param.in,
+      in: param.in,
       defaultValue:
         param.testValue ?? param.example ?? param.default ?? param.sample ?? param.value ?? undefined,
     }));
@@ -1240,6 +1236,9 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         ...requestExamples.map((ex) => ex.key || ex.name || ''),
         ...responseExampleEntries.map((ex) => ex.key || ex.name || ''),
       ]);
+      const hasRequestPayload = Boolean(
+        requestSchema || requestExample !== undefined || (requestExamples && requestExamples.length),
+      );
       const variations = Array.from(variationKeys).map((key, index) => {
         const req = requestExamples.find((ex) => (ex.key || ex.name) === key) || requestExamples[index];
         const resp = responseExampleEntries.find((ex) => (ex.key || ex.name) === key) || responseExampleEntries[index];
@@ -1251,7 +1250,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           ...responseFields,
           ...flattenFieldsFromExample(resp?.body || {}),
         ]);
-        if (!variationRequestFields.length) {
+        if (!variationRequestFields.length && hasRequestPayload) {
           variationWarnings.push('Added placeholder request field because a variation had no request schema.');
           variationRequestFields.push({ field: 'request', required: false });
         }
@@ -1263,8 +1262,10 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           ? { body: req.body }
           : requestExample !== undefined
             ? { body: requestExample }
-            : { body: {} };
-        if (!req && requestExample === undefined) {
+            : hasRequestPayload
+              ? { body: {} }
+              : undefined;
+        if (!req && requestExample === undefined && hasRequestPayload) {
           variationWarnings.push('Variation missing explicit request example; inserted generic placeholder.');
         }
         let resolvedResponse;
@@ -1675,6 +1676,9 @@ function extractOperationsFromPostman(spec, meta = {}) {
         ...parameterFields,
       ]);
       const variationWarnings = [];
+      const hasRequestPayload = Boolean(
+        requestSchema || requestExample !== undefined || (examples && examples.length),
+      );
       const variations = Array.isArray(examples)
         ? examples.map((example) => {
           const exampleRequestFields = flattenFieldsFromExample(example?.request?.body || example?.request || {});
@@ -1688,7 +1692,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
             ...responseDetails.responseFields,
             ...exampleResponseFields,
           ]);
-          if (!requestFields.length) {
+          if (!requestFields.length && hasRequestPayload) {
             variationWarnings.push('Added placeholder request field because a variation had no request schema.');
             requestFields.push({ field: 'request', required: false });
           }
@@ -1698,7 +1702,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
           }
           const resolvedRequest = example.request && Object.keys(example.request).length
             ? example.request
-            : example.request || { body: requestExample ?? {} };
+            : example.request || (hasRequestPayload ? { body: requestExample ?? {} } : undefined);
           const resolvedResponse = example.response
             ? example.response
             : responseExamples[0]
