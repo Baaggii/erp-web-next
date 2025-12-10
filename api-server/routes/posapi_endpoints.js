@@ -808,6 +808,10 @@ function buildResponseDetails(schema, exampleBodies = []) {
 
   const combinedFields = dedupeFieldEntries([...responseFields, ...exampleFields]);
   const hasComplexity = hasComplexComposition(schema);
+  if (!combinedFields.length) {
+    warnings.push('Response fields could not be derived; added a generic placeholder.');
+    combinedFields.push({ field: 'response', required: false });
+  }
   return { responseFields: combinedFields, hasComplexity, warnings };
 }
 
@@ -1256,7 +1260,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
     const jsonBodies = [];
     const warnings = [];
     responses
-      .filter((resp) => resp && resp.body)
+      .filter((resp) => resp)
       .forEach((resp) => {
         const headers = Array.isArray(resp.header)
           ? resp.header.reduce((acc, h) => {
@@ -1280,10 +1284,14 @@ function extractOperationsFromPostman(spec, meta = {}) {
         examples.push({
           status: resp.code || resp.status,
           name: resp.name || resp.status || '',
-          body: parsedBody,
+          body: parsedBody !== undefined ? parsedBody : resp.body,
           headers,
         });
       });
+    if (!examples.length) {
+      warnings.push('No response examples were defined; added a placeholder response.');
+      examples.push({ status: undefined, name: 'placeholder', body: {}, headers: {} });
+    }
     const responseSchema = jsonBodies.length ? mergeExampleSchemas(jsonBodies) : undefined;
     return { examples, responseSchema, warnings };
   }
