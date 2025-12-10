@@ -215,6 +215,26 @@ function getCachedToken(endpointId) {
   return entry.token;
 }
 
+function cacheTokenFromAuthResponse(endpoint, response) {
+  if (!endpoint?.id || endpoint?.posApiType !== 'AUTH' || !response) return;
+
+  const body = response.bodyJson ?? response.bodyText ?? response;
+  let parsedBody = body;
+  if (typeof parsedBody === 'string') {
+    try {
+      parsedBody = JSON.parse(parsedBody);
+    } catch {
+      parsedBody = null;
+    }
+  }
+
+  if (!parsedBody || typeof parsedBody !== 'object') return;
+  const token = parsedBody.access_token || parsedBody.id_token;
+  if (!token) return;
+  const expiresIn = toNumber(parsedBody.expires_in || parsedBody.expiresIn) || 300;
+  cacheToken(endpoint.id, token, expiresIn);
+}
+
 export async function getPosApiBaseUrl() {
   if (cachedBaseUrlLoaded && cachedBaseUrl) {
     return cachedBaseUrl;
@@ -2008,6 +2028,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
       baseUrl: requestBaseUrl,
       debug,
     });
+    cacheTokenFromAuthResponse(endpoint, response);
     if (debug) {
       return {
         response,
