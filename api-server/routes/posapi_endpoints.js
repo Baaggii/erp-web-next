@@ -1254,9 +1254,10 @@ function extractOperationsFromPostman(spec, meta = {}) {
           : {};
         const contentType = headers['Content-Type'] || headers['content-type'] || '';
         let parsedBody = resp.body;
-        if (/json/i.test(contentType)) {
+        const bodyLooksJson = typeof resp.body === 'string' && /^[{\[]/.test(resp.body.trim());
+        if (/json/i.test(contentType) || bodyLooksJson) {
           try {
-            parsedBody = JSON.parse(resp.body);
+            parsedBody = typeof resp.body === 'string' ? JSON.parse(resp.body) : resp.body;
             if (parsedBody && typeof parsedBody === 'object') {
               jsonBodies.push(parsedBody);
               responseFields.push(...collectFieldsFromExample(parsedBody));

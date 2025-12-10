@@ -1375,6 +1375,8 @@ function normalizeHintEntry(entry) {
       field: typeof entry.field === 'string' ? entry.field : '',
       required: typeof entry.required === 'boolean' ? entry.required : undefined,
       description: typeof entry.description === 'string' ? entry.description : '',
+      location: typeof entry.location === 'string' ? entry.location : '',
+      defaultValue: entry.defaultValue,
     };
   }
   return {
@@ -1565,11 +1567,18 @@ function createFormState(definition) {
       if (!normalized.field) {
         return normalized;
       }
-      return {
+      const hint = {
         field: normalized.field,
         required: typeof normalized.required === 'boolean' ? normalized.required : false,
         ...(normalized.description ? { description: normalized.description } : {}),
       };
+      if (normalized.location) {
+        hint.location = normalized.location;
+      }
+      if (normalized.defaultValue !== undefined) {
+        hint.defaultValue = normalized.defaultValue;
+      }
+      return hint;
     });
   };
   const receiptTypesEnabled = isTransaction ? supportsItems && definition.enableReceiptTypes !== false : false;
@@ -4804,11 +4813,42 @@ export default function PosApiAdmin() {
       if (!normalized.field) {
         return normalized;
       }
-      return {
+      const hint = {
         field: normalized.field,
         required: typeof normalized.required === 'boolean' ? normalized.required : false,
         ...(normalized.description ? { description: normalized.description } : {}),
       };
+      if (normalized.location) {
+        hint.location = normalized.location;
+      }
+      if (normalized.defaultValue !== undefined) {
+        hint.defaultValue = normalized.defaultValue;
+      }
+      return hint;
+    });
+
+    const parameterFieldHints = parametersWithValues
+      .filter((param) => param?.name && ['query', 'path'].includes(param.in))
+      .map((param) => ({
+        field: param.name,
+        required: Boolean(param.required),
+        description: param.description || `${param.in} parameter`,
+        location: param.in,
+        defaultValue:
+          param.testValue
+          ?? param.example
+          ?? param.default
+          ?? param.sample
+          ?? parameterDefaults[param.name],
+      }));
+
+    const combinedRequestFields = [];
+    const seenRequestFields = new Set();
+    [...sanitizedRequestFields, ...parameterFieldHints].forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (!normalized.field || seenRequestFields.has(normalized.field)) return;
+      seenRequestFields.add(normalized.field);
+      combinedRequestFields.push(normalized);
     });
 
     const parameterFieldHints = parametersWithValues
