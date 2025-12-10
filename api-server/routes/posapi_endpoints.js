@@ -521,6 +521,18 @@ function normalizeParametersFromSpec(params) {
   return deduped;
 }
 
+function mergeTemplatePathParameters(path, parameters = []) {
+  const detectedParams = typeof path === 'string'
+    ? Array.from(new Set((path.match(/{([^}]+)}/g) || []).map((segment) => segment.replace(/^{|}$/g, ''))))
+    : [];
+  const seen = new Set(parameters.map((param) => `${param?.name}:${param?.in}`));
+  const templateParams = detectedParams
+    .filter(Boolean)
+    .filter((name) => !seen.has(`${name}:path`))
+    .map((name) => ({ name, in: 'path', required: true, description: 'Path parameter' }));
+  return [...parameters, ...templateParams];
+}
+
 function mergePathParameters(...paramGroups) {
   const merged = [];
   const seen = new Set();
@@ -805,8 +817,11 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
       Object.entries(props).forEach(([key, child]) => {
         const childPath = pathPrefix ? `${pathPrefix}.${key}` : key;
         const childIsRequired = requiredForNode.has(key);
-        walk(child, childPath, childIsRequired);
         const childType = child?.type || (child?.properties ? 'object' : child?.items ? 'array' : undefined);
+        if (childType === 'array') {
+          pushField(childPath, child, childIsRequired);
+        }
+        walk(child, childPath, childIsRequired);
         if (childType !== 'object' && childType !== 'array') {
           pushField(childPath, child, childIsRequired);
         }
@@ -819,6 +834,9 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
       return;
     }
     if (nodeType === 'array') {
+      if (pathPrefix) {
+        pushField(pathPrefix, node, isRequired);
+      }
       const arrayPath = pathPrefix ? `${pathPrefix}[]` : '[]';
       if (/receipts?$/i.test(pathPrefix)) {
         flags.supportsMultipleReceipts = true;
@@ -882,6 +900,7 @@ function flattenFieldsFromExample(example, prefix = '') {
       return;
     }
     if (Array.isArray(value)) {
+      if (currentPath) addField(currentPath);
       const arrayPath = currentPath ? `${currentPath}[]` : '[]';
       addField(arrayPath);
       const first = value.length ? value[0] : undefined;
@@ -1046,11 +1065,25 @@ function sanitizeCodes(values, allowed = []) {
   return Array.from(new Set(cleaned));
 }
 
+function resolveServerUrl(server) {
+  const rawUrl = typeof server?.url === 'string' ? server.url.trim() : '';
+  if (!rawUrl) return '';
+  const variables = server?.variables && typeof server.variables === 'object' ? server.variables : {};
+  let resolved = rawUrl;
+  Object.entries(variables).forEach(([name, def]) => {
+    const replacement = def?.default ?? (Array.isArray(def?.enum) ? def.enum[0] : undefined);
+    if (replacement !== undefined) {
+      resolved = resolved.replace(new RegExp(`{${name}}`, 'g'), replacement);
+    }
+  });
+  return resolved;
+}
+
 function pickTestServers(operation, specServers) {
   const opServers = Array.isArray(operation?.servers) ? operation.servers : [];
-  const servers = [...opServers, ...(Array.isArray(specServers) ? specServers : [])].filter(
-    (server) => typeof server?.url === 'string' && server.url.trim(),
-  );
+  const servers = [...opServers, ...(Array.isArray(specServers) ? specServers : [])]
+    .map((server) => ({ ...server, url: resolveServerUrl(server) || server?.url || '' }))
+    .filter((server) => typeof server?.url === 'string' && server.url.trim());
   const staging = servers.find((server) => /staging|dev|test/i.test(server.url));
   const productionCandidate = servers.find((server) => server !== staging);
   const fallback = servers[0];
@@ -1176,6 +1209,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return;
       const op = operation && typeof operation === 'object' ? operation : {};
       const opParams = normalizeParametersFromSpec([...(op.parameters || []), ...sharedParams]);
+      const parametersWithTemplates = mergeTemplatePathParameters(path, opParams);
       const requestExamples = extractRequestExamples(op.requestBody);
       const example = requestExamples[0]?.body ?? extractRequestExample(op.requestBody);
       const { schema: requestSchema, description: requestDescription, contentType } =
@@ -1195,7 +1229,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         responseSchema,
         responseExampleEntries.map((entry) => entry.body),
       );
-      const parameterFields = buildParameterFieldHints(opParams);
+      const parameterFields = buildParameterFieldHints(parametersWithTemplates);
       const requestFields = dedupeFieldEntries([
         ...(isFormUrlEncoded ? formFields : requestDetails.requestFields),
         ...parameterFields,
@@ -1301,7 +1335,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         method,
         path,
         summary: op.summary || op.description || '',
-        parameters: opParams,
+        parameters: parametersWithTemplates,
         requestExample,
         posApiType: inferredPosApiType,
         posApiCategory: inferredCategory || inferredPosApiType,
