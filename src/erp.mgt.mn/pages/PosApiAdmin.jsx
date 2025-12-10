@@ -415,6 +415,17 @@ function normalizeFieldList(payload) {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
 
+  const extractFromObject = (obj = {}) => {
+    if (!obj || typeof obj !== 'object') return [];
+    return Object.entries(obj).map(([key, value]) => {
+      if (value && typeof value === 'object') {
+        const name = extractFieldName(value) || key;
+        return { name, ...value };
+      }
+      return { name: key, value };
+    });
+  };
+
   const mapObjectFieldsToList = (fieldsObj = {}) => {
     return Object.entries(fieldsObj).map(([key, value]) => {
       if (value && typeof value === 'object') {
