@@ -2111,6 +2111,8 @@ function extractOperationsFromPostman(spec) {
 
     if (parent) {
       fields.push({ field: parent, description: '' });
+    } else {
+      fields.push({ field: 'response', description: 'Raw response content' });
     }
     return fields;
   }
@@ -2233,34 +2235,55 @@ function extractOperationsFromPostman(spec) {
           : {};
         const contentType = headers['Content-Type'] || headers['content-type'] || '';
         let parsedBody = resp.body;
-        if (/json/i.test(contentType)) {
-          try {
-            parsedBody = JSON.parse(resp.body);
-            if (parsedBody && typeof parsedBody === 'object') {
-              jsonBodies.push(parsedBody);
-              flattenResponseFields(parsedBody).forEach((entry) => {
-                if (entry?.field && !responseFields.has(entry.field)) {
-                  responseFields.set(entry.field, entry);
-                }
-              });
+        let parsedOk = false;
+        if (typeof resp.body === 'string') {
+          const attemptJson = () => {
+            const trimmed = resp.body.trim();
+            if (!trimmed) return false;
+            try {
+              const parsed = JSON.parse(trimmed);
+              parsedBody = parsed;
+              parsedOk = true;
+              if (parsed && typeof parsed === 'object') {
+                jsonBodies.push(parsed);
+                flattenResponseFields(parsed).forEach((entry) => {
+                  if (entry?.field && !responseFields.has(entry.field)) {
+                    responseFields.set(entry.field, entry);
+                  }
+                });
+              } else {
+                flattenResponseFields(parsed).forEach((entry) => {
+                  if (entry?.field && !responseFields.has(entry.field)) {
+                    responseFields.set(entry.field, entry);
+                  }
+                });
+              }
+              return true;
+            } catch {
+              return false;
             }
-          } catch {
-            warnings.push('Failed to parse a JSON response body; captured raw text instead.');
-            if (!responseFields.has('response')) {
-              responseFields.set('response', { field: 'response', description: 'Raw response content' });
+          };
+          if (/json/i.test(contentType)) {
+            if (!attemptJson()) {
+              warnings.push('Failed to parse a JSON response body; captured raw text instead.');
             }
+          } else if (attemptJson()) {
+            warnings.push('Parsed JSON response body without an explicit JSON content-type header.');
           }
         }
-        if (!/json/i.test(contentType) && typeof parsedBody === 'string') {
-          warnings.push('Captured a non-JSON response body; added a generic response field.');
-          if (!responseFields.has('response')) {
-            responseFields.set('response', { field: 'response', description: 'Raw response content' });
-          }
+        if (!parsedOk) {
+          warnings.push('Captured a non-JSON or unparsed response body; added a generic response field.');
+          flattenResponseFields(parsedBody).forEach((entry) => {
+            if (entry?.field && !responseFields.has(entry.field)) {
+              responseFields.set(entry.field, entry);
+            }
+          });
         }
         const originalRequest = resp.originalRequest && resp.originalRequest.url
           ? parsePostmanUrl(resp.originalRequest.url)
           : null;
         examples.push({
+          key: resp.id || resp.name || `${resp.code || resp.status}-${examples.length + 1}`,
           status: resp.code || resp.status,
           name: resp.name || resp.status || '',
           body: parsedBody,
@@ -2341,18 +2364,25 @@ function extractOperationsFromPostman(spec) {
         parameters,
         requestExample,
         requestBody,
-        responseBody: responseSchema
-          ? {
-            schema: responseSchema,
-            description: responseExamples?.[0]?.name || responseExamples?.[0]?.status || '',
-          }
-          : undefined,
-        responseExamples,
-        responseFields,
-        requestFields,
-        posApiType,
-        usage,
-        serverUrl: baseUrl,
+      responseBody: responseSchema
+        ? {
+          schema: responseSchema,
+          description: responseExamples?.[0]?.name || responseExamples?.[0]?.status || '',
+        }
+        : undefined,
+      responseExamples,
+      examples: responseExamples.map((example, idx) => ({
+        key: example.key || `${id}-example-${idx + 1}`,
+        name: example.name || example.status || `Example ${idx + 1}`,
+        request: example.request,
+        response: example.body,
+        status: example.status,
+      })),
+      responseFields,
+      requestFields,
+      posApiType,
+      usage,
+      serverUrl: baseUrl,
         tags: [...folderPath],
         variables,
         warnings,
