@@ -1409,14 +1409,7 @@ async function fetchTokenFromAuthEndpoint(
   if (!requestPayload && authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object') {
     requestPayload = authEndpoint.requestBody.schema;
   }
-  let mappedPayload = applyEnvMapToPayload(requestPayload || {}, authEndpoint.requestEnvMap).payload;
-  try {
-    mappedPayload = resolveEnvPlaceholders(mappedPayload);
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error('Failed to resolve environment placeholders');
-    error.status = error.status || 400;
-    throw error;
-  }
+  const mappedPayload = applyEnvMapToPayload(requestPayload || {}, authEndpoint.requestEnvMap).payload;
   let targetBaseUrl = resolveEndpointBaseUrl(authEndpoint, environment);
   if (!targetBaseUrl && baseUrl) {
     targetBaseUrl = toStringValue(baseUrl);
