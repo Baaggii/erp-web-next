@@ -1446,6 +1446,10 @@ export default function PosTxnConfig() {
                       })),
                     };
                   });
+
+                  if (tbl) {
+                    ensureColumnsLoadedFor(tbl);
+                  }
                 }}
               >
                 <option value="">-- select table --</option>
