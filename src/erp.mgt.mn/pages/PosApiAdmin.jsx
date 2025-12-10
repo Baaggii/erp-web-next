@@ -7743,32 +7743,7 @@ export default function PosApiAdmin() {
               <div style={styles.hintError}>{requestFieldDisplay.error}</div>
             )}
             {requestFieldDisplay.state === 'ok' && (
-              <div style={styles.requestFieldTable}>
-                <div
-                  style={{
-                    ...styles.requestFieldTableRow,
-                    fontWeight: 600,
-                    background: '#f8fafc',
-                    borderTop: '1px solid #e2e8f0',
-                    gridTemplateColumns: `1.5fr 2fr 0.9fr${variationColumns
-                      .map(() => ' 1.6fr')
-                      .join('')}`,
-                  }}
-                >
-                  <div style={styles.requestFieldHeaderCell}>Field</div>
-                  <div style={styles.requestFieldHeaderCell}>Description</div>
-                  <div style={{ ...styles.requestFieldHeaderCell, textAlign: 'center' }}>
-                    Common required
-                  </div>
-                  {variationColumns.map((variation) => (
-                    <div key={`variation-header-${variation.index}`} style={styles.requestFieldHeaderCell}>
-                      <div style={styles.variationHeaderLabel}>{variation.label}</div>
-                      {variation.enabled === false && (
-                        <span style={styles.variationDisabledBadge}>Disabled</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
+              <ul style={styles.hintList}>
                 {requestFieldDisplay.items.map((hint, index) => {
                   const normalized = normalizeHintEntry(hint);
                   const fieldLabel = normalized.field || '(unnamed field)';
@@ -7780,169 +7755,134 @@ export default function PosApiAdmin() {
                   const envVarMissing = selection.mode === 'env'
                     && selection.envVar
                     && !resolveEnvironmentVariable(selection.envVar, { parseJson: false }).found;
-                  const required = normalized.required !== false;
                   return (
-                    <div
-                      key={`request-hint-${fieldLabel}-${index}`}
-                      style={{
-                        ...styles.requestFieldTableRow,
-                        gridTemplateColumns: `1.5fr 2fr 0.9fr${variationColumns
-                          .map(() => ' 1.6fr')
-                          .join('')}`,
-                      }}
-                    >
-                      <div style={styles.requestFieldFieldCell}>
-                        <div style={styles.hintFieldRow}>
-                          <span style={styles.hintField}>{fieldLabel}</span>
-                          {hint.source === 'parameter' && (
-                            <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
-                              {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
-                            </span>
-                          )}
+                    <li key={`request-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
+                      <div style={styles.hintFieldRow}>
+                        <span style={styles.hintField}>{fieldLabel}</span>
+                        {typeof normalized.required === 'boolean' && (
+                          <span
+                            style={{
+                              ...styles.hintBadge,
+                              ...(normalized.required
+                                ? styles.hintBadgeRequired
+                                : styles.hintBadgeOptional),
+                            }}
+                          >
+                            {normalized.required ? 'Required' : 'Optional'}
+                          </span>
+                        )}
+                        {hint.source === 'parameter' && (
+                          <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                            {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                          </span>
+                        )}
+                      </div>
+                      {normalized.description && (
+                        <p style={styles.hintDescription}>{normalized.description}</p>
+                      )}
+                      <div style={styles.requestFieldControls}>
+                        <div style={styles.requestFieldModes}>
+                          <label style={styles.radioLabel}>
+                            <input
+                              type="radio"
+                              name={`request-field-mode-${fieldLabel}`}
+                              checked={selection.mode === 'literal'}
+                              onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'literal' })}
+                            />
+                            Literal value
+                          </label>
+                          <label style={styles.radioLabel}>
+                            <input
+                              type="radio"
+                              name={`request-field-mode-${fieldLabel}`}
+                              checked={selection.mode === 'env'}
+                              onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'env' })}
+                            />
+                            Environment variable
+                          </label>
                         </div>
-                        <div style={styles.requestFieldValueStack}>
-                          <div style={styles.requestFieldModes}>
-                            <label style={styles.radioLabel}>
-                              <input
-                                type="radio"
-                                name={`request-field-mode-${fieldLabel}`}
-                                checked={selection.mode === 'literal'}
-                                onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'literal' })}
-                              />
-                              Literal value
-                            </label>
-                            <label style={styles.radioLabel}>
-                              <input
-                                type="radio"
-                                name={`request-field-mode-${fieldLabel}`}
-                                checked={selection.mode === 'env'}
-                                onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'env' })}
-                              />
-                              Environment variable
-                            </label>
-                          </div>
-                          {selection.mode === 'literal' ? (
+                        {selection.mode === 'literal' ? (
+                          <input
+                            type="text"
+                            value={selection.literal ?? ''}
+                            onChange={(e) =>
+                              handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
+                            }
+                            placeholder="Enter sample value"
+                            style={styles.input}
+                          />
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
+                            <input
+                              type="text"
+                              list={`env-options-${fieldLabel}`}
+                              value={selection.envVar || ''}
+                              onChange={(e) =>
+                                handleRequestFieldValueChange(fieldLabel, {
+                                  envVar: e.target.value,
+                                  mode: 'env',
+                                })
+                              }
+                              placeholder="Enter environment variable name"
+                              style={styles.input}
+                            />
+                            <datalist id={`env-options-${fieldLabel}`}>
+                              {envVariableOptions.map((opt) => (
+                                <option key={`env-${fieldLabel}-${opt}`} value={opt} />
+                              ))}
+                            </datalist>
                             <input
                               type="text"
                               value={selection.literal ?? ''}
                               onChange={(e) =>
                                 handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
                               }
-                              placeholder="Enter sample value"
+                              placeholder="Fallback literal (used if the environment variable is missing)"
                               style={styles.input}
                             />
-                          ) : (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
-                              <input
-                                type="text"
-                                list={`env-options-${fieldLabel}`}
-                                value={selection.envVar || ''}
-                                onChange={(e) =>
-                                  handleRequestFieldValueChange(fieldLabel, {
-                                    envVar: e.target.value,
-                                    mode: 'env',
-                                  })
-                                }
-                                placeholder="Enter environment variable name"
-                                style={styles.input}
-                              />
-                              <datalist id={`env-options-${fieldLabel}`}>
-                                {envVariableOptions.map((opt) => (
-                                  <option key={`env-${fieldLabel}-${opt}`} value={opt} />
-                                ))}
-                              </datalist>
-                              <input
-                                type="text"
-                                value={selection.literal ?? ''}
-                                onChange={(e) =>
-                                  handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
-                                }
-                                placeholder="Fallback literal (used if the environment variable is missing)"
-                                style={styles.input}
-                              />
-                              {envVarMissing && selection.envVar && (
-                                <div style={styles.hintError}>
-                                  Environment variable {selection.envVar} is not available; the fallback
-                                  literal will be sent instead.
-                                </div>
-                              )}
+                            {envVarMissing && selection.envVar && (
+                              <div style={styles.hintError}>
+                                Environment variable {selection.envVar} is not available; the fallback
+                                literal will be sent instead.
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
+                        {activeRequestFieldVariations.length > 0 && (
+                          <div style={styles.variationRequirementRow}>
+                            <span style={styles.variationRequirementLabel}>Variation must haves</span>
+                            <div style={styles.variationRequirementGrid}>
+                              {activeRequestFieldVariations.map((variation) => {
+                                const required = Boolean(variation.requiredFields?.[fieldLabel]);
+                                return (
+                                  <label
+                                    key={`variation-toggle-${variation.key}-${fieldLabel}`}
+                                    style={styles.variationRequirementToggle}
+                                  >
+                                    <input
+                                      type="checkbox"
+                                      checked={required}
+                                      onChange={(e) =>
+                                        handleVariationRequiredToggle(
+                                          variation.key,
+                                          fieldLabel,
+                                          e.target.checked,
+                                        )
+                                      }
+                                    />
+                                    <span>{variation.label || variation.key}</span>
+                                  </label>
+                                );
+                              })}
                             </div>
-                          )}
-                          <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
-                        </div>
-                      </div>
-                      <div style={styles.requestFieldDescriptionCell}>
-                        {normalized.description ? (
-                          <p style={styles.hintDescription}>{normalized.description}</p>
-                        ) : (
-                          <span style={styles.requestFieldEmpty}>No description provided</span>
+                          </div>
                         )}
                       </div>
-                      <div style={styles.requestFieldRequiredCell}>
-                        <label style={styles.checkboxLabelCentered}>
-                          <input
-                            type="checkbox"
-                            checked={required}
-                            onChange={(e) => handleCommonFieldRequiredToggle(fieldLabel, e.target.checked)}
-                          />
-                          <span>Required</span>
-                        </label>
-                      </div>
-                      {variationColumns.map((variation) => {
-                        const variationField = Array.isArray(variation.requestFields)
-                          ? variation.requestFields.find((entry) => entry?.field === fieldLabel)
-                          : null;
-                        const parsedExample = variationExamples[variation.index] || {};
-                        const defaultValueFromExample = readValueAtPath(parsedExample, fieldLabel);
-                        const defaultValue = variationField?.defaultValue !== undefined
-                          ? variationField.defaultValue
-                          : defaultValueFromExample;
-                        const defaultValueText =
-                          defaultValue === undefined || defaultValue === null
-                            ? ''
-                            : typeof defaultValue === 'object'
-                              ? JSON.stringify(defaultValue)
-                              : String(defaultValue);
-                        const variationRequired = variationField
-                          ? variationField.required !== false
-                          : true;
-                        return (
-                          <div
-                            key={`variation-cell-${variation.index}-${fieldLabel}`}
-                            style={styles.requestFieldVariationCell}
-                          >
-                            <input
-                              type="text"
-                              disabled={variation.enabled === false}
-                              value={defaultValueText}
-                              onChange={(e) =>
-                                handleVariationFieldDefaultChange(variation.index, fieldLabel, e.target.value)
-                              }
-                              placeholder="Default value"
-                              style={styles.input}
-                            />
-                            <label style={styles.checkboxLabelCentered}>
-                              <input
-                                type="checkbox"
-                                checked={variationRequired}
-                                disabled={variation.enabled === false}
-                                onChange={(e) =>
-                                  handleVariationFieldRequiredChange(
-                                    variation.index,
-                                    fieldLabel,
-                                    e.target.checked,
-                                  )
-                                }
-                              />
-                              <span>Must have</span>
-                            </label>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    </li>
                   );
                 })}
-              </div>
+              </ul>
             )}
           </div>
           <div style={styles.hintCard}>
@@ -9577,70 +9517,6 @@ const styles = {
     borderRadius: '6px',
     background: '#f8fafc',
     border: '1px solid #e2e8f0',
-  },
-  requestFieldTable: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35rem',
-  },
-  requestFieldTableRow: {
-    display: 'grid',
-    gap: '0.5rem',
-    alignItems: 'flex-start',
-    padding: '0.5rem 0',
-    borderTop: '1px solid #e2e8f0',
-  },
-  requestFieldHeaderCell: {
-    color: '#334155',
-    fontSize: '0.95rem',
-  },
-  requestFieldFieldCell: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35rem',
-  },
-  requestFieldValueStack: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35rem',
-  },
-  requestFieldDescriptionCell: {
-    color: '#475569',
-    fontSize: '0.95rem',
-  },
-  requestFieldEmpty: {
-    color: '#cbd5e1',
-    fontStyle: 'italic',
-  },
-  requestFieldRequiredCell: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxLabelCentered: {
-    display: 'inline-flex',
-    gap: '0.35rem',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  requestFieldVariationCell: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '0.35rem',
-  },
-  variationHeaderLabel: {
-    fontWeight: 600,
-    color: '#0f172a',
-  },
-  variationDisabledBadge: {
-    marginTop: '0.15rem',
-    display: 'inline-flex',
-    padding: '0.15rem 0.45rem',
-    borderRadius: '999px',
-    background: '#f8fafc',
-    border: '1px solid #e2e8f0',
-    color: '#475569',
-    fontSize: '0.75rem',
   },
   hintEmpty: {
     margin: 0,
