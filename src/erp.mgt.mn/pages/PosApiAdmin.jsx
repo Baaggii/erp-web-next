@@ -539,9 +539,7 @@ function withEndpointMetadata(endpoint) {
     serverUrl: typeof endpoint.serverUrl === 'string' ? endpoint.serverUrl : '',
     productionServerUrl: typeof endpoint.productionServerUrl === 'string'
       ? endpoint.productionServerUrl
-      : typeof endpoint.testServerUrlProduction === 'string'
-        ? endpoint.testServerUrlProduction
-        : '',
+      : '',
     testServerUrl: typeof endpoint.testServerUrl === 'string' ? endpoint.testServerUrl : '',
     testServerUrlProduction: typeof endpoint.testServerUrlProduction === 'string'
       ? endpoint.testServerUrlProduction
@@ -567,6 +565,17 @@ function withEndpointMetadata(endpoint) {
       endpoint.testServerUrlProductionEnvVar,
     ),
   };
+}
+
+function hasUrlConfiguration(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return false;
+  const envMap = endpoint.urlEnvMap || {};
+  const keys = ['serverUrl', 'testServerUrl', 'productionServerUrl', 'testServerUrlProduction'];
+  return keys.some((key) => {
+    const literal = typeof endpoint[key] === 'string' ? endpoint[key].trim() : '';
+    const mappedEnv = normalizeEnvVarName(envMap[key] || endpoint?.[`${key}EnvVar`]);
+    return Boolean(literal || mappedEnv);
+  });
 }
 
 function badgeStyle(color) {
@@ -1619,14 +1628,8 @@ function createFormState(definition) {
 
   const serverUrlField = buildUrlFieldState('serverUrl');
   const testServerUrlField = buildUrlFieldState('testServerUrl');
-  const productionServerUrlField = buildUrlFieldState(
-    'productionServerUrl',
-    definition.testServerUrlProduction || '',
-  );
-  const testServerUrlProductionField = buildUrlFieldState(
-    'testServerUrlProduction',
-    definition.productionServerUrl || '',
-  );
+  const productionServerUrlField = buildUrlFieldState('productionServerUrl');
+  const testServerUrlProductionField = buildUrlFieldState('testServerUrlProduction');
 
   return {
     id: definition.id || '',
@@ -3857,6 +3860,14 @@ export default function PosApiAdmin() {
         const list = Array.isArray(data) ? data : [];
         const normalized = list.map(withEndpointMetadata);
         setEndpoints(normalized);
+        const missingUrls = normalized.filter((ep) => !hasUrlConfiguration(ep));
+        if (missingUrls.length) {
+          setStatus(
+            `Loaded ${normalized.length} endpoint(s); ${missingUrls.length} missing base URL or environment mapping.`,
+          );
+        } else {
+          setStatus(`Loaded ${normalized.length} endpoint(s).`);
+        }
         if (normalized.length > 0) {
           setSelectedId(normalized[0].id);
           setFormState(createFormState(normalized[0]));
@@ -4800,6 +4811,23 @@ export default function PosApiAdmin() {
       };
     });
 
+    const parameterFieldHints = parametersWithValues
+      .filter((param) => param?.name && ['query', 'path'].includes(param.in))
+      .map((param) => ({
+        field: param.name,
+        required: Boolean(param.required),
+        description: param.description || `${param.in} parameter`,
+      }));
+
+    const combinedRequestFields = [];
+    const seenRequestFields = new Set();
+    [...sanitizedRequestFields, ...parameterFieldHints].forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (!normalized.field || seenRequestFields.has(normalized.field)) return;
+      seenRequestFields.add(normalized.field);
+      combinedRequestFields.push(normalized);
+    });
+
     const usage = formState.posApiType === 'AUTH'
       ? 'auth'
       : VALID_USAGE_VALUES.has(formState.usage)
@@ -4918,7 +4946,7 @@ export default function PosApiAdmin() {
       },
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
-      requestFields: sanitizedRequestFields,
+      requestFields: combinedRequestFields,
       responseFields: responseFieldsWithMapping,
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
@@ -4932,10 +4960,10 @@ export default function PosApiAdmin() {
       testServerUrl: testServerUrlField.literal,
       testServerUrlEnvVar: testServerUrlField.envVar,
       testServerUrlMode: testServerUrlField.mode,
-      productionServerUrl: productionServerUrlField.literal || testServerUrlProductionField.literal,
+      productionServerUrl: productionServerUrlField.literal,
       productionServerUrlEnvVar: productionServerUrlField.envVar,
       productionServerUrlMode: productionServerUrlField.mode,
-      testServerUrlProduction: testServerUrlProductionField.literal || productionServerUrlField.literal,
+      testServerUrlProduction: testServerUrlProductionField.literal,
       testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
       testServerUrlProductionMode: testServerUrlProductionField.mode,
       urlEnvMap,
