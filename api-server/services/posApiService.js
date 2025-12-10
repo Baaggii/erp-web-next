@@ -148,6 +148,34 @@ function applyEnvMapToPayload(payload, envMap = {}) {
   return { payload: basePayload };
 }
 
+function mergePayloads(base, overrides) {
+  const baseObj =
+    base && typeof base === 'object' && !Array.isArray(base) ? JSON.parse(JSON.stringify(base)) : {};
+  const overrideObj =
+    overrides && typeof overrides === 'object' && !Array.isArray(overrides)
+      ? JSON.parse(JSON.stringify(overrides))
+      : {};
+
+  const assign = (target, source) => {
+    Object.entries(source).forEach(([key, value]) => {
+      if (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        typeof target[key] === 'object' &&
+        !Array.isArray(target[key])
+      ) {
+        assign(target[key], value);
+        return;
+      }
+      target[key] = value;
+    });
+  };
+
+  assign(baseObj, overrideObj);
+  return baseObj;
+}
+
 function coerceEnvPlaceholderValue(envVar, rawValue, path = '') {
   if (rawValue === undefined || rawValue === null || rawValue === '') {
     const err = new Error(`Environment variable ${envVar} is not configured for POSAPI requests`);
