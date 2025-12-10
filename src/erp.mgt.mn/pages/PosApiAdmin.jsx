@@ -1506,19 +1506,10 @@ function createFormState(definition) {
     ? definition.variations.map((variation, index) => {
       const fields = Array.isArray(variation.requestFields)
         ? variation.requestFields.map((field) => ({
-            field: field?.field || '',
-            required: typeof field?.required === 'boolean' ? field.required : true,
-            description: field?.description || '',
-            ...(field?.defaultValue !== undefined
-              ? { defaultValue: field.defaultValue }
-              : (() => {
-                  const exampleValue = readValueAtPath(
-                    variation.requestExample || variation.request?.body || {},
-                    field?.field,
-                  );
-                  return exampleValue !== undefined ? { defaultValue: exampleValue } : {};
-                })()),
-          }))
+          field: field?.field || '',
+          required: typeof field?.required === 'boolean' ? field.required : true,
+          description: field?.description || '',
+        }))
         : [];
       const requestExample = variation.requestExample || variation.request?.body || {};
       return {
@@ -2945,34 +2936,8 @@ export default function PosApiAdmin() {
   const requestFieldVariations = Array.isArray(formState.requestFieldVariations)
     ? formState.requestFieldVariations
     : [];
+  const activeRequestFieldVariations = requestFieldVariations.filter((entry) => entry.enabled);
   const variations = Array.isArray(formState.variations) ? formState.variations : [];
-  const variationExamples = useMemo(
-    () =>
-      variations.map((variation) => {
-        try {
-          return JSON.parse(variation.requestExampleText || '{}');
-        } catch (err) {
-          console.warn('Unable to parse variation example', err);
-          return {};
-        }
-      }),
-    [variations],
-  );
-  const variationColumns = useMemo(
-    () =>
-      Array.isArray(variations)
-        ? variations.map((variation, index) => ({
-            ...variation,
-            index,
-            label: variation.name || variation.key || `Variation ${index + 1}`,
-          }))
-        : [],
-    [variations],
-  );
-  const variationColumnTemplate = useMemo(
-    () => variationColumns.map(() => ' 1.6fr').join(''),
-    [variationColumns],
-  );
 
   useEffect(() => {
     if (!receiptTaxTypesEnabled) {
@@ -3540,69 +3505,6 @@ export default function PosApiAdmin() {
     });
   };
 
-  const updateRequestFieldHint = (fieldPath, updates) => {
-    setFormState((prev) => {
-      let parsed = [];
-      try {
-        const raw = JSON.parse(prev.requestFieldsText || '[]');
-        parsed = Array.isArray(raw) ? raw.slice() : [];
-      } catch (err) {
-        console.warn('Unable to parse request field hints when updating requirements', err);
-        parsed = [];
-      }
-
-      let found = false;
-      const next = parsed.map((entry) => {
-        const normalized = normalizeHintEntry(entry);
-        if (normalized.field !== fieldPath) return entry;
-        found = true;
-        const base = typeof entry === 'object' && entry !== null ? { ...entry } : { field: fieldPath };
-        return { ...base, field: fieldPath, ...updates };
-      });
-
-      if (!found) {
-        next.push({ field: fieldPath, ...updates });
-      }
-
-      const serialized = JSON.stringify(next, null, 2);
-      if (serialized === prev.requestFieldsText) return prev;
-      return { ...prev, requestFieldsText: serialized };
-    });
-  };
-
-  const handleCommonFieldRequiredToggle = (fieldPath, required) => {
-    updateRequestFieldHint(fieldPath, { required });
-  };
-
-  const updateVariationField = (variationIndex, fieldPath, updates) => {
-    setFormState((prev) => {
-      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
-      const variation = list[variationIndex];
-      if (!variation) return prev;
-      const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
-      const existingIndex = fields.findIndex((field) => field?.field === fieldPath);
-      if (existingIndex >= 0) {
-        fields[existingIndex] = {
-          ...fields[existingIndex],
-          ...updates,
-          field: fieldPath,
-        };
-      } else {
-        fields.push({ field: fieldPath, required: true, description: '', ...updates });
-      }
-      list[variationIndex] = { ...variation, requestFields: fields };
-      return { ...prev, variations: list };
-    });
-  };
-
-  const handleVariationFieldRequiredChange = (variationIndex, fieldPath, required) => {
-    updateVariationField(variationIndex, fieldPath, { required });
-  };
-
-  const handleVariationFieldDefaultChange = (variationIndex, fieldPath, defaultValue) => {
-    updateVariationField(variationIndex, fieldPath, { defaultValue });
-  };
-
   const handleVariationToggle = (index, enabled) => {
     setFormState((prev) => {
       const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
@@ -3644,7 +3546,7 @@ export default function PosApiAdmin() {
       const variation = list[variationIndex];
       if (!variation) return prev;
       const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
-      fields.push({ field: '', required: true, defaultValue: '' });
+      fields.push({ field: '', required: true });
       list[variationIndex] = { ...variation, requestFields: fields };
       return { ...prev, variations: list };
     });
@@ -5086,7 +4988,6 @@ export default function PosApiAdmin() {
           field: field?.field || '',
           required: typeof field?.required === 'boolean' ? field.required : true,
           ...(field?.description ? { description: field.description } : {}),
-          ...(field?.defaultValue !== undefined ? { defaultValue: field.defaultValue } : {}),
         })).filter((field) => field.field)
         : [];
       return {
@@ -7762,23 +7663,6 @@ export default function PosApiAdmin() {
                       </label>
                       <input
                         type="text"
-                        value={
-                          field.defaultValue === undefined || field.defaultValue === null
-                            ? ''
-                            : typeof field.defaultValue === 'object'
-                              ? JSON.stringify(field.defaultValue)
-                              : String(field.defaultValue)
-                        }
-                        onChange={(e) =>
-                          handleVariationRequestFieldChange(index, fieldIndex, {
-                            defaultValue: e.target.value,
-                          })
-                        }
-                        style={styles.input}
-                        placeholder="Default value (optional)"
-                      />
-                      <input
-                        type="text"
                         value={field.description || ''}
                         onChange={(e) =>
                           handleVariationRequestFieldChange(index, fieldIndex, { description: e.target.value })
@@ -7866,7 +7750,9 @@ export default function PosApiAdmin() {
                     fontWeight: 600,
                     background: '#f8fafc',
                     borderTop: '1px solid #e2e8f0',
-                    gridTemplateColumns: `1.5fr 2fr 0.9fr${variationColumnTemplate}`,
+                    gridTemplateColumns: `1.5fr 2fr 0.9fr${variationColumns
+                      .map(() => ' 1.6fr')
+                      .join('')}`,
                   }}
                 >
                   <div style={styles.requestFieldHeaderCell}>Field</div>
@@ -7900,7 +7786,9 @@ export default function PosApiAdmin() {
                       key={`request-hint-${fieldLabel}-${index}`}
                       style={{
                         ...styles.requestFieldTableRow,
-                        gridTemplateColumns: `1.5fr 2fr 0.9fr${variationColumnTemplate}`,
+                        gridTemplateColumns: `1.5fr 2fr 0.9fr${variationColumns
+                          .map(() => ' 1.6fr')
+                          .join('')}`,
                       }}
                     >
                       <div style={styles.requestFieldFieldCell}>
@@ -9659,7 +9547,7 @@ const styles = {
   },
   variationFieldRow: {
     display: 'grid',
-    gridTemplateColumns: '2fr auto 1.5fr 2fr',
+    gridTemplateColumns: '2fr auto 2fr',
     gap: '0.5rem',
     alignItems: 'center',
     padding: '0.25rem 0',
