@@ -494,19 +494,30 @@ function mergeOpenApiSpecs(specEntries) {
   };
 }
 
+function mergeParameterEntries(existing, incoming) {
+  if (!existing) return incoming;
+  const hasRequiredFlag = existing.required !== undefined || incoming.required !== undefined;
+  return {
+    ...existing,
+    description: existing.description || incoming.description || '',
+    example: existing.example ?? incoming.example,
+    default: existing.default ?? incoming.default,
+    testValue: existing.testValue ?? incoming.testValue,
+    sample: existing.sample ?? incoming.sample,
+    ...(hasRequiredFlag ? { required: Boolean(existing.required || incoming.required) } : {}),
+  };
+}
+
 function normalizeParametersFromSpec(params) {
   const list = Array.isArray(params) ? params : [];
-  const deduped = [];
-  const seen = new Set();
+  const merged = new Map();
   list.forEach((param) => {
     if (!param || typeof param !== 'object') return;
     const name = typeof param.name === 'string' ? param.name.trim() : '';
     const loc = typeof param.in === 'string' ? param.in.trim() : '';
     if (!name || !loc) return;
     const key = `${name}:${loc}`;
-    if (seen.has(key)) return;
-    seen.add(key);
-    deduped.push({
+    const normalized = {
       name,
       in: loc,
       required: param.required ?? loc === 'path',
@@ -516,9 +527,10 @@ function normalizeParametersFromSpec(params) {
       ...(param.default !== undefined ? { default: param.default } : {}),
       ...(param.testValue !== undefined ? { testValue: param.testValue } : {}),
       ...(param.sample !== undefined ? { sample: param.sample } : {}),
-    });
+    };
+    merged.set(key, mergeParameterEntries(merged.get(key), normalized));
   });
-  return deduped;
+  return Array.from(merged.values());
 }
 
 function mergeTemplatePathParameters(path, parameters = []) {
@@ -534,8 +546,7 @@ function mergeTemplatePathParameters(path, parameters = []) {
 }
 
 function mergePathParameters(...paramGroups) {
-  const merged = [];
-  const seen = new Set();
+  const merged = new Map();
   paramGroups
     .flat()
     .filter(Boolean)
@@ -544,11 +555,9 @@ function mergePathParameters(...paramGroups) {
       const loc = typeof param?.in === 'string' ? param.in.trim() : '';
       if (!name || !loc) return;
       const key = `${name}:${loc}`;
-      if (seen.has(key)) return;
-      seen.add(key);
-      merged.push(param);
+      merged.set(key, mergeParameterEntries(merged.get(key), param));
     });
-  return merged;
+  return Array.from(merged.values());
 }
 
 function extractRequestExample(requestBody) {
@@ -863,8 +872,8 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
     .flatMap((body) => flattenFieldsFromExample(body));
 
   const requestFields = dedupeFieldEntries([...fields, ...exampleFields]);
-  enums.receiptTypes = sanitizeCodes(enums.receiptTypes, DEFAULT_RECEIPT_TYPES);
-  enums.taxTypes = sanitizeCodes(enums.taxTypes, DEFAULT_TAX_TYPES);
+  enums.receiptTypes = sanitizeCodes(enums.receiptTypes);
+  enums.taxTypes = sanitizeCodes(enums.taxTypes);
 
   const hasComplexity = hasComplexComposition(schema);
   if (hasComplexity) {
@@ -1001,18 +1010,19 @@ function dedupeFieldEntries(fields) {
     const location = typeof entry?.location === 'string' ? entry.location.trim() : '';
     const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
     if (!field) return null;
-    const normalizedField = field.replace(/\[\]$/, '');
-    return `${location || 'body'}:${normalizedField}`;
+    return `${location || 'body'}:${field}`;
   };
   fields.forEach((entry) => {
     const key = dedupeKey(entry);
     if (!key) return;
     const current = seen.get(key);
+    if (!current) {
+      seen.set(key, entry);
+      return;
+    }
     const candidateScore = entry.field.split('.').length + (entry.field.endsWith('[]') ? 0.5 : 0);
-    const currentScore = current
-      ? current.field.split('.').length + (current.field.endsWith('[]') ? 0.5 : 0)
-      : -1;
-    if (!current || candidateScore >= currentScore) {
+    const currentScore = current.field.split('.').length + (current.field.endsWith('[]') ? 0.5 : 0);
+    if (candidateScore > currentScore) {
       seen.set(key, entry);
     }
   });
@@ -1103,7 +1113,7 @@ function deriveReceiptTypes(requestSchema, example) {
   const fromExamples = [typeNode?.example, typeNode?.default, example?.type]
     .flat()
     .filter((value) => value !== undefined && value !== null);
-  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples, DEFAULT_RECEIPT_TYPES);
+  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples);
   return candidates;
 }
 
@@ -1113,7 +1123,7 @@ function deriveTaxTypes(requestSchema, example) {
   const fromExamples = [taxNode?.example, taxNode?.default, example?.taxType]
     .flat()
     .filter((value) => value !== undefined && value !== null);
-  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples, DEFAULT_TAX_TYPES);
+  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExamples);
   return candidates;
 }
 
@@ -1123,7 +1133,7 @@ function derivePaymentMethods(requestSchema, example) {
   const fromExampleArray = Array.isArray(example?.payments)
     ? example.payments.map((payment) => payment?.code)
     : [];
-  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExampleArray, DEFAULT_PAYMENT_METHODS);
+  const candidates = sanitizeCodes(fromEnum.length ? fromEnum : fromExampleArray);
   return candidates;
 }
 
@@ -1145,13 +1155,9 @@ function analysePosApiRequest(requestSchema, example) {
   );
   const supportsMultiplePayments = paymentsNode ? paymentsFromExample.length > 1 : false;
 
-  const resolvedReceiptTypes = receiptTypes.length ? receiptTypes : receiptsNode ? DEFAULT_RECEIPT_TYPES : [];
-  const resolvedTaxTypes = taxTypes.length ? taxTypes : receiptsNode ? DEFAULT_TAX_TYPES : [];
-  const resolvedPaymentMethods = paymentMethods.length
-    ? paymentMethods
-    : paymentsNode
-      ? DEFAULT_PAYMENT_METHODS
-      : [];
+  const resolvedReceiptTypes = receiptTypes.length ? receiptTypes : [];
+  const resolvedTaxTypes = taxTypes.length ? taxTypes : [];
+  const resolvedPaymentMethods = paymentMethods.length ? paymentMethods : [];
 
   return {
     receiptTypes: resolvedReceiptTypes,
