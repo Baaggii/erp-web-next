@@ -17,6 +17,16 @@ const DEFAULT_PAYMENT_METHODS = [
   'SERVICE_PAYMENT',
 ];
 
+const DEFAULT_MAPPING_HINTS = {
+  branchNo: 'session.branch_id',
+  branchId: 'session.branch_id',
+  branchCode: 'session.branch_code',
+  posNo: 'session.pos_no',
+  posNumber: 'session.pos_no',
+  tin: 'session.tin',
+  registerNo: 'session.register_no',
+};
+
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -33,6 +43,34 @@ async function requireSystemSettings(req, res) {
     return null;
   }
   return { session, companyId };
+}
+
+function validateEndpointDefinition(endpoint, index = 0) {
+  const issues = [];
+  const label = endpoint?.name || endpoint?.id || `endpoint ${index + 1}`;
+  const hasBaseUrl = ['serverUrl', 'testServerUrl', 'productionServerUrl', 'testServerUrlProduction'].some(
+    (key) => typeof endpoint?.[key] === 'string' && endpoint[key].trim(),
+  );
+  if (!hasBaseUrl) {
+    issues.push(`${label} is missing a base URL (staging or production).`);
+  }
+  const requestFields = Array.isArray(endpoint?.requestFields)
+    ? endpoint.requestFields.filter((entry) => entry && typeof entry.field === 'string' && entry.field.trim())
+    : [];
+  if (!requestFields.length) {
+    issues.push(`${label} has no request fields defined for mapping.`);
+  }
+  const variations = Array.isArray(endpoint?.variations) ? endpoint.variations : [];
+  variations.forEach((variation, idx) => {
+    const variationLabel = variation?.name || `variation ${idx + 1}`;
+    if (!variation?.request) {
+      issues.push(`${label} - ${variationLabel} is missing a request definition.`);
+    }
+    if (!variation?.response) {
+      issues.push(`${label} - ${variationLabel} is missing a response definition.`);
+    }
+  });
+  return issues;
 }
 
 router.get('/', requireAuth, async (req, res, next) => {
@@ -53,6 +91,13 @@ router.put('/', requireAuth, async (req, res, next) => {
     const payload = req.body?.endpoints ?? req.body;
     if (!Array.isArray(payload)) {
       res.status(400).json({ message: 'endpoints array is required' });
+      return;
+    }
+    const validationIssues = payload
+      .map((endpoint, index) => validateEndpointDefinition(endpoint, index))
+      .flat();
+    if (validationIssues.length) {
+      res.status(400).json({ message: 'Endpoint validation failed', issues: validationIssues });
       return;
     }
     const sanitized = JSON.parse(JSON.stringify(payload));
@@ -512,6 +557,43 @@ function extractRequestExample(requestBody) {
   return undefined;
 }
 
+function extractRequestExamples(requestBody) {
+  if (!requestBody || typeof requestBody !== 'object') return [];
+  const examples = [];
+  const content = requestBody.content || {};
+  Object.entries(content).forEach(([mediaType, media]) => {
+    if (!media || typeof media !== 'object') return;
+    const pushExample = (key, body) => {
+      if (body === undefined) return;
+      examples.push({
+        key: key || mediaType,
+        name: key || mediaType,
+        body,
+        contentType: mediaType,
+      });
+    };
+    if (media.example !== undefined) {
+      pushExample(`${mediaType}-example`, media.example);
+    }
+    if (media.examples && typeof media.examples === 'object') {
+      Object.entries(media.examples).forEach(([name, entry]) => {
+        if (entry && entry.value !== undefined) {
+          pushExample(name || `${mediaType}-example`, entry.value);
+        }
+      });
+    }
+    if (media.schema && typeof media.schema === 'object') {
+      if (media.schema.example !== undefined) {
+        pushExample(`${mediaType}-schema-example`, media.schema.example);
+      }
+      if (media.schema.default !== undefined) {
+        pushExample(`${mediaType}-schema-default`, media.schema.default);
+      }
+    }
+  });
+  return examples;
+}
+
 function classifyPosApiType(tags = [], path = '', summary = '') {
   const normalizedPath = path.toLowerCase();
   const text = `${tags.join(' ')} ${path} ${summary}`.toLowerCase();
@@ -577,6 +659,48 @@ function extractResponseSchema(responses) {
   const schema = media.schema && typeof media.schema === 'object' ? media.schema : undefined;
   const description = response.description || media.description || '';
   return { schema, description };
+}
+
+function extractResponseExamples(responses) {
+  if (!responses || typeof responses !== 'object') return [];
+  const entries = Object.entries(responses);
+  const examples = [];
+  entries.forEach(([statusCode, response]) => {
+    if (!response || typeof response !== 'object') return;
+    const content = response.content || {};
+    Object.entries(content).forEach(([mediaType, media]) => {
+      if (!media || typeof media !== 'object') return;
+      const pushExample = (key, body) => {
+        if (body === undefined) return;
+        examples.push({
+          key: key || `${statusCode}-${mediaType}`,
+          name: key || `${statusCode} ${mediaType}`,
+          status: statusCode,
+          body,
+          contentType: mediaType,
+        });
+      };
+      if (media.example !== undefined) {
+        pushExample(`${statusCode}-${mediaType}-example`, media.example);
+      }
+      if (media.examples && typeof media.examples === 'object') {
+        Object.entries(media.examples).forEach(([name, entry]) => {
+          if (entry && entry.value !== undefined) {
+            pushExample(name || `${statusCode}-${mediaType}-example`, entry.value);
+          }
+        });
+      }
+      if (media.schema && typeof media.schema === 'object') {
+        if (media.schema.example !== undefined) {
+          pushExample(`${statusCode}-${mediaType}-schema-example`, media.schema.example);
+        }
+        if (media.schema.default !== undefined) {
+          pushExample(`${statusCode}-${mediaType}-schema-default`, media.schema.default);
+        }
+      }
+    });
+  });
+  return examples;
 }
 
 function collectFieldsFromSchema(schema, { pathPrefix = '', required = [] } = {}) {
@@ -646,11 +770,18 @@ function hasComplexComposition(node, depth = 0) {
 
 function buildRequestDetails(schema, contentType, exampleBodies = []) {
   if (!schema || typeof schema !== 'object') {
-    return { requestFields: [], flags: {}, enums: {}, hasComplexity: false };
+    return {
+      requestFields: [{ field: 'request', required: false }],
+      flags: {},
+      enums: {},
+      hasComplexity: false,
+      warnings: ['Request schema missing; added generic request field.'],
+    };
   }
   const fields = [];
   const enums = { receiptTypes: [], taxTypes: [] };
   const flags = { supportsMultipleReceipts: false, supportsItems: false, supportsMultiplePayments: false };
+  const warnings = [];
 
   const pushField = (path, node, required) => {
     if (!path) return;
@@ -719,7 +850,14 @@ function buildRequestDetails(schema, contentType, exampleBodies = []) {
   enums.taxTypes = sanitizeCodes(enums.taxTypes, DEFAULT_TAX_TYPES);
 
   const hasComplexity = hasComplexComposition(schema);
-  return { requestFields, flags, enums, hasComplexity };
+  if (!requestFields.length) {
+    warnings.push('Request fields could not be derived; added a generic request field.');
+    requestFields.push({ field: 'request', required: false });
+  }
+  if (hasComplexity) {
+    warnings.push('Some request schema elements could not be expanded automatically.');
+  }
+  return { requestFields, flags, enums, hasComplexity, warnings };
 }
 
 function buildParameterFieldHints(parameters = []) {
@@ -836,24 +974,58 @@ function buildResponseDetails(schema, exampleBodies = []) {
     warnings.push('Response fields could not be derived; added a generic placeholder.');
     combinedFields.push({ field: 'response', required: false });
   }
+  if (hasComplexity) {
+    warnings.push('Some response schema elements could not be expanded automatically.');
+  }
   return { responseFields: combinedFields, hasComplexity, warnings };
 }
 
 function dedupeFieldEntries(fields) {
   const seen = new Map();
+  const dedupeKey = (entry) => {
+    const location = typeof entry?.location === 'string' ? entry.location.trim() : '';
+    const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!field) return null;
+    const normalizedField = field.replace(/\[\]$/, '');
+    return `${location || 'body'}:${normalizedField}`;
+  };
   fields.forEach((entry) => {
-    if (!entry?.field) return;
-    const normalized = entry.field.replace(/\[\]$/, '');
-    const current = seen.get(normalized);
+    const key = dedupeKey(entry);
+    if (!key) return;
+    const current = seen.get(key);
     const candidateScore = entry.field.split('.').length + (entry.field.endsWith('[]') ? 0.5 : 0);
     const currentScore = current
       ? current.field.split('.').length + (current.field.endsWith('[]') ? 0.5 : 0)
       : -1;
     if (!current || candidateScore >= currentScore) {
-      seen.set(normalized, entry);
+      seen.set(key, entry);
     }
   });
   return Array.from(seen.values());
+}
+
+function collectFieldDefaults(fields = []) {
+  const defaults = {};
+  fields.forEach((entry) => {
+    const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!key) return;
+    if (entry.defaultValue !== undefined && entry.defaultValue !== null && entry.defaultValue !== '') {
+      defaults[key] = entry.defaultValue;
+    }
+  });
+  return defaults;
+}
+
+function deriveMappingHintsFromFields(fields = []) {
+  const hints = {};
+  fields.forEach((entry) => {
+    const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!key) return;
+    if (DEFAULT_MAPPING_HINTS[key]) {
+      hints[key] = DEFAULT_MAPPING_HINTS[key];
+    }
+  });
+  return hints;
 }
 
 function pickEnumValues(node) {
@@ -1008,22 +1180,35 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return;
       const op = operation && typeof operation === 'object' ? operation : {};
       const opParams = normalizeParametersFromSpec([...(op.parameters || []), ...sharedParams]);
-      const example = extractRequestExample(op.requestBody);
+      const requestExamples = extractRequestExamples(op.requestBody);
+      const example = requestExamples[0]?.body ?? extractRequestExample(op.requestBody);
       const { schema: requestSchema, description: requestDescription, contentType } =
         extractRequestSchema(op.requestBody);
+      const responseExampleEntries = extractResponseExamples(op.responses);
       const { schema: responseSchema, description: responseDescription } =
         extractResponseSchema(op.responses);
       const isFormUrlEncoded = contentType === 'application/x-www-form-urlencoded';
       const formFields = isFormUrlEncoded ? buildFormFields(requestSchema) : undefined;
       const requestExample = isFormUrlEncoded ? buildFormEncodedExample(requestSchema) : example;
-      const requestDetails = buildRequestDetails(requestSchema, contentType, [requestExample]);
-      const responseDetails = buildResponseDetails(responseSchema);
+      const requestDetails = buildRequestDetails(
+        requestSchema,
+        contentType,
+        requestExamples.map((entry) => entry.body).concat(requestExample !== undefined ? [requestExample] : []),
+      );
+      const responseDetails = buildResponseDetails(
+        responseSchema,
+        responseExampleEntries.map((entry) => entry.body),
+      );
       const parameterFields = buildParameterFieldHints(opParams);
       const requestFields = dedupeFieldEntries([
         ...(isFormUrlEncoded ? formFields : requestDetails.requestFields),
         ...parameterFields,
       ]);
       const responseFields = responseDetails.responseFields;
+      const parseWarnings = [
+        ...(Array.isArray(requestDetails.warnings) ? requestDetails.warnings : []),
+        ...(Array.isArray(responseDetails.warnings) ? responseDetails.warnings : []),
+      ];
       const posHints = requestSchema ? analysePosApiRequest(requestSchema, requestExample) : {};
       const idSource = op.operationId || `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
@@ -1050,6 +1235,65 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         ? posHints.taxTypes
         : requestDetails.enums.taxTypes)
         || [];
+      const variationWarnings = [];
+      const variationKeys = new Set([
+        ...requestExamples.map((ex) => ex.key || ex.name || ''),
+        ...responseExampleEntries.map((ex) => ex.key || ex.name || ''),
+      ]);
+      const variations = Array.from(variationKeys).map((key, index) => {
+        const req = requestExamples.find((ex) => (ex.key || ex.name) === key) || requestExamples[index];
+        const resp = responseExampleEntries.find((ex) => (ex.key || ex.name) === key) || responseExampleEntries[index];
+        const variationRequestFields = dedupeFieldEntries([
+          ...requestFields,
+          ...flattenFieldsFromExample(req?.body || {}),
+        ]);
+        const variationResponseFields = dedupeFieldEntries([
+          ...responseFields,
+          ...flattenFieldsFromExample(resp?.body || {}),
+        ]);
+        if (!variationRequestFields.length) {
+          variationWarnings.push('Added placeholder request field because a variation had no request schema.');
+          variationRequestFields.push({ field: 'request', required: false });
+        }
+        if (!variationResponseFields.length) {
+          variationWarnings.push('Added placeholder response field because a variation had no response schema.');
+          variationResponseFields.push({ field: 'response', required: false });
+        }
+        const resolvedRequest = req
+          ? { body: req.body }
+          : requestExample !== undefined
+            ? { body: requestExample }
+            : { body: {} };
+        if (!req && requestExample === undefined) {
+          variationWarnings.push('Variation missing explicit request example; inserted generic placeholder.');
+        }
+        let resolvedResponse;
+        if (resp) {
+          resolvedResponse = { status: resp.status, body: resp.body };
+        } else if (responseExampleEntries[index] || responseExampleEntries[0]) {
+          const fallback = responseExampleEntries[index] || responseExampleEntries[0];
+          resolvedResponse = { status: fallback?.status, body: fallback?.body };
+          variationWarnings.push('Variation missing explicit response example; used nearest available example.');
+        } else if (responseSchema) {
+          resolvedResponse = { status: undefined, body: responseSchema };
+          variationWarnings.push('Variation missing response example; used response schema as placeholder.');
+        } else {
+          resolvedResponse = { status: undefined, body: {} };
+          variationWarnings.push('Variation missing response definition; inserted empty object.');
+        }
+        return {
+          key: key || `variation-${index + 1}`,
+          name: req?.name || resp?.name || key || `Variation ${index + 1}`,
+          request: resolvedRequest,
+          response: resolvedResponse,
+          requestFields: variationRequestFields,
+          responseFields: variationResponseFields,
+        };
+      });
+
+      const fieldDefaults = collectFieldDefaults(requestFields);
+      const mappingHints = deriveMappingHintsFromFields(requestFields);
+
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: op.summary || op.operationId || `${method} ${path}`,
@@ -1066,6 +1310,11 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         responseBody: responseSchema ? { schema: responseSchema, description: responseDescription } : undefined,
         requestFields,
         responseFields,
+        examples: requestExamples,
+        responseExamples: responseExampleEntries,
+        variations,
+        ...(Object.keys(fieldDefaults).length ? { fieldDefaults } : {}),
+        ...(Object.keys(mappingHints).length ? { mappingHints } : {}),
         ...(Array.isArray(resolvedReceiptTypes) && resolvedReceiptTypes.length
           ? { receiptTypes: resolvedReceiptTypes }
           : {}),
@@ -1093,11 +1342,17 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         validation: validationIssues.length
           ? { state: hasPartialSchema ? 'partial' : 'incomplete', issues: validationIssues }
           : { state: 'ok' },
-        ...(hasPartialSchema
-          ? { parseWarnings: ['Some schema elements could not be expanded automatically.'], rawSchemas: {
-            request: requestSchema,
-            response: responseSchema,
-          } }
+        ...((hasPartialSchema || parseWarnings.length)
+          ? {
+            parseWarnings: [
+              ...(hasPartialSchema
+                ? ['Some schema elements could not be expanded automatically.']
+                : []),
+              ...parseWarnings,
+              ...variationWarnings,
+            ],
+            rawSchemas: { request: requestSchema, response: responseSchema },
+          }
           : {}),
         sourceName: metaLookup?.[metaKey]?.sourceNames?.join(', ') || meta.sourceName || '',
         isBundled: metaLookup?.[metaKey]?.isBundled ?? Boolean(meta.isBundled),
@@ -1415,6 +1670,11 @@ function extractOperationsFromPostman(spec, meta = {}) {
         responseSchema,
         Array.isArray(responseExamples) ? responseExamples.map((ex) => ex?.body) : [],
       );
+      const combinedRequestFields = dedupeFieldEntries([
+        ...requestDetails.requestFields,
+        ...parameterFields,
+      ]);
+      const variationWarnings = [];
       const variations = Array.isArray(examples)
         ? examples.map((example) => {
           const exampleRequestFields = flattenFieldsFromExample(example?.request?.body || example?.request || {});
@@ -1428,15 +1688,43 @@ function extractOperationsFromPostman(spec, meta = {}) {
             ...responseDetails.responseFields,
             ...exampleResponseFields,
           ]);
-          if (!requestFields.length) requestFields.push({ field: 'request', required: false });
-          if (!responseFields.length) responseFields.push({ field: 'response', required: false });
-          return { ...example, requestFields, responseFields };
+          if (!requestFields.length) {
+            variationWarnings.push('Added placeholder request field because a variation had no request schema.');
+            requestFields.push({ field: 'request', required: false });
+          }
+          if (!responseFields.length) {
+            variationWarnings.push('Added placeholder response field because a variation had no response schema.');
+            responseFields.push({ field: 'response', required: false });
+          }
+          const resolvedRequest = example.request && Object.keys(example.request).length
+            ? example.request
+            : example.request || { body: requestExample ?? {} };
+          const resolvedResponse = example.response
+            ? example.response
+            : responseExamples[0]
+              ? {
+                status: responseExamples[0].status,
+                headers: responseExamples[0].headers,
+                body: responseExamples[0].body,
+              }
+              : { status: undefined, body: {} };
+          if (!example.response) {
+            variationWarnings.push('Variation missing explicit response example; inserted placeholder response.');
+          }
+          return {
+            ...example,
+            request: resolvedRequest,
+            response: resolvedResponse,
+            requestFields,
+            responseFields,
+          };
         })
         : [];
       const description = item.request.description || item.description || '';
       const serverSelection = pickPostmanServers(baseUrl, variableLookup);
       const parseWarnings = [
         ...(Array.isArray(responseWarnings) ? responseWarnings : []),
+        ...(Array.isArray(requestDetails.warnings) ? requestDetails.warnings : []),
         ...(Array.isArray(responseDetails.warnings) ? responseDetails.warnings : []),
       ];
 
@@ -1461,10 +1749,18 @@ function extractOperationsFromPostman(spec, meta = {}) {
         responseExamples,
         examples,
         scripts,
-        requestFields: dedupeFieldEntries([...requestDetails.requestFields, ...parameterFields]),
+        requestFields: combinedRequestFields,
         responseFields: responseDetails.responseFields,
         variations,
-        ...(parseWarnings.length ? { parseWarnings } : {}),
+        ...(Object.keys(collectFieldDefaults(combinedRequestFields)).length
+          ? { fieldDefaults: collectFieldDefaults(combinedRequestFields) }
+          : {}),
+        ...(Object.keys(deriveMappingHintsFromFields(combinedRequestFields)).length
+          ? { mappingHints: deriveMappingHintsFromFields(combinedRequestFields) }
+          : {}),
+        ...(parseWarnings.length || variationWarnings.length
+          ? { parseWarnings: [...parseWarnings, ...variationWarnings] }
+          : {}),
         ...(Array.isArray(requestDetails.enums.receiptTypes) && requestDetails.enums.receiptTypes.length
           ? { receiptTypes: requestDetails.enums.receiptTypes }
           : {}),

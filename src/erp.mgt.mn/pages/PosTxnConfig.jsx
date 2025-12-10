@@ -101,22 +101,8 @@ export default function PosTxnConfig() {
   const loadingTablesRef = useRef(new Set());
 
   const parseColumnNames = (cols) => {
-    const normaliseName = (column) => {
-      if (typeof column === 'string') return column;
-      if (column && typeof column === 'object') {
-        return (
-          column.name ||
-          column.column_name ||
-          column.columnName ||
-          column.COLUMN_NAME ||
-          ''
-        );
-      }
-      return '';
-    };
-
-    if (Array.isArray(cols)) return cols.map(normaliseName).filter(Boolean);
-    if (cols && Array.isArray(cols.columns)) return cols.columns.map(normaliseName).filter(Boolean);
+    if (Array.isArray(cols)) return cols.map((c) => c?.name || c).filter(Boolean);
+    if (cols && Array.isArray(cols.columns)) return cols.columns.map((c) => c?.name || c).filter(Boolean);
     return [];
   };
 
@@ -824,10 +810,14 @@ export default function PosTxnConfig() {
         const names = parseColumnNames(cols);
         setTableColumns((prev) => ({ ...prev, [trimmed]: names }));
         if (trimmed === config.masterTable) setMasterCols(names);
-        if (names.length) {
-          addToast(
-            `Loaded ${names.length} column${names.length === 1 ? '' : 's'} for ${trimmed}.`,
-            'success',
+        if (names.length && typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: {
+                message: `Loaded ${names.length} column${names.length === 1 ? '' : 's'} for ${trimmed}.`,
+                type: 'success',
+              },
+            }),
           );
         }
       })
