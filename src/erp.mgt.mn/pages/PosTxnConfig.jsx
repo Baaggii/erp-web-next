@@ -810,10 +810,14 @@ export default function PosTxnConfig() {
         const names = parseColumnNames(cols);
         setTableColumns((prev) => ({ ...prev, [trimmed]: names }));
         if (trimmed === config.masterTable) setMasterCols(names);
-        if (names.length) {
-          addToast(
-            `Loaded ${names.length} column${names.length === 1 ? '' : 's'} for ${trimmed}.`,
-            'success',
+        if (names.length && typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: {
+                message: `Loaded ${names.length} column${names.length === 1 ? '' : 's'} for ${trimmed}.`,
+                type: 'success',
+              },
+            }),
           );
         }
       })
