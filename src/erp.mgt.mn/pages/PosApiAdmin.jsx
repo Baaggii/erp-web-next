@@ -647,6 +647,7 @@ const EMPTY_ENDPOINT = {
   requestFieldsText: '[]',
   responseFieldsText: '[]',
   examplesText: '[]',
+  variations: [],
   requestFieldVariations: [],
   preRequestScript: '',
   testScript: '',
@@ -1501,6 +1502,26 @@ function createFormState(definition) {
   const requestFieldVariations = Array.isArray(definition.requestFieldVariations)
     ? definition.requestFieldVariations
     : [];
+  const variations = Array.isArray(definition.variations)
+    ? definition.variations.map((variation, index) => {
+      const fields = Array.isArray(variation.requestFields)
+        ? variation.requestFields.map((field) => ({
+          field: field?.field || '',
+          required: typeof field?.required === 'boolean' ? field.required : true,
+          description: field?.description || '',
+        }))
+        : [];
+      const requestExample = variation.requestExample || variation.request?.body || {};
+      return {
+        key: variation.key || variation.name || `variation-${index + 1}`,
+        name: variation.name || variation.key || `Variation ${index + 1}`,
+        description: variation.description || '',
+        enabled: variation.enabled !== false,
+        requestExampleText: toPrettyJson(requestExample, '{}'),
+        requestFields: fields,
+      };
+    })
+    : [];
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
@@ -1537,6 +1558,7 @@ function createFormState(definition) {
     requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     examplesText: toPrettyJson(definition.examples, '[]'),
+    variations,
     preRequestScript:
       Array.isArray(definition.scripts?.preRequest)
         ? definition.scripts.preRequest.join('\n\n')
@@ -2915,6 +2937,7 @@ export default function PosApiAdmin() {
     ? formState.requestFieldVariations
     : [];
   const activeRequestFieldVariations = requestFieldVariations.filter((entry) => entry.enabled);
+  const variations = Array.isArray(formState.variations) ? formState.variations : [];
 
   useEffect(() => {
     if (!receiptTaxTypesEnabled) {
@@ -3479,6 +3502,68 @@ export default function PosApiAdmin() {
         return { ...entry, requiredFields };
       });
       return { ...prev, requestFieldVariations: updated };
+    });
+  };
+
+  const handleVariationToggle = (index, enabled) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      if (!list[index]) return prev;
+      list[index] = { ...list[index], enabled };
+      return { ...prev, variations: list };
+    });
+  };
+
+  const handleVariationChange = (index, key, value) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      if (!list[index]) return prev;
+      list[index] = { ...list[index], [key]: value };
+      return { ...prev, variations: list };
+    });
+  };
+
+  const handleVariationExampleChange = (index, text) => {
+    handleVariationChange(index, 'requestExampleText', text);
+  };
+
+  const handleVariationRequestFieldChange = (variationIndex, fieldIndex, updates) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variation = list[variationIndex];
+      if (!variation) return prev;
+      const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
+      if (!fields[fieldIndex]) return prev;
+      fields[fieldIndex] = { ...fields[fieldIndex], ...updates };
+      list[variationIndex] = { ...variation, requestFields: fields };
+      return { ...prev, variations: list };
+    });
+  };
+
+  const handleAddVariationField = (variationIndex) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variation = list[variationIndex];
+      if (!variation) return prev;
+      const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
+      fields.push({ field: '', required: true });
+      list[variationIndex] = { ...variation, requestFields: fields };
+      return { ...prev, variations: list };
+    });
+  };
+
+  const handleAddVariation = () => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      list.push({
+        key: `variation-${list.length + 1}`,
+        name: `Variation ${list.length + 1}`,
+        description: '',
+        enabled: true,
+        requestExampleText: '{}',
+        requestFields: [],
+      });
+      return { ...prev, variations: list };
     });
   };
 
@@ -4892,6 +4977,29 @@ export default function PosApiAdmin() {
           : {},
       }));
 
+    const sanitizedVariations = (variations || []).map((variation, index) => {
+      const requestExample = parseJsonInput(
+        `Request example for variation ${variation.name || index + 1}`,
+        variation.requestExampleText || '{}',
+        {},
+      );
+      const requestFields = Array.isArray(variation.requestFields)
+        ? variation.requestFields.map((field) => ({
+          field: field?.field || '',
+          required: typeof field?.required === 'boolean' ? field.required : true,
+          ...(field?.description ? { description: field.description } : {}),
+        })).filter((field) => field.field)
+        : [];
+      return {
+        key: variation.key || variation.name || `variation-${index + 1}`,
+        name: variation.name || variation.key || `Variation ${index + 1}`,
+        description: variation.description || '',
+        enabled: variation.enabled !== false,
+        requestExample,
+        requestFields,
+      };
+    });
+
     const usage = formState.posApiType === 'AUTH'
       ? 'auth'
       : VALID_USAGE_VALUES.has(formState.usage)
@@ -5023,6 +5131,7 @@ export default function PosApiAdmin() {
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: combinedRequestFields,
       requestFieldVariations: sanitizedRequestFieldVariations,
+      variations: sanitizedVariations,
       responseFields: responseFieldsWithMapping,
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
@@ -7472,44 +7581,102 @@ export default function PosApiAdmin() {
             rows={6}
           />
         </label>
-        {exampleVariationChoices.length > 0 && (
-          <div style={styles.hintCard}>
-            <div style={styles.hintHeader}>
-              <h3 style={styles.hintTitle}>Request variations</h3>
-              <span style={styles.hintCount}>
-                {activeRequestFieldVariations.length} selected
-              </span>
-            </div>
-            <p style={styles.hintDescription}>
-              Mark request examples as variations to configure variation-specific required fields.
-            </p>
-            <div style={styles.variationList}>
-              {exampleVariationChoices.map((entry) => {
-                const current = requestFieldVariations.find((item) => item.key === entry.key) || {};
-                const enabled = Boolean(current.enabled);
-                return (
-                  <div key={`variation-${entry.key}`} style={styles.variationCard}>
-                    <label style={styles.checkboxLabel}>
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={(e) => handleRequestVariationToggle(entry.key, e.target.checked)}
-                      />
-                      <span>{entry.label}</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={current.label ?? entry.label}
-                      onChange={(e) => handleRequestVariationLabelChange(entry.key, e.target.value)}
-                      style={styles.input}
-                      placeholder="Variation label"
-                    />
-                  </div>
-                );
-              })}
-            </div>
+        <div style={styles.hintCard}>
+          <div style={styles.hintHeader}>
+            <h3 style={styles.hintTitle}>Variations</h3>
+            <span style={styles.hintCount}>{variations.length}</span>
           </div>
-        )}
+          <p style={styles.hintDescription}>
+            Configure request variations imported from tabbed examples or add your own. All fields start as required, but you can
+            toggle requirements below.
+          </p>
+          <button type="button" style={styles.smallButton} onClick={handleAddVariation}>
+            Add variation
+          </button>
+          {variations.length === 0 && (
+            <div style={styles.sectionHelp}>No variations defined yet.</div>
+          )}
+          {variations.map((variation, index) => (
+            <div key={variation.key || `variation-${index}`} style={styles.variationCard}>
+              <div style={styles.inlineActionRow}>
+                <label style={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={variation.enabled !== false}
+                    onChange={(e) => handleVariationToggle(index, e.target.checked)}
+                  />
+                  <span>Enabled</span>
+                </label>
+                <input
+                  type="text"
+                  value={variation.name || ''}
+                  onChange={(e) => handleVariationChange(index, 'name', e.target.value)}
+                  style={styles.input}
+                  placeholder="Variation name"
+                />
+              </div>
+              <textarea
+                value={variation.description || ''}
+                onChange={(e) => handleVariationChange(index, 'description', e.target.value)}
+                style={styles.textarea}
+                rows={2}
+                placeholder="Variation description"
+              />
+              <label style={styles.labelFull}>
+                Request example (JSON)
+                <textarea
+                  value={variation.requestExampleText || ''}
+                  onChange={(e) => handleVariationExampleChange(index, e.target.value)}
+                  style={styles.textarea}
+                  rows={6}
+                />
+              </label>
+              <div>
+                <div style={styles.inlineActionRow}>
+                  <strong>Fields</strong>
+                  <button type="button" style={styles.smallButton} onClick={() => handleAddVariationField(index)}>
+                    Add field
+                  </button>
+                </div>
+                {(!variation.requestFields || variation.requestFields.length === 0) && (
+                  <div style={styles.sectionHelp}>No fields detected; add mappings to control requirements.</div>
+                )}
+                {Array.isArray(variation.requestFields)
+                  ? variation.requestFields.map((field, fieldIndex) => (
+                    <div key={`variation-${index}-field-${fieldIndex}`} style={styles.variationFieldRow}>
+                      <input
+                        type="text"
+                        value={field.field || ''}
+                        onChange={(e) => handleVariationRequestFieldChange(index, fieldIndex, { field: e.target.value })}
+                        style={styles.input}
+                        placeholder="field.path"
+                      />
+                      <label style={styles.checkboxLabel}>
+                        <input
+                          type="checkbox"
+                          checked={field.required !== false}
+                          onChange={(e) =>
+                            handleVariationRequestFieldChange(index, fieldIndex, { required: e.target.checked })
+                          }
+                        />
+                        <span>Required</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={field.description || ''}
+                        onChange={(e) =>
+                          handleVariationRequestFieldChange(index, fieldIndex, { description: e.target.value })
+                        }
+                        style={styles.input}
+                        placeholder="Description (optional)"
+                      />
+                    </div>
+                  ))
+                  : null}
+              </div>
+            </div>
+          ))}
+        </div>
         <label style={styles.labelFull}>
           Pre-request script
           <textarea
@@ -9317,6 +9484,13 @@ const styles = {
     flexDirection: 'column',
     gap: '0.5rem',
     background: '#fff',
+  },
+  variationFieldRow: {
+    display: 'grid',
+    gridTemplateColumns: '2fr auto 2fr',
+    gap: '0.5rem',
+    alignItems: 'center',
+    padding: '0.25rem 0',
   },
   variationRequirementRow: {
     borderTop: '1px dashed #e2e8f0',
