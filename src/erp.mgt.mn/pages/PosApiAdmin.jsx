@@ -415,6 +415,17 @@ function normalizeFieldList(payload) {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
 
+  const extractFromObject = (obj = {}) => {
+    if (!obj || typeof obj !== 'object') return [];
+    return Object.entries(obj).map(([key, value]) => {
+      if (value && typeof value === 'object') {
+        const name = extractFieldName(value) || key;
+        return { name, ...value };
+      }
+      return { name: key, value };
+    });
+  };
+
   const mapObjectFieldsToList = (fieldsObj = {}) => {
     return Object.entries(fieldsObj).map(([key, value]) => {
       if (value && typeof value === 'object') {
@@ -599,7 +610,7 @@ const EMPTY_ENDPOINT = {
   examplesText: '[]',
   preRequestScript: '',
   testScript: '',
-  testable: false,
+  testable: true,
   serverUrl: '',
   serverUrlEnvVar: '',
   serverUrlMode: 'literal',
@@ -1660,7 +1671,7 @@ function createFormState(definition) {
       Array.isArray(definition.scripts?.test)
         ? definition.scripts.test.join('\n\n')
         : definition.testScript || '',
-    testable: Boolean(definition.testable),
+    testable: definition.testable !== false,
     serverUrl: serverUrlField.literal,
     serverUrlEnvVar: serverUrlField.envVar,
     serverUrlMode: serverUrlField.mode,
@@ -4965,7 +4976,7 @@ export default function PosApiAdmin() {
         : {}),
       examples,
       scripts,
-      testable: Boolean(formState.testable),
+      testable: formState.testable !== false,
       serverUrl: serverUrlField.literal,
       serverUrlEnvVar: serverUrlField.envVar,
       serverUrlMode: serverUrlField.mode,
@@ -7852,10 +7863,10 @@ export default function PosApiAdmin() {
               <label style={{ ...styles.checkboxLabel, marginLeft: 'auto' }}>
                 <input
                   type="checkbox"
-                  checked={formState.testable}
+                  checked={formState.testable !== false}
                   onChange={(e) => handleChange('testable', e.target.checked)}
                 />
-                Testable endpoint
+                Enable POSAPI submission
               </label>
             </div>
               <div style={styles.fieldHelp}>
