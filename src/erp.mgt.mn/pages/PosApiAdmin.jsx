@@ -7942,7 +7942,7 @@ export default function PosApiAdmin() {
                           value={mappingValue}
                           onChange={(e) => handleResponseFieldMappingChange(fieldLabel, e.target.value)}
                           style={styles.input}
-                          disabled={responseFieldOptions.length === 0}
+                          disabled={formState.responseTables.length === 0}
                         >
                           <option value="">Do not map</option>
                           {responseFieldOptions.map((option) => (
