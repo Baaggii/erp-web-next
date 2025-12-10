@@ -418,6 +418,8 @@ function normalizeFieldList(payload) {
   if (Array.isArray(payload.fields)) return payload.fields;
   if (Array.isArray(payload.data?.fields)) return payload.data.fields;
   if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.columns)) return payload.columns;
+  if (Array.isArray(payload.data?.columns)) return payload.data.columns;
 
   if (payload.fields && typeof payload.fields === 'object') {
     const values = Object.values(payload.fields);
@@ -2520,8 +2522,7 @@ export default function PosApiAdmin() {
 
   const responseTableOptions = useMemo(() => {
     const seen = new Set();
-    const merged = [...DEFAULT_INFO_TABLE_OPTIONS, ...tableOptions];
-    return merged
+    return tableOptions
       .map((option) => {
         const value = option?.value;
         if (!value || seen.has(value)) return null;
