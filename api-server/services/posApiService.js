@@ -1430,24 +1430,14 @@ async function fetchTokenFromAuthEndpoint(
     return hasEntries ? entries : null;
   };
 
-  const normalizedPayload = normalizePayload(payload) || {};
-  const examplePayload = normalizePayload(authEndpoint.requestExample) || {};
-  const schemaPayload =
-    authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object'
-      ? authEndpoint.requestBody.schema
-      : {};
-
-  const basePayload = Object.keys(examplePayload).length ? examplePayload : schemaPayload;
-  const combinedPayload = mergePayloads(basePayload, normalizedPayload);
-
-  let mappedPayload = applyEnvMapToPayload(combinedPayload, authEndpoint.requestEnvMap).payload;
-  try {
-    mappedPayload = resolveEnvPlaceholders(mappedPayload);
-  } catch (err) {
-    const error = err instanceof Error ? err : new Error('Failed to resolve environment placeholders');
-    error.status = error.status || 400;
-    throw error;
+  let requestPayload = normalizePayload(payload);
+  if (!requestPayload) {
+    requestPayload = normalizePayload(authEndpoint.requestExample);
   }
+  if (!requestPayload && authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object') {
+    requestPayload = authEndpoint.requestBody.schema;
+  }
+  const mappedPayload = applyEnvMapToPayload(requestPayload || {}, authEndpoint.requestEnvMap).payload;
   let targetBaseUrl = resolveEndpointBaseUrl(authEndpoint, environment);
   if (!targetBaseUrl && baseUrl) {
     targetBaseUrl = toStringValue(baseUrl);
