@@ -1388,7 +1388,7 @@ function buildRequestSampleFromSelections(
 function buildRequestEnvMap(selections = {}) {
   return Object.entries(selections || {}).reduce((acc, [fieldPath, entry]) => {
     if (entry?.mode === 'env' && entry.envVar) {
-      acc[fieldPath] = entry.envVar;
+      acc[fieldPath] = { envVar: entry.envVar, applyToBody: entry.applyToBody !== false };
     }
     return acc;
   }, {});
@@ -1542,11 +1542,16 @@ function deriveRequestFieldSelections({ requestSchemaText, requestEnvMap, displa
 
     const currentValue = readValueAtPath(parsedSample, fieldPath);
     const defaultValue = entry.defaultValue;
-    const applyToBody = entry.source !== 'parameter';
-    if (typeof requestEnvMap?.[fieldPath] === 'string') {
+    const applyToBodyDefault = entry.source !== 'parameter';
+    const envEntry = requestEnvMap?.[fieldPath];
+    const envVar = typeof envEntry === 'string' ? envEntry : envEntry?.envVar;
+    const applyToBody = envEntry && typeof envEntry.applyToBody === 'boolean'
+      ? envEntry.applyToBody
+      : applyToBodyDefault;
+    if (envVar) {
       derivedSelections[fieldPath] = {
         mode: 'env',
-        envVar: requestEnvMap[fieldPath],
+        envVar,
         literal: currentValue === undefined || currentValue === null ? '' : String(currentValue),
         applyToBody,
       };
@@ -5036,6 +5041,23 @@ export default function PosApiAdmin() {
       testServerUrlProduction: testServerUrlProductionField,
     });
 
+    const hasUrlValue = (selection) => {
+      const literal = selection?.literal?.trim();
+      const envVar = selection?.envVar?.trim();
+      const mode = normalizeUrlMode(selection?.mode, envVar);
+      if (literal) return true;
+      return mode === 'env' && Boolean(envVar);
+    };
+
+    if (
+      !hasUrlValue(testServerUrlField)
+      && !hasUrlValue(productionServerUrlField)
+      && !hasUrlValue(serverUrlField)
+      && !hasUrlValue(testServerUrlProductionField)
+    ) {
+      throw new Error('Provide at least one base URL or environment variable mapping for this endpoint.');
+    }
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -5097,10 +5119,10 @@ export default function PosApiAdmin() {
       testServerUrl: testServerUrlField.literal,
       testServerUrlEnvVar: testServerUrlField.envVar,
       testServerUrlMode: testServerUrlField.mode,
-      productionServerUrl: productionServerUrlField.literal || testServerUrlProductionField.literal,
+      productionServerUrl: productionServerUrlField.literal,
       productionServerUrlEnvVar: productionServerUrlField.envVar,
       productionServerUrlMode: productionServerUrlField.mode,
-      testServerUrlProduction: testServerUrlProductionField.literal || productionServerUrlField.literal,
+      testServerUrlProduction: testServerUrlProductionField.literal,
       testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
       testServerUrlProductionMode: testServerUrlProductionField.mode,
       urlEnvMap,
