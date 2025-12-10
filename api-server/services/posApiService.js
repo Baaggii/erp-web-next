@@ -148,6 +148,34 @@ function applyEnvMapToPayload(payload, envMap = {}) {
   return { payload: basePayload };
 }
 
+function mergePayloads(base, overrides) {
+  const baseObj =
+    base && typeof base === 'object' && !Array.isArray(base) ? JSON.parse(JSON.stringify(base)) : {};
+  const overrideObj =
+    overrides && typeof overrides === 'object' && !Array.isArray(overrides)
+      ? JSON.parse(JSON.stringify(overrides))
+      : {};
+
+  const assign = (target, source) => {
+    Object.entries(source).forEach(([key, value]) => {
+      if (
+        value &&
+        typeof value === 'object' &&
+        !Array.isArray(value) &&
+        typeof target[key] === 'object' &&
+        !Array.isArray(target[key])
+      ) {
+        assign(target[key], value);
+        return;
+      }
+      target[key] = value;
+    });
+  };
+
+  assign(baseObj, overrideObj);
+  return baseObj;
+}
+
 function coerceEnvPlaceholderValue(envVar, rawValue, path = '') {
   if (rawValue === undefined || rawValue === null || rawValue === '') {
     const err = new Error(`Environment variable ${envVar} is not configured for POSAPI requests`);
@@ -213,6 +241,26 @@ function getCachedToken(endpointId) {
     return null;
   }
   return entry.token;
+}
+
+function cacheTokenFromAuthResponse(endpoint, response) {
+  if (!endpoint?.id || endpoint?.posApiType !== 'AUTH' || !response) return;
+
+  const body = response.bodyJson ?? response.bodyText ?? response;
+  let parsedBody = body;
+  if (typeof parsedBody === 'string') {
+    try {
+      parsedBody = JSON.parse(parsedBody);
+    } catch {
+      parsedBody = null;
+    }
+  }
+
+  if (!parsedBody || typeof parsedBody !== 'object') return;
+  const token = parsedBody.access_token || parsedBody.id_token;
+  if (!token) return;
+  const expiresIn = toNumber(parsedBody.expires_in || parsedBody.expiresIn) || 300;
+  cacheToken(endpoint.id, token, expiresIn);
 }
 
 export async function getPosApiBaseUrl() {
@@ -1353,16 +1401,65 @@ async function fetchTokenFromAuthEndpoint(
   { baseUrl, payload, useCachedToken = true, environment = 'staging' } = {},
 ) {
   if (!authEndpoint?.id) return fetchEnvPosApiToken({ useCachedToken });
+  if (!useCachedToken) {
+    tokenCache.delete(authEndpoint.id);
+  }
   const cached = useCachedToken ? getCachedToken(authEndpoint.id) : null;
   if (cached) return cached;
 
-  const requestPayload =
-    payload && typeof payload === 'object'
-      ? payload
-      : authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object'
-        ? authEndpoint.requestBody.schema
+  const normalizePayload = (rawValue) => {
+    if (!rawValue) return null;
+    if (typeof rawValue === 'object' && !Array.isArray(rawValue)) return rawValue;
+    if (typeof rawValue !== 'string') return null;
+
+    try {
+      const parsed = JSON.parse(rawValue);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch {
+      // Ignore JSON parse failure and try parsing as form data.
+    }
+
+    const params = new URLSearchParams(rawValue);
+    const entries = {};
+    let hasEntries = false;
+    params.forEach((value, key) => {
+      if (!key) return;
+      entries[key] = value;
+      hasEntries = true;
+    });
+    return hasEntries ? entries : null;
+  };
+
+  const normalizedPayload = normalizePayload(payload) || {};
+  const examplePayload = normalizePayload(authEndpoint.requestExample) || {};
+  const schemaPayload =
+    authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object'
+      ? authEndpoint.requestBody.schema
+      : {};
+
+  const hasNormalizedPayload = Object.keys(normalizedPayload).length > 0;
+  const hasSchemaPayload = Object.keys(schemaPayload).length > 0;
+  const hasExamplePayload = Object.keys(examplePayload).length > 0;
+
+  const basePayload = hasNormalizedPayload
+    ? normalizedPayload
+    : hasSchemaPayload
+      ? schemaPayload
+      : hasExamplePayload
+        ? examplePayload
         : {};
-  const mappedPayload = applyEnvMapToPayload(requestPayload, authEndpoint.requestEnvMap).payload;
+  const combinedPayload = hasNormalizedPayload
+    ? basePayload
+    : mergePayloads(basePayload, normalizedPayload);
+
+  let mappedPayload = applyEnvMapToPayload(combinedPayload, authEndpoint.requestEnvMap).payload;
+  try {
+    mappedPayload = resolveEnvPlaceholders(mappedPayload);
+  } catch (err) {
+    const error = err instanceof Error ? err : new Error('Failed to resolve environment placeholders');
+    error.status = error.status || 400;
+    throw error;
+  }
   let targetBaseUrl = resolveEndpointBaseUrl(authEndpoint, environment);
   if (!targetBaseUrl && baseUrl) {
     targetBaseUrl = toStringValue(baseUrl);
@@ -1990,8 +2087,9 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
 
   let token = null;
   if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
+    const selectedAuthEndpointId = authEndpointId || endpoint?.authEndpointId || null;
     token = await getPosApiToken({
-      authEndpointId,
+      authEndpointId: selectedAuthEndpointId,
       baseUrl: requestBaseUrl,
       authPayload,
       useCachedToken,
@@ -2008,6 +2106,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
       baseUrl: requestBaseUrl,
       debug,
     });
+    cacheTokenFromAuthResponse(endpoint, response);
     if (debug) {
       return {
         response,
