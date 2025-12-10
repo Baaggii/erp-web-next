@@ -3728,6 +3728,7 @@ export default function PosApiAdmin() {
         if (cancelled) return;
         const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
         setInfoSyncTableOptionsBase(tableOptions);
+        setTableOptions(filterEbarimtTables(tableOptions));
         const usage = settingsData.settings?.usage && VALID_USAGE_VALUES.has(settingsData.settings.usage)
           ? settingsData.settings.usage
           : 'all';
@@ -3856,6 +3857,7 @@ export default function PosApiAdmin() {
         if (cancelled) return;
         const tableOptions = buildTableOptions(Array.isArray(tableData.tables) ? tableData.tables : []);
         setInfoSyncTableOptionsBase(tableOptions);
+        setTableOptions(filterEbarimtTables(tableOptions));
         const usage = settingsData.settings?.usage && VALID_USAGE_VALUES.has(settingsData.settings.usage)
           ? settingsData.settings.usage
           : 'all';
