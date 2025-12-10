@@ -418,6 +418,22 @@ function normalizeFieldList(payload) {
   if (Array.isArray(payload.fields)) return payload.fields;
   if (Array.isArray(payload.data?.fields)) return payload.data.fields;
   if (Array.isArray(payload.data)) return payload.data;
+  if (Array.isArray(payload.columns)) return payload.columns;
+  if (Array.isArray(payload.data?.columns)) return payload.data.columns;
+
+  if (payload.columns && typeof payload.columns === 'object') {
+    const values = Object.values(payload.columns);
+    if (values.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return values;
+    }
+  }
+
+  if (payload.data?.columns && typeof payload.data.columns === 'object') {
+    const values = Object.values(payload.data.columns);
+    if (values.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return values;
+    }
+  }
 
   if (payload.fields && typeof payload.fields === 'object') {
     const values = Object.values(payload.fields);
@@ -2520,8 +2536,7 @@ export default function PosApiAdmin() {
 
   const responseTableOptions = useMemo(() => {
     const seen = new Set();
-    const merged = [...DEFAULT_INFO_TABLE_OPTIONS, ...tableOptions];
-    return merged
+    return tableOptions
       .map((option) => {
         const value = option?.value;
         if (!value || seen.has(value)) return null;
@@ -2550,6 +2565,23 @@ export default function PosApiAdmin() {
     return options;
   }, [formState.responseTables, tableFields]);
 
+  useEffect(() => {
+    setFormState((prev) => {
+      const sanitizedTables = sanitizeTableSelection(prev.responseTables, responseTableOptions);
+      const allowedTables = new Set(sanitizedTables.map((table) => normalizeTableValue(table)));
+      const filteredMappings = Object.fromEntries(
+        Object.entries(sanitizeResponseFieldMappings(prev.responseFieldMappings)).filter(([, target]) =>
+          allowedTables.has(normalizeTableValue(target.table)),
+        ),
+      );
+      const tablesChanged = JSON.stringify(sanitizedTables) !== JSON.stringify(prev.responseTables || []);
+      const mappingsChanged =
+        JSON.stringify(filteredMappings) !== JSON.stringify(prev.responseFieldMappings || {});
+      if (!tablesChanged && !mappingsChanged) return prev;
+      return { ...prev, responseTables: sanitizedTables, responseFieldMappings: filteredMappings };
+    });
+  }, [responseTableOptions]);
+
   const infoMappingEndpoints = useMemo(() => {
     const selected = new Set(infoSyncEndpointIds.filter(Boolean));
     const desiredUsage = infoSyncUsage === 'all' ? null : infoSyncUsage;
@@ -2569,6 +2601,42 @@ export default function PosApiAdmin() {
       return filtered;
     });
   }, [infoSyncEndpointOptions]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function loadResponseTables() {
+      try {
+        const res = await fetch(`${API_BASE}/report_builder/tables`, {
+          credentials: 'include',
+          skipLoader: true,
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          throw new Error('Failed to load database tables');
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        const options = buildTableOptions(Array.isArray(data.tables) ? data.tables : []);
+        const ebarimtTables = options.filter((option) =>
+          normalizeTableValue(option?.value || '').startsWith('ebarimt_'),
+        );
+        setTableOptions(ebarimtTables);
+      } catch (err) {
+        if (!cancelled && err?.name !== 'AbortError') {
+          console.warn('Unable to load POSAPI response tables', err);
+        }
+      }
+    }
+
+    loadResponseTables();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const missingTables = formState.responseTables.filter(
