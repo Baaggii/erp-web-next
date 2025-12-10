@@ -1,0 +1,1186 @@
+{
+	"info": {
+		"_postman_id": "08fc5d83-c809-4b88-8d8c-66c8c1d33c75",
+		"name": "Онцгой албан татвар API холболт",
+		"description": "# Танилцуулга \r\n\r\n<!-- theme: none -->\r\n\r\n> Татварын ерөнхий хууль, Онцгой албан татварын тухай хууль, Нэмэгдсэн өртгийн албан татварын тухай хууль, Согтууруулах ундааны эргэлтэнд хяналт тавих тухай хуулийн хэрэгжилтийг хангах, онцгой албан татварын тэмдэг бүхий барааны эргэлтэд хяналт тавих, барааны борлуулалтын үе шат бүрийг олон улсын стандартад нийцсэн дахин давтагдашгүй, цахим өгөгдөл бүхий код ашиглан цахим төлбөрийн баримт, гаалийн мэдүүлэгт үндэслэн татварын бүртгэл, мэдээллийн нэгдсэн санд бүртгэх зохицуулалтын дагуу хийгдсэн болно.\r\n\r\n![OAT!@.jpg](../assets/images/OAT!@.jpg)\r\n\r\n### Өөрчлөлтийн түүх\r\n\r\n| № | Хувилбар | Огноо | Тайлбар | Хариуцагч |\r\n| -------- | ------- | ------- | ------- | ------- |\r\n| 1  | 1.0.0 | 08/09/2024 | Гарын авлага боловсруулав | Б.Мөнгөнчимэг   |\r\n",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50289897",
+		"_collection_link": "https://baaggiii-7271699.postman.co/workspace/Bujika-Bujak's-Workspace~d63a1c60-c52a-4563-8b5d-414b12bae27c/collection/50289897-08fc5d83-c809-4b88-8d8c-66c8c1d33c75?action=share&source=collection_link&creator=50289897"
+	},
+	"item": [
+		{
+			"name": "rest",
+			"item": [
+				{
+					"name": "tpiMain",
+					"item": [
+						{
+							"name": "mainApi",
+							"item": [
+								{
+									"name": "getInventoryList",
+									"item": [
+										{
+											"name": "ОАТ-барааны баркодын мэдээлэл лавлах сервис",
+											"request": {
+												"method": "GET",
+												"header": [
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"url": {
+													"raw": "{{baseUrl}}/rest/tpiMain/mainApi/getInventoryList",
+													"host": [
+														"{{baseUrl}}"
+													],
+													"path": [
+														"rest",
+														"tpiMain",
+														"mainApi",
+														"getInventoryList"
+													]
+												},
+												"description": "> Онцгой албан татварын тухай хуулийн 4 дүгээр зүйлийн 4.1-д “Онцгой албан татвар ногдох бараа, үйл ажиллагаа”-г тодорхойлж өгсөн байдаг. Дээрх заалтад хамаарах барааны дэлгэрэнгүй мэдээллийг дараах сервисийг ашиглан авах боломжтой.\r\n\r\nОнцгой албан татвар бүхий барааны гарал үүсэл лавлах хүснэгт:\r\nД/д | Барааны гарал үүслийн мэдээлэл    \r\n---------|----------\r\n 1 | Эх орны үйлдвэр \r\n 2 | Импорт  \r\n\r\n Онцгой албан татвар бүхий барааны ангиллын лавлах хүснэгт:\r\n\r\n\r\n| Д/д | Барааны ангиллын код | Барааны ангиллын нэр                                     |\r\n|-----|----------------------|----------------------------------------------------------|\r\n| 1   | 01                   | Спирт                                                    |\r\n| 2   | 02                   | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа /ОАТ акцтай/    |\r\n| 3   | 03                   | Коньяк, виски, ром, джин /ОАТ акцтай/                               |\r\n| 4   | 04                   | Шимийн архи                                              |\r\n| 5   | 05                   | Дарс        /ОАТ акцтай/                                            |\r\n| 6   | 06                   | Пиво                                                     |\r\n| 7   | 07                   | Янжуур тамхи                                             |\r\n| 8   | 08                   | Дүнсэн тамхи                                             |\r\n| 9   | 09                   | Автобензин                                               |\r\n| 10  | 10                   | Дизелийн түлш                                            |\r\n| 11  | 11                   | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин  |\r\n"
+											},
+											"response": [
+												{
+													"name": "OK",
+													"originalRequest": {
+														"method": "GET",
+														"header": [
+															{
+																"key": "Accept",
+																"value": "application/json"
+															}
+														],
+														"url": {
+															"raw": "{{baseUrl}}/rest/tpiMain/mainApi/getInventoryList",
+															"host": [
+																"{{baseUrl}}"
+															],
+															"path": [
+																"rest",
+																"tpiMain",
+																"mainApi",
+																"getInventoryList"
+															]
+														}
+													},
+													"status": "OK",
+													"code": 200,
+													"_postman_previewlanguage": "json",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/json"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"barcode\": \"8656170014754\",\n  \"barcodeName\": \"Архи Ерөөл 0.75 л\",\n  \"cpcd\": \"2413150\",\n  \"productTypeCode\": \"02\",\n  \"productTypeName\": \"Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа\",\n  \"productCategory\": \"Эх орны үйлдвэр\",\n  \"productPercent\": 38,\n  \"productSize\": 750,\n  \"unitCode\": \"гр\"\n}"
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		},
+		{
+			"name": "api",
+			"item": [
+				{
+					"name": "inventory",
+					"item": [
+						{
+							"name": "getActiveStockNoPos",
+							"item": [
+								{
+									"name": "ОАТ-барааны тэмдгийн үлдэгдэл лавлах сервис",
+									"request": {
+										"auth": {
+											"type": "bearer",
+											"bearer": [
+												{
+													"key": "token",
+													"value": "{{bearerToken}}",
+													"type": "string"
+												}
+											]
+										},
+										"method": "GET",
+										"header": [
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "https://service.itc.gov.mn/api/inventory/getActiveStockNoPos?regNo=string&barCode=string&stockType=3412.979316205653&positionId=3412.979316205653&year=3412.979316205653&month=3412.979316205653",
+											"protocol": "https",
+											"host": [
+												"service",
+												"itc",
+												"gov",
+												"mn"
+											],
+											"path": [
+												"api",
+												"inventory",
+												"getActiveStockNoPos"
+											],
+											"query": [
+												{
+													"key": "regNo",
+													"value": "string",
+													"description": "Регистрийн дугаар"
+												},
+												{
+													"key": "barCode",
+													"value": "string",
+													"description": "Барааны баркод"
+												},
+												{
+													"key": "stockType",
+													"value": "3412.979316205653",
+													"description": "Барааны төрлийн код"
+												},
+												{
+													"key": "positionId",
+													"value": "3412.979316205653",
+													"description": "Борлуулж барааны тэмдгийн ангиллын код"
+												},
+												{
+													"key": "year",
+													"value": "3412.979316205653",
+													"description": "Он"
+												},
+												{
+													"key": "month",
+													"value": "3412.979316205653",
+													"description": "Сар"
+												}
+											]
+										},
+										"description": "> Татвар төлөгчийн өмчлөл, эзэмшилд байх, цааш зарж борлуулах боломжтой онцгой албан татвар бүхий барааны тэмдгийн үлдэгдлийг шалгахад дараах сервисийг ашиглах ба тухайн сервисээс өгөгдөл  ирээгүй тэмдэгтэй архи, согтууруулах ундаа, тамхийг цааш дамжуулан борлуулах боломжгүй болохыг анхаарна уу.[Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\n\r\nОнцгой албан татвар бүхий барааны ангилал, дэд ангилал лавлах хүснэгт:\r\n\r\n| **Барааны ерөнхий ангилал**                                                                           | **Барааны дэд ангилал**                                 | **Барааны төрлийн код** |\r\n|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------|-------------------------|\r\n| Эх орны үйлдвэрийн архи                                                                               | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа     | 4                       |\r\n|                                                                                                       | Коньяк, виски, ром, джин                                | 5                       |\r\n|                                                                                                       | Шимийн архи                                             | 6                       |\r\n| Эх орны үйлдвэрийн тамхи                                                                              | Янжуур тамхи                                            | 7                       |\r\n|                                                                                                       | Дүнсэн тамхи                                            | 8                       |\r\n| Эх орны үйлдвэрийн дарс                                                                               | Дарс                                                    | 9                       |\r\n| Импортын архи                                                                                         | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа     | 13                      |\r\n|                                                                                                       | Коньяк, виски, ром, джин                                | 14                      |\r\n| Импортын тамхи                                                                                        | Дүнсэн тамхи                                            | 15                      |\r\n|                                                                                                       | Янжуур тамхи                                            | 16                      |\r\n| Импортын дарс                                                                                         | Дарс                                                    | 17                      |\r\n| Эх орны үйлдвэрийн пиво                                                                               | Пиво                                                    | 22                      |\r\n| Эх орны үйлдвэрийн спирт                                                                              | Спирт                                                   | 23                      |\r\n| Импортын пиво                                                                                         | Пиво                                                    | 24                      |\r\n| Импортын спирт                                                                                        | Спирт                                                   | 25                      |\r\n| Эх орны үйлдвэрийн автобензин, дизелийн түлш, газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | Автобензин                                              | 27                      |\r\n|                                                                                                       | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | 29                      |\r\n|                                                                                                       | Дизелийн түлш                                           | 28                      |\r\n| Импортын автобензин, дизелийн түлш, газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин           | Дизелийн түлш                                           | 32                      |\r\n|                                                                                                       | Автобензин                                              | 31                      |\r\n|                                                                                                       | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | 33                      |\r\n\r\n\r\nОнцгой албан татварын тэмдгийн ангилал лавлах хүснэгт:\r\n\r\n| **Д/д** | **Тэмдгийн төрлийн код** | **Тэмдгийн төрлийн нэр** |\r\n|---------|--------------------------|--------------------------|\r\n| 1       | 3                        | Дотоодын зах зээл        |\r\n| 2       | 4                        | Чөлөөт бүс               |\r\n| 3       | 5                        | Duty Free                |\r\n| 4       | 6                        | Экспортын бүтээгдэхүүн   |\r\n\r\n\r\n\r\n\r\n"
+									},
+									"response": [
+										{
+											"name": "OK",
+											"originalRequest": {
+												"method": "GET",
+												"header": [
+													{
+														"key": "Accept",
+														"value": "application/json"
+													},
+													{
+														"key": "Authorization",
+														"value": "Bearer <token>",
+														"description": "Added as a part of security scheme: bearer"
+													}
+												],
+												"url": {
+													"raw": "https://service.itc.gov.mn/api/inventory/getActiveStockNoPos?regNo=string&barCode=string&stockType=3412.979316205653&positionId=3412.979316205653&year=3412.979316205653&month=3412.979316205653",
+													"protocol": "https",
+													"host": [
+														"service",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"api",
+														"inventory",
+														"getActiveStockNoPos"
+													],
+													"query": [
+														{
+															"key": "regNo",
+															"value": "string",
+															"description": "Регистрийн дугаар"
+														},
+														{
+															"key": "barCode",
+															"value": "string",
+															"description": "Барааны баркод"
+														},
+														{
+															"key": "stockType",
+															"value": "3412.979316205653",
+															"description": "Барааны төрлийн код"
+														},
+														{
+															"key": "positionId",
+															"value": "3412.979316205653",
+															"description": "Борлуулж барааны тэмдгийн ангиллын код"
+														},
+														{
+															"key": "year",
+															"value": "3412.979316205653",
+															"description": "Он"
+														},
+														{
+															"key": "month",
+															"value": "3412.979316205653",
+															"description": "Сар"
+														}
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"msg\": \"Амжилттай\",\n  \"status\": 200,\n  \"data\": [\n    \"0100041775\",\n    \"0100042532\"\n  ]\n}"
+										},
+										{
+											"name": "Unauthorized",
+											"originalRequest": {
+												"method": "GET",
+												"header": [
+													{
+														"key": "Authorization",
+														"value": "Bearer <token>",
+														"description": "Added as a part of security scheme: bearer"
+													}
+												],
+												"url": {
+													"raw": "https://service.itc.gov.mn/api/inventory/getActiveStockNoPos?regNo=string&barCode=string&stockType=3412.979316205653&positionId=3412.979316205653&year=3412.979316205653&month=3412.979316205653",
+													"protocol": "https",
+													"host": [
+														"service",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"api",
+														"inventory",
+														"getActiveStockNoPos"
+													],
+													"query": [
+														{
+															"key": "regNo",
+															"value": "string",
+															"description": "Регистрийн дугаар"
+														},
+														{
+															"key": "barCode",
+															"value": "string",
+															"description": "Барааны баркод"
+														},
+														{
+															"key": "stockType",
+															"value": "3412.979316205653",
+															"description": "Барааны төрлийн код"
+														},
+														{
+															"key": "positionId",
+															"value": "3412.979316205653",
+															"description": "Борлуулж барааны тэмдгийн ангиллын код"
+														},
+														{
+															"key": "year",
+															"value": "3412.979316205653",
+															"description": "Он"
+														},
+														{
+															"key": "month",
+															"value": "3412.979316205653",
+															"description": "Сар"
+														}
+													]
+												}
+											},
+											"status": "Unauthorized",
+											"code": 401,
+											"_postman_previewlanguage": "text",
+											"header": [],
+											"cookie": [],
+											"body": ""
+										}
+									]
+								}
+							]
+						},
+						{
+							"name": "posSetTransaction",
+							"item": [
+								{
+									"name": "ОАТ-барааны тэмдгийн зарлагын мэдээлэл хадгалах сервис",
+									"request": {
+										"auth": {
+											"type": "bearer",
+											"bearer": [
+												{
+													"key": "token",
+													"value": "{{bearerToken}}",
+													"type": "string"
+												}
+											]
+										},
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"posRno\": \"string\",\n  \"mrchRegno\": \"string\",\n  \"customerNo\": \"string\",\n  \"date\": \"string\",\n  \"stocks\": [\n    {\n      \"barCode\": \"string\",\n      \"stockType\": 2474.4802938782186,\n      \"positionNo\": 3228.224221151426,\n      \"stockNo\": [\n        \"string\",\n        \"string\"\n      ]\n    },\n    {\n      \"barCode\": \"string\",\n      \"stockType\": 3202.3997990405783,\n      \"positionNo\": 8440.8842217939,\n      \"stockNo\": [\n        \"string\",\n        \"string\"\n      ]\n    }\n  ]\n}",
+											"options": {
+												"raw": {
+													"headerFamily": "json",
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "https://service.itc.gov.mn/api/inventory/posSetTransaction",
+											"protocol": "https",
+											"host": [
+												"service",
+												"itc",
+												"gov",
+												"mn"
+											],
+											"path": [
+												"api",
+												"inventory",
+												"posSetTransaction"
+											]
+										},
+										"description": "> Татвар төлөгч өөрийн өмчлөл, эзэмшилд байх онцгой албан татварын тэмдэг бүхий барааг, бизнес эрхлэгч болон хувь хүн, эцсийн хэрэглэгч рүү борлуулсан болон шилжүүлсэн тухайн бүр цахим төлбөрийн баримтын систем болон бараа бүртгэлийн нэгдсэн системд тэмдгийн шилжүүлсэн талаар бүртгэл хийнэ. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\n"
+									},
+									"response": [
+										{
+											"name": "Амжилттай хадгалагдсан хариу",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/json"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													},
+													{
+														"key": "Authorization",
+														"value": "Bearer <token>",
+														"description": "Added as a part of security scheme: bearer"
+													}
+												],
+												"body": {
+													"mode": "raw",
+													"raw": "{\n  \"posRno\": \"string\",\n  \"mrchRegno\": \"string\",\n  \"customerNo\": \"string\",\n  \"date\": \"string\",\n  \"stocks\": [\n    {\n      \"barCode\": \"string\",\n      \"stockType\": 2474.4802938782186,\n      \"positionNo\": 3228.224221151426,\n      \"stockNo\": [\n        \"string\",\n        \"string\"\n      ]\n    },\n    {\n      \"barCode\": \"string\",\n      \"stockType\": 3202.3997990405783,\n      \"positionNo\": 8440.8842217939,\n      \"stockNo\": [\n        \"string\",\n        \"string\"\n      ]\n    }\n  ]\n}",
+													"options": {
+														"raw": {
+															"headerFamily": "json",
+															"language": "json"
+														}
+													}
+												},
+												"url": {
+													"raw": "https://service.itc.gov.mn/api/inventory/posSetTransaction",
+													"protocol": "https",
+													"host": [
+														"service",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"api",
+														"inventory",
+														"posSetTransaction"
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"msg\": \"Амжилттай\",\n  \"status\": 200,\n  \"data\": [\n    {\n      \"posRno\": \"00000265********40619000001411803\",\n      \"mrchRegno\": \"26****8\",\n      \"customerNo\": \"20****5\",\n      \"date\": \"2024-06-19 19:00:00\",\n      \"stocks\": [\n        {\n          \"barCode\": \"3122109969822\",\n          \"stockType\": 17,\n          \"positionNo\": 5,\n          \"stockNo\": [\n            \"0100042532\"\n          ]\n        }\n      ]\n    }\n  ]\n}"
+										},
+										{
+											"name": "Хадгалах үйлдэл амжилтгүй хариу",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/json"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													},
+													{
+														"key": "Authorization",
+														"value": "Bearer <token>",
+														"description": "Added as a part of security scheme: bearer"
+													}
+												],
+												"body": {
+													"mode": "raw",
+													"raw": "{\n  \"posRno\": \"string\",\n  \"mrchRegno\": \"string\",\n  \"customerNo\": \"string\",\n  \"date\": \"string\",\n  \"stocks\": [\n    {\n      \"barCode\": \"string\",\n      \"stockType\": 2474.4802938782186,\n      \"positionNo\": 3228.224221151426,\n      \"stockNo\": [\n        \"string\",\n        \"string\"\n      ]\n    },\n    {\n      \"barCode\": \"string\",\n      \"stockType\": 3202.3997990405783,\n      \"positionNo\": 8440.8842217939,\n      \"stockNo\": [\n        \"string\",\n        \"string\"\n      ]\n    }\n  ]\n}",
+													"options": {
+														"raw": {
+															"headerFamily": "json",
+															"language": "json"
+														}
+													}
+												},
+												"url": {
+													"raw": "https://service.itc.gov.mn/api/inventory/posSetTransaction",
+													"protocol": "https",
+													"host": [
+														"service",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"api",
+														"inventory",
+														"posSetTransaction"
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"msg\": \"00000265********40619000001411803\",\n  \"status\": 500,\n  \"data\": \"Тухайн мэдээлэл бүртгэлтэй байна\"\n}"
+										},
+										{
+											"name": "Unauthorized",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/json"
+													},
+													{
+														"key": "Authorization",
+														"value": "Bearer <token>",
+														"description": "Added as a part of security scheme: bearer"
+													}
+												],
+												"body": {
+													"mode": "raw",
+													"raw": "{\n  \"posRno\": \"string\",\n  \"mrchRegno\": \"string\",\n  \"customerNo\": \"string\",\n  \"date\": \"string\",\n  \"stocks\": [\n    {\n      \"barCode\": \"string\",\n      \"stockType\": 2474.4802938782186,\n      \"positionNo\": 3228.224221151426,\n      \"stockNo\": [\n        \"string\",\n        \"string\"\n      ]\n    },\n    {\n      \"barCode\": \"string\",\n      \"stockType\": 3202.3997990405783,\n      \"positionNo\": 8440.8842217939,\n      \"stockNo\": [\n        \"string\",\n        \"string\"\n      ]\n    }\n  ]\n}",
+													"options": {
+														"raw": {
+															"headerFamily": "json",
+															"language": "json"
+														}
+													}
+												},
+												"url": {
+													"raw": "https://service.itc.gov.mn/api/inventory/posSetTransaction",
+													"protocol": "https",
+													"host": [
+														"service",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"api",
+														"inventory",
+														"posSetTransaction"
+													]
+												}
+											},
+											"status": "Unauthorized",
+											"code": 401,
+											"_postman_previewlanguage": "text",
+											"header": [],
+											"cookie": [],
+											"body": ""
+										}
+									]
+								}
+							]
+						},
+						{
+							"name": "getActiveStockInfo",
+							"item": [
+								{
+									"name": "ОАТ-барааны тэмдгийн үлдэгдэл лавлах сервис /хуудаслалттай/",
+									"request": {
+										"auth": {
+											"type": "bearer",
+											"bearer": [
+												{
+													"key": "token",
+													"value": "{{bearerToken}}",
+													"type": "string"
+												}
+											]
+										},
+										"method": "GET",
+										"header": [
+											{
+												"key": "X-API-KEY",
+												"value": "string",
+												"description": "Татварын ерөнхий газрын-Татвар хураалт удирдлага арга зүйн газарт албан бичгээр хандаж авна"
+											},
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"url": {
+											"raw": "https://service.itc.gov.mn/api/inventory/getActiveStockInfo?regNo=string&barCode=string&stockType=3412.979316205653&positionId=3412.979316205653&pageNumber=3412.979316205653&pageSize=3412.979316205653",
+											"protocol": "https",
+											"host": [
+												"service",
+												"itc",
+												"gov",
+												"mn"
+											],
+											"path": [
+												"api",
+												"inventory",
+												"getActiveStockInfo"
+											],
+											"query": [
+												{
+													"key": "regNo",
+													"value": "string",
+													"description": "Мэдээлэл лавлаж буй хэрэглэгчийн регистрийн дугаар"
+												},
+												{
+													"key": "barCode",
+													"value": "string",
+													"description": "Мэдээлэл лавлаж буй барааны баркод"
+												},
+												{
+													"key": "stockType",
+													"value": "3412.979316205653",
+													"description": "Мэдээлэл лавлаж буй барааны төрлийн код"
+												},
+												{
+													"key": "positionId",
+													"value": "3412.979316205653",
+													"description": "Мэдээлэл лавлаж буй барааны тэмдгийн ангиллын код"
+												},
+												{
+													"key": "pageNumber",
+													"value": "3412.979316205653",
+													"description": "Хуудаслалтын дугаар"
+												},
+												{
+													"key": "pageSize",
+													"value": "3412.979316205653",
+													"description": "Хуудаслалтын хэмжээ"
+												}
+											]
+										},
+										"description": "> Энэхүү сервис нь өмнөх “Онцгой албан татвар бүхий барааны тэмдгийн үлдэгдэл лавлах сервис”-ийн нэгэн адил татвар төлөгчийн өмчлөл, эзэмшилд байх, цааш зарж борлуулах боломжтой онцгой албан татвар бүхий барааны тэмдгийн үлдэгдлээс гадна үйлдвэрлэгч, QR код, барааны баркод, нэр зэрэг дэлгэрэнгүй мэдээллийг шалгахад ашиглана. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\nОнцгой албан татвар бүхий барааны ангилал, дэд ангилал лавлах хүснэгт:\r\n\r\n| **Барааны ерөнхий ангилал**                                                                           | **Барааны дэд ангилал**                                 | **Барааны төрлийн код** |\r\n|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------|-------------------------|\r\n| Эх орны үйлдвэрийн архи                                                                               | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа     | 4                       |\r\n|                                                                                                       | Коньяк, виски, ром, джин                                | 5                       |\r\n|                                                                                                       | Шимийн архи                                             | 6                       |\r\n| Эх орны үйлдвэрийн тамхи                                                                              | Янжуур тамхи                                            | 7                       |\r\n|                                                                                                       | Дүнсэн тамхи                                            | 8                       |\r\n| Эх орны үйлдвэрийн дарс                                                                               | Дарс                                                    | 9                       |\r\n| Импортын архи                                                                                         | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа     | 13                      |\r\n|                                                                                                       | Коньяк, виски, ром, джин                                | 14                      |\r\n| Импортын тамхи                                                                                        | Дүнсэн тамхи                                            | 15                      |\r\n|                                                                                                       | Янжуур тамхи                                            | 16                      |\r\n| Импортын дарс                                                                                         | Дарс                                                    | 17                      |\r\n| Эх орны үйлдвэрийн пиво                                                                               | Пиво                                                    | 22                      |\r\n| Эх орны үйлдвэрийн спирт                                                                              | Спирт                                                   | 23                      |\r\n| Импортын пиво                                                                                         | Пиво                                                    | 24                      |\r\n| Импортын спирт                                                                                        | Спирт                                                   | 25                      |\r\n| Эх орны үйлдвэрийн автобензин, дизелийн түлш, газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | Автобензин                                              | 27                      |\r\n|                                                                                                       | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | 29                      |\r\n|                                                                                                       | Дизелийн түлш                                           | 28                      |\r\n| Импортын автобензин, дизелийн түлш, газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин           | Дизелийн түлш                                           | 32                      |\r\n|                                                                                                       | Автобензин                                              | 31                      |\r\n|                                                                                                       | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | 33                      |\r\n\r\n\r\nОнцгой албан татварын тэмдгийн ангилал лавлах хүснэгт:\r\n\r\n| **Д/д** | **Тэмдгийн төрлийн код** | **Тэмдгийн төрлийн нэр** |\r\n|---------|--------------------------|--------------------------|\r\n| 1       | 3                        | Дотоодын зах зээл        |\r\n| 2       | 4                        | Чөлөөт бүс               |\r\n| 3       | 5                        | Duty Free                |\r\n| 4       | 6                        | Экспортын бүтээгдэхүүн   |\r\n"
+									},
+									"response": [
+										{
+											"name": "OK",
+											"originalRequest": {
+												"method": "GET",
+												"header": [
+													{
+														"key": "X-API-KEY",
+														"value": "string",
+														"description": "Татварын ерөнхий газрын-Татвар хураалт удирдлага арга зүйн газарт албан бичгээр хандаж авна"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													},
+													{
+														"key": "Authorization",
+														"value": "Bearer <token>",
+														"description": "Added as a part of security scheme: bearer"
+													}
+												],
+												"url": {
+													"raw": "https://service.itc.gov.mn/api/inventory/getActiveStockInfo?regNo=string&barCode=string&stockType=3412.979316205653&positionId=3412.979316205653&pageNumber=3412.979316205653&pageSize=3412.979316205653",
+													"protocol": "https",
+													"host": [
+														"service",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"api",
+														"inventory",
+														"getActiveStockInfo"
+													],
+													"query": [
+														{
+															"key": "regNo",
+															"value": "string",
+															"description": "Мэдээлэл лавлаж буй хэрэглэгчийн регистрийн дугаар"
+														},
+														{
+															"key": "barCode",
+															"value": "string",
+															"description": "Мэдээлэл лавлаж буй барааны баркод"
+														},
+														{
+															"key": "stockType",
+															"value": "3412.979316205653",
+															"description": "Мэдээлэл лавлаж буй барааны төрлийн код"
+														},
+														{
+															"key": "positionId",
+															"value": "3412.979316205653",
+															"description": "Мэдээлэл лавлаж буй барааны тэмдгийн ангиллын код"
+														},
+														{
+															"key": "pageNumber",
+															"value": "3412.979316205653",
+															"description": "Хуудаслалтын дугаар"
+														},
+														{
+															"key": "pageSize",
+															"value": "3412.979316205653",
+															"description": "Хуудаслалтын хэмжээ"
+														}
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"msg\": \"string\",\n  \"status\": 9331.611346334641,\n  \"data\": [\n    {\n      \"barCode\": \"string\",\n      \"orderDate\": \"string\",\n      \"manufactorRegno\": \"string\",\n      \"productName\": \"string\",\n      \"qrCode\": \"string\",\n      \"stockNumber\": \"string\"\n    },\n    {\n      \"barCode\": \"string\",\n      \"orderDate\": \"string\",\n      \"manufactorRegno\": \"string\",\n      \"productName\": \"string\",\n      \"qrCode\": \"string\",\n      \"stockNumber\": \"string\"\n    }\n  ]\n}"
+										},
+										{
+											"name": "Unauthorized",
+											"originalRequest": {
+												"method": "GET",
+												"header": [
+													{
+														"key": "X-API-KEY",
+														"value": "string",
+														"description": "Татварын ерөнхий газрын-Татвар хураалт удирдлага арга зүйн газарт албан бичгээр хандаж авна"
+													},
+													{
+														"key": "Authorization",
+														"value": "Bearer <token>",
+														"description": "Added as a part of security scheme: bearer"
+													}
+												],
+												"url": {
+													"raw": "https://service.itc.gov.mn/api/inventory/getActiveStockInfo?regNo=string&barCode=string&stockType=3412.979316205653&positionId=3412.979316205653&pageNumber=3412.979316205653&pageSize=3412.979316205653",
+													"protocol": "https",
+													"host": [
+														"service",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"api",
+														"inventory",
+														"getActiveStockInfo"
+													],
+													"query": [
+														{
+															"key": "regNo",
+															"value": "string",
+															"description": "Мэдээлэл лавлаж буй хэрэглэгчийн регистрийн дугаар"
+														},
+														{
+															"key": "barCode",
+															"value": "string",
+															"description": "Мэдээлэл лавлаж буй барааны баркод"
+														},
+														{
+															"key": "stockType",
+															"value": "3412.979316205653",
+															"description": "Мэдээлэл лавлаж буй барааны төрлийн код"
+														},
+														{
+															"key": "positionId",
+															"value": "3412.979316205653",
+															"description": "Мэдээлэл лавлаж буй барааны тэмдгийн ангиллын код"
+														},
+														{
+															"key": "pageNumber",
+															"value": "3412.979316205653",
+															"description": "Хуудаслалтын дугаар"
+														},
+														{
+															"key": "pageSize",
+															"value": "3412.979316205653",
+															"description": "Хуудаслалтын хэмжээ"
+														}
+													]
+												}
+											},
+											"status": "Unauthorized",
+											"code": 401,
+											"_postman_previewlanguage": "text",
+											"header": [],
+											"cookie": [],
+											"body": ""
+										}
+									]
+								}
+							]
+						},
+						{
+							"name": "createReceiptApi",
+							"item": [
+								{
+									"name": "ОАТ-барааны хагарал, хорогдол, урамшууллын бүртгэл",
+									"request": {
+										"auth": {
+											"type": "bearer",
+											"bearer": [
+												{
+													"key": "token",
+													"value": "{{bearerToken}}",
+													"type": "string"
+												}
+											]
+										},
+										"method": "POST",
+										"header": [
+											{
+												"key": "Content-Type",
+												"value": "application/json"
+											},
+											{
+												"key": "Accept",
+												"value": "application/json"
+											}
+										],
+										"body": {
+											"mode": "raw",
+											"raw": "{\n  \"totalAmount\": 1000,\n  \"merchantTin\": \"101****1917\",\n  \"customerTin\": \"470****3455\",\n  \"reportMonth\": null,\n  \"tranType\": 2,\n  \"receiptType\": 2,\n  \"details\": [\n    {\n      \"barCode\": \"86561***06476\",\n      \"qty\": 1,\n      \"unitPrice\": 1000,\n      \"isProductOwner\": null,\n      \"positionNo\": 3,\n      \"isSpiritDedication\": null,\n      \"stock\": [\n        \"0100005022\"\n      ]\n    }\n  ]\n}",
+											"options": {
+												"raw": {
+													"headerFamily": "json",
+													"language": "json"
+												}
+											}
+										},
+										"url": {
+											"raw": "https://service.itc.gov.mn/api/inventory/createReceiptApi",
+											"protocol": "https",
+											"host": [
+												"service",
+												"itc",
+												"gov",
+												"mn"
+											],
+											"path": [
+												"api",
+												"inventory",
+												"createReceiptApi"
+											]
+										},
+										"description": "> Энэхүү сервис нь Онцгой албан татварын тэмдэг бүхий барааны хагарал, хорогдол, урамшууллын бүртгэлийг өөрийн санхүүгийн болон кассын системээс илгээхэд ашиглагдана. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\n"
+									},
+									"response": [
+										{
+											"name": "OK",
+											"originalRequest": {
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/json"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													},
+													{
+														"key": "Authorization",
+														"value": "Bearer <token>",
+														"description": "Added as a part of security scheme: bearer"
+													}
+												],
+												"body": {
+													"mode": "raw",
+													"raw": "{\n  \"totalAmount\": 1000,\n  \"merchantTin\": \"101****1917\",\n  \"customerTin\": \"470****3455\",\n  \"reportMonth\": null,\n  \"tranType\": 2,\n  \"receiptType\": 2,\n  \"details\": [\n    {\n      \"barCode\": \"86561***06476\",\n      \"qty\": 1,\n      \"unitPrice\": 1000,\n      \"isProductOwner\": null,\n      \"positionNo\": 3,\n      \"isSpiritDedication\": null,\n      \"stock\": [\n        \"0100005022\"\n      ]\n    }\n  ]\n}",
+													"options": {
+														"raw": {
+															"headerFamily": "json",
+															"language": "json"
+														}
+													}
+												},
+												"url": {
+													"raw": "https://service.itc.gov.mn/api/inventory/createReceiptApi",
+													"protocol": "https",
+													"host": [
+														"service",
+														"itc",
+														"gov",
+														"mn"
+													],
+													"path": [
+														"api",
+														"inventory",
+														"createReceiptApi"
+													]
+												}
+											},
+											"status": "OK",
+											"code": 200,
+											"_postman_previewlanguage": "json",
+											"header": [
+												{
+													"key": "Content-Type",
+													"value": "application/json"
+												}
+											],
+											"cookie": [],
+											"body": "{\n  \"headers\": \"\",\n  \"body\": \"200830008********220240823154900000483 Баримт амжилттай үүслээ\",\n  \"statusCodeValue\": 200,\n  \"statusCode\": \"OK\"\n}"
+										}
+									]
+								}
+							]
+						}
+					]
+				},
+				{
+					"name": "tpi",
+					"item": [
+						{
+							"name": "receipt",
+							"item": [
+								{
+									"name": "setPosReceiptDtlByProductOwner",
+									"item": [
+										{
+											"name": "ОАТ-барааны үйлдвэрлэгч эсэхийг тодорхойлох сервис",
+											"request": {
+												"auth": {
+													"type": "bearer",
+													"bearer": [
+														{
+															"key": "token",
+															"value": "{{bearerToken}}",
+															"type": "string"
+														}
+													]
+												},
+												"method": "POST",
+												"header": [
+													{
+														"key": "Content-Type",
+														"value": "application/json"
+													},
+													{
+														"key": "Accept",
+														"value": "application/json"
+													}
+												],
+												"body": {
+													"mode": "raw",
+													"raw": "{\n  \"posRno\": \"0000054******000230802000001013793\",\n  \"productOwnerDtlModelList\": [\n    {\n      \"barcode\": \"8620025001\",\n      \"isProductOwner\": 1\n    }\n  ]\n}",
+													"options": {
+														"raw": {
+															"headerFamily": "json",
+															"language": "json"
+														}
+													}
+												},
+												"url": {
+													"raw": "https://api.ebarimt.mn/api/tpi/receipt/setPosReceiptDtlByProductOwner",
+													"protocol": "https",
+													"host": [
+														"api",
+														"ebarimt",
+														"mn"
+													],
+													"path": [
+														"api",
+														"tpi",
+														"receipt",
+														"setPosReceiptDtlByProductOwner"
+													]
+												},
+												"description": "> Энэхүү сервис нь нэг бүтээгдэхүүнийг 2 болон түүнээс үйлдвэрлэгч үйлдвэрлэж буй тохиолдолд өөрийн үйлдвэрлэсэн бүтээгдэхүүнийг тодорхойлж, царим төлбөрийн баримтын систем рүү илгээхэд зориулагдсан сервис юм. Өөрөөр хэлбэл PosAPI систем ашиглан бүтээгдэхүүний борлуулалтын мэдээллийг илгээсний дараа, төлбөрийн баримтын бараануудаас өөрөө үйлдвэрлэсэн барааг тодорхойлж ирүүлнэ. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\n"
+											},
+											"response": [
+												{
+													"name": "OK",
+													"originalRequest": {
+														"method": "POST",
+														"header": [
+															{
+																"key": "Content-Type",
+																"value": "application/json"
+															},
+															{
+																"key": "Accept",
+																"value": "application/json"
+															},
+															{
+																"key": "Authorization",
+																"value": "Bearer <token>",
+																"description": "Added as a part of security scheme: bearer"
+															}
+														],
+														"body": {
+															"mode": "raw",
+															"raw": "{\n  \"posRno\": \"0000054******000230802000001013793\",\n  \"productOwnerDtlModelList\": [\n    {\n      \"barcode\": \"8620025001\",\n      \"isProductOwner\": 1\n    }\n  ]\n}",
+															"options": {
+																"raw": {
+																	"headerFamily": "json",
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/tpi/receipt/setPosReceiptDtlByProductOwner",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"tpi",
+																"receipt",
+																"setPosReceiptDtlByProductOwner"
+															]
+														}
+													},
+													"status": "OK",
+													"code": 200,
+													"_postman_previewlanguage": "json",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/json"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"msg\": \"Мэдээлэл амжиллтай хадгаллаа.\",\n  \"status\": 200,\n  \"code\": \"null\"\n}"
+												},
+												{
+													"name": "Created",
+													"originalRequest": {
+														"method": "POST",
+														"header": [
+															{
+																"key": "Content-Type",
+																"value": "application/json"
+															},
+															{
+																"key": "Accept",
+																"value": "application/json"
+															},
+															{
+																"key": "Authorization",
+																"value": "Bearer <token>",
+																"description": "Added as a part of security scheme: bearer"
+															}
+														],
+														"body": {
+															"mode": "raw",
+															"raw": "{\n  \"posRno\": \"0000054******000230802000001013793\",\n  \"productOwnerDtlModelList\": [\n    {\n      \"barcode\": \"8620025001\",\n      \"isProductOwner\": 1\n    }\n  ]\n}",
+															"options": {
+																"raw": {
+																	"headerFamily": "json",
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/tpi/receipt/setPosReceiptDtlByProductOwner",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"tpi",
+																"receipt",
+																"setPosReceiptDtlByProductOwner"
+															]
+														}
+													},
+													"status": "Created",
+													"code": 201,
+													"_postman_previewlanguage": "json",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/json"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"msg\": \"Мэдээлэл дутуу хадгалагдлаа. Хадгалагдсан баркодын жагсаалтыг буцаав\",\n  \"status\": 201,\n  \"code\": \"string\",\n  \"data\": [\n    \"86510000878 \"\n  ]\n}"
+												},
+												{
+													"name": "Unauthorized",
+													"originalRequest": {
+														"method": "POST",
+														"header": [
+															{
+																"key": "Content-Type",
+																"value": "application/json"
+															},
+															{
+																"key": "Authorization",
+																"value": "Bearer <token>",
+																"description": "Added as a part of security scheme: bearer"
+															}
+														],
+														"body": {
+															"mode": "raw",
+															"raw": "{\n  \"posRno\": \"0000054******000230802000001013793\",\n  \"productOwnerDtlModelList\": [\n    {\n      \"barcode\": \"8620025001\",\n      \"isProductOwner\": 1\n    }\n  ]\n}",
+															"options": {
+																"raw": {
+																	"headerFamily": "json",
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/tpi/receipt/setPosReceiptDtlByProductOwner",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"tpi",
+																"receipt",
+																"setPosReceiptDtlByProductOwner"
+															]
+														}
+													},
+													"status": "Unauthorized",
+													"code": 401,
+													"_postman_previewlanguage": "text",
+													"header": [],
+													"cookie": [],
+													"body": ""
+												},
+												{
+													"name": "Internal Server Error",
+													"originalRequest": {
+														"method": "POST",
+														"header": [
+															{
+																"key": "Content-Type",
+																"value": "application/json"
+															},
+															{
+																"key": "Accept",
+																"value": "application/json"
+															},
+															{
+																"key": "Authorization",
+																"value": "Bearer <token>",
+																"description": "Added as a part of security scheme: bearer"
+															}
+														],
+														"body": {
+															"mode": "raw",
+															"raw": "{\n  \"posRno\": \"0000054******000230802000001013793\",\n  \"productOwnerDtlModelList\": [\n    {\n      \"barcode\": \"8620025001\",\n      \"isProductOwner\": 1\n    }\n  ]\n}",
+															"options": {
+																"raw": {
+																	"headerFamily": "json",
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "https://api.ebarimt.mn/api/tpi/receipt/setPosReceiptDtlByProductOwner",
+															"protocol": "https",
+															"host": [
+																"api",
+																"ebarimt",
+																"mn"
+															],
+															"path": [
+																"api",
+																"tpi",
+																"receipt",
+																"setPosReceiptDtlByProductOwner"
+															]
+														}
+													},
+													"status": "Internal Server Error",
+													"code": 500,
+													"_postman_previewlanguage": "json",
+													"header": [
+														{
+															"key": "Content-Type",
+															"value": "application/json"
+														}
+													],
+													"cookie": [],
+													"body": "{\n  \"timestamp\": \"2024-06-22 23:59:21\",\n  \"status\": 500,\n  \"error\": \"Internal Server Error\",\n  \"exception\": \"java.lang.Exception: Төлбөрийн баримтын мэдээлэл олдсонгүй.\",\n  \"message\": \"\",\n  \"path\": \"/api/tpi/receipt/setPosReceiptDtlByProductOwner\",\n  \"code\": 0\n}"
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "/"
+		}
+	]
+}

@@ -426,78 +426,12 @@ function normalizeFieldList(payload) {
     });
   };
 
-  const extractFromObject = (value) => {
-    if (!value || typeof value !== 'object') return [];
-    if (Array.isArray(value.fields)) return value.fields;
-    if (value.fields && typeof value.fields === 'object') return mapObjectFieldsToList(value.fields);
-    if (Array.isArray(value.data)) return value.data;
-    if (value.data && typeof value.data === 'object') return extractFromObject(value.data);
-    if (value.result && typeof value.result === 'object') return extractFromObject(value.result);
-    return [];
-  };
-
-  const seen = new WeakSet();
-  const deepSearchForFields = (value) => {
-    if (!value || typeof value !== 'object') return [];
-    if (seen.has(value)) return [];
-    seen.add(value);
-
-    const candidates = [];
-    ['fields', 'columns'].forEach((key) => {
-      if (Array.isArray(value[key]) && value[key].length > 0) {
-        candidates.push(value[key]);
-      }
-      if (value[key] && typeof value[key] === 'object') {
-        const mapped = mapObjectFieldsToList(value[key]);
-        if (mapped.length > 0) {
-          candidates.push(mapped);
-        }
-      }
-    });
-    if (candidates.length > 0) {
-      const first = candidates.find((list) => list.length > 0);
-      if (first) return first;
-    }
-
-    return Object.values(value).reduce((acc, entry) => {
-      if (acc.length > 0) return acc;
-      if (Array.isArray(entry)) {
-        return entry;
-      }
-      if (entry && typeof entry === 'object') {
-        return deepSearchForFields(entry);
-      }
-      return acc;
-    }, []);
-  };
-
   if (Array.isArray(payload.fields)) return payload.fields;
   if (Array.isArray(payload.data?.fields)) return payload.data.fields;
-  if (Array.isArray(payload.data?.data?.fields)) return payload.data.data.fields;
-  if (Array.isArray(payload.result?.fields)) return payload.result.fields;
-  if (Array.isArray(payload.data?.result?.fields)) return payload.data.result.fields;
   if (payload.data?.fields && typeof payload.data.fields === 'object') {
-    const entries = mapObjectFieldsToList(payload.data.fields);
-    if (entries.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
-      return entries;
-    }
-  }
-  if (payload.data?.data?.fields && typeof payload.data.data.fields === 'object') {
-    const entries = mapObjectFieldsToList(payload.data.data.fields);
-    if (entries.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
-      return entries;
-    }
-  }
-  if (payload.result?.fields && typeof payload.result.fields === 'object') {
-    const entries = mapObjectFieldsToList(payload.result.fields);
-    if (entries.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
-      return entries;
-    }
-  }
-  if (payload.data?.result?.fields && typeof payload.data.result.fields === 'object') {
-    const entries = mapObjectFieldsToList(payload.data.result.fields);
-    if (entries.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
-      return entries;
+    const values = Object.values(payload.data.fields);
+    if (values.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return values;
     }
   }
   if (Array.isArray(payload.data)) return payload.data;
@@ -518,9 +452,6 @@ function normalizeFieldList(payload) {
     const entries = extractFromObject(payload.data);
     if (entries.length > 0) return entries;
   }
-
-  const deep = deepSearchForFields(payload);
-  if (deep.length > 0) return deep;
 
   return [];
 }
@@ -4697,6 +4628,21 @@ export default function PosApiAdmin() {
       .join('; ');
   }
 
+  function formatSyncResult(log) {
+    if (!log) return '—';
+    const usageValue = log.usage && VALID_USAGE_VALUES.has(log.usage) ? log.usage : 'all';
+    const usageLabel = usageValue === 'all' ? 'all usages' : formatUsageLabel(usageValue);
+    const endpointIds = Array.isArray(log.endpointIds)
+      ? log.endpointIds.filter((value) => typeof value === 'string' && value)
+      : [];
+    const endpointCount = Number.isFinite(log.endpointCount) ? log.endpointCount : endpointIds.length;
+    const endpointLabel = endpointCount > 0 ? `${endpointCount} endpoint(s)` : 'all endpoints';
+    const added = log.added ?? 0;
+    const updated = log.updated ?? 0;
+    const deactivated = log.deactivated ?? 0;
+    return `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${added}, updated ${updated}, deactivated ${deactivated}.`;
+  }
+
   async function handleStaticUpload(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -8480,25 +8426,27 @@ export default function PosApiAdmin() {
               <table style={styles.logTable}>
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Duration (ms)</th>
-                    <th>Added</th>
-                    <th>Updated</th>
-                    <th>Inactive</th>
-                    <th>Trigger</th>
-                    <th>Error</th>
+                    <th style={styles.logHeaderCell}>Date</th>
+                    <th style={styles.logHeaderCell}>Duration (ms)</th>
+                    <th style={styles.logHeaderCell}>Added</th>
+                    <th style={styles.logHeaderCell}>Updated</th>
+                    <th style={styles.logHeaderCell}>Inactive</th>
+                    <th style={styles.logHeaderCell}>Trigger</th>
+                    <th style={{ ...styles.logHeaderCell, width: '32%' }}>Result</th>
+                    <th style={{ ...styles.logHeaderCell, width: '28%' }}>Error</th>
                   </tr>
                 </thead>
                 <tbody>
                   {infoSyncLogs.map((log, index) => (
                     <tr key={`${log.timestamp}-${index}`}>
-                      <td>{new Date(log.timestamp).toLocaleString()}</td>
-                      <td>{log.durationMs || 0}</td>
-                      <td>{log.added || 0}</td>
-                      <td>{log.updated || 0}</td>
-                      <td>{log.deactivated || 0}</td>
-                      <td>{log.trigger || 'manual'}</td>
-                      <td>{formatSyncErrors(log)}</td>
+                      <td style={styles.logCell}>{new Date(log.timestamp).toLocaleString()}</td>
+                      <td style={styles.logCell}>{log.durationMs || 0}</td>
+                      <td style={styles.logCell}>{log.added || 0}</td>
+                      <td style={styles.logCell}>{log.updated || 0}</td>
+                      <td style={styles.logCell}>{log.deactivated || 0}</td>
+                      <td style={styles.logCell}>{log.trigger || 'manual'}</td>
+                      <td style={{ ...styles.logCell, ...styles.logResultCell }}>{formatSyncResult(log)}</td>
+                      <td style={{ ...styles.logCell, ...styles.logErrorCell }}>{formatSyncErrors(log)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -8541,8 +8489,8 @@ const styles = {
     background: '#fff',
   },
   infoGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    display: 'flex',
+    flexDirection: 'column',
     gap: '1rem',
     marginTop: '1rem',
     marginBottom: '1rem',
@@ -8599,6 +8547,29 @@ const styles = {
   logTable: {
     width: '100%',
     borderCollapse: 'collapse',
+    tableLayout: 'fixed',
+  },
+  logHeaderCell: {
+    textAlign: 'left',
+    padding: '0.5rem',
+    borderBottom: '1px solid #e2e8f0',
+    color: '#0f172a',
+    fontWeight: 700,
+  },
+  logCell: {
+    padding: '0.5rem',
+    borderBottom: '1px solid #e2e8f0',
+    verticalAlign: 'top',
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+  },
+  logResultCell: {
+    color: '#0f172a',
+    fontWeight: 500,
+  },
+  logErrorCell: {
+    color: '#b91c1c',
   },
   sidebar: {
     width: '280px',
