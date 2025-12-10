@@ -215,6 +215,26 @@ function getCachedToken(endpointId) {
   return entry.token;
 }
 
+function cacheTokenFromAuthResponse(endpoint, response) {
+  if (!endpoint?.id || endpoint?.posApiType !== 'AUTH' || !response) return;
+
+  const body = response.bodyJson ?? response.bodyText ?? response;
+  let parsedBody = body;
+  if (typeof parsedBody === 'string') {
+    try {
+      parsedBody = JSON.parse(parsedBody);
+    } catch {
+      parsedBody = null;
+    }
+  }
+
+  if (!parsedBody || typeof parsedBody !== 'object') return;
+  const token = parsedBody.access_token || parsedBody.id_token;
+  if (!token) return;
+  const expiresIn = toNumber(parsedBody.expires_in || parsedBody.expiresIn) || 300;
+  cacheToken(endpoint.id, token, expiresIn);
+}
+
 export async function getPosApiBaseUrl() {
   if (cachedBaseUrlLoaded && cachedBaseUrl) {
     return cachedBaseUrl;
@@ -1353,16 +1373,30 @@ async function fetchTokenFromAuthEndpoint(
   { baseUrl, payload, useCachedToken = true, environment = 'staging' } = {},
 ) {
   if (!authEndpoint?.id) return fetchEnvPosApiToken({ useCachedToken });
+  if (!useCachedToken) {
+    tokenCache.delete(authEndpoint.id);
+  }
   const cached = useCachedToken ? getCachedToken(authEndpoint.id) : null;
   if (cached) return cached;
 
-  const requestPayload =
-    payload && typeof payload === 'object'
-      ? payload
-      : authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object'
-        ? authEndpoint.requestBody.schema
-        : {};
-  const mappedPayload = applyEnvMapToPayload(requestPayload, authEndpoint.requestEnvMap).payload;
+  let requestPayload = null;
+  if (payload && typeof payload === 'object') {
+    requestPayload = payload;
+  } else if (authEndpoint.requestExample) {
+    if (typeof authEndpoint.requestExample === 'string') {
+      try {
+        requestPayload = JSON.parse(authEndpoint.requestExample);
+      } catch {
+        requestPayload = {};
+      }
+    } else if (typeof authEndpoint.requestExample === 'object' && !Array.isArray(authEndpoint.requestExample)) {
+      requestPayload = authEndpoint.requestExample;
+    }
+  }
+  if (!requestPayload && authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object') {
+    requestPayload = authEndpoint.requestBody.schema;
+  }
+  const mappedPayload = applyEnvMapToPayload(requestPayload || {}, authEndpoint.requestEnvMap).payload;
   let targetBaseUrl = resolveEndpointBaseUrl(authEndpoint, environment);
   if (!targetBaseUrl && baseUrl) {
     targetBaseUrl = toStringValue(baseUrl);
@@ -1990,8 +2024,9 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
 
   let token = null;
   if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
+    const selectedAuthEndpointId = authEndpointId || endpoint?.authEndpointId || null;
     token = await getPosApiToken({
-      authEndpointId,
+      authEndpointId: selectedAuthEndpointId,
       baseUrl: requestBaseUrl,
       authPayload,
       useCachedToken,
@@ -2008,6 +2043,7 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
       baseUrl: requestBaseUrl,
       debug,
     });
+    cacheTokenFromAuthResponse(endpoint, response);
     if (debug) {
       return {
         response,
