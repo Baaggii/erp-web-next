@@ -804,6 +804,16 @@ export default function PosTxnConfig() {
         const names = Array.isArray(cols) ? cols.map((c) => c.name || c) : [];
         setTableColumns((prev) => ({ ...prev, [trimmed]: names }));
         if (trimmed === config.masterTable) setMasterCols(names);
+        if (names.length && typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: {
+                message: `Loaded ${names.length} column${names.length === 1 ? '' : 's'} for ${trimmed}.`,
+                type: 'success',
+              },
+            }),
+          );
+        }
       })
       .catch(() => {
         setTableColumns((prev) => ({ ...prev, [trimmed]: [] }));
