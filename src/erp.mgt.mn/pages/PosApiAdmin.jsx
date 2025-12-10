@@ -649,7 +649,7 @@ const EMPTY_ENDPOINT = {
   examplesText: '[]',
   preRequestScript: '',
   testScript: '',
-  testable: true,
+  testable: false,
   serverUrl: '',
   serverUrlEnvVar: '',
   serverUrlMode: 'literal',
@@ -1718,7 +1718,7 @@ function createFormState(definition) {
       Array.isArray(definition.scripts?.test)
         ? definition.scripts.test.join('\n\n')
         : definition.testScript || '',
-    testable: definition.testable !== false,
+    testable: Boolean(definition.testable),
     serverUrl: serverUrlField.literal,
     serverUrlEnvVar: serverUrlField.envVar,
     serverUrlMode: serverUrlField.mode,
@@ -5170,7 +5170,7 @@ export default function PosApiAdmin() {
         : {}),
       examples,
       scripts,
-      testable: formState.testable !== false,
+      testable: Boolean(formState.testable),
       serverUrl: serverUrlField.literal,
       serverUrlEnvVar: serverUrlField.envVar,
       serverUrlMode: serverUrlField.mode,
@@ -8063,10 +8063,10 @@ export default function PosApiAdmin() {
               <label style={{ ...styles.checkboxLabel, marginLeft: 'auto' }}>
                 <input
                   type="checkbox"
-                  checked={formState.testable !== false}
+                  checked={formState.testable}
                   onChange={(e) => handleChange('testable', e.target.checked)}
                 />
-                Enable POSAPI submission
+                Testable endpoint
               </label>
             </div>
               <div style={styles.fieldHelp}>
