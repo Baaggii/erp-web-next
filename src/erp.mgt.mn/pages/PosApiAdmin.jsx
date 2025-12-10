@@ -539,9 +539,7 @@ function withEndpointMetadata(endpoint) {
     serverUrl: typeof endpoint.serverUrl === 'string' ? endpoint.serverUrl : '',
     productionServerUrl: typeof endpoint.productionServerUrl === 'string'
       ? endpoint.productionServerUrl
-      : typeof endpoint.testServerUrlProduction === 'string'
-        ? endpoint.testServerUrlProduction
-        : '',
+      : '',
     testServerUrl: typeof endpoint.testServerUrl === 'string' ? endpoint.testServerUrl : '',
     testServerUrlProduction: typeof endpoint.testServerUrlProduction === 'string'
       ? endpoint.testServerUrlProduction
@@ -567,6 +565,17 @@ function withEndpointMetadata(endpoint) {
       endpoint.testServerUrlProductionEnvVar,
     ),
   };
+}
+
+function hasUrlConfiguration(endpoint) {
+  if (!endpoint || typeof endpoint !== 'object') return false;
+  const envMap = endpoint.urlEnvMap || {};
+  const keys = ['serverUrl', 'testServerUrl', 'productionServerUrl', 'testServerUrlProduction'];
+  return keys.some((key) => {
+    const literal = typeof endpoint[key] === 'string' ? endpoint[key].trim() : '';
+    const mappedEnv = normalizeEnvVarName(envMap[key] || endpoint?.[`${key}EnvVar`]);
+    return Boolean(literal || mappedEnv);
+  });
 }
 
 function badgeStyle(color) {
@@ -1366,6 +1375,8 @@ function normalizeHintEntry(entry) {
       field: typeof entry.field === 'string' ? entry.field : '',
       required: typeof entry.required === 'boolean' ? entry.required : undefined,
       description: typeof entry.description === 'string' ? entry.description : '',
+      location: typeof entry.location === 'string' ? entry.location : '',
+      defaultValue: entry.defaultValue,
     };
   }
   return {
@@ -1556,11 +1567,18 @@ function createFormState(definition) {
       if (!normalized.field) {
         return normalized;
       }
-      return {
+      const hint = {
         field: normalized.field,
         required: typeof normalized.required === 'boolean' ? normalized.required : false,
         ...(normalized.description ? { description: normalized.description } : {}),
       };
+      if (normalized.location) {
+        hint.location = normalized.location;
+      }
+      if (normalized.defaultValue !== undefined) {
+        hint.defaultValue = normalized.defaultValue;
+      }
+      return hint;
     });
   };
   const receiptTypesEnabled = isTransaction ? supportsItems && definition.enableReceiptTypes !== false : false;
@@ -1619,14 +1637,8 @@ function createFormState(definition) {
 
   const serverUrlField = buildUrlFieldState('serverUrl');
   const testServerUrlField = buildUrlFieldState('testServerUrl');
-  const productionServerUrlField = buildUrlFieldState(
-    'productionServerUrl',
-    definition.testServerUrlProduction || '',
-  );
-  const testServerUrlProductionField = buildUrlFieldState(
-    'testServerUrlProduction',
-    definition.productionServerUrl || '',
-  );
+  const productionServerUrlField = buildUrlFieldState('productionServerUrl');
+  const testServerUrlProductionField = buildUrlFieldState('testServerUrlProduction');
 
   return {
     id: definition.id || '',
@@ -3857,6 +3869,14 @@ export default function PosApiAdmin() {
         const list = Array.isArray(data) ? data : [];
         const normalized = list.map(withEndpointMetadata);
         setEndpoints(normalized);
+        const missingUrls = normalized.filter((ep) => !hasUrlConfiguration(ep));
+        if (missingUrls.length) {
+          setStatus(
+            `Loaded ${normalized.length} endpoint(s); ${missingUrls.length} missing base URL or environment mapping.`,
+          );
+        } else {
+          setStatus(`Loaded ${normalized.length} endpoint(s).`);
+        }
         if (normalized.length > 0) {
           setSelectedId(normalized[0].id);
           setFormState(createFormState(normalized[0]));
@@ -4793,11 +4813,42 @@ export default function PosApiAdmin() {
       if (!normalized.field) {
         return normalized;
       }
-      return {
+      const hint = {
         field: normalized.field,
         required: typeof normalized.required === 'boolean' ? normalized.required : false,
         ...(normalized.description ? { description: normalized.description } : {}),
       };
+      if (normalized.location) {
+        hint.location = normalized.location;
+      }
+      if (normalized.defaultValue !== undefined) {
+        hint.defaultValue = normalized.defaultValue;
+      }
+      return hint;
+    });
+
+    const parameterFieldHints = parametersWithValues
+      .filter((param) => param?.name && ['query', 'path'].includes(param.in))
+      .map((param) => ({
+        field: param.name,
+        required: Boolean(param.required),
+        description: param.description || `${param.in} parameter`,
+        location: param.in,
+        defaultValue:
+          param.testValue
+          ?? param.example
+          ?? param.default
+          ?? param.sample
+          ?? parameterDefaults[param.name],
+      }));
+
+    const combinedRequestFields = [];
+    const seenRequestFields = new Set();
+    [...sanitizedRequestFields, ...parameterFieldHints].forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (!normalized.field || seenRequestFields.has(normalized.field)) return;
+      seenRequestFields.add(normalized.field);
+      combinedRequestFields.push(normalized);
     });
 
     const usage = formState.posApiType === 'AUTH'
@@ -4918,7 +4969,7 @@ export default function PosApiAdmin() {
       },
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
-      requestFields: sanitizedRequestFields,
+      requestFields: combinedRequestFields,
       responseFields: responseFieldsWithMapping,
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
@@ -4932,10 +4983,10 @@ export default function PosApiAdmin() {
       testServerUrl: testServerUrlField.literal,
       testServerUrlEnvVar: testServerUrlField.envVar,
       testServerUrlMode: testServerUrlField.mode,
-      productionServerUrl: productionServerUrlField.literal || testServerUrlProductionField.literal,
+      productionServerUrl: productionServerUrlField.literal,
       productionServerUrlEnvVar: productionServerUrlField.envVar,
       productionServerUrlMode: productionServerUrlField.mode,
-      testServerUrlProduction: testServerUrlProductionField.literal || productionServerUrlField.literal,
+      testServerUrlProduction: testServerUrlProductionField.literal,
       testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
       testServerUrlProductionMode: testServerUrlProductionField.mode,
       urlEnvMap,
