@@ -421,20 +421,6 @@ function normalizeFieldList(payload) {
   if (Array.isArray(payload.columns)) return payload.columns;
   if (Array.isArray(payload.data?.columns)) return payload.data.columns;
 
-  if (payload.columns && typeof payload.columns === 'object') {
-    const values = Object.values(payload.columns);
-    if (values.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
-      return values;
-    }
-  }
-
-  if (payload.data?.columns && typeof payload.data.columns === 'object') {
-    const values = Object.values(payload.data.columns);
-    if (values.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
-      return values;
-    }
-  }
-
   if (payload.fields && typeof payload.fields === 'object') {
     const values = Object.values(payload.fields);
     if (values.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
