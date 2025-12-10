@@ -319,11 +319,6 @@ function normalizeTableValue(value) {
   return normalized;
 }
 
-function filterEbarimtTables(options) {
-  if (!Array.isArray(options)) return [];
-  return options.filter((option) => typeof option?.value === 'string' && option.value.startsWith('ebarimt_'));
-}
-
 function formatTableDisplay(value, label) {
   const normalized = typeof value === 'string' ? value.trim() : '';
   if (normalized) return normalized;
@@ -2525,7 +2520,7 @@ export default function PosApiAdmin() {
 
   const responseTableOptions = useMemo(() => {
     const seen = new Set();
-    const merged = filterEbarimtTables(tableOptions);
+    const merged = [...DEFAULT_INFO_TABLE_OPTIONS, ...tableOptions];
     return merged
       .map((option) => {
         const value = option?.value;
