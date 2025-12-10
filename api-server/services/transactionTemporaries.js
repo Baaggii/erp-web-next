@@ -747,7 +747,13 @@ export async function getTemporarySummary(
 
 export async function promoteTemporarySubmission(
   id,
-  { reviewerEmpId, notes, io, cleanedValues: cleanedOverride },
+  {
+    reviewerEmpId,
+    notes,
+    io,
+    cleanedValues: cleanedOverride,
+    promoteAsTemporary = false,
+  },
 ) {
   const normalizedReviewer = normalizeEmpId(reviewerEmpId);
   if (!normalizedReviewer) {
@@ -909,13 +915,40 @@ export async function promoteTemporarySubmission(
         const sanitizedCreator = hasSanitizedCreator
           ? sanitizedValues.created_by
           : undefined;
-        if (
+        const creatorMissing =
           sanitizedCreator === undefined ||
           sanitizedCreator === null ||
-          (typeof sanitizedCreator === 'string' && !sanitizedCreator.trim())
-        ) {
+          (typeof sanitizedCreator === 'string' && !sanitizedCreator.trim());
+        if (creatorMissing || sanitizedCreator !== fallbackCreator) {
           sanitizedValues.created_by = fallbackCreator;
         }
+      }
+    }
+
+    const resolvedBranchPref = normalizeScopePreference(row.branch_id);
+    const resolvedDepartmentPref = normalizeScopePreference(row.department_id);
+    let forwardReviewerEmpId = null;
+    if (promoteAsTemporary === true) {
+      try {
+        const reviewerSession = await getEmploymentSession(
+          normalizedReviewer,
+          row.company_id,
+          {
+            ...(resolvedBranchPref ? { branchId: resolvedBranchPref } : {}),
+            ...(resolvedDepartmentPref
+              ? { departmentId: resolvedDepartmentPref }
+              : {}),
+          },
+        );
+        forwardReviewerEmpId =
+          normalizeEmpId(reviewerSession?.senior_empid) ||
+          normalizeEmpId(reviewerSession?.senior_plan_empid);
+      } catch (sessionErr) {
+        console.error('Failed to resolve reviewer senior for temporary forward', {
+          error: sessionErr,
+          reviewer: normalizedReviewer,
+          company: row.company_id,
+        });
       }
     }
 
@@ -927,42 +960,22 @@ export async function promoteTemporarySubmission(
       payloadJson?.skipTriggerOnPromote === true ||
       errorRevokedFields.length > 0;
     const skipTriggers = shouldSkipTriggers;
+    const shouldForwardTemporary =
+      promoteAsTemporary === true &&
+      forwardReviewerEmpId &&
+      forwardReviewerEmpId !== normalizedReviewer;
     let skipSessionEnabled = false;
     let insertedId = null;
-    try {
-      if (skipTriggers) {
-        await conn.query('SET @skip_triggers = 1;');
-        skipSessionEnabled = true;
-      }
+    if (!shouldForwardTemporary) {
       try {
-        const inserted = await insertTableRow(
-          row.table_name,
-          sanitizedValues,
-          undefined,
-          undefined,
-          false,
-          normalizedReviewer,
-          { conn, mutationContext },
-        );
-        insertedId = inserted?.id ?? null;
-      } catch (err) {
-        if (!isDynamicSqlTriggerError(err)) {
-          throw err;
-        }
-        console.warn('Dynamic SQL trigger error during promotion, applying fallback insert', {
-          table: row.table_name,
-          id,
-          error: err,
-        });
-        let recordForInsert = sanitizedValues;
-        if (!skipSessionEnabled) {
+        if (skipTriggers) {
           await conn.query('SET @skip_triggers = 1;');
           skipSessionEnabled = true;
         }
         try {
           const inserted = await insertTableRow(
             row.table_name,
-            recordForInsert,
+            sanitizedValues,
             undefined,
             undefined,
             false,
@@ -970,44 +983,138 @@ export async function promoteTemporarySubmission(
             { conn, mutationContext },
           );
           insertedId = inserted?.id ?? null;
-        } catch (skipErr) {
-          if (!isDynamicSqlTriggerError(skipErr)) {
-            throw skipErr;
-          }
-          console.warn(
-            'Dynamic SQL trigger error persisted after skip trigger session flag, falling back to direct insert',
-            {
-              table: row.table_name,
-              id,
-              error: skipErr,
-            },
-          );
-        }
-        if (insertedId === null) {
-          const keys = Object.keys(recordForInsert);
-          if (keys.length === 0) {
+        } catch (err) {
+          if (!isDynamicSqlTriggerError(err)) {
             throw err;
           }
-          const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
-          const placeholders = keys.map(() => '?').join(', ');
-          const params = keys.map((k) => recordForInsert[k]);
-          const [fallbackResult] = await conn.query(
-            `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
-            params,
-          );
-          insertedId = fallbackResult?.insertId ?? null;
+          console.warn('Dynamic SQL trigger error during promotion, applying fallback insert', {
+            table: row.table_name,
+            id,
+            error: err,
+          });
+          let recordForInsert = sanitizedValues;
+          if (!skipSessionEnabled) {
+            await conn.query('SET @skip_triggers = 1;');
+            skipSessionEnabled = true;
+          }
+          try {
+            const inserted = await insertTableRow(
+              row.table_name,
+              recordForInsert,
+              undefined,
+              undefined,
+              false,
+              normalizedReviewer,
+              { conn, mutationContext },
+            );
+            insertedId = inserted?.id ?? null;
+          } catch (skipErr) {
+            if (!isDynamicSqlTriggerError(skipErr)) {
+              throw skipErr;
+            }
+            console.warn(
+              'Dynamic SQL trigger error persisted after skip trigger session flag, falling back to direct insert',
+              {
+                table: row.table_name,
+                id,
+                error: skipErr,
+              },
+            );
+          }
+          if (insertedId === null) {
+            const keys = Object.keys(recordForInsert);
+            if (keys.length === 0) {
+              throw err;
+            }
+            const columnsSql = keys.map((k) => `\`${k}\``).join(', ');
+            const placeholders = keys.map(() => '?').join(', ');
+            const params = keys.map((k) => recordForInsert[k]);
+            const [fallbackResult] = await conn.query(
+              `INSERT INTO \`${row.table_name}\` (${columnsSql}) VALUES (${placeholders})`,
+              params,
+            );
+            insertedId = fallbackResult?.insertId ?? null;
+          }
         }
-      }
-    } finally {
-      if (skipSessionEnabled) {
-        try {
-          await conn.query('SET @skip_triggers = NULL;');
-        } catch (cleanupErr) {
-          console.error('Failed to reset skip triggers session variable', cleanupErr);
+      } finally {
+        if (skipSessionEnabled) {
+          try {
+            await conn.query('SET @skip_triggers = NULL;');
+          } catch (cleanupErr) {
+            console.error('Failed to reset skip triggers session variable', cleanupErr);
+          }
         }
       }
     }
     const promotedId = insertedId ? String(insertedId) : null;
+    if (shouldForwardTemporary) {
+      const mergedPayload = isPlainObject(payloadJson) ? { ...payloadJson } : {};
+      const sanitizedPayloadValues = isPlainObject(mergedPayload.cleanedValues)
+        ? { ...mergedPayload.cleanedValues }
+        : {};
+      Object.entries(sanitizedValues).forEach(([key, value]) => {
+        sanitizedPayloadValues[key] = value;
+      });
+      mergedPayload.cleanedValues = sanitizedPayloadValues;
+      await conn.query(
+        `UPDATE \`${TEMP_TABLE}\`
+         SET plan_senior_empid = ?, cleaned_values_json = ?, payload_json = ?, review_notes = ?, updated_at = NOW()
+         WHERE id = ?`,
+        [
+          forwardReviewerEmpId,
+          safeJsonStringify(sanitizedPayloadValues),
+          safeJsonStringify(mergedPayload),
+          notes ?? null,
+          id,
+        ],
+      );
+      await logUserAction(
+        {
+          emp_id: normalizedReviewer,
+          table_name: row.table_name,
+          record_id: id,
+          action: 'approve',
+          details: {
+            formName: row.form_name ?? null,
+            temporaryAction: 'forward',
+            forwardedTo: forwardReviewerEmpId,
+          },
+          company_id: row.company_id ?? null,
+        },
+        conn,
+      );
+      await insertNotification(conn, {
+        companyId: row.company_id,
+        recipientEmpId: forwardReviewerEmpId,
+        createdBy: normalizedReviewer,
+        relatedId: id,
+        message: `Temporary submission pending review for ${row.table_name}`,
+        type: 'request',
+      });
+      await conn.query('COMMIT');
+      if (io) {
+        io.to(`user:${row.created_by}`).emit('temporaryReviewed', {
+          id,
+          status: 'pending',
+          warnings: sanitationWarnings,
+          forwardedTo: forwardReviewerEmpId,
+        });
+        io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', {
+          id,
+          status: 'pending',
+          warnings: sanitationWarnings,
+          forwardedTo: forwardReviewerEmpId,
+        });
+        io.to(`user:${forwardReviewerEmpId}`).emit('temporaryReviewed', {
+          id,
+          status: 'pending',
+          warnings: sanitationWarnings,
+          forwardedTo: forwardReviewerEmpId,
+        });
+      }
+      return { id, forwardedTo: forwardReviewerEmpId, warnings: sanitationWarnings };
+    }
+
     if (formName && formCfg) {
       try {
         if (formCfg.posApiEnabled) {

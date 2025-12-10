@@ -5,6 +5,10 @@ import { useAuth } from '../context/AuthContext.jsx';
 import LangContext from '../context/I18nContext.jsx';
 import TooltipWrapper from '../components/TooltipWrapper.jsx';
 import { API_BASE } from '../utils/apiBase.js';
+import {
+  getNotificationSoundOptions,
+  playNotificationSound,
+} from '../utils/playNotificationSound.js';
 
 export default function UserSettingsPage() {
   const { t } = useTranslation(['translation', 'tooltip']);
@@ -48,6 +52,8 @@ function GeneralSettingsTab() {
   const { t } = useTranslation(['translation', 'tooltip']);
   const { userSettings, updateUserSettings } = useAuth();
   const tooltipsEnabled = userSettings.tooltipsEnabled ?? true;
+  const notificationSound = userSettings.notificationSound || 'chime';
+  const soundOptions = getNotificationSoundOptions();
   return (
     <div>
       <TooltipWrapper title={t('enable_tooltips', { ns: 'tooltip' })}>
@@ -60,6 +66,44 @@ function GeneralSettingsTab() {
           {t('settings_enable_tooltips', 'Enable tooltips')}
         </label>
       </TooltipWrapper>
+      <div style={{ marginTop: '0.75rem' }}>
+        <TooltipWrapper
+          title={t('notification_sound', {
+            ns: 'tooltip',
+            defaultValue: 'Choose the sound played for new notifications',
+          })}
+        >
+          <label>
+            {t('notification_sound', 'Notification sound')}: {' '}
+            <select
+              value={notificationSound}
+              onChange={(e) => updateUserSettings({ notificationSound: e.target.value })}
+            >
+              {soundOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(`notification_sound_${option.value}`, option.label)}
+                </option>
+              ))}
+            </select>
+          </label>
+        </TooltipWrapper>
+        {notificationSound !== 'off' && (
+          <button
+            type="button"
+            onClick={() => playNotificationSound(notificationSound)}
+            style={{
+              marginTop: '0.5rem',
+              padding: '0.35rem 0.75rem',
+              borderRadius: '4px',
+              border: '1px solid #d1d5db',
+              background: '#f9fafb',
+              cursor: 'pointer',
+            }}
+          >
+            {t('preview_notification_sound', 'Preview sound')}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
