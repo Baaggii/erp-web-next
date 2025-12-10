@@ -690,6 +690,7 @@ const EMPTY_ENDPOINT = {
   nestedPathsText: '{}',
   notes: '',
   requestEnvMap: {},
+  requestFieldVariations: {},
   responseFieldMappings: {},
   responseTables: [],
 };
@@ -708,199 +709,6 @@ const TAX_TYPE_DESCRIPTIONS = {
   NO_VAT: 'Sale that falls completely outside the VAT system.',
 };
 
-const RECEIPT_SAMPLE_PAYLOADS = {
-  B2C: createReceiptTemplate('B2C', {
-    branchNo: '001',
-    posNo: 'A01',
-    merchantTin: '12345678901',
-    consumerNo: '99001122',
-    totalAmount: 55000,
-    totalVAT: 5000,
-    totalCityTax: 500,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 55000,
-        totalVAT: 5000,
-        totalCityTax: 500,
-        items: [
-          {
-            name: 'Latte (16oz)',
-            barCode: '9770001112233',
-            barCodeType: 'EAN_13',
-            classificationCode: '5610201',
-            measureUnit: 'PCS',
-            qty: 1,
-            price: 50000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 500,
-            lotNo: '',
-          },
-          {
-            name: 'Butter croissant',
-            barCode: '9770001112240',
-            barCodeType: 'EAN_13',
-            classificationCode: '1071100',
-            measureUnit: 'PCS',
-            qty: 1,
-            price: 5000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: '',
-          },
-        ],
-      },
-    ],
-    payments: [
-      {
-        type: 'PAYMENT_CARD',
-        amount: 55000,
-        data: {
-          cardIssuer: 'VISA',
-          last4: '1234',
-          transactionId: 'A1B2C3',
-        },
-      },
-    ],
-  }),
-  B2B_PURCHASE: createReceiptTemplate('B2B_PURCHASE', {
-    branchNo: '001',
-    posNo: 'A01',
-    merchantTin: '12345678901',
-    customerTin: '88119922',
-    invoiceNo: 'INV-2024-0152',
-    invoiceDate: '2024-07-01',
-    dueDate: '2024-07-10',
-    totalAmount: 275000,
-    totalVAT: 25000,
-    totalCityTax: 2500,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 275000,
-        totalVAT: 25000,
-        totalCityTax: 2500,
-        items: [
-          {
-            name: 'Annual maintenance subscription',
-            barCode: 'SUBSCRIPTION-001',
-            barCodeType: 'EAN_13',
-            classificationCode: '6202000',
-            measureUnit: 'PKG',
-            qty: 1,
-            price: 250000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 2500,
-            lotNo: '',
-          },
-          {
-            name: 'On-site installation',
-            barCode: '',
-            barCodeType: 'EAN_13',
-            classificationCode: '6209000',
-            measureUnit: 'HRS',
-            qty: 5,
-            price: 5000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: '',
-          },
-        ],
-      },
-    ],
-    payments: [
-      { type: 'CASH', amount: 50000 },
-      { type: 'PAYMENT_CARD', amount: 225000, data: { cardIssuer: 'Mastercard', last4: '4455' } },
-    ],
-  }),
-  B2B_SALE: createReceiptTemplate('B2B_SALE', {
-    branchNo: '005',
-    posNo: 'INV-01',
-    merchantTin: '12345678901',
-    customerTin: '3021456987',
-    invoiceNo: 'INV-2024-0420',
-    invoiceDate: '2024-07-05',
-    dueDate: '2024-08-05',
-    totalAmount: 1940000,
-    totalVAT: 176000,
-    totalCityTax: 0,
-    receipts: [
-      {
-        taxType: 'VAT_ABLE',
-        totalAmount: 1540000,
-        totalVAT: 176000,
-        totalCityTax: 0,
-        items: [
-          {
-            name: 'Industrial cleaner (20L)',
-            barCode: 'ICLEAN-20L',
-            barCodeType: 'EAN_13',
-            classificationCode: '2815200',
-            measureUnit: 'PCS',
-            qty: 10,
-            price: 154000,
-            vatTaxType: 'VAT_ABLE',
-            cityTax: 0,
-            lotNo: 'CLEAN-LOT-07',
-          },
-        ],
-      },
-      {
-        taxType: 'VAT_ZERO',
-        totalAmount: 400000,
-        taxProductCode: 'EXPORT-001',
-        items: [
-          {
-            name: 'Export logistics service',
-            classificationCode: '5229200',
-            measureUnit: 'SRV',
-            qty: 1,
-            price: 400000,
-            vatTaxType: 'VAT_ZERO',
-            taxProductCode: 'EXPORT-001',
-            lotNo: '',
-          },
-        ],
-      },
-    ],
-    payments: [
-      { type: 'BANK_TRANSFER', amount: 1500000 },
-      {
-        type: 'EASY_BANK_CARD',
-        amount: 440000,
-        data: {
-          rrn: '112233445566',
-          approvalCode: 'AP1234',
-          terminalId: 'TERM-0091',
-        },
-      },
-    ],
-  }),
-  STOCK_QR: {
-    ...createStockQrTemplate(),
-    branchNo: '001',
-    posNo: 'STOCK-QR',
-    merchantTin: '12345678901',
-    stockCodes: [
-      {
-        code: 'STOCK-001',
-        name: 'Finished goods pallet',
-        classificationCode: '2011000',
-        qty: 12,
-        measureUnit: 'PCS',
-        lotNo: 'FG-2024-07',
-      },
-      {
-        code: 'STOCK-RAW-01',
-        name: 'Raw material pack',
-        classificationCode: '0899000',
-        qty: 48,
-        measureUnit: 'PCS',
-        lotNo: 'RM-2024-05',
-      },
-    ],
-  },
-};
 
 function createReceiptTemplate(type, overrides = {}) {
   const isB2B = type.startsWith('B2B');
@@ -1633,6 +1441,16 @@ function createFormState(definition) {
       if (normalized.defaultValue !== undefined) {
         hint.defaultValue = normalized.defaultValue;
       }
+      const variationRequirements = Object.entries(variationConfig).reduce((acc, [key, value]) => {
+        const requiredList = Array.isArray(value?.requiredFields) ? value.requiredFields : [];
+        if (requiredList.includes(normalized.field)) {
+          acc[key] = { required: true };
+        }
+        return acc;
+      }, {});
+      if (Object.keys(variationRequirements).length) {
+        hint.variations = variationRequirements;
+      }
       return hint;
     });
   };
@@ -1770,6 +1588,7 @@ function createFormState(definition) {
     nestedPathsText: toPrettyJson(definition.mappingHints?.nestedPaths, '{}'),
     notes: definition.notes || '',
     requestEnvMap: definition.requestEnvMap || {},
+    requestFieldVariations: definition.requestFieldVariations || {},
     responseFieldMappings: extractResponseFieldMappings(definition),
     responseTables: sanitizeTableSelection(
       definition.responseTables && definition.responseTables.length > 0
@@ -2980,10 +2799,50 @@ export default function PosApiAdmin() {
     [parameterPreview.items],
   );
 
+  const requestExamplePreview = useMemo(() => {
+    const text = (formState.examplesText || '').trim();
+    if (!text) return { state: 'empty', items: [], error: '' };
+    try {
+      const parsed = JSON.parse(text);
+      if (!Array.isArray(parsed)) {
+        return { state: 'error', items: [], error: 'Examples must be a JSON array' };
+      }
+      const items = parsed.map((entry, index) => {
+        const label = entry?.name || entry?.title || entry?.key || `Example ${index + 1}`;
+        const key = entry?.key || entry?.name || `example-${index + 1}`;
+        const value = entry?.value !== undefined ? entry.value : entry?.request || entry;
+        return { key, label, value, raw: entry };
+      });
+      return { state: 'ok', items, error: '' };
+    } catch (err) {
+      return { state: 'error', items: [], error: err.message || 'Invalid JSON' };
+    }
+  }, [formState.examplesText]);
+
   const requestFieldDisplay = useMemo(
     () => buildRequestFieldDisplayFromState(formState),
     [formState, parameterDefaults, parameterPreview, requestFieldHints],
   );
+
+  useEffect(() => {
+    setFormState((prev) => {
+      const variationConfig = prev.requestFieldVariations || {};
+      if (Object.keys(variationConfig).length === 0) return prev;
+      const allowedFields = new Set((requestFieldDisplay.items || []).map((item) => item.field));
+      let changed = false;
+      const nextVariations = Object.fromEntries(
+        Object.entries(variationConfig).map(([key, value]) => {
+          const required = (value?.requiredFields || []).filter((field) => allowedFields.has(field));
+          if (required.length !== (value?.requiredFields || []).length) {
+            changed = true;
+          }
+          return [key, { ...value, requiredFields: required }];
+        }),
+      );
+      if (!changed) return prev;
+      return { ...prev, requestFieldVariations: nextVariations };
+    });
+  }, [requestFieldDisplay.items]);
 
   useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
@@ -4325,34 +4184,81 @@ export default function PosApiAdmin() {
     });
   }
 
-  function handleApplySamplePayload(type) {
-    const sample = RECEIPT_SAMPLE_PAYLOADS[type];
-    if (!sample) return;
+  function toggleVariationFromExample(exampleKey, label) {
+    if (!exampleKey) return;
+    setFormState((prev) => {
+      const current = prev.requestFieldVariations || {};
+      const next = { ...current };
+      if (next[exampleKey]) {
+        delete next[exampleKey];
+      } else {
+        next[exampleKey] = { label, requiredFields: [], exampleKey };
+      }
+      return { ...prev, requestFieldVariations: next };
+    });
+  }
+
+  function toggleVariationRequirement(field, variationKey) {
+    if (!field || !variationKey) return;
+    setFormState((prev) => {
+      const current = prev.requestFieldVariations || {};
+      if (!current[variationKey]) return prev;
+      const requiredSet = new Set(current[variationKey].requiredFields || []);
+      if (requiredSet.has(field)) {
+        requiredSet.delete(field);
+      } else {
+        requiredSet.add(field);
+      }
+      return {
+        ...prev,
+        requestFieldVariations: {
+          ...current,
+          [variationKey]: {
+            ...current[variationKey],
+            requiredFields: Array.from(requiredSet),
+          },
+        },
+      };
+    });
+  }
+
+  function handleApplyExamplePayload(example) {
+    if (!example || typeof example !== 'object') return;
+    const payload = deepClone(example.value ?? example.raw ?? example) || {};
+    if (typeof payload !== 'object') {
+      setSampleImportError('Example payload must be an object.');
+      return;
+    }
+    const targetType = payload.type || formState.posApiType || 'B2C';
     resetTestState();
-    const cloned = deepClone(sample) || {};
+    updateRequestBuilder(() => normaliseBuilderForType(
+      payload,
+      targetType,
+      supportsItems,
+      supportsMultiplePayments,
+    ));
     const nextReceiptTypes = Array.isArray(formState.receiptTypes)
-      ? Array.from(new Set([...formState.receiptTypes, type]))
-      : [type];
+      ? Array.from(new Set([...formState.receiptTypes, targetType]))
+      : [targetType];
     setFormState((prev) => ({
       ...prev,
       usage: 'transaction',
-      posApiType: type,
+      posApiType: targetType,
       receiptTypes: nextReceiptTypes,
     }));
-    updateRequestBuilder(() => normaliseBuilderForType(cloned, type, supportsItems, supportsMultiplePayments));
-    setStatus(`Loaded ${formatTypeLabel(type)} sample payload into the builder.`);
     setSampleImportError('');
+    setStatus('Loaded example payload into the builder.');
   }
 
-  async function handleCopySamplePayload(type) {
-    const sample = RECEIPT_SAMPLE_PAYLOADS[type];
-    if (!sample) return;
+  async function handleCopyExamplePayload(example) {
+    if (!example) return;
+    const payload = example.value ?? example.raw ?? example;
     try {
       if (!navigator?.clipboard) {
         throw new Error('Clipboard API is not available in this browser.');
       }
-      await navigator.clipboard.writeText(JSON.stringify(sample, null, 2));
-      setStatus(`Copied ${formatTypeLabel(type)} sample payload to the clipboard.`);
+      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+      setStatus('Copied example payload to the clipboard.');
       setSampleImportError('');
     } catch (err) {
       setSampleImportError(err.message || 'Unable to copy the sample payload.');
@@ -5025,6 +4931,7 @@ export default function PosApiAdmin() {
           ?? parameterDefaults[param.name],
       }));
 
+    const variationConfig = formState.requestFieldVariations || {};
     const combinedRequestFields = [];
     const seenRequestFields = new Set();
     [...sanitizedRequestFields, ...parameterFieldHints].forEach((entry) => {
@@ -5164,6 +5071,18 @@ export default function PosApiAdmin() {
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: combinedRequestFields,
+      requestFieldVariations: Object.fromEntries(
+        Object.entries(variationConfig).map(([key, value]) => [
+          key,
+          {
+            label: value?.label || key,
+            exampleKey: value?.exampleKey || key,
+            requiredFields: Array.isArray(value?.requiredFields)
+              ? value.requiredFields.filter(Boolean)
+              : [],
+          },
+        ]),
+      ),
       responseFields: responseFieldsWithMapping,
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
@@ -7023,37 +6942,49 @@ export default function PosApiAdmin() {
                         </li>
                       ))}
                     </ul>
-                    <div style={styles.sampleGrid}>
-                      {POSAPI_TRANSACTION_TYPES.map((type) => {
-                        const sample = RECEIPT_SAMPLE_PAYLOADS[type.value];
-                        if (!sample) return null;
-                        const pretty = JSON.stringify(sample, null, 2);
-                        return (
-                          <div key={`sample-${type.value}`} style={styles.sampleCard}>
-                            <div style={styles.sampleHeader}>
-                              <strong>{type.label}</strong>
-                              <div style={styles.sampleActions}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleApplySamplePayload(type.value)}
-                                  style={styles.smallButton}
-                                >
-                                  Use in builder
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopySamplePayload(type.value)}
-                                  style={styles.smallSecondaryButton}
-                                >
-                                  Copy JSON
-                                </button>
+                    {requestExamplePreview.state === 'ok' && requestExamplePreview.items.length === 0 && (
+                      <p style={styles.hintEmpty}>Add request examples to preview them here.</p>
+                    )}
+                    {requestExamplePreview.state === 'error' && (
+                      <div style={styles.previewErrorBox}>{requestExamplePreview.error}</div>
+                    )}
+                    {requestExamplePreview.state === 'ok' && requestExamplePreview.items.length > 0 && (
+                      <div style={styles.sampleGrid}>
+                        {requestExamplePreview.items.map((example) => {
+                          const pretty = (() => {
+                            try {
+                              return JSON.stringify(example.value ?? example.raw, null, 2);
+                            } catch {
+                              return '';
+                            }
+                          })();
+                          return (
+                            <div key={`sample-${example.key}`} style={styles.sampleCard}>
+                              <div style={styles.sampleHeader}>
+                                <strong>{example.label}</strong>
+                                <div style={styles.sampleActions}>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleApplyExamplePayload(example)}
+                                    style={styles.smallButton}
+                                  >
+                                    Use in builder
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyExamplePayload(example)}
+                                    style={styles.smallSecondaryButton}
+                                  >
+                                    Copy JSON
+                                  </button>
+                                </div>
                               </div>
+                              <pre style={styles.samplePre}>{pretty}</pre>
                             </div>
-                            <pre style={styles.samplePre}>{pretty}</pre>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })}
+                      </div>
+                    )}
                     <div style={styles.sampleImportContainer}>
                       <label style={styles.sampleImportLabel}>
                         Paste a sample JSON payload
@@ -7741,6 +7672,36 @@ export default function PosApiAdmin() {
             placeholder={"[\n  { \"field\": \"receipts[].lottery\", \"description\": \"Lottery number generated by POSAPI.\" }\n]"}
           />
         </label>
+        {requestExamplePreview.state === 'error' && (
+          <div style={styles.previewErrorBox}>{requestExamplePreview.error}</div>
+        )}
+        {requestExamplePreview.state === 'ok' && requestExamplePreview.items.length > 0 && (
+          <div style={styles.variationBox}>
+            <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Request example variations</h3>
+              <span style={styles.hintCount}>{requestExamplePreview.items.length} examples</span>
+            </div>
+            <p style={styles.sectionHelp}>
+              Choose which request examples should become variations. Variation-specific required fields
+              are configured per field in the table below.
+            </p>
+            <div style={styles.multiSelectOptions}>
+              {requestExamplePreview.items.map((example) => {
+                const enabled = Boolean(formState.requestFieldVariations?.[example.key]);
+                return (
+                  <label key={`variation-${example.key}`} style={styles.multiSelectOption}>
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={() => toggleVariationFromExample(example.key, example.label)}
+                    />
+                    <span>{example.label}</span>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div style={styles.hintGrid}>
           <div style={styles.hintCard}>
             <div style={styles.hintHeader}>
@@ -7767,6 +7728,8 @@ export default function PosApiAdmin() {
                     literal: '',
                     envVar: '',
                   };
+                  const variationKeys = Object.keys(formState.requestFieldVariations || {});
+                  const variationConfig = formState.requestFieldVariations || {};
                   const envVarMissing = selection.mode === 'env'
                     && selection.envVar
                     && !resolveEnvironmentVariable(selection.envVar, { parseJson: false }).found;
@@ -7865,6 +7828,30 @@ export default function PosApiAdmin() {
                         )}
                         <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
                       </div>
+                      {variationKeys.length > 0 && (
+                        <div style={styles.variationGrid}>
+                          {variationKeys.map((variationKey) => {
+                            const variation = variationConfig[variationKey] || {};
+                            const requiredList = Array.isArray(variation.requiredFields)
+                              ? variation.requiredFields
+                              : [];
+                            const checked = requiredList.includes(fieldLabel);
+                            return (
+                              <label
+                                key={`variation-${variationKey}-${fieldLabel}`}
+                                style={{ ...styles.checkboxLabel, marginBottom: 0 }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleVariationRequirement(fieldLabel, variationKey)}
+                                />
+                                <span>{(variation.label || variationKey) + ': required'}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      )}
                     </li>
                   );
                 })}
@@ -9318,6 +9305,19 @@ const styles = {
     gap: '0.35rem',
     fontWeight: 500,
     fontSize: '0.85rem',
+  },
+  variationBox: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '0.75rem',
+    background: '#f8fafc',
+    marginBottom: '1rem',
+  },
+  variationGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+    gap: '0.5rem 1rem',
+    marginTop: '0.5rem',
   },
   featureToggleRow: {
     display: 'flex',
