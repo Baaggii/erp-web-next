@@ -214,23 +214,30 @@ function applyEnvMapToPayload(payload, envMap = {}) {
   const basePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
     ? JSON.parse(JSON.stringify(payload))
     : {};
-  const target =
-    basePayload.body && typeof basePayload.body === 'object' && !Array.isArray(basePayload.body)
-      ? basePayload.body
-      : basePayload;
+  const hasBodyContainer =
+    basePayload.body && typeof basePayload.body === 'object' && !Array.isArray(basePayload.body);
+  const bodyTarget = hasBodyContainer ? basePayload.body : basePayload;
   const warnings = [];
 
-  Object.entries(envMap || {}).forEach(([fieldPath, envVar]) => {
-    if (!fieldPath || !envVar) return;
-    const envRaw = process.env[envVar];
+  Object.entries(envMap || {}).forEach(([fieldPath, mapping]) => {
+    if (!fieldPath || !mapping) return;
+    const normalized =
+      typeof mapping === 'string'
+        ? { envVar: mapping, applyToBody: true }
+        : { envVar: mapping.envVar || mapping, applyToBody: mapping.applyToBody !== false };
+    if (!normalized.envVar) return;
+    const envRaw = process.env[normalized.envVar];
     if (envRaw === undefined || envRaw === null || envRaw === '') {
-      warnings.push(`Environment variable ${envVar} is not set; using literal value for ${fieldPath}.`);
+      warnings.push(
+        `Environment variable ${normalized.envVar} is not set; using literal value for ${fieldPath}.`,
+      );
       return;
     }
     const parsed = parseEnvValue(envRaw);
     const tokens = tokenizeFieldPath(fieldPath);
+    const target = normalized.applyToBody ? bodyTarget : basePayload;
     if (!tokens.length || !setValueAtTokens(target, tokens, parsed)) {
-      warnings.push(`Could not apply environment variable ${envVar} to ${fieldPath}.`);
+      warnings.push(`Could not apply environment variable ${normalized.envVar} to ${fieldPath}.`);
     }
   });
 
@@ -712,14 +719,54 @@ function buildParameterFieldHints(parameters = []) {
       required: Boolean(param.required),
       description: param.description || `${param.in} parameter`,
       location: param.in,
+      defaultValue:
+        param.testValue ?? param.example ?? param.default ?? param.sample ?? param.value ?? undefined,
     }));
 }
 
-function buildResponseDetails(schema) {
-  if (!schema || typeof schema !== 'object') return { responseFields: [], hasComplexity: false };
+function flattenFieldsFromExample(example, prefix = '') {
   const fields = [];
-  const topLevelRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
-  const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
+  const addField = (path) => {
+    if (!path) return;
+    fields.push({ field: path, required: false });
+  };
+
+  const walk = (value, currentPath) => {
+    if (value === undefined || value === null) {
+      if (currentPath) addField(currentPath);
+      return;
+    }
+    if (Array.isArray(value)) {
+      const arrayPath = currentPath ? `${currentPath}[]` : '[]';
+      addField(arrayPath);
+      const first = value.length ? value[0] : undefined;
+      walk(first, arrayPath);
+      return;
+    }
+    if (typeof value === 'object') {
+      const entries = Object.entries(value);
+      if (!entries.length && currentPath) {
+        addField(currentPath);
+        return;
+      }
+      entries.forEach(([key, child]) => {
+        const childPath = currentPath ? `${currentPath}.${key}` : key;
+        walk(child, childPath);
+      });
+      return;
+    }
+    if (currentPath) addField(currentPath);
+  };
+
+  walk(example, prefix);
+  return fields;
+}
+
+function buildResponseDetails(schema, exampleBodies = []) {
+  const responseFields = [];
+  const warnings = [];
+  const topLevelRequired = new Set(Array.isArray(schema?.required) ? schema.required : []);
+  const properties = schema?.properties && typeof schema.properties === 'object' ? schema.properties : {};
 
   Object.entries(properties).forEach(([key, node]) => {
     const isRequired = topLevelRequired.has(key);
@@ -730,7 +777,7 @@ function buildResponseDetails(schema) {
         const path = `${key}[].${childKey}`;
         const entry = { field: path, required: isRequired || itemRequired.has(childKey) };
         if (childNode?.description) entry.description = childNode.description;
-        fields.push(entry);
+        responseFields.push(entry);
       });
       return;
     }
@@ -740,16 +787,28 @@ function buildResponseDetails(schema) {
         const path = `${key}.${childKey}`;
         const entry = { field: path, required: isRequired || nestedRequired.has(childKey) };
         if (childNode?.description) entry.description = childNode.description;
-        fields.push(entry);
+        responseFields.push(entry);
       });
       return;
     }
     const entry = { field: key, required: isRequired };
     if (node?.description) entry.description = node.description;
-    fields.push(entry);
+    responseFields.push(entry);
   });
 
-  return { responseFields: dedupeFieldEntries(fields), hasComplexity: hasComplexComposition(schema) };
+  const exampleFields = (exampleBodies || [])
+    .filter((body) => body !== undefined)
+    .flatMap((body) => {
+      if (body && typeof body === 'object') {
+        return flattenFieldsFromExample(body);
+      }
+      warnings.push('Response example could not be parsed into fields; added generic placeholder.');
+      return [{ field: 'response', required: false }];
+    });
+
+  const combinedFields = dedupeFieldEntries([...responseFields, ...exampleFields]);
+  const hasComplexity = hasComplexComposition(schema);
+  return { responseFields: combinedFields, hasComplexity, warnings };
 }
 
 function dedupeFieldEntries(fields) {
@@ -1195,6 +1254,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
   function parseResponses(responses = []) {
     const examples = [];
     const jsonBodies = [];
+    const warnings = [];
     responses
       .filter((resp) => resp && resp.body)
       .forEach((resp) => {
@@ -1214,7 +1274,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
               jsonBodies.push(parsedBody);
             }
           } catch {
-            // leave as-is
+            warnings.push(`Response example for ${resp.name || resp.status || 'example'} was not valid JSON.`);
           }
         }
         examples.push({
@@ -1225,7 +1285,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
         });
       });
     const responseSchema = jsonBodies.length ? mergeExampleSchemas(jsonBodies) : undefined;
-    return { examples, responseSchema };
+    return { examples, responseSchema, warnings };
   }
 
   function parseExampleRequest(request = {}) {
@@ -1296,7 +1356,9 @@ function extractOperationsFromPostman(spec, meta = {}) {
       );
       const body = item.request.body;
       const { requestExample, requestSchema } = parseRequestBody(body);
-      const { examples: responseExamples, responseSchema } = parseResponses(item.response);
+      const { examples: responseExamples, responseSchema, warnings: responseWarnings } = parseResponses(
+        item.response,
+      );
       const examples = buildPostmanExamples(item);
       const scripts = extractPostmanScripts(item.event || []);
       const parameters = normalizeParametersFromSpec([
@@ -1317,9 +1379,16 @@ function extractOperationsFromPostman(spec, meta = {}) {
       const posApiType = classifyPosApiType(folderTags, path, item.request.description || '');
       const requestDetails = buildRequestDetails(requestSchema, 'application/json');
       const parameterFields = buildParameterFieldHints(parameters);
-      const responseDetails = buildResponseDetails(responseSchema);
+      const responseDetails = buildResponseDetails(
+        responseSchema,
+        Array.isArray(responseExamples) ? responseExamples.map((ex) => ex?.body) : [],
+      );
       const description = item.request.description || item.description || '';
       const serverSelection = pickPostmanServers(baseUrl, variableLookup);
+      const parseWarnings = [
+        ...(Array.isArray(responseWarnings) ? responseWarnings : []),
+        ...(Array.isArray(responseDetails.warnings) ? responseDetails.warnings : []),
+      ];
 
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
@@ -1344,6 +1413,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
         scripts,
         requestFields: dedupeFieldEntries([...requestDetails.requestFields, ...parameterFields]),
         responseFields: responseDetails.responseFields,
+        ...(parseWarnings.length ? { parseWarnings } : {}),
         ...(Array.isArray(requestDetails.enums.receiptTypes) && requestDetails.enums.receiptTypes.length
           ? { receiptTypes: requestDetails.enums.receiptTypes }
           : {}),
