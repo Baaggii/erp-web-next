@@ -309,6 +309,16 @@ function formatTableLabel(value) {
     .join(' ');
 }
 
+function normalizeTableValue(value) {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  if (!normalized) return '';
+  const match = normalized.match(/\(([A-Za-z0-9_]+)\)$/);
+  if (match && match[1]) {
+    return match[1];
+  }
+  return normalized;
+}
+
 function formatTableDisplay(value, label) {
   const normalized = typeof value === 'string' ? value.trim() : '';
   if (normalized) return normalized;
@@ -322,7 +332,8 @@ function buildTableOptions(tables) {
     .map((table) => {
       if (!table) return null;
       if (typeof table === 'string') {
-        return { value: table, label: formatTableDisplay(table) };
+        const normalizedValue = normalizeTableValue(table);
+        return { value: normalizedValue, label: formatTableDisplay(normalizedValue) };
       }
       if (typeof table === 'object') {
         const value = [
@@ -334,8 +345,9 @@ function buildTableOptions(tables) {
           .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
           .find(Boolean);
         if (!value) return null;
+        const normalizedValue = normalizeTableValue(value);
         const label = table.label || table.table_comment || table.comment || table.description;
-        return { value, label: formatTableDisplay(value, label) };
+        return { value: normalizedValue, label: formatTableDisplay(normalizedValue, label) };
       }
       return null;
     })
@@ -602,6 +614,7 @@ const EMPTY_ENDPOINT = {
   notes: '',
   requestEnvMap: {},
   responseFieldMappings: {},
+  responseTables: [],
 };
 
 const PAYMENT_FIELD_DESCRIPTIONS = {
@@ -1348,6 +1361,23 @@ function sanitizeResponseFieldMappings(mappings = {}) {
   return result;
 }
 
+function collectEndpointTables(endpoint) {
+  const tables = new Set();
+  const addTable = (value) => {
+    const normalized = normalizeTableValue(value);
+    if (normalized) tables.add(normalized);
+  };
+  if (Array.isArray(endpoint?.responseTables)) {
+    endpoint.responseTables.forEach(addTable);
+  }
+  if (Array.isArray(endpoint?.tables)) {
+    endpoint.tables.forEach(addTable);
+  }
+  const mappings = extractResponseFieldMappings(endpoint);
+  Object.values(mappings).forEach(({ table }) => addTable(table));
+  return Array.from(tables);
+}
+
 function extractResponseFieldMappings(definition) {
   const explicit = sanitizeResponseFieldMappings(definition?.responseFieldMappings);
   if (Object.keys(explicit).length > 0) return explicit;
@@ -1647,6 +1677,12 @@ function createFormState(definition) {
     notes: definition.notes || '',
     requestEnvMap: definition.requestEnvMap || {},
     responseFieldMappings: extractResponseFieldMappings(definition),
+    responseTables: sanitizeTableSelection(
+      definition.responseTables && definition.responseTables.length > 0
+        ? definition.responseTables
+        : collectEndpointTables(definition),
+      [],
+    ),
   };
 }
 
@@ -2272,7 +2308,6 @@ export default function PosApiAdmin() {
     usage: 'all',
     endpointIds: [],
     tables: [],
-    fieldMappings: {},
   });
   const [infoSyncLogs, setInfoSyncLogs] = useState([]);
   const [infoSyncStatus, setInfoSyncStatus] = useState('');
@@ -2280,11 +2315,10 @@ export default function PosApiAdmin() {
   const [infoSyncLoading, setInfoSyncLoading] = useState(false);
   const [infoSyncUsage, setInfoSyncUsage] = useState('all');
   const [infoSyncEndpointIds, setInfoSyncEndpointIds] = useState([]);
-  const [infoSyncTables, setInfoSyncTables] = useState([]);
   const [infoSyncTableOptionsBase, setInfoSyncTableOptionsBase] = useState([]);
-  const [infoFieldMappings, setInfoFieldMappings] = useState({});
-  const [infoTableFields, setInfoTableFields] = useState({});
-  const [infoTableFieldLoading, setInfoTableFieldLoading] = useState({});
+  const [tableOptions, setTableOptions] = useState([]);
+  const [tableFields, setTableFields] = useState({});
+  const [tableFieldLoading, setTableFieldLoading] = useState({});
   const [infoUploadCodeType, setInfoUploadCodeType] = useState('classification');
   const [adminSelectionId, setAdminSelectionId] = useState('');
   const [adminParamValues, setAdminParamValues] = useState({});
@@ -2484,10 +2518,23 @@ export default function PosApiAdmin() {
       .filter(Boolean);
   }, [infoSyncSettings.tables, infoSyncTableOptionsBase]);
 
-  const infoFieldOptions = useMemo(() => {
+  const responseTableOptions = useMemo(() => {
+    const seen = new Set();
+    const merged = [...DEFAULT_INFO_TABLE_OPTIONS, ...tableOptions];
+    return merged
+      .map((option) => {
+        const value = option?.value;
+        if (!value || seen.has(value)) return null;
+        seen.add(value);
+        return { value, label: formatTableDisplay(value, option.label) };
+      })
+      .filter(Boolean);
+  }, [tableOptions]);
+
+  const responseFieldOptions = useMemo(() => {
     const options = [];
-    infoSyncTables.forEach((table) => {
-      const fields = infoTableFields[table];
+    formState.responseTables.forEach((table) => {
+      const fields = tableFields[table];
       if (!Array.isArray(fields) || fields.length === 0) return;
       fields.forEach((field) => {
         const name = extractFieldName(field);
@@ -2501,7 +2548,7 @@ export default function PosApiAdmin() {
       });
     });
     return options;
-  }, [infoSyncTables, infoTableFields]);
+  }, [formState.responseTables, tableFields]);
 
   const infoMappingEndpoints = useMemo(() => {
     const selected = new Set(infoSyncEndpointIds.filter(Boolean));
@@ -2524,32 +2571,14 @@ export default function PosApiAdmin() {
   }, [infoSyncEndpointOptions]);
 
   useEffect(() => {
-    setInfoSyncTables((prev) => {
-      const filtered = sanitizeTableSelection(prev, infoSyncTableOptions);
-      if (filtered.length !== prev.length) {
-        setInfoSyncSettings((settings) => ({ ...settings, tables: filtered }));
-      }
-      return filtered;
-    });
-  }, [infoSyncTableOptions]);
-
-  useEffect(() => {
-    const sanitized = sanitizeInfoFieldMappings(infoFieldMappings, infoSyncTables);
-    if (JSON.stringify(sanitized) !== JSON.stringify(infoFieldMappings)) {
-      setInfoFieldMappings(sanitized);
-      setInfoSyncSettings((prev) => ({ ...prev, fieldMappings: sanitized }));
-    }
-  }, [infoFieldMappings, infoSyncTables]);
-
-  useEffect(() => {
-    const missingTables = infoSyncTables.filter(
-      (table) => table && !infoTableFields[table] && !infoTableFieldLoading[table],
+    const missingTables = formState.responseTables.filter(
+      (table) => table && !tableFields[table] && !tableFieldLoading[table],
     );
     if (missingTables.length === 0) return undefined;
     let cancelled = false;
     const abortController = new AbortController();
     missingTables.forEach((table) => {
-      setInfoTableFieldLoading((prev) => ({ ...prev, [table]: true }));
+      setTableFieldLoading((prev) => ({ ...prev, [table]: true }));
       fetch(`${API_BASE}/report_builder/fields?table=${encodeURIComponent(table)}`, {
         credentials: 'include',
         skipLoader: true,
@@ -2559,23 +2588,23 @@ export default function PosApiAdmin() {
         .then(({ ok, data }) => {
           if (cancelled) return;
           if (!ok) {
-            setInfoTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+            setTableFieldLoading((prev) => ({ ...prev, [table]: false }));
             return;
           }
           const normalized = normalizeFieldList(data);
-          setInfoTableFields((prev) => ({ ...prev, [table]: normalized }));
-          setInfoTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+          setTableFields((prev) => ({ ...prev, [table]: normalized }));
+          setTableFieldLoading((prev) => ({ ...prev, [table]: false }));
         })
         .catch(() => {
           if (cancelled) return;
-          setInfoTableFieldLoading((prev) => ({ ...prev, [table]: false }));
+          setTableFieldLoading((prev) => ({ ...prev, [table]: false }));
         });
     });
     return () => {
       cancelled = true;
       abortController.abort();
     };
-  }, [infoSyncTables, infoTableFields, infoTableFieldLoading]);
+  }, [formState.responseTables, tableFields, tableFieldLoading]);
 
   const requestPreview = useMemo(() => {
     const text = (formState.requestSchemaText || '').trim();
@@ -2669,6 +2698,20 @@ export default function PosApiAdmin() {
       return { ...prev, responseFieldMappings: next };
     });
   }, [responseFieldHints]);
+
+  useEffect(() => {
+    setFormState((prev) => {
+      const allowedTables = new Set((prev.responseTables || []).map((table) => normalizeTableValue(table)));
+      const current = sanitizeResponseFieldMappings(prev.responseFieldMappings);
+      const next = Object.fromEntries(
+        Object.entries(current).filter(([, target]) =>
+          allowedTables.has(normalizeTableValue(target.table)),
+        ),
+      );
+      if (JSON.stringify(next) === JSON.stringify(prev.responseFieldMappings || {})) return prev;
+      return { ...prev, responseFieldMappings: next };
+    });
+  }, [formState.responseTables]);
 
   const parameterPreview = useMemo(
     () => parseParametersPreview(formState.parametersText),
@@ -3695,7 +3738,6 @@ export default function PosApiAdmin() {
           settingsData.settings?.tables,
           tableOptions.length > 0 ? tableOptions : DEFAULT_INFO_TABLE_OPTIONS,
         );
-        const fieldMappings = sanitizeInfoFieldMappings(settingsData.settings?.fieldMappings, tables);
         setInfoSyncSettings((prev) => ({
           ...prev,
           autoSyncEnabled: Boolean(settingsData.settings?.autoSyncEnabled),
@@ -3703,12 +3745,9 @@ export default function PosApiAdmin() {
           usage,
           endpointIds,
           tables,
-          fieldMappings,
         }));
         setInfoSyncUsage(usage);
         setInfoSyncEndpointIds(endpointIds);
-        setInfoSyncTables(tables);
-        setInfoFieldMappings(fieldMappings);
         setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
         infoSyncPreloadedRef.current = true;
       } catch (err) {
@@ -3827,19 +3866,15 @@ export default function PosApiAdmin() {
           settingsData.settings?.tables,
           tableOptions.length > 0 ? tableOptions : DEFAULT_INFO_TABLE_OPTIONS,
         );
-        const fieldMappings = sanitizeInfoFieldMappings(settingsData.settings?.fieldMappings, tables);
         setInfoSyncSettings({
           autoSyncEnabled: Boolean(settingsData.settings?.autoSyncEnabled),
           intervalMinutes: Number(settingsData.settings?.intervalMinutes) || 720,
           usage,
           endpointIds,
           tables,
-          fieldMappings,
         });
         setInfoSyncUsage(usage);
         setInfoSyncEndpointIds(endpointIds);
-        setInfoSyncTables(tables);
-        setInfoFieldMappings(fieldMappings);
         setInfoSyncLogs(Array.isArray(settingsData.logs) ? settingsData.logs : []);
       } catch (err) {
         if (!cancelled) {
@@ -3973,6 +4008,21 @@ export default function PosApiAdmin() {
     if (field !== 'docUrl') {
       resetTestState();
     }
+  }
+
+  function handleResponseTableSelection(event) {
+    const values = Array.from(event.target.selectedOptions || []).map((opt) => opt.value);
+    const sanitized = sanitizeTableSelection(values, responseTableOptions);
+    setFormState((prev) => {
+      const allowedTables = new Set(sanitized.map((table) => normalizeTableValue(table)));
+      const currentMappings = sanitizeResponseFieldMappings(prev.responseFieldMappings);
+      const filteredMappings = Object.fromEntries(
+        Object.entries(currentMappings).filter(([, target]) =>
+          allowedTables.has(normalizeTableValue(target.table)),
+        ),
+      );
+      return { ...prev, responseTables: sanitized, responseFieldMappings: filteredMappings };
+    });
   }
 
   function handleResponseFieldMappingChange(field, value) {
@@ -4381,42 +4431,10 @@ export default function PosApiAdmin() {
     setInfoSyncSettings((prev) => ({ ...prev, [field]: value }));
   }
 
-  function handleInfoFieldMappingChange(endpointId, sourceField, targetValue) {
-    if (!endpointId || !sourceField) return;
-    setInfoFieldMappings((prev) => {
-      const next = { ...prev };
-      const current = { ...(next[endpointId] || {}) };
-      if (!targetValue) {
-        delete current[sourceField];
-      } else {
-        const [table, ...rest] = targetValue.split('.');
-        const column = rest.join('.');
-        if (!table || !column || !infoSyncTables.includes(table)) {
-          return prev;
-        }
-        current[sourceField] = { table, column };
-      }
-      if (Object.keys(current).length === 0) {
-        delete next[endpointId];
-      } else {
-        next[endpointId] = current;
-      }
-      const sanitized = sanitizeInfoFieldMappings(next, infoSyncTables);
-      updateInfoSetting('fieldMappings', sanitized);
-      return sanitized;
-    });
-  }
-
   function handleInfoEndpointSelection(event) {
     const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
     setInfoSyncEndpointIds(selected);
     updateInfoSetting('endpointIds', selected);
-  }
-
-  function handleInfoTableSelection(event) {
-    const selected = Array.from(event.target.selectedOptions || []).map((option) => option.value);
-    setInfoSyncTables(selected);
-    updateInfoSetting('tables', selected);
   }
 
   async function saveInfoSettings() {
@@ -4440,19 +4458,15 @@ export default function PosApiAdmin() {
         ? saved.endpointIds.filter((value) => typeof value === 'string' && value)
         : infoSyncEndpointIds;
       const savedTables = sanitizeTableSelection(saved.tables, infoSyncTableOptions);
-      const savedFieldMappings = sanitizeInfoFieldMappings(saved.fieldMappings, savedTables);
       setInfoSyncSettings((prev) => ({
         ...prev,
         ...saved,
         usage: savedUsage,
         endpointIds: savedEndpointIds,
         tables: savedTables,
-        fieldMappings: savedFieldMappings,
       }));
       setInfoSyncUsage(savedUsage);
       setInfoSyncEndpointIds(savedEndpointIds);
-      setInfoSyncTables(savedTables);
-      setInfoFieldMappings(savedFieldMappings);
       setInfoSyncStatus('Saved synchronization settings.');
     } catch (err) {
       setInfoSyncError(err.message || 'Unable to save synchronization settings');
@@ -4473,11 +4487,17 @@ export default function PosApiAdmin() {
       if (infoSyncEndpointIds.length > 0) {
         payload.endpointIds = infoSyncEndpointIds;
       }
-      if (infoSyncTables.length > 0) {
-        payload.tables = infoSyncTables;
-      }
-      if (infoFieldMappings && Object.keys(infoFieldMappings).length > 0) {
-        payload.fieldMappings = infoFieldMappings;
+      const tablesFromEndpoints = Array.from(
+        new Set(
+          infoMappingEndpoints
+            .map((endpoint) => collectEndpointTables(endpoint))
+            .flat()
+            .map((table) => normalizeTableValue(table))
+            .filter(Boolean),
+        ),
+      );
+      if (tablesFromEndpoints.length > 0) {
+        payload.tables = tablesFromEndpoints;
       }
       const hasPayload = Object.keys(payload).length > 0;
       const res = await fetch(`${API_BASE}/posapi/reference-codes/sync`, {
@@ -4802,6 +4822,7 @@ export default function PosApiAdmin() {
         schema: responseSchema,
         description: formState.responseDescription || '',
       },
+      responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
       requestFields: sanitizedRequestFields,
       responseFields: responseFieldsWithMapping,
@@ -7512,16 +7533,32 @@ export default function PosApiAdmin() {
                 <span style={styles.hintCount}>{responseFieldHints.items.length} fields</span>
               )}
             </div>
+            <label style={{ ...styles.labelFull, marginTop: '0.35rem' }}>
+              Tables for response mappings
+              <select
+                multiple
+                value={formState.responseTables}
+                onChange={handleResponseTableSelection}
+                style={{ ...styles.input, minHeight: '120px' }}
+              >
+                {responseTableOptions.map((table) => (
+                  <option key={`response-table-${table.value}`} value={table.value}>
+                    {table.label}
+                  </option>
+                ))}
+              </select>
+              <span style={styles.checkboxHint}>
+                Select one or more tables to load columns for response field mappings.
+              </span>
+            </label>
             {responseFieldHints.state === 'empty' && (
               <p style={styles.hintEmpty}>Add response field hints in the JSON textarea above.</p>
             )}
             {responseFieldHints.state === 'error' && (
               <div style={styles.hintError}>{responseFieldHints.error}</div>
             )}
-            {responseFieldHints.state === 'ok' && infoFieldOptions.length === 0 && (
-              <p style={styles.hintEmpty}>
-                Select tables to update in the POSAPI information tab to enable field mappings.
-              </p>
+            {responseFieldHints.state === 'ok' && responseFieldOptions.length === 0 && (
+              <p style={styles.hintEmpty}>Add at least one table to enable field mappings.</p>
             )}
             {responseFieldHints.state === 'ok' && (
               <ul style={styles.hintList}>
@@ -7531,7 +7568,7 @@ export default function PosApiAdmin() {
                   const mapping = formState.responseFieldMappings?.[fieldLabel];
                   const mappingValue = mapping ? `${mapping.table}.${mapping.column}` : '';
                   const hasCustomMapping = mappingValue
-                    && !infoFieldOptions.some((option) => option.value === mappingValue);
+                    && !responseFieldOptions.some((option) => option.value === mappingValue);
                   return (
                     <li key={`response-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
                       <div style={styles.hintFieldRow}>
@@ -7560,10 +7597,10 @@ export default function PosApiAdmin() {
                           value={mappingValue}
                           onChange={(e) => handleResponseFieldMappingChange(fieldLabel, e.target.value)}
                           style={styles.input}
-                          disabled={infoFieldOptions.length === 0}
+                          disabled={responseFieldOptions.length === 0}
                         >
                           <option value="">Do not map</option>
-                          {infoFieldOptions.map((option) => (
+                          {responseFieldOptions.map((option) => (
                             <option key={`map-${fieldLabel}-${option.value}`} value={option.value}>
                               {option.label}
                             </option>
@@ -7573,7 +7610,7 @@ export default function PosApiAdmin() {
                           )}
                         </select>
                         <span style={styles.requestFieldHint}>
-                          Uses the selected tables from the POSAPI information tab.
+                          Uses the tables selected above.
                         </span>
                       </label>
                     </li>
@@ -8191,6 +8228,9 @@ export default function PosApiAdmin() {
             <div style={styles.infoCard}>
               <h3 style={{ marginTop: 0 }}>Manual refresh</h3>
               <p>Trigger the POSAPI lookup job and update reference codes immediately.</p>
+              <p style={styles.helpText}>
+                Reference data writes use the tables configured in each endpoint's response field mappings.
+              </p>
               <div style={styles.inlineFields}>
                 <label style={{ ...styles.label, flex: 1 }}>
                   Usage
@@ -8229,26 +8269,6 @@ export default function PosApiAdmin() {
                     </span>
                   </label>
               </div>
-              <div style={styles.inlineFields}>
-                <label style={{ ...styles.label, flex: 1 }}>
-                  Tables to update
-                  <select
-                    multiple
-                    value={infoSyncTables}
-                    onChange={handleInfoTableSelection}
-                    style={{ ...styles.input, minHeight: '140px' }}
-                  >
-                    {infoSyncTableOptions.map((table) => (
-                      <option key={table.value} value={table.value}>
-                        {table.label}
-                      </option>
-                    ))}
-                  </select>
-                  <span style={styles.checkboxHint}>
-                    Choose one or more tables to receive POSAPI synchronization updates.
-                  </span>
-                </label>
-              </div>
               <button
                 type="button"
                 onClick={handleManualSync}
@@ -8266,14 +8286,6 @@ export default function PosApiAdmin() {
                   </div>
                 </div>
               )}
-            </div>
-            <div style={styles.infoCard}>
-              <h3 style={{ marginTop: 0 }}>Field mappings</h3>
-              <p style={styles.helpText}>
-                Field mappings are now configured per endpoint in the Response fields panel above. Use
-                the dropdown beside each response field to map it to a column in the tables selected in
-                this POSAPI information tab.
-              </p>
             </div>
             <div style={styles.infoCard}>
               <h3 style={{ marginTop: 0 }}>Upload static lists (CSV or Excel)</h3>
