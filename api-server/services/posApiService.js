@@ -1373,16 +1373,30 @@ async function fetchTokenFromAuthEndpoint(
   { baseUrl, payload, useCachedToken = true, environment = 'staging' } = {},
 ) {
   if (!authEndpoint?.id) return fetchEnvPosApiToken({ useCachedToken });
+  if (!useCachedToken) {
+    tokenCache.delete(authEndpoint.id);
+  }
   const cached = useCachedToken ? getCachedToken(authEndpoint.id) : null;
   if (cached) return cached;
 
-  const requestPayload =
-    payload && typeof payload === 'object'
-      ? payload
-      : authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object'
-        ? authEndpoint.requestBody.schema
-        : {};
-  const mappedPayload = applyEnvMapToPayload(requestPayload, authEndpoint.requestEnvMap).payload;
+  let requestPayload = null;
+  if (payload && typeof payload === 'object') {
+    requestPayload = payload;
+  } else if (authEndpoint.requestExample) {
+    if (typeof authEndpoint.requestExample === 'string') {
+      try {
+        requestPayload = JSON.parse(authEndpoint.requestExample);
+      } catch {
+        requestPayload = {};
+      }
+    } else if (typeof authEndpoint.requestExample === 'object' && !Array.isArray(authEndpoint.requestExample)) {
+      requestPayload = authEndpoint.requestExample;
+    }
+  }
+  if (!requestPayload && authEndpoint.requestBody?.schema && typeof authEndpoint.requestBody.schema === 'object') {
+    requestPayload = authEndpoint.requestBody.schema;
+  }
+  const mappedPayload = applyEnvMapToPayload(requestPayload || {}, authEndpoint.requestEnvMap).payload;
   let targetBaseUrl = resolveEndpointBaseUrl(authEndpoint, environment);
   if (!targetBaseUrl && baseUrl) {
     targetBaseUrl = toStringValue(baseUrl);
@@ -2010,8 +2024,9 @@ export async function invokePosApiEndpoint(endpointId, payload = {}, options = {
 
   let token = null;
   if (!skipAuth && endpoint?.posApiType !== 'AUTH') {
+    const selectedAuthEndpointId = authEndpointId || endpoint?.authEndpointId || null;
     token = await getPosApiToken({
-      authEndpointId,
+      authEndpointId: selectedAuthEndpointId,
       baseUrl: requestBaseUrl,
       authPayload,
       useCachedToken,
