@@ -444,6 +444,14 @@ function normalizeFieldList(payload) {
       return entries;
     }
   }
+  if (payload.result && typeof payload.result === 'object') {
+    const entries = extractFromObject(payload.result);
+    if (entries.length > 0) return entries;
+  }
+  if (payload.data && typeof payload.data === 'object') {
+    const entries = extractFromObject(payload.data);
+    if (entries.length > 0) return entries;
+  }
 
   return [];
 }
