@@ -100,6 +100,26 @@ export default function PosTxnConfig() {
   const [posApiEndpoints, setPosApiEndpoints] = useState([]);
   const loadingTablesRef = useRef(new Set());
 
+  const parseColumnNames = (cols) => {
+    const normaliseName = (column) => {
+      if (typeof column === 'string') return column;
+      if (column && typeof column === 'object') {
+        return (
+          column.name ||
+          column.column_name ||
+          column.columnName ||
+          column.COLUMN_NAME ||
+          ''
+        );
+      }
+      return '';
+    };
+
+    if (Array.isArray(cols)) return cols.map(normaliseName).filter(Boolean);
+    if (cols && Array.isArray(cols.columns)) return cols.columns.map(normaliseName).filter(Boolean);
+    return [];
+  };
+
   const itemFieldMapping =
     config.posApiMapping &&
     typeof config.posApiMapping.itemFields === 'object' &&
@@ -782,7 +802,7 @@ export default function PosTxnConfig() {
       })
         .then((res) => (res.ok ? res.json() : []))
         .then((cols) => {
-          const names = cols.map((c) => c.name || c);
+          const names = parseColumnNames(cols);
           setTableColumns((m) => ({ ...m, [tbl]: names }));
           if (tbl === config.masterTable) setMasterCols(names);
         })
@@ -801,9 +821,15 @@ export default function PosTxnConfig() {
     })
       .then((res) => (res.ok ? res.json() : []))
       .then((cols) => {
-        const names = Array.isArray(cols) ? cols.map((c) => c.name || c) : [];
+        const names = parseColumnNames(cols);
         setTableColumns((prev) => ({ ...prev, [trimmed]: names }));
         if (trimmed === config.masterTable) setMasterCols(names);
+        if (names.length) {
+          addToast(
+            `Loaded ${names.length} column${names.length === 1 ? '' : 's'} for ${trimmed}.`,
+            'success',
+          );
+        }
       })
       .catch(() => {
         setTableColumns((prev) => ({ ...prev, [trimmed]: [] }));
@@ -1430,6 +1456,10 @@ export default function PosTxnConfig() {
                       })),
                     };
                   });
+
+                  if (tbl) {
+                    ensureColumnsLoadedFor(tbl);
+                  }
                 }}
               >
                 <option value="">-- select table --</option>
