@@ -1,0 +1,677 @@
+openapi: 3.1.0
+info:
+  version: '1.0'
+  title: Онцгой албан татвар API холболт
+  summary: ''
+  description: "# Танилцуулга \r\n\r\n<!-- theme: none -->\r\n\r\n> Татварын ерөнхий хууль, Онцгой албан татварын тухай хууль, Нэмэгдсэн өртгийн албан татварын тухай хууль, Согтууруулах ундааны эргэлтэнд хяналт тавих тухай хуулийн хэрэгжилтийг хангах, онцгой албан татварын тэмдэг бүхий барааны эргэлтэд хяналт тавих, барааны борлуулалтын үе шат бүрийг олон улсын стандартад нийцсэн дахин давтагдашгүй, цахим өгөгдөл бүхий код ашиглан цахим төлбөрийн баримт, гаалийн мэдүүлэгт үндэслэн татварын бүртгэл, мэдээллийн нэгдсэн санд бүртгэх зохицуулалтын дагуу хийгдсэн болно.\r\n\r\n![OAT!@.jpg](../assets/images/OAT!@.jpg)\r\n\r\n### Өөрчлөлтийн түүх\r\n\r\n| № | Хувилбар | Огноо | Тайлбар | Хариуцагч |\r\n| -------- | ------- | ------- | ------- | ------- |\r\n| 1  | 1.0.0 | 08/09/2024 | Гарын авлага боловсруулав | Б.Мөнгөнчимэг   |\r\n"
+paths:
+  /rest/tpiMain/mainApi/getInventoryList:
+    get:
+      summary: ОАТ-барааны баркодын мэдээлэл лавлах сервис
+      description: "> Онцгой албан татварын тухай хуулийн 4 дүгээр зүйлийн 4.1-д “Онцгой албан татвар ногдох бараа, үйл ажиллагаа”-г тодорхойлж өгсөн байдаг. Дээрх заалтад хамаарах барааны дэлгэрэнгүй мэдээллийг дараах сервисийг ашиглан авах боломжтой.\r\n\r\nОнцгой албан татвар бүхий барааны гарал үүсэл лавлах хүснэгт:\r\nД/д | Барааны гарал үүслийн мэдээлэл    \r\n---------|----------\r\n 1 | Эх орны үйлдвэр \r\n 2 | Импорт  \r\n\r\n Онцгой албан татвар бүхий барааны ангиллын лавлах хүснэгт:\r\n\r\n\r\n| Д/д | Барааны ангиллын код | Барааны ангиллын нэр                                     |\r\n|-----|----------------------|----------------------------------------------------------|\r\n| 1   | 01                   | Спирт                                                    |\r\n| 2   | 02                   | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа /ОАТ акцтай/    |\r\n| 3   | 03                   | Коньяк, виски, ром, джин /ОАТ акцтай/                               |\r\n| 4   | 04                   | Шимийн архи                                              |\r\n| 5   | 05                   | Дарс        /ОАТ акцтай/                                            |\r\n| 6   | 06                   | Пиво                                                     |\r\n| 7   | 07                   | Янжуур тамхи                                             |\r\n| 8   | 08                   | Дүнсэн тамхи                                             |\r\n| 9   | 09                   | Автобензин                                               |\r\n| 10  | 10                   | Дизелийн түлш                                            |\r\n| 11  | 11                   | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин  |\r\n"
+      operationId: get-rest-tpiMain-mainApi-getInventoryList
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  barcode:
+                    type: string
+                    examples:
+                      - '8656170014754'
+                  barcodeName:
+                    type: string
+                    examples:
+                      - Архи Ерөөл 0.75 л
+                  cpcd:
+                    type: string
+                    examples:
+                      - '2413150'
+                  productTypeCode:
+                    type: string
+                    examples:
+                      - '02'
+                  productTypeName:
+                    type: string
+                    examples:
+                      - 'Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа'
+                  productCategory:
+                    type: string
+                    examples:
+                      - Эх орны үйлдвэр
+                  productPercent:
+                    type: number
+                    examples:
+                      - 38
+                  productSize:
+                    type: number
+                    examples:
+                      - 750
+                  unitCode:
+                    type: string
+                    examples:
+                      - гр
+                x-examples:
+                  Example 1:
+                    barcode: '8656170014754'
+                    barcodeName: Архи Ерөөл 0.75 л
+                    cpcd: '2413150'
+                    productTypeCode: '02'
+                    productTypeName: 'Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа'
+                    productCategory: Эх орны үйлдвэр
+                    productPercent: 38
+                    productSize: 750
+                    unitCode: гр
+              examples:
+                Барааны мэдээлэл амжилттай татагдсан:
+                  value:
+                    barcode: '8656170014754'
+                    barcodeName: Архи Ерөөл 0.75 л
+                    cpcd: '2413150'
+                    productTypeCode: '02'
+                    productTypeName: 'Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа'
+                    productCategory: Эх орны үйлдвэр
+                    productPercent: 38
+                    productSize: 750
+                    unitCode: гр
+      servers:
+        - url: 'https://service.itc.gov.mn'
+          description: Бодит орчин
+        - url: 'https://st-service.itc.gov.mn'
+          description: Хөгжүүлэлтийн орчин
+  /api/inventory/getActiveStockNoPos:
+    get:
+      summary: ОАТ-барааны тэмдгийн үлдэгдэл лавлах сервис
+      description: "> Татвар төлөгчийн өмчлөл, эзэмшилд байх, цааш зарж борлуулах боломжтой онцгой албан татвар бүхий барааны тэмдгийн үлдэгдлийг шалгахад дараах сервисийг ашиглах ба тухайн сервисээс өгөгдөл  ирээгүй тэмдэгтэй архи, согтууруулах ундаа, тамхийг цааш дамжуулан борлуулах боломжгүй болохыг анхаарна уу.[Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\n\r\nОнцгой албан татвар бүхий барааны ангилал, дэд ангилал лавлах хүснэгт:\r\n\r\n| **Барааны ерөнхий ангилал**                                                                           | **Барааны дэд ангилал**                                 | **Барааны төрлийн код** |\r\n|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------|-------------------------|\r\n| Эх орны үйлдвэрийн архи                                                                               | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа     | 4                       |\r\n|                                                                                                       | Коньяк, виски, ром, джин                                | 5                       |\r\n|                                                                                                       | Шимийн архи                                             | 6                       |\r\n| Эх орны үйлдвэрийн тамхи                                                                              | Янжуур тамхи                                            | 7                       |\r\n|                                                                                                       | Дүнсэн тамхи                                            | 8                       |\r\n| Эх орны үйлдвэрийн дарс                                                                               | Дарс                                                    | 9                       |\r\n| Импортын архи                                                                                         | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа     | 13                      |\r\n|                                                                                                       | Коньяк, виски, ром, джин                                | 14                      |\r\n| Импортын тамхи                                                                                        | Дүнсэн тамхи                                            | 15                      |\r\n|                                                                                                       | Янжуур тамхи                                            | 16                      |\r\n| Импортын дарс                                                                                         | Дарс                                                    | 17                      |\r\n| Эх орны үйлдвэрийн пиво                                                                               | Пиво                                                    | 22                      |\r\n| Эх орны үйлдвэрийн спирт                                                                              | Спирт                                                   | 23                      |\r\n| Импортын пиво                                                                                         | Пиво                                                    | 24                      |\r\n| Импортын спирт                                                                                        | Спирт                                                   | 25                      |\r\n| Эх орны үйлдвэрийн автобензин, дизелийн түлш, газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | Автобензин                                              | 27                      |\r\n|                                                                                                       | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | 29                      |\r\n|                                                                                                       | Дизелийн түлш                                           | 28                      |\r\n| Импортын автобензин, дизелийн түлш, газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин           | Дизелийн түлш                                           | 32                      |\r\n|                                                                                                       | Автобензин                                              | 31                      |\r\n|                                                                                                       | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | 33                      |\r\n\r\n\r\nОнцгой албан татварын тэмдгийн ангилал лавлах хүснэгт:\r\n\r\n| **Д/д** | **Тэмдгийн төрлийн код** | **Тэмдгийн төрлийн нэр** |\r\n|---------|--------------------------|--------------------------|\r\n| 1       | 3                        | Дотоодын зах зээл        |\r\n| 2       | 4                        | Чөлөөт бүс               |\r\n| 3       | 5                        | Duty Free                |\r\n| 4       | 6                        | Экспортын бүтээгдэхүүн   |\r\n\r\n\r\n\r\n\r\n"
+      operationId: get-api-inventory-getActiveStockNo
+      parameters:
+        - name: regNo
+          in: query
+          description: Регистрийн дугаар
+          required: true
+          schema:
+            type: string
+        - name: barCode
+          in: query
+          description: Барааны баркод
+          required: true
+          schema:
+            type: string
+        - name: stockType
+          in: query
+          description: Барааны төрлийн код
+          required: true
+          schema:
+            type: number
+        - name: positionId
+          in: query
+          description: Борлуулж барааны тэмдгийн ангиллын код
+          required: true
+          schema:
+            type: number
+        - name: year
+          in: query
+          description: Он
+          required: true
+          schema:
+            type: number
+        - name: month
+          in: query
+          description: Сар
+          required: true
+          schema:
+            type: number
+      requestBody:
+        content: {}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    description: Сервисийн хариу
+                  status:
+                    type: number
+                    description: Төлөв
+                  data:
+                    type: array
+                    description: Шилжүүлэх боломжтой тэмдгийн дугаар
+                    items:
+                      type: string
+                required:
+                  - msg
+                  - status
+                  - data
+              examples:
+                Өгөгдөл амжилттай татагдсан:
+                  value:
+                    msg: Амжилттай
+                    status: 200
+                    data:
+                      - '0100041775'
+                      - '0100042532'
+        '401':
+          description: Unauthorized
+      security:
+        - auth_copy.yaml: []
+      servers:
+        - url: 'https://service.itc.gov.mn'
+          description: Бодит орчин
+        - url: 'https://st-service.itc.gov.mn'
+          description: Туршилтын орчин
+  /api/inventory/posSetTransaction:
+    post:
+      summary: ОАТ-барааны тэмдгийн зарлагын мэдээлэл хадгалах сервис
+      description: "> Татвар төлөгч өөрийн өмчлөл, эзэмшилд байх онцгой албан татварын тэмдэг бүхий барааг, бизнес эрхлэгч болон хувь хүн, эцсийн хэрэглэгч рүү борлуулсан болон шилжүүлсэн тухайн бүр цахим төлбөрийн баримтын систем болон бараа бүртгэлийн нэгдсэн системд тэмдгийн шилжүүлсэн талаар бүртгэл хийнэ. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\n"
+      operationId: post-stock-posSetTransaction
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                posRno:
+                  type: string
+                  description: Борлуулалтын төлбөрийн баримтын дугаар
+                mrchRegno:
+                  type: string
+                  description: Борлуулагчийн регистр
+                customerNo:
+                  type: string
+                  description: Худалдан авагчийн регистр
+                date:
+                  type: string
+                  description: Төлбөрийн баримтын огноо
+                stocks:
+                  type: array
+                  description: Тэмдгийн мэдээлэл
+                  items:
+                    type: object
+                    properties:
+                      barCode:
+                        type: string
+                        description: Борлуулж буй барааны баркод
+                      stockType:
+                        type: number
+                        description: Борлуулж буй барааны тэмдгийн төрлийн код
+                      positionNo:
+                        type: number
+                        description: Борлуулж буй барааны төрлийн ангилал
+                      stockNo:
+                        type: array
+                        description: Борлуулж буй барааны тэмдгийн дугаар
+                        items:
+                          type: string
+                    required:
+                      - barCode
+                      - stockType
+                      - positionNo
+                      - stockNo
+              required:
+                - posRno
+                - mrchRegno
+                - customerNo
+                - date
+                - stocks
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    description: Сервисийн хариу.
+                  status:
+                    type: number
+                    description: Төлөв
+                    default: 'Амжилттай-200, Амжилтгүй-500'
+                  data:
+                    type: array
+                    description: "Сервисийн өгөгдөл. Хэрэв өгөгдөл хадгалах боломжгүй бол доорх хариуг буцаана.\r\n\r\n| **Алдааны нөхцөл**                           | **Хариу**                          |\r\n|----------------------------------------------|------------------------------------|\r\n| Системд бүртгэгдсэн                          | Тухайн мэдээлэл бүртгэлтэй байна   |\r\n| ПосАпи системээс төлбөрийн баримт ирээгүй    | Pos оос мэдээлэл илгээгээгүй байна |\r\n| Борлуулагчийн регистр зөрүүтэй               | MrchRegNo буруу байна              |\r\n| Худалдан авагчийн регистр зөрүүтэй           | CsmrRegNo буруу байна              |\r\n| Барааны баркод буруу                         | Barcode буруу байна                |\r\n| Тэмдгийн тоо барааны тоо хэмжээнээс ялгаатай | StockNo тоо зөрсөн байна           |\r\n| Тэмдгийн төрөл зөрүүтэй                      | StockType хоосон байна             |\r\n| Тэмдгийн ангилал зөрүүтэй                    | positionNo хоосон байна            |\r\n| Барааны баркодын мэдээлэл байхгүй            | Barcode ийн мэдээлэл олдсонгүй     |\r\n"
+                    items:
+                      type: object
+                      properties:
+                        posRno:
+                          type: string
+                          description: Борлуулалтын төлбөрийн баримтын дугаар
+                        mrchRegno:
+                          type: string
+                          description: Борлуулагчийн регистр
+                        customerNo:
+                          type: string
+                          description: Худалдан авагчийн регистр
+                        date:
+                          type: string
+                          description: Төлбөрийн баримтын огноо
+                        stocks:
+                          type: array
+                          description: Тэмдгийн мэдээлэл
+                          items:
+                            type: object
+                            properties:
+                              barCode:
+                                type: string
+                                description: Борлуулж буй барааны баркод
+                              stockType:
+                                type: number
+                                description: Борлуулж буй барааны тэмдгийн төрлийн код
+                              positionNo:
+                                type: number
+                                description: Борлуулж буй барааны төрлийн ангилал
+                              stockNo:
+                                type: array
+                                description: Борлуулж буй барааны тэмдгийн дугаар
+                                items:
+                                  type: string
+                            required:
+                              - barCode
+                              - stockType
+                              - positionNo
+                              - stockNo
+                      required:
+                        - posRno
+                        - mrchRegno
+                        - customerNo
+                        - date
+                        - stocks
+                required:
+                  - msg
+                  - status
+                  - data
+              examples:
+                Амжилттай хадгалагдсан хариу:
+                  value:
+                    msg: Амжилттай
+                    status: 200
+                    data:
+                      - posRno: 00000265********40619000001411803
+                        mrchRegno: 26****8
+                        customerNo: 20****5
+                        date: '2024-06-19 19:00:00'
+                        stocks:
+                          - barCode: '3122109969822'
+                            stockType: 17
+                            positionNo: 5
+                            stockNo:
+                              - '0100042532'
+                Хадгалах үйлдэл амжилтгүй хариу:
+                  value:
+                    msg: 00000265********40619000001411803
+                    status: 500
+                    data: Тухайн мэдээлэл бүртгэлтэй байна
+        '401':
+          description: Unauthorized
+      security:
+        - auth_copy.yaml: []
+      servers:
+        - url: 'https://service.itc.gov.mn'
+          description: Бодит орчин
+        - url: 'https://st-service.itc.gov.mn'
+          description: Туршилтын орчин
+  /api/inventory/getActiveStockInfo:
+    get:
+      summary: ОАТ-барааны тэмдгийн үлдэгдэл лавлах сервис /хуудаслалттай/
+      description: "> Энэхүү сервис нь өмнөх “Онцгой албан татвар бүхий барааны тэмдгийн үлдэгдэл лавлах сервис”-ийн нэгэн адил татвар төлөгчийн өмчлөл, эзэмшилд байх, цааш зарж борлуулах боломжтой онцгой албан татвар бүхий барааны тэмдгийн үлдэгдлээс гадна үйлдвэрлэгч, QR код, барааны баркод, нэр зэрэг дэлгэрэнгүй мэдээллийг шалгахад ашиглана. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\nОнцгой албан татвар бүхий барааны ангилал, дэд ангилал лавлах хүснэгт:\r\n\r\n| **Барааны ерөнхий ангилал**                                                                           | **Барааны дэд ангилал**                                 | **Барааны төрлийн код** |\r\n|-------------------------------------------------------------------------------------------------------|---------------------------------------------------------|-------------------------|\r\n| Эх орны үйлдвэрийн архи                                                                               | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа     | 4                       |\r\n|                                                                                                       | Коньяк, виски, ром, джин                                | 5                       |\r\n|                                                                                                       | Шимийн архи                                             | 6                       |\r\n| Эх орны үйлдвэрийн тамхи                                                                              | Янжуур тамхи                                            | 7                       |\r\n|                                                                                                       | Дүнсэн тамхи                                            | 8                       |\r\n| Эх орны үйлдвэрийн дарс                                                                               | Дарс                                                    | 9                       |\r\n| Импортын архи                                                                                         | Цагаан архи, ликёр, кордиал ба спиртлэг бусад ундаа     | 13                      |\r\n|                                                                                                       | Коньяк, виски, ром, джин                                | 14                      |\r\n| Импортын тамхи                                                                                        | Дүнсэн тамхи                                            | 15                      |\r\n|                                                                                                       | Янжуур тамхи                                            | 16                      |\r\n| Импортын дарс                                                                                         | Дарс                                                    | 17                      |\r\n| Эх орны үйлдвэрийн пиво                                                                               | Пиво                                                    | 22                      |\r\n| Эх орны үйлдвэрийн спирт                                                                              | Спирт                                                   | 23                      |\r\n| Импортын пиво                                                                                         | Пиво                                                    | 24                      |\r\n| Импортын спирт                                                                                        | Спирт                                                   | 25                      |\r\n| Эх орны үйлдвэрийн автобензин, дизелийн түлш, газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | Автобензин                                              | 27                      |\r\n|                                                                                                       | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | 29                      |\r\n|                                                                                                       | Дизелийн түлш                                           | 28                      |\r\n| Импортын автобензин, дизелийн түлш, газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин           | Дизелийн түлш                                           | 32                      |\r\n|                                                                                                       | Автобензин                                              | 31                      |\r\n|                                                                                                       | Газрын тосны үйлдвэрлэлийн дайвар бүтээгдэхүүн, керосин | 33                      |\r\n\r\n\r\nОнцгой албан татварын тэмдгийн ангилал лавлах хүснэгт:\r\n\r\n| **Д/д** | **Тэмдгийн төрлийн код** | **Тэмдгийн төрлийн нэр** |\r\n|---------|--------------------------|--------------------------|\r\n| 1       | 3                        | Дотоодын зах зээл        |\r\n| 2       | 4                        | Чөлөөт бүс               |\r\n| 3       | 5                        | Duty Free                |\r\n| 4       | 6                        | Экспортын бүтээгдэхүүн   |\r\n"
+      operationId: get-stock-getActiveStockInfo
+      parameters:
+        - name: X-API-KEY
+          in: header
+          description: Татварын ерөнхий газрын-Татвар хураалт удирдлага арга зүйн газарт албан бичгээр хандаж авна
+          schema:
+            type: string
+        - name: regNo
+          in: query
+          description: Мэдээлэл лавлаж буй хэрэглэгчийн регистрийн дугаар
+          required: true
+          schema:
+            type: string
+        - name: barCode
+          in: query
+          description: Мэдээлэл лавлаж буй барааны баркод
+          required: true
+          schema:
+            type: string
+        - name: stockType
+          in: query
+          description: Мэдээлэл лавлаж буй барааны төрлийн код
+          required: true
+          schema:
+            type: number
+        - name: positionId
+          in: query
+          description: Мэдээлэл лавлаж буй барааны тэмдгийн ангиллын код
+          required: true
+          schema:
+            type: number
+        - name: pageNumber
+          in: query
+          description: Хуудаслалтын дугаар
+          required: true
+          schema:
+            type: number
+        - name: pageSize
+          in: query
+          description: Хуудаслалтын хэмжээ
+          required: true
+          schema:
+            type: number
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    description: Сервисийн хариу
+                  status:
+                    type: number
+                    description: Төлөв
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        barCode:
+                          type: string
+                          description: Онцгой албан татвар бүхий барааны баркод
+                        orderDate:
+                          type: string
+                          description: Онцгой албан татвар бүхий барааны тэмдэг захиалсан огноо
+                        manufactorRegno:
+                          type: string
+                          description: Онцгой албан татвар бүхий барааны үйлдвэрлэгчийн регистр /Зөвхөн дотоодод үйлдвэрлэсэн бүтээгдэхүүнд хамааралтай/
+                        productName:
+                          type: string
+                          description: Онцгой албан татвар бүхий барааны нэр
+                        qrCode:
+                          type: string
+                          description: Онцгой албан татвар бүхий барааны тэмдгийн QR код
+                        stockNumber:
+                          type: string
+                          description: Онцгой албан татвар бүхий барааны тэмдгийн дугаар
+                      required:
+                        - barCode
+                        - orderDate
+                        - manufactorRegno
+                        - productName
+                        - qrCode
+                        - stockNumber
+                required:
+                  - msg
+                  - status
+                  - data
+        '401':
+          description: Unauthorized
+      security:
+        - auth_copy.yaml: []
+      servers:
+        - url: 'https://service.itc.gov.mn'
+          description: Бодит орчин
+        - url: 'https://st-service.itc.gov.mn'
+          description: Туршилтын орчин
+  /api/tpi/receipt/setPosReceiptDtlByProductOwner:
+    post:
+      summary: ОАТ-барааны үйлдвэрлэгч эсэхийг тодорхойлох сервис
+      description: "> Энэхүү сервис нь нэг бүтээгдэхүүнийг 2 болон түүнээс үйлдвэрлэгч үйлдвэрлэж буй тохиолдолд өөрийн үйлдвэрлэсэн бүтээгдэхүүнийг тодорхойлж, царим төлбөрийн баримтын систем рүү илгээхэд зориулагдсан сервис юм. Өөрөөр хэлбэл PosAPI систем ашиглан бүтээгдэхүүний борлуулалтын мэдээллийг илгээсний дараа, төлбөрийн баримтын бараануудаас өөрөө үйлдвэрлэсэн барааг тодорхойлж ирүүлнэ. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\n"
+      operationId: post-api-tpi-receipt-setPosReceiptDtlByProductOwner
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                posRno:
+                  type: string
+                  description: Борлуулж буй барааны баркод
+                productOwnerDtlModelList:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      barcode:
+                        type: string
+                        description: Борлуулж буй барааны баркод
+                      isProductOwner:
+                        type: number
+                        description: Өөрийн үйлдвэрийн бүтээгдэхүүн эсэх /Хэрэв мөн бол 1 гэж хадгална./
+                    required:
+                      - barcode
+                      - isProductOwner
+              required:
+                - posRno
+                - productOwnerDtlModelList
+            examples:
+              Үйлдвэрлэсэг эсэхийг хадгалах:
+                value:
+                  posRno: 0000054******000230802000001013793
+                  productOwnerDtlModelList:
+                    - barcode: '8620025001'
+                      isProductOwner: 1
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                  status:
+                    type: number
+                  code:
+                    type: string
+              examples:
+                Жагсаалтаар илгээсэн бүх мэдээлэл амжилттай болсон үеийн хариу:
+                  value:
+                    msg: Мэдээлэл амжиллтай хадгаллаа.
+                    status: 200
+                    code: 'null'
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                  status:
+                    type: number
+                  code:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      type: string
+              examples:
+                Жагсаалтаар илгээсэн зарим баркодын мэдээлэл амжилттай:
+                  value:
+                    msg: Мэдээлэл дутуу хадгалагдлаа. Хадгалагдсан баркодын жагсаалтыг буцаав
+                    status: 201
+                    code: string
+                    data:
+                      - '86510000878 '
+        '401':
+          description: Unauthorized
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                  status:
+                    type: number
+                  error:
+                    type: string
+                  exception:
+                    type: string
+                  message:
+                    type: string
+                  path:
+                    type: string
+                  code:
+                    type: number
+              examples:
+                Төлбөрийн баримтын мэдээлэл системд байхгүй:
+                  value:
+                    timestamp: '2024-06-22 23:59:21'
+                    status: 500
+                    error: Internal Server Error
+                    exception: 'java.lang.Exception: Төлбөрийн баримтын мэдээлэл олдсонгүй.'
+                    message: ''
+                    path: /api/tpi/receipt/setPosReceiptDtlByProductOwner
+                    code: 0
+      security:
+        - auth_copy.yaml: []
+      servers:
+        - url: 'https://api.ebarimt.mn'
+          description: Бодит орчин
+        - url: 'https://st-api.ebarimt.mn'
+          description: Туршилтын орчин
+  /api/inventory/createReceiptApi:
+    post:
+      summary: 'ОАТ-барааны хагарал, хорогдол, урамшууллын бүртгэл'
+      description: "> Энэхүү сервис нь Онцгой албан татварын тэмдэг бүхий барааны хагарал, хорогдол, урамшууллын бүртгэлийг өөрийн санхүүгийн болон кассын системээс илгээхэд ашиглагдана. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)\r\n"
+      operationId: post-stock-createReceiptApi
+      requestBody:
+        description: "Баримтын гүйлгээний төрөл /tranType/\r\nТөлөв | Тайлбар\r\n---------|----------\r\n 1 |Түүхий эд материал\r\n 2 |Бараа материалын урамшуулал\r\n 3 |Харагал, хорогдол /customerTin талбарт зөвхөн 10000000000 гэж оруулан хадгалах боломжтой байна /\r\n \r\nБаримтын төрөл /receiptType/\r\nТөлөв | Тайлбар \r\n---------|----------\r\n 1 | Спиртийн баримт\r\n 2 | Зарлагын баримт\r\n \r\nСпирт худалдан авагчийн төрөл /isSpiritDedication/\r\nТөлөв | Тайлбар \r\n---------|----------\r\n 28 | Согтууруулах ундаа үйлдвэрлэгч \r\n 29 | Эмийн үйлдвэр, хүн, мал эмнэлэг\r\nХоосон| Бусад худалдан авагч\r\n\r\nОнцгой албан татварын тэмдгийн ангилал лавлах хүснэгт /isProductOwner/:\r\n\r\n| **Д/д** | **Тэмдгийн төрлийн код** | **Тэмдгийн төрлийн нэр** |\r\n|---------|--------------------------|--------------------------|\r\n| 1       | 3                        | Дотоодын зах зээл        |\r\n| 2       | 4                        | Чөлөөт бүс               |\r\n| 3       | 5                        | Duty Free                |\r\n| 4       | 6                        | Экспортын бүтээгдэхүүн   |\r\n\r\n"
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                totalAmount:
+                  type: number
+                  description: Баримтын нийт дүн
+                merchantTin:
+                  type: string
+                  description: Борлуулагчийн ТИН
+                customerTin:
+                  type: string
+                  description: Худалдан авагчийн ТИН
+                reportMonth:
+                  type: number
+                  description: 'Өмнөх сарын баримт бол 1 гэж бөглөнө. Үгүй бол null буцаана. '
+                tranType:
+                  type: number
+                  description: Баримтын гүйлгээний төрөл
+                receiptType:
+                  type: number
+                  description: Баримтын төрөл
+                details:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      barCode:
+                        type: string
+                        description: Барааны баркод
+                      qty:
+                        type: number
+                        description: Тоо хэмжээ
+                      unitPrice:
+                        type: number
+                        description: Нэгж үнэ
+                      isProductOwner:
+                        type: number
+                        description: Өөрийн үйлдвэрлэсэн бүтээгдэхүүн эсэх
+                      positionNo:
+                        type: number
+                        description: Онцгой албан татварын тэмдгийн төрөл
+                      isSpiritDedication:
+                        type: number
+                        description: "Спиртийн худалдан авагчийн төрөл\r\n28 бол Согтууруулах ундаа үйлдвэрлэгч\r\n29 бол Эмийн үйлдвэр, хүн, мал эмнэлэг\r\nnull бол бусад"
+                      stock:
+                        type: array
+                        description: Тэмдгийн дугаар
+                        items:
+                          type: string
+                    required:
+                      - barCode
+                      - qty
+                      - unitPrice
+                      - positionNo
+              required:
+                - totalAmount
+                - merchantTin
+                - customerTin
+                - tranType
+                - receiptType
+            examples:
+              Баримт илгээх JSON:
+                value:
+                  totalAmount: 1000
+                  merchantTin: 101****1917
+                  customerTin: 470****3455
+                  reportMonth: null
+                  tranType: 2
+                  receiptType: 2
+                  details:
+                    - barCode: 86561***06476
+                      qty: 1
+                      unitPrice: 1000
+                      isProductOwner: null
+                      positionNo: 3
+                      isSpiritDedication: null
+                      stock:
+                        - '0100005022'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  headers:
+                    type: string
+                  body:
+                    type: string
+                    description: Сервисийн хариу
+                  statusCodeValue:
+                    type: number
+                    description: Сервисийн хариу
+                  statusCode:
+                    type: string
+                    description: Сервисийн хариу
+                required:
+                  - body
+                  - statusCodeValue
+                  - statusCode
+              examples:
+                Амжилттай:
+                  value:
+                    headers: ''
+                    body: 200830008********220240823154900000483 Баримт амжилттай үүслээ
+                    statusCodeValue: 200
+                    statusCode: OK
+      security:
+        - auth_copy.yaml: []
+      servers:
+        - url: 'https://service.itc.gov.mn'
+          description: Бодит орчин
+        - url: 'https://st-service.itc.gov.mn'
+          description: Туршилтын орчин
+      x-internal: false
+components:
+  securitySchemes:
+    auth_copy.yaml:
+      type: http
+      scheme: bearer

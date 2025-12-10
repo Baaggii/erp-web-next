@@ -1,0 +1,2253 @@
+{
+	"info": {
+		"_postman_id": "28aa94c8-ed5c-4306-8ea6-2243f0a7838d",
+		"name": "Хялбар бүртгэлийн API холболт",
+		"description": "### Танилцуулга\r\n>Иргэний хувийн хэрэглээнд худалдан авсан бараа бүтээгдэхүүний худалдан авалт болон үйлчилгээний төлбөр төлсөн тухай бүр үйлдсэн төлбөрийн баримтын мэдээллийг автоматаар ибаримт системд бүртгэх үйлчилгээг хялбар бүртгэл гэнэ.\r\n\r\n![image (2).png](<../assets/images/Image (1).jpg>)\r\n\r\n\r\n### Өөрчлөлтийн түүх\r\n\r\n| № | Хувилбар | Огноо | Тайлбар | Хариуцагч |\r\n| -------- | ------- | ------- | ------- | ------- |\r\n| 1  | 1.0.0 | 08/09/2024 | Гарын авлага боловсруулав | Б.Мөнгөнчимэг   |\r\n",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "50289897",
+		"_collection_link": "https://baaggiii-7271699.postman.co/workspace/Bujika-Bujak's-Workspace~d63a1c60-c52a-4563-8b5d-414b12bae27c/collection/50289897-28aa94c8-ed5c-4306-8ea6-2243f0a7838d?action=share&source=collection_link&creator=50289897"
+	},
+	"item": [
+		{
+			"name": "api",
+			"item": [
+				{
+					"name": "easy-register",
+					"item": [
+						{
+							"name": "api",
+							"item": [
+								{
+									"name": "info",
+									"item": [
+										{
+											"name": "consumer",
+											"item": [
+												{
+													"name": "{identity}",
+													"item": [
+														{
+															"name": "Иргэний мэдээлэл регистр /иргэний бүртгэл-civilId/-ийн дугаараар лавлах",
+															"request": {
+																"auth": {
+																	"type": "bearer",
+																	"bearer": [
+																		{
+																			"key": "token",
+																			"value": "{{bearerToken}}",
+																			"type": "string"
+																		}
+																	]
+																},
+																"method": "GET",
+																"header": [
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	}
+																],
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/api/info/consumer/:identity",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"api",
+																		"info",
+																		"consumer",
+																		":identity"
+																	],
+																	"variable": [
+																		{
+																			"key": "identity",
+																			"value": "АА01234567",
+																			"description": "Иргэний регистрийн дугаар болон иргэний бүртгэлийн дугаар/civilId/-ын нэг нь байна."
+																		}
+																	]
+																},
+																"description": ">Худалдан авагч иргэний мэдээлийг дараах зааврын дагуу лавлана."
+															},
+															"response": [
+																{
+																	"name": "OK",
+																	"originalRequest": {
+																		"method": "GET",
+																		"header": [
+																			{
+																				"key": "Accept",
+																				"value": "application/json"
+																			},
+																			{
+																				"key": "Authorization",
+																				"value": "Bearer <token>",
+																				"description": "Added as a part of security scheme: bearer"
+																			}
+																		],
+																		"url": {
+																			"raw": "{{baseUrl}}/api/easy-register/api/info/consumer/:identity",
+																			"host": [
+																				"{{baseUrl}}"
+																			],
+																			"path": [
+																				"api",
+																				"easy-register",
+																				"api",
+																				"info",
+																				"consumer",
+																				":identity"
+																			],
+																			"variable": [
+																				{
+																					"key": "identity",
+																					"value": "АА01234567",
+																					"description": "Иргэний регистрийн дугаар болон иргэний бүртгэлийн дугаар/civilId/-ын нэг нь байна."
+																				}
+																			]
+																		}
+																	},
+																	"status": "OK",
+																	"code": 200,
+																	"_postman_previewlanguage": "json",
+																	"header": [
+																		{
+																			"key": "Content-Type",
+																			"value": "application/json"
+																		}
+																	],
+																	"cookie": [],
+																	"body": "{\n  \"regNo\": \"ТЕ8****818\",\n  \"loginName\": \"11223344\",\n  \"givenName\": \"Очир\",\n  \"familyName\": \"Даваа\"\n}"
+																},
+																{
+																	"name": "Not Found",
+																	"originalRequest": {
+																		"method": "GET",
+																		"header": [
+																			{
+																				"key": "Accept",
+																				"value": "application/json"
+																			},
+																			{
+																				"key": "Authorization",
+																				"value": "Bearer <token>",
+																				"description": "Added as a part of security scheme: bearer"
+																			}
+																		],
+																		"url": {
+																			"raw": "{{baseUrl}}/api/easy-register/api/info/consumer/:identity",
+																			"host": [
+																				"{{baseUrl}}"
+																			],
+																			"path": [
+																				"api",
+																				"easy-register",
+																				"api",
+																				"info",
+																				"consumer",
+																				":identity"
+																			],
+																			"variable": [
+																				{
+																					"key": "identity",
+																					"value": "АА01234567",
+																					"description": "Иргэний регистрийн дугаар болон иргэний бүртгэлийн дугаар/civilId/-ын нэг нь байна."
+																				}
+																			]
+																		}
+																	},
+																	"status": "Not Found",
+																	"code": 404,
+																	"_postman_previewlanguage": "json",
+																	"header": [
+																		{
+																			"key": "Content-Type",
+																			"value": "application/json"
+																		}
+																	],
+																	"cookie": [],
+																	"body": "{\n  \"msg\": \"Хэрэглэгч олдсонгүй.\",\n  \"code\": \"userNotFound\",\n  \"status\": \"409\"\n}"
+																}
+															]
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "foreigner",
+											"item": [
+												{
+													"name": "{identity}",
+													"item": [
+														{
+															"name": "Гадаад жуулчны мэдээллийг гадаад паспорт эсвэл F регистрийн дугаараар лавлах",
+															"request": {
+																"auth": {
+																	"type": "bearer",
+																	"bearer": [
+																		{
+																			"key": "token",
+																			"value": "{{bearerToken}}",
+																			"type": "string"
+																		}
+																	]
+																},
+																"method": "GET",
+																"header": [
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	}
+																],
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/api/info/foreigner/:identity",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"api",
+																		"info",
+																		"foreigner",
+																		":identity"
+																	],
+																	"variable": [
+																		{
+																			"key": "identity",
+																			"value": "M709R8406",
+																			"description": "Гадаад пасспортын дугаар эсвэл Хил хамгаалах ерөнхий газраас олгосон F регистрийн дугаар /аль нэгийг нь оруулж лавлана."
+																		}
+																	]
+																},
+																"description": "> Энэхүү сервис нь Монголын улсад аялаж байгаа гадаадын иргэний мэдээллийг f регистр болон гадаад паспортын дугаараар лавлахад ашиглагдана."
+															},
+															"response": [
+																{
+																	"name": "OK",
+																	"originalRequest": {
+																		"method": "GET",
+																		"header": [
+																			{
+																				"key": "Accept",
+																				"value": "application/json"
+																			},
+																			{
+																				"key": "Authorization",
+																				"value": "Bearer <token>",
+																				"description": "Added as a part of security scheme: bearer"
+																			}
+																		],
+																		"url": {
+																			"raw": "{{baseUrl}}/api/easy-register/api/info/foreigner/:identity",
+																			"host": [
+																				"{{baseUrl}}"
+																			],
+																			"path": [
+																				"api",
+																				"easy-register",
+																				"api",
+																				"info",
+																				"foreigner",
+																				":identity"
+																			],
+																			"variable": [
+																				{
+																					"key": "identity",
+																					"value": "M709R8406",
+																					"description": "Гадаад пасспортын дугаар эсвэл Хил хамгаалах ерөнхий газраас олгосон F регистрийн дугаар /аль нэгийг нь оруулж лавлана."
+																				}
+																			]
+																		}
+																	},
+																	"status": "OK",
+																	"code": 200,
+																	"_postman_previewlanguage": "json",
+																	"header": [
+																		{
+																			"key": "Content-Type",
+																			"value": "application/json"
+																		}
+																	],
+																	"cookie": [],
+																	"body": "{\n  \"regNo\": \"******\",\n  \"loginName\": \"14154565\",\n  \"givenName\": \"O*********EG\",\n  \"familyName\": \"G*******KH\",\n  \"refund\": \"false\",\n  \"country\": \"KAZ\",\n  \"passportNo\": \"N****8907\",\n  \"fNumber\": \"******\"\n}"
+																}
+															]
+														}
+													]
+												},
+												{
+													"name": "customerNo",
+													"item": [
+														{
+															"name": "{loginName}",
+															"item": [
+																{
+																	"name": "Гадаад жуулчны мэдээллийг E-barimt-н нэвтрэх нэрээр лавлах",
+																	"request": {
+																		"auth": {
+																			"type": "bearer",
+																			"bearer": [
+																				{
+																					"key": "token",
+																					"value": "{{bearerToken}}",
+																					"type": "string"
+																				}
+																			]
+																		},
+																		"method": "GET",
+																		"header": [
+																			{
+																				"key": "Accept",
+																				"value": "application/json"
+																			}
+																		],
+																		"url": {
+																			"raw": "{{baseUrl}}/api/easy-register/api/info/foreigner/customerNo/:loginName",
+																			"host": [
+																				"{{baseUrl}}"
+																			],
+																			"path": [
+																				"api",
+																				"easy-register",
+																				"api",
+																				"info",
+																				"foreigner",
+																				"customerNo",
+																				":loginName"
+																			],
+																			"variable": [
+																				{
+																					"key": "loginName",
+																					"value": "10038071",
+																					"description": "E-barimt-н нэвтрэх хэрэглэгчийн код. (8-9 оронтой тоо байх)"
+																				}
+																			]
+																		},
+																		"description": "> Энэхүү сервис нь Монгол улсад аялаж байгаа гадаадын иргэний мэдээллийг ИБАРИМТ-ын нэвтрэх нэрээр лавлахад ашиглагдана."
+																	},
+																	"response": [
+																		{
+																			"name": "OK",
+																			"originalRequest": {
+																				"method": "GET",
+																				"header": [
+																					{
+																						"key": "Accept",
+																						"value": "application/json"
+																					},
+																					{
+																						"key": "Authorization",
+																						"value": "Bearer <token>",
+																						"description": "Added as a part of security scheme: bearer"
+																					}
+																				],
+																				"url": {
+																					"raw": "{{baseUrl}}/api/easy-register/api/info/foreigner/customerNo/:loginName",
+																					"host": [
+																						"{{baseUrl}}"
+																					],
+																					"path": [
+																						"api",
+																						"easy-register",
+																						"api",
+																						"info",
+																						"foreigner",
+																						"customerNo",
+																						":loginName"
+																					],
+																					"variable": [
+																						{
+																							"key": "loginName",
+																							"value": "10038071",
+																							"description": "E-barimt-н нэвтрэх хэрэглэгчийн код. (8-9 оронтой тоо байх)"
+																						}
+																					]
+																				}
+																			},
+																			"status": "OK",
+																			"code": 200,
+																			"_postman_previewlanguage": "json",
+																			"header": [
+																				{
+																					"key": "Content-Type",
+																					"value": "application/json"
+																				}
+																			],
+																			"cookie": [],
+																			"body": "{\n  \"regNo\": \"******\",\n  \"loginName\": \"14154565\",\n  \"givenName\": \"O*********EG\",\n  \"familyName\": \"G*******KH\",\n  \"refund\": \"false\",\n  \"country\": \"KAZ\",\n  \"passportNo\": \"N****8907\",\n  \"fNumber\": \"*******\"\n}"
+																		}
+																	]
+																}
+															]
+														}
+													]
+												},
+												{
+													"name": "{passportNo}",
+													"item": [
+														{
+															"name": "Гадаад жуулчны мэдээллийг E-barimt-н системд бүртгэх",
+															"request": {
+																"auth": {
+																	"type": "bearer",
+																	"bearer": [
+																		{
+																			"key": "token",
+																			"value": "{{bearerToken}}",
+																			"type": "string"
+																		}
+																	]
+																},
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"email\": \"string\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/api/info/foreigner/:passportNo",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"api",
+																		"info",
+																		"foreigner",
+																		":passportNo"
+																	],
+																	"variable": [
+																		{
+																			"key": "passportNo",
+																			"value": "EK2658447",
+																			"description": "Гадаад пасспортын дугаар"
+																		}
+																	]
+																},
+																"description": ">Гадаад жуулчны мэдээллийг Гадаад паспортын дугаар болон цахим шуудан хаягаар EBARIMT-н системд бүртгэх"
+															},
+															"response": [
+																{
+																	"name": "OK",
+																	"originalRequest": {
+																		"method": "POST",
+																		"header": [
+																			{
+																				"key": "Content-Type",
+																				"value": "application/json"
+																			},
+																			{
+																				"key": "Accept",
+																				"value": "application/json"
+																			},
+																			{
+																				"key": "Authorization",
+																				"value": "Bearer <token>",
+																				"description": "Added as a part of security scheme: bearer"
+																			}
+																		],
+																		"body": {
+																			"mode": "raw",
+																			"raw": "{\n  \"email\": \"string\"\n}",
+																			"options": {
+																				"raw": {
+																					"headerFamily": "json",
+																					"language": "json"
+																				}
+																			}
+																		},
+																		"url": {
+																			"raw": "{{baseUrl}}/api/easy-register/api/info/foreigner/:passportNo",
+																			"host": [
+																				"{{baseUrl}}"
+																			],
+																			"path": [
+																				"api",
+																				"easy-register",
+																				"api",
+																				"info",
+																				"foreigner",
+																				":passportNo"
+																			],
+																			"variable": [
+																				{
+																					"key": "passportNo",
+																					"value": "EK2658447",
+																					"description": "Гадаад пасспортын дугаар"
+																				}
+																			]
+																		}
+																	},
+																	"status": "OK",
+																	"code": 200,
+																	"_postman_previewlanguage": "json",
+																	"header": [
+																		{
+																			"key": "Content-Type",
+																			"value": "application/json"
+																		}
+																	],
+																	"cookie": [],
+																	"body": "{\n  \"regNo\": \"******\",\n  \"loginName\": \"14154565\",\n  \"givenName\": \"O*********EG\",\n  \"familyName\": \"G*******KH\",\n  \"refund\": \"false\",\n  \"country\": \"KAZ\",\n  \"passportNo\": \"N****8907\",\n  \"message\": \"You are already registered. Please check your oc********@itc.gov.mn\",\n  \"fNumber\": \"\"\n}"
+																}
+															]
+														}
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						},
+						{
+							"name": "rest",
+							"item": [
+								{
+									"name": "v1",
+									"item": [
+										{
+											"name": "getProfile",
+											"item": [
+												{
+													"name": "Иргэний мэдээллийг утасны дугаараар болон хэрэглэгчийн дугаараар лавлах",
+													"request": {
+														"auth": {
+															"type": "bearer",
+															"bearer": [
+																{
+																	"key": "token",
+																	"value": "{{bearerToken}}",
+																	"type": "string"
+																}
+															]
+														},
+														"method": "POST",
+														"header": [
+															{
+																"key": "Content-Type",
+																"value": "application/json"
+															},
+															{
+																"key": "Accept",
+																"value": "application/json"
+															}
+														],
+														"body": {
+															"mode": "raw",
+															"raw": "{\n  \"phoneNum\": \"993***99\"\n}",
+															"options": {
+																"raw": {
+																	"headerFamily": "json",
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+															"host": [
+																"{{baseUrl}}"
+															],
+															"path": [
+																"api",
+																"easy-register",
+																"rest",
+																"v1",
+																"getProfile"
+															]
+														},
+														"description": ">Худалдан авагч иргэний мэдээллийг утасны дугаараар болон хэрэглэгчийн дугаараар лавлах\r\n"
+													},
+													"response": [
+														{
+															"name": "Амжилттай",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"phoneNum\": \"993***99\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Амжилттай.\",\n  \"code\": \"success\",\n  \"status\": 200,\n  \"loginName\": \"11***475\",\n  \"email\": \"munguu****@yahoo.com\"\n}"
+														},
+														{
+															"name": "Хэрэглэгч олдоогүй",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Хэрэглэгч олдсонгүй.\",\n  \"code\": \"userNotFound\",\n  \"status\": 409,\n  \"loginName\": \"\",\n  \"email\": \"\"\n}"
+														},
+														{
+															"name": "Давхар бүртгэлтэй хэрэглэгч",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"phoneNum\": \"993***99\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Хэрэглэгчийн бүртгэл давхардсан байна.\",\n  \"code\": \"userDuplicate\",\n  \"status\": 409,\n  \"loginName\": \"\",\n  \"email\": \"\"\n}"
+														},
+														{
+															"name": "Насанд хүрээгүй хэрэглэгч",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"phoneNum\": \"993***99\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Хэрэглэгч 14 наснаас доош байна.\",\n  \"code\": \"userChild\",\n  \"status\": 409,\n  \"loginName\": \"\",\n  \"email\": \"\"\n}"
+														},
+														{
+															"name": "Цахим шуудан хаяг бүртгэлгүй",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"phoneNum\": \"993***99\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Имэйл олдсонгүй\",\n  \"code\": \"emailNotFound\",\n  \"status\": 409,\n  \"loginName\": \"\",\n  \"email\": \"\"\n}"
+														},
+														{
+															"name": "Created",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"phoneNum\": \"993***99\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "Created",
+															"code": 201,
+															"_postman_previewlanguage": "text",
+															"header": [],
+															"cookie": [],
+															"body": ""
+														},
+														{
+															"name": "Талбар хоосон",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"phoneNum\": \"993***99\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "Bad Request",
+															"code": 400,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Талбар хоосон байна.\",\n  \"code\": \"emptyField\",\n  \"status\": 400,\n  \"loginName\": \"\",\n  \"email\": \"\"\n}"
+														},
+														{
+															"name": "Хэрэглэгчийн дугаараар лавлах",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "Bad Request",
+															"code": 400,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Талбар хоосон байна.\",\n  \"code\": \"emptyField\",\n  \"status\": 400,\n  \"loginName\": \"\",\n  \"email\": \"\"\n}"
+														},
+														{
+															"name": "Unauthorized",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"phoneNum\": \"993***99\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "Unauthorized",
+															"code": 401,
+															"_postman_previewlanguage": "text",
+															"header": [],
+															"cookie": [],
+															"body": ""
+														},
+														{
+															"name": "Internal Server Error",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"phoneNum\": \"993***99\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/getProfile",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"getProfile"
+																	]
+																}
+															},
+															"status": "Internal Server Error",
+															"code": 500,
+															"_postman_previewlanguage": "text",
+															"header": [],
+															"cookie": [],
+															"body": ""
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "approveQr",
+											"item": [
+												{
+													"name": "Төлбөрийн баримт баталгаажуулах",
+													"request": {
+														"auth": {
+															"type": "bearer",
+															"bearer": [
+																{
+																	"key": "token",
+																	"value": "{{bearerToken}}",
+																	"type": "string"
+																}
+															]
+														},
+														"method": "POST",
+														"header": [
+															{
+																"key": "Content-Type",
+																"value": "application/json"
+															},
+															{
+																"key": "Accept",
+																"value": "application/json"
+															}
+														],
+														"body": {
+															"mode": "raw",
+															"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+															"options": {
+																"raw": {
+																	"headerFamily": "json",
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+															"host": [
+																"{{baseUrl}}"
+															],
+															"path": [
+																"api",
+																"easy-register",
+																"rest",
+																"v1",
+																"approveQr"
+															]
+														},
+														"description": ">Энэхүү сервис нь тухайн иргэнийн ибаримтанд Баталгаажсан төлөвтэйгээр шууд бүртгэгдэх болно."
+													},
+													"response": [
+														{
+															"name": "Амжилттай",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Амжилттай.\",\n  \"code\": \"SUCCESS\",\n  \"status\": 200\n}"
+														},
+														{
+															"name": "Хэрэглэгч олдсонгүй",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Хэрэглэгч олдсонгүй.\",\n  \"code\": \"userNotFound\",\n  \"status\": 409\n}"
+														},
+														{
+															"name": "QR алдаатай",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"qrData мэдээлэл алдаатай байна.\",\n  \"code\": \"inValidQr\",\n  \"status\": 500\n}"
+														},
+														{
+															"name": "Мэдээлэл алдаатай",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Мэдээлэл алдаатай байна.\",\n  \"code\": \"invalidData\",\n  \"status\": 500\n}"
+														},
+														{
+															"name": "Алдаатай",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Алдаа.\",\n  \"code\": \"error\",\n  \"status\": 500\n}"
+														},
+														{
+															"name": "Баримтын төрөл буруу",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Байгууллага хооронд хийгдсэн гүйлгээ баталгаажуулах боломжгүй.\",\n  \"code\": \"b2bNotAccepted\",\n  \"status\": 500\n}"
+														},
+														{
+															"name": "Сугалааны дугаар байхгүй",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Сугалаагүй баримт байна.\",\n  \"code\": \"noLotteryQr\",\n  \"status\": 409\n}"
+														},
+														{
+															"name": "Bad Request",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "Bad Request",
+															"code": 400,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Талбар хоосон байна.\",\n  \"code\": \"emptyField\",\n  \"status\": 400\n}"
+														},
+														{
+															"name": "Unauthorized",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "Unauthorized",
+															"code": 401,
+															"_postman_previewlanguage": "text",
+															"header": [],
+															"cookie": [],
+															"body": ""
+														},
+														{
+															"name": "Internal Server Error",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"customerNo\": \"АА12345678\",\n  \"qrData\": \"138431709438294994***********42989187861711452070 67124287171260511392558330701380\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/approveQr",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"approveQr"
+																	]
+																}
+															},
+															"status": "Internal Server Error",
+															"code": 500,
+															"_postman_previewlanguage": "text",
+															"header": [],
+															"cookie": [],
+															"body": ""
+														}
+													]
+												}
+											]
+										},
+										{
+											"name": "setReturnReceipt",
+											"item": [
+												{
+													"name": "Хялбар бүртгэлээр бүртгэгдсэн төлбөрийн баримтын буцаалтыг баталгаажуулах сервис",
+													"request": {
+														"auth": {
+															"type": "bearer",
+															"bearer": [
+																{
+																	"key": "token",
+																	"value": "{{bearerToken}}",
+																	"type": "string"
+																}
+															]
+														},
+														"method": "POST",
+														"header": [
+															{
+																"key": "X-API-KEY",
+																"value": "eaab09fdb83c4affc210b8fb96f9977db7978e8a",
+																"description": "posapi@itc.gov.mn рүү хүсэлт илгээж авна"
+															},
+															{
+																"key": "Content-Type",
+																"value": "application/json"
+															},
+															{
+																"key": "Accept",
+																"value": "application/json"
+															}
+														],
+														"body": {
+															"mode": "raw",
+															"raw": "{\n  \"posRno\": \"0000061********230518000112012889\"\n}",
+															"options": {
+																"raw": {
+																	"headerFamily": "json",
+																	"language": "json"
+																}
+															}
+														},
+														"url": {
+															"raw": "{{baseUrl}}/api/easy-register/rest/v1/setReturnReceipt",
+															"host": [
+																"{{baseUrl}}"
+															],
+															"path": [
+																"api",
+																"easy-register",
+																"rest",
+																"v1",
+																"setReturnReceipt"
+															]
+														},
+														"description": ">Энэхүү сервис нь зөвхөн ПосАПИ системээс хэвлэсэн сугалаатай баримтын буцаалтыг баталгаажуулах зориулалттай ба буцаах үйлдэл хийж буй баримтыг иргэн талаас буцаасны дараа баталгаажуулах боломжтой болохыг анхаарна уу. Мөн “Багц баримт”-ын систем ашиглан илгээсэн толгой баримтыг буцаахад дэд баримт дагаж идэвхгүй болох ба дэд баримтыг дангаар нь буцаах боломжгүй. "
+													},
+													"response": [
+														{
+															"name": "Амжилтттай",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "X-API-KEY",
+																		"value": "eaab09fdb83c4affc210b8fb96f9977db7978e8a",
+																		"description": "posapi@itc.gov.mn рүү хүсэлт илгээж авна"
+																	},
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"posRno\": \"0000061********230518000112012889\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/setReturnReceipt",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"setReturnReceipt"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Амжилттай\",\n  \"status\": 200,\n  \"code\": null,\n  \"data\": null\n}"
+														},
+														{
+															"name": "ДДТД эсвэл сугалааны дугаар хоосон байна",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "X-API-KEY",
+																		"value": "eaab09fdb83c4affc210b8fb96f9977db7978e8a",
+																		"description": "posapi@itc.gov.mn рүү хүсэлт илгээж авна"
+																	},
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"lotteryNumber\": \"AA11111111\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/setReturnReceipt",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"setReturnReceipt"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"string\",\n  \"status\": 0,\n  \"code\": null,\n  \"data\": null\n}"
+														},
+														{
+															"name": "Баримтын мэдээлэл олдсонгүй",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "X-API-KEY",
+																		"value": "eaab09fdb83c4affc210b8fb96f9977db7978e8a",
+																		"description": "posapi@itc.gov.mn рүү хүсэлт илгээж авна"
+																	},
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"posRno\": \"0000061********230518000112012889\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/setReturnReceipt",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"setReturnReceipt"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Баримтын мэдээлэл олдсонгүй\",\n  \"status\": 500,\n  \"code\": null,\n  \"data\": null\n}"
+														},
+														{
+															"name": "Токены мэдээлэл алдаатай байна",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "X-API-KEY",
+																		"value": "eaab09fdb83c4affc210b8fb96f9977db7978e8a",
+																		"description": "posapi@itc.gov.mn рүү хүсэлт илгээж авна"
+																	},
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"posRno\": \"0000061********230518000112012889\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/setReturnReceipt",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"setReturnReceipt"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Токены мэдээлэл алдаатай байна\",\n  \"status\": 500,\n  \"code\": null,\n  \"data\": null\n}"
+														},
+														{
+															"name": "Өөр байгууллагын борлуулалтын баримт тул устгаж болохгүй",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "X-API-KEY",
+																		"value": "eaab09fdb83c4affc210b8fb96f9977db7978e8a",
+																		"description": "posapi@itc.gov.mn рүү хүсэлт илгээж авна"
+																	},
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"posRno\": \"0000061********230518000112012889\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/setReturnReceipt",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"setReturnReceipt"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Өөр байгууллагын борлуулалтын баримт тул устгаж болохгүй\",\n  \"status\": 500,\n  \"code\": null,\n  \"data\": null\n}"
+														},
+														{
+															"name": "Хэрэглэгч буцаах үйлдэл хийгээгүй баримт байна",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "X-API-KEY",
+																		"value": "eaab09fdb83c4affc210b8fb96f9977db7978e8a",
+																		"description": "posapi@itc.gov.mn рүү хүсэлт илгээж авна"
+																	},
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"posRno\": \"0000061********230518000112012889\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/setReturnReceipt",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"setReturnReceipt"
+																	]
+																}
+															},
+															"status": "OK",
+															"code": 200,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{\n  \"msg\": \"Хэрэглэгч буцаах үйлдэл хийгээгүй баримт байна\",\n  \"status\": 500,\n  \"code\": null,\n  \"data\": null\n}"
+														},
+														{
+															"name": "ДДТД дугаараар буцаалт хийх",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "X-API-KEY",
+																		"value": "eaab09fdb83c4affc210b8fb96f9977db7978e8a",
+																		"description": "posapi@itc.gov.mn рүү хүсэлт илгээж авна"
+																	},
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"posRno\": \"0000061********230518000112012889\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/setReturnReceipt",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"setReturnReceipt"
+																	]
+																}
+															},
+															"status": "Internal Server Error",
+															"code": 500,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{}"
+														},
+														{
+															"name": "Сугалааны дугаараар буцаалт хийх",
+															"originalRequest": {
+																"method": "POST",
+																"header": [
+																	{
+																		"key": "X-API-KEY",
+																		"value": "eaab09fdb83c4affc210b8fb96f9977db7978e8a",
+																		"description": "posapi@itc.gov.mn рүү хүсэлт илгээж авна"
+																	},
+																	{
+																		"key": "Content-Type",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Accept",
+																		"value": "application/json"
+																	},
+																	{
+																		"key": "Authorization",
+																		"value": "Bearer <token>",
+																		"description": "Added as a part of security scheme: bearer"
+																	}
+																],
+																"body": {
+																	"mode": "raw",
+																	"raw": "{\n  \"lotteryNumber\": \"AA11111111\"\n}",
+																	"options": {
+																		"raw": {
+																			"headerFamily": "json",
+																			"language": "json"
+																		}
+																	}
+																},
+																"url": {
+																	"raw": "{{baseUrl}}/api/easy-register/rest/v1/setReturnReceipt",
+																	"host": [
+																		"{{baseUrl}}"
+																	],
+																	"path": [
+																		"api",
+																		"easy-register",
+																		"rest",
+																		"v1",
+																		"setReturnReceipt"
+																	]
+																}
+															},
+															"status": "Internal Server Error",
+															"code": 500,
+															"_postman_previewlanguage": "json",
+															"header": [
+																{
+																	"key": "Content-Type",
+																	"value": "application/json"
+																}
+															],
+															"cookie": [],
+															"body": "{}"
+														}
+													]
+												}
+											]
+										}
+									]
+								}
+							]
+						}
+					]
+				}
+			]
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "/"
+		}
+	]
+}
