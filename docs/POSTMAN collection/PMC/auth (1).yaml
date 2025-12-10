@@ -1,0 +1,106 @@
+openapi: 3.1.0
+info:
+  version: '1.0'
+  title: ИБАРИМТ нэвтрэлт
+  summary: ''
+  description: "> Нэгдсэн нэвтрэлтийн системийн API\r\n"
+paths:
+  /protocol/openid-connect/token:
+    post:
+      summary: Token авах
+      description: "> Token авах хэсгийн танилцуулга\r\n\r\n<!-- theme: warning -->\r\n> Сервисийн хариу амжилттай бол зөвхөн `access_token` ийг авч ашиглана уу"
+      operationId: 'post-https:-st.auth.itc.gov.mn-auth-realms-Staging-protocol-openid-connect-token'
+      requestBody:
+        description: ''
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                grant_type:
+                  type: string
+                  examples:
+                    - password
+                client_id:
+                  type: string
+                  description: "Төрөл | client_id \r\n---------|----------\r\nhttps://api.ebarimt.mn гэсэн domain-той бол/| vatps "
+                  examples:
+                    - vatps
+                username:
+                  type: string
+                  description: "\r\nТөрөл | username \r\n---------|----------\r\n Борлуулалт, ХА-н задаргааны сервис бол| АА10010110 \r\n Хялбар бүртгэлийн сервис бол| easy-register-test\r\n"
+                  examples:
+                    - АА10010110 эсвэл easy-register-test
+                password:
+                  type: string
+                  description: Нууц үг
+                  examples:
+                    - Test@123
+              required:
+                - grant_type
+                - client_id
+                - username
+                - password
+            examples:
+              Хүсэлтийн жишээ:
+                value:
+                  grant_type: password
+                  client_id: vatps
+                  username: АА10010110
+                  password: Test@123
+              Хялбар бүртгэлийн токен авах:
+                value:
+                  grant_type: password
+                  client_id: vatps
+                  username: easy-register-test
+                  password: Test@123
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  expires_in:
+                    type: string
+                  refresh_expires_in:
+                    type: string
+                  refresh_token:
+                    type: string
+                  token_type:
+                    type: string
+                  not-before-policy:
+                    type: string
+                  session_state:
+                    type: string
+                  scope:
+                    type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+                  error_description:
+                    type: string
+              examples:
+                Серисийн хариуны жишээ:
+                  value:
+                    error: invalid_client
+                    error_description: Invalid client or Invalid client credentials
+                Нэвтрэх нэр эсвэл нууц үг буруу үеийн жишээ:
+                  value:
+                    error: invalid_grant
+                    error_description: Invalid user credentials
+      servers:
+        - url: 'https://st.auth.itc.gov.mn/auth/realms/Staging'
+          description: Хөгжүүлэлтийн орчинд
+        - url: 'https://auth.itc.gov.mn/auth/realms/ITC/'
+          description: Бодит орчинд
+x-internal: false

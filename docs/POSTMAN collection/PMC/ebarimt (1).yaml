@@ -1,0 +1,673 @@
+openapi: 3.1.0
+info:
+  version: 1.0.0
+  title: Цахим төлбөрийн баримт API холболт
+  description: |-
+    ## Танилцуулга
+    > Монгол Улсад импортоор оруулсан, эсхүл Монгол Улсаас экспортод гаргасан болон Монгол Улсын нутаг дэвсгэрт бараа борлуулсан, ажил гүйцэтгэсэн, үйлчилгээ үзүүлсэн
+    > этгээдийн бараа, ажил, үйлчилгээний цахим баримтын мэдээллийг цуглуулах, боловсруулах, тайлагнах үйл ажиллагааг зохион байгуулах систем юм. Мөн нэмэгдсэн өртгийн албан
+    > татварын урамшуулал, буцаан олголтыг бүртгэх, олгох ажиллагаа энэхүү системийг ашиглан гүйцэтгэдэг.
+
+    ### Нэвтрэлтийн системийн сервисийн хаяг
+    | Сервисийн нэр | Хөгжүүлэлтийн орчинд | Бодит орчинд |
+    | -------- | ------- | ------- |
+    | TOKEN | https://st.auth.itc.gov.mn/auth/realms/Staging | https://auth.itc.gov.mn/auth/realms/ITC |
+
+
+
+    ### Өөрчлөлтийн түүх
+
+    | № | Хувилбар | Огноо | Тайлбар | Хариуцагч |
+    | -------- | ------- | ------- | ------- | ------- |
+    | 1  | 1.0.0 | 05/22/2023 | Гарын авлага боловсруулав | Б.Мөнгөнчимэг   |
+paths:
+  /api/tpi/receipt/getSalesTotalData:
+    post:
+      summary: Борлуулалтын задаргааны мэдээлэл татах сервис
+      description: "Цахим төлбөрийн баримтын системд их хэмжээний борлуулалтын баримт илгээдэг, том сегментэд харьяалагддаг татвар төлөгч нар борлуулалтын задаргаагаа өөрийн санхүүгийн системээс татах боломжийг бүрдүүлэхэд энэхүү сервис ашиглагдана.\r\n[Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth.yaml/paths/~1protocol~1openid-connect~1token/post)\r\n<!-- theme: danger -->\r\n> Анхаарах асуудал: Хэрэглэгч сервисийг зөвхөн шөнийн цагаар буюу шөнийн 1:00 цагаас өглөөний 7:00 цагийн хооронд дуудан ашиглах боломжтой."
+      operationId: post-api-tpi-receipt-getSalesTotalData
+      parameters:
+        - name: X-API-KEY
+          in: header
+          description: Татварын ерөнхий газрын-Татвар төлөгчид үйлчлэх газарт албан тоотоор хүсэлт гарган авна.
+          required: true
+          schema:
+            type: string
+            examples:
+              - 'Туршилтын орчинд ашиглах: 9406e79323ec0fed4e560342bce72221107a808b'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                year:
+                  type: string
+                  description: Задаргаа авч буй баримтын он
+                month:
+                  type: string
+                  description: Задаргаа авч буй баримтын сар
+                status:
+                  type: number
+                  description: Задаргаа авч буй баримтын төрөл
+                  default: 0
+                  examples:
+                    - '0 - Нийт борлуулалтын баримт, 1 - Бизнес эрхлэгч хооронд үүсгэсэн баримт, 2 - Эцсийн хэрэглээ буюу сугалаатай баримт, 3 - Нэхэмжлэх, 4 - Багцын толгой баримт'
+                startCount:
+                  type: number
+                  description: Тухайн баримтын эхлэх тоо
+                endCount:
+                  type: number
+                  description: Тухайн баримтын дуусах тоо
+                day:
+                  type: string
+                  description: Задаргаа авч буй баримтын өдөр /Заавал биш/
+              required:
+                - year
+                - month
+                - status
+                - startCount
+                - endCount
+            examples:
+              Задаргаа авах JSON:
+                value:
+                  year: '2024'
+                  month: '01'
+                  status: 0
+                  startCount: 0
+                  endCount: 100
+                  day: '12'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    description: Сервисийн хариу
+                  status:
+                    type: number
+                    default: 200
+                  code:
+                    type: string
+                  data:
+                    type: object
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            posSid:
+                              type: string
+                              description: 'Посын системийн дугаар '
+                            posRno:
+                              type: string
+                              description: Төлбөрийн баримтын ДДТД
+                            posRdate:
+                              type: string
+                              description: Төлбөрийн баримтын огноо
+                            posRamt:
+                              type: number
+                              description: Төлбөрийн баримтын нийт дүн
+                            citytax:
+                              type: number
+                              description: Нийслэл хотын албан татвар
+                            posVamt:
+                              type: number
+                              description: Нэмэгдсэн өртгийн албан татвар
+                            netAmt:
+                              type: number
+                              description: Төлбөрийн баримтын цэвэр дүн
+                            fromType:
+                              type: string
+                              description: 'Хаанаас үүсгэсэн /POS, ebarimt/'
+                            csmrRegNo:
+                              type: string
+                              description: Худалдан авагчийн регистр
+                            csmrName:
+                              type: string
+                              description: Худалдан авагчийн нэр
+                            posNo:
+                              type: string
+                              description: Посын дугаар
+                            operatorName:
+                              type: string
+                              description: Хэрэглэгчийн систем нийлүүлэгчийн нэр
+                            districtCode:
+                              type: string
+                              description: Төлбөрийн баримтын байршлын нэр
+                            prParentRno:
+                              type: string
+                              description: Төлбөрийн баримтын толгой нэхэмжлэхийн дугаар
+                          required:
+                            - posSid
+                            - posRno
+                            - posRdate
+                            - posRamt
+                            - citytax
+                            - posVamt
+                            - netAmt
+                            - fromType
+                            - csmrRegNo
+                            - csmrName
+                            - posNo
+                            - operatorName
+                            - districtCode
+                      pageModel:
+                        type: object
+                        properties:
+                          totalElements:
+                            type: number
+                            description: Нийт баримтын тоо
+                        required:
+                          - totalElements
+                      '':
+                        type: string
+                    required:
+                      - list
+                required:
+                  - msg
+                  - status
+                  - code
+                  - data
+              examples:
+                Өгөгдөл татах үйлдэл амжилттай:
+                  value:
+                    msg: Амжилттай
+                    status: 200
+                    code: null
+                    data:
+                      content:
+                        - posSid: 32***73
+                          posRno: 0000054355*******0907000001014141
+                          posRdate: '2023-09-07 22:50:46'
+                          posRamt: 3000
+                          citytax: 0
+                          posVamt: 272.727273
+                          netAmt: 2727.272727
+                          fromType: ebarimt
+                          csmrRegNo: 20***25
+                          csmrName: МОНГ**** *** **К
+                          posNo: '001'
+                          operatorName: TEST OPERATOR 1
+                          districtCode: Архангай
+                      pageModel:
+                        totalElements: 10
+                Мэдээлэл татах эрхгүй токен ашигласан үед:
+                  value:
+                    msg: Ерөнхий нягтлан биш байна.
+                    Status: 500
+                    code: null
+                    data: null
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                  status:
+                    type: number
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  path:
+                    type: string
+                required:
+                  - timestamp
+                  - status
+                  - error
+                  - message
+                  - path
+              examples:
+                Request body алдаатай:
+                  value:
+                    timestamp: '2024-06-22T09:36:48.624+00:00'
+                    status: 400
+                    error: Bad Request
+                    message: Bad Request
+                    path: /api/tpi/receipt/getSalesTotalData
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                  path:
+                    type: string
+                  status:
+                    type: number
+                  error:
+                    type: string
+                  requestId:
+                    type: string
+                required:
+                  - timestamp
+                  - path
+                  - status
+                  - error
+                  - requestId
+              examples:
+                Key буруу:
+                  value:
+                    timestamp: '2024-06-22T09:15:52.440+00:00  '
+                    path: /api/tpi/receipt/getSalesTotalData
+                    status: 401
+                    error: Unauthorized
+                    requestId: b3382530-32
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  timestamp:
+                    type: string
+                  status:
+                    type: number
+                  error:
+                    type: string
+                  message:
+                    type: string
+                  path:
+                    type: string
+              examples:
+                Алдаатай үед:
+                  value:
+                    timestamp: '2024-06-22T09:36:48.624+00:00'
+                    status: 500
+                    error: internal server error
+                    message: internal server error
+                    path: /api/tpi/receipt/getSalesTotalData
+      security:
+        - auth.yaml: []
+      servers:
+        - url: 'https://api.ebarimt.mn/'
+          description: Бодит орчин
+        - url: 'https://st-api.ebarimt.mn/'
+          description: Хөгжүүлэлтийн орчин
+      x-internal: false
+  /api/tpi/receipt/getSaleListERP:
+    post:
+      summary: Толгой татвар төлөгч өөрийн охин компанийн худалдан авалт татах сервис
+      description: '> Энэхүү сервис нь толгой татвар төлөгч буюу бусад хуулийн этгээдийн хувьцаа эзэмшигчээр бүртгэлтэй хуулийн этгээд нь өөрийн охин компанийн худалдан авалтын мэдээллийг татахад ашиглагдана. [Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth.yaml/paths/~1protocol~1openid-connect~1token/post)'
+      operationId: post-api-tpi-receipt-getSaleListERP
+      parameters:
+        - name: X-API-KEY
+          in: header
+          description: Татварын ерөнхий газрын-Татвар төлөгчид үйлчлэх газарт албан тоотоор хүсэлт гарган авна.
+          required: true
+          schema:
+            type: string
+            examples:
+              - 'Туршилтын орчинд ашиглах: 9406e79323ec0fed4e560342bce72221107a808b'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pin:
+                  type: string
+                  description: Толгой компанийн регистрийн дугаар
+                startDate:
+                  type: string
+                  description: Баримт татах эхлэх огноо
+                subPin:
+                  type: array
+                  description: Охин компанийн регистрийн дугаар. Хэрэв регистр оруулахгүй бол толгой компанийн мэдээлэл татагдах
+                  items:
+                    type: string
+                endDate:
+                  type: string
+                  description: Баримт татах дуусах огноо
+              required:
+                - pin
+                - startDate
+                - endDate
+            examples:
+              Толгой компанийн худалдан авалт татах:
+                value:
+                  pin: '99119911'
+                  startDate: '2024-01-01 00:00:00'
+                  subPin: []
+                  endDate: '2024-04-30 23:59:59'
+              Охин компанийн худалдан авалт татах:
+                value:
+                  Pin: '99119911'
+                  StartDate: '2024-01-01'
+                  subPin:
+                    - '99119913'
+                  EndDate: '2024-04-30'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  msg:
+                    type: string
+                    description: Сервисийн хариу
+                    examples:
+                      - Амжилттай
+                  status:
+                    type: number
+                    description: Төлөв
+                    examples:
+                      - 200
+                  code:
+                    type: string
+                    description: Код
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        startDate:
+                          type: string
+                          description: Эхлэх огноо
+                          examples:
+                            - '2024-01-01 00:00:00'
+                        endDate:
+                          type: string
+                          description: Дуусах огноо
+                          examples:
+                            - '2024-04-30 23:59:59'
+                        regNo:
+                          type: string
+                          description: Толгой компанийн регистр
+                          examples:
+                            - '99119911'
+                        receiptBuyModelList:
+                          type: array
+                          description: Худалдан авалтын баримтын жагсаалт
+                          items:
+                            type: object
+                            properties:
+                              prPosRno:
+                                type: string
+                                description: Төлбөрийн баримтын ДДТД
+                                examples:
+                                  - '000005743087000240101000001411087'
+                              name:
+                                type: string
+                                description: Борлуулагчийн нэр
+                              regNo:
+                                type: string
+                                description: Борлуулагчийн регистр
+                                examples:
+                                  - ГУР*****МБА
+                              buyerRegNo:
+                                type: string
+                                description: Худалдан авагчийн регистр
+                                examples:
+                                  - 57***87
+                              date:
+                                type: string
+                                description: Баримт хэвлэсэн огноо
+                                examples:
+                                  - '2024-01-01 03:34:36'
+                              amountVat:
+                                type: number
+                                description: НӨАТ
+                                examples:
+                                  - 252.272727
+                              amountCitytax:
+                                type: number
+                                description: НХАТ
+                                examples:
+                                  - 0
+                              amountTotal:
+                                type: number
+                                description: Төлбөрийн баримтын нийт дүн
+                                examples:
+                                  - 2775
+                              amountNet:
+                                type: number
+                                description: Төлбөрийн баримтын цэвэр дүн
+                                examples:
+                                  - 2522.727273
+                              fromType:
+                                type: string
+                                description: 'Хаанаас баримт хэвлэсэн /INVOICE, POS API/'
+                                examples:
+                                  - INVOICE
+                              receiptType:
+                                type: string
+                                description: 'Төлбөрийн баримтын төрөл /ТӨЛБӨРИЙН БАРИМТ, НЭХЭМЖЛЭХ/'
+                                examples:
+                                  - ТӨЛБӨРИЙН БАРИМТ
+                            required:
+                              - prPosRno
+                              - name
+                              - regNo
+                              - buyerRegNo
+                              - date
+                              - amountVat
+                              - amountCitytax
+                              - amountTotal
+                              - amountNet
+                              - fromType
+                              - receiptType
+                      required:
+                        - startDate
+                        - endDate
+                        - regNo
+                        - receiptBuyModelList
+                required:
+                  - msg
+                  - status
+                  - code
+                  - data
+              examples:
+                Өгөгдөл татах үйлдэл амжилтгүй:
+                  value:
+                    msg: 'Мэдээлэл авах эрхтэй хэрэглэгч биш байна. '
+                    status: 500
+                    code: null
+                    data: null
+                Өгөгдөл татах үйлдэл амжилтгүй-1:
+                  value:
+                    msg: 'Охин  компанийн мэдээлэл алдаатай '
+                    status: 500
+                    code: null
+                    data: null
+                Өгөгдөл амжилттай татагдсан:
+                  value:
+                    msg: Амжилттай
+                    status: 200
+                    code: null
+                    data:
+                      - startDate: '2024-01-01 00:00:00'
+                        endDate: '2024-04-30 23:59:59'
+                        regNo: '99119911'
+                        receiptBuyModelList:
+                          - prPosRno: '000005743087000240101000001411087'
+                            name: string
+                            regNo: ГУР*****МБА
+                            buyerRegNo: 57***87
+                            date: '2024-01-01 03:34:36'
+                            amountVat: 252.272727
+                            amountCitytax: 0
+                            amountTotal: 2775
+                            amountNet: 2522.727273
+                            fromType: INVOICE
+                            receiptType: ТӨЛБӨРИЙН БАРИМТ
+        '401':
+          description: Unauthorized
+      security:
+        - auth.yaml: []
+      servers:
+        - url: 'https://api.ebarimt.mn'
+          description: Бодит орчин
+        - url: 'https://st-api.ebarimt.mn'
+          description: Хөгжүүлэлтийн орчин
+  /rest/e-inventory-service/api/v1/tpiDeclaration:
+    post:
+      summary: Хуулийн этгээдийн гаалийн мэдүүлэг татах сервис
+      description: '>Энэхүү сервис нь хуулийн этгээд гаалийн мэдүүлгийг татах зориулалттай.[Нэгдсэн нэвтрэлтийн token авах бол дарна уу.](reference/auth_copy.yaml/paths/~1protocol~1openid-connect~1token/post)'
+      operationId: post-rest-e-inventory-service-api-v1-tpiDeclaration
+      parameters:
+        - name: X-API-KEY
+          in: header
+          description: Гаалийн ерөнхий газрын Мэдээллийн технологийн газарт албан бичгээр хандаж авна.
+          required: true
+          schema:
+            type: string
+            examples:
+              - 'Туршилтын орчинд ашиглах: 4816801d5e75e24f2b2dad2820e0c4872bcdbd64'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                startDate:
+                  type: string
+                  description: Мэдүүлэг татах эхлэх огноо
+                  examples:
+                    - '2020-03-01'
+                endDate:
+                  type: string
+                  description: 'Мэдүүлэг татах дуусан огноо '
+                  examples:
+                    - '2024-03-30'
+                pageNumber:
+                  type: number
+                  description: Хуудаслалтын дугаар
+                  examples:
+                    - 1
+                pageSize:
+                  type: number
+                  description: Хуудаслалтын хэмжээ
+                  examples:
+                    - 100
+              required:
+                - startDate
+                - endDate
+                - pageNumber
+                - pageSize
+              x-examples:
+                Example 1:
+                  startDate: '2020-03-01'
+                  endDate: '2024-03-30'
+                  pageNumber: 1
+                  pageSize: 100
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  content:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        dclrNo:
+                          type: string
+                          examples:
+                            - 14215******I25514
+                        dclrDate:
+                          type: string
+                          examples:
+                            - '2020-09-24T09:15:58.000+0000'
+                        items:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              goodsnm:
+                                type: string
+                                examples:
+                                  - 'Нүүрс, коксжих, боловсруулаагүй'
+                              itemuprc:
+                                type: number
+                                examples:
+                                  - 0.0493
+                              dutyamt:
+                                type: number
+                                examples:
+                                  - 0
+                              exciseamt:
+                                type: number
+                                examples:
+                                  - 0
+                              formamt:
+                                type: number
+                                examples:
+                                  - 0
+                              vatBaseAmt:
+                                type: number
+                                examples:
+                                  - 0
+                              vatamt:
+                                type: number
+                                examples:
+                                  - 0
+                            required:
+                              - goodsnm
+                              - itemuprc
+                              - vatBaseAmt
+                      required:
+                        - dclrNo
+                        - dclrDate
+                        - items
+                x-examples:
+                  Example 1:
+                    content:
+                      - dclrNo: 14215******I25514
+                        dclrDate: '2020-09-24T09:15:58.000+0000'
+                        items:
+                          - goodsnm: 'Нүүрс, коксжих, боловсруулаагүй'
+                            itemuprc: 0.0493
+                            dutyamt: 0
+                            exciseamt: 0
+                            formamt: 0
+                            vatBaseAmt: 0
+                            vatamt: 0
+              examples:
+                Амжилттай:
+                  value:
+                    content:
+                      - dclrNo: 14215******I25514
+                        dclrDate: '2020-09-24T09:15:58.000+0000'
+                        items:
+                          - goodsnm: 'Нүүрс, коксжих, боловсруулаагүй'
+                            itemuprc: 0.0493
+                            dutyamt: 0
+                            exciseamt: 0
+                            formamt: 0
+                            vatBaseAmt: 0
+                            vatamt: 0
+      security:
+        - auth_copy.yaml: []
+      servers:
+        - url: 'https://data.ebarimt.mn'
+          description: Бодит орчин
+        - url: 'https://st-inventory.ebarimt.mn'
+          description: Туршилтын орчин
+components:
+  securitySchemes:
+    auth.yaml:
+      type: http
+      scheme: basic
+    auth_copy.yaml:
+      type: http
+      scheme: bearer
+x-internal: false
