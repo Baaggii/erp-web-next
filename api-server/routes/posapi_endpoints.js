@@ -644,7 +644,7 @@ function hasComplexComposition(node, depth = 0) {
   return Object.values(node).some((value) => hasComplexComposition(value, depth + 1));
 }
 
-function buildRequestDetails(schema, contentType) {
+function buildRequestDetails(schema, contentType, exampleBodies = []) {
   if (!schema || typeof schema !== 'object') {
     return { requestFields: [], flags: {}, enums: {}, hasComplexity: false };
   }
@@ -652,21 +652,32 @@ function buildRequestDetails(schema, contentType) {
   const enums = { receiptTypes: [], taxTypes: [] };
   const flags = { supportsMultipleReceipts: false, supportsItems: false, supportsMultiplePayments: false };
 
+  const pushField = (path, node, required) => {
+    if (!path) return;
+    const entry = { field: path, required };
+    if (node?.description) entry.description = node.description;
+    fields.push(entry);
+  };
+
   const walk = (node, pathPrefix, requiredSet = new Set()) => {
-    if (!node || typeof node !== 'object') return;
+    if (!node || typeof node !== 'object') {
+      if (pathPrefix) pushField(pathPrefix, node, requiredSet.size > 0);
+      return;
+    }
     const nodeType = node.type || (node.properties ? 'object' : node.items ? 'array' : undefined);
     if (nodeType === 'object') {
       const props = node.properties && typeof node.properties === 'object' ? node.properties : {};
       const requiredForNode = new Set(Array.isArray(node.required) ? node.required : []);
+      if (!Object.keys(props).length && pathPrefix) {
+        pushField(pathPrefix, node, requiredSet.size > 0 || requiredForNode.size > 0);
+      }
       Object.entries(props).forEach(([key, child]) => {
         const childPath = pathPrefix ? `${pathPrefix}.${key}` : key;
         const isRequired = requiredForNode.has(key) || requiredSet.has(key);
         walk(child, childPath, requiredForNode);
         const childType = child?.type || (child?.properties ? 'object' : child?.items ? 'array' : undefined);
         if (childType !== 'object' && childType !== 'array') {
-          const entry = { field: childPath, required: isRequired };
-          if (child?.description) entry.description = child.description;
-          fields.push(entry);
+          pushField(childPath, child, isRequired);
         }
         const enumsForChild = pickEnumValues(child);
         if (enumsForChild.length && /tax/.test(key)) enums.taxTypes.push(...enumsForChild);
@@ -687,23 +698,23 @@ function buildRequestDetails(schema, contentType) {
       if (/items$/i.test(pathPrefix)) {
         flags.supportsItems = true;
       }
-      const entry = { field: arrayPath, required: requiredSet.size > 0 };
-      if (node?.description) entry.description = node.description;
-      fields.push(entry);
+      pushField(arrayPath, node, requiredSet.size > 0);
       walk(node.items, arrayPath, new Set(Array.isArray(node.items?.required) ? node.items.required : []));
       return;
     }
     if (pathPrefix) {
-      const entry = { field: pathPrefix, required: requiredSet.size > 0 };
-      if (node?.description) entry.description = node.description;
-      fields.push(entry);
+      pushField(pathPrefix, node, requiredSet.size > 0);
     }
   };
 
   const rootRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
   walk(schema, '', rootRequired);
 
-  const requestFields = dedupeFieldEntries(fields);
+  const exampleFields = (exampleBodies || [])
+    .filter((body) => body !== undefined)
+    .flatMap((body) => flattenFieldsFromExample(body));
+
+  const requestFields = dedupeFieldEntries([...fields, ...exampleFields]);
   enums.receiptTypes = sanitizeCodes(enums.receiptTypes, DEFAULT_RECEIPT_TYPES);
   enums.taxTypes = sanitizeCodes(enums.taxTypes, DEFAULT_TAX_TYPES);
 
@@ -765,36 +776,49 @@ function flattenFieldsFromExample(example, prefix = '') {
 function buildResponseDetails(schema, exampleBodies = []) {
   const responseFields = [];
   const warnings = [];
-  const topLevelRequired = new Set(Array.isArray(schema?.required) ? schema.required : []);
-  const properties = schema?.properties && typeof schema.properties === 'object' ? schema.properties : {};
 
-  Object.entries(properties).forEach(([key, node]) => {
-    const isRequired = topLevelRequired.has(key);
-    const nodeType = node?.type || (node?.properties ? 'object' : node?.items ? 'array' : undefined);
-    if (nodeType === 'array' && node?.items?.properties) {
-      const itemRequired = new Set(Array.isArray(node.items.required) ? node.items.required : []);
-      Object.entries(node.items.properties).forEach(([childKey, childNode]) => {
-        const path = `${key}[].${childKey}`;
-        const entry = { field: path, required: isRequired || itemRequired.has(childKey) };
-        if (childNode?.description) entry.description = childNode.description;
-        responseFields.push(entry);
-      });
-      return;
-    }
-    if (nodeType === 'object' && node?.properties) {
-      const nestedRequired = new Set(Array.isArray(node.required) ? node.required : []);
-      Object.entries(node.properties).forEach(([childKey, childNode]) => {
-        const path = `${key}.${childKey}`;
-        const entry = { field: path, required: isRequired || nestedRequired.has(childKey) };
-        if (childNode?.description) entry.description = childNode.description;
-        responseFields.push(entry);
-      });
-      return;
-    }
-    const entry = { field: key, required: isRequired };
+  const pushField = (path, node, required) => {
+    if (!path) return;
+    const entry = { field: path, required };
     if (node?.description) entry.description = node.description;
     responseFields.push(entry);
-  });
+  };
+
+  const walk = (node, pathPrefix, inheritedRequired = false) => {
+    if (!node || typeof node !== 'object') {
+      if (pathPrefix) pushField(pathPrefix, node, inheritedRequired);
+      return;
+    }
+    const nodeType = node.type || (node.properties ? 'object' : node.items ? 'array' : undefined);
+    if (nodeType === 'object') {
+      const props = node.properties && typeof node.properties === 'object' ? node.properties : {};
+      const requiredForNode = new Set(Array.isArray(node.required) ? node.required : []);
+      if (!Object.keys(props).length && pathPrefix) {
+        pushField(pathPrefix, node, inheritedRequired || requiredForNode.size > 0);
+      }
+      Object.entries(props).forEach(([key, child]) => {
+        const childPath = pathPrefix ? `${pathPrefix}.${key}` : key;
+        const isRequired = inheritedRequired || requiredForNode.has(key);
+        walk(child, childPath, isRequired);
+        const childType = child?.type || (child?.properties ? 'object' : child?.items ? 'array' : undefined);
+        if (childType !== 'object' && childType !== 'array') {
+          pushField(childPath, child, isRequired);
+        }
+      });
+      return;
+    }
+    if (nodeType === 'array') {
+      const arrayPath = pathPrefix ? `${pathPrefix}[]` : '[]';
+      pushField(arrayPath, node, inheritedRequired || Boolean(node.required?.length));
+      walk(node.items, arrayPath, true);
+      return;
+    }
+    if (pathPrefix) {
+      pushField(pathPrefix, node, inheritedRequired);
+    }
+  };
+
+  walk(schema || {}, '', false);
 
   const exampleFields = (exampleBodies || [])
     .filter((body) => body !== undefined)
@@ -992,7 +1016,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       const isFormUrlEncoded = contentType === 'application/x-www-form-urlencoded';
       const formFields = isFormUrlEncoded ? buildFormFields(requestSchema) : undefined;
       const requestExample = isFormUrlEncoded ? buildFormEncodedExample(requestSchema) : example;
-      const requestDetails = buildRequestDetails(requestSchema, contentType);
+      const requestDetails = buildRequestDetails(requestSchema, contentType, [requestExample]);
       const responseDetails = buildResponseDetails(responseSchema);
       const parameterFields = buildParameterFieldHints(opParams);
       const requestFields = dedupeFieldEntries([
@@ -1385,12 +1409,30 @@ function extractOperationsFromPostman(spec, meta = {}) {
       const idSource = `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
       const posApiType = classifyPosApiType(folderTags, path, item.request.description || '');
-      const requestDetails = buildRequestDetails(requestSchema, 'application/json');
+      const requestDetails = buildRequestDetails(requestSchema, 'application/json', [requestExample]);
       const parameterFields = buildParameterFieldHints(parameters);
       const responseDetails = buildResponseDetails(
         responseSchema,
         Array.isArray(responseExamples) ? responseExamples.map((ex) => ex?.body) : [],
       );
+      const variations = Array.isArray(examples)
+        ? examples.map((example) => {
+          const exampleRequestFields = flattenFieldsFromExample(example?.request?.body || example?.request || {});
+          const exampleResponseFields = flattenFieldsFromExample(example?.response?.body || example?.response || {});
+          const requestFields = dedupeFieldEntries([
+            ...parameterFields,
+            ...requestDetails.requestFields,
+            ...exampleRequestFields,
+          ]);
+          const responseFields = dedupeFieldEntries([
+            ...responseDetails.responseFields,
+            ...exampleResponseFields,
+          ]);
+          if (!requestFields.length) requestFields.push({ field: 'request', required: false });
+          if (!responseFields.length) responseFields.push({ field: 'response', required: false });
+          return { ...example, requestFields, responseFields };
+        })
+        : [];
       const description = item.request.description || item.description || '';
       const serverSelection = pickPostmanServers(baseUrl, variableLookup);
       const parseWarnings = [
@@ -1421,6 +1463,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
         scripts,
         requestFields: dedupeFieldEntries([...requestDetails.requestFields, ...parameterFields]),
         responseFields: responseDetails.responseFields,
+        variations,
         ...(parseWarnings.length ? { parseWarnings } : {}),
         ...(Array.isArray(requestDetails.enums.receiptTypes) && requestDetails.enums.receiptTypes.length
           ? { receiptTypes: requestDetails.enums.receiptTypes }
