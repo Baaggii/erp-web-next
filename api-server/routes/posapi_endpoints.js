@@ -442,18 +442,15 @@ function mergeOpenApiSpecs(specEntries) {
   };
 }
 
-function normalizeParametersFromSpec(params, warnings = []) {
+function normalizeParametersFromSpec(params) {
   const list = Array.isArray(params) ? params : [];
   const deduped = [];
   const seen = new Set();
-  list.forEach((param, index) => {
+  list.forEach((param) => {
     if (!param || typeof param !== 'object') return;
-    const rawName = typeof param.name === 'string' ? param.name.trim() : '';
-    const name = rawName || param?.key || param?.id || `param${index + 1}`;
+    const name = typeof param.name === 'string' ? param.name.trim() : '';
     const loc = typeof param.in === 'string' ? param.in.trim() : '';
-    if (!rawName || !loc) {
-      warnings.push(`Parameter ${rawName || name} had missing metadata and was captured as a generic field.`);
-    }
+    if (!name || !loc) return;
     const key = `${name}:${loc}`;
     if (seen.has(key)) return;
     seen.add(key);
@@ -718,46 +715,39 @@ function buildParameterFieldHints(parameters = []) {
     }));
 }
 
-function buildResponseDetails(schema, { exampleFields = [] } = {}) {
-  if (!schema || typeof schema !== 'object') {
-    return { responseFields: dedupeFieldEntries(exampleFields), hasComplexity: false };
-  }
-  const fields = [...exampleFields];
+function buildResponseDetails(schema) {
+  if (!schema || typeof schema !== 'object') return { responseFields: [], hasComplexity: false };
+  const fields = [];
+  const topLevelRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
+  const properties = schema.properties && typeof schema.properties === 'object' ? schema.properties : {};
 
-  const walk = (node, path = '', requiredSet = new Set()) => {
-    if (!node || typeof node !== 'object') return;
-    const nodeType = node.type || (node.properties ? 'object' : node.items ? 'array' : undefined);
-    if (nodeType === 'object') {
-      const props = node.properties && typeof node.properties === 'object' ? node.properties : {};
-      const requiredForNode = new Set(Array.isArray(node.required) ? node.required : []);
-      Object.entries(props).forEach(([key, child]) => {
-        const childPath = path ? `${path}.${key}` : key;
-        const isRequired = requiredForNode.has(key) || requiredSet.has(key);
-        walk(child, childPath, requiredForNode);
-        const childType = child?.type || (child?.properties ? 'object' : child?.items ? 'array' : undefined);
-        if (childType !== 'object' && childType !== 'array') {
-          const entry = { field: childPath, required: isRequired };
-          if (child?.description) entry.description = child.description;
-          fields.push(entry);
-        }
+  Object.entries(properties).forEach(([key, node]) => {
+    const isRequired = topLevelRequired.has(key);
+    const nodeType = node?.type || (node?.properties ? 'object' : node?.items ? 'array' : undefined);
+    if (nodeType === 'array' && node?.items?.properties) {
+      const itemRequired = new Set(Array.isArray(node.items.required) ? node.items.required : []);
+      Object.entries(node.items.properties).forEach(([childKey, childNode]) => {
+        const path = `${key}[].${childKey}`;
+        const entry = { field: path, required: isRequired || itemRequired.has(childKey) };
+        if (childNode?.description) entry.description = childNode.description;
+        fields.push(entry);
       });
       return;
     }
-    if (nodeType === 'array') {
-      const arrayPath = path ? `${path}[]` : '[]';
-      fields.push({ field: arrayPath, required: requiredSet.size > 0 });
-      walk(node.items, arrayPath, new Set(Array.isArray(node.items?.required) ? node.items.required : []));
+    if (nodeType === 'object' && node?.properties) {
+      const nestedRequired = new Set(Array.isArray(node.required) ? node.required : []);
+      Object.entries(node.properties).forEach(([childKey, childNode]) => {
+        const path = `${key}.${childKey}`;
+        const entry = { field: path, required: isRequired || nestedRequired.has(childKey) };
+        if (childNode?.description) entry.description = childNode.description;
+        fields.push(entry);
+      });
       return;
     }
-    if (path) {
-      const entry = { field: path, required: requiredSet.size > 0 };
-      if (node?.description) entry.description = node.description;
-      fields.push(entry);
-    }
-  };
-
-  const rootRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
-  walk(schema, '', rootRequired);
+    const entry = { field: key, required: isRequired };
+    if (node?.description) entry.description = node.description;
+    fields.push(entry);
+  });
 
   return { responseFields: dedupeFieldEntries(fields), hasComplexity: hasComplexComposition(schema) };
 }
@@ -777,41 +767,6 @@ function dedupeFieldEntries(fields) {
     }
   });
   return Array.from(seen.values());
-}
-
-function collectFieldsFromExample(example, pathPrefix = '') {
-  const fields = [];
-
-  const pushField = (field) => {
-    if (!field) return;
-    fields.push({ field });
-  };
-
-  const walk = (value, currentPath) => {
-    const valueType = value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value;
-    if (valueType === 'object') {
-      Object.entries(value).forEach(([key, child]) => {
-        const nextPath = currentPath ? `${currentPath}.${key}` : key;
-        pushField(nextPath);
-        walk(child, nextPath);
-      });
-      return;
-    }
-    if (valueType === 'array') {
-      const arrayPath = currentPath ? `${currentPath}[]` : '[]';
-      pushField(arrayPath);
-      if (value.length > 0) {
-        walk(value[0], arrayPath);
-      }
-      return;
-    }
-    if (currentPath) {
-      pushField(currentPath);
-    }
-  };
-
-  walk(example, pathPrefix);
-  return fields;
 }
 
 function pickEnumValues(node) {
@@ -960,14 +915,12 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
   const entries = [];
   Object.entries(paths).forEach(([path, definition]) => {
     if (!definition || typeof definition !== 'object') return;
-    const pathWarnings = [];
-    const sharedParams = normalizeParametersFromSpec(definition.parameters, pathWarnings);
+    const sharedParams = normalizeParametersFromSpec(definition.parameters);
     Object.entries(definition).forEach(([methodKey, operation]) => {
       const method = methodKey.toUpperCase();
       if (!['GET', 'POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return;
       const op = operation && typeof operation === 'object' ? operation : {};
-      const opWarnings = [...pathWarnings];
-      const opParams = normalizeParametersFromSpec([...(op.parameters || []), ...sharedParams], opWarnings);
+      const opParams = normalizeParametersFromSpec([...(op.parameters || []), ...sharedParams]);
       const example = extractRequestExample(op.requestBody);
       const { schema: requestSchema, description: requestDescription, contentType } =
         extractRequestSchema(op.requestBody);
@@ -999,10 +952,8 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       }
       const serverSelection = pickTestServers(op, specServers);
       const hasPartialSchema = requestDetails.hasComplexity || responseDetails.hasComplexity;
-      const parseWarnings = [...opWarnings];
       if (hasPartialSchema) {
         validationIssues.push('Some schemas use advanced composition (anyOf/oneOf/$ref) and were partially parsed.');
-        parseWarnings.push('Some schema elements could not be expanded automatically.');
       }
       const resolvedReceiptTypes = (posHints.receiptTypes && posHints.receiptTypes.length
         ? posHints.receiptTypes
@@ -1055,8 +1006,11 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         validation: validationIssues.length
           ? { state: hasPartialSchema ? 'partial' : 'incomplete', issues: validationIssues }
           : { state: 'ok' },
-        ...(parseWarnings.length
-          ? { parseWarnings, ...(hasPartialSchema ? { rawSchemas: { request: requestSchema, response: responseSchema } } : {}) }
+        ...(hasPartialSchema
+          ? { parseWarnings: ['Some schema elements could not be expanded automatically.'], rawSchemas: {
+            request: requestSchema,
+            response: responseSchema,
+          } }
           : {}),
         sourceName: metaLookup?.[metaKey]?.sourceNames?.join(', ') || meta.sourceName || '',
         isBundled: metaLookup?.[metaKey]?.isBundled ?? Boolean(meta.isBundled),
@@ -1241,11 +1195,9 @@ function extractOperationsFromPostman(spec, meta = {}) {
   function parseResponses(responses = []) {
     const examples = [];
     const jsonBodies = [];
-    const responseFields = [];
-    const warnings = [];
     responses
       .filter((resp) => resp && resp.body)
-      .forEach((resp, index) => {
+      .forEach((resp) => {
         const headers = Array.isArray(resp.header)
           ? resp.header.reduce((acc, h) => {
             if (h?.key) acc[h.key] = h?.value;
@@ -1260,15 +1212,10 @@ function extractOperationsFromPostman(spec, meta = {}) {
             parsedBody = typeof resp.body === 'string' ? JSON.parse(resp.body) : resp.body;
             if (parsedBody && typeof parsedBody === 'object') {
               jsonBodies.push(parsedBody);
-              responseFields.push(...collectFieldsFromExample(parsedBody));
             }
           } catch {
-            warnings.push(`Response ${resp.name || resp.status || index + 1} could not be parsed as JSON.`);
-            responseFields.push({ field: 'response', description: 'Unparsed response body' });
+            // leave as-is
           }
-        } else if (resp.body !== undefined && resp.body !== null) {
-          responseFields.push({ field: 'response', description: 'Unparsed response body' });
-          warnings.push(`Response ${resp.name || resp.status || index + 1} is not JSON – captured as generic field.`);
         }
         examples.push({
           status: resp.code || resp.status,
@@ -1278,7 +1225,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
         });
       });
     const responseSchema = jsonBodies.length ? mergeExampleSchemas(jsonBodies) : undefined;
-    return { examples, responseSchema, responseFields: dedupeFieldEntries(responseFields), warnings };
+    return { examples, responseSchema };
   }
 
   function parseExampleRequest(request = {}) {
@@ -1349,11 +1296,9 @@ function extractOperationsFromPostman(spec, meta = {}) {
       );
       const body = item.request.body;
       const { requestExample, requestSchema } = parseRequestBody(body);
-      const { examples: responseExamples, responseSchema, responseFields: responseFieldHints, warnings } =
-        parseResponses(item.response);
+      const { examples: responseExamples, responseSchema } = parseResponses(item.response);
       const examples = buildPostmanExamples(item);
       const scripts = extractPostmanScripts(item.event || []);
-      const parameterWarnings = [];
       const parameters = normalizeParametersFromSpec([
         ...query,
         ...pathParams.map((name) => ({ name, in: 'path', required: true })),
@@ -1366,7 +1311,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
             description: header?.description || '',
           }))
           : []),
-      ], parameterWarnings);
+      ]);
       const idSource = `${method}-${path}`;
       const id = idSource.replace(/[^a-zA-Z0-9-_]+/g, '-');
       const posApiType = classifyPosApiType(folderTags, path, item.request.description || '');
@@ -1398,7 +1343,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
         examples,
         scripts,
         requestFields: dedupeFieldEntries([...requestDetails.requestFields, ...parameterFields]),
-        responseFields: dedupeFieldEntries([...responseDetails.responseFields, ...responseFieldHints]),
+        responseFields: responseDetails.responseFields,
         ...(Array.isArray(requestDetails.enums.receiptTypes) && requestDetails.enums.receiptTypes.length
           ? { receiptTypes: requestDetails.enums.receiptTypes }
           : {}),
@@ -1428,10 +1373,6 @@ function extractOperationsFromPostman(spec, meta = {}) {
         sourceName: meta.sourceName || '',
         isBundled: Boolean(meta.isBundled),
         variables,
-        parseWarnings:
-          [...(warnings || []), ...parameterWarnings].length
-            ? [...(warnings || []), ...parameterWarnings]
-            : undefined,
       });
     });
   }
