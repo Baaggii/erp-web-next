@@ -415,17 +415,73 @@ function normalizeFieldList(payload) {
   if (!payload) return [];
   if (Array.isArray(payload)) return payload;
 
+  const mapObjectFieldsToList = (fieldsObj = {}) => {
+    return Object.entries(fieldsObj).map(([key, value]) => {
+      if (value && typeof value === 'object') {
+        const name = extractFieldName(value) || key;
+        return { name, ...value };
+      }
+      const name = typeof value === 'string' ? value : key;
+      return { name };
+    });
+  };
+
+  const extractFromObject = (value) => {
+    if (!value || typeof value !== 'object') return [];
+    if (Array.isArray(value.fields)) return value.fields;
+    if (value.fields && typeof value.fields === 'object') return mapObjectFieldsToList(value.fields);
+    if (Array.isArray(value.data)) return value.data;
+    if (value.data && typeof value.data === 'object') return extractFromObject(value.data);
+    if (value.result && typeof value.result === 'object') return extractFromObject(value.result);
+    return [];
+  };
+
   if (Array.isArray(payload.fields)) return payload.fields;
   if (Array.isArray(payload.data?.fields)) return payload.data.fields;
+  if (Array.isArray(payload.data?.data?.fields)) return payload.data.data.fields;
+  if (Array.isArray(payload.result?.fields)) return payload.result.fields;
+  if (Array.isArray(payload.data?.result?.fields)) return payload.data.result.fields;
+  if (payload.data?.fields && typeof payload.data.fields === 'object') {
+    const entries = mapObjectFieldsToList(payload.data.fields);
+    if (entries.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return entries;
+    }
+  }
+  if (payload.data?.data?.fields && typeof payload.data.data.fields === 'object') {
+    const entries = mapObjectFieldsToList(payload.data.data.fields);
+    if (entries.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return entries;
+    }
+  }
+  if (payload.result?.fields && typeof payload.result.fields === 'object') {
+    const entries = mapObjectFieldsToList(payload.result.fields);
+    if (entries.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return entries;
+    }
+  }
+  if (payload.data?.result?.fields && typeof payload.data.result.fields === 'object') {
+    const entries = mapObjectFieldsToList(payload.data.result.fields);
+    if (entries.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return entries;
+    }
+  }
   if (Array.isArray(payload.data)) return payload.data;
   if (Array.isArray(payload.columns)) return payload.columns;
   if (Array.isArray(payload.data?.columns)) return payload.data.columns;
 
   if (payload.fields && typeof payload.fields === 'object') {
-    const values = Object.values(payload.fields);
-    if (values.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
-      return values;
+    const entries = mapObjectFieldsToList(payload.fields);
+    if (entries.every((value) => value && (typeof value === 'object' || typeof value === 'string'))) {
+      return entries;
     }
+  }
+  if (payload.result && typeof payload.result === 'object') {
+    const entries = extractFromObject(payload.result);
+    if (entries.length > 0) return entries;
+  }
+  if (payload.data && typeof payload.data === 'object') {
+    const entries = extractFromObject(payload.data);
+    if (entries.length > 0) return entries;
   }
 
   return [];
