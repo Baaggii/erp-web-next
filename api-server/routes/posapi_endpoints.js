@@ -63,11 +63,8 @@ function validateEndpointDefinition(endpoint, index = 0) {
   const variations = Array.isArray(endpoint?.variations) ? endpoint.variations : [];
   variations.forEach((variation, idx) => {
     const variationLabel = variation?.name || `variation ${idx + 1}`;
-    if (!variation?.request) {
+    if (!variation?.request && !variation?.requestExample) {
       issues.push(`${label} - ${variationLabel} is missing a request definition.`);
-    }
-    if (!variation?.response) {
-      issues.push(`${label} - ${variationLabel} is missing a response definition.`);
     }
   });
   return issues;
@@ -935,6 +932,92 @@ function flattenFieldsFromExample(example, prefix = '') {
   return fields;
 }
 
+function parseTabbedRequestVariations(markdown, flags = {}) {
+  const variations = [];
+  const warnings = [];
+  if (typeof markdown !== 'string' || !markdown.includes('type: tab')) {
+    return { variations, warnings };
+  }
+
+  try {
+    const tabRegex = /<!--([\s\S]*?)-->/g;
+    const matches = [];
+    let match;
+    while ((match = tabRegex.exec(markdown))) {
+      const block = match[1] || '';
+      if (!/type:\s*tab/i.test(block)) continue;
+      const titleMatch = /title:\s*([^\n]+)/i.exec(block);
+      const title = titleMatch ? titleMatch[1].trim() : '';
+      matches.push({ title, start: match.index, end: tabRegex.lastIndex });
+    }
+
+    matches.forEach((entry, index) => {
+      const sliceEnd = matches[index + 1]?.start ?? markdown.length;
+      const slice = markdown.slice(entry.end, sliceEnd);
+      const codeMatch = /```(?:json|js)?\s*([\s\S]*?)```/i.exec(slice);
+      const codeText = codeMatch ? codeMatch[1].trim() : '';
+      const description = (codeMatch ? slice.slice(0, codeMatch.index) : slice).trim();
+
+      if (!codeText) {
+        warnings.push(`Tabbed example for ${entry.title || 'variation'} is missing a code block.`);
+        return;
+      }
+
+      try {
+        const requestExample = JSON.parse(codeText);
+        const requestFields = flattenFieldsFromExample(requestExample).map((field) => ({
+          ...field,
+          required: true,
+        }));
+
+        variations.push({
+          key: entry.title || `variation-${index + 1}`,
+          name: entry.title || `Variation ${index + 1}`,
+          description,
+          requestExample,
+          requestFields,
+          flags,
+          request: { body: requestExample },
+        });
+      } catch (err) {
+        warnings.push(`Failed to parse tabbed example ${entry.title || index + 1}: ${err.message}`);
+      }
+    });
+  } catch (err) {
+    warnings.push(`Tabbed example parsing failed: ${err.message}`);
+  }
+
+  return { variations, warnings };
+}
+
+function collectTabbedRequestVariationsFromSchema(schema, flags = {}) {
+  const variations = [];
+  const warnings = [];
+
+  const visit = (node) => {
+    if (!node || typeof node !== 'object') return;
+    if (typeof node.description === 'string' && node.description.includes('type: tab')) {
+      const parsed = parseTabbedRequestVariations(node.description, flags);
+      variations.push(...parsed.variations);
+      warnings.push(...parsed.warnings);
+    }
+    if (node.properties && typeof node.properties === 'object') {
+      Object.values(node.properties).forEach((child) => visit(child));
+    }
+    if (node.items) {
+      visit(node.items);
+    }
+    ['oneOf', 'anyOf', 'allOf'].forEach((key) => {
+      if (Array.isArray(node[key])) {
+        node[key].forEach((child) => visit(child));
+      }
+    });
+  };
+
+  visit(schema);
+  return { variations, warnings };
+}
+
 function buildResponseDetails(schema, exampleBodies = []) {
   const responseFields = [];
   const warnings = [];
@@ -1272,6 +1355,13 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         : requestDetails.enums.taxTypes)
         || [];
       const variationWarnings = [];
+      const tabbedVariations = collectTabbedRequestVariationsFromSchema(requestSchema, {
+        posApiType: inferredPosApiType,
+        supportsItems: requestDetails.flags.supportsItems,
+        supportsMultiplePayments: requestDetails.flags.supportsMultiplePayments,
+        supportsMultipleReceipts: requestDetails.flags.supportsMultipleReceipts,
+      });
+      variationWarnings.push(...(tabbedVariations.warnings || []));
       const variationKeys = new Set([
         ...requestExamples.map((ex) => ex.key || ex.name || ''),
         ...responseExampleEntries.map((ex) => ex.key || ex.name || ''),
@@ -1279,7 +1369,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       const hasRequestPayload = Boolean(
         requestSchema || requestExample !== undefined || (requestExamples && requestExamples.length),
       );
-      const variations = Array.from(variationKeys).map((key, index) => {
+      const variationsFromExamples = Array.from(variationKeys).map((key, index) => {
         const req = requestExamples.find((ex) => (ex.key || ex.name) === key) || requestExamples[index];
         const resp = responseExampleEntries.find((ex) => (ex.key || ex.name) === key) || responseExampleEntries[index];
         const variationRequestFields = dedupeFieldEntries([
@@ -1331,6 +1421,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           responseFields: variationResponseFields,
         };
       });
+      const variations = [...variationsFromExamples, ...tabbedVariations.variations];
 
       const fieldDefaults = collectFieldDefaults(requestFields);
       const mappingHints = deriveMappingHintsFromFields(requestFields);
