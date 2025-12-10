@@ -4620,6 +4620,21 @@ export default function PosApiAdmin() {
       .join('; ');
   }
 
+  function formatSyncResult(log) {
+    if (!log) return '—';
+    const usageValue = log.usage && VALID_USAGE_VALUES.has(log.usage) ? log.usage : 'all';
+    const usageLabel = usageValue === 'all' ? 'all usages' : formatUsageLabel(usageValue);
+    const endpointIds = Array.isArray(log.endpointIds)
+      ? log.endpointIds.filter((value) => typeof value === 'string' && value)
+      : [];
+    const endpointCount = Number.isFinite(log.endpointCount) ? log.endpointCount : endpointIds.length;
+    const endpointLabel = endpointCount > 0 ? `${endpointCount} endpoint(s)` : 'all endpoints';
+    const added = log.added ?? 0;
+    const updated = log.updated ?? 0;
+    const deactivated = log.deactivated ?? 0;
+    return `Synced reference codes (${usageLabel}, ${endpointLabel}) – added ${added}, updated ${updated}, deactivated ${deactivated}.`;
+  }
+
   async function handleStaticUpload(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
@@ -8403,25 +8418,27 @@ export default function PosApiAdmin() {
               <table style={styles.logTable}>
                 <thead>
                   <tr>
-                    <th>Date</th>
-                    <th>Duration (ms)</th>
-                    <th>Added</th>
-                    <th>Updated</th>
-                    <th>Inactive</th>
-                    <th>Trigger</th>
-                    <th>Error</th>
+                    <th style={styles.logHeaderCell}>Date</th>
+                    <th style={styles.logHeaderCell}>Duration (ms)</th>
+                    <th style={styles.logHeaderCell}>Added</th>
+                    <th style={styles.logHeaderCell}>Updated</th>
+                    <th style={styles.logHeaderCell}>Inactive</th>
+                    <th style={styles.logHeaderCell}>Trigger</th>
+                    <th style={{ ...styles.logHeaderCell, width: '32%' }}>Result</th>
+                    <th style={{ ...styles.logHeaderCell, width: '28%' }}>Error</th>
                   </tr>
                 </thead>
                 <tbody>
                   {infoSyncLogs.map((log, index) => (
                     <tr key={`${log.timestamp}-${index}`}>
-                      <td>{new Date(log.timestamp).toLocaleString()}</td>
-                      <td>{log.durationMs || 0}</td>
-                      <td>{log.added || 0}</td>
-                      <td>{log.updated || 0}</td>
-                      <td>{log.deactivated || 0}</td>
-                      <td>{log.trigger || 'manual'}</td>
-                      <td>{formatSyncErrors(log)}</td>
+                      <td style={styles.logCell}>{new Date(log.timestamp).toLocaleString()}</td>
+                      <td style={styles.logCell}>{log.durationMs || 0}</td>
+                      <td style={styles.logCell}>{log.added || 0}</td>
+                      <td style={styles.logCell}>{log.updated || 0}</td>
+                      <td style={styles.logCell}>{log.deactivated || 0}</td>
+                      <td style={styles.logCell}>{log.trigger || 'manual'}</td>
+                      <td style={{ ...styles.logCell, ...styles.logResultCell }}>{formatSyncResult(log)}</td>
+                      <td style={{ ...styles.logCell, ...styles.logErrorCell }}>{formatSyncErrors(log)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -8464,8 +8481,8 @@ const styles = {
     background: '#fff',
   },
   infoGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
+    display: 'flex',
+    flexDirection: 'column',
     gap: '1rem',
     marginTop: '1rem',
     marginBottom: '1rem',
@@ -8522,6 +8539,29 @@ const styles = {
   logTable: {
     width: '100%',
     borderCollapse: 'collapse',
+    tableLayout: 'fixed',
+  },
+  logHeaderCell: {
+    textAlign: 'left',
+    padding: '0.5rem',
+    borderBottom: '1px solid #e2e8f0',
+    color: '#0f172a',
+    fontWeight: 700,
+  },
+  logCell: {
+    padding: '0.5rem',
+    borderBottom: '1px solid #e2e8f0',
+    verticalAlign: 'top',
+    wordBreak: 'break-word',
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+  },
+  logResultCell: {
+    color: '#0f172a',
+    fontWeight: 500,
+  },
+  logErrorCell: {
+    color: '#b91c1c',
   },
   sidebar: {
     width: '280px',
