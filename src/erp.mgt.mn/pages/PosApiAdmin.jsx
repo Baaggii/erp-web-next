@@ -458,6 +458,21 @@ function normalizeFieldList(payload) {
 
 function withEndpointMetadata(endpoint) {
   if (!endpoint || typeof endpoint !== 'object') return endpoint;
+  const normalizeUrlSelection = (literal, envVar, mode) => {
+    const trimmedLiteral = typeof literal === 'string' ? literal.trim() : '';
+    const trimmedEnv = typeof envVar === 'string' ? envVar.trim() : '';
+    const normalizedMode = normalizeUrlMode(mode, trimmedEnv);
+    if (normalizedMode === 'env' && trimmedEnv) {
+      return { literal: trimmedLiteral, envVar: trimmedEnv, mode: 'env' };
+    }
+    if (normalizedMode === 'env' && !trimmedEnv && trimmedLiteral) {
+      return { literal: trimmedLiteral, envVar: '', mode: 'literal' };
+    }
+    if (!trimmedLiteral && trimmedEnv) {
+      return { literal: '', envVar: trimmedEnv, mode: 'env' };
+    }
+    return { literal: trimmedLiteral, envVar: trimmedEnv, mode: 'literal' };
+  };
   const usage = endpoint.posApiType === 'AUTH'
     ? 'auth'
     : endpoint.posApiType === 'LOOKUP'
@@ -539,9 +554,7 @@ function withEndpointMetadata(endpoint) {
     serverUrl: typeof endpoint.serverUrl === 'string' ? endpoint.serverUrl : '',
     productionServerUrl: typeof endpoint.productionServerUrl === 'string'
       ? endpoint.productionServerUrl
-      : typeof endpoint.testServerUrlProduction === 'string'
-        ? endpoint.testServerUrlProduction
-        : '',
+      : '',
     testServerUrl: typeof endpoint.testServerUrl === 'string' ? endpoint.testServerUrl : '',
     testServerUrlProduction: typeof endpoint.testServerUrlProduction === 'string'
       ? endpoint.testServerUrlProduction
@@ -556,16 +569,42 @@ function withEndpointMetadata(endpoint) {
     testServerUrlProductionEnvVar: typeof endpoint.testServerUrlProductionEnvVar === 'string'
       ? endpoint.testServerUrlProductionEnvVar.trim()
       : '',
-    serverUrlMode: normalizeUrlMode(endpoint.serverUrlMode, endpoint.serverUrlEnvVar),
-    testServerUrlMode: normalizeUrlMode(endpoint.testServerUrlMode, endpoint.testServerUrlEnvVar),
-    productionServerUrlMode: normalizeUrlMode(
-      endpoint.productionServerUrlMode,
-      endpoint.productionServerUrlEnvVar,
-    ),
-    testServerUrlProductionMode: normalizeUrlMode(
-      endpoint.testServerUrlProductionMode,
-      endpoint.testServerUrlProductionEnvVar,
-    ),
+    ...(() => {
+      const normalizedServer = normalizeUrlSelection(
+        endpoint.serverUrl,
+        endpoint.serverUrlEnvVar,
+        endpoint.serverUrlMode,
+      );
+      const normalizedTest = normalizeUrlSelection(
+        endpoint.testServerUrl,
+        endpoint.testServerUrlEnvVar,
+        endpoint.testServerUrlMode,
+      );
+      const normalizedProd = normalizeUrlSelection(
+        endpoint.productionServerUrl,
+        endpoint.productionServerUrlEnvVar,
+        endpoint.productionServerUrlMode,
+      );
+      const normalizedTestProd = normalizeUrlSelection(
+        endpoint.testServerUrlProduction,
+        endpoint.testServerUrlProductionEnvVar,
+        endpoint.testServerUrlProductionMode,
+      );
+      return {
+        serverUrl: normalizedServer.literal,
+        serverUrlEnvVar: normalizedServer.envVar,
+        serverUrlMode: normalizedServer.mode,
+        testServerUrl: normalizedTest.literal,
+        testServerUrlEnvVar: normalizedTest.envVar,
+        testServerUrlMode: normalizedTest.mode,
+        productionServerUrl: normalizedProd.literal,
+        productionServerUrlEnvVar: normalizedProd.envVar,
+        productionServerUrlMode: normalizedProd.mode,
+        testServerUrlProduction: normalizedTestProd.literal,
+        testServerUrlProductionEnvVar: normalizedTestProd.envVar,
+        testServerUrlProductionMode: normalizedTestProd.mode,
+      };
+    })(),
   };
 }
 
@@ -1614,11 +1653,11 @@ function createFormState(definition) {
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
 
-  const buildUrlFieldState = (key, fallbackLiteral = '') => {
+  const buildUrlFieldState = (key) => {
     const literalCandidate = definition[key];
     const literal = typeof literalCandidate === 'string' && literalCandidate
       ? literalCandidate
-      : fallbackLiteral;
+      : '';
     const envVarFromMap = normalizeEnvVarName(definition.urlEnvMap?.[key]);
     const envVarFromField = normalizeEnvVarName(definition[`${key}EnvVar`]);
     const envVar = envVarFromMap || envVarFromField;
@@ -1628,14 +1667,8 @@ function createFormState(definition) {
 
   const serverUrlField = buildUrlFieldState('serverUrl');
   const testServerUrlField = buildUrlFieldState('testServerUrl');
-  const productionServerUrlField = buildUrlFieldState(
-    'productionServerUrl',
-    definition.testServerUrlProduction || '',
-  );
-  const testServerUrlProductionField = buildUrlFieldState(
-    'testServerUrlProduction',
-    definition.productionServerUrl || '',
-  );
+  const productionServerUrlField = buildUrlFieldState('productionServerUrl');
+  const testServerUrlProductionField = buildUrlFieldState('testServerUrlProduction');
 
   return {
     id: definition.id || '',
@@ -2024,6 +2057,39 @@ function extractOperationsFromPostman(spec) {
       .filter(Boolean)
     : [];
 
+  function flattenResponseFields(body, parent = '') {
+    const fields = [];
+    const pathPrefix = parent ? `${parent}.` : '';
+
+    if (Array.isArray(body)) {
+      if (body.length === 0) {
+        fields.push({ field: `${parent}[]`, description: 'Array response' });
+        return fields;
+      }
+      const child = body[0];
+      const nextPrefix = parent ? `${parent}[]` : '[]';
+      fields.push(...flattenResponseFields(child, nextPrefix));
+      return fields;
+    }
+
+    if (body && typeof body === 'object') {
+      Object.entries(body).forEach(([key, value]) => {
+        const fieldPath = `${pathPrefix}${key}`;
+        if (value !== null && typeof value === 'object') {
+          fields.push(...flattenResponseFields(value, fieldPath));
+        } else {
+          fields.push({ field: fieldPath, description: '' });
+        }
+      });
+      return fields;
+    }
+
+    if (parent) {
+      fields.push({ field: parent, description: '' });
+    }
+    return fields;
+  }
+
   function buildSchemaFromExample(example) {
     const detectType = (value) => {
       if (value === null) return 'null';
@@ -2129,6 +2195,8 @@ function extractOperationsFromPostman(spec) {
   function parseResponses(responses = []) {
     const examples = [];
     const jsonBodies = [];
+    const responseFields = new Map();
+    const warnings = [];
     responses
       .filter((resp) => resp && resp.body)
       .forEach((resp) => {
@@ -2145,20 +2213,49 @@ function extractOperationsFromPostman(spec) {
             parsedBody = JSON.parse(resp.body);
             if (parsedBody && typeof parsedBody === 'object') {
               jsonBodies.push(parsedBody);
+              flattenResponseFields(parsedBody).forEach((entry) => {
+                if (entry?.field && !responseFields.has(entry.field)) {
+                  responseFields.set(entry.field, entry);
+                }
+              });
             }
           } catch {
-            // leave as-is
+            warnings.push('Failed to parse a JSON response body; captured raw text instead.');
+            if (!responseFields.has('response')) {
+              responseFields.set('response', { field: 'response', description: 'Raw response content' });
+            }
           }
         }
+        if (!/json/i.test(contentType) && typeof parsedBody === 'string') {
+          warnings.push('Captured a non-JSON response body; added a generic response field.');
+          if (!responseFields.has('response')) {
+            responseFields.set('response', { field: 'response', description: 'Raw response content' });
+          }
+        }
+        const originalRequest = resp.originalRequest && resp.originalRequest.url
+          ? parsePostmanUrl(resp.originalRequest.url)
+          : null;
         examples.push({
           status: resp.code || resp.status,
           name: resp.name || resp.status || '',
           body: parsedBody,
           headers,
+          request: originalRequest
+            ? {
+                path: originalRequest.path,
+                queryParams: originalRequest.query,
+                pathParams: (originalRequest.pathParams || []).map((name) => ({ name, in: 'path' })),
+              }
+            : undefined,
         });
       });
     const responseSchema = jsonBodies.length ? mergeExampleSchemas(jsonBodies) : undefined;
-    return { examples, responseSchema };
+    return {
+      examples,
+      responseSchema,
+      responseFields: Array.from(responseFields.values()),
+      warnings,
+    };
   }
 
   function walk(list, folderTags = [], folderPath = []) {
@@ -2172,7 +2269,9 @@ function extractOperationsFromPostman(spec) {
       const { path, query, baseUrl, pathParams } = parsePostmanUrl(item.request.url || '/');
       const body = item.request.body;
       const { requestExample, requestSchema } = parseRequestBody(body);
-      const { examples: responseExamples, responseSchema } = parseResponses(item.response);
+      const { examples: responseExamples, responseSchema, responseFields, warnings = [] } = parseResponses(
+        item.response,
+      );
       const parameters = normalizeParametersFromSpec([
         ...query,
         ...pathParams.map((name) => ({ name, in: 'path', required: true })),
@@ -2196,6 +2295,18 @@ function extractOperationsFromPostman(spec) {
         : usage === 'transaction'
           ? undefined
           : { schema: {}, description };
+      const requestFields = [
+        ...flattenResponseFields(requestExample || {}),
+        ...parameters
+          .filter((param) => ['query', 'path'].includes(param.in) && param?.name)
+          .map((param) => ({
+            field: param.name,
+            location: param.in,
+            required: Boolean(param.required),
+            description: param.description || `${param.in} parameter`,
+            defaultValue: param.example ?? param.default ?? param.sample ?? '',
+          })),
+      ];
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
         name: item.name || `${method} ${path}`,
@@ -2212,11 +2323,14 @@ function extractOperationsFromPostman(spec) {
           }
           : undefined,
         responseExamples,
+        responseFields,
+        requestFields,
         posApiType,
         usage,
         serverUrl: baseUrl,
         tags: [...folderPath],
         variables,
+        warnings,
       });
     });
   }
@@ -4958,7 +5072,7 @@ export default function PosApiAdmin() {
       },
       responseTables: sanitizeTableSelection(formState.responseTables, responseTableOptions),
       requestEnvMap: buildRequestEnvMap(requestFieldValues),
-      requestFields: sanitizedRequestFields,
+      requestFields: combinedRequestFields,
       responseFields: responseFieldsWithMapping,
       ...(Object.keys(responseFieldMappings).length
         ? { responseFieldMappings }
@@ -5847,6 +5961,12 @@ export default function PosApiAdmin() {
                               <div style={styles.importDraftPath}>{activeImportDraft.path}</div>
                               {activeImportDraft.summary && (
                                 <div style={styles.importDraftSummary}>{activeImportDraft.summary}</div>
+                              )}
+                              {Array.isArray(activeImportDraft.warnings)
+                                && activeImportDraft.warnings.length > 0 && (
+                                  <div style={styles.warningBox}>
+                                    {activeImportDraft.warnings.join(' ')}
+                                  </div>
                               )}
                               {activeImportDraft.validation?.state === 'incomplete' && (
                                 <div style={styles.previewErrorBox}>
