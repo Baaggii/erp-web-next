@@ -873,6 +873,19 @@ function buildParameterFieldHints(parameters = []) {
     }));
 }
 
+function buildParameterDefaults(parameters = []) {
+  const defaults = { path: {}, query: {}, header: {} };
+  parameters.forEach((param) => {
+    if (!param?.name || !param?.in) return;
+    const value = coerceParamValue(param);
+    if (value === '' || value === undefined || value === null) return;
+    if (defaults[param.in]) {
+      defaults[param.in][param.name] = value;
+    }
+  });
+  return defaults;
+}
+
 function flattenFieldsFromExample(example, prefix = '') {
   const fields = [];
   const addField = (path) => {
@@ -1200,6 +1213,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         responseExampleEntries.map((entry) => entry.body),
       );
       const parameterFields = buildParameterFieldHints(opParams);
+      const parameterDefaults = buildParameterDefaults(opParams);
       const requestFields = dedupeFieldEntries([
         ...(isFormUrlEncoded ? formFields : requestDetails.requestFields),
         ...parameterFields,
@@ -1259,11 +1273,19 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           variationWarnings.push('Added placeholder response field because a variation had no response schema.');
           variationResponseFields.push({ field: 'response', required: false });
         }
+        const baseRequest = {
+          pathParams: { ...parameterDefaults.path },
+          queryParams: { ...parameterDefaults.query },
+          headers: { ...parameterDefaults.header },
+        };
+        if (req?.headers && typeof req.headers === 'object') {
+          baseRequest.headers = { ...baseRequest.headers, ...req.headers };
+        }
         const resolvedRequest = req
-          ? { body: req.body }
+          ? { ...baseRequest, ...req, body: req.body }
           : requestExample !== undefined
-            ? { body: requestExample }
-            : { body: {} };
+            ? { ...baseRequest, body: requestExample }
+            : { ...baseRequest, body: {} };
         if (!req && requestExample === undefined) {
           variationWarnings.push('Variation missing explicit request example; inserted generic placeholder.');
         }
@@ -1666,6 +1688,7 @@ function extractOperationsFromPostman(spec, meta = {}) {
       const posApiType = classifyPosApiType(folderTags, path, item.request.description || '');
       const requestDetails = buildRequestDetails(requestSchema, 'application/json', [requestExample]);
       const parameterFields = buildParameterFieldHints(parameters);
+      const parameterDefaults = buildParameterDefaults(parameters);
       const responseDetails = buildResponseDetails(
         responseSchema,
         Array.isArray(responseExamples) ? responseExamples.map((ex) => ex?.body) : [],
@@ -1696,9 +1719,17 @@ function extractOperationsFromPostman(spec, meta = {}) {
             variationWarnings.push('Added placeholder response field because a variation had no response schema.');
             responseFields.push({ field: 'response', required: false });
           }
+          const baseRequest = {
+            pathParams: { ...parameterDefaults.path },
+            queryParams: { ...parameterDefaults.query },
+            headers: { ...parameterDefaults.header },
+          };
+          if (example.request?.headers && typeof example.request.headers === 'object') {
+            baseRequest.headers = { ...baseRequest.headers, ...example.request.headers };
+          }
           const resolvedRequest = example.request && Object.keys(example.request).length
-            ? example.request
-            : example.request || { body: requestExample ?? {} };
+            ? { ...baseRequest, ...example.request }
+            : example.request || { ...baseRequest, body: requestExample ?? {} };
           const resolvedResponse = example.response
             ? example.response
             : responseExamples[0]

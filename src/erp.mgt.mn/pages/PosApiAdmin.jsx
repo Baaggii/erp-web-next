@@ -647,6 +647,7 @@ const EMPTY_ENDPOINT = {
   requestFieldsText: '[]',
   responseFieldsText: '[]',
   examplesText: '[]',
+  variationsText: '[]',
   preRequestScript: '',
   testScript: '',
   testable: false,
@@ -1710,6 +1711,7 @@ function createFormState(definition) {
     requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     examplesText: toPrettyJson(definition.examples, '[]'),
+    variationsText: toPrettyJson(definition.variations, '[]'),
     preRequestScript:
       Array.isArray(definition.scripts?.preRequest)
         ? definition.scripts.preRequest.join('\n\n')
@@ -2492,6 +2494,7 @@ export default function PosApiAdmin() {
   const [importTestRunning, setImportTestRunning] = useState(false);
   const [importTestError, setImportTestError] = useState('');
   const [importSelectedExampleKey, setImportSelectedExampleKey] = useState('');
+  const [importSelectedVariationKey, setImportSelectedVariationKey] = useState('');
   const [importExampleResponse, setImportExampleResponse] = useState(null);
   const [importUseCachedToken, setImportUseCachedToken] = useState(true);
   const [importBaseUrl, setImportBaseUrl] = useState('');
@@ -4415,9 +4418,16 @@ export default function PosApiAdmin() {
   function applyImportExample(example, draft) {
     if (!example) return;
     const targetDraft = draft || activeImportDraft;
-    setImportSelectedExampleKey(example.key || example.name || '');
+    const exampleKey = example.key || example.name || '';
+    setImportSelectedExampleKey(exampleKey);
+    setImportSelectedVariationKey(exampleKey);
     const baseDefaults = buildDraftParameterDefaults(targetDraft?.parameters || []);
     const nextValues = { ...baseDefaults };
+    (example.request?.pathParams ? Object.entries(example.request.pathParams) : [])
+      .forEach(([name, value]) => {
+        if (!name) return;
+        nextValues[name] = value ?? '';
+      });
     (example.request?.queryParams || []).forEach((param) => {
       if (!param?.name) return;
       nextValues[param.name] = param.value ?? param.example ?? '';
@@ -4447,6 +4457,7 @@ export default function PosApiAdmin() {
     importAuthSelectionDirtyRef.current = false;
     setSelectedImportId(draft.id || '');
     setImportSelectedExampleKey('');
+    setImportSelectedVariationKey('');
     setImportExampleResponse(null);
     setImportTestValues(buildDraftParameterDefaults(draft.parameters || []));
     if (draft.requestExample !== undefined) {
@@ -4476,7 +4487,10 @@ export default function PosApiAdmin() {
     if (!importAuthEndpointId && formState.authEndpointId) {
       setImportAuthEndpointId(formState.authEndpointId);
     }
-    if (Array.isArray(draft.examples) && draft.examples.length > 0) {
+    if (Array.isArray(draft.variations) && draft.variations.length > 0) {
+      applyImportExample(draft.variations[0], draft);
+      setImportSelectedVariationKey(draft.variations[0].key || draft.variations[0].name || '');
+    } else if (Array.isArray(draft.examples) && draft.examples.length > 0) {
       applyImportExample(draft.examples[0], draft);
     }
     resetImportTestState();
@@ -4669,6 +4683,7 @@ export default function PosApiAdmin() {
       requestFields: activeImportDraft.requestFields || [],
       responseFields: activeImportDraft.responseFields || [],
       examples: activeImportDraft.examples || [],
+      variations: activeImportDraft.variations || [],
       scripts: activeImportDraft.scripts || {},
       mappingHints: activeImportDraft.mappingHints || {},
       supportsItems: activeImportDraft.supportsItems ?? inferredUsage === 'transaction',
@@ -4986,6 +5001,11 @@ export default function PosApiAdmin() {
       throw new Error('Examples must be a JSON array');
     }
 
+    const variations = parseJsonInput('Variations', formState.variationsText, []);
+    if (!Array.isArray(variations)) {
+      throw new Error('Variations must be a JSON array');
+    }
+
     const scripts = {
       preRequest: splitScriptText(formState.preRequestScript),
       test: splitScriptText(formState.testScript),
@@ -5169,6 +5189,7 @@ export default function PosApiAdmin() {
         ? { responseFieldMappings }
         : {}),
       examples,
+      variations,
       scripts,
       testable: Boolean(formState.testable),
       serverUrl: serverUrlField.literal,
@@ -6234,53 +6255,62 @@ export default function PosApiAdmin() {
                             );
                           })}
                         </div>
-                        {Array.isArray(activeImportDraft.examples) && activeImportDraft.examples.length > 0 && (
-                          <div style={styles.importFieldRow}>
-                            <div style={styles.importParamsHeader}>Examples</div>
-                            <div style={styles.importParamGrid}>
-                              <label style={styles.label}>
-                                Select example
-                                <select
-                                  style={styles.input}
-                                  value={importSelectedExampleKey}
-                                  onChange={(e) => {
-                                    const selected = activeImportDraft.examples.find(
-                                      (ex) => ex.key === e.target.value || ex.name === e.target.value,
-                                    );
-                                    if (selected) {
-                                      applyImportExample(selected);
-                                    } else {
+                        {(() => {
+                          const variationOptions = Array.isArray(activeImportDraft.variations)
+                            && activeImportDraft.variations.length > 0
+                            ? activeImportDraft.variations
+                            : Array.isArray(activeImportDraft.examples)
+                              ? activeImportDraft.examples
+                              : [];
+                          if (!variationOptions.length) return null;
+                          return (
+                            <div style={styles.importFieldRow}>
+                              <div style={styles.importParamsHeader}>Examples &amp; variations</div>
+                              <div style={styles.importParamGrid}>
+                                <label style={styles.label}>
+                                  Select variation
+                                  <select
+                                    style={styles.input}
+                                    value={importSelectedVariationKey || importSelectedExampleKey}
+                                    onChange={(e) => {
+                                      const selected = variationOptions.find(
+                                        (ex) => ex.key === e.target.value || ex.name === e.target.value,
+                                      );
+                                      if (selected) {
+                                        applyImportExample(selected);
+                                      }
                                       setImportSelectedExampleKey(e.target.value);
-                                    }
-                                  }}
-                                >
-                                  <option value="">Choose…</option>
-                                  {activeImportDraft.examples.map((example) => (
-                                    <option key={example.key || example.name} value={example.key || example.name}>
-                                      {example.name || example.key}
-                                    </option>
-                                  ))}
-                                </select>
-                                <span style={styles.fieldHelp}>
-                                  Applying an example fills parameters, headers, and body with sample values.
-                                </span>
-                              </label>
-                              {importExampleResponse && (
-                                <div style={styles.previewCard}>
-                                  <div style={styles.previewHeader}>
-                                    <strong>Expected response</strong>
-                                    <span style={{ ...styles.statusPill, ...styles.statusPillSuccess }}>
-                                      {importExampleResponse.status || 'Unknown'}
-                                    </span>
+                                      setImportSelectedVariationKey(e.target.value);
+                                    }}
+                                  >
+                                    <option value="">Choose…</option>
+                                    {variationOptions.map((example) => (
+                                      <option key={example.key || example.name} value={example.key || example.name}>
+                                        {example.name || example.key}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  <span style={styles.fieldHelp}>
+                                    Applying a variation fills parameters, headers, and body with sample values and shows the expected response.
+                                  </span>
+                                </label>
+                                {importExampleResponse && (
+                                  <div style={styles.previewCard}>
+                                    <div style={styles.previewHeader}>
+                                      <strong>Expected response</strong>
+                                      <span style={{ ...styles.statusPill, ...styles.statusPillSuccess }}>
+                                        {importExampleResponse.status || 'Unknown'}
+                                      </span>
+                                    </div>
+                                    <pre style={styles.samplePre}>
+                                      {JSON.stringify(importExampleResponse.body, null, 2)}
+                                    </pre>
                                   </div>
-                                  <pre style={styles.samplePre}>
-                                    {JSON.stringify(importExampleResponse.body, null, 2)}
-                                  </pre>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        )}
+                          );
+                        })()}
                         <div style={styles.importFieldRow}>
                           <div style={styles.importParamsHeader}>Request body</div>
                           <textarea
@@ -7690,6 +7720,16 @@ export default function PosApiAdmin() {
             onChange={(e) => handleChange('examplesText', e.target.value)}
             style={styles.textarea}
             rows={6}
+          />
+        </label>
+        <label style={styles.labelFull}>
+          Variations (JSON array with request/response)
+          <textarea
+            value={formState.variationsText}
+            onChange={(e) => handleChange('variationsText', e.target.value)}
+            style={styles.textarea}
+            rows={8}
+            placeholder="[{ \"key\": \"B2C\", \"request\": { \"body\": {} }, \"response\": { \"status\": 200, \"body\": {} } }]"
           />
         </label>
         <label style={styles.labelFull}>
