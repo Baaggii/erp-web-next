@@ -1208,6 +1208,15 @@ function normalizeUrlMode(mode, envVar) {
   return envVar ? 'env' : 'literal';
 }
 
+function hasUrlSelectionValue(selection) {
+  if (!selection) return false;
+  const literal = typeof selection.literal === 'string' ? selection.literal.trim() : '';
+  const envVar = typeof selection.envVar === 'string' ? selection.envVar.trim() : '';
+  const mode = normalizeUrlMode(selection.mode, envVar);
+  if (literal) return true;
+  return mode === 'env' && Boolean(envVar);
+}
+
 function normalizeEnvVarName(value) {
   if (typeof value !== 'string') return '';
   return value.replace(/^{{\s*/, '').replace(/\s*}}$/, '').trim();
@@ -2370,7 +2379,7 @@ function buildDraftParameterDefaults(parameters) {
   };
   parameters.forEach((param) => {
     if (!param?.name) return;
-    const candidates = [param.example, param.default, param.sample];
+    const candidates = [param.testValue, param.example, param.default, param.sample, param.value];
     const hit = candidates.find((val) => val !== undefined && val !== null);
     if (hit !== undefined && hit !== null) {
       values[param.name] = hit;
@@ -4022,6 +4031,31 @@ export default function PosApiAdmin() {
   }, []);
 
   useEffect(() => {
+    if (!Array.isArray(endpoints) || endpoints.length === 0) return;
+    const missing = endpoints.filter((endpoint) => {
+      const selectionFor = (key) => ({
+        literal: endpoint?.[key],
+        envVar: endpoint?.[`${key}EnvVar`] || endpoint?.urlEnvMap?.[key],
+        mode: endpoint?.[`${key}Mode`],
+      });
+      const selections = [
+        selectionFor('testServerUrl'),
+        selectionFor('productionServerUrl'),
+        selectionFor('serverUrl'),
+        selectionFor('testServerUrlProduction'),
+      ];
+      return !selections.some(hasUrlSelectionValue);
+    });
+
+    if (missing.length > 0) {
+      const sample = missing[0].name || missing[0].id || 'endpoint';
+      setStatus(
+        `Warning: ${missing.length} endpoint(s) are missing a base URL or environment variable mapping (for example: ${sample}).`,
+      );
+    }
+  }, [endpoints]);
+
+  useEffect(() => {
     if (activeTab !== 'info') {
       refreshInfoSyncLogsRef.current = () => Promise.resolve();
       return undefined;
@@ -5041,20 +5075,14 @@ export default function PosApiAdmin() {
       testServerUrlProduction: testServerUrlProductionField,
     });
 
-    const hasUrlValue = (selection) => {
-      const literal = selection?.literal?.trim();
-      const envVar = selection?.envVar?.trim();
-      const mode = normalizeUrlMode(selection?.mode, envVar);
-      if (literal) return true;
-      return mode === 'env' && Boolean(envVar);
-    };
+    const urlSelectionsForValidation = [
+      testServerUrlField,
+      productionServerUrlField,
+      serverUrlField,
+      testServerUrlProductionField,
+    ];
 
-    if (
-      !hasUrlValue(testServerUrlField)
-      && !hasUrlValue(productionServerUrlField)
-      && !hasUrlValue(serverUrlField)
-      && !hasUrlValue(testServerUrlProductionField)
-    ) {
+    if (!urlSelectionsForValidation.some(hasUrlSelectionValue)) {
       throw new Error('Provide at least one base URL or environment variable mapping for this endpoint.');
     }
 
