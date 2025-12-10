@@ -17,6 +17,16 @@ const DEFAULT_PAYMENT_METHODS = [
   'SERVICE_PAYMENT',
 ];
 
+const DEFAULT_MAPPING_HINTS = {
+  branchNo: 'session.branch_id',
+  branchId: 'session.branch_id',
+  branchCode: 'session.branch_code',
+  posNo: 'session.pos_no',
+  posNumber: 'session.pos_no',
+  tin: 'session.tin',
+  registerNo: 'session.register_no',
+};
+
 const router = express.Router();
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -33,6 +43,34 @@ async function requireSystemSettings(req, res) {
     return null;
   }
   return { session, companyId };
+}
+
+function validateEndpointDefinition(endpoint, index = 0) {
+  const issues = [];
+  const label = endpoint?.name || endpoint?.id || `endpoint ${index + 1}`;
+  const hasBaseUrl = ['serverUrl', 'testServerUrl', 'productionServerUrl', 'testServerUrlProduction'].some(
+    (key) => typeof endpoint?.[key] === 'string' && endpoint[key].trim(),
+  );
+  if (!hasBaseUrl) {
+    issues.push(`${label} is missing a base URL (staging or production).`);
+  }
+  const requestFields = Array.isArray(endpoint?.requestFields)
+    ? endpoint.requestFields.filter((entry) => entry && typeof entry.field === 'string' && entry.field.trim())
+    : [];
+  if (!requestFields.length) {
+    issues.push(`${label} has no request fields defined for mapping.`);
+  }
+  const variations = Array.isArray(endpoint?.variations) ? endpoint.variations : [];
+  variations.forEach((variation, idx) => {
+    const variationLabel = variation?.name || `variation ${idx + 1}`;
+    if (!variation?.request) {
+      issues.push(`${label} - ${variationLabel} is missing a request definition.`);
+    }
+    if (!variation?.response) {
+      issues.push(`${label} - ${variationLabel} is missing a response definition.`);
+    }
+  });
+  return issues;
 }
 
 router.get('/', requireAuth, async (req, res, next) => {
@@ -53,6 +91,13 @@ router.put('/', requireAuth, async (req, res, next) => {
     const payload = req.body?.endpoints ?? req.body;
     if (!Array.isArray(payload)) {
       res.status(400).json({ message: 'endpoints array is required' });
+      return;
+    }
+    const validationIssues = payload
+      .map((endpoint, index) => validateEndpointDefinition(endpoint, index))
+      .flat();
+    if (validationIssues.length) {
+      res.status(400).json({ message: 'Endpoint validation failed', issues: validationIssues });
       return;
     }
     const sanitized = JSON.parse(JSON.stringify(payload));
@@ -937,19 +982,50 @@ function buildResponseDetails(schema, exampleBodies = []) {
 
 function dedupeFieldEntries(fields) {
   const seen = new Map();
+  const dedupeKey = (entry) => {
+    const location = typeof entry?.location === 'string' ? entry.location.trim() : '';
+    const field = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!field) return null;
+    const normalizedField = field.replace(/\[\]$/, '');
+    return `${location || 'body'}:${normalizedField}`;
+  };
   fields.forEach((entry) => {
-    if (!entry?.field) return;
-    const normalized = entry.field.replace(/\[\]$/, '');
-    const current = seen.get(normalized);
+    const key = dedupeKey(entry);
+    if (!key) return;
+    const current = seen.get(key);
     const candidateScore = entry.field.split('.').length + (entry.field.endsWith('[]') ? 0.5 : 0);
     const currentScore = current
       ? current.field.split('.').length + (current.field.endsWith('[]') ? 0.5 : 0)
       : -1;
     if (!current || candidateScore >= currentScore) {
-      seen.set(normalized, entry);
+      seen.set(key, entry);
     }
   });
   return Array.from(seen.values());
+}
+
+function collectFieldDefaults(fields = []) {
+  const defaults = {};
+  fields.forEach((entry) => {
+    const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!key) return;
+    if (entry.defaultValue !== undefined && entry.defaultValue !== null && entry.defaultValue !== '') {
+      defaults[key] = entry.defaultValue;
+    }
+  });
+  return defaults;
+}
+
+function deriveMappingHintsFromFields(fields = []) {
+  const hints = {};
+  fields.forEach((entry) => {
+    const key = typeof entry?.field === 'string' ? entry.field.trim() : '';
+    if (!key) return;
+    if (DEFAULT_MAPPING_HINTS[key]) {
+      hints[key] = DEFAULT_MAPPING_HINTS[key];
+    }
+  });
+  return hints;
 }
 
 function pickEnumValues(node) {
@@ -1159,6 +1235,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         ? posHints.taxTypes
         : requestDetails.enums.taxTypes)
         || [];
+      const variationWarnings = [];
       const variationKeys = new Set([
         ...requestExamples.map((ex) => ex.key || ex.name || ''),
         ...responseExampleEntries.map((ex) => ex.key || ex.name || ''),
@@ -1174,17 +1251,48 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           ...responseFields,
           ...flattenFieldsFromExample(resp?.body || {}),
         ]);
-        if (!variationRequestFields.length) variationRequestFields.push({ field: 'request', required: false });
-        if (!variationResponseFields.length) variationResponseFields.push({ field: 'response', required: false });
+        if (!variationRequestFields.length) {
+          variationWarnings.push('Added placeholder request field because a variation had no request schema.');
+          variationRequestFields.push({ field: 'request', required: false });
+        }
+        if (!variationResponseFields.length) {
+          variationWarnings.push('Added placeholder response field because a variation had no response schema.');
+          variationResponseFields.push({ field: 'response', required: false });
+        }
+        const resolvedRequest = req
+          ? { body: req.body }
+          : requestExample !== undefined
+            ? { body: requestExample }
+            : { body: {} };
+        if (!req && requestExample === undefined) {
+          variationWarnings.push('Variation missing explicit request example; inserted generic placeholder.');
+        }
+        let resolvedResponse;
+        if (resp) {
+          resolvedResponse = { status: resp.status, body: resp.body };
+        } else if (responseExampleEntries[index] || responseExampleEntries[0]) {
+          const fallback = responseExampleEntries[index] || responseExampleEntries[0];
+          resolvedResponse = { status: fallback?.status, body: fallback?.body };
+          variationWarnings.push('Variation missing explicit response example; used nearest available example.');
+        } else if (responseSchema) {
+          resolvedResponse = { status: undefined, body: responseSchema };
+          variationWarnings.push('Variation missing response example; used response schema as placeholder.');
+        } else {
+          resolvedResponse = { status: undefined, body: {} };
+          variationWarnings.push('Variation missing response definition; inserted empty object.');
+        }
         return {
           key: key || `variation-${index + 1}`,
           name: req?.name || resp?.name || key || `Variation ${index + 1}`,
-          request: req ? { body: req.body } : undefined,
-          response: resp ? { status: resp.status, body: resp.body } : undefined,
+          request: resolvedRequest,
+          response: resolvedResponse,
           requestFields: variationRequestFields,
           responseFields: variationResponseFields,
         };
       });
+
+      const fieldDefaults = collectFieldDefaults(requestFields);
+      const mappingHints = deriveMappingHintsFromFields(requestFields);
 
       entries.push({
         id: id || `${method}-${entries.length + 1}`,
@@ -1205,6 +1313,8 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         examples: requestExamples,
         responseExamples: responseExampleEntries,
         variations,
+        ...(Object.keys(fieldDefaults).length ? { fieldDefaults } : {}),
+        ...(Object.keys(mappingHints).length ? { mappingHints } : {}),
         ...(Array.isArray(resolvedReceiptTypes) && resolvedReceiptTypes.length
           ? { receiptTypes: resolvedReceiptTypes }
           : {}),
@@ -1239,6 +1349,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
                 ? ['Some schema elements could not be expanded automatically.']
                 : []),
               ...parseWarnings,
+              ...variationWarnings,
             ],
             rawSchemas: { request: requestSchema, response: responseSchema },
           }
@@ -1559,6 +1670,11 @@ function extractOperationsFromPostman(spec, meta = {}) {
         responseSchema,
         Array.isArray(responseExamples) ? responseExamples.map((ex) => ex?.body) : [],
       );
+      const combinedRequestFields = dedupeFieldEntries([
+        ...requestDetails.requestFields,
+        ...parameterFields,
+      ]);
+      const variationWarnings = [];
       const variations = Array.isArray(examples)
         ? examples.map((example) => {
           const exampleRequestFields = flattenFieldsFromExample(example?.request?.body || example?.request || {});
@@ -1572,9 +1688,36 @@ function extractOperationsFromPostman(spec, meta = {}) {
             ...responseDetails.responseFields,
             ...exampleResponseFields,
           ]);
-          if (!requestFields.length) requestFields.push({ field: 'request', required: false });
-          if (!responseFields.length) responseFields.push({ field: 'response', required: false });
-          return { ...example, requestFields, responseFields };
+          if (!requestFields.length) {
+            variationWarnings.push('Added placeholder request field because a variation had no request schema.');
+            requestFields.push({ field: 'request', required: false });
+          }
+          if (!responseFields.length) {
+            variationWarnings.push('Added placeholder response field because a variation had no response schema.');
+            responseFields.push({ field: 'response', required: false });
+          }
+          const resolvedRequest = example.request && Object.keys(example.request).length
+            ? example.request
+            : example.request || { body: requestExample ?? {} };
+          const resolvedResponse = example.response
+            ? example.response
+            : responseExamples[0]
+              ? {
+                status: responseExamples[0].status,
+                headers: responseExamples[0].headers,
+                body: responseExamples[0].body,
+              }
+              : { status: undefined, body: {} };
+          if (!example.response) {
+            variationWarnings.push('Variation missing explicit response example; inserted placeholder response.');
+          }
+          return {
+            ...example,
+            request: resolvedRequest,
+            response: resolvedResponse,
+            requestFields,
+            responseFields,
+          };
         })
         : [];
       const description = item.request.description || item.description || '';
@@ -1606,10 +1749,18 @@ function extractOperationsFromPostman(spec, meta = {}) {
         responseExamples,
         examples,
         scripts,
-        requestFields: dedupeFieldEntries([...requestDetails.requestFields, ...parameterFields]),
+        requestFields: combinedRequestFields,
         responseFields: responseDetails.responseFields,
         variations,
-        ...(parseWarnings.length ? { parseWarnings } : {}),
+        ...(Object.keys(collectFieldDefaults(combinedRequestFields)).length
+          ? { fieldDefaults: collectFieldDefaults(combinedRequestFields) }
+          : {}),
+        ...(Object.keys(deriveMappingHintsFromFields(combinedRequestFields)).length
+          ? { mappingHints: deriveMappingHintsFromFields(combinedRequestFields) }
+          : {}),
+        ...(parseWarnings.length || variationWarnings.length
+          ? { parseWarnings: [...parseWarnings, ...variationWarnings] }
+          : {}),
         ...(Array.isArray(requestDetails.enums.receiptTypes) && requestDetails.enums.receiptTypes.length
           ? { receiptTypes: requestDetails.enums.receiptTypes }
           : {}),
