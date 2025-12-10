@@ -1267,6 +1267,31 @@ function collectEndpointTables(endpoint) {
   return Array.from(tables);
 }
 
+function normalizeFieldRequirementMap(map = {}) {
+  if (!map || typeof map !== 'object') return {};
+  const result = {};
+  Object.entries(map).forEach(([field, required]) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    if (!normalizedField) return;
+    if (typeof required === 'boolean') {
+      result[normalizedField] = required;
+    }
+  });
+  return result;
+}
+
+function normalizeFieldValueMap(map = {}) {
+  if (!map || typeof map !== 'object') return {};
+  const result = {};
+  Object.entries(map).forEach(([field, value]) => {
+    const normalizedField = typeof field === 'string' ? field.trim() : '';
+    if (!normalizedField) return;
+    if (value === undefined || value === null) return;
+    result[normalizedField] = value;
+  });
+  return result;
+}
+
 function extractResponseFieldMappings(definition) {
   const explicit = sanitizeResponseFieldMappings(definition?.responseFieldMappings);
   if (Object.keys(explicit).length > 0) return explicit;
@@ -1501,6 +1526,14 @@ function createFormState(definition) {
     : [];
   const requestFieldVariations = Array.isArray(definition.requestFieldVariations)
     ? definition.requestFieldVariations
+      .map((entry) => ({
+        key: entry?.key || entry?.name || '',
+        label: entry?.label || entry?.name || entry?.key || '',
+        enabled: entry?.enabled !== false,
+        requiredFields: normalizeFieldRequirementMap(entry?.requiredFields),
+        defaultValues: normalizeFieldValueMap(entry?.defaultValues),
+      }))
+      .filter((entry) => entry.key)
     : [];
   const variations = Array.isArray(definition.variations)
     ? definition.variations.map((variation, index) => {
@@ -2347,6 +2380,7 @@ export default function PosApiAdmin() {
   const [importBaseUrlMode, setImportBaseUrlMode] = useState('literal');
   const infoSyncPreloadedRef = useRef(false);
   const [requestFieldValues, setRequestFieldValues] = useState({});
+  const [requestFieldRequirements, setRequestFieldRequirements] = useState({});
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
@@ -2873,6 +2907,29 @@ export default function PosApiAdmin() {
   );
 
   useEffect(() => {
+    if (requestFieldDisplay.state !== 'ok') {
+      setRequestFieldRequirements({});
+      return;
+    }
+
+    setRequestFieldRequirements((prev) => {
+      const next = {};
+      requestFieldDisplay.items.forEach((hint) => {
+        const normalized = normalizeHintEntry(hint);
+        if (!normalized.field) return;
+        if (typeof prev[normalized.field] === 'boolean') {
+          next[normalized.field] = prev[normalized.field];
+        } else if (typeof normalized.required === 'boolean') {
+          next[normalized.field] = normalized.required;
+        } else {
+          next[normalized.field] = false;
+        }
+      });
+      return next;
+    });
+  }, [requestFieldDisplay]);
+
+  useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
       requestSchemaText: formState.requestSchemaText,
       requestEnvMap: formState.requestEnvMap,
@@ -2938,6 +2995,14 @@ export default function PosApiAdmin() {
     : [];
   const activeRequestFieldVariations = requestFieldVariations.filter((entry) => entry.enabled);
   const variations = Array.isArray(formState.variations) ? formState.variations : [];
+  const requestFieldColumnTemplate = useMemo(
+    () => {
+      const baseColumns = ['1.4fr', '1.6fr', '0.9fr'];
+      const variationColumns = activeRequestFieldVariations.map(() => '1.4fr');
+      return [...baseColumns, ...variationColumns].join(' ');
+    },
+    [activeRequestFieldVariations.length],
+  );
 
   useEffect(() => {
     if (!receiptTaxTypesEnabled) {
@@ -3466,6 +3531,7 @@ export default function PosApiAdmin() {
         label: existing?.label || example.label,
         enabled,
         requiredFields: nextRequired,
+        defaultValues: existing?.defaultValues ? { ...existing.defaultValues } : {},
       };
       const others = current.filter((entry) => entry.key !== key);
       return { ...prev, requestFieldVariations: [...others, updatedEntry] };
@@ -3480,7 +3546,7 @@ export default function PosApiAdmin() {
       const existing = current.find((entry) => entry.key === key);
       const updatedEntry = existing
         ? { ...existing, label }
-        : { key, label, enabled: true, requiredFields: {} };
+        : { key, label, enabled: true, requiredFields: {}, defaultValues: {} };
       const others = current.filter((entry) => entry.key !== key);
       return { ...prev, requestFieldVariations: [...others, updatedEntry] };
     });
@@ -3500,6 +3566,25 @@ export default function PosApiAdmin() {
           delete requiredFields[fieldPath];
         }
         return { ...entry, requiredFields };
+      });
+      return { ...prev, requestFieldVariations: updated };
+    });
+  };
+
+  const handleVariationDefaultChange = (key, fieldPath, value) => {
+    setFormState((prev) => {
+      const current = Array.isArray(prev.requestFieldVariations)
+        ? prev.requestFieldVariations
+        : [];
+      const updated = current.map((entry) => {
+        if (entry.key !== key) return entry;
+        const defaultValues = { ...(entry.defaultValues || {}) };
+        if (value) {
+          defaultValues[fieldPath] = value;
+        } else {
+          delete defaultValues[fieldPath];
+        }
+        return { ...entry, defaultValues };
       });
       return { ...prev, requestFieldVariations: updated };
     });
@@ -4923,6 +5008,13 @@ export default function PosApiAdmin() {
       test: splitScriptText(formState.testScript),
     };
 
+    const getRequiredValue = (field, fallback) => {
+      const override = requestFieldRequirements[field];
+      if (typeof override === 'boolean') return override;
+      if (typeof fallback === 'boolean') return fallback;
+      return false;
+    };
+
     const sanitizedRequestFields = requestFieldsRaw.map((entry) => {
       const normalized = normalizeHintEntry(entry);
       if (!normalized.field) {
@@ -4930,7 +5022,7 @@ export default function PosApiAdmin() {
       }
       const hint = {
         field: normalized.field,
-        required: typeof normalized.required === 'boolean' ? normalized.required : false,
+        required: getRequiredValue(normalized.field, normalized.required),
         ...(normalized.description ? { description: normalized.description } : {}),
       };
       if (normalized.location) {
@@ -4946,7 +5038,7 @@ export default function PosApiAdmin() {
       .filter((param) => param?.name && ['query', 'path'].includes(param.in))
       .map((param) => ({
         field: param.name,
-        required: Boolean(param.required),
+        required: getRequiredValue(param.name, Boolean(param.required)),
         description: param.description || `${param.in} parameter`,
         location: param.in,
         defaultValue:
@@ -4972,9 +5064,8 @@ export default function PosApiAdmin() {
         key: entry.key,
         label: entry.label || entry.key,
         enabled: Boolean(entry.enabled),
-        requiredFields: entry.requiredFields && typeof entry.requiredFields === 'object'
-          ? entry.requiredFields
-          : {},
+        requiredFields: normalizeFieldRequirementMap(entry.requiredFields),
+        defaultValues: normalizeFieldValueMap(entry.defaultValues),
       }));
 
     const sanitizedVariations = (variations || []).map((variation, index) => {
@@ -7743,7 +7834,25 @@ export default function PosApiAdmin() {
               <div style={styles.hintError}>{requestFieldDisplay.error}</div>
             )}
             {requestFieldDisplay.state === 'ok' && (
-              <ul style={styles.hintList}>
+              <div style={styles.requestFieldTable}>
+                <div
+                  style={{
+                    ...styles.requestFieldHeaderRow,
+                    gridTemplateColumns: requestFieldColumnTemplate,
+                  }}
+                >
+                  <span style={styles.requestFieldHeaderCell}>Field</span>
+                  <span style={styles.requestFieldHeaderCell}>Description</span>
+                  <span style={styles.requestFieldHeaderCell}>Common required</span>
+                  {activeRequestFieldVariations.map((variation) => (
+                    <span
+                      key={`variation-head-${variation.key}`}
+                      style={styles.requestFieldHeaderCell}
+                    >
+                      {variation.label || variation.key}
+                    </span>
+                  ))}
+                </div>
                 {requestFieldDisplay.items.map((hint, index) => {
                   const normalized = normalizeHintEntry(hint);
                   const fieldLabel = normalized.field || '(unnamed field)';
@@ -7752,35 +7861,29 @@ export default function PosApiAdmin() {
                     literal: '',
                     envVar: '',
                   };
+                  const commonRequired = typeof requestFieldRequirements[fieldLabel] === 'boolean'
+                    ? requestFieldRequirements[fieldLabel]
+                    : Boolean(normalized.required);
                   const envVarMissing = selection.mode === 'env'
                     && selection.envVar
                     && !resolveEnvironmentVariable(selection.envVar, { parseJson: false }).found;
                   return (
-                    <li key={`request-hint-${fieldLabel}-${index}`} style={styles.hintItem}>
-                      <div style={styles.hintFieldRow}>
-                        <span style={styles.hintField}>{fieldLabel}</span>
-                        {typeof normalized.required === 'boolean' && (
-                          <span
-                            style={{
-                              ...styles.hintBadge,
-                              ...(normalized.required
-                                ? styles.hintBadgeRequired
-                                : styles.hintBadgeOptional),
-                            }}
-                          >
-                            {normalized.required ? 'Required' : 'Optional'}
-                          </span>
-                        )}
-                        {hint.source === 'parameter' && (
-                          <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
-                            {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
-                          </span>
-                        )}
-                      </div>
-                      {normalized.description && (
-                        <p style={styles.hintDescription}>{normalized.description}</p>
-                      )}
-                      <div style={styles.requestFieldControls}>
+                    <div
+                      key={`request-hint-${fieldLabel}-${index}`}
+                      style={{
+                        ...styles.requestFieldRow,
+                        gridTemplateColumns: requestFieldColumnTemplate,
+                      }}
+                    >
+                      <div style={styles.requestFieldMainCell}>
+                        <div style={styles.hintFieldRow}>
+                          <span style={styles.hintField}>{fieldLabel}</span>
+                          {hint.source === 'parameter' && (
+                            <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                              {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                            </span>
+                          )}
+                        </div>
                         <div style={styles.requestFieldModes}>
                           <label style={styles.radioLabel}>
                             <input
@@ -7849,40 +7952,71 @@ export default function PosApiAdmin() {
                           </div>
                         )}
                         <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
-                        {activeRequestFieldVariations.length > 0 && (
-                          <div style={styles.variationRequirementRow}>
-                            <span style={styles.variationRequirementLabel}>Variation must haves</span>
-                            <div style={styles.variationRequirementGrid}>
-                              {activeRequestFieldVariations.map((variation) => {
-                                const required = Boolean(variation.requiredFields?.[fieldLabel]);
-                                return (
-                                  <label
-                                    key={`variation-toggle-${variation.key}-${fieldLabel}`}
-                                    style={styles.variationRequirementToggle}
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={required}
-                                      onChange={(e) =>
-                                        handleVariationRequiredToggle(
-                                          variation.key,
-                                          fieldLabel,
-                                          e.target.checked,
-                                        )
-                                      }
-                                    />
-                                    <span>{variation.label || variation.key}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          </div>
+                      </div>
+                      <div style={styles.requestFieldDescriptionCell}>
+                        {normalized.description ? (
+                          <p style={styles.hintDescription}>{normalized.description}</p>
+                        ) : (
+                          <span style={styles.requestFieldHint}>No description provided.</span>
                         )}
                       </div>
-                    </li>
+                      <div style={styles.requestFieldRequiredCell}>
+                        <label style={styles.checkboxLabel}>
+                          <input
+                            type="checkbox"
+                            checked={commonRequired}
+                            onChange={(e) =>
+                              setRequestFieldRequirements((prev) => ({
+                                ...prev,
+                                [fieldLabel]: e.target.checked,
+                              }))
+                            }
+                          />
+                          <span>Required</span>
+                        </label>
+                      </div>
+                      {activeRequestFieldVariations.map((variation) => {
+                        const required = Boolean(variation.requiredFields?.[fieldLabel]);
+                        const defaultValue = variation.defaultValues?.[fieldLabel] ?? '';
+                        return (
+                          <div
+                            key={`variation-toggle-${variation.key}-${fieldLabel}`}
+                            style={styles.requestVariationCell}
+                          >
+                            <input
+                              type="text"
+                              value={defaultValue}
+                              onChange={(e) =>
+                                handleVariationDefaultChange(
+                                  variation.key,
+                                  fieldLabel,
+                                  e.target.value,
+                                )
+                              }
+                              placeholder="Default value"
+                              style={styles.input}
+                            />
+                            <label style={styles.checkboxLabel}>
+                              <input
+                                type="checkbox"
+                                checked={required}
+                                onChange={(e) =>
+                                  handleVariationRequiredToggle(
+                                    variation.key,
+                                    fieldLabel,
+                                    e.target.checked,
+                                  )
+                                }
+                              />
+                              <span>Must have</span>
+                            </label>
+                          </div>
+                        );
+                      })}
+                    </div>
                   );
                 })}
-              </ul>
+              </div>
             )}
           </div>
           <div style={styles.hintCard}>
@@ -9448,6 +9582,49 @@ const styles = {
     fontWeight: 600,
   },
   requestFieldControls: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  requestFieldTable: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  requestFieldHeaderRow: {
+    display: 'grid',
+    alignItems: 'center',
+    gap: '0.75rem',
+    borderBottom: '1px solid #e2e8f0',
+    paddingBottom: '0.35rem',
+  },
+  requestFieldHeaderCell: {
+    fontWeight: 700,
+    color: '#0f172a',
+    fontSize: '0.9rem',
+  },
+  requestFieldRow: {
+    display: 'grid',
+    alignItems: 'flex-start',
+    gap: '0.75rem',
+    padding: '0.75rem 0',
+    borderBottom: '1px solid #e2e8f0',
+  },
+  requestFieldMainCell: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  requestFieldDescriptionCell: {
+    color: '#475569',
+    fontSize: '0.9rem',
+  },
+  requestFieldRequiredCell: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+  },
+  requestVariationCell: {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.35rem',
