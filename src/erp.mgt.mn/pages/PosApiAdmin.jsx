@@ -4553,6 +4553,19 @@ export default function PosApiAdmin() {
     setImportAuthEndpointId(definition?.authEndpointId || '');
   }
 
+  function handleListMouseDown(event, id) {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    handleSelect(id);
+  }
+
+  function handleListKeyDown(event, id) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleSelect(id);
+    }
+  }
+
   function handleChange(field, value) {
     setFormState((prev) => {
       if (field === 'usage') {
@@ -6245,7 +6258,11 @@ export default function PosApiAdmin() {
                     <li key={ep.id}>
                       <button
                         type="button"
-                        onClick={() => handleSelect(ep.id)}
+                        onMouseDown={(event) => handleListMouseDown(event, ep.id)}
+                        onClick={(event) => {
+                          if (event.detail === 0) handleSelect(ep.id);
+                        }}
+                        onKeyDown={(event) => handleListKeyDown(event, ep.id)}
                         style={{
                           ...styles.listButton,
                           ...(selectedId === ep.id ? styles.listButtonActive : {}),
@@ -9362,6 +9379,7 @@ const styles = {
     borderRadius: '6px',
     padding: '0.5rem',
     cursor: 'pointer',
+    userSelect: 'none',
   },
   listButtonActive: {
     borderColor: '#2563eb',
