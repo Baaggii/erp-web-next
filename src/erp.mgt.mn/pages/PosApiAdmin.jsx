@@ -2552,6 +2552,8 @@ export default function PosApiAdmin() {
   const [selectedId, setSelectedId] = useState('');
   const [formState, setFormState] = useState({ ...EMPTY_ENDPOINT });
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [fetchingDoc, setFetchingDoc] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [usageFilter, setUsageFilter] = useState('all');
@@ -5722,7 +5724,7 @@ export default function PosApiAdmin() {
 
   async function handleSave() {
     try {
-      setLoading(true);
+      setSaving(true);
       setError('');
       setStatus('');
       resetTestState();
@@ -5781,7 +5783,7 @@ export default function PosApiAdmin() {
       console.error(err);
       setError(err.message || 'Failed to save endpoints');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
@@ -5842,7 +5844,7 @@ export default function PosApiAdmin() {
       return;
     }
     try {
-      setLoading(true);
+      setFetchingDoc(true);
       setError('');
       setStatus('');
       resetTestState();
@@ -5894,7 +5896,7 @@ export default function PosApiAdmin() {
       console.error(err);
       setError(err.message || 'Failed to fetch documentation');
     } finally {
-      setLoading(false);
+      setFetchingDoc(false);
     }
   }
 
@@ -8188,8 +8190,13 @@ export default function PosApiAdmin() {
               placeholder="https://developer.itc.gov.mn/docs/..."
             />
           </label>
-          <button type="button" onClick={handleFetchDoc} disabled={loading} style={styles.fetchButton}>
-            {loading ? 'Fetching…' : 'Fetch documentation'}
+          <button
+            type="button"
+            onClick={handleFetchDoc}
+            disabled={loading || saving || fetchingDoc}
+            style={styles.fetchButton}
+          >
+            {fetchingDoc ? 'Fetching…' : 'Fetch documentation'}
           </button>
         </div>
 
@@ -8253,6 +8260,8 @@ export default function PosApiAdmin() {
             onClick={handleTest}
             disabled={
               loading ||
+              saving ||
+              fetchingDoc ||
               testState.running ||
               !formState.testable ||
               !hasTestServerUrl
@@ -8262,13 +8271,13 @@ export default function PosApiAdmin() {
             {testState.running ? 'Testing…' : 'Test endpoint'}
           </button>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={handleSave} disabled={loading}>
-            {loading ? 'Saving…' : 'Save changes'}
+          <button type="button" onClick={handleSave} disabled={loading || saving || fetchingDoc}>
+            {saving ? 'Saving…' : 'Save changes'}
           </button>
           <button
             type="button"
             onClick={handleDelete}
-            disabled={loading || (!selectedId && !formState.id)}
+            disabled={loading || saving || fetchingDoc || (!selectedId && !formState.id)}
             style={styles.deleteButton}
           >
             Delete
