@@ -4506,11 +4506,23 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id) {
-    if (!id || id === selectedId) return;
+    if (!id) {
+      return;
+    }
+
+    setSelectedId(id);
 
     const definition = endpoints.find((ep) => ep.id === id);
-    let nextFormState = createFormState(definition);
+    let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
+
+    try {
+      nextFormState = createFormState(definition || { ...EMPTY_ENDPOINT, id });
+    } catch (err) {
+      console.error('Failed to prepare form state for selected endpoint', err);
+      setError('Failed to load the selected endpoint. Please review its configuration.');
+      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+    }
 
     try {
       const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
@@ -4558,7 +4570,6 @@ export default function PosApiAdmin() {
     setRequestFieldValues({});
     setRequestFieldRequirements({});
     setFormState({ ...EMPTY_ENDPOINT });
-    setSelectedId(id);
     setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
