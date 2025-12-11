@@ -4506,7 +4506,9 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id) {
-    if (!id || id === selectedId) return;
+    if (!id) {
+      return;
+    }
 
     const definition = endpoints.find((ep) => ep.id === id);
     let nextFormState = createFormState(definition);
