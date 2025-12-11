@@ -1228,6 +1228,11 @@ function normalizeHintEntry(entry) {
       description: typeof entry.description === 'string' ? entry.description : '',
       location: typeof entry.location === 'string' ? entry.location : '',
       defaultValue: entry.defaultValue,
+      requiredCommon: typeof entry.requiredCommon === 'boolean' ? entry.requiredCommon : undefined,
+      requiredByVariation: normalizeFieldRequirementMap(
+        entry.requiredByVariation || entry.requiredVariations,
+      ),
+      defaultByVariation: normalizeFieldValueMap(entry.defaultByVariation || entry.defaultVariations),
     };
   }
   return {
@@ -1290,6 +1295,169 @@ function normalizeFieldValueMap(map = {}) {
     result[normalizedField] = value;
   });
   return result;
+}
+
+function parseExampleBody(body) {
+  if (body === undefined || body === null) return {};
+  if (typeof body === 'string') {
+    try {
+      return JSON.parse(body);
+    } catch {
+      return { value: body };
+    }
+  }
+  if (typeof body === 'object') return body;
+  return { value: body };
+}
+
+function flattenExampleFields(example, prefix = '') {
+  const fields = [];
+  if (Array.isArray(example)) {
+    const nextPrefix = prefix ? `${prefix}[]` : '[]';
+    if (example.length === 0) {
+      fields.push({ field: nextPrefix, defaultValue: undefined });
+      return fields;
+    }
+    fields.push(...flattenExampleFields(example[0], nextPrefix));
+    return fields;
+  }
+  if (example && typeof example === 'object') {
+    Object.entries(example).forEach(([key, value]) => {
+      const nextPrefix = prefix ? `${prefix}.${key}` : key;
+      fields.push(...flattenExampleFields(value, nextPrefix));
+    });
+    return fields;
+  }
+  if (prefix) {
+    fields.push({ field: prefix, defaultValue: example });
+  }
+  return fields;
+}
+
+function buildVariationsFromExamples(examples = []) {
+  return examples
+    .map((example, index) => {
+      const key =
+        (example && typeof example.key === 'string' && example.key)
+        || (example && typeof example.name === 'string' && example.name)
+        || (example && typeof example.title === 'string' && example.title)
+        || `example-${index + 1}`;
+      if (!key) return null;
+      const name =
+        (example && typeof example.name === 'string' && example.name)
+        || (example && typeof example.title === 'string' && example.title)
+        || key;
+      const body = parseExampleBody(example?.request?.body ?? example?.request ?? example?.body);
+      const fields = flattenExampleFields(body).map((entry) => ({
+        field: entry.field,
+        requiredCommon: false,
+        requiredByVariation: { [key]: true },
+        defaultByVariation:
+          entry.defaultValue === undefined
+            ? {}
+            : { [key]: entry.defaultValue },
+        description: '',
+      }));
+      return {
+        key,
+        name,
+        enabled: true,
+        requestExample: body,
+        requestFields: fields,
+        description: '',
+      };
+    })
+    .filter(Boolean);
+}
+
+function mergeRequestFieldHints(existing = [], variationFields = []) {
+  const map = new Map();
+
+  const mergeEntry = (entry, variationKey = '') => {
+    const normalized = normalizeHintEntry(entry);
+    const field = normalized.field?.trim();
+    if (!field) return;
+    const current = map.get(field) || {
+      field,
+      description: '',
+      requiredCommon: false,
+      requiredByVariation: {},
+      defaultByVariation: {},
+    };
+    const requiredByVariation = {
+      ...current.requiredByVariation,
+      ...normalized.requiredByVariation,
+    };
+    const defaultByVariation = {
+      ...current.defaultByVariation,
+      ...normalized.defaultByVariation,
+    };
+
+    if (variationKey && normalized.requiredByVariation?.[variationKey] === undefined) {
+      const existingRequired = current.requiredByVariation?.[variationKey];
+      if (typeof existingRequired === 'boolean') {
+        requiredByVariation[variationKey] = existingRequired;
+      } else {
+        requiredByVariation[variationKey] = true;
+      }
+    }
+    if (
+      variationKey
+      && normalized.defaultByVariation?.[variationKey] === undefined
+      && normalized.defaultValue !== undefined
+    ) {
+      defaultByVariation[variationKey] = normalized.defaultValue;
+    }
+
+    const requiredCommon =
+      typeof current.requiredCommon === 'boolean'
+        ? current.requiredCommon
+        : typeof normalized.requiredCommon === 'boolean'
+          ? normalized.requiredCommon
+          : typeof normalized.required === 'boolean'
+            ? normalized.required
+            : false;
+
+    map.set(field, {
+      field,
+      description: normalized.description || current.description,
+      requiredCommon,
+      requiredByVariation,
+      defaultByVariation,
+    });
+  };
+
+  variationFields.forEach((entry) => mergeEntry(entry.entry || entry, entry.variationKey));
+  existing.forEach((entry) => mergeEntry(entry));
+
+  return Array.from(map.values());
+}
+
+function mergeVariationsWithExamples(existing = [], examples = []) {
+  const generated = buildVariationsFromExamples(examples);
+  const map = new Map();
+  generated.forEach((variation) => {
+    if (variation?.key) {
+      map.set(variation.key, variation);
+    }
+  });
+  existing.forEach((variation, index) => {
+    const key = variation?.key || variation?.name || `variation-${index + 1}`;
+    if (!key) return;
+    const base = map.get(key) || {};
+    map.set(key, {
+      ...base,
+      ...variation,
+      key,
+      name: variation.name || base.name || key,
+      requestExample: variation.requestExample || base.requestExample,
+      requestExampleText:
+        variation.requestExampleText
+        || (base.requestExample ? toPrettyJson(base.requestExample, '{}') : undefined),
+      requestFields: mergeRequestFieldHints(base.requestFields || [], variation.requestFields || []),
+    });
+  });
+  return Array.from(map.values());
 }
 
 function extractResponseFieldMappings(definition) {
@@ -1465,6 +1633,20 @@ function createFormState(definition) {
     : Array.isArray(definition.receiptTaxTypes)
       ? definition.receiptTaxTypes.slice()
       : [];
+  const mergedVariations = mergeVariationsWithExamples(
+    Array.isArray(definition.variations) ? definition.variations : [],
+    Array.isArray(definition.examples) ? definition.examples : [],
+  );
+  const variationFieldHints = mergedVariations.flatMap((variation, index) =>
+    (variation.requestFields || []).map((field) => ({
+      entry: {
+        ...field,
+        requiredByVariation: field?.requiredByVariation || field?.requiredVariations,
+        defaultByVariation: field?.defaultByVariation || field?.defaultVariations,
+      },
+      variationKey: variation?.key || variation?.name || `variation-${index + 1}`,
+    })),
+  );
   const sanitizeRequestHints = (value) => {
     if (!Array.isArray(value)) return [];
     return value.map((entry) => {
@@ -1474,8 +1656,19 @@ function createFormState(definition) {
       }
       const hint = {
         field: normalized.field,
-        required: typeof normalized.required === 'boolean' ? normalized.required : false,
+        requiredCommon:
+          typeof normalized.requiredCommon === 'boolean'
+            ? normalized.requiredCommon
+            : typeof normalized.required === 'boolean'
+              ? normalized.required
+              : false,
         ...(normalized.description ? { description: normalized.description } : {}),
+        ...(normalized.defaultByVariation && Object.keys(normalized.defaultByVariation).length
+          ? { defaultByVariation: normalized.defaultByVariation }
+          : {}),
+        ...(normalized.requiredByVariation && Object.keys(normalized.requiredByVariation).length
+          ? { requiredByVariation: normalized.requiredByVariation }
+          : {}),
       };
       if (normalized.location) {
         hint.location = normalized.location;
@@ -1524,40 +1717,36 @@ function createFormState(definition) {
         return list;
       })()
     : [];
-  const requestFieldVariations = Array.isArray(definition.requestFieldVariations)
-    ? definition.requestFieldVariations
-      .map((entry) => ({
-        key: entry?.key || entry?.name || '',
-        label: entry?.label || entry?.name || entry?.key || '',
-        enabled: entry?.enabled !== false,
-        requiredFields: normalizeFieldRequirementMap(entry?.requiredFields),
-        defaultValues: normalizeFieldValueMap(entry?.defaultValues),
+  const requestFieldVariations = [];
+  const variations = mergedVariations.map((variation, index) => {
+    const fields = Array.isArray(variation.requestFields)
+      ? variation.requestFields.map((field) => ({
+        field: field?.field || '',
+        description: field?.description || '',
+        requiredCommon: Boolean(
+          field?.requiredCommon
+          ?? field?.required
+          ?? field?.requiredVariations
+          ?? field?.requiredByVariation,
+        ),
+        requiredByVariation: normalizeFieldRequirementMap(
+          field?.requiredByVariation || field?.requiredVariations,
+        ),
+        defaultByVariation: normalizeFieldValueMap(
+          field?.defaultByVariation || field?.defaultVariations,
+        ),
       }))
-      .filter((entry) => entry.key)
-    : [];
-  const variations = Array.isArray(definition.variations)
-    ? definition.variations.map((variation, index) => {
-      const fields = Array.isArray(variation.requestFields)
-        ? variation.requestFields.map((field) => ({
-          field: field?.field || '',
-          required: typeof field?.required === 'boolean' ? field.required : true,
-          description: field?.description || '',
-          requiredCommon: Boolean(field?.requiredCommon),
-          requiredVariations: normalizeFieldRequirementMap(field?.requiredVariations),
-          defaultVariations: normalizeFieldValueMap(field?.defaultVariations),
-        }))
-        : [];
-      const requestExample = variation.requestExample || variation.request?.body || {};
-      return {
-        key: variation.key || variation.name || `variation-${index + 1}`,
-        name: variation.name || variation.key || `Variation ${index + 1}`,
-        description: variation.description || '',
-        enabled: variation.enabled !== false,
-        requestExampleText: toPrettyJson(requestExample, '{}'),
-        requestFields: fields,
-      };
-    })
-    : [];
+      : [];
+    const requestExample = variation.requestExample || variation.request?.body || {};
+    return {
+      key: variation.key || variation.name || `variation-${index + 1}`,
+      name: variation.name || variation.key || `Variation ${index + 1}`,
+      description: variation.description || '',
+      enabled: variation.enabled !== false,
+      requestExampleText: variation.requestExampleText || toPrettyJson(requestExample, '{}'),
+      requestFields: fields,
+    };
+  });
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
@@ -1591,7 +1780,12 @@ function createFormState(definition) {
     responseDescription: definition.responseBody?.description || '',
     responseSchemaText: toPrettyJson(definition.responseBody?.schema, '{}'),
     fieldDescriptionsText: toPrettyJson(definition.fieldDescriptions, '{}'),
-    requestFieldsText: toPrettyJson(sanitizeRequestHints(definition.requestFields), '[]'),
+    requestFieldsText: toPrettyJson(
+      sanitizeRequestHints(
+        mergeRequestFieldHints(definition.requestFields || [], variationFieldHints),
+      ),
+      '[]',
+    ),
     responseFieldsText: toPrettyJson(definition.responseFields, '[]'),
     examplesText: toPrettyJson(definition.examples, '[]'),
     variations,
@@ -2383,7 +2577,7 @@ export default function PosApiAdmin() {
   const [importBaseUrlMode, setImportBaseUrlMode] = useState('literal');
   const infoSyncPreloadedRef = useRef(false);
   const [requestFieldValues, setRequestFieldValues] = useState({});
-  const [requestFieldRequirements, setRequestFieldRequirements] = useState({});
+  const [requestFieldMeta, setRequestFieldMeta] = useState({});
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
@@ -2892,6 +3086,20 @@ export default function PosApiAdmin() {
     [parsedExamples],
   );
 
+  const requestFieldVariations = Array.isArray(formState.requestFieldVariations)
+    ? formState.requestFieldVariations
+    : [];
+  const variations = Array.isArray(formState.variations) ? formState.variations : [];
+  const activeVariations = variations.filter((entry) => entry.enabled !== false);
+  const requestFieldColumnTemplate = useMemo(
+    () => {
+      const baseColumns = ['150px', '250px', '80px'];
+      const variationColumns = activeVariations.map(() => '200px');
+      return [...baseColumns, ...variationColumns].join(' ');
+    },
+    [activeVariations.length],
+  );
+
   useEffect(() => {
     const allowedKeys = new Set(exampleVariationChoices.map((entry) => entry.key));
     setFormState((prev) => {
@@ -2911,26 +3119,57 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (requestFieldDisplay.state !== 'ok') {
-      setRequestFieldRequirements({});
+      setRequestFieldMeta({});
       return;
     }
 
-    setRequestFieldRequirements((prev) => {
+    setRequestFieldMeta((prev) => {
       const next = {};
       requestFieldDisplay.items.forEach((hint) => {
         const normalized = normalizeHintEntry(hint);
-        if (!normalized.field) return;
-        if (typeof prev[normalized.field] === 'boolean') {
-          next[normalized.field] = prev[normalized.field];
-        } else if (typeof normalized.required === 'boolean') {
-          next[normalized.field] = normalized.required;
-        } else {
-          next[normalized.field] = false;
-        }
+        const fieldLabel = normalized.field;
+        if (!fieldLabel) return;
+        const existing = prev[fieldLabel] || {};
+        const requiredCommon =
+          typeof existing.requiredCommon === 'boolean'
+            ? existing.requiredCommon
+            : typeof normalized.requiredCommon === 'boolean'
+              ? normalized.requiredCommon
+              : typeof normalized.required === 'boolean'
+                ? normalized.required
+                : false;
+        const requiredByVariation = {
+          ...normalized.requiredByVariation,
+          ...existing.requiredByVariation,
+        };
+        const defaultByVariation = {
+          ...normalized.defaultByVariation,
+          ...existing.defaultByVariation,
+        };
+        activeVariations.forEach((variation) => {
+          const key = variation.key || variation.name;
+          if (!key) return;
+          if (!(key in requiredByVariation)) {
+            requiredByVariation[key] = requiredCommon;
+          }
+          if (
+            normalized.defaultByVariation
+            && normalized.defaultByVariation[key] !== undefined
+            && defaultByVariation[key] === undefined
+          ) {
+            defaultByVariation[key] = normalized.defaultByVariation[key];
+          }
+        });
+        next[fieldLabel] = {
+          description: normalized.description || existing.description || '',
+          requiredCommon,
+          requiredByVariation,
+          defaultByVariation,
+        };
       });
       return next;
     });
-  }, [requestFieldDisplay]);
+  }, [requestFieldDisplay, activeVariations]);
 
   useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
@@ -2993,19 +3232,6 @@ export default function PosApiAdmin() {
   const receiptItemTemplates = Array.isArray(formState.receiptItemTemplates)
     ? formState.receiptItemTemplates
     : [];
-  const requestFieldVariations = Array.isArray(formState.requestFieldVariations)
-    ? formState.requestFieldVariations
-    : [];
-  const activeRequestFieldVariations = requestFieldVariations.filter((entry) => entry.enabled);
-  const variations = Array.isArray(formState.variations) ? formState.variations : [];
-  const requestFieldColumnTemplate = useMemo(
-    () => {
-      const baseColumns = ['1.4fr', '1.6fr', '0.9fr'];
-      const variationColumns = activeRequestFieldVariations.map(() => '1.4fr');
-      return [...baseColumns, ...variationColumns].join(' ');
-    },
-    [activeRequestFieldVariations.length],
-  );
 
   useEffect(() => {
     if (!receiptTaxTypesEnabled) {
@@ -4280,15 +4506,7 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id) {
-    setSelectedId(id);
-  }
-
-  useEffect(() => {
-    if (!selectedId) return;
-
-    const definition = endpoints.find((ep) => ep.id === selectedId);
-    if (!definition) return;
-
+    const definition = endpoints.find((ep) => ep.id === id);
     const nextFormState = createFormState(definition);
     const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
     const nextRequestFieldValues =
@@ -4327,6 +4545,9 @@ export default function PosApiAdmin() {
     setRequestBuilderError('');
     setRequestFieldValues(nextRequestFieldValues);
     setRequestFieldRequirements({});
+    setFormState({ ...EMPTY_ENDPOINT });
+    setSelectedId(id);
+    setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
@@ -4555,10 +4776,27 @@ export default function PosApiAdmin() {
       if (!operations.length) {
         throw new Error('No operations were found in the supplied files.');
       }
-      setImportDrafts(operations);
+      const enhancedOperations = operations.map((operation) => {
+        const merged = mergeVariationsWithExamples(
+          Array.isArray(operation.variations) ? operation.variations : [],
+          Array.isArray(operation.examples) ? operation.examples : [],
+        );
+        const variationFieldHints = merged.flatMap((variation, index) =>
+          (variation.requestFields || []).map((field) => ({
+            entry: field,
+            variationKey: variation?.key || variation?.name || `variation-${index + 1}`,
+          })),
+        );
+        const requestFields = mergeRequestFieldHints(
+          operation.requestFields || [],
+          variationFieldHints,
+        );
+        return { ...operation, variations: merged, requestFields };
+      });
+      setImportDrafts(enhancedOperations);
       const fileCount = normalizedFiles.length + (trimmedText ? 1 : 0);
-      setImportStatus(`Found ${operations.length} operations from ${fileCount} file(s). Select one to test.`);
-      const first = operations[0];
+      setImportStatus(`Found ${enhancedOperations.length} operations from ${fileCount} file(s). Select one to test.`);
+      const first = enhancedOperations[0];
       prepareDraftDefaults(first);
       setImportSpecText(trimmedText);
     } catch (err) {
@@ -5034,22 +5272,36 @@ export default function PosApiAdmin() {
       test: splitScriptText(formState.testScript),
     };
 
-    const getRequiredValue = (field, fallback) => {
-      const override = requestFieldRequirements[field];
-      if (typeof override === 'boolean') return override;
-      if (typeof fallback === 'boolean') return fallback;
-      return false;
-    };
+    const getFieldMeta = (field) => requestFieldMeta[field] || {};
 
-    const sanitizedRequestFields = requestFieldsRaw.map((entry) => {
-      const normalized = normalizeHintEntry(entry);
-      if (!normalized.field) {
-        return normalized;
-      }
+    const buildFieldWithMeta = (normalized, fallbackRequired) => {
+      const meta = getFieldMeta(normalized.field);
+      const requiredCommon =
+        typeof meta.requiredCommon === 'boolean'
+          ? meta.requiredCommon
+          : typeof normalized.requiredCommon === 'boolean'
+            ? normalized.requiredCommon
+            : typeof fallbackRequired === 'boolean'
+              ? fallbackRequired
+              : typeof normalized.required === 'boolean'
+                ? normalized.required
+                : false;
+      const description = meta.description || normalized.description;
+      const requiredByVariation = normalizeFieldRequirementMap({
+        ...normalized.requiredByVariation,
+        ...meta.requiredByVariation,
+      });
+      const defaultByVariation = normalizeFieldValueMap({
+        ...normalized.defaultByVariation,
+        ...meta.defaultByVariation,
+      });
       const hint = {
         field: normalized.field,
-        required: getRequiredValue(normalized.field, normalized.required),
-        ...(normalized.description ? { description: normalized.description } : {}),
+        required: requiredCommon,
+        requiredCommon,
+        requiredByVariation,
+        defaultByVariation,
+        ...(description ? { description } : {}),
       };
       if (normalized.location) {
         hint.location = normalized.location;
@@ -5058,22 +5310,35 @@ export default function PosApiAdmin() {
         hint.defaultValue = normalized.defaultValue;
       }
       return hint;
+    };
+
+    const sanitizedRequestFields = requestFieldsRaw.map((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      if (!normalized.field) {
+        return normalized;
+      }
+      return buildFieldWithMeta(normalized, normalized.required);
     });
 
     const parameterFieldHints = parametersWithValues
       .filter((param) => param?.name && ['query', 'path'].includes(param.in))
-      .map((param) => ({
-        field: param.name,
-        required: getRequiredValue(param.name, Boolean(param.required)),
-        description: param.description || `${param.in} parameter`,
-        location: param.in,
-        defaultValue:
-          param.testValue
-          ?? param.example
-          ?? param.default
-          ?? param.sample
-          ?? parameterDefaults[param.name],
-      }));
+      .map((param) =>
+        buildFieldWithMeta(
+          {
+            field: param.name,
+            required: Boolean(param.required),
+            description: param.description || `${param.in} parameter`,
+            location: param.in,
+            defaultValue:
+              param.testValue
+              ?? param.example
+              ?? param.default
+              ?? param.sample
+              ?? parameterDefaults[param.name],
+          },
+          param.required,
+        ),
+      );
 
     const combinedRequestFields = [];
     const seenRequestFields = new Set();
@@ -5100,14 +5365,28 @@ export default function PosApiAdmin() {
         variation.requestExampleText || '{}',
         {},
       );
-      const requestFields = Array.isArray(variation.requestFields)
-        ? variation.requestFields.map((field) => ({
-          field: field?.field || '',
-          required: typeof field?.required === 'boolean' ? field.required : true,
-          ...(field?.description ? { description: field.description } : {}),
-          requiredCommon: Boolean(field?.requiredCommon),
-          requiredVariations: normalizeFieldRequirementMap(field?.requiredVariations),
-          defaultVariations: normalizeFieldValueMap(field?.defaultVariations),
+        const requestFields = Array.isArray(variation.requestFields)
+          ? variation.requestFields.map((field) => ({
+            field: field?.field || '',
+            description: field?.description || '',
+            requiredCommon:
+              typeof field?.requiredCommon === 'boolean'
+                ? field.requiredCommon
+                : typeof field?.required === 'boolean'
+                  ? field.required
+                  : false,
+            required:
+              typeof field?.requiredCommon === 'boolean'
+                ? field.requiredCommon
+                : typeof field?.required === 'boolean'
+                  ? field.required
+                  : false,
+            requiredByVariation: normalizeFieldRequirementMap(
+              field?.requiredByVariation || field?.requiredVariations,
+            ),
+            defaultByVariation: normalizeFieldValueMap(
+              field?.defaultByVariation || field?.defaultVariations,
+          ),
         })).filter((field) => field.field)
         : [];
       return {
@@ -5527,6 +5806,62 @@ export default function PosApiAdmin() {
         requestEnvMap: buildRequestEnvMap(nextSelections),
       }));
       return nextSelections;
+    });
+  }
+
+  function handleRequestFieldDescriptionChange(fieldPath, value) {
+    if (!fieldPath) return;
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      return { ...prev, [fieldPath]: { ...current, description: value } };
+    });
+  }
+
+  function handleCommonRequiredToggle(fieldPath, value) {
+    if (!fieldPath) return;
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      const requiredByVariation = { ...current.requiredByVariation };
+      if (value) {
+        activeVariations.forEach((variation) => {
+          const key = variation.key || variation.name;
+          if (key) {
+            requiredByVariation[key] = true;
+          }
+        });
+      }
+      return {
+        ...prev,
+        [fieldPath]: { ...current, requiredCommon: value, requiredByVariation },
+      };
+    });
+  }
+
+  function handleVariationRequirementChange(fieldPath, variationKey, value) {
+    if (!fieldPath || !variationKey) return;
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      return {
+        ...prev,
+        [fieldPath]: {
+          ...current,
+          requiredByVariation: { ...current.requiredByVariation, [variationKey]: value },
+        },
+      };
+    });
+  }
+
+  function handleVariationDefaultUpdate(fieldPath, variationKey, value) {
+    if (!fieldPath || !variationKey) return;
+    setRequestFieldMeta((prev) => {
+      const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
+      const defaultByVariation = { ...current.defaultByVariation };
+      if (value) {
+        defaultByVariation[variationKey] = value;
+      } else {
+        delete defaultByVariation[variationKey];
+      }
+      return { ...prev, [fieldPath]: { ...current, defaultByVariation } };
     });
   }
 
@@ -6956,7 +7291,8 @@ export default function PosApiAdmin() {
           </label>
         </div>
 
-        <section style={styles.builderSection}>
+        {!isTransactionUsage && (
+          <section style={styles.builderSection}>
           <div style={styles.sectionHeader}>
             <h2 style={styles.sectionTitle}>Structured request builder</h2>
             {formState.posApiType && (
@@ -7614,7 +7950,8 @@ export default function PosApiAdmin() {
               <option key={option.value} value={option.value} label={option.label} />
             ))}
           </datalist>
-        </section>
+          </section>
+        )}
 
         {formState.usage === 'transaction' && (supportsMultipleReceipts || supportsMultiplePayments) && (
           <div style={styles.multiNotice}>
@@ -7873,29 +8210,26 @@ export default function PosApiAdmin() {
                   <span style={styles.requestFieldHeaderCell}>Field</span>
                   <span style={styles.requestFieldHeaderCell}>Description</span>
                   <span style={styles.requestFieldHeaderCell}>Common required</span>
-                  {activeRequestFieldVariations.map((variation) => (
+                  {activeVariations.map((variation) => (
                     <span
-                      key={`variation-head-${variation.key}`}
+                      key={`variation-head-${variation.key || variation.name}`}
                       style={styles.requestFieldHeaderCell}
                     >
-                      {variation.label || variation.key}
+                      {variation.name || variation.label || variation.key}
                     </span>
                   ))}
                 </div>
                 {requestFieldDisplay.items.map((hint, index) => {
                   const normalized = normalizeHintEntry(hint);
                   const fieldLabel = normalized.field || '(unnamed field)';
-                  const selection = requestFieldValues[fieldLabel] || {
-                    mode: 'literal',
-                    literal: '',
-                    envVar: '',
-                  };
-                  const commonRequired = typeof requestFieldRequirements[fieldLabel] === 'boolean'
-                    ? requestFieldRequirements[fieldLabel]
-                    : Boolean(normalized.required);
-                  const envVarMissing = selection.mode === 'env'
-                    && selection.envVar
-                    && !resolveEnvironmentVariable(selection.envVar, { parseJson: false }).found;
+                  const meta = requestFieldMeta[fieldLabel] || {};
+                  const commonRequired =
+                    typeof meta.requiredCommon === 'boolean'
+                      ? meta.requiredCommon
+                      : typeof normalized.requiredCommon === 'boolean'
+                        ? normalized.requiredCommon
+                        : Boolean(normalized.required);
+                  const descriptionValue = meta.description || normalized.description || '';
                   return (
                     <div
                       key={`request-hint-${fieldLabel}-${index}`}
@@ -7913,132 +8247,65 @@ export default function PosApiAdmin() {
                             </span>
                           )}
                         </div>
-                        <div style={styles.requestFieldModes}>
-                          <label style={styles.radioLabel}>
-                            <input
-                              type="radio"
-                              name={`request-field-mode-${fieldLabel}`}
-                              checked={selection.mode === 'literal'}
-                              onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'literal' })}
-                            />
-                            Literal value
-                          </label>
-                          <label style={styles.radioLabel}>
-                            <input
-                              type="radio"
-                              name={`request-field-mode-${fieldLabel}`}
-                              checked={selection.mode === 'env'}
-                              onChange={() => handleRequestFieldValueChange(fieldLabel, { mode: 'env' })}
-                            />
-                            Environment variable
-                          </label>
-                        </div>
-                        {selection.mode === 'literal' ? (
-                          <input
-                            type="text"
-                            value={selection.literal ?? ''}
-                            onChange={(e) =>
-                              handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
-                            }
-                            placeholder="Enter sample value"
-                            style={styles.input}
-                          />
-                        ) : (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem', width: '100%' }}>
-                            <input
-                              type="text"
-                              list={`env-options-${fieldLabel}`}
-                              value={selection.envVar || ''}
-                              onChange={(e) =>
-                                handleRequestFieldValueChange(fieldLabel, {
-                                  envVar: e.target.value,
-                                  mode: 'env',
-                                })
-                              }
-                              placeholder="Enter environment variable name"
-                              style={styles.input}
-                            />
-                            <datalist id={`env-options-${fieldLabel}`}>
-                              {envVariableOptions.map((opt) => (
-                                <option key={`env-${fieldLabel}-${opt}`} value={opt} />
-                              ))}
-                            </datalist>
-                            <input
-                              type="text"
-                              value={selection.literal ?? ''}
-                              onChange={(e) =>
-                                handleRequestFieldValueChange(fieldLabel, { literal: e.target.value })
-                              }
-                              placeholder="Fallback literal (used if the environment variable is missing)"
-                              style={styles.input}
-                            />
-                            {envVarMissing && selection.envVar && (
-                              <div style={styles.hintError}>
-                                Environment variable {selection.envVar} is not available; the fallback
-                                literal will be sent instead.
-                              </div>
-                            )}
-                          </div>
-                        )}
-                        <span style={styles.requestFieldHint}>Updates the request sample JSON automatically.</span>
                       </div>
                       <div style={styles.requestFieldDescriptionCell}>
-                        {normalized.description ? (
-                          <p style={styles.hintDescription}>{normalized.description}</p>
-                        ) : (
-                          <span style={styles.requestFieldHint}>No description provided.</span>
-                        )}
+                        <textarea
+                          value={descriptionValue}
+                          onChange={(e) => handleRequestFieldDescriptionChange(fieldLabel, e.target.value)}
+                          style={{ ...styles.textarea, minHeight: '60px' }}
+                          placeholder="Describe the field"
+                        />
                       </div>
                       <div style={styles.requestFieldRequiredCell}>
                         <label style={styles.checkboxLabel}>
                           <input
                             type="checkbox"
                             checked={commonRequired}
-                            onChange={(e) =>
-                              setRequestFieldRequirements((prev) => ({
-                                ...prev,
-                                [fieldLabel]: e.target.checked,
-                              }))
-                            }
+                            onChange={(e) => handleCommonRequiredToggle(fieldLabel, e.target.checked)}
                           />
                           <span>Required</span>
                         </label>
                       </div>
-                      {activeRequestFieldVariations.map((variation) => {
-                        const required = Boolean(variation.requiredFields?.[fieldLabel]);
-                        const defaultValue = variation.defaultValues?.[fieldLabel] ?? '';
+                      {activeVariations.map((variation) => {
+                        const variationKey = variation.key || variation.name;
+                        const required = commonRequired
+                          ? true
+                          : meta.requiredByVariation?.[variationKey]
+                            ?? normalized.requiredByVariation?.[variationKey]
+                            ?? false;
+                        const defaultValue =
+                          meta.defaultByVariation?.[variationKey]
+                          ?? normalized.defaultByVariation?.[variationKey]
+                          ?? '';
                         return (
                           <div
-                            key={`variation-toggle-${variation.key}-${fieldLabel}`}
+                            key={`variation-toggle-${variationKey}-${fieldLabel}`}
                             style={styles.requestVariationCell}
                           >
-                            <input
-                              type="text"
-                              value={defaultValue}
-                              onChange={(e) =>
-                                handleVariationDefaultChange(
-                                  variation.key,
-                                  fieldLabel,
-                                  e.target.value,
-                                )
-                              }
-                              placeholder="Default value"
-                              style={styles.input}
-                            />
                             <label style={styles.checkboxLabel}>
                               <input
                                 type="checkbox"
                                 checked={required}
+                                disabled={commonRequired}
                                 onChange={(e) =>
-                                  handleVariationRequiredToggle(
-                                    variation.key,
+                                  handleVariationRequirementChange(
                                     fieldLabel,
+                                    variationKey,
                                     e.target.checked,
                                   )
                                 }
                               />
-                              <span>Must have</span>
+                              <span>Required</span>
                             </label>
+                            <input
+                              type="text"
+                              value={defaultValue}
+                              onChange={(e) =>
+                                handleVariationDefaultUpdate(fieldLabel, variationKey, e.target.value)
+                              }
+                              placeholder="Default value"
+                              style={styles.input}
+                            />
                           </div>
                         );
                       })}
