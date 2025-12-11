@@ -4612,7 +4612,6 @@ export default function PosApiAdmin() {
     setRequestFieldValues({});
     setRequestFieldRequirements({});
     setFormState({ ...EMPTY_ENDPOINT });
-    setSelectedId(id);
     setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
