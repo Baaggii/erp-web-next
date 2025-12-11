@@ -7616,120 +7616,122 @@ export default function PosApiAdmin() {
               <div style={styles.hintError}>{requestFieldDisplay.error}</div>
             )}
             {requestFieldDisplay.state === 'ok' && (
-              <div style={styles.requestFieldTable}>
-                <div
-                  style={{
-                    ...styles.requestFieldHeaderRow,
-                    display: 'grid',
-                    gridTemplateColumns: requestFieldColumnTemplate,
-                  }}
-                >
-                  <span style={styles.requestFieldHeaderCell}>Field</span>
-                  <span style={styles.requestFieldHeaderCell}>Description</span>
-                  <span style={styles.requestFieldHeaderCell}>Common required</span>
-                  {activeVariations.map((variation) => (
-                    <span
-                      key={`variation-head-${variation.key || variation.name}`}
-                      style={styles.requestFieldHeaderCell}
-                    >
-                      {variation.name || variation.label || variation.key}
-                    </span>
-                  ))}
-                </div>
-                {requestFieldDisplay.items.map((hint, index) => {
-                  const normalized = normalizeHintEntry(hint);
-                  const fieldLabel = normalized.field || '(unnamed field)';
-                  const meta = requestFieldMeta[fieldLabel] || {};
-                  const commonRequired =
-                    typeof meta.requiredCommon === 'boolean'
-                      ? meta.requiredCommon
-                      : typeof normalized.requiredCommon === 'boolean'
-                        ? normalized.requiredCommon
-                        : Boolean(normalized.required);
-                  const descriptionValue = meta.description || normalized.description || '';
-                  return (
-                    <div
-                    key={`request-hint-${fieldLabel}-${index}`}
+              <div style={styles.requestFieldTableWrapper}>
+                <div style={styles.requestFieldTable}>
+                  <div
                     style={{
-                      ...styles.requestFieldRow,
+                      ...styles.requestFieldHeaderRow,
                       display: 'grid',
                       gridTemplateColumns: requestFieldColumnTemplate,
                     }}
                   >
-                      <div style={styles.requestFieldMainCell}>
-                        <div style={styles.hintFieldRow}>
-                          <span style={styles.hintField}>{fieldLabel}</span>
-                          {hint.source === 'parameter' && (
-                            <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
-                              {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div style={styles.requestFieldDescriptionCell}>
-                        <textarea
-                          value={descriptionValue}
-                          onChange={(e) => handleRequestFieldDescriptionChange(fieldLabel, e.target.value)}
-                          style={{ ...styles.textarea, minHeight: '60px' }}
-                          placeholder="Describe the field"
-                        />
-                      </div>
-                      <div style={styles.requestFieldRequiredCell}>
-                        <label style={styles.checkboxLabel}>
-                          <input
-                            type="checkbox"
-                            checked={commonRequired}
-                            onChange={(e) => handleCommonRequiredToggle(fieldLabel, e.target.checked)}
-                          />
-                          <span>Required</span>
-                        </label>
-                      </div>
-                      {activeVariations.map((variation) => {
-                        const variationKey = variation.key || variation.name;
-                        const required = commonRequired
-                          ? true
-                          : meta.requiredByVariation?.[variationKey]
-                            ?? normalized.requiredByVariation?.[variationKey]
-                            ?? false;
-                        const defaultValue =
-                          meta.defaultByVariation?.[variationKey]
-                          ?? normalized.defaultByVariation?.[variationKey]
-                          ?? '';
-                        return (
-                          <div
-                            key={`variation-toggle-${variationKey}-${fieldLabel}`}
-                            style={styles.requestVariationCell}
-                          >
-                            <label style={styles.checkboxLabel}>
-                              <input
-                                type="checkbox"
-                                checked={required}
-                                disabled={commonRequired}
-                                onChange={(e) =>
-                                  handleVariationRequirementChange(
-                                    fieldLabel,
-                                    variationKey,
-                                    e.target.checked,
-                                  )
-                                }
-                              />
-                              <span>Required</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={defaultValue}
-                              onChange={(e) =>
-                                handleVariationDefaultUpdate(fieldLabel, variationKey, e.target.value)
-                              }
-                              placeholder="Default value"
-                              style={styles.input}
-                            />
+                    <span style={styles.requestFieldHeaderCell}>Field</span>
+                    <span style={styles.requestFieldHeaderCell}>Description</span>
+                    <span style={styles.requestFieldHeaderCell}>Common required</span>
+                    {activeVariations.map((variation) => (
+                      <span
+                        key={`variation-head-${variation.key || variation.name}`}
+                        style={styles.requestFieldHeaderCell}
+                      >
+                        {variation.name || variation.label || variation.key}
+                      </span>
+                    ))}
+                  </div>
+                  {requestFieldDisplay.items.map((hint, index) => {
+                    const normalized = normalizeHintEntry(hint);
+                    const fieldLabel = normalized.field || '(unnamed field)';
+                    const meta = requestFieldMeta[fieldLabel] || {};
+                    const commonRequired =
+                      typeof meta.requiredCommon === 'boolean'
+                        ? meta.requiredCommon
+                        : typeof normalized.requiredCommon === 'boolean'
+                          ? normalized.requiredCommon
+                          : Boolean(normalized.required);
+                    const descriptionValue = meta.description || normalized.description || '';
+                    return (
+                      <div
+                        key={`request-hint-${fieldLabel}-${index}`}
+                        style={{
+                          ...styles.requestFieldRow,
+                          display: 'grid',
+                          gridTemplateColumns: requestFieldColumnTemplate,
+                        }}
+                      >
+                        <div style={styles.requestFieldMainCell}>
+                          <div style={styles.hintFieldRow}>
+                            <span style={styles.hintField}>{fieldLabel}</span>
+                            {hint.source === 'parameter' && (
+                              <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                                {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                              </span>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                        </div>
+                        <div style={styles.requestFieldDescriptionCell}>
+                          <textarea
+                            value={descriptionValue}
+                            onChange={(e) => handleRequestFieldDescriptionChange(fieldLabel, e.target.value)}
+                            style={{ ...styles.textarea, minHeight: '60px' }}
+                            placeholder="Describe the field"
+                          />
+                        </div>
+                        <div style={styles.requestFieldRequiredCell}>
+                          <label style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={commonRequired}
+                              onChange={(e) => handleCommonRequiredToggle(fieldLabel, e.target.checked)}
+                            />
+                            <span>Required</span>
+                          </label>
+                        </div>
+                        {activeVariations.map((variation) => {
+                          const variationKey = variation.key || variation.name;
+                          const required = commonRequired
+                            ? true
+                            : meta.requiredByVariation?.[variationKey]
+                              ?? normalized.requiredByVariation?.[variationKey]
+                              ?? false;
+                          const defaultValue =
+                            meta.defaultByVariation?.[variationKey]
+                            ?? normalized.defaultByVariation?.[variationKey]
+                            ?? '';
+                          return (
+                            <div
+                              key={`variation-toggle-${variationKey}-${fieldLabel}`}
+                              style={styles.requestVariationCell}
+                            >
+                              <label style={styles.checkboxLabel}>
+                                <input
+                                  type="checkbox"
+                                  checked={required}
+                                  disabled={commonRequired}
+                                  onChange={(e) =>
+                                    handleVariationRequirementChange(
+                                      fieldLabel,
+                                      variationKey,
+                                      e.target.checked,
+                                    )
+                                  }
+                                />
+                                <span>Required</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={defaultValue}
+                                onChange={(e) =>
+                                  handleVariationDefaultUpdate(fieldLabel, variationKey, e.target.value)
+                                }
+                                placeholder="Default value"
+                                style={styles.input}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -8849,9 +8851,9 @@ const styles = {
     border: '1px solid #e2e8f0',
     borderRadius: '8px',
     padding: '1.5rem',
-    maxWidth: '900px',
+    maxWidth: '1200px',
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   formGrid: {
     display: 'grid',
@@ -9305,6 +9307,10 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.5rem',
+  },
+  requestFieldTableWrapper: {
+    overflowX: 'auto',
+    paddingBottom: '0.5rem',
   },
   requestFieldHeaderRow: {
     display: 'grid',
