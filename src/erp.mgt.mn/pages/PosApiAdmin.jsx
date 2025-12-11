@@ -3130,6 +3130,24 @@ export default function PosApiAdmin() {
     [formState, parameterDefaults, parameterPreview, requestFieldHints],
   );
 
+  const visibleRequestFieldItems = useMemo(() => {
+    if (requestFieldDisplay.state !== 'ok') return requestFieldDisplay.items || [];
+    if (activeVariations.length === 0) return requestFieldDisplay.items;
+
+    return requestFieldDisplay.items.filter((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      const fieldLabel = normalized.field;
+      if (!fieldLabel) return false;
+
+      return activeVariations.some((variation) => {
+        const key = variation.key || variation.name;
+        if (!key) return false;
+        const variationFieldSet = variationFieldSets.get(key);
+        return !variationFieldSet || variationFieldSet.has(fieldLabel);
+      });
+    });
+  }, [activeVariations, requestFieldDisplay, variationFieldSets]);
+
   useEffect(() => {
     if (requestFieldDisplay.state !== 'ok') {
       setRequestFieldMeta({});
@@ -3138,7 +3156,7 @@ export default function PosApiAdmin() {
 
     setRequestFieldMeta((prev) => {
       const next = {};
-      requestFieldDisplay.items.forEach((hint) => {
+      visibleRequestFieldItems.forEach((hint) => {
         const normalized = normalizeHintEntry(hint);
         const fieldLabel = normalized.field;
         if (!fieldLabel) return;
@@ -3182,7 +3200,7 @@ export default function PosApiAdmin() {
       });
       return next;
     });
-  }, [requestFieldDisplay, activeVariations]);
+  }, [activeVariations, requestFieldDisplay.state, visibleRequestFieldItems]);
 
   useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
@@ -5418,7 +5436,7 @@ export default function PosApiAdmin() {
         variationDefaultsByKey[key] = {};
       });
 
-      requestFieldDisplay.items.forEach((entry) => {
+      visibleRequestFieldItems.forEach((entry) => {
         const normalized = normalizeHintEntry(entry);
         const fieldLabel = normalized.field;
         if (!fieldLabel) return;
