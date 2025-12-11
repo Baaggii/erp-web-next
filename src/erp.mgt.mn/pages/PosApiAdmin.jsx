@@ -5373,43 +5373,108 @@ export default function PosApiAdmin() {
         defaultValues: normalizeFieldValueMap(entry.defaultValues),
       }));
 
+    const variationRequirementByKey = {};
+    const variationDefaultsByKey = {};
+
+    if (requestFieldDisplay.state === 'ok') {
+      activeVariations.forEach((variation) => {
+        const key = variation.key || variation.name;
+        if (!key) return;
+        variationRequirementByKey[key] = {};
+        variationDefaultsByKey[key] = {};
+      });
+
+      requestFieldDisplay.items.forEach((entry) => {
+        const normalized = normalizeHintEntry(entry);
+        const fieldLabel = normalized.field;
+        if (!fieldLabel) return;
+        const meta = requestFieldMeta[fieldLabel] || {};
+        const requiredCommon =
+          typeof meta.requiredCommon === 'boolean'
+            ? meta.requiredCommon
+            : typeof normalized.requiredCommon === 'boolean'
+              ? normalized.requiredCommon
+              : typeof normalized.required === 'boolean'
+                ? normalized.required
+                : false;
+
+        activeVariations.forEach((variation) => {
+          const key = variation.key || variation.name;
+          if (!key) return;
+          const required =
+            requiredCommon
+            || meta.requiredByVariation?.[key]
+            || normalized.requiredByVariation?.[key]
+            || false;
+          const defaultValue =
+            meta.defaultByVariation?.[key]
+            ?? normalized.defaultByVariation?.[key];
+
+          if (required) {
+            variationRequirementByKey[key][fieldLabel] = true;
+          }
+          if (defaultValue !== undefined && defaultValue !== '') {
+            variationDefaultsByKey[key][fieldLabel] = defaultValue;
+          }
+        });
+      });
+    }
+
     const sanitizedVariations = (variations || []).map((variation, index) => {
+      const variationKey = variation.key || variation.name || `variation-${index + 1}`;
       const requestExample = parseJsonInput(
         `Request example for variation ${variation.name || index + 1}`,
         variation.requestExampleText || '{}',
         {},
       );
-        const requestFields = Array.isArray(variation.requestFields)
-          ? variation.requestFields.map((field) => ({
-            field: field?.field || '',
-            description: field?.description || '',
-            requiredCommon:
-              typeof field?.requiredCommon === 'boolean'
-                ? field.requiredCommon
-                : typeof field?.required === 'boolean'
-                  ? field.required
-                  : false,
-            required:
-              typeof field?.requiredCommon === 'boolean'
-                ? field.requiredCommon
-                : typeof field?.required === 'boolean'
-                  ? field.required
-                  : false,
-            requiredByVariation: normalizeFieldRequirementMap(
-              field?.requiredByVariation || field?.requiredVariations,
-            ),
-            defaultByVariation: normalizeFieldValueMap(
-              field?.defaultByVariation || field?.defaultVariations,
-          ),
-        })).filter((field) => field.field)
+      const requestFields = Array.isArray(variation.requestFields)
+        ? variation.requestFields
+          .map((field) => {
+            const normalized = normalizeHintEntry(field);
+            const meta = normalized.field ? requestFieldMeta[normalized.field] || {} : {};
+            const requiredCommon =
+              typeof meta.requiredCommon === 'boolean'
+                ? meta.requiredCommon
+                : typeof normalized.requiredCommon === 'boolean'
+                  ? normalized.requiredCommon
+                  : typeof normalized.required === 'boolean'
+                    ? normalized.required
+                    : false;
+            const requiredByVariation = normalizeFieldRequirementMap({
+              ...normalized.requiredByVariation,
+              ...meta.requiredByVariation,
+            });
+            const defaultByVariation = normalizeFieldValueMap({
+              ...normalized.defaultByVariation,
+              ...meta.defaultByVariation,
+            });
+
+            return {
+              field: normalized.field || '',
+              description: meta.description || normalized.description || '',
+              requiredCommon,
+              required: requiredCommon,
+              requiredByVariation,
+              defaultByVariation,
+            };
+          })
+          .filter((field) => field.field)
         : [];
       return {
-        key: variation.key || variation.name || `variation-${index + 1}`,
+        key: variationKey,
         name: variation.name || variation.key || `Variation ${index + 1}`,
         description: variation.description || '',
         enabled: variation.enabled !== false,
         requestExample,
         requestFields,
+        requiredFields: {
+          ...(variationRequirementByKey[variationKey] || {}),
+          ...normalizeFieldRequirementMap(variation.requiredFields),
+        },
+        defaultValues: {
+          ...(variationDefaultsByKey[variationKey] || {}),
+          ...normalizeFieldValueMap(variation.defaultValues),
+        },
       };
     });
 
