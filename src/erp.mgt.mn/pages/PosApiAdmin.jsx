@@ -3091,6 +3091,19 @@ export default function PosApiAdmin() {
     : [];
   const variations = Array.isArray(formState.variations) ? formState.variations : [];
   const activeVariations = variations.filter((entry) => entry.enabled !== false);
+  const variationFieldSets = useMemo(() => {
+    const map = new Map();
+    activeVariations.forEach((variation, index) => {
+      const key = variation.key || variation.name || `variation-${index + 1}`;
+      const fields = Array.isArray(variation.requestFields)
+        ? variation.requestFields
+            .map((field) => normalizeHintEntry(field).field)
+            .filter(Boolean)
+        : [];
+      map.set(key, fields.length > 0 ? new Set(fields) : null);
+    });
+    return map;
+  }, [activeVariations]);
   const requestFieldColumnTemplate = useMemo(
     () => {
       const baseColumns = ['150px', '250px', '80px'];
@@ -3117,6 +3130,24 @@ export default function PosApiAdmin() {
     [formState, parameterDefaults, parameterPreview, requestFieldHints],
   );
 
+  const visibleRequestFieldItems = useMemo(() => {
+    if (requestFieldDisplay.state !== 'ok') return requestFieldDisplay.items || [];
+    if (activeVariations.length === 0) return requestFieldDisplay.items;
+
+    return requestFieldDisplay.items.filter((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      const fieldLabel = normalized.field;
+      if (!fieldLabel) return false;
+
+      return activeVariations.some((variation) => {
+        const key = variation.key || variation.name;
+        if (!key) return false;
+        const variationFieldSet = variationFieldSets.get(key);
+        return !variationFieldSet || variationFieldSet.has(fieldLabel);
+      });
+    });
+  }, [activeVariations, requestFieldDisplay, variationFieldSets]);
+
   useEffect(() => {
     if (requestFieldDisplay.state !== 'ok') {
       setRequestFieldMeta({});
@@ -3125,7 +3156,7 @@ export default function PosApiAdmin() {
 
     setRequestFieldMeta((prev) => {
       const next = {};
-      requestFieldDisplay.items.forEach((hint) => {
+      visibleRequestFieldItems.forEach((hint) => {
         const normalized = normalizeHintEntry(hint);
         const fieldLabel = normalized.field;
         if (!fieldLabel) return;
@@ -3169,7 +3200,7 @@ export default function PosApiAdmin() {
       });
       return next;
     });
-  }, [requestFieldDisplay, activeVariations]);
+  }, [activeVariations, requestFieldDisplay.state, visibleRequestFieldItems]);
 
   useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
@@ -3861,6 +3892,19 @@ export default function PosApiAdmin() {
       if (!variation) return prev;
       const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
       fields.push({ field: '', required: true });
+      list[variationIndex] = { ...variation, requestFields: fields };
+      return { ...prev, variations: list };
+    });
+  };
+
+  const handleRemoveVariationField = (variationIndex, fieldIndex) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variation = list[variationIndex];
+      if (!variation) return prev;
+      const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
+      if (fieldIndex < 0 || fieldIndex >= fields.length) return prev;
+      fields.splice(fieldIndex, 1);
       list[variationIndex] = { ...variation, requestFields: fields };
       return { ...prev, variations: list };
     });
@@ -5382,7 +5426,7 @@ export default function PosApiAdmin() {
         variationDefaultsByKey[key] = {};
       });
 
-      requestFieldDisplay.items.forEach((entry) => {
+      visibleRequestFieldItems.forEach((entry) => {
         const normalized = normalizeHintEntry(entry);
         const fieldLabel = normalized.field;
         if (!fieldLabel) return;
@@ -5399,6 +5443,9 @@ export default function PosApiAdmin() {
         activeVariations.forEach((variation) => {
           const key = variation.key || variation.name;
           if (!key) return;
+          const variationFieldSet = variationFieldSets.get(key);
+          const showForVariation = !variationFieldSet || variationFieldSet.has(fieldLabel);
+          if (!showForVariation) return;
           const required =
             requiredCommon
             || meta.requiredByVariation?.[key]
@@ -7543,6 +7590,13 @@ export default function PosApiAdmin() {
                         style={styles.input}
                         placeholder="Description (optional)"
                       />
+                      <button
+                        type="button"
+                        style={styles.smallDangerButton}
+                        onClick={() => handleRemoveVariationField(index, fieldIndex)}
+                      >
+                        Remove
+                      </button>
                     </div>
                   ))
                   : null}
@@ -7616,120 +7670,133 @@ export default function PosApiAdmin() {
               <div style={styles.hintError}>{requestFieldDisplay.error}</div>
             )}
             {requestFieldDisplay.state === 'ok' && (
-              <div style={styles.requestFieldTable}>
-                <div
-                  style={{
-                    ...styles.requestFieldHeaderRow,
-                    display: 'grid',
-                    gridTemplateColumns: requestFieldColumnTemplate,
-                  }}
-                >
-                  <span style={styles.requestFieldHeaderCell}>Field</span>
-                  <span style={styles.requestFieldHeaderCell}>Description</span>
-                  <span style={styles.requestFieldHeaderCell}>Common required</span>
-                  {activeVariations.map((variation) => (
-                    <span
-                      key={`variation-head-${variation.key || variation.name}`}
-                      style={styles.requestFieldHeaderCell}
-                    >
-                      {variation.name || variation.label || variation.key}
-                    </span>
-                  ))}
-                </div>
-                {requestFieldDisplay.items.map((hint, index) => {
-                  const normalized = normalizeHintEntry(hint);
-                  const fieldLabel = normalized.field || '(unnamed field)';
-                  const meta = requestFieldMeta[fieldLabel] || {};
-                  const commonRequired =
-                    typeof meta.requiredCommon === 'boolean'
-                      ? meta.requiredCommon
-                      : typeof normalized.requiredCommon === 'boolean'
-                        ? normalized.requiredCommon
-                        : Boolean(normalized.required);
-                  const descriptionValue = meta.description || normalized.description || '';
-                  return (
-                    <div
-                    key={`request-hint-${fieldLabel}-${index}`}
+              <div style={styles.requestFieldTableWrapper}>
+                <div style={styles.requestFieldTable}>
+                  <div
                     style={{
-                      ...styles.requestFieldRow,
+                      ...styles.requestFieldHeaderRow,
                       display: 'grid',
                       gridTemplateColumns: requestFieldColumnTemplate,
                     }}
                   >
-                      <div style={styles.requestFieldMainCell}>
-                        <div style={styles.hintFieldRow}>
-                          <span style={styles.hintField}>{fieldLabel}</span>
-                          {hint.source === 'parameter' && (
-                            <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
-                              {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      <div style={styles.requestFieldDescriptionCell}>
-                        <textarea
-                          value={descriptionValue}
-                          onChange={(e) => handleRequestFieldDescriptionChange(fieldLabel, e.target.value)}
-                          style={{ ...styles.textarea, minHeight: '60px' }}
-                          placeholder="Describe the field"
-                        />
-                      </div>
-                      <div style={styles.requestFieldRequiredCell}>
-                        <label style={styles.checkboxLabel}>
-                          <input
-                            type="checkbox"
-                            checked={commonRequired}
-                            onChange={(e) => handleCommonRequiredToggle(fieldLabel, e.target.checked)}
-                          />
-                          <span>Required</span>
-                        </label>
-                      </div>
-                      {activeVariations.map((variation) => {
-                        const variationKey = variation.key || variation.name;
-                        const required = commonRequired
-                          ? true
-                          : meta.requiredByVariation?.[variationKey]
-                            ?? normalized.requiredByVariation?.[variationKey]
-                            ?? false;
-                        const defaultValue =
-                          meta.defaultByVariation?.[variationKey]
-                          ?? normalized.defaultByVariation?.[variationKey]
-                          ?? '';
-                        return (
-                          <div
-                            key={`variation-toggle-${variationKey}-${fieldLabel}`}
-                            style={styles.requestVariationCell}
-                          >
-                            <label style={styles.checkboxLabel}>
-                              <input
-                                type="checkbox"
-                                checked={required}
-                                disabled={commonRequired}
-                                onChange={(e) =>
-                                  handleVariationRequirementChange(
-                                    fieldLabel,
-                                    variationKey,
-                                    e.target.checked,
-                                  )
-                                }
-                              />
-                              <span>Required</span>
-                            </label>
-                            <input
-                              type="text"
-                              value={defaultValue}
-                              onChange={(e) =>
-                                handleVariationDefaultUpdate(fieldLabel, variationKey, e.target.value)
-                              }
-                              placeholder="Default value"
-                              style={styles.input}
-                            />
+                    <span style={styles.requestFieldHeaderCell}>Field</span>
+                    <span style={styles.requestFieldHeaderCell}>Description</span>
+                    <span style={styles.requestFieldHeaderCell}>Common required</span>
+                    {activeVariations.map((variation) => (
+                      <span
+                        key={`variation-head-${variation.key || variation.name}`}
+                        style={styles.requestFieldHeaderCell}
+                      >
+                        {variation.name || variation.label || variation.key}
+                      </span>
+                    ))}
+                  </div>
+                  {visibleRequestFieldItems.map((hint, index) => {
+                    const normalized = normalizeHintEntry(hint);
+                    const fieldLabel = normalized.field || '(unnamed field)';
+                    const meta = requestFieldMeta[fieldLabel] || {};
+                    const commonRequired =
+                      typeof meta.requiredCommon === 'boolean'
+                        ? meta.requiredCommon
+                        : typeof normalized.requiredCommon === 'boolean'
+                          ? normalized.requiredCommon
+                          : Boolean(normalized.required);
+                    const descriptionValue = meta.description || normalized.description || '';
+                    return (
+                      <div
+                        key={`request-hint-${fieldLabel}-${index}`}
+                        style={{
+                          ...styles.requestFieldRow,
+                          display: 'grid',
+                          gridTemplateColumns: requestFieldColumnTemplate,
+                        }}
+                      >
+                        <div style={styles.requestFieldMainCell}>
+                          <div style={styles.hintFieldRow}>
+                            <span style={styles.hintField}>{fieldLabel}</span>
+                            {hint.source === 'parameter' && (
+                              <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                                {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                              </span>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  );
-                })}
+                        </div>
+                        <div style={styles.requestFieldDescriptionCell}>
+                          <textarea
+                            value={descriptionValue}
+                            onChange={(e) => handleRequestFieldDescriptionChange(fieldLabel, e.target.value)}
+                            style={{ ...styles.textarea, minHeight: '60px' }}
+                            placeholder="Describe the field"
+                          />
+                        </div>
+                        <div style={styles.requestFieldRequiredCell}>
+                          <label style={styles.checkboxLabel}>
+                            <input
+                              type="checkbox"
+                              checked={commonRequired}
+                              onChange={(e) => handleCommonRequiredToggle(fieldLabel, e.target.checked)}
+                            />
+                            <span>Required</span>
+                          </label>
+                        </div>
+                        {activeVariations.map((variation) => {
+                          const variationKey = variation.key || variation.name;
+                          const variationFieldSet = variationFieldSets.get(variationKey);
+                          const showForVariation =
+                            !variationFieldSet || variationFieldSet.has(fieldLabel);
+                          if (!showForVariation) {
+                            return (
+                              <div
+                                key={`variation-toggle-${variationKey}-${fieldLabel}`}
+                                style={styles.requestVariationCell}
+                              />
+                            );
+                          }
+                          const required = commonRequired
+                            ? true
+                            : meta.requiredByVariation?.[variationKey]
+                              ?? normalized.requiredByVariation?.[variationKey]
+                              ?? false;
+                          const defaultValue =
+                            meta.defaultByVariation?.[variationKey]
+                            ?? normalized.defaultByVariation?.[variationKey]
+                            ?? '';
+                          return (
+                            <div
+                              key={`variation-toggle-${variationKey}-${fieldLabel}`}
+                              style={styles.requestVariationCell}
+                            >
+                              <label style={styles.checkboxLabel}>
+                                <input
+                                  type="checkbox"
+                                  checked={required}
+                                  disabled={commonRequired}
+                                  onChange={(e) =>
+                                    handleVariationRequirementChange(
+                                      fieldLabel,
+                                      variationKey,
+                                      e.target.checked,
+                                    )
+                                  }
+                                />
+                                <span>Required</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={defaultValue}
+                                onChange={(e) =>
+                                  handleVariationDefaultUpdate(fieldLabel, variationKey, e.target.value)
+                                }
+                                placeholder="Default value"
+                                style={styles.input}
+                              />
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -8849,9 +8916,9 @@ const styles = {
     border: '1px solid #e2e8f0',
     borderRadius: '8px',
     padding: '1.5rem',
-    maxWidth: '900px',
+    maxWidth: '1200px',
     position: 'relative',
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   formGrid: {
     display: 'grid',
@@ -9306,6 +9373,10 @@ const styles = {
     flexDirection: 'column',
     gap: '0.5rem',
   },
+  requestFieldTableWrapper: {
+    overflowX: 'auto',
+    paddingBottom: '0.5rem',
+  },
   requestFieldHeaderRow: {
     display: 'grid',
     alignItems: 'center',
@@ -9379,7 +9450,7 @@ const styles = {
   },
   variationFieldRow: {
     display: 'grid',
-    gridTemplateColumns: '2fr auto 2fr',
+    gridTemplateColumns: '2fr auto 2fr auto',
     gap: '0.5rem',
     alignItems: 'center',
     padding: '0.25rem 0',
