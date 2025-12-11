@@ -979,60 +979,73 @@ function parseTabbedRequestVariations(markdown, flags = {}) {
     return { variations, warnings };
   }
 
+  const tabPatterns = [
+    { regex: /<!--([\s\S]*?)-->/g, extract: (block) => block || '' },
+    {
+      regex: /@--([\s\S]*?)--/g,
+      extract: (block) => (block || '').replace(/^\s*@--\s*/, ''),
+    },
+  ];
+
   try {
-    const tabRegex = /<!--([\s\S]*?)-->/g;
     const matches = [];
-    let match;
-    while ((match = tabRegex.exec(markdown))) {
-      const block = match[1] || '';
-      if (!/type:\s*tab/i.test(block)) continue;
-      const titleMatch = /title:\s*([^\n]+)/i.exec(block);
-      const title = titleMatch ? titleMatch[1].trim() : '';
-      matches.push({ title, start: match.index, end: tabRegex.lastIndex });
-    }
 
-    matches.forEach((entry, index) => {
-      const sliceEnd = matches[index + 1]?.start ?? markdown.length;
-      const slice = markdown.slice(entry.end, sliceEnd);
-      const codeMatch = /```(?:json|js)?\s*([\s\S]*?)```/i.exec(slice);
-      const codeText = codeMatch ? codeMatch[1].trim() : '';
-      const description = (codeMatch ? slice.slice(0, codeMatch.index) : slice).trim();
-
-      if (!codeText) {
-        warnings.push(`Tabbed example for ${entry.title || 'variation'} is missing a code block.`);
-        return;
-      }
-
-      try {
-        const requestExample = JSON.parse(codeText);
-        const exampleFields = flattenFieldsWithValues(requestExample);
-        const variationKey = entry.title || `variation-${index + 1}`;
-        const requestFields = flattenFieldsFromExample(requestExample).map((field) => {
-          const valueEntry = exampleFields.find((item) => item.field === field.field);
-          return {
-            ...field,
-            required: true,
-            requiredCommon: false,
-            requiredVariations: { [variationKey]: true },
-            defaultVariations: valueEntry?.field ? { [variationKey]: valueEntry.value } : {},
-          };
-        });
-
-        variations.push({
-          key: variationKey,
-          name: entry.title || `Variation ${index + 1}`,
-          description,
-          requestExample,
-          requestFields,
-          flags,
-          request: { body: requestExample },
-        });
-      } catch (err) {
-        warnings.push(
-          `Failed to parse tabbed example ${entry.title || index + 1}: ${err.message}. Skipping this tab.`,
-        );
+    tabPatterns.forEach(({ regex, extract }) => {
+      let match;
+      while ((match = regex.exec(markdown))) {
+        const block = extract(match[1]);
+        if (!/type:\s*tab/i.test(block)) continue;
+        const titleMatch = /title:\s*([^\n]+)/i.exec(block);
+        const title = titleMatch ? titleMatch[1].trim() : '';
+        matches.push({ title, start: match.index, end: regex.lastIndex });
       }
     });
+
+    matches
+      .sort((a, b) => a.start - b.start)
+      .forEach((entry, index) => {
+        const sliceEnd = matches[index + 1]?.start ?? markdown.length;
+        const slice = markdown.slice(entry.end, sliceEnd);
+        const codeMatch = /```(?:json|js)?\s*([\s\S]*?)```/i.exec(slice);
+        const codeText = codeMatch ? codeMatch[1].trim() : '';
+        const description = (codeMatch ? slice.slice(0, codeMatch.index) : slice).trim();
+
+        if (!codeText) {
+          warnings.push(`Tabbed example for ${entry.title || 'variation'} is missing a code block.`);
+          return;
+        }
+
+        try {
+          const requestExample = JSON.parse(codeText);
+          const exampleFields = flattenFieldsWithValues(requestExample);
+          const variationKey = entry.title || `variation-${index + 1}`;
+          const requestFields = flattenFieldsFromExample(requestExample).map((field) => {
+            const valueEntry = exampleFields.find((item) => item.field === field.field);
+            return {
+              ...field,
+              required: true,
+              requiredCommon: false,
+              requiredVariations: { [variationKey]: true },
+              defaultVariations: valueEntry?.field ? { [variationKey]: valueEntry.value } : {},
+            };
+          });
+
+          variations.push({
+            key: variationKey,
+            name: entry.title || `Variation ${index + 1}`,
+            description,
+            requestExample,
+            requestExampleText: codeText,
+            requestFields,
+            flags,
+            request: { body: requestExample },
+          });
+        } catch (err) {
+          warnings.push(
+            `Failed to parse tabbed example ${entry.title || index + 1}: ${err.message}. Skipping this tab.`,
+          );
+        }
+      });
   } catch (err) {
     warnings.push(`Tabbed example parsing failed: ${err.message}`);
   }
@@ -1570,6 +1583,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           key: key || `variation-${index + 1}`,
           name: variationName,
           request: resolvedRequest,
+          requestExample: resolvedRequest?.body,
           response: resolvedResponse,
           requestFields: variationRequestFields,
           responseFields: variationResponseFields,
