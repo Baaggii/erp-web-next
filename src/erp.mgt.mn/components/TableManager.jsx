@@ -3311,7 +3311,7 @@ const TableManager = forwardRef(function TableManager({
         skipConfirm: true,
         silent: false,
         overrideValues: cleaned,
-        promoteAsTemporary: !canPostTransactions,
+        promoteAsTemporary: !canPostTransactions || hasAnySenior,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
