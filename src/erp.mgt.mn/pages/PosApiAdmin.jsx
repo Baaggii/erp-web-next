@@ -4290,7 +4290,10 @@ export default function PosApiAdmin() {
     setRequestBuilderError('');
     setRequestFieldValues({});
     setRequestFieldRequirements({});
-    const nextFormState = definition ? createFormState(definition) : { ...EMPTY_ENDPOINT };
+    setFormState({ ...EMPTY_ENDPOINT });
+    setSelectedId(id);
+    const definition = endpoints.find((ep) => ep.id === id);
+    const nextFormState = createFormState(definition);
     const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
     if (nextDisplay.state === 'ok') {
       setRequestFieldValues(
