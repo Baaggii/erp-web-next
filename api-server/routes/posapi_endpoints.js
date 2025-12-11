@@ -1028,7 +1028,9 @@ function parseTabbedRequestVariations(markdown, flags = {}) {
           request: { body: requestExample },
         });
       } catch (err) {
-        warnings.push(`Failed to parse tabbed example ${entry.title || index + 1}: ${err.message}`);
+        warnings.push(
+          `Failed to parse tabbed example ${entry.title || index + 1}: ${err.message}. Skipping this tab.`,
+        );
       }
     });
   } catch (err) {
@@ -1064,6 +1066,83 @@ function collectTabbedRequestVariationsFromSchema(schema, flags = {}) {
 
   visit(schema);
   return { variations, warnings };
+}
+
+function buildVariationFieldMetadata(variations = []) {
+  const variationNames = variations
+    .map((variation, index) => variation?.name || variation?.key || `variation-${index + 1}`)
+    .filter(Boolean);
+  const lookup = new Map();
+
+  variations.forEach((variation, index) => {
+    const variationName = variation?.name || variation?.key || `variation-${index + 1}`;
+    const fields = Array.isArray(variation?.requestFields) ? variation.requestFields : [];
+    fields.forEach((field) => {
+      const fieldPath = typeof field?.field === 'string' ? field.field.trim() : '';
+      if (!fieldPath) return;
+      const meta = lookup.get(fieldPath) || {
+        requiredCount: 0,
+        descriptions: new Set(),
+        required: {},
+        defaults: {},
+      };
+      if (typeof field.description === 'string' && field.description.trim()) {
+        meta.descriptions.add(field.description.trim());
+      }
+      const isRequired = field.required !== false;
+      meta.required[variationName] = isRequired;
+      if (isRequired) meta.requiredCount += 1;
+      const defaultMap = field?.defaultVariations || {};
+      if (Object.prototype.hasOwnProperty.call(defaultMap, variationName)) {
+        meta.defaults[variationName] = defaultMap[variationName];
+      }
+      lookup.set(fieldPath, meta);
+    });
+  });
+
+  return { variationNames, lookup };
+}
+
+function applyVariationFieldMetadata(variations = []) {
+  if (!Array.isArray(variations) || !variations.length) return variations;
+  const { lookup, variationNames } = buildVariationFieldMetadata(variations);
+  const totalVariations = variationNames.length || 1;
+
+  const normalized = variations.map((variation, index) => {
+    const variationName = variation?.name || variation?.key || `variation-${index + 1}`;
+    const fields = Array.isArray(variation?.requestFields) ? variation.requestFields : [];
+    const existingMap = new Map();
+    fields.forEach((field) => {
+      const fieldPath = typeof field?.field === 'string' ? field.field.trim() : '';
+      if (!fieldPath) return;
+      existingMap.set(fieldPath, field);
+    });
+
+    const normalizedFields = [];
+    lookup.forEach((meta, fieldPath) => {
+      const current = existingMap.get(fieldPath) || { field: fieldPath, required: false };
+      const requiredMap = { ...(current.requiredVariations || {}) };
+      const defaultMap = { ...(current.defaultVariations || {}) };
+
+      requiredMap[variationName] = Boolean(meta.required?.[variationName]);
+      if (Object.prototype.hasOwnProperty.call(meta.defaults, variationName)) {
+        defaultMap[variationName] = meta.defaults[variationName];
+      }
+
+      normalizedFields.push({
+        ...current,
+        description: current.description || Array.from(meta.descriptions || [])[0] || '',
+        required: meta.required?.[variationName] ?? current.required ?? false,
+        requiredCommon: meta.requiredCount === totalVariations,
+        requiredVariations: requiredMap,
+        defaultVariations: defaultMap,
+      });
+    });
+
+    return { ...variation, requestFields: normalizedFields, name: variationName };
+  });
+
+  return normalized;
 }
 
 function buildResponseDetails(schema, exampleBodies = []) {
@@ -1496,7 +1575,10 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
           responseFields: variationResponseFields,
         };
       });
-      const variations = [...variationsFromExamples, ...tabbedVariations.variations];
+      const variations = applyVariationFieldMetadata([
+        ...variationsFromExamples,
+        ...tabbedVariations.variations,
+      ]);
 
       const fieldDefaults = collectFieldDefaults(requestFields);
       const mappingHints = deriveMappingHintsFromFields(requestFields);
