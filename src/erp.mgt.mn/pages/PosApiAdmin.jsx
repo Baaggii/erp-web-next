@@ -1310,6 +1310,169 @@ function extractResponseFieldMappings(definition) {
   return sanitizeResponseFieldMappings(derived);
 }
 
+function collectSchemaRequiredPaths(schema, prefix = '', target = new Set()) {
+  if (!schema || typeof schema !== 'object') return target;
+  const currentPrefix = prefix ? `${prefix}.` : '';
+  if (schema.type === 'object' && schema.properties) {
+    const requiredSet = Array.isArray(schema.required) ? new Set(schema.required) : new Set();
+    Object.entries(schema.properties).forEach(([key, value]) => {
+      const fieldPath = `${currentPrefix}${key}`;
+      if (requiredSet.has(key)) {
+        target.add(fieldPath);
+      }
+      collectSchemaRequiredPaths(value, fieldPath, target);
+    });
+  }
+  if (schema.type === 'array' && schema.items) {
+    const arrayPrefix = prefix ? `${prefix}[]` : '[]';
+    collectSchemaRequiredPaths(schema.items, arrayPrefix, target);
+  }
+  return target;
+}
+
+function collectSchemaDescriptions(schema, prefix = '', target = {}) {
+  if (!schema || typeof schema !== 'object') return target;
+  const currentPrefix = prefix ? `${prefix}.` : '';
+  if (schema.type === 'object' && schema.properties) {
+    Object.entries(schema.properties).forEach(([key, value]) => {
+      const fieldPath = `${currentPrefix}${key}`;
+      if (typeof value?.description === 'string' && value.description.trim()) {
+        target[fieldPath] = value.description.trim();
+      }
+      collectSchemaDescriptions(value, fieldPath, target);
+    });
+  }
+  if (schema.type === 'array' && schema.items) {
+    const arrayPrefix = prefix ? `${prefix}[]` : '[]';
+    collectSchemaDescriptions(schema.items, arrayPrefix, target);
+  }
+  return target;
+}
+
+function flattenExampleFields(example, prefix = '', target = {}) {
+  if (example === null || example === undefined) return target;
+  const addValue = (path, value) => {
+    if (!path) return;
+    target[path] = value;
+  };
+  if (typeof example !== 'object') {
+    addValue(prefix, example);
+    return target;
+  }
+  if (Array.isArray(example)) {
+    const arrayPrefix = prefix ? `${prefix}[]` : '[]';
+    example.forEach((item) => flattenExampleFields(item, arrayPrefix, target));
+    return target;
+  }
+  Object.entries(example).forEach(([key, value]) => {
+    const nextPrefix = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === 'object' && value !== null) {
+      flattenExampleFields(value, nextPrefix, target);
+    } else {
+      addValue(nextPrefix, value);
+    }
+  });
+  return target;
+}
+
+function parseTabbedVariations(description = '') {
+  if (typeof description !== 'string' || !description.includes('type: tab')) return [];
+  const regex = /<!--\s*type:\s*tab[^>]*title:\s*([^>\n]+)-->((.|\n|\r)*?)(?=<!--\s*type:\s*tab|$)/gi;
+  const matches = [];
+  let match;
+  while ((match = regex.exec(description)) !== null) {
+    matches.push({ title: match[1].trim(), content: match[2] || '' });
+  }
+  return matches
+    .map((entry) => {
+      const codeMatch = entry.content.match(/```(?:json)?\s*([\s\S]*?)```/i);
+      if (!codeMatch) {
+        console.warn('No JSON block found for tab', entry.title);
+        return null;
+      }
+      try {
+        const parsed = JSON.parse(codeMatch[1]);
+        return { name: entry.title, requestExample: parsed };
+      } catch (err) {
+        console.warn('Failed to parse tabbed JSON example', entry.title, err);
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function buildVariationRequestFields({
+  name,
+  requestExample,
+  requiredPaths = new Set(),
+  descriptionMap = {},
+}) {
+  const flatFields = flattenExampleFields(requestExample || {});
+  const fields = [];
+  Object.entries(flatFields).forEach(([field, value]) => {
+    const description = descriptionMap[field] || '';
+    fields.push({
+      field,
+      description,
+      requiredCommon: requiredPaths.has(field),
+      requiredVariations: { [name]: requiredPaths.has(field) },
+      defaultVariations: { [name]: value },
+    });
+  });
+  return fields;
+}
+
+function deriveVariationsFromDraft(draft = {}) {
+  const schema = draft.requestBody?.schema || {};
+  const requiredPaths = collectSchemaRequiredPaths(schema);
+  const descriptionMap = collectSchemaDescriptions(schema);
+  const variations = [];
+  const sanitizeVariation = (entry, index) => {
+    const name = entry.name || entry.key || entry.title || `Variation ${index + 1}`;
+    const key = entry.key || entry.name || entry.title || `variation-${index + 1}`;
+    const requestExample = entry.requestExample || entry.request?.body || entry.body || {};
+    const fields = Array.isArray(entry.requestFields) && entry.requestFields.length > 0
+      ? entry.requestFields
+      : buildVariationRequestFields({ name, requestExample, requiredPaths, descriptionMap });
+    return {
+      key,
+      name,
+      description: entry.description || '',
+      enabled: entry.enabled !== false,
+      requestExampleText: toPrettyJson(requestExample, '{}'),
+      requestFields: fields,
+    };
+  };
+
+  if (Array.isArray(draft.variations) && draft.variations.length > 0) {
+    return draft.variations.map(sanitizeVariation);
+  }
+
+  const tabbed = parseTabbedVariations(draft.description || draft.requestBody?.description || '');
+  if (tabbed.length > 0) {
+    return tabbed.map(sanitizeVariation);
+  }
+
+  const examples = Array.isArray(draft.examples) ? draft.examples : [];
+  if (examples.length > 0) {
+    return examples.map((example, index) => sanitizeVariation({
+      ...example,
+      requestExample: example.request?.body || example.body || example.example || {},
+      name:
+        example.name
+        || example.title
+        || example.key
+        || example.id
+        || `Example ${index + 1}`,
+    }, index));
+  }
+
+  if (draft.requestExample) {
+    return [sanitizeVariation({ name: draft.name || 'Default', requestExample: draft.requestExample }, 0)];
+  }
+  return [];
+}
+
 function buildRequestFieldDisplayFromState(state) {
   const requestFieldHints = parseHintPreview(
     state.requestFieldsText,
@@ -1524,24 +1687,15 @@ function createFormState(definition) {
         return list;
       })()
     : [];
-  const requestFieldVariations = Array.isArray(definition.requestFieldVariations)
-    ? definition.requestFieldVariations
-      .map((entry) => ({
-        key: entry?.key || entry?.name || '',
-        label: entry?.label || entry?.name || entry?.key || '',
-        enabled: entry?.enabled !== false,
-        requiredFields: normalizeFieldRequirementMap(entry?.requiredFields),
-        defaultValues: normalizeFieldValueMap(entry?.defaultValues),
-      }))
-      .filter((entry) => entry.key)
-    : [];
   const variations = Array.isArray(definition.variations)
     ? definition.variations.map((variation, index) => {
       const fields = Array.isArray(variation.requestFields)
         ? variation.requestFields.map((field) => ({
           field: field?.field || '',
-          required: typeof field?.required === 'boolean' ? field.required : true,
           description: field?.description || '',
+          requiredCommon: Boolean(field?.requiredCommon),
+          requiredVariations: normalizeFieldRequirementMap(field?.requiredVariations),
+          defaultVariations: normalizeFieldValueMap(field?.defaultVariations),
         }))
         : [];
       const requestExample = variation.requestExample || variation.request?.body || {};
@@ -4686,6 +4840,7 @@ export default function PosApiAdmin() {
       requestFields: activeImportDraft.requestFields || [],
       responseFields: activeImportDraft.responseFields || [],
       examples: activeImportDraft.examples || [],
+      variations: deriveVariationsFromDraft(activeImportDraft),
       scripts: activeImportDraft.scripts || {},
       mappingHints: activeImportDraft.mappingHints || {},
       supportsItems: activeImportDraft.supportsItems ?? inferredUsage === 'transaction',
@@ -5077,8 +5232,10 @@ export default function PosApiAdmin() {
       const requestFields = Array.isArray(variation.requestFields)
         ? variation.requestFields.map((field) => ({
           field: field?.field || '',
-          required: typeof field?.required === 'boolean' ? field.required : true,
-          ...(field?.description ? { description: field.description } : {}),
+          description: field?.description || '',
+          requiredCommon: Boolean(field?.requiredCommon),
+          requiredVariations: normalizeFieldRequirementMap(field?.requiredVariations),
+          defaultVariations: normalizeFieldValueMap(field?.defaultVariations),
         })).filter((field) => field.field)
         : [];
       return {
