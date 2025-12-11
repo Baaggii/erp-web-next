@@ -4550,11 +4550,21 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id) {
-    if (!id || id === selectedId) return;
+    if (!id) {
+      return;
+    }
 
     const definition = endpoints.find((ep) => ep.id === id);
-    let nextFormState = createFormState(definition);
+    let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
+
+    try {
+      nextFormState = createFormState(definition);
+    } catch (err) {
+      console.error('Failed to prepare form state for selected endpoint', err);
+      setError('Failed to load the selected endpoint. Please review its configuration.');
+      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+    }
 
     try {
       const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
@@ -7691,7 +7701,7 @@ export default function PosApiAdmin() {
                       </span>
                     ))}
                   </div>
-                  {visibleRequestFieldItems.map((hint, index) => {
+                  {requestFieldDisplay.items.map((hint, index) => {
                     const normalized = normalizeHintEntry(hint);
                     const fieldLabel = normalized.field || '(unnamed field)';
                     const meta = requestFieldMeta[fieldLabel] || {};
@@ -7741,17 +7751,6 @@ export default function PosApiAdmin() {
                         </div>
                         {activeVariations.map((variation) => {
                           const variationKey = variation.key || variation.name;
-                          const variationFieldSet = variationFieldSets.get(variationKey);
-                          const showForVariation =
-                            !variationFieldSet || variationFieldSet.has(fieldLabel);
-                          if (!showForVariation) {
-                            return (
-                              <div
-                                key={`variation-toggle-${variationKey}-${fieldLabel}`}
-                                style={styles.requestVariationCell}
-                              />
-                            );
-                          }
                           const required = commonRequired
                             ? true
                             : meta.requiredByVariation?.[variationKey]
