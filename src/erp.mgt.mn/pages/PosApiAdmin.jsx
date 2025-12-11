@@ -4289,6 +4289,11 @@ export default function PosApiAdmin() {
     setDocFieldDescriptions({});
     setSampleImportText('');
     setSampleImportError('');
+    setRequestBuilder(null);
+    setRequestBuilderError('');
+    setRequestFieldValues({});
+    setRequestFieldRequirements({});
+    setFormState({ ...EMPTY_ENDPOINT });
     setSelectedId(id);
     const definition = endpoints.find((ep) => ep.id === id);
     const nextFormState = createFormState(definition);
