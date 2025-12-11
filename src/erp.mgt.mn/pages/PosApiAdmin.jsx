@@ -4524,8 +4524,16 @@ export default function PosApiAdmin() {
     }
 
     const definition = endpoints.find((ep) => ep.id === id);
-    let nextFormState = createFormState(definition);
+    let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
+
+    try {
+      nextFormState = createFormState(definition);
+    } catch (err) {
+      console.error('Failed to prepare form state for selected endpoint', err);
+      setError('Failed to load the selected endpoint. Please review its configuration.');
+      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+    }
 
     try {
       const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
