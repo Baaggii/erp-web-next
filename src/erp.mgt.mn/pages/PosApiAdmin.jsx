@@ -3091,30 +3091,18 @@ export default function PosApiAdmin() {
     : [];
   const variations = Array.isArray(formState.variations) ? formState.variations : [];
   const activeVariations = variations.filter((entry) => entry.enabled !== false);
-  const { variationFieldSets, hasDefinedVariationFields } = useMemo(() => {
+  const variationFieldSets = useMemo(() => {
     const map = new Map();
-    let hasDefined = false;
-
     activeVariations.forEach((variation, index) => {
       const key = variation.key || variation.name || `variation-${index + 1}`;
-      const hasDefinedFields = Array.isArray(variation.requestFields);
-      if (hasDefinedFields) {
-        hasDefined = true;
-      }
-
-      const fields = hasDefinedFields
+      const fields = Array.isArray(variation.requestFields)
         ? variation.requestFields
             .map((field) => normalizeHintEntry(field).field)
             .filter(Boolean)
         : [];
-
-      map.set(key, {
-        hasDefinedFields,
-        fields: new Set(fields),
-      });
+      map.set(key, fields.length > 0 ? new Set(fields) : null);
     });
-
-    return { variationFieldSets: map, hasDefinedVariationFields: hasDefined };
+    return map;
   }, [activeVariations]);
   const requestFieldColumnTemplate = useMemo(
     () => {
@@ -3145,23 +3133,20 @@ export default function PosApiAdmin() {
   const visibleRequestFieldItems = useMemo(() => {
     if (requestFieldDisplay.state !== 'ok') return requestFieldDisplay.items || [];
     if (activeVariations.length === 0) return requestFieldDisplay.items;
-    if (!hasDefinedVariationFields) return requestFieldDisplay.items;
 
     return requestFieldDisplay.items.filter((entry) => {
       const normalized = normalizeHintEntry(entry);
       const fieldLabel = normalized.field;
       if (!fieldLabel) return false;
 
-      return Array.from(variationFieldSets.values()).some(
-        (variation) => variation?.hasDefinedFields && variation.fields.has(fieldLabel),
-      );
+      return activeVariations.some((variation) => {
+        const key = variation.key || variation.name;
+        if (!key) return false;
+        const variationFieldSet = variationFieldSets.get(key);
+        return !variationFieldSet || variationFieldSet.has(fieldLabel);
+      });
     });
-  }, [
-    activeVariations,
-    hasDefinedVariationFields,
-    requestFieldDisplay,
-    variationFieldSets,
-  ]);
+  }, [activeVariations, requestFieldDisplay, variationFieldSets]);
 
   useEffect(() => {
     if (requestFieldDisplay.state !== 'ok') {
@@ -4565,11 +4550,21 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id) {
-    if (!id || id === selectedId) return;
+    if (!id) {
+      return;
+    }
 
     const definition = endpoints.find((ep) => ep.id === id);
-    let nextFormState = createFormState(definition);
+    let nextFormState = { ...EMPTY_ENDPOINT };
     let nextRequestFieldValues = {};
+
+    try {
+      nextFormState = createFormState(definition);
+    } catch (err) {
+      console.error('Failed to prepare form state for selected endpoint', err);
+      setError('Failed to load the selected endpoint. Please review its configuration.');
+      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+    }
 
     try {
       const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
@@ -4617,7 +4612,6 @@ export default function PosApiAdmin() {
     setRequestFieldValues({});
     setRequestFieldRequirements({});
     setFormState({ ...EMPTY_ENDPOINT });
-    setSelectedId(id);
     setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
@@ -5458,10 +5452,8 @@ export default function PosApiAdmin() {
         activeVariations.forEach((variation) => {
           const key = variation.key || variation.name;
           if (!key) return;
-          const variationFieldState = variationFieldSets.get(key);
-          const showForVariation = variationFieldState?.hasDefinedFields
-            ? variationFieldState.fields.has(fieldLabel)
-            : true;
+          const variationFieldSet = variationFieldSets.get(key);
+          const showForVariation = !variationFieldSet || variationFieldSet.has(fieldLabel);
           if (!showForVariation) return;
           const required =
             requiredCommon
@@ -7708,7 +7700,7 @@ export default function PosApiAdmin() {
                       </span>
                     ))}
                   </div>
-                  {visibleRequestFieldItems.map((hint, index) => {
+                  {requestFieldDisplay.items.map((hint, index) => {
                     const normalized = normalizeHintEntry(hint);
                     const fieldLabel = normalized.field || '(unnamed field)';
                     const meta = requestFieldMeta[fieldLabel] || {};
@@ -7758,18 +7750,6 @@ export default function PosApiAdmin() {
                         </div>
                         {activeVariations.map((variation) => {
                           const variationKey = variation.key || variation.name;
-                          const variationFieldState = variationFieldSets.get(variationKey);
-                          const showForVariation = variationFieldState?.hasDefinedFields
-                            ? variationFieldState.fields.has(fieldLabel)
-                            : true;
-                          if (!showForVariation) {
-                            return (
-                              <div
-                                key={`variation-toggle-${variationKey}-${fieldLabel}`}
-                                style={styles.requestVariationCell}
-                              />
-                            );
-                          }
                           const required = commonRequired
                             ? true
                             : meta.requiredByVariation?.[variationKey]
