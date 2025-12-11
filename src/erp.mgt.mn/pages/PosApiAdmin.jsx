@@ -5954,15 +5954,15 @@ export default function PosApiAdmin() {
     if (!fieldPath) return;
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
-      const requiredByVariation = { ...current.requiredByVariation };
-      if (value) {
-        activeVariations.forEach((variation) => {
+      const requiredByVariation = value
+        ? activeVariations.reduce((acc, variation) => {
           const key = variation.key || variation.name;
           if (key) {
-            requiredByVariation[key] = true;
+            acc[key] = true;
           }
-        });
-      }
+          return acc;
+        }, {})
+        : {};
       return {
         ...prev,
         [fieldPath]: { ...current, requiredCommon: value, requiredByVariation },
