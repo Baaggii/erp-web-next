@@ -720,7 +720,10 @@ export async function listTemporarySubmissions({
   const normalizedEmp = normalizeEmpId(empId);
   const conditions = [];
   const params = [];
-  const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+  let normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+  if (!normalizedStatus && scope === 'review') {
+    normalizedStatus = 'pending';
+  }
   if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
     if (normalizedStatus === 'processed') {
       conditions.push("status <> 'pending'");
