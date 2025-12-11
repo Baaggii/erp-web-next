@@ -3097,7 +3097,7 @@ export default function PosApiAdmin() {
       const variationColumns = activeVariations.map(() => '200px');
       return [...baseColumns, ...variationColumns].join(' ');
     },
-    [activeVariations.length],
+    [activeVariations],
   );
 
   useEffect(() => {
@@ -7605,54 +7605,60 @@ export default function PosApiAdmin() {
               <div style={styles.hintError}>{requestFieldDisplay.error}</div>
             )}
             {requestFieldDisplay.state === 'ok' && (
-              <div style={styles.requestFieldTable}>
-                <div
-                  style={{
-                    ...styles.requestFieldHeaderRow,
-                    gridTemplateColumns: requestFieldColumnTemplate,
-                  }}
-                >
-                  <span style={styles.requestFieldHeaderCell}>Field</span>
-                  <span style={styles.requestFieldHeaderCell}>Description</span>
-                  <span style={styles.requestFieldHeaderCell}>Common required</span>
-                  {activeVariations.map((variation) => (
-                    <span
-                      key={`variation-head-${variation.key || variation.name}`}
-                      style={styles.requestFieldHeaderCell}
-                    >
-                      {variation.name || variation.label || variation.key}
-                    </span>
-                  ))}
-                </div>
-                {requestFieldDisplay.items.map((hint, index) => {
-                  const normalized = normalizeHintEntry(hint);
-                  const fieldLabel = normalized.field || '(unnamed field)';
-                  const meta = requestFieldMeta[fieldLabel] || {};
-                  const commonRequired =
-                    typeof meta.requiredCommon === 'boolean'
-                      ? meta.requiredCommon
-                      : typeof normalized.requiredCommon === 'boolean'
-                        ? normalized.requiredCommon
-                        : Boolean(normalized.required);
-                  const descriptionValue = meta.description || normalized.description || '';
-                  return (
-                    <div
-                      key={`request-hint-${fieldLabel}-${index}`}
-                      style={{
-                        ...styles.requestFieldRow,
-                        gridTemplateColumns: requestFieldColumnTemplate,
-                      }}
-                    >
-                      <div style={styles.requestFieldMainCell}>
-                        <div style={styles.hintFieldRow}>
-                          <span style={styles.hintField}>{fieldLabel}</span>
-                          {hint.source === 'parameter' && (
-                            <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
-                              {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
-                            </span>
-                          )}
+              <div style={styles.requestFieldScroll}>
+                <div style={styles.requestFieldTable}>
+                  <div
+                    style={{
+                      ...styles.requestFieldHeaderRow,
+                      display: 'grid',
+                      gridTemplateColumns: requestFieldColumnTemplate,
+                    }}
+                  >
+                    <span style={styles.requestFieldHeaderCell}>Field</span>
+                    <span style={styles.requestFieldHeaderCell}>Description</span>
+                    <span style={styles.requestFieldHeaderCell}>Common required</span>
+                    {activeVariations.map((variation) => (
+                      <span
+                        key={`variation-head-${variation.key || variation.name}`}
+                        style={{
+                          ...styles.requestFieldHeaderCell,
+                          ...styles.requestFieldVariationHeader,
+                        }}
+                      >
+                        {variation.title || variation.name || variation.key}
+                      </span>
+                    ))}
+                  </div>
+                  {requestFieldDisplay.items.map((hint, index) => {
+                    const normalized = normalizeHintEntry(hint);
+                    const fieldLabel = normalized.field || '(unnamed field)';
+                    const meta = requestFieldMeta[fieldLabel] || {};
+                    const commonRequired =
+                      typeof meta.requiredCommon === 'boolean'
+                        ? meta.requiredCommon
+                        : typeof normalized.requiredCommon === 'boolean'
+                          ? normalized.requiredCommon
+                          : Boolean(normalized.required);
+                    const descriptionValue = meta.description || normalized.description || '';
+                    return (
+                      <div
+                        key={`request-hint-${fieldLabel}-${index}`}
+                        style={{
+                          ...styles.requestFieldRow,
+                          display: 'grid',
+                          gridTemplateColumns: requestFieldColumnTemplate,
+                        }}
+                      >
+                        <div style={styles.requestFieldMainCell}>
+                          <div style={styles.hintFieldRow}>
+                            <span style={styles.hintField}>{fieldLabel}</span>
+                            {hint.source === 'parameter' && (
+                              <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                                {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
                       <div style={styles.requestFieldDescriptionCell}>
                         <textarea
                           value={descriptionValue}
@@ -7714,9 +7720,10 @@ export default function PosApiAdmin() {
                           </div>
                         );
                       })}
-                    </div>
-                  );
-                })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -8836,7 +8843,8 @@ const styles = {
     border: '1px solid #e2e8f0',
     borderRadius: '8px',
     padding: '1.5rem',
-    maxWidth: '900px',
+    maxWidth: '100%',
+    width: '100%',
     position: 'relative',
     overflow: 'hidden',
   },
@@ -9252,9 +9260,10 @@ const styles = {
   },
   hintGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gridTemplateColumns: 'minmax(520px, 2fr) minmax(320px, 1fr)',
     gap: '1rem',
     marginTop: '0.75rem',
+    alignItems: 'start',
   },
   hintCard: {
     border: '1px solid #e2e8f0',
@@ -9287,6 +9296,10 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.35rem',
+  },
+  requestFieldScroll: {
+    width: '100%',
+    overflowX: 'auto',
   },
   requestFieldTable: {
     display: 'flex',
