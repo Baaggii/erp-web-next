@@ -4317,7 +4317,7 @@ export default function PosApiAdmin() {
     setSelectedImportId('');
     setRequestBuilder(null);
     setRequestBuilderError('');
-    setRequestFieldValues(nextRequestFieldValues);
+    setRequestFieldValues({});
     setRequestFieldRequirements({});
     setFormState({ ...EMPTY_ENDPOINT });
     setSelectedId(id);
@@ -4325,7 +4325,7 @@ export default function PosApiAdmin() {
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
-  }, [endpoints, selectedId]);
+  }
 
   function handleChange(field, value) {
     setFormState((prev) => {
