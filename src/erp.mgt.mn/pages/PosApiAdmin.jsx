@@ -1542,6 +1542,9 @@ function createFormState(definition) {
           field: field?.field || '',
           required: typeof field?.required === 'boolean' ? field.required : true,
           description: field?.description || '',
+          requiredCommon: Boolean(field?.requiredCommon),
+          requiredVariations: normalizeFieldRequirementMap(field?.requiredVariations),
+          defaultVariations: normalizeFieldValueMap(field?.defaultVariations),
         }))
         : [];
       const requestExample = variation.requestExample || variation.request?.body || {};
@@ -5079,6 +5082,9 @@ export default function PosApiAdmin() {
           field: field?.field || '',
           required: typeof field?.required === 'boolean' ? field.required : true,
           ...(field?.description ? { description: field.description } : {}),
+          requiredCommon: Boolean(field?.requiredCommon),
+          requiredVariations: normalizeFieldRequirementMap(field?.requiredVariations),
+          defaultVariations: normalizeFieldValueMap(field?.defaultVariations),
         })).filter((field) => field.field)
         : [];
       return {

@@ -932,6 +932,46 @@ function flattenFieldsFromExample(example, prefix = '') {
   return fields;
 }
 
+function flattenFieldsWithValues(example, prefix = '') {
+  const fields = [];
+
+  const addField = (path, value) => {
+    if (!path) return;
+    fields.push({ field: path, value });
+  };
+
+  const walk = (value, currentPath) => {
+    if (value === undefined || value === null) {
+      addField(currentPath, value);
+      return;
+    }
+    if (Array.isArray(value)) {
+      const arrayPath = currentPath ? `${currentPath}[]` : '[]';
+      addField(arrayPath, value);
+      if (value.length > 0) {
+        walk(value[0], arrayPath);
+      }
+      return;
+    }
+    if (typeof value === 'object') {
+      const entries = Object.entries(value);
+      if (!entries.length) {
+        addField(currentPath, value);
+        return;
+      }
+      entries.forEach(([key, child]) => {
+        const childPath = currentPath ? `${currentPath}.${key}` : key;
+        walk(child, childPath);
+      });
+      return;
+    }
+    addField(currentPath, value);
+  };
+
+  walk(example, prefix);
+  return fields;
+}
+
 function parseTabbedRequestVariations(markdown, flags = {}) {
   const variations = [];
   const warnings = [];
@@ -965,13 +1005,21 @@ function parseTabbedRequestVariations(markdown, flags = {}) {
 
       try {
         const requestExample = JSON.parse(codeText);
-        const requestFields = flattenFieldsFromExample(requestExample).map((field) => ({
-          ...field,
-          required: true,
-        }));
+        const exampleFields = flattenFieldsWithValues(requestExample);
+        const variationKey = entry.title || `variation-${index + 1}`;
+        const requestFields = flattenFieldsFromExample(requestExample).map((field) => {
+          const valueEntry = exampleFields.find((item) => item.field === field.field);
+          return {
+            ...field,
+            required: true,
+            requiredCommon: false,
+            requiredVariations: { [variationKey]: true },
+            defaultVariations: valueEntry?.field ? { [variationKey]: valueEntry.value } : {},
+          };
+        });
 
         variations.push({
-          key: entry.title || `variation-${index + 1}`,
+          key: variationKey,
           name: entry.title || `Variation ${index + 1}`,
           description,
           requestExample,
@@ -1372,10 +1420,37 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
       const variationsFromExamples = Array.from(variationKeys).map((key, index) => {
         const req = requestExamples.find((ex) => (ex.key || ex.name) === key) || requestExamples[index];
         const resp = responseExampleEntries.find((ex) => (ex.key || ex.name) === key) || responseExampleEntries[index];
+        const variationName = req?.name || resp?.name || key || `Variation ${index + 1}`;
+        const exampleValueMap = Object.fromEntries(
+          flattenFieldsWithValues(req?.body || {}).map(({ field, value }) => [field, value]),
+        );
         const variationRequestFields = dedupeFieldEntries([
           ...requestFields,
           ...flattenFieldsFromExample(req?.body || {}),
-        ]);
+        ]).map((field) => {
+          const required = field?.required !== false;
+          const value = exampleValueMap[field.field];
+          const defaultMap =
+            field && typeof field.defaultVariations === 'object' && field.defaultVariations !== null
+              ? field.defaultVariations
+              : {};
+          const requiredMap =
+            field && typeof field.requiredVariations === 'object' && field.requiredVariations !== null
+              ? field.requiredVariations
+              : {};
+          return {
+            ...field,
+            required,
+            requiredCommon: Boolean(field.requiredCommon),
+            requiredVariations: { ...requiredMap, [variationName]: required },
+            defaultVariations:
+              value !== undefined
+                ? { ...defaultMap, [variationName]: value }
+                : Object.keys(defaultMap).length
+                  ? defaultMap
+                  : {},
+          };
+        });
         const variationResponseFields = dedupeFieldEntries([
           ...responseFields,
           ...flattenFieldsFromExample(resp?.body || {}),
@@ -1414,7 +1489,7 @@ function extractOperationsFromOpenApi(spec, meta = {}, metaLookup = {}) {
         }
         return {
           key: key || `variation-${index + 1}`,
-          name: req?.name || resp?.name || key || `Variation ${index + 1}`,
+          name: variationName,
           request: resolvedRequest,
           response: resolvedResponse,
           requestFields: variationRequestFields,
