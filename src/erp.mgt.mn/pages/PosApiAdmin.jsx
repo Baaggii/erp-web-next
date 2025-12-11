@@ -4505,36 +4505,49 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-    function handleSelect(id) {
-      setStatus('');
-      setError('');
-      resetTestState();
-      setDocExamples([]);
+  function handleSelect(id) {
+    const definition = endpoints.find((ep) => ep.id === id);
+    const nextFormState = createFormState(definition);
+    const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
+    const nextRequestFieldValues =
+      nextDisplay.state === 'ok'
+        ? deriveRequestFieldSelections({
+            requestSchemaText: nextFormState.requestSchemaText,
+            requestEnvMap: nextFormState.requestEnvMap,
+            displayItems: nextDisplay.items,
+          })
+        : {};
+
+    setStatus('');
+    setError('');
+    resetTestState();
+    setDocExamples([]);
     setSelectedDocBlock('');
     setDocMetadata({});
     setDocFieldDescriptions({});
-      setSampleImportText('');
-      setSampleImportError('');
-      setRequestBuilder(null);
-      setRequestBuilderError('');
-      setRequestFieldValues({});
-      setRequestFieldMeta({});
-      setFormState({ ...EMPTY_ENDPOINT });
-      setSelectedId(id);
-      const definition = endpoints.find((ep) => ep.id === id);
-      const nextFormState = createFormState(definition);
-    const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
-    if (nextDisplay.state === 'ok') {
-      setRequestFieldValues(
-        deriveRequestFieldSelections({
-          requestSchemaText: nextFormState.requestSchemaText,
-          requestEnvMap: nextFormState.requestEnvMap,
-          displayItems: nextDisplay.items,
-        }),
-      );
-    } else {
-      setRequestFieldValues({});
-    }
+    setSampleImportText('');
+    setSampleImportError('');
+    setImportStatus('');
+    setImportError('');
+    setImportDrafts([]);
+    setImportTestRunning(false);
+    setImportTestError('');
+    setImportTestResult(null);
+    setImportSelectedExampleKey('');
+    setImportExampleResponse(null);
+    setImportRequestBody('');
+    setImportSpecText('');
+    setImportBaseUrl('');
+    setImportBaseUrlEnvVar('');
+    setImportBaseUrlMode('literal');
+    setSelectedImportId('');
+    setRequestBuilder(null);
+    setRequestBuilderError('');
+    setRequestFieldValues({});
+    setRequestFieldRequirements({});
+    setFormState({ ...EMPTY_ENDPOINT });
+    setSelectedId(id);
+    setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
