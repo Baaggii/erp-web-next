@@ -7665,7 +7665,6 @@ export default function PosApiAdmin() {
                             </span>
                           )}
                         </div>
-                      </div>
                       <div style={styles.requestFieldDescriptionCell}>
                         <textarea
                           value={descriptionValue}
@@ -7727,9 +7726,10 @@ export default function PosApiAdmin() {
                           </div>
                         );
                       })}
-                    </div>
-                  );
-                })}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
@@ -8849,7 +8849,8 @@ const styles = {
     border: '1px solid #e2e8f0',
     borderRadius: '8px',
     padding: '1.5rem',
-    maxWidth: '900px',
+    maxWidth: '100%',
+    width: '100%',
     position: 'relative',
     overflow: 'hidden',
   },
@@ -9265,9 +9266,10 @@ const styles = {
   },
   hintGrid: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gridTemplateColumns: 'minmax(520px, 2fr) minmax(320px, 1fr)',
     gap: '1rem',
     marginTop: '0.75rem',
+    alignItems: 'start',
   },
   hintCard: {
     border: '1px solid #e2e8f0',
@@ -9300,6 +9302,10 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     gap: '0.35rem',
+  },
+  requestFieldScroll: {
+    width: '100%',
+    overflowX: 'auto',
   },
   requestFieldTable: {
     display: 'flex',
