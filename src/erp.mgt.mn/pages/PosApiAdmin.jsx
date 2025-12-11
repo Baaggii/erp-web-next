@@ -1891,17 +1891,6 @@ function validateEndpoint(endpoint, existingIds, originalId) {
   if (!hasBaseUrl) {
     throw new Error('At least one base URL (staging or production) is required');
   }
-  const requestFields = Array.isArray(endpoint?.requestFields)
-    ? endpoint.requestFields.filter((entry) => entry && typeof entry.field === 'string' && entry.field.trim())
-    : [];
-  if (!requestFields.length) {
-    throw new Error('Add at least one request field to map inputs');
-  }
-  const variations = Array.isArray(endpoint?.variations) ? endpoint.variations : [];
-  const missingRequests = variations.filter((variation) => !variation?.request && !variation?.requestExample);
-  if (missingRequests.length) {
-    throw new Error('Each variation needs a request body or example');
-  }
 }
 
 function parseScalarValue(text) {
@@ -7832,6 +7821,117 @@ export default function PosApiAdmin() {
           </div>
           <div style={styles.hintCard}>
             <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Request values & environment variables</h3>
+            </div>
+            {requestFieldDisplay.state !== 'ok' && (
+              <p style={styles.hintEmpty}>
+                Add request fields above to configure literal values or environment variable mappings.
+              </p>
+            )}
+            {requestFieldDisplay.state === 'ok' && visibleRequestFieldItems.length === 0 && (
+              <p style={styles.hintEmpty}>No request fields available for the active variations.</p>
+            )}
+            {requestFieldDisplay.state === 'ok' && visibleRequestFieldItems.length > 0 && (
+              <div style={styles.requestValueList}>
+                {visibleRequestFieldItems.map((entry, index) => {
+                  const normalized = normalizeHintEntry(entry);
+                  const fieldPath = normalized.field;
+                  const selection = requestFieldValues[fieldPath] || {
+                    mode: 'literal',
+                    literal: '',
+                    envVar: '',
+                    applyToBody: entry.source !== 'parameter',
+                  };
+                  const mode = selection.mode === 'env' ? 'env' : 'literal';
+                  const envMode = mode === 'env';
+                  const envVarValue = selection.envVar || '';
+                  const literalValue = selection.literal || '';
+                  const applyToBody = selection.applyToBody !== false;
+                  return (
+                    <div key={`${fieldPath || 'field'}-${index}`} style={styles.requestValueRow}>
+                      <div style={styles.requestValueFieldMeta}>
+                        <div style={styles.hintFieldRow}>
+                          <span style={styles.hintField}>{fieldPath || '(unnamed field)'}</span>
+                          {entry.source === 'parameter' && (
+                            <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                              {entry.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                            </span>
+                          )}
+                        </div>
+                        {normalized.description && (
+                          <div style={styles.hintDescription}>{normalized.description}</div>
+                        )}
+                      </div>
+                      <div style={styles.requestFieldModes}>
+                        <label style={styles.radioLabel}>
+                          <input
+                            type="radio"
+                            name={`request-value-mode-${index}`}
+                            checked={!envMode}
+                            onChange={() => handleRequestFieldValueChange(fieldPath, { mode: 'literal' })}
+                          />
+                          Literal value
+                        </label>
+                        <label style={styles.radioLabel}>
+                          <input
+                            type="radio"
+                            name={`request-value-mode-${index}`}
+                            checked={envMode}
+                            onChange={() => handleRequestFieldValueChange(fieldPath, { mode: 'env' })}
+                          />
+                          Environment variable
+                        </label>
+                      </div>
+                      <div style={styles.requestValueInputs}>
+                        <label style={styles.label}>
+                          <span>Literal / test value</span>
+                          <input
+                            type="text"
+                            value={literalValue}
+                            onChange={(e) =>
+                              handleRequestFieldValueChange(fieldPath, { literal: e.target.value })
+                            }
+                            style={styles.input}
+                            placeholder="Sample request value"
+                          />
+                        </label>
+                        <label style={styles.label}>
+                          <span>Environment variable</span>
+                          <input
+                            type="text"
+                            list={`env-options-${index}`}
+                            value={envVarValue}
+                            onChange={(e) =>
+                              handleRequestFieldValueChange(fieldPath, { envVar: e.target.value, mode: 'env' })
+                            }
+                            style={styles.input}
+                            placeholder="ENV_VAR_NAME"
+                          />
+                          <datalist id={`env-options-${index}`}>
+                            {envVariableOptions.map((opt) => (
+                              <option key={`env-opt-${opt}`} value={opt} />
+                            ))}
+                          </datalist>
+                        </label>
+                        <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={applyToBody}
+                            onChange={(e) =>
+                              handleRequestFieldValueChange(fieldPath, { applyToBody: e.target.checked })
+                            }
+                          />
+                          <span>Apply to request body</span>
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
               <h3 style={styles.hintTitle}>Response fields</h3>
               {responseFieldHints.state === 'ok' && (
                 <span style={styles.hintCount}>{responseFieldHints.items.length} fields</span>
@@ -9459,6 +9559,30 @@ const styles = {
     display: 'flex',
     gap: '1rem',
     alignItems: 'center',
+  },
+  requestValueList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  requestValueRow: {
+    border: '1px solid #e2e8eb',
+    borderRadius: '10px',
+    padding: '0.75rem',
+    display: 'grid',
+    gridTemplateColumns: '1.4fr 1fr 1.6fr',
+    gap: '0.75rem',
+    alignItems: 'flex-start',
+  },
+  requestValueFieldMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  requestValueInputs: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '0.5rem',
   },
   requestFieldHint: {
     color: '#475569',
