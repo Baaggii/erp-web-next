@@ -54,12 +54,6 @@ function validateEndpointDefinition(endpoint, index = 0) {
   if (!hasBaseUrl) {
     issues.push(`${label} is missing a base URL (staging or production).`);
   }
-  const requestFields = Array.isArray(endpoint?.requestFields)
-    ? endpoint.requestFields.filter((entry) => entry && typeof entry.field === 'string' && entry.field.trim())
-    : [];
-  if (!requestFields.length) {
-    issues.push(`${label} has no request fields defined for mapping.`);
-  }
   const variations = Array.isArray(endpoint?.variations) ? endpoint.variations : [];
   variations.forEach((variation, idx) => {
     const variationLabel = variation?.name || `variation ${idx + 1}`;
