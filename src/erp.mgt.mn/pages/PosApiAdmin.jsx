@@ -2551,6 +2551,9 @@ export default function PosApiAdmin() {
   }, [adminEndpoints, adminSelectionId]);
 
   useEffect(() => {
+    setAdminResult(null);
+    setAdminError('');
+    setAdminRunning(false);
     if (!activeAdminEndpoint) {
       setAdminParamValues({});
       setAdminRequestBody('');
@@ -2571,7 +2574,7 @@ export default function PosApiAdmin() {
         return prev;
       }
     });
-    setAdminAuthEndpointId((prev) => prev || activeAdminEndpoint.authEndpointId || '');
+    setAdminAuthEndpointId(activeAdminEndpoint.authEndpointId || '');
   }, [activeAdminEndpoint, adminResult]);
 
   const infoSyncEndpointOptions = useMemo(() => {
