@@ -4507,20 +4507,31 @@ export default function PosApiAdmin() {
 
   function handleSelect(id) {
     if (!id || id === selectedId) return;
+
     const definition = endpoints.find((ep) => ep.id === id);
-    const nextFormState = createFormState(definition);
-    const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
-    const nextRequestFieldValues =
-      nextDisplay.state === 'ok'
-        ? deriveRequestFieldSelections({
-            requestSchemaText: nextFormState.requestSchemaText,
-            requestEnvMap: nextFormState.requestEnvMap,
-            displayItems: nextDisplay.items,
-          })
-        : {};
+    let nextFormState = createFormState(definition);
+    let nextRequestFieldValues = {};
+
+    try {
+      const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
+      if (nextDisplay.state === 'error') {
+        setError(nextDisplay.error || 'Unable to load endpoint details.');
+      }
+      if (nextDisplay.state === 'ok') {
+        nextRequestFieldValues = deriveRequestFieldSelections({
+          requestSchemaText: nextFormState.requestSchemaText,
+          requestEnvMap: nextFormState.requestEnvMap,
+          displayItems: nextDisplay.items,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to select endpoint', err);
+      setError('Failed to load the selected endpoint. Please review its configuration.');
+      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+      nextRequestFieldValues = {};
+    }
 
     setStatus('');
-    setError('');
     resetTestState();
     setDocExamples([]);
     setSelectedDocBlock('');
@@ -7605,59 +7616,54 @@ export default function PosApiAdmin() {
               <div style={styles.hintError}>{requestFieldDisplay.error}</div>
             )}
             {requestFieldDisplay.state === 'ok' && (
-              <div style={styles.requestFieldScroll}>
-                <div style={styles.requestFieldTable}>
-                  <div
+              <div style={styles.requestFieldTable}>
+                <div
+                  style={{
+                    ...styles.requestFieldHeaderRow,
+                    display: 'grid',
+                    gridTemplateColumns: requestFieldColumnTemplate,
+                  }}
+                >
+                  <span style={styles.requestFieldHeaderCell}>Field</span>
+                  <span style={styles.requestFieldHeaderCell}>Description</span>
+                  <span style={styles.requestFieldHeaderCell}>Common required</span>
+                  {activeVariations.map((variation) => (
+                    <span
+                      key={`variation-head-${variation.key || variation.name}`}
+                      style={styles.requestFieldHeaderCell}
+                    >
+                      {variation.name || variation.label || variation.key}
+                    </span>
+                  ))}
+                </div>
+                {requestFieldDisplay.items.map((hint, index) => {
+                  const normalized = normalizeHintEntry(hint);
+                  const fieldLabel = normalized.field || '(unnamed field)';
+                  const meta = requestFieldMeta[fieldLabel] || {};
+                  const commonRequired =
+                    typeof meta.requiredCommon === 'boolean'
+                      ? meta.requiredCommon
+                      : typeof normalized.requiredCommon === 'boolean'
+                        ? normalized.requiredCommon
+                        : Boolean(normalized.required);
+                  const descriptionValue = meta.description || normalized.description || '';
+                  return (
+                    <div
+                    key={`request-hint-${fieldLabel}-${index}`}
                     style={{
-                      ...styles.requestFieldHeaderRow,
+                      ...styles.requestFieldRow,
                       display: 'grid',
                       gridTemplateColumns: requestFieldColumnTemplate,
                     }}
                   >
-                    <span style={styles.requestFieldHeaderCell}>Field</span>
-                    <span style={styles.requestFieldHeaderCell}>Description</span>
-                    <span style={styles.requestFieldHeaderCell}>Common required</span>
-                    {activeVariations.map((variation) => (
-                      <span
-                        key={`variation-head-${variation.key || variation.name}`}
-                        style={{
-                          ...styles.requestFieldHeaderCell,
-                          ...styles.requestFieldVariationHeader,
-                        }}
-                      >
-                        {variation.title || variation.name || variation.key}
-                      </span>
-                    ))}
-                  </div>
-                  {requestFieldDisplay.items.map((hint, index) => {
-                    const normalized = normalizeHintEntry(hint);
-                    const fieldLabel = normalized.field || '(unnamed field)';
-                    const meta = requestFieldMeta[fieldLabel] || {};
-                    const commonRequired =
-                      typeof meta.requiredCommon === 'boolean'
-                        ? meta.requiredCommon
-                        : typeof normalized.requiredCommon === 'boolean'
-                          ? normalized.requiredCommon
-                          : Boolean(normalized.required);
-                    const descriptionValue = meta.description || normalized.description || '';
-                    return (
-                      <div
-                        key={`request-hint-${fieldLabel}-${index}`}
-                        style={{
-                          ...styles.requestFieldRow,
-                          display: 'grid',
-                          gridTemplateColumns: requestFieldColumnTemplate,
-                        }}
-                      >
-                        <div style={styles.requestFieldMainCell}>
-                          <div style={styles.hintFieldRow}>
-                            <span style={styles.hintField}>{fieldLabel}</span>
-                            {hint.source === 'parameter' && (
-                              <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
-                                {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
-                              </span>
-                            )}
-                          </div>
+                      <div style={styles.requestFieldMainCell}>
+                        <div style={styles.hintFieldRow}>
+                          <span style={styles.hintField}>{fieldLabel}</span>
+                          {hint.source === 'parameter' && (
+                            <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                              {hint.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                            </span>
+                          )}
                         </div>
                       <div style={styles.requestFieldDescriptionCell}>
                         <textarea
