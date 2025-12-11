@@ -4507,20 +4507,31 @@ export default function PosApiAdmin() {
 
   function handleSelect(id) {
     if (!id || id === selectedId) return;
+
     const definition = endpoints.find((ep) => ep.id === id);
-    const nextFormState = createFormState(definition);
-    const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
-    const nextRequestFieldValues =
-      nextDisplay.state === 'ok'
-        ? deriveRequestFieldSelections({
-            requestSchemaText: nextFormState.requestSchemaText,
-            requestEnvMap: nextFormState.requestEnvMap,
-            displayItems: nextDisplay.items,
-          })
-        : {};
+    let nextFormState = createFormState(definition);
+    let nextRequestFieldValues = {};
+
+    try {
+      const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
+      if (nextDisplay.state === 'error') {
+        setError(nextDisplay.error || 'Unable to load endpoint details.');
+      }
+      if (nextDisplay.state === 'ok') {
+        nextRequestFieldValues = deriveRequestFieldSelections({
+          requestSchemaText: nextFormState.requestSchemaText,
+          requestEnvMap: nextFormState.requestEnvMap,
+          displayItems: nextDisplay.items,
+        });
+      }
+    } catch (err) {
+      console.error('Failed to select endpoint', err);
+      setError('Failed to load the selected endpoint. Please review its configuration.');
+      nextFormState = { ...EMPTY_ENDPOINT, ...(definition || {}) };
+      nextRequestFieldValues = {};
+    }
 
     setStatus('');
-    setError('');
     resetTestState();
     setDocExamples([]);
     setSelectedDocBlock('');
