@@ -4506,6 +4506,7 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id) {
+    if (!id || id === selectedId) return;
     const definition = endpoints.find((ep) => ep.id === id);
     const nextFormState = createFormState(definition);
     const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
@@ -4551,6 +4552,28 @@ export default function PosApiAdmin() {
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
+  }
+
+  function handleListMouseDown(event, id) {
+    if (event.button !== undefined && event.button !== 0) return;
+    handleSelect(id);
+  }
+
+  function handleListClick(event, id) {
+    if (event.detail === 0) {
+      event.preventDefault();
+      handleSelect(id);
+      return;
+    }
+    if (event.button !== undefined && event.button !== 0) return;
+    handleSelect(id);
+  }
+
+  function handleListKeyDown(event, id) {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      handleSelect(id);
+    }
   }
 
   function handleChange(field, value) {
@@ -6245,7 +6268,9 @@ export default function PosApiAdmin() {
                     <li key={ep.id}>
                       <button
                         type="button"
-                        onClick={() => handleSelect(ep.id)}
+                        onMouseDown={(event) => handleListMouseDown(event, ep.id)}
+                        onClick={(event) => handleListClick(event, ep.id)}
+                        onKeyDown={(event) => handleListKeyDown(event, ep.id)}
                         style={{
                           ...styles.listButton,
                           ...(selectedId === ep.id ? styles.listButtonActive : {}),
@@ -9362,6 +9387,7 @@ const styles = {
     borderRadius: '6px',
     padding: '0.5rem',
     cursor: 'pointer',
+    userSelect: 'none',
   },
   listButtonActive: {
     borderColor: '#2563eb',
