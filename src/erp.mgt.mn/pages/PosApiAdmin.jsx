@@ -4506,6 +4506,7 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id) {
+    if (!id || id === selectedId) return;
     const definition = endpoints.find((ep) => ep.id === id);
     const nextFormState = createFormState(definition);
     const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
