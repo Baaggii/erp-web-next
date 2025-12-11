@@ -3097,7 +3097,7 @@ export default function PosApiAdmin() {
       const variationColumns = activeVariations.map(() => '200px');
       return [...baseColumns, ...variationColumns].join(' ');
     },
-    [activeVariations.length],
+    [activeVariations],
   );
 
   useEffect(() => {
@@ -7609,6 +7609,7 @@ export default function PosApiAdmin() {
                 <div
                   style={{
                     ...styles.requestFieldHeaderRow,
+                    display: 'grid',
                     gridTemplateColumns: requestFieldColumnTemplate,
                   }}
                 >
@@ -7637,12 +7638,13 @@ export default function PosApiAdmin() {
                   const descriptionValue = meta.description || normalized.description || '';
                   return (
                     <div
-                      key={`request-hint-${fieldLabel}-${index}`}
-                      style={{
-                        ...styles.requestFieldRow,
-                        gridTemplateColumns: requestFieldColumnTemplate,
-                      }}
-                    >
+                    key={`request-hint-${fieldLabel}-${index}`}
+                    style={{
+                      ...styles.requestFieldRow,
+                      display: 'grid',
+                      gridTemplateColumns: requestFieldColumnTemplate,
+                    }}
+                  >
                       <div style={styles.requestFieldMainCell}>
                         <div style={styles.hintFieldRow}>
                           <span style={styles.hintField}>{fieldLabel}</span>
