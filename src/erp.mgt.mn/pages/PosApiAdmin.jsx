@@ -1617,7 +1617,7 @@ function createFormState(definition) {
     testServerUrlProductionEnvVar: testServerUrlProductionField.envVar,
     testServerUrlProductionMode: testServerUrlProductionField.mode,
     authEndpointId: definition.authEndpointId || '',
-    docUrl: '',
+    docUrl: definition.docUrl || '',
     posApiType: definition.posApiType || definition.requestBody?.schema?.type || '',
     usage: rawUsage,
     defaultForForm: isTransaction ? Boolean(definition.defaultForForm) : false,
@@ -4137,10 +4137,7 @@ export default function PosApiAdmin() {
         const normalized = list.map(withEndpointMetadata);
         setEndpoints(normalized);
         if (normalized.length > 0) {
-          setSelectedId(normalized[0].id);
-          setFormState(createFormState(normalized[0]));
-          setTestEnvironment('staging');
-          setImportAuthEndpointId(normalized[0].authEndpointId || '');
+          applyEndpointSelection(normalized[0]);
         }
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -4279,7 +4276,7 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  function handleSelect(id) {
+  function applyEndpointSelection(definition) {
     setStatus('');
     setError('');
     resetTestState();
@@ -4312,6 +4309,12 @@ export default function PosApiAdmin() {
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
+    setSelectedId(definition?.id || '');
+  }
+
+  function handleSelect(id) {
+    const definition = endpoints.find((ep) => ep.id === id);
+    applyEndpointSelection(definition);
   }
 
   function handleChange(field, value) {
@@ -4721,11 +4724,7 @@ export default function PosApiAdmin() {
       ),
     };
 
-    const nextState = createFormState(draftDefinition);
-
-    setSelectedId('');
-    setRequestFieldValues({});
-    setFormState(nextState);
+    applyEndpointSelection(draftDefinition);
     setStatus('Loaded the imported draft into the editor. Add details and save to finalize.');
     setActiveTab('endpoints');
   }
@@ -5317,8 +5316,7 @@ export default function PosApiAdmin() {
       const next = nextRaw.map(withEndpointMetadata);
       setEndpoints(next);
       const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
-      setSelectedId(selected.id);
-      setFormState(createFormState(selected));
+      applyEndpointSelection(selected);
       setStatus('Changes saved');
     } catch (err) {
       console.error(err);
@@ -5364,11 +5362,9 @@ export default function PosApiAdmin() {
       const nextEndpoints = nextRaw.map(withEndpointMetadata);
       setEndpoints(nextEndpoints);
       if (nextEndpoints.length > 0) {
-        setSelectedId(nextEndpoints[0].id);
-        setFormState(createFormState(nextEndpoints[0]));
+        applyEndpointSelection(nextEndpoints[0]);
       } else {
-        setSelectedId('');
-        setFormState({ ...EMPTY_ENDPOINT });
+        applyEndpointSelection(null);
       }
       setStatus('Endpoint deleted');
     } catch (err) {
