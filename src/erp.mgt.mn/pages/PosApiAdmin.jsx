@@ -4137,10 +4137,7 @@ export default function PosApiAdmin() {
         const normalized = list.map(withEndpointMetadata);
         setEndpoints(normalized);
         if (normalized.length > 0) {
-          setSelectedId(normalized[0].id);
-          setFormState(createFormState(normalized[0]));
-          setTestEnvironment('staging');
-          setImportAuthEndpointId(normalized[0].authEndpointId || '');
+          applyEndpointSelection(normalized[0]);
         }
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -4279,7 +4276,7 @@ export default function PosApiAdmin() {
     };
   }, [activeTab]);
 
-  function handleSelect(id) {
+  function applyEndpointSelection(definition) {
     setStatus('');
     setError('');
     resetTestState();
@@ -4294,8 +4291,7 @@ export default function PosApiAdmin() {
     setRequestFieldValues({});
     setRequestFieldRequirements({});
     setFormState({ ...EMPTY_ENDPOINT });
-    setSelectedId(id);
-    const definition = endpoints.find((ep) => ep.id === id);
+    setSelectedId(definition?.id || '');
     const nextFormState = createFormState(definition);
     const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
     if (nextDisplay.state === 'ok') {
@@ -4312,6 +4308,11 @@ export default function PosApiAdmin() {
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
+  }
+
+  function handleSelect(id) {
+    const definition = endpoints.find((ep) => ep.id === id);
+    applyEndpointSelection(definition);
   }
 
   function handleChange(field, value) {
@@ -5317,8 +5318,7 @@ export default function PosApiAdmin() {
       const next = nextRaw.map(withEndpointMetadata);
       setEndpoints(next);
       const selected = next.find((ep) => ep.id === preparedDefinition.id) || preparedDefinition;
-      setSelectedId(selected.id);
-      setFormState(createFormState(selected));
+      applyEndpointSelection(selected);
       setStatus('Changes saved');
     } catch (err) {
       console.error(err);
@@ -5330,13 +5330,12 @@ export default function PosApiAdmin() {
 
   async function handleDelete() {
     if (!selectedId) {
-      setFormState({ ...EMPTY_ENDPOINT });
+      applyEndpointSelection(null);
       return;
     }
     const existing = endpoints.find((ep) => ep.id === selectedId);
     if (!existing) {
-      setFormState({ ...EMPTY_ENDPOINT });
-      setSelectedId('');
+      applyEndpointSelection(null);
       return;
     }
     const confirmed = window.confirm(
@@ -5364,11 +5363,9 @@ export default function PosApiAdmin() {
       const nextEndpoints = nextRaw.map(withEndpointMetadata);
       setEndpoints(nextEndpoints);
       if (nextEndpoints.length > 0) {
-        setSelectedId(nextEndpoints[0].id);
-        setFormState(createFormState(nextEndpoints[0]));
+        applyEndpointSelection(nextEndpoints[0]);
       } else {
-        setSelectedId('');
-        setFormState({ ...EMPTY_ENDPOINT });
+        applyEndpointSelection(null);
       }
       setStatus('Endpoint deleted');
     } catch (err) {
