@@ -3866,6 +3866,19 @@ export default function PosApiAdmin() {
     });
   };
 
+  const handleRemoveVariationField = (variationIndex, fieldIndex) => {
+    setFormState((prev) => {
+      const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
+      const variation = list[variationIndex];
+      if (!variation) return prev;
+      const fields = Array.isArray(variation.requestFields) ? variation.requestFields.slice() : [];
+      if (fieldIndex < 0 || fieldIndex >= fields.length) return prev;
+      fields.splice(fieldIndex, 1);
+      list[variationIndex] = { ...variation, requestFields: fields };
+      return { ...prev, variations: list };
+    });
+  };
+
   const handleAddVariation = () => {
     setFormState((prev) => {
       const list = Array.isArray(prev.variations) ? prev.variations.slice() : [];
@@ -7545,6 +7558,13 @@ export default function PosApiAdmin() {
                         style={styles.input}
                         placeholder="Description (optional)"
                       />
+                      <button
+                        type="button"
+                        style={styles.smallDangerButton}
+                        onClick={() => handleRemoveVariationField(index, fieldIndex)}
+                      >
+                        Remove
+                      </button>
                     </div>
                   ))
                   : null}
@@ -9387,7 +9407,7 @@ const styles = {
   },
   variationFieldRow: {
     display: 'grid',
-    gridTemplateColumns: '2fr auto 2fr',
+    gridTemplateColumns: '2fr auto 2fr auto',
     gap: '0.5rem',
     alignItems: 'center',
     padding: '0.25rem 0',
