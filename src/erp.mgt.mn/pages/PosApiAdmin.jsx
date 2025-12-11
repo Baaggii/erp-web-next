@@ -5382,7 +5382,9 @@ export default function PosApiAdmin() {
         required: requiredCommon,
         requiredCommon,
         requiredByVariation,
+        requiredVariations: requiredByVariation,
         defaultByVariation,
+        defaultVariations: defaultByVariation,
         ...(description ? { description } : {}),
       };
       if (normalized.location) {
@@ -5472,11 +5474,11 @@ export default function PosApiAdmin() {
           const variationFieldSet = variationFieldSets.get(key);
           const showForVariation = !variationFieldSet || variationFieldSet.has(fieldLabel);
           if (!showForVariation) return;
-          const required =
-            requiredCommon
-            || meta.requiredByVariation?.[key]
-            || normalized.requiredByVariation?.[key]
-            || false;
+          const required = requiredCommon
+            ? true
+            : meta.requiredByVariation?.[key]
+              ?? normalized.requiredByVariation?.[key]
+              ?? false;
           const defaultValue =
             meta.defaultByVariation?.[key]
             ?? normalized.defaultByVariation?.[key];
@@ -5526,7 +5528,9 @@ export default function PosApiAdmin() {
               requiredCommon,
               required: requiredCommon,
               requiredByVariation,
+              requiredVariations: requiredByVariation,
               defaultByVariation,
+              defaultVariations: defaultByVariation,
             };
           })
           .filter((field) => field.field)
