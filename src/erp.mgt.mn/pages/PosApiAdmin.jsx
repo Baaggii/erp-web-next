@@ -4280,6 +4280,26 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id) {
+    setSelectedId(id);
+  }
+
+  useEffect(() => {
+    if (!selectedId) return;
+
+    const definition = endpoints.find((ep) => ep.id === selectedId);
+    if (!definition) return;
+
+    const nextFormState = createFormState(definition);
+    const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
+    const nextRequestFieldValues =
+      nextDisplay.state === 'ok'
+        ? deriveRequestFieldSelections({
+            requestSchemaText: nextFormState.requestSchemaText,
+            requestEnvMap: nextFormState.requestEnvMap,
+            displayItems: nextDisplay.items,
+          })
+        : {};
+
     setStatus('');
     setError('');
     resetTestState();
@@ -4289,30 +4309,28 @@ export default function PosApiAdmin() {
     setDocFieldDescriptions({});
     setSampleImportText('');
     setSampleImportError('');
+    setImportStatus('');
+    setImportError('');
+    setImportDrafts([]);
+    setImportTestRunning(false);
+    setImportTestError('');
+    setImportTestResult(null);
+    setImportSelectedExampleKey('');
+    setImportExampleResponse(null);
+    setImportRequestBody('');
+    setImportSpecText('');
+    setImportBaseUrl('');
+    setImportBaseUrlEnvVar('');
+    setImportBaseUrlMode('literal');
+    setSelectedImportId('');
     setRequestBuilder(null);
     setRequestBuilderError('');
-    setRequestFieldValues({});
+    setRequestFieldValues(nextRequestFieldValues);
     setRequestFieldRequirements({});
-    setFormState({ ...EMPTY_ENDPOINT });
-    setSelectedId(id);
-    const definition = endpoints.find((ep) => ep.id === id);
-    const nextFormState = createFormState(definition);
-    const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
-    if (nextDisplay.state === 'ok') {
-      setRequestFieldValues(
-        deriveRequestFieldSelections({
-          requestSchemaText: nextFormState.requestSchemaText,
-          requestEnvMap: nextFormState.requestEnvMap,
-          displayItems: nextDisplay.items,
-        }),
-      );
-    } else {
-      setRequestFieldValues({});
-    }
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
-  }
+  }, [endpoints, selectedId]);
 
   function handleChange(field, value) {
     setFormState((prev) => {
