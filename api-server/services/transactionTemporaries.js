@@ -85,6 +85,28 @@ function normalizeEmpId(empid) {
   return trimmed ? trimmed.toUpperCase() : null;
 }
 
+function normalizeTemporaryId(value) {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+  const stringValue = typeof value === 'string' ? value.trim() : '';
+  if (stringValue && /^\d+$/.test(stringValue)) {
+    const numeric = Number(stringValue);
+    return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+  }
+  return null;
+}
+
+function normalizeTemporaryIdList(value) {
+  if (!value) return [];
+  const list = Array.isArray(value) ? value : [value];
+  const normalized = list
+    .map((item) => normalizeTemporaryId(item))
+    .filter((item) => item !== null);
+  return Array.from(new Set(normalized));
+}
+
 function normalizeScopePreference(value) {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -216,6 +238,24 @@ function extractTransactionTypeValue(row, fieldName) {
   return undefined;
 }
 
+function resolveForwardMeta(payload, fallbackCreator, currentId) {
+  const meta = isPlainObject(payload?.forwardMeta) ? payload.forwardMeta : {};
+  const chainIds = normalizeTemporaryIdList(meta.chainIds);
+  const normalizedCurrentId = normalizeTemporaryId(currentId);
+  if (normalizedCurrentId) chainIds.push(normalizedCurrentId);
+  const uniqueChainIds = Array.from(new Set(chainIds));
+  const originCreator = normalizeEmpId(meta.originCreator) || normalizeEmpId(fallbackCreator);
+  const rootTemporaryId =
+    normalizeTemporaryId(meta.rootTemporaryId) || normalizedCurrentId || meta.rootTemporaryId || null;
+  const parentTemporaryId = normalizeTemporaryId(meta.parentTemporaryId) || null;
+  return {
+    originCreator,
+    rootTemporaryId,
+    parentTemporaryId,
+    chainIds: uniqueChainIds,
+  };
+}
+
 function filterRowsByTransactionType(rows, fieldName, value) {
   const normalizedField = normalizeFieldName(fieldName);
   const normalizedValue = normalizeTransactionTypeValue(value);
@@ -226,6 +266,27 @@ function filterRowsByTransactionType(rows, fieldName, value) {
     if (rowValue === undefined || rowValue === null) return false;
     return normalizeTransactionTypeValue(rowValue) === normalizedValue;
   });
+}
+
+async function updateTemporaryChainStatus(
+  conn,
+  chainIds,
+  { status, reviewerEmpId = null, notes = null, promotedRecordId = null },
+) {
+  const normalizedIds = normalizeTemporaryIdList(chainIds);
+  if (!conn || normalizedIds.length === 0) return;
+  const columns = ['status = ?', 'reviewed_by = ?', 'reviewed_at = NOW()', 'review_notes = ?'];
+  const params = [status ?? null, reviewerEmpId ?? null, notes ?? null];
+  if (promotedRecordId !== undefined) {
+    columns.push('promoted_record_id = ?');
+    params.push(promotedRecordId);
+  }
+  params.push(...normalizedIds);
+  const placeholders = normalizedIds.map(() => '?').join(', ');
+  await conn.query(
+    `UPDATE \`${TEMP_TABLE}\` SET ${columns.join(', ')} WHERE id IN (${placeholders})`,
+    params,
+  );
 }
 
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
@@ -659,7 +720,10 @@ export async function listTemporarySubmissions({
   const normalizedEmp = normalizeEmpId(empId);
   const conditions = [];
   const params = [];
-  const normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+  let normalizedStatus = typeof status === 'string' ? status.trim().toLowerCase() : null;
+  if (!normalizedStatus && scope === 'review') {
+    normalizedStatus = 'pending';
+  }
   if (normalizedStatus && normalizedStatus !== 'all' && normalizedStatus !== 'any') {
     if (normalizedStatus === 'processed') {
       conditions.push("status <> 'pending'");
@@ -791,6 +855,7 @@ export async function promoteTemporarySubmission(
     }
     const columns = await listTableColumnsDetailed(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
+    const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
     const candidateSources = [];
     const pushCandidate = (source) => {
       if (!source) return;
@@ -964,6 +1029,9 @@ export async function promoteTemporarySubmission(
       promoteAsTemporary === true &&
       forwardReviewerEmpId &&
       forwardReviewerEmpId !== normalizedReviewer;
+    const trimmedNotes =
+      typeof notes === 'string' && notes.trim() ? notes.trim() : '';
+    const baseReviewNotes = trimmedNotes ? trimmedNotes : null;
     let skipSessionEnabled = false;
     let insertedId = null;
     if (!shouldForwardTemporary) {
@@ -1055,19 +1123,50 @@ export async function promoteTemporarySubmission(
       Object.entries(sanitizedValues).forEach(([key, value]) => {
         sanitizedPayloadValues[key] = value;
       });
+      const forwardChain = Array.from(new Set([...(forwardMeta.chainIds || []), row.id]));
+      const updatedForwardMeta = {
+        ...forwardMeta,
+        originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
+        rootTemporaryId: forwardMeta.rootTemporaryId || row.id,
+        parentTemporaryId: row.id,
+        chainIds: forwardChain,
+      };
       mergedPayload.cleanedValues = sanitizedPayloadValues;
-      await conn.query(
-        `UPDATE \`${TEMP_TABLE}\`
-         SET plan_senior_empid = ?, cleaned_values_json = ?, payload_json = ?, review_notes = ?, updated_at = NOW()
-         WHERE id = ?`,
+      mergedPayload.forwardMeta = updatedForwardMeta;
+      const [forwardResult] = await conn.query(
+        `INSERT INTO \`${TEMP_TABLE}\`
+         (company_id, table_name, form_name, config_name, module_key, payload_json,
+          raw_values_json, cleaned_values_json, created_by, plan_senior_empid,
+          branch_id, department_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          forwardReviewerEmpId,
-          safeJsonStringify(sanitizedPayloadValues),
+          row.company_id ?? null,
+          row.table_name,
+          row.form_name ?? null,
+          row.config_name ?? null,
+          row.module_key ?? null,
           safeJsonStringify(mergedPayload),
-          notes ?? null,
-          id,
+          row.raw_values_json ?? null,
+          safeJsonStringify(sanitizedPayloadValues),
+          normalizedReviewer,
+          forwardReviewerEmpId,
+          row.branch_id ?? null,
+          row.department_id ?? null,
         ],
       );
+      const forwardTemporaryId = forwardResult?.insertId || null;
+      await conn.query(
+        `UPDATE \`${TEMP_TABLE}\`
+         SET status = 'promoted', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, promoted_record_id = NULL
+         WHERE id = ?`,
+        [normalizedReviewer, reviewNotesValue ?? null, id],
+      );
+      await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
+        status: 'promoted',
+        reviewerEmpId: normalizedReviewer,
+        notes: reviewNotesValue ?? null,
+        promotedRecordId: null,
+      });
       await logUserAction(
         {
           emp_id: normalizedReviewer,
@@ -1078,6 +1177,7 @@ export async function promoteTemporarySubmission(
             formName: row.form_name ?? null,
             temporaryAction: 'forward',
             forwardedTo: forwardReviewerEmpId,
+            nextTemporaryId: forwardTemporaryId,
           },
           company_id: row.company_id ?? null,
         },
@@ -1087,32 +1187,48 @@ export async function promoteTemporarySubmission(
         companyId: row.company_id,
         recipientEmpId: forwardReviewerEmpId,
         createdBy: normalizedReviewer,
-        relatedId: id,
+        relatedId: forwardTemporaryId ?? id,
         message: `Temporary submission pending review for ${row.table_name}`,
         type: 'request',
       });
-      await conn.query('COMMIT');
-      if (io) {
-        io.to(`user:${row.created_by}`).emit('temporaryReviewed', {
-          id,
-          status: 'pending',
-          warnings: sanitationWarnings,
-          forwardedTo: forwardReviewerEmpId,
-        });
-        io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', {
-          id,
-          status: 'pending',
-          warnings: sanitationWarnings,
-          forwardedTo: forwardReviewerEmpId,
-        });
-        io.to(`user:${forwardReviewerEmpId}`).emit('temporaryReviewed', {
-          id,
-          status: 'pending',
-          warnings: sanitationWarnings,
-          forwardedTo: forwardReviewerEmpId,
+      const originRecipient = forwardMeta.originCreator || row.created_by;
+      if (originRecipient) {
+        await insertNotification(conn, {
+          companyId: row.company_id,
+          recipientEmpId: originRecipient,
+          createdBy: normalizedReviewer,
+          relatedId: id,
+          message: `Temporary submission #${id} approved and forwarded`,
+          type: 'response',
         });
       }
-      return { id, forwardedTo: forwardReviewerEmpId, warnings: sanitationWarnings };
+      await conn.query('COMMIT');
+      if (io) {
+        const reviewPayload = {
+          id,
+          status: 'promoted',
+          warnings: sanitationWarnings,
+          forwardedTo: forwardReviewerEmpId,
+          forwardedTemporaryId: forwardTemporaryId,
+        };
+        if (originRecipient) {
+          io.to(`user:${originRecipient}`).emit('temporaryReviewed', reviewPayload);
+        }
+        io.to(`user:${row.created_by}`).emit('temporaryReviewed', reviewPayload);
+        io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', reviewPayload);
+        io.to(`user:${forwardReviewerEmpId}`).emit('temporaryReviewed', {
+          id: forwardTemporaryId ?? id,
+          status: 'pending',
+          warnings: sanitationWarnings,
+          forwardedFrom: id,
+        });
+      }
+      return {
+        id,
+        forwardedTo: forwardReviewerEmpId,
+        forwardedTemporaryId: forwardTemporaryId,
+        warnings: sanitationWarnings,
+      };
     }
 
     if (formName && formCfg) {
@@ -1219,9 +1335,7 @@ export async function promoteTemporarySubmission(
         });
       }
     }
-    const trimmedNotes =
-      typeof notes === 'string' && notes.trim() ? notes.trim() : '';
-    let reviewNotesValue = trimmedNotes ? trimmedNotes : null;
+    let reviewNotesValue = baseReviewNotes || null;
     if (sanitationWarnings.length > 0) {
       const warningSummary = sanitationWarnings
         .map((warn) => {
@@ -1250,6 +1364,12 @@ export async function promoteTemporarySubmission(
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
+    await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
+      status: 'promoted',
+      reviewerEmpId: normalizedReviewer,
+      notes: reviewNotesValue ?? null,
+      promotedRecordId: promotedId,
+    });
     await logUserAction(
       {
         emp_id: normalizedReviewer,
@@ -1265,6 +1385,7 @@ export async function promoteTemporarySubmission(
       },
       conn,
     );
+    const originRecipient = forwardMeta.originCreator;
     await insertNotification(conn, {
       companyId: row.company_id,
       recipientEmpId: row.created_by,
@@ -1273,6 +1394,16 @@ export async function promoteTemporarySubmission(
       message: `Temporary submission for ${row.table_name} approved`,
       type: 'response',
     });
+    if (originRecipient && originRecipient !== row.created_by) {
+      await insertNotification(conn, {
+        companyId: row.company_id,
+        recipientEmpId: originRecipient,
+        createdBy: normalizedReviewer,
+        relatedId: id,
+        message: `Temporary submission for ${row.table_name} approved`,
+        type: 'response',
+      });
+    }
     await insertNotification(conn, {
       companyId: row.company_id,
       recipientEmpId: normalizedReviewer,
@@ -1289,6 +1420,14 @@ export async function promoteTemporarySubmission(
         promotedRecordId: promotedId,
         warnings: sanitationWarnings,
       });
+      if (originRecipient && originRecipient !== row.created_by) {
+        io.to(`user:${originRecipient}`).emit('temporaryReviewed', {
+          id,
+          status: 'promoted',
+          promotedRecordId: promotedId,
+          warnings: sanitationWarnings,
+        });
+      }
       io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', {
         id,
         status: 'promoted',
@@ -1348,12 +1487,20 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       err.status = 409;
       throw err;
     }
+    const payloadJson = safeJsonParse(row.payload_json, {});
+    const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
     await conn.query(
       `UPDATE \`${TEMP_TABLE}\`
        SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?
        WHERE id = ?`,
       [normalizedReviewer, notes ?? null, id],
     );
+    await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
+      status: 'rejected',
+      reviewerEmpId: normalizedReviewer,
+      notes: notes ?? null,
+      promotedRecordId: null,
+    });
     await logUserAction(
       {
         emp_id: normalizedReviewer,
@@ -1373,6 +1520,17 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       message: `Temporary submission for ${row.table_name} rejected`,
       type: 'response',
     });
+    const originRecipient = forwardMeta.originCreator;
+    if (originRecipient && originRecipient !== row.created_by) {
+      await insertNotification(conn, {
+        companyId: row.company_id,
+        recipientEmpId: originRecipient,
+        createdBy: normalizedReviewer,
+        relatedId: id,
+        message: `Temporary submission for ${row.table_name} rejected`,
+        type: 'response',
+      });
+    }
     await insertNotification(conn, {
       companyId: row.company_id,
       recipientEmpId: normalizedReviewer,
@@ -1387,6 +1545,12 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
         id,
         status: 'rejected',
       });
+      if (originRecipient && originRecipient !== row.created_by) {
+        io.to(`user:${originRecipient}`).emit('temporaryReviewed', {
+          id,
+          status: 'rejected',
+        });
+      }
       io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', {
         id,
         status: 'rejected',
