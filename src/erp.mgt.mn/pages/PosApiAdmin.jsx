@@ -5624,6 +5624,15 @@ export default function PosApiAdmin() {
       throw new Error('Provide at least one base URL or environment variable mapping for this endpoint.');
     }
 
+    const hasRequestBodySchema = hasObjectEntries(requestSchema);
+    const hasRequestBodyDescription = Boolean((formState.requestDescription || '').trim());
+    const requestBody = hasRequestBodySchema || hasRequestBodyDescription
+      ? {
+          schema: requestSchema,
+          description: formState.requestDescription || '',
+        }
+      : null;
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -5661,10 +5670,7 @@ export default function PosApiAdmin() {
       receiptItemTemplates,
       notes: formState.notes ? formState.notes.trim() : '',
       parameters: parametersWithValues,
-      requestBody: {
-        schema: requestSchema,
-        description: formState.requestDescription || '',
-      },
+      ...(requestBody ? { requestBody } : {}),
       responseBody: {
         schema: responseSchema,
         description: formState.responseDescription || '',
