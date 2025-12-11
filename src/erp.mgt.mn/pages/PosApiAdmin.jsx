@@ -3091,6 +3091,19 @@ export default function PosApiAdmin() {
     : [];
   const variations = Array.isArray(formState.variations) ? formState.variations : [];
   const activeVariations = variations.filter((entry) => entry.enabled !== false);
+  const variationFieldSets = useMemo(() => {
+    const map = new Map();
+    activeVariations.forEach((variation, index) => {
+      const key = variation.key || variation.name || `variation-${index + 1}`;
+      const fields = Array.isArray(variation.requestFields)
+        ? variation.requestFields
+            .map((field) => normalizeHintEntry(field).field)
+            .filter(Boolean)
+        : [];
+      map.set(key, fields.length > 0 ? new Set(fields) : null);
+    });
+    return map;
+  }, [activeVariations]);
   const requestFieldColumnTemplate = useMemo(
     () => {
       const baseColumns = ['150px', '250px', '80px'];
@@ -5422,6 +5435,9 @@ export default function PosApiAdmin() {
         activeVariations.forEach((variation) => {
           const key = variation.key || variation.name;
           if (!key) return;
+          const variationFieldSet = variationFieldSets.get(key);
+          const showForVariation = !variationFieldSet || variationFieldSet.has(fieldLabel);
+          if (!showForVariation) return;
           const required =
             requiredCommon
             || meta.requiredByVariation?.[key]
