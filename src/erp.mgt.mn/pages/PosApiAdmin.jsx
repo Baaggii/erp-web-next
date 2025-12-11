@@ -4280,11 +4280,7 @@ export default function PosApiAdmin() {
   }, [activeTab]);
 
   function handleSelect(id) {
-    setSelectedId(id);
-  }
-
-  useEffect(() => {
-    const definition = endpoints.find((ep) => ep.id === selectedId);
+    const definition = endpoints.find((ep) => ep.id === id);
     const nextFormState = createFormState(definition);
     const nextDisplay = buildRequestFieldDisplayFromState(nextFormState);
     const nextRequestFieldValues =
@@ -4323,6 +4319,9 @@ export default function PosApiAdmin() {
     setRequestBuilderError('');
     setRequestFieldValues(nextRequestFieldValues);
     setRequestFieldRequirements({});
+    setFormState({ ...EMPTY_ENDPOINT });
+    setSelectedId(id);
+    setRequestFieldValues(nextRequestFieldValues);
     setFormState(nextFormState);
     setTestEnvironment('staging');
     setImportAuthEndpointId(definition?.authEndpointId || '');
