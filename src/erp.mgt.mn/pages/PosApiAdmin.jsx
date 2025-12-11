@@ -1885,6 +1885,23 @@ function validateEndpoint(endpoint, existingIds, originalId) {
   if (!allowedUsage.has(endpoint.usage)) {
     throw new Error('Usage must be set to a recognised option');
   }
+  const hasBaseUrl = ['serverUrl', 'testServerUrl', 'productionServerUrl', 'testServerUrlProduction'].some(
+    (key) => typeof endpoint?.[key] === 'string' && endpoint[key].trim(),
+  );
+  if (!hasBaseUrl) {
+    throw new Error('At least one base URL (staging or production) is required');
+  }
+  const requestFields = Array.isArray(endpoint?.requestFields)
+    ? endpoint.requestFields.filter((entry) => entry && typeof entry.field === 'string' && entry.field.trim())
+    : [];
+  if (!requestFields.length) {
+    throw new Error('Add at least one request field to map inputs');
+  }
+  const variations = Array.isArray(endpoint?.variations) ? endpoint.variations : [];
+  const missingRequests = variations.filter((variation) => !variation?.request && !variation?.requestExample);
+  if (missingRequests.length) {
+    throw new Error('Each variation needs a request body or example');
+  }
 }
 
 function parseScalarValue(text) {
@@ -5740,7 +5757,18 @@ export default function PosApiAdmin() {
         skipLoader: true,
       });
       if (!res.ok) {
-        throw new Error('Failed to save endpoints');
+        let message = 'Failed to save endpoints';
+        try {
+          const errorBody = await res.json();
+          if (Array.isArray(errorBody?.issues) && errorBody.issues.length > 0) {
+            message = `${errorBody.message || message}: ${errorBody.issues.join('; ')}`;
+          } else if (errorBody?.message) {
+            message = errorBody.message;
+          }
+        } catch (err) {
+          // ignore parse errors and fall back to default message
+        }
+        throw new Error(message);
       }
       const saved = await res.json();
       const nextRaw = Array.isArray(saved) ? saved : normalized;
