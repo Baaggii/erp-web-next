@@ -1404,7 +1404,10 @@ export async function promoteTemporarySubmission(
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
-    const chainIds = buildChainIdsForUpdate(updatedForwardMeta, id);
+    // Use the normalized forward metadata so every linked temporary is updated,
+    // even when this review is the final permanent promotion in a forwarded chain.
+    const promotionMetaForUpdate = updatedForwardMeta;
+    const chainIds = buildChainIdsForUpdate(promotionMetaForUpdate, id);
     await updateTemporaryChainStatus(conn, chainIds, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
