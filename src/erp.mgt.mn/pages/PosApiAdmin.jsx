@@ -3333,7 +3333,22 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!selectedVariationKey) return;
-    syncRequestSampleToVariation(selectedVariationKey);
+    const variationPayload = getVariationExamplePayload(selectedVariationKey);
+    if (variationPayload && typeof variationPayload === 'object') {
+      try {
+        const pretty = JSON.stringify(variationPayload, null, 2);
+        setFormState((prev) => ({ ...prev, requestSampleText: pretty }));
+      } catch {
+        // ignore formatting errors
+      }
+    }
+    const selections = buildSelectionsForVariation(selectedVariationKey);
+    setRequestFieldValues(selections);
+    syncRequestSampleFromSelections(selections);
+    setFormState((prev) => ({
+      ...prev,
+      requestEnvMap: buildRequestEnvMap(selections),
+    }));
   }, [selectedVariationKey, requestFieldMeta, requestFieldDisplay.state, variationColumns, visibleRequestFieldItems]);
 
   useEffect(() => {
@@ -3344,8 +3359,7 @@ export default function PosApiAdmin() {
     }
     try {
       const mergedPayload = buildCombinationPayload(combinationBaseKey, combinationModifierKeys);
-      const prettyPayload = JSON.stringify(mergedPayload, null, 2);
-      setCombinationPayloadText(prettyPayload);
+      setCombinationPayloadText(JSON.stringify(mergedPayload, null, 2));
       setCombinationError('');
     } catch (err) {
       setCombinationError(err.message || 'Failed to build combination payload.');
@@ -6477,27 +6491,6 @@ export default function PosApiAdmin() {
     }
   }
 
-  function syncRequestSampleToVariation(key) {
-    if (!key) return {};
-    const variationPayload = getVariationExamplePayload(key);
-    if (variationPayload && typeof variationPayload === 'object') {
-      try {
-        const pretty = JSON.stringify(variationPayload, null, 2);
-        setFormState((prev) => ({ ...prev, requestSampleText: pretty }));
-      } catch {
-        // ignore formatting errors
-      }
-    }
-    const selections = buildSelectionsForVariation(key);
-    setRequestFieldValues(selections);
-    syncRequestSampleFromSelections(selections);
-    setFormState((prev) => ({
-      ...prev,
-      requestEnvMap: buildRequestEnvMap(selections),
-    }));
-    return variationPayload;
-  }
-
   async function handleTest(payloadOverride) {
     let definition;
     try {
@@ -6546,18 +6539,18 @@ export default function PosApiAdmin() {
       return;
     }
 
-    let payloadForTest = payloadOverride;
-    if (!payloadForTest && selectedVariationKey) {
-      syncRequestSampleToVariation(selectedVariationKey);
+    let builtPayload = null;
+    try {
+      builtPayload = buildCombinationPayload();
+    } catch (err) {
+      builtPayload = null;
+      if (combinationError && !payloadOverride) {
+        setCombinationError(err.message || 'Unable to build test payload from modifiers.');
+      }
     }
-    if (!payloadForTest && (definition.method || '').toUpperCase() !== 'GET') {
-      payloadForTest = parseRequestSamplePayload();
-    }
-
-    const payloadLabel = payloadOverride ? 'the built combination JSON' : 'the Request sample JSON';
 
     const confirmed = window.confirm(
-      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use ${payloadLabel}.`,
+      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use the base sample and selected modifiers.`,
     );
     if (!confirmed) return;
 
@@ -6587,7 +6580,11 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
-          ...(payloadForTest ? { payloadOverride: payloadForTest } : {}),
+          ...(payloadOverride
+            ? { payloadOverride }
+            : builtPayload
+              ? { payloadOverride: builtPayload }
+              : {}),
         }),
       });
       if (!res.ok) {
