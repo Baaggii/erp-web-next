@@ -1891,17 +1891,6 @@ function validateEndpoint(endpoint, existingIds, originalId) {
   if (!hasBaseUrl) {
     throw new Error('At least one base URL (staging or production) is required');
   }
-  const requestFields = Array.isArray(endpoint?.requestFields)
-    ? endpoint.requestFields.filter((entry) => entry && typeof entry.field === 'string' && entry.field.trim())
-    : [];
-  if (!requestFields.length) {
-    throw new Error('Add at least one request field to map inputs');
-  }
-  const variations = Array.isArray(endpoint?.variations) ? endpoint.variations : [];
-  const missingRequests = variations.filter((variation) => !variation?.request && !variation?.requestExample);
-  if (missingRequests.length) {
-    throw new Error('Each variation needs a request body or example');
-  }
 }
 
 function parseScalarValue(text) {
@@ -2563,6 +2552,8 @@ export default function PosApiAdmin() {
   const [selectedId, setSelectedId] = useState('');
   const [formState, setFormState] = useState({ ...EMPTY_ENDPOINT });
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [fetchingDoc, setFetchingDoc] = useState(false);
   const [error, setError] = useState('');
   const [status, setStatus] = useState('');
   const [usageFilter, setUsageFilter] = useState('all');
@@ -5635,6 +5626,15 @@ export default function PosApiAdmin() {
       throw new Error('Provide at least one base URL or environment variable mapping for this endpoint.');
     }
 
+    const hasRequestBodySchema = hasObjectEntries(requestSchema);
+    const hasRequestBodyDescription = Boolean((formState.requestDescription || '').trim());
+    const requestBody = hasRequestBodySchema || hasRequestBodyDescription
+      ? {
+          schema: requestSchema,
+          description: formState.requestDescription || '',
+        }
+      : null;
+
     const endpoint = {
       id: formState.id.trim(),
       name: formState.name.trim(),
@@ -5672,10 +5672,7 @@ export default function PosApiAdmin() {
       receiptItemTemplates,
       notes: formState.notes ? formState.notes.trim() : '',
       parameters: parametersWithValues,
-      requestBody: {
-        schema: requestSchema,
-        description: formState.requestDescription || '',
-      },
+      ...(requestBody ? { requestBody } : {}),
       responseBody: {
         schema: responseSchema,
         description: formState.responseDescription || '',
@@ -5727,7 +5724,7 @@ export default function PosApiAdmin() {
 
   async function handleSave() {
     try {
-      setLoading(true);
+      setSaving(true);
       setError('');
       setStatus('');
       resetTestState();
@@ -5786,7 +5783,7 @@ export default function PosApiAdmin() {
       console.error(err);
       setError(err.message || 'Failed to save endpoints');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
@@ -5847,7 +5844,7 @@ export default function PosApiAdmin() {
       return;
     }
     try {
-      setLoading(true);
+      setFetchingDoc(true);
       setError('');
       setStatus('');
       resetTestState();
@@ -5899,7 +5896,7 @@ export default function PosApiAdmin() {
       console.error(err);
       setError(err.message || 'Failed to fetch documentation');
     } finally {
-      setLoading(false);
+      setFetchingDoc(false);
     }
   }
 
@@ -7832,6 +7829,117 @@ export default function PosApiAdmin() {
           </div>
           <div style={styles.hintCard}>
             <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Request values & environment variables</h3>
+            </div>
+            {requestFieldDisplay.state !== 'ok' && (
+              <p style={styles.hintEmpty}>
+                Add request fields above to configure literal values or environment variable mappings.
+              </p>
+            )}
+            {requestFieldDisplay.state === 'ok' && visibleRequestFieldItems.length === 0 && (
+              <p style={styles.hintEmpty}>No request fields available for the active variations.</p>
+            )}
+            {requestFieldDisplay.state === 'ok' && visibleRequestFieldItems.length > 0 && (
+              <div style={styles.requestValueList}>
+                {visibleRequestFieldItems.map((entry, index) => {
+                  const normalized = normalizeHintEntry(entry);
+                  const fieldPath = normalized.field;
+                  const selection = requestFieldValues[fieldPath] || {
+                    mode: 'literal',
+                    literal: '',
+                    envVar: '',
+                    applyToBody: entry.source !== 'parameter',
+                  };
+                  const mode = selection.mode === 'env' ? 'env' : 'literal';
+                  const envMode = mode === 'env';
+                  const envVarValue = selection.envVar || '';
+                  const literalValue = selection.literal || '';
+                  const applyToBody = selection.applyToBody !== false;
+                  return (
+                    <div key={`${fieldPath || 'field'}-${index}`} style={styles.requestValueRow}>
+                      <div style={styles.requestValueFieldMeta}>
+                        <div style={styles.hintFieldRow}>
+                          <span style={styles.hintField}>{fieldPath || '(unnamed field)'}</span>
+                          {entry.source === 'parameter' && (
+                            <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                              {entry.location === 'path' ? 'Path parameter' : 'Query parameter'}
+                            </span>
+                          )}
+                        </div>
+                        {normalized.description && (
+                          <div style={styles.hintDescription}>{normalized.description}</div>
+                        )}
+                      </div>
+                      <div style={styles.requestFieldModes}>
+                        <label style={styles.radioLabel}>
+                          <input
+                            type="radio"
+                            name={`request-value-mode-${index}`}
+                            checked={!envMode}
+                            onChange={() => handleRequestFieldValueChange(fieldPath, { mode: 'literal' })}
+                          />
+                          Literal value
+                        </label>
+                        <label style={styles.radioLabel}>
+                          <input
+                            type="radio"
+                            name={`request-value-mode-${index}`}
+                            checked={envMode}
+                            onChange={() => handleRequestFieldValueChange(fieldPath, { mode: 'env' })}
+                          />
+                          Environment variable
+                        </label>
+                      </div>
+                      <div style={styles.requestValueInputs}>
+                        <label style={styles.label}>
+                          <span>Literal / test value</span>
+                          <input
+                            type="text"
+                            value={literalValue}
+                            onChange={(e) =>
+                              handleRequestFieldValueChange(fieldPath, { literal: e.target.value })
+                            }
+                            style={styles.input}
+                            placeholder="Sample request value"
+                          />
+                        </label>
+                        <label style={styles.label}>
+                          <span>Environment variable</span>
+                          <input
+                            type="text"
+                            list={`env-options-${index}`}
+                            value={envVarValue}
+                            onChange={(e) =>
+                              handleRequestFieldValueChange(fieldPath, { envVar: e.target.value, mode: 'env' })
+                            }
+                            style={styles.input}
+                            placeholder="ENV_VAR_NAME"
+                          />
+                          <datalist id={`env-options-${index}`}>
+                            {envVariableOptions.map((opt) => (
+                              <option key={`env-opt-${opt}`} value={opt} />
+                            ))}
+                          </datalist>
+                        </label>
+                        <label style={{ ...styles.checkboxLabel, marginTop: '0.35rem' }}>
+                          <input
+                            type="checkbox"
+                            checked={applyToBody}
+                            onChange={(e) =>
+                              handleRequestFieldValueChange(fieldPath, { applyToBody: e.target.checked })
+                            }
+                          />
+                          <span>Apply to request body</span>
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
               <h3 style={styles.hintTitle}>Response fields</h3>
               {responseFieldHints.state === 'ok' && (
                 <span style={styles.hintCount}>{responseFieldHints.items.length} fields</span>
@@ -8082,8 +8190,13 @@ export default function PosApiAdmin() {
               placeholder="https://developer.itc.gov.mn/docs/..."
             />
           </label>
-          <button type="button" onClick={handleFetchDoc} disabled={loading} style={styles.fetchButton}>
-            {loading ? 'Fetching…' : 'Fetch documentation'}
+          <button
+            type="button"
+            onClick={handleFetchDoc}
+            disabled={loading || saving || fetchingDoc}
+            style={styles.fetchButton}
+          >
+            {fetchingDoc ? 'Fetching…' : 'Fetch documentation'}
           </button>
         </div>
 
@@ -8147,6 +8260,8 @@ export default function PosApiAdmin() {
             onClick={handleTest}
             disabled={
               loading ||
+              saving ||
+              fetchingDoc ||
               testState.running ||
               !formState.testable ||
               !hasTestServerUrl
@@ -8156,13 +8271,13 @@ export default function PosApiAdmin() {
             {testState.running ? 'Testing…' : 'Test endpoint'}
           </button>
           <div style={{ flex: 1 }} />
-          <button type="button" onClick={handleSave} disabled={loading}>
-            {loading ? 'Saving…' : 'Save changes'}
+          <button type="button" onClick={handleSave} disabled={loading || saving || fetchingDoc}>
+            {saving ? 'Saving…' : 'Save changes'}
           </button>
           <button
             type="button"
             onClick={handleDelete}
-            disabled={loading || (!selectedId && !formState.id)}
+            disabled={loading || saving || fetchingDoc || (!selectedId && !formState.id)}
             style={styles.deleteButton}
           >
             Delete
@@ -9459,6 +9574,30 @@ const styles = {
     display: 'flex',
     gap: '1rem',
     alignItems: 'center',
+  },
+  requestValueList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+  },
+  requestValueRow: {
+    border: '1px solid #e2e8eb',
+    borderRadius: '10px',
+    padding: '0.75rem',
+    display: 'grid',
+    gridTemplateColumns: '1.4fr 1fr 1.6fr',
+    gap: '0.75rem',
+    alignItems: 'flex-start',
+  },
+  requestValueFieldMeta: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.35rem',
+  },
+  requestValueInputs: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '0.5rem',
   },
   requestFieldHint: {
     color: '#475569',

@@ -4023,10 +4023,7 @@ const TableManager = forwardRef(function TableManager({
         if (targetScope === 'review') {
           rows = rows.filter((entry) => {
             const status = entry?.status ? String(entry.status).trim().toLowerCase() : '';
-            if (status && status !== 'pending') return false;
-            const reviewedAt = entry?.reviewedAt || entry?.reviewed_at;
-            const reviewedBy = entry?.reviewedBy || entry?.reviewed_by;
-            return !reviewedAt && !reviewedBy;
+            return status === '' || status === 'pending';
           });
         }
 
