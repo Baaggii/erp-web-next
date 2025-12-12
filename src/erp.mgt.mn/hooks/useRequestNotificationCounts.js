@@ -274,16 +274,12 @@ export default function useRequestNotificationCounts(
     let socket;
     try {
       socket = connectSocket();
-      if (socket) {
-        socket.on('newRequest', fetchCounts);
-        socket.on('requestResolved', fetchCounts);
-        if (pollingEnabled) {
-          socket.on('connect_error', startPolling);
-          socket.on('disconnect', startPolling);
-          socket.on('connect', stopPolling);
-        }
-      } else if (pollingEnabled) {
-        startPolling();
+      socket.on('newRequest', fetchCounts);
+      socket.on('requestResolved', fetchCounts);
+      if (pollingEnabled) {
+        socket.on('connect_error', startPolling);
+        socket.on('disconnect', startPolling);
+        socket.on('connect', stopPolling);
       }
     } catch {
       if (pollingEnabled) startPolling();
