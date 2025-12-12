@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 import {
+  buildChainIdsForUpdate,
   getTemporarySummary,
   sanitizeCleanedValuesForInsert,
 } from '../../api-server/services/transactionTemporaries.js';
@@ -92,4 +93,16 @@ test('sanitizeCleanedValuesForInsert trims oversized string values and records w
   assert.equal(result.warnings[0].type, 'maxLength');
   assert.equal(result.warnings[0].maxLength, 10);
   assert.equal(result.warnings[0].actualLength, 15);
+});
+
+test('buildChainIdsForUpdate includes root and parent temporaries when forwarding', () => {
+  const forwardMeta = {
+    chainIds: ['10'],
+    rootTemporaryId: '1',
+    parentTemporaryId: '2',
+  };
+
+  const chainIds = buildChainIdsForUpdate(forwardMeta, 3);
+
+  assert.deepEqual(chainIds.sort((a, b) => a - b), [1, 2, 3, 10]);
 });

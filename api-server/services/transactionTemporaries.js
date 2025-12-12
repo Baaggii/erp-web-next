@@ -256,7 +256,7 @@ function resolveForwardMeta(payload, fallbackCreator, currentId) {
   };
 }
 
-function buildChainIdsForUpdate(forwardMeta, currentId) {
+export function buildChainIdsForUpdate(forwardMeta, currentId) {
   const baseChain = normalizeTemporaryIdList(forwardMeta?.chainIds);
   const normalizedCurrent = normalizeTemporaryId(currentId);
   if (normalizedCurrent) {
