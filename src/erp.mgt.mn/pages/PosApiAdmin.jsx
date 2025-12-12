@@ -1463,36 +1463,6 @@ function mergeVariationsWithExamples(existing = [], examples = []) {
   return Array.from(map.values());
 }
 
-function isSchemaLikeExample(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  if (value.$schema || value.properties || value.additionalProperties) return true;
-  if (Array.isArray(value.required) && value.required.length > 0) return true;
-  if (value.items && typeof value.items === 'object') return true;
-  if (typeof value.type === 'string' && ['object', 'array'].includes(value.type)) {
-    return true;
-  }
-  return false;
-}
-
-function extractRequestExample(definition = {}) {
-  const exampleFromExamples = Array.isArray(definition.examples)
-    ? definition.examples
-      .map((example) => parseExampleBody(example?.request?.body ?? example?.request ?? example?.body))
-      .find((value) => value !== undefined)
-    : undefined;
-
-  const bodyExample = definition.requestBody?.example;
-  if (bodyExample !== undefined && !isSchemaLikeExample(bodyExample)) {
-    return bodyExample;
-  }
-
-  if (definition.requestExample !== undefined && !isSchemaLikeExample(definition.requestExample)) {
-    return definition.requestExample;
-  }
-
-  return exampleFromExamples;
-}
-
 function extractResponseFieldMappings(definition) {
   const explicit = sanitizeResponseFieldMappings(definition?.responseFieldMappings);
   if (Object.keys(explicit).length > 0) return explicit;
@@ -1778,10 +1748,7 @@ function createFormState(definition) {
         ),
       }))
       : [];
-    const requestExample = extractRequestExample(variation)
-      || variation.requestExample
-      || variation.request?.body
-      || {};
+    const requestExample = variation.requestExample || variation.request?.body || {};
     return {
       key: variation.key || variation.name || `variation-${index + 1}`,
       name: variation.name || variation.key || `Variation ${index + 1}`,
@@ -1793,7 +1760,6 @@ function createFormState(definition) {
   });
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
-  const requestExample = extractRequestExample(definition);
   const requestSchemaFallback = '{}';
 
   const buildUrlFieldState = (key) => {
@@ -1823,7 +1789,6 @@ function createFormState(definition) {
     requestDescription: definition.requestBody?.description || '',
     requestSampleText: toPrettyJson(
       definition.requestSample
-        || requestExample
         || definition.requestBody?.example
         || definition.requestExample
         || BASE_COMPLEX_REQUEST_SCHEMA,
@@ -3379,7 +3344,7 @@ export default function PosApiAdmin() {
     }
     const selections = buildSelectionsForVariation(selectedVariationKey);
     setRequestFieldValues(selections);
-    syncRequestSampleFromSelections(selections, variationPayload);
+    syncRequestSampleFromSelections(selections);
     setFormState((prev) => ({
       ...prev,
       requestEnvMap: buildRequestEnvMap(selections),
@@ -5186,7 +5151,6 @@ export default function PosApiAdmin() {
       usage: inferredUsage,
       posApiType: activeImportDraft.posApiType || '',
       parameters: activeImportDraft.parameters || [],
-      requestExample: extractRequestExample(activeImportDraft),
       requestBody: activeImportDraft.requestBody,
       responseBody: activeImportDraft.responseBody,
       requestFields: activeImportDraft.requestFields || [],
@@ -6110,14 +6074,10 @@ export default function PosApiAdmin() {
 
   function syncRequestSampleFromSelections(nextSelections, baseOverride) {
     let baseSample = {};
-    if (baseOverride && typeof baseOverride === 'object') {
-      baseSample = baseOverride;
-    } else {
-      try {
-        baseSample = JSON.parse(formState.requestSampleText || '{}');
-      } catch {
-        baseSample = {};
-      }
+    try {
+      baseSample = JSON.parse(formState.requestSampleText || '{}');
+    } catch {
+      baseSample = {};
     }
     const activeSelections = Object.entries(nextSelections || {}).reduce((acc, [path, entry]) => {
       if (entry?.applyToBody === false) return acc;
@@ -6204,71 +6164,6 @@ export default function PosApiAdmin() {
     return source;
   }
 
-  function getValueAtPath(source, path) {
-    if (!path) return undefined;
-    const segments = path.split('.');
-    let current = source;
-    for (let i = 0; i < segments.length; i += 1) {
-      if (current === null || current === undefined) return undefined;
-      const raw = segments[i];
-      const key = raw.replace(/\[\]/g, '');
-      if (Array.isArray(current)) {
-        current = current[0];
-      }
-      current = current?.[key];
-    }
-    return current;
-  }
-
-  function setValueAtPath(target, path, value) {
-    if (!path) return target;
-    const segments = path.split('.');
-    let current = target;
-    segments.forEach((raw, index) => {
-      const key = raw.replace(/\[\]/g, '');
-      const isArray = raw.includes('[]');
-      const last = index === segments.length - 1;
-
-      if (last) {
-        if (isArray) {
-          current[key] = Array.isArray(current[key]) ? current[key] : [];
-          current[key][0] = value;
-        } else {
-          current[key] = value;
-        }
-        return;
-      }
-
-      if (!current[key] || typeof current[key] !== 'object') {
-        current[key] = isArray ? [{}] : {};
-      }
-
-      if (isArray) {
-        current[key][0] = current[key][0] || {};
-        current = current[key][0];
-      } else {
-        current = current[key];
-      }
-    });
-    return target;
-  }
-
-  function buildModifierOverlay(modifierPayload, modifierKey) {
-    const fieldSet = variationFieldSets.get(modifierKey);
-    if (!fieldSet || fieldSet.size === 0) {
-      return modifierPayload;
-    }
-
-    const overlay = {};
-    Array.from(fieldSet).forEach((path) => {
-      const value = getValueAtPath(modifierPayload, path);
-      if (value !== undefined) {
-        setValueAtPath(overlay, path, value);
-      }
-    });
-    return overlay;
-  }
-
   function parseExamplePayload(raw) {
     if (!raw && raw !== 0) return {};
     if (typeof raw === 'object') return raw;
@@ -6289,7 +6184,7 @@ export default function PosApiAdmin() {
     const basePayload = getVariationExamplePayload(baseKey);
     let mergedPayload = { ...basePayload };
     modifierKeys.forEach((key) => {
-      const modifierPayload = buildModifierOverlay(getVariationExamplePayload(key), key);
+      const modifierPayload = getVariationExamplePayload(key);
       mergedPayload = mergePayloads(mergedPayload, modifierPayload);
     });
     return mergedPayload;
@@ -6301,16 +6196,11 @@ export default function PosApiAdmin() {
     }
     const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
     if (baseVariation) {
-      const variationExample = extractRequestExample(baseVariation)
-        || baseVariation.requestExample
-        || baseVariation.requestExampleText
-        || {};
-      return parseExamplePayload(variationExample);
+      return parseExamplePayload(baseVariation.requestExampleText || baseVariation.requestExample || {});
     }
     const exampleEntry = exampleVariationMap.get(key);
     if (exampleEntry) {
-      const payloadCandidate = extractRequestExample(exampleEntry)
-        ?? exampleEntry.requestExample
+      const payloadCandidate = exampleEntry.requestExample
         ?? exampleEntry.request?.body
         ?? exampleEntry.body
         ?? exampleEntry;
@@ -6651,14 +6541,12 @@ export default function PosApiAdmin() {
     }
 
     let builtPayload = null;
-    if (!payloadOverride) {
-      try {
-        builtPayload = buildCombinationPayload();
-      } catch (err) {
-        builtPayload = null;
-        if (combinationError && !payloadOverride) {
-          setCombinationError(err.message || 'Unable to build test payload from modifiers.');
-        }
+    try {
+      builtPayload = buildCombinationPayload();
+    } catch (err) {
+      builtPayload = null;
+      if (combinationError && !payloadOverride) {
+        setCombinationError(err.message || 'Unable to build test payload from modifiers.');
       }
     }
 
