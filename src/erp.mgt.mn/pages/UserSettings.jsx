@@ -90,7 +90,7 @@ function GeneralSettingsTab() {
         {notificationSound !== 'off' && (
           <button
             type="button"
-            onClick={() => playNotificationSound(notificationSound)}
+            onClick={() => playNotificationSound(notificationSound, { userGesture: true })}
             style={{
               marginTop: '0.5rem',
               padding: '0.35rem 0.75rem',
