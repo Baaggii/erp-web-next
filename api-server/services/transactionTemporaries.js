@@ -897,12 +897,26 @@ export async function promoteTemporarySubmission(
     const columns = await listTableColumnsDetailed(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
-    const forwardChain = Array.from(new Set([...(forwardMeta.chainIds || []), row.id]));
+    const normalizedCurrentId = normalizeTemporaryId(row.id);
+    const normalizedRootId =
+      normalizeTemporaryId(forwardMeta.rootTemporaryId) || normalizedCurrentId;
+    const normalizedParentId =
+      normalizeTemporaryId(forwardMeta.parentTemporaryId) || normalizedCurrentId;
+    const forwardChain = Array.from(
+      new Set(
+        [
+          ...(forwardMeta.chainIds || []),
+          normalizedCurrentId,
+          normalizedParentId,
+          normalizedRootId,
+        ].filter(Boolean),
+      ),
+    );
     const updatedForwardMeta = {
       ...forwardMeta,
       originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
-      rootTemporaryId: forwardMeta.rootTemporaryId || row.id,
-      parentTemporaryId: row.id,
+      rootTemporaryId: normalizedRootId,
+      parentTemporaryId: normalizedCurrentId,
       chainIds: forwardChain,
     };
     const candidateSources = [];
@@ -1534,20 +1548,34 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
     }
     const payloadJson = safeJsonParse(row.payload_json, {});
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
-    const forwardChain = Array.from(new Set([...(forwardMeta.chainIds || []), row.id]));
+    const normalizedCurrentId = normalizeTemporaryId(row.id);
+    const normalizedRootId =
+      normalizeTemporaryId(forwardMeta.rootTemporaryId) || normalizedCurrentId;
+    const normalizedParentId =
+      normalizeTemporaryId(forwardMeta.parentTemporaryId) || normalizedCurrentId;
+    const forwardChain = Array.from(
+      new Set(
+        [
+          ...(forwardMeta.chainIds || []),
+          normalizedCurrentId,
+          normalizedParentId,
+          normalizedRootId,
+        ].filter(Boolean),
+      ),
+    );
     const updatedForwardMeta = {
       ...forwardMeta,
       originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
-      rootTemporaryId: forwardMeta.rootTemporaryId || row.id,
-      parentTemporaryId: row.id,
+      rootTemporaryId: normalizedRootId,
+      parentTemporaryId: normalizedCurrentId,
       chainIds: forwardChain,
     };
-      await conn.query(
-        `UPDATE \`${TEMP_TABLE}\`
-         SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, plan_senior_empid = NULL
-         WHERE id = ?`,
-        [normalizedReviewer, notes ?? null, id],
-      );
+    await conn.query(
+      `UPDATE \`${TEMP_TABLE}\`
+       SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, plan_senior_empid = NULL
+       WHERE id = ?`,
+      [normalizedReviewer, notes ?? null, id],
+    );
     const chainIds = buildChainIdsForUpdate(updatedForwardMeta, id);
     await updateTemporaryChainStatus(conn, chainIds, {
       status: 'rejected',
