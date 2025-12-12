@@ -1033,6 +1033,7 @@ export async function promoteTemporarySubmission(
 
     const resolvedBranchPref = normalizeScopePreference(row.branch_id);
     const resolvedDepartmentPref = normalizeScopePreference(row.department_id);
+    const normalizedCreator = normalizeEmpId(row.created_by);
     let forwardReviewerEmpId = null;
     if (promoteAsTemporary === true) {
       try {
@@ -1073,6 +1074,29 @@ export async function promoteTemporarySubmission(
     const trimmedNotes =
       typeof notes === 'string' && notes.trim() ? notes.trim() : '';
     const baseReviewNotes = trimmedNotes ? trimmedNotes : null;
+    let reviewNotesValue = baseReviewNotes;
+    if (sanitationWarnings.length > 0) {
+      const warningSummary = sanitationWarnings
+        .map((warn) => {
+          if (!warn || !warn.column) return null;
+          if (
+            warn.type === 'maxLength' &&
+            warn.maxLength != null &&
+            warn.actualLength != null
+          ) {
+            return `${warn.column} (trimmed from ${warn.actualLength} to ${warn.maxLength})`;
+          }
+          return warn.column;
+        })
+        .filter(Boolean)
+        .join(', ');
+      if (warningSummary) {
+        const autoNote = `Auto-adjusted fields: ${warningSummary}`;
+        reviewNotesValue = reviewNotesValue
+          ? `${reviewNotesValue}\n\n${autoNote}`
+          : autoNote;
+      }
+    }
     let skipSessionEnabled = false;
     let insertedId = null;
     if (!shouldForwardTemporary) {
@@ -1228,7 +1252,7 @@ export async function promoteTemporarySubmission(
         message: `Temporary submission pending review for ${row.table_name}`,
         type: 'request',
       });
-      const originRecipient = forwardMeta.originCreator || row.created_by;
+      const originRecipient = forwardMeta.originCreator || normalizedCreator;
       if (originRecipient) {
         await insertNotification(conn, {
           companyId: row.company_id,
@@ -1251,7 +1275,7 @@ export async function promoteTemporarySubmission(
         if (originRecipient) {
           io.to(`user:${originRecipient}`).emit('temporaryReviewed', reviewPayload);
         }
-        io.to(`user:${row.created_by}`).emit('temporaryReviewed', reviewPayload);
+        io.to(`user:${normalizedCreator}`).emit('temporaryReviewed', reviewPayload);
         io.to(`user:${normalizedReviewer}`).emit('temporaryReviewed', reviewPayload);
         io.to(`user:${forwardReviewerEmpId}`).emit('temporaryReviewed', {
           id: forwardTemporaryId ?? id,
@@ -1372,29 +1396,6 @@ export async function promoteTemporarySubmission(
         });
       }
     }
-    let reviewNotesValue = baseReviewNotes || null;
-    if (sanitationWarnings.length > 0) {
-      const warningSummary = sanitationWarnings
-        .map((warn) => {
-          if (!warn || !warn.column) return null;
-          if (
-            warn.type === 'maxLength' &&
-            warn.maxLength != null &&
-            warn.actualLength != null
-          ) {
-            return `${warn.column} (trimmed from ${warn.actualLength} to ${warn.maxLength})`;
-          }
-          return warn.column;
-        })
-        .filter(Boolean)
-        .join(', ');
-      if (warningSummary) {
-        const autoNote = `Auto-adjusted fields: ${warningSummary}`;
-        reviewNotesValue = reviewNotesValue
-          ? `${reviewNotesValue}\n\n${autoNote}`
-          : autoNote;
-      }
-    }
     await conn.query(
       `UPDATE \`${TEMP_TABLE}\`
        SET status = 'promoted', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, promoted_record_id = ?, plan_senior_empid = NULL
@@ -1427,13 +1428,13 @@ export async function promoteTemporarySubmission(
     const originRecipient = forwardMeta.originCreator;
     await insertNotification(conn, {
       companyId: row.company_id,
-      recipientEmpId: row.created_by,
+      recipientEmpId: normalizedCreator,
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `Temporary submission for ${row.table_name} approved`,
       type: 'response',
     });
-    if (originRecipient && originRecipient !== row.created_by) {
+    if (originRecipient && originRecipient !== normalizedCreator) {
       await insertNotification(conn, {
         companyId: row.company_id,
         recipientEmpId: originRecipient,
@@ -1453,13 +1454,13 @@ export async function promoteTemporarySubmission(
     });
     await conn.query('COMMIT');
     if (io) {
-      io.to(`user:${row.created_by}`).emit('temporaryReviewed', {
+      io.to(`user:${normalizedCreator}`).emit('temporaryReviewed', {
         id,
         status: 'promoted',
         promotedRecordId: promotedId,
         warnings: sanitationWarnings,
       });
-      if (originRecipient && originRecipient !== row.created_by) {
+      if (originRecipient && originRecipient !== normalizedCreator) {
         io.to(`user:${originRecipient}`).emit('temporaryReviewed', {
           id,
           status: 'promoted',
@@ -1513,9 +1514,10 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       err.status = 404;
       throw err;
     }
+    const normalizedCreator = normalizeEmpId(row.created_by);
     const allowedReviewer =
       normalizeEmpId(row.plan_senior_empid) === normalizedReviewer ||
-      normalizeEmpId(row.created_by) === normalizedReviewer;
+      normalizedCreator === normalizedReviewer;
     if (!allowedReviewer) {
       const err = new Error('Forbidden');
       err.status = 403;
@@ -1555,14 +1557,14 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
     );
     await insertNotification(conn, {
       companyId: row.company_id,
-      recipientEmpId: row.created_by,
+      recipientEmpId: normalizedCreator,
       createdBy: normalizedReviewer,
       relatedId: id,
       message: `Temporary submission for ${row.table_name} rejected`,
       type: 'response',
     });
     const originRecipient = forwardMeta.originCreator;
-    if (originRecipient && originRecipient !== row.created_by) {
+    if (originRecipient && originRecipient !== normalizedCreator) {
       await insertNotification(conn, {
         companyId: row.company_id,
         recipientEmpId: originRecipient,
@@ -1582,11 +1584,11 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
     });
     await conn.query('COMMIT');
     if (io) {
-      io.to(`user:${row.created_by}`).emit('temporaryReviewed', {
+      io.to(`user:${normalizedCreator}`).emit('temporaryReviewed', {
         id,
         status: 'rejected',
       });
-      if (originRecipient && originRecipient !== row.created_by) {
+      if (originRecipient && originRecipient !== normalizedCreator) {
         io.to(`user:${originRecipient}`).emit('temporaryReviewed', {
           id,
           status: 'rejected',
