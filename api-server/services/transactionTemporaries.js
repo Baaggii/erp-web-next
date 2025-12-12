@@ -1032,29 +1032,6 @@ export async function promoteTemporarySubmission(
     const trimmedNotes =
       typeof notes === 'string' && notes.trim() ? notes.trim() : '';
     const baseReviewNotes = trimmedNotes ? trimmedNotes : null;
-    let reviewNotesValue = baseReviewNotes || null;
-    if (sanitationWarnings.length > 0) {
-      const warningSummary = sanitationWarnings
-        .map((warn) => {
-          if (!warn || !warn.column) return null;
-          if (
-            warn.type === 'maxLength' &&
-            warn.maxLength != null &&
-            warn.actualLength != null
-          ) {
-            return `${warn.column} (trimmed from ${warn.actualLength} to ${warn.maxLength})`;
-          }
-          return warn.column;
-        })
-        .filter(Boolean)
-        .join(', ');
-      if (warningSummary) {
-        const autoNote = `Auto-adjusted fields: ${warningSummary}`;
-        reviewNotesValue = reviewNotesValue
-          ? `${reviewNotesValue}\n\n${autoNote}`
-          : autoNote;
-      }
-    }
     let skipSessionEnabled = false;
     let insertedId = null;
     if (!shouldForwardTemporary) {
@@ -1356,6 +1333,29 @@ export async function promoteTemporarySubmission(
           formName,
           error: cfgErr,
         });
+      }
+    }
+    let reviewNotesValue = baseReviewNotes || null;
+    if (sanitationWarnings.length > 0) {
+      const warningSummary = sanitationWarnings
+        .map((warn) => {
+          if (!warn || !warn.column) return null;
+          if (
+            warn.type === 'maxLength' &&
+            warn.maxLength != null &&
+            warn.actualLength != null
+          ) {
+            return `${warn.column} (trimmed from ${warn.actualLength} to ${warn.maxLength})`;
+          }
+          return warn.column;
+        })
+        .filter(Boolean)
+        .join(', ');
+      if (warningSummary) {
+        const autoNote = `Auto-adjusted fields: ${warningSummary}`;
+        reviewNotesValue = reviewNotesValue
+          ? `${reviewNotesValue}\n\n${autoNote}`
+          : autoNote;
       }
     }
     await conn.query(
