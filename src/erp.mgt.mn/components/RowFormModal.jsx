@@ -3662,6 +3662,8 @@ const RowFormModal = function RowFormModal({
     let html = '<html><head><title>Print</title>';
     html +=
       '<style>@media print{body{margin:1rem;font-size:12px}}table{width:100%;border-collapse:collapse;margin-bottom:1rem;}th,td{border:1px solid #666;padding:4px;text-align:left;}h3{margin:0 0 4px 0;font-weight:600;}</style>';
+    html +=
+      '<link href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" rel="stylesheet">';
     html += '</head><body>';
     if (h.length) html += `<h3>Header</h3><table>${rowHtml(h, true)}</table>`;
     if (m.length) html += `<h3>Main</h3>${mainTableHtml()}`;

@@ -84,8 +84,6 @@ app.get("/api/csrf-token", (req, res) => {
 // Create HTTP server and attach Socket.IO
 const server = http.createServer(app);
 const io = new SocketIOServer(server, {
-  path: '/socket.io',
-  allowEIO3: true,
   cors: { origin: true, credentials: true },
 });
 
