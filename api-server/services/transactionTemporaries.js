@@ -256,6 +256,19 @@ function resolveForwardMeta(payload, fallbackCreator, currentId) {
   };
 }
 
+function buildChainIdsForUpdate(forwardMeta, currentId) {
+  const baseChain = normalizeTemporaryIdList(forwardMeta?.chainIds);
+  const normalizedCurrent = normalizeTemporaryId(currentId);
+  if (normalizedCurrent) {
+    baseChain.push(normalizedCurrent);
+  }
+  const normalizedRoot = normalizeTemporaryId(forwardMeta?.rootTemporaryId);
+  if (normalizedRoot) {
+    baseChain.push(normalizedRoot);
+  }
+  return Array.from(new Set(baseChain));
+}
+
 function filterRowsByTransactionType(rows, fieldName, value) {
   const normalizedField = normalizeFieldName(fieldName);
   const normalizedValue = normalizeTransactionTypeValue(value);
@@ -1161,7 +1174,8 @@ export async function promoteTemporarySubmission(
          WHERE id = ?`,
         [normalizedReviewer, reviewNotesValue ?? null, id],
       );
-      await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
+      const forwardChainIds = buildChainIdsForUpdate(forwardMeta, id);
+      await updateTemporaryChainStatus(conn, forwardChainIds, {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
         notes: reviewNotesValue ?? null,
@@ -1364,7 +1378,8 @@ export async function promoteTemporarySubmission(
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
-    await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
+    const chainIds = buildChainIdsForUpdate(forwardMeta, id);
+    await updateTemporaryChainStatus(conn, chainIds, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
@@ -1495,7 +1510,8 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
        WHERE id = ?`,
       [normalizedReviewer, notes ?? null, id],
     );
-    await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
+    const chainIds = buildChainIdsForUpdate(forwardMeta, id);
+    await updateTemporaryChainStatus(conn, chainIds, {
       status: 'rejected',
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
