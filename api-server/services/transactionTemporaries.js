@@ -256,6 +256,31 @@ function resolveForwardMeta(payload, fallbackCreator, currentId) {
   };
 }
 
+export function expandForwardMeta(forwardMeta, { currentId, createdBy }) {
+  const normalizedCurrentId = normalizeTemporaryId(currentId);
+  const normalizedRootId =
+    normalizeTemporaryId(forwardMeta?.rootTemporaryId) || normalizedCurrentId;
+  const normalizedParentId =
+    normalizeTemporaryId(forwardMeta?.parentTemporaryId) || normalizedCurrentId;
+  const forwardChain = Array.from(
+    new Set(
+      [
+        ...normalizeTemporaryIdList(forwardMeta?.chainIds),
+        normalizedCurrentId,
+        normalizedParentId,
+        normalizedRootId,
+      ].filter(Boolean),
+    ),
+  );
+  return {
+    ...forwardMeta,
+    originCreator: forwardMeta?.originCreator || normalizeEmpId(createdBy),
+    rootTemporaryId: normalizedRootId,
+    parentTemporaryId: normalizedCurrentId,
+    chainIds: forwardChain,
+  };
+}
+
 export function buildChainIdsForUpdate(forwardMeta, currentId) {
   const baseChain = normalizeTemporaryIdList(forwardMeta?.chainIds);
   const normalizedCurrent = normalizeTemporaryId(currentId);
@@ -897,28 +922,10 @@ export async function promoteTemporarySubmission(
     const columns = await listTableColumnsDetailed(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
-    const normalizedCurrentId = normalizeTemporaryId(row.id);
-    const normalizedRootId =
-      normalizeTemporaryId(forwardMeta.rootTemporaryId) || normalizedCurrentId;
-    const normalizedParentId =
-      normalizeTemporaryId(forwardMeta.parentTemporaryId) || normalizedCurrentId;
-    const forwardChain = Array.from(
-      new Set(
-        [
-          ...(forwardMeta.chainIds || []),
-          normalizedCurrentId,
-          normalizedParentId,
-          normalizedRootId,
-        ].filter(Boolean),
-      ),
-    );
-    const updatedForwardMeta = {
-      ...forwardMeta,
-      originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
-      rootTemporaryId: normalizedRootId,
-      parentTemporaryId: normalizedCurrentId,
-      chainIds: forwardChain,
-    };
+    const updatedForwardMeta = expandForwardMeta(forwardMeta, {
+      currentId: row.id,
+      createdBy: row.created_by,
+    });
     const candidateSources = [];
     const pushCandidate = (source) => {
       if (!source) return;
@@ -1548,28 +1555,10 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
     }
     const payloadJson = safeJsonParse(row.payload_json, {});
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
-    const normalizedCurrentId = normalizeTemporaryId(row.id);
-    const normalizedRootId =
-      normalizeTemporaryId(forwardMeta.rootTemporaryId) || normalizedCurrentId;
-    const normalizedParentId =
-      normalizeTemporaryId(forwardMeta.parentTemporaryId) || normalizedCurrentId;
-    const forwardChain = Array.from(
-      new Set(
-        [
-          ...(forwardMeta.chainIds || []),
-          normalizedCurrentId,
-          normalizedParentId,
-          normalizedRootId,
-        ].filter(Boolean),
-      ),
-    );
-    const updatedForwardMeta = {
-      ...forwardMeta,
-      originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
-      rootTemporaryId: normalizedRootId,
-      parentTemporaryId: normalizedCurrentId,
-      chainIds: forwardChain,
-    };
+    const updatedForwardMeta = expandForwardMeta(forwardMeta, {
+      currentId: row.id,
+      createdBy: row.created_by,
+    });
     await conn.query(
       `UPDATE \`${TEMP_TABLE}\`
        SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, plan_senior_empid = NULL

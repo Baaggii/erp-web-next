@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as db from '../../db/index.js';
 import {
+  expandForwardMeta,
   buildChainIdsForUpdate,
   getTemporarySummary,
   sanitizeCleanedValuesForInsert,
@@ -105,4 +106,23 @@ test('buildChainIdsForUpdate includes root and parent temporaries when forwardin
   const chainIds = buildChainIdsForUpdate(forwardMeta, 3);
 
   assert.deepEqual(chainIds.sort((a, b) => a - b), [1, 2, 3, 10]);
+});
+
+test('expandForwardMeta preserves existing chain metadata while normalizing current links', () => {
+  const forwardMeta = {
+    chainIds: ['10'],
+    rootTemporaryId: '1',
+    parentTemporaryId: '2',
+    originCreator: null,
+  };
+
+  const updated = expandForwardMeta(forwardMeta, {
+    currentId: 3,
+    createdBy: 'emp123',
+  });
+
+  assert.equal(updated.rootTemporaryId, 1);
+  assert.equal(updated.parentTemporaryId, 3);
+  assert.equal(updated.originCreator, 'EMP123');
+  assert.deepEqual(updated.chainIds.sort((a, b) => a - b), [1, 2, 3, 10]);
 });
