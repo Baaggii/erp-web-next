@@ -1219,6 +1219,8 @@ export async function promoteTemporarySubmission(
         ],
       );
       const forwardTemporaryId = forwardResult?.insertId || null;
+      // Use the updated forward metadata so parent/root temporaries are included
+      // when updating the chain status.
       const forwardChainIds = buildChainIdsForUpdate(updatedForwardMeta, id);
       await updateTemporaryChainStatus(conn, forwardChainIds, {
         status: 'promoted',
