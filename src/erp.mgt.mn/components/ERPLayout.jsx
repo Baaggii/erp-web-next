@@ -27,7 +27,7 @@ import TourBuilder from "./tours/TourBuilder.jsx";
 import TourViewer from "./tours/TourViewer.jsx";
 import derivePageKey from "../utils/derivePageKey.js";
 import { findVisibleFallbackSelector } from "../utils/findVisibleTourStep.js";
-import { playNotificationSound } from "../utils/playNotificationSound.js";
+import { initializeAudioContextUnlock, playNotificationSound } from "../utils/playNotificationSound.js";
 
 export const TourContext = React.createContext({
   startTour: () => false,
@@ -889,13 +889,18 @@ export default function ERPLayout() {
   const { hasUpdateAvailable } = useBuildUpdateNotice();
   const renderCount = useRef(0);
   useEffect(() => {
-  renderCount.current++;
-  if (renderCount.current > 10) {
-    console.warn('ERPLayout re-rendering too many times', renderCount.current);
-  }
-}, []);
+    renderCount.current++;
+    if (renderCount.current > 10) {
+      console.warn('ERPLayout re-rendering too many times', renderCount.current);
+    }
+  }, []);
+
   useEffect(() => {
     if (window.erpDebug) console.warn('Mounted: ERPLayout');
+  }, []);
+
+  useEffect(() => {
+    initializeAudioContextUnlock();
   }, []);
   const navigate = useNavigate();
   const location = useLocation();
