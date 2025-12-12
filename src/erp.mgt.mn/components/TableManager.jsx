@@ -4313,6 +4313,7 @@ const TableManager = forwardRef(function TableManager({
           return next;
         });
         await fetchTemporaryList('review');
+        await fetchTemporaryList('created');
         setLocalRefresh((r) => r + 1);
       }
       return true;

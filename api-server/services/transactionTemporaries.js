@@ -1230,9 +1230,11 @@ export async function promoteTemporarySubmission(
         const reviewPayload = {
           id,
           status: 'promoted',
+          promotedRecordId: null,
           warnings: sanitationWarnings,
           forwardedTo: forwardReviewerEmpId,
           forwardedTemporaryId: forwardTemporaryId,
+          reviewNotes: reviewNotesValue ?? null,
         };
         if (originRecipient) {
           io.to(`user:${originRecipient}`).emit('temporaryReviewed', reviewPayload);
@@ -1248,9 +1250,12 @@ export async function promoteTemporarySubmission(
       }
       return {
         id,
+        status: 'promoted',
+        promotedRecordId: null,
         forwardedTo: forwardReviewerEmpId,
         forwardedTemporaryId: forwardTemporaryId,
         warnings: sanitationWarnings,
+        reviewNotes: reviewNotesValue ?? null,
       };
     }
 
