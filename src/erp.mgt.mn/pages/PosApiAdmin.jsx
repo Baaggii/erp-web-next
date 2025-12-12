@@ -2595,6 +2595,10 @@ export default function PosApiAdmin() {
   const [requestFieldValues, setRequestFieldValues] = useState({});
   const [requestFieldMeta, setRequestFieldMeta] = useState({});
   const [selectedVariationKey, setSelectedVariationKey] = useState('');
+  const [combinationBaseKey, setCombinationBaseKey] = useState('');
+  const [combinationModifierKeys, setCombinationModifierKeys] = useState([]);
+  const [combinationPayloadText, setCombinationPayloadText] = useState('');
+  const [combinationError, setCombinationError] = useState('');
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
@@ -3102,6 +3106,10 @@ export default function PosApiAdmin() {
       }),
     [parsedExamples],
   );
+  const exampleVariationMap = useMemo(
+    () => new Map(exampleVariationChoices.map((entry) => [entry.key, entry.example])),
+    [exampleVariationChoices],
+  );
 
   const requestFieldVariations = Array.isArray(formState.requestFieldVariations)
     ? formState.requestFieldVariations
@@ -3117,8 +3125,8 @@ export default function PosApiAdmin() {
     [enabledRequestFieldVariations],
   );
   const variationColumns = useMemo(
-    () => {
-      const list = activeVariations.map((variation, index) => ({
+    () =>
+      activeVariations.map((variation, index) => ({
         key: variation.key || variation.name || `variation-${index + 1}`,
         label: variation.name || variation.label || variation.key,
         type: 'variation',
@@ -3129,23 +3137,8 @@ export default function PosApiAdmin() {
               .filter(Boolean),
           )
           : null,
-      }));
-
-      enabledRequestFieldVariations.forEach((entry) => {
-        const requiredFields = entry?.requiredFields && typeof entry.requiredFields === 'object'
-          ? Object.keys(entry.requiredFields).filter(Boolean)
-          : [];
-        list.push({
-          key: entry.key,
-          label: entry.label || entry.key,
-          type: 'combination',
-          fieldSet: requiredFields.length > 0 ? new Set(requiredFields) : null,
-        });
-      });
-
-      return list;
-    },
-    [activeVariations, enabledRequestFieldVariations],
+      })),
+    [activeVariations],
   );
   const variationFieldSets = useMemo(() => {
     const map = new Map();
@@ -3155,6 +3148,17 @@ export default function PosApiAdmin() {
     });
     return map;
   }, [variationColumns]);
+  useEffect(() => {
+    if (!combinationBaseKey && variationColumns.length > 0) {
+      setCombinationBaseKey(variationColumns[0].key);
+    }
+    setCombinationModifierKeys((prev) =>
+      prev.filter((key) =>
+        variationColumns.some((variation) => variation.key === key)
+        || enabledRequestFieldVariations.some((variation) => variation.key === key),
+      ),
+    );
+  }, [combinationBaseKey, enabledRequestFieldVariations, variationColumns]);
   const requestFieldColumnTemplate = useMemo(
     () => {
       const baseColumns = ['150px', '250px', '80px'];
@@ -3327,6 +3331,26 @@ export default function PosApiAdmin() {
     }));
   }, [selectedVariationKey, requestFieldMeta, requestFieldDisplay.state, variationColumns, visibleRequestFieldItems]);
 
+  useEffect(() => {
+    if (!combinationBaseKey) {
+      setCombinationPayloadText('');
+      setCombinationError('Select a base variation to build a combination.');
+      return;
+    }
+    try {
+      const basePayload = getVariationExamplePayload(combinationBaseKey);
+      let mergedPayload = { ...basePayload };
+      combinationModifierKeys.forEach((key) => {
+        const modifierPayload = getVariationExamplePayload(key);
+        mergedPayload = mergePayloads(mergedPayload, modifierPayload);
+      });
+      setCombinationPayloadText(JSON.stringify(mergedPayload, null, 2));
+      setCombinationError('');
+    } catch (err) {
+      setCombinationError(err.message || 'Failed to build combination payload.');
+    }
+  }, [combinationBaseKey, combinationModifierKeys, activeVariations, exampleVariationMap]);
+
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
     : [];
@@ -3370,6 +3394,20 @@ export default function PosApiAdmin() {
     const unique = Array.from(new Set(values));
     return PAYMENT_TYPES.filter((payment) => unique.includes(payment.value));
   }, [paymentMethodsEnabled, selectedPaymentMethods]);
+
+  const combinationModifierOptions = useMemo(() => {
+    const baseOptions = activeVariations.map((variation, index) => ({
+      key: variation.key || variation.name || `variation-${index + 1}`,
+      label: variation.name || variation.label || variation.key,
+      type: 'variation',
+    }));
+    const requestBased = enabledRequestFieldVariations.map((entry) => ({
+      key: entry.key,
+      label: entry.label || entry.key,
+      type: 'combination',
+    }));
+    return [...baseOptions, ...requestBased];
+  }, [activeVariations, enabledRequestFieldVariations]);
 
   const authEndpointOptions = useMemo(
     () => endpoints.filter((endpoint) => endpoint?.posApiType === 'AUTH'),
@@ -3888,6 +3926,13 @@ export default function PosApiAdmin() {
         : { key, label, enabled: true, requiredFields: {}, defaultValues: {} };
       const others = current.filter((entry) => entry.key !== key);
       return { ...prev, requestFieldVariations: [...others, updatedEntry] };
+    });
+  };
+
+  const toggleCombinationModifier = (key) => {
+    setCombinationModifierKeys((prev) => {
+      if (prev.includes(key)) return prev.filter((item) => item !== key);
+      return [...prev, key];
     });
   };
 
@@ -6048,6 +6093,81 @@ export default function PosApiAdmin() {
     return selections;
   }
 
+  function mergeArrays(base, modifier, path) {
+    if (!Array.isArray(base)) return Array.isArray(modifier) ? modifier : base;
+    if (!Array.isArray(modifier) || modifier.length === 0) return base;
+    if (path.endsWith('payments')) {
+      const merged = base.map((entry) => ({ ...entry }));
+      modifier.forEach((payment) => {
+        if (!payment || typeof payment !== 'object') return;
+        const targetIndex = merged.findIndex((item) => item?.type === payment.type);
+        if (targetIndex >= 0) {
+          merged[targetIndex] = mergePayloads(merged[targetIndex], payment, `${path}[${targetIndex}]`);
+        } else {
+          merged.push(payment);
+        }
+      });
+      return merged;
+    }
+    const merged = base.map((entry) => entry);
+    modifier.forEach((value, idx) => {
+      if (idx < merged.length && merged[idx] && typeof merged[idx] === 'object' && typeof value === 'object') {
+        merged[idx] = mergePayloads(merged[idx], value, `${path}[${idx}]`);
+      } else if (idx >= merged.length) {
+        merged.push(value);
+      } else {
+        merged[idx] = value;
+      }
+    });
+    return merged;
+  }
+
+  function mergePayloads(base, modifier, path = '') {
+    if (Array.isArray(base) || Array.isArray(modifier)) {
+      return mergeArrays(Array.isArray(base) ? base : [], Array.isArray(modifier) ? modifier : [], path);
+    }
+    if (!modifier || typeof modifier !== 'object') return base;
+    const source = base && typeof base === 'object' ? { ...base } : {};
+    Object.entries(modifier).forEach(([key, value]) => {
+      const nextPath = path ? `${path}.${key}` : key;
+      if (Array.isArray(value) || typeof value === 'object') {
+        source[key] = mergePayloads(source[key], value, nextPath);
+      } else {
+        source[key] = value;
+      }
+    });
+    return source;
+  }
+
+  function parseExamplePayload(raw) {
+    if (!raw && raw !== 0) return {};
+    if (typeof raw === 'object') return raw;
+    if (typeof raw === 'string') {
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return {};
+      }
+    }
+    return {};
+  }
+
+  function getVariationExamplePayload(key) {
+    const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
+    if (baseVariation) {
+      return parseExamplePayload(baseVariation.requestExampleText || baseVariation.requestExample || {});
+    }
+    const exampleEntry = exampleVariationMap.get(key);
+    if (exampleEntry) {
+      const payloadCandidate = exampleEntry.requestExample
+        ?? exampleEntry.request?.body
+        ?? exampleEntry.body
+        ?? exampleEntry;
+      return parseExamplePayload(payloadCandidate);
+    }
+    return {};
+  }
+
   function handleRequestFieldValueChange(fieldPath, updates) {
     if (!fieldPath) return;
     setRequestFieldValues((prev) => {
@@ -6305,7 +6425,20 @@ export default function PosApiAdmin() {
     setTokenMeta({ lastFetchedAt: null, expiresAt: null });
   }
 
-  async function handleTest() {
+  async function handleTestCombination() {
+    if (!combinationPayloadText.trim()) {
+      setCombinationError('Build a combination payload before testing.');
+      return;
+    }
+    try {
+      const parsed = JSON.parse(combinationPayloadText);
+      await handleTest(parsed);
+    } catch (err) {
+      setCombinationError(err.message || 'Combination payload must be valid JSON.');
+    }
+  }
+
+  async function handleTest(payloadOverride) {
     let definition;
     try {
       setError('');
@@ -6384,6 +6517,7 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
+          ...(payloadOverride ? { payloadOverride } : {}),
         }),
       });
       if (!res.ok) {
@@ -7642,43 +7776,6 @@ export default function PosApiAdmin() {
             rows={6}
           />
         </label>
-        {exampleVariationChoices.length > 0 && (
-          <div style={styles.hintCard}>
-            <div style={styles.hintHeader}>
-              <h3 style={styles.hintTitle}>Example combinations</h3>
-              <span style={styles.hintCount}>{enabledRequestFieldVariations.length}</span>
-            </div>
-            <p style={styles.hintDescription}>
-              Enable example variations to add combination columns to the field matrix. Defaults and required flags can
-              be edited per combination and reused when testing requests.
-            </p>
-            <div style={styles.importParamGrid}>
-              {exampleVariationChoices.map((choice) => {
-                const existing = requestFieldVariationMap.get(choice.key);
-                const enabled = existing ? existing.enabled !== false : false;
-                return (
-                  <div key={`example-variation-${choice.key}`} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <label style={styles.checkboxLabel}>
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={(e) => handleRequestVariationToggle(choice.key, e.target.checked)}
-                      />
-                      <span>{choice.label}</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={existing?.label || choice.label}
-                      onChange={(e) => handleRequestVariationLabelChange(choice.key, e.target.value)}
-                      style={{ ...styles.input, flex: 1 }}
-                      placeholder="Variation label"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
         <div style={styles.hintCard}>
           <div style={styles.hintHeader}>
             <h3 style={styles.hintTitle}>Variations</h3>
@@ -8399,6 +8496,119 @@ export default function PosApiAdmin() {
           </div>
         )}
 
+        {exampleVariationChoices.length > 0 && (
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Example combinations</h3>
+              <span style={styles.hintCount}>{enabledRequestFieldVariations.length}</span>
+            </div>
+            <p style={styles.hintDescription}>
+              Enable example variations to surface them as modifiers in the combination builder. Defaults and required
+              flags can be edited per combination and reused when testing requests.
+            </p>
+            <div style={styles.combinationExampleList}>
+              {exampleVariationChoices.map((choice) => {
+                const existing = requestFieldVariationMap.get(choice.key);
+                const enabled = existing ? existing.enabled !== false : false;
+                return (
+                  <div key={`example-variation-${choice.key}`} style={styles.combinationExampleRow}>
+                    <label style={styles.checkboxLabel}>
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(e) => handleRequestVariationToggle(choice.key, e.target.checked)}
+                      />
+                      <span style={styles.combinationLabel}>{choice.label}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={existing?.label || choice.label}
+                      onChange={(e) => handleRequestVariationLabelChange(choice.key, e.target.value)}
+                      style={{ ...styles.input, flex: 1, minWidth: '240px' }}
+                      placeholder="Variation label"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div style={styles.hintCard}>
+          <div style={styles.hintHeader}>
+            <h3 style={styles.hintTitle}>Build combination</h3>
+            <span style={styles.hintCount}>{combinationModifierOptions.length}</span>
+          </div>
+          <p style={styles.hintDescription}>
+            Choose a base variation and layer on modifiers. The payload below updates immediately and can be edited before
+            testing.
+          </p>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '280px' }}>
+              <span style={styles.multiSelectTitle}>Base variation</span>
+              <div style={styles.multiSelectOptions}>
+                {variationColumns.length === 0 && <div style={styles.sectionHelp}>No variations available yet.</div>}
+                {variationColumns.map((variation) => (
+                  <label key={`combo-base-${variation.key}`} style={styles.multiSelectOption}>
+                    <input
+                      type="radio"
+                      name="combination-base"
+                      checked={combinationBaseKey === variation.key}
+                      onChange={() => setCombinationBaseKey(variation.key)}
+                    />
+                    <span>{variation.label}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div style={{ flex: 1, minWidth: '320px' }}>
+              <span style={styles.multiSelectTitle}>Modifiers</span>
+              <span style={styles.multiSelectHint}>Stack multiple modifiers to build a composite example.</span>
+              <div style={styles.multiSelectOptions}>
+                {combinationModifierOptions
+                  .filter((option) => option.key !== combinationBaseKey)
+                  .map((option) => (
+                    <label key={`combo-mod-${option.key}`} style={styles.multiSelectOption}>
+                      <input
+                        type="checkbox"
+                        checked={combinationModifierKeys.includes(option.key)}
+                        onChange={() => toggleCombinationModifier(option.key)}
+                      />
+                      <span>
+                        {option.label}
+                        {option.type === 'combination' ? ' (example)' : ''}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+            </div>
+          </div>
+          <textarea
+            value={combinationPayloadText}
+            onChange={(e) => {
+              setCombinationPayloadText(e.target.value);
+              setCombinationError('');
+            }}
+            style={{ ...styles.textarea, marginTop: '0.75rem' }}
+            rows={8}
+            placeholder="Built combination payload will appear here"
+          />
+          {combinationError && <div style={styles.inputError}>{combinationError}</div>}
+          <div style={styles.inlineActionRow}>
+            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+              <span style={styles.checkboxHint}>Use the payload above directly without saving a new variation.</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleTestCombination}
+              disabled={loading || saving || fetchingDoc || testState.running || !combinationPayloadText.trim()}
+              style={styles.testButton}
+            >
+              Test built combination
+            </button>
+          </div>
+        </div>
+
         {variationColumns.length > 0 && (
           <div style={styles.docSelection}>
             <label style={{ ...styles.label, flex: 1 }}>
@@ -8423,14 +8633,14 @@ export default function PosApiAdmin() {
         )}
 
         <div style={styles.actions}>
-          <button
-            type="button"
-            onClick={handleTest}
-            disabled={
-              loading ||
-              saving ||
-              fetchingDoc ||
-              testState.running ||
+            <button
+              type="button"
+              onClick={() => handleTest()}
+              disabled={
+                loading ||
+                saving ||
+                fetchingDoc ||
+                testState.running ||
               !formState.testable ||
               !hasTestServerUrl
             }
@@ -9864,6 +10074,21 @@ const styles = {
     margin: 0,
     fontSize: '0.85rem',
     color: '#475569',
+  },
+  combinationExampleList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  combinationExampleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  combinationLabel: {
+    whiteSpace: 'normal',
+    wordBreak: 'break-word',
   },
   hintBadge: {
     borderRadius: '999px',
