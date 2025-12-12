@@ -1197,8 +1197,7 @@ export async function promoteTemporarySubmission(
       );
       const forwardTemporaryId = forwardResult?.insertId || null;
       const forwardChainIds = buildChainIdsForUpdate(forwardMeta, id);
-      const resolvedForwardChainIds = forwardChainIds.length ? forwardChainIds : [id];
-      await updateTemporaryChainStatus(conn, resolvedForwardChainIds, {
+      await updateTemporaryChainStatus(conn, forwardChainIds, {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
         notes: reviewNotesValue ?? null,
