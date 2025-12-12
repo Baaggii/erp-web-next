@@ -284,7 +284,13 @@ function filterRowsByTransactionType(rows, fieldName, value) {
 async function updateTemporaryChainStatus(
   conn,
   chainIds,
-  { status, reviewerEmpId = null, notes = null, promotedRecordId = null },
+  {
+    status,
+    reviewerEmpId = null,
+    notes = null,
+    promotedRecordId = null,
+    clearReviewerAssignment = false,
+  },
 ) {
   const normalizedIds = normalizeTemporaryIdList(chainIds);
   if (!conn || normalizedIds.length === 0) return;
@@ -293,6 +299,9 @@ async function updateTemporaryChainStatus(
   if (promotedRecordId !== undefined) {
     columns.push('promoted_record_id = ?');
     params.push(promotedRecordId);
+  }
+  if (clearReviewerAssignment) {
+    columns.push('plan_senior_empid = NULL');
   }
   params.push(...normalizedIds);
   const placeholders = normalizedIds.map(() => '?').join(', ');
@@ -1381,7 +1390,7 @@ export async function promoteTemporarySubmission(
     }
     await conn.query(
       `UPDATE \`${TEMP_TABLE}\`
-       SET status = 'promoted', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, promoted_record_id = ?
+       SET status = 'promoted', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, promoted_record_id = ?, plan_senior_empid = NULL
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
@@ -1391,6 +1400,7 @@ export async function promoteTemporarySubmission(
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
       promotedRecordId: promotedId,
+      clearReviewerAssignment: true,
     });
     await logUserAction(
       {
@@ -1511,18 +1521,19 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
     }
     const payloadJson = safeJsonParse(row.payload_json, {});
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
-    await conn.query(
-      `UPDATE \`${TEMP_TABLE}\`
-       SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?
-       WHERE id = ?`,
-      [normalizedReviewer, notes ?? null, id],
-    );
+      await conn.query(
+        `UPDATE \`${TEMP_TABLE}\`
+         SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, plan_senior_empid = NULL
+         WHERE id = ?`,
+        [normalizedReviewer, notes ?? null, id],
+      );
     const chainIds = buildChainIdsForUpdate(forwardMeta, id);
     await updateTemporaryChainStatus(conn, chainIds, {
       status: 'rejected',
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
       promotedRecordId: null,
+      clearReviewerAssignment: true,
     });
     await logUserAction(
       {
