@@ -20,12 +20,15 @@ function attachLoggingEvents(instance) {
 }
 
 export function connectSocket() {
+  if (!canConnect()) return undefined;
+
   if (!socket) {
     const url = import.meta.env.VITE_SOCKET_URL || '';
     socket = io(url, SOCKET_OPTIONS);
     attachLoggingEvents(socket);
   }
   refs += 1;
+  if (socket.disconnected) socket.connect();
   return socket;
 }
 

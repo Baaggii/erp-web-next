@@ -109,11 +109,15 @@ export default function usePendingRequestCount(
     let socket;
     try {
       socket = connectSocket();
-      socket.on('newRequest', fetchCount);
-      if (pollingEnabled) {
-        socket.on('connect_error', startPolling);
-        socket.on('disconnect', startPolling);
-        socket.on('connect', stopPolling);
+      if (socket) {
+        socket.on('newRequest', fetchCount);
+        if (pollingEnabled) {
+          socket.on('connect_error', startPolling);
+          socket.on('disconnect', startPolling);
+          socket.on('connect', stopPolling);
+        }
+      } else if (pollingEnabled) {
+        startPolling();
       }
     } catch {
       if (pollingEnabled) startPolling();
