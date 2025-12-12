@@ -3359,9 +3359,7 @@ export default function PosApiAdmin() {
     }
     try {
       const mergedPayload = buildCombinationPayload(combinationBaseKey, combinationModifierKeys);
-      const prettyPayload = JSON.stringify(mergedPayload, null, 2);
-      setCombinationPayloadText(prettyPayload);
-      setFormState((prev) => ({ ...prev, requestSampleText: prettyPayload }));
+      setCombinationPayloadText(JSON.stringify(mergedPayload, null, 2));
       setCombinationError('');
     } catch (err) {
       setCombinationError(err.message || 'Failed to build combination payload.');
