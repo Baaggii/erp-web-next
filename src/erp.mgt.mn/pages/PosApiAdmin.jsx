@@ -10074,6 +10074,21 @@ const styles = {
     fontSize: '0.85rem',
     color: '#475569',
   },
+  combinationExampleList: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  combinationExampleRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  combinationLabel: {
+    whiteSpace: 'normal',
+    wordBreak: 'break-word',
+  },
   hintBadge: {
     borderRadius: '999px',
     padding: '0.15rem 0.5rem',
