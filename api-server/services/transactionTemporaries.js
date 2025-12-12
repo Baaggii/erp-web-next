@@ -1197,9 +1197,13 @@ export async function promoteTemporarySubmission(
       );
       const forwardTemporaryId = forwardResult?.insertId || null;
       const forwardChainIds = buildChainIdsForUpdate(forwardMeta, id);
-      await resetTemporaryChainToPending(conn, forwardChainIds, {
+      const resolvedForwardChainIds = forwardChainIds.length ? forwardChainIds : [id];
+      await updateTemporaryChainStatus(conn, resolvedForwardChainIds, {
+        status: 'promoted',
         reviewerEmpId: normalizedReviewer,
         notes: reviewNotesValue ?? null,
+        clearReviewerAssignment: true,
+        promotedRecordId: null,
       });
       await logUserAction(
         {
@@ -1240,7 +1244,7 @@ export async function promoteTemporarySubmission(
       if (io) {
         const reviewPayload = {
           id,
-          status: 'pending',
+          status: 'promoted',
           warnings: sanitationWarnings,
           forwardedTo: forwardReviewerEmpId,
           forwardedTemporaryId: forwardTemporaryId,
