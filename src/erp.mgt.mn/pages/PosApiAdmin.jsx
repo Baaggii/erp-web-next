@@ -6478,6 +6478,19 @@ export default function PosApiAdmin() {
     }
   }
 
+  function parseRequestSamplePayload() {
+    const text = (formState.requestSampleText || '').trim();
+    if (!text) return {};
+    try {
+      return JSON.parse(text);
+    } catch (err) {
+      const message = err?.message || 'Request sample must be valid JSON.';
+      setTestState({ running: false, error: message, result: null });
+      showToast(message, 'error');
+      throw err;
+    }
+  }
+
   async function handleTest(payloadOverride) {
     let definition;
     try {
