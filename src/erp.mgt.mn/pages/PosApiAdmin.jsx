@@ -7776,6 +7776,43 @@ export default function PosApiAdmin() {
             rows={6}
           />
         </label>
+        {exampleVariationChoices.length > 0 && (
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Example combinations</h3>
+              <span style={styles.hintCount}>{enabledRequestFieldVariations.length}</span>
+            </div>
+            <p style={styles.hintDescription}>
+              Enable example variations to surface them as modifiers in the combination builder. Defaults and required
+              flags can be edited per combination and reused when testing requests.
+            </p>
+            <div style={styles.importParamGrid}>
+              {exampleVariationChoices.map((choice) => {
+                const existing = requestFieldVariationMap.get(choice.key);
+                const enabled = existing ? existing.enabled !== false : false;
+                return (
+                  <div key={`example-variation-${choice.key}`} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <label style={styles.checkboxLabel}>
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(e) => handleRequestVariationToggle(choice.key, e.target.checked)}
+                      />
+                      <span>{choice.label}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={existing?.label || choice.label}
+                      onChange={(e) => handleRequestVariationLabelChange(choice.key, e.target.value)}
+                      style={{ ...styles.input, flex: 1 }}
+                      placeholder="Variation label"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div style={styles.hintCard}>
           <div style={styles.hintHeader}>
             <h3 style={styles.hintTitle}>Variations</h3>
@@ -8493,44 +8530,6 @@ export default function PosApiAdmin() {
                 Loaded {Object.keys(docFieldDescriptions).length} field descriptions from documentation.
               </div>
             )}
-          </div>
-        )}
-
-        {exampleVariationChoices.length > 0 && (
-          <div style={styles.hintCard}>
-            <div style={styles.hintHeader}>
-              <h3 style={styles.hintTitle}>Example combinations</h3>
-              <span style={styles.hintCount}>{enabledRequestFieldVariations.length}</span>
-            </div>
-            <p style={styles.hintDescription}>
-              Enable example variations to surface them as modifiers in the combination builder. Defaults and required
-              flags can be edited per combination and reused when testing requests.
-            </p>
-            <div style={styles.combinationExampleList}>
-              {exampleVariationChoices.map((choice) => {
-                const existing = requestFieldVariationMap.get(choice.key);
-                const enabled = existing ? existing.enabled !== false : false;
-                return (
-                  <div key={`example-variation-${choice.key}`} style={styles.combinationExampleRow}>
-                    <label style={styles.checkboxLabel}>
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={(e) => handleRequestVariationToggle(choice.key, e.target.checked)}
-                      />
-                      <span style={styles.combinationLabel}>{choice.label}</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={existing?.label || choice.label}
-                      onChange={(e) => handleRequestVariationLabelChange(choice.key, e.target.value)}
-                      style={{ ...styles.input, flex: 1, minWidth: '240px' }}
-                      placeholder="Variation label"
-                    />
-                  </div>
-                );
-              })}
-            </div>
           </div>
         )}
 
