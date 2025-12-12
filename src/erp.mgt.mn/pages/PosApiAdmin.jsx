@@ -1300,6 +1300,19 @@ function normalizeFieldValueMap(map = {}) {
   return result;
 }
 
+function parseExamplePayload(raw) {
+  if (!raw && raw !== 0) return {};
+  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
 function parseExampleBody(body) {
   if (body === undefined || body === null) return {};
   if (typeof body === 'string') {
@@ -6199,19 +6212,6 @@ export default function PosApiAdmin() {
       }
     });
     return source;
-  }
-
-  function parseExamplePayload(raw) {
-    if (!raw && raw !== 0) return {};
-    if (typeof raw === 'object') return raw;
-    if (typeof raw === 'string') {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return {};
-      }
-    }
-    return {};
   }
 
   function buildCombinationPayload(baseKey = combinationBaseKey, modifierKeys = combinationModifierKeys) {
