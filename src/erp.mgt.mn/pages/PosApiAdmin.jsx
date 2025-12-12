@@ -5549,8 +5549,8 @@ export default function PosApiAdmin() {
       : VALID_USAGE_VALUES.has(formState.usage)
         ? formState.usage
         : 'transaction';
-    const resolvedPosApiType = formState.posApiType || USAGE_DEFAULT_TYPE[usage] || '';
     const isTransaction = usage === 'transaction';
+    const resolvedPosApiType = isTransaction ? '' : formState.posApiType || USAGE_DEFAULT_TYPE[usage] || '';
     const supportsItems = isTransaction ? formState.supportsItems !== false : false;
     const supportsMultiplePayments = isTransaction ? Boolean(formState.supportsMultiplePayments) : false;
     const receiptTypesEnabled = isTransaction && supportsItems && formState.enableReceiptTypes !== false;
@@ -5641,7 +5641,7 @@ export default function PosApiAdmin() {
       category: formState.category.trim(),
       method: formState.method.trim().toUpperCase(),
       path: formState.path.trim(),
-      posApiType: resolvedPosApiType,
+      ...(resolvedPosApiType ? { posApiType: resolvedPosApiType } : {}),
       usage,
       defaultForForm: isTransaction ? Boolean(formState.defaultForForm) : false,
       ...(settingsId ? { settingsId } : {}),
@@ -7066,7 +7066,7 @@ export default function PosApiAdmin() {
               )}
             </span>
           </label>
-          {isTransactionUsage ? (
+          {!isTransactionUsage ? (
             <label style={styles.label}>
               POSAPI type
               <select
@@ -7086,7 +7086,7 @@ export default function PosApiAdmin() {
             <div style={styles.label}>
               <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>POSAPI type</div>
               <div style={styles.toggleStateHelper}>
-                {formatTypeLabel(formState.posApiType) || 'Auto-selected from usage'}
+                Transaction endpoints rely on enabled variations instead of a POSAPI type.
               </div>
             </div>
           )}
