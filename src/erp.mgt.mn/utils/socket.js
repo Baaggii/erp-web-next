@@ -5,10 +5,7 @@ let refs = 0;
 
 export function connectSocket() {
   if (!socket) {
-    const url = import.meta.env.VITE_SOCKET_URL;
-    if (!url) {
-      throw new Error('VITE_SOCKET_URL is not configured; skipping socket connect');
-    }
+    const url = import.meta.env.VITE_SOCKET_URL || '';
     socket = io(url, { withCredentials: true });
   }
   refs += 1;
