@@ -14,8 +14,6 @@ const SOUND_PRESETS = {
 };
 
 let cachedContext = null;
-let userGestureCaptured = false;
-let unlockHandlersAttached = false;
 
 function getAudioContext() {
   if (cachedContext) return cachedContext;
@@ -26,28 +24,6 @@ function getAudioContext() {
   if (!AudioCtx) return null;
   cachedContext = new AudioCtx();
   return cachedContext;
-}
-
-function handleFirstUserGesture() {
-  userGestureCaptured = true;
-  const ctx = getAudioContext();
-  if (ctx && ctx.state === 'suspended') {
-    ctx.resume().catch(() => {});
-  }
-}
-
-export function initializeAudioContextUnlock() {
-  if (unlockHandlersAttached || typeof window === 'undefined') return;
-  unlockHandlersAttached = true;
-  ['pointerdown', 'keydown', 'touchstart'].forEach((event) => {
-    window.addEventListener(
-      event,
-      () => {
-        handleFirstUserGesture();
-      },
-      { once: true },
-    );
-  });
 }
 
 function scheduleTone(ctx, startTime, { type, frequency, duration, gain }) {
@@ -64,25 +40,10 @@ function scheduleTone(ctx, startTime, { type, frequency, duration, gain }) {
   return startTime + duration + 0.04;
 }
 
-export async function playNotificationSound(preset = 'chime', options = {}) {
+export function playNotificationSound(preset = 'chime') {
   if (preset === 'off') return;
-  if (options.userGesture) {
-    handleFirstUserGesture();
-  }
-  if (!userGestureCaptured) return;
-
   const ctx = getAudioContext();
   if (!ctx) return;
-
-  if (ctx.state === 'suspended') {
-    try {
-      await ctx.resume();
-    } catch (err) {
-      console.warn('Unable to resume audio context', err);
-      return;
-    }
-  }
-
   const steps = SOUND_PRESETS[preset] || SOUND_PRESETS.chime;
   if (!Array.isArray(steps) || steps.length === 0) return;
 
@@ -98,3 +59,4 @@ export function getNotificationSoundOptions() {
     { value: 'off', label: 'Off' },
   ];
 }
+
