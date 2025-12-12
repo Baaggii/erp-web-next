@@ -1025,10 +1025,6 @@ export async function promoteTemporarySubmission(
       payloadJson?.skipTriggerOnPromote === true ||
       errorRevokedFields.length > 0;
     const skipTriggers = shouldSkipTriggers;
-    const statusChainIds = normalizeTemporaryIdList([
-      ...(forwardMeta.chainIds || []),
-      row.id,
-    ]);
     const shouldForwardTemporary =
       promoteAsTemporary === true &&
       forwardReviewerEmpId &&
@@ -1127,7 +1123,7 @@ export async function promoteTemporarySubmission(
       Object.entries(sanitizedValues).forEach(([key, value]) => {
         sanitizedPayloadValues[key] = value;
       });
-      const forwardChain = Array.from(new Set(statusChainIds));
+      const forwardChain = Array.from(new Set([...(forwardMeta.chainIds || []), row.id]));
       const updatedForwardMeta = {
         ...forwardMeta,
         originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
@@ -1165,7 +1161,7 @@ export async function promoteTemporarySubmission(
          WHERE id = ?`,
         [normalizedReviewer, reviewNotesValue ?? null, id],
       );
-      await updateTemporaryChainStatus(conn, statusChainIds, {
+      await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
         notes: reviewNotesValue ?? null,
@@ -1368,7 +1364,7 @@ export async function promoteTemporarySubmission(
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
-    await updateTemporaryChainStatus(conn, statusChainIds, {
+    await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
