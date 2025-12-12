@@ -1,12 +1,29 @@
 import { io } from 'socket.io-client';
 
+const SOCKET_OPTIONS = {
+  withCredentials: true,
+  path: '/socket.io',
+  timeout: 10000,
+  reconnectionAttempts: 5,
+};
+
 let socket;
 let refs = 0;
+
+function attachLoggingEvents(instance) {
+  instance.on('connect_error', (err) => {
+    console.error('Socket connection failed', err?.message || err);
+  });
+  instance.on('reconnect_failed', () => {
+    console.error('Socket reconnection attempts exhausted');
+  });
+}
 
 export function connectSocket() {
   if (!socket) {
     const url = import.meta.env.VITE_SOCKET_URL || '';
-    socket = io(url, { withCredentials: true });
+    socket = io(url, SOCKET_OPTIONS);
+    attachLoggingEvents(socket);
   }
   refs += 1;
   return socket;
