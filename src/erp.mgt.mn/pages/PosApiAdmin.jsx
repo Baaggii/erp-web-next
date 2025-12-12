@@ -1717,7 +1717,15 @@ function createFormState(definition) {
         return list;
       })()
     : [];
-  const requestFieldVariations = [];
+  const requestFieldVariations = Array.isArray(definition.requestFieldVariations)
+    ? definition.requestFieldVariations.map((entry) => ({
+      key: entry?.key || entry?.label || '',
+      label: entry?.label || entry?.key || '',
+      enabled: entry?.enabled !== false,
+      requiredFields: normalizeFieldRequirementMap(entry?.requiredFields),
+      defaultValues: normalizeFieldValueMap(entry?.defaultValues),
+    })).filter((entry) => entry.key)
+    : [];
   const variations = mergedVariations.map((variation, index) => {
     const fields = Array.isArray(variation.requestFields)
       ? variation.requestFields.map((field) => ({
@@ -2586,6 +2594,7 @@ export default function PosApiAdmin() {
   const infoSyncPreloadedRef = useRef(false);
   const [requestFieldValues, setRequestFieldValues] = useState({});
   const [requestFieldMeta, setRequestFieldMeta] = useState({});
+  const [selectedVariationKey, setSelectedVariationKey] = useState('');
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
@@ -3099,30 +3108,65 @@ export default function PosApiAdmin() {
     : [];
   const variations = Array.isArray(formState.variations) ? formState.variations : [];
   const activeVariations = variations.filter((entry) => entry.enabled !== false);
+  const enabledRequestFieldVariations = useMemo(
+    () => requestFieldVariations.filter((entry) => entry?.key && entry.enabled !== false),
+    [requestFieldVariations],
+  );
+  const requestFieldVariationMap = useMemo(
+    () => new Map(enabledRequestFieldVariations.map((entry) => [entry.key, entry])),
+    [enabledRequestFieldVariations],
+  );
+  const variationColumns = useMemo(
+    () => {
+      const list = activeVariations.map((variation, index) => ({
+        key: variation.key || variation.name || `variation-${index + 1}`,
+        label: variation.name || variation.label || variation.key,
+        type: 'variation',
+        fieldSet: Array.isArray(variation.requestFields)
+          ? new Set(
+            variation.requestFields
+              .map((field) => normalizeHintEntry(field).field)
+              .filter(Boolean),
+          )
+          : null,
+      }));
+
+      enabledRequestFieldVariations.forEach((entry) => {
+        const requiredFields = entry?.requiredFields && typeof entry.requiredFields === 'object'
+          ? Object.keys(entry.requiredFields).filter(Boolean)
+          : [];
+        list.push({
+          key: entry.key,
+          label: entry.label || entry.key,
+          type: 'combination',
+          fieldSet: requiredFields.length > 0 ? new Set(requiredFields) : null,
+        });
+      });
+
+      return list;
+    },
+    [activeVariations, enabledRequestFieldVariations],
+  );
   const variationFieldSets = useMemo(() => {
     const map = new Map();
-    activeVariations.forEach((variation, index) => {
-      const key = variation.key || variation.name || `variation-${index + 1}`;
-      const fields = Array.isArray(variation.requestFields)
-        ? variation.requestFields
-            .map((field) => normalizeHintEntry(field).field)
-            .filter(Boolean)
-        : [];
-      map.set(key, fields.length > 0 ? new Set(fields) : null);
+    variationColumns.forEach((variation) => {
+      const fields = variation.fieldSet ? Array.from(variation.fieldSet) : [];
+      map.set(variation.key, fields.length > 0 ? new Set(fields) : null);
     });
     return map;
-  }, [activeVariations]);
+  }, [variationColumns]);
   const requestFieldColumnTemplate = useMemo(
     () => {
       const baseColumns = ['150px', '250px', '80px'];
-      const variationColumns = activeVariations.map(() => '200px');
-      return [...baseColumns, ...variationColumns].join(' ');
+      const variationCells = variationColumns.map(() => '200px');
+      return [...baseColumns, ...variationCells].join(' ');
     },
-    [activeVariations],
+    [variationColumns],
   );
 
   useEffect(() => {
     const allowedKeys = new Set(exampleVariationChoices.map((entry) => entry.key));
+    if (allowedKeys.size === 0) return;
     setFormState((prev) => {
       const current = Array.isArray(prev.requestFieldVariations)
         ? prev.requestFieldVariations
@@ -3140,21 +3184,21 @@ export default function PosApiAdmin() {
 
   const visibleRequestFieldItems = useMemo(() => {
     if (requestFieldDisplay.state !== 'ok') return requestFieldDisplay.items || [];
-    if (activeVariations.length === 0) return requestFieldDisplay.items;
+    if (variationColumns.length === 0) return requestFieldDisplay.items;
 
     return requestFieldDisplay.items.filter((entry) => {
       const normalized = normalizeHintEntry(entry);
       const fieldLabel = normalized.field;
       if (!fieldLabel) return false;
 
-      return activeVariations.some((variation) => {
-        const key = variation.key || variation.name;
+      return variationColumns.some((variation) => {
+        const key = variation.key;
         if (!key) return false;
         const variationFieldSet = variationFieldSets.get(key);
         return !variationFieldSet || variationFieldSet.has(fieldLabel);
       });
     });
-  }, [activeVariations, requestFieldDisplay, variationFieldSets]);
+  }, [requestFieldDisplay, variationColumns, variationFieldSets]);
 
   useEffect(() => {
     if (requestFieldDisplay.state !== 'ok') {
@@ -3185,18 +3229,28 @@ export default function PosApiAdmin() {
           ...normalized.defaultByVariation,
           ...existing.defaultByVariation,
         };
-        activeVariations.forEach((variation) => {
-          const key = variation.key || variation.name;
+
+        variationColumns.forEach((variation) => {
+          const key = variation.key;
           if (!key) return;
           if (!(key in requiredByVariation)) {
             requiredByVariation[key] = requiredCommon;
           }
+          const variationDefaults = normalized.defaultByVariation || {};
           if (
-            normalized.defaultByVariation
-            && normalized.defaultByVariation[key] !== undefined
+            variationDefaults
+            && variationDefaults[key] !== undefined
             && defaultByVariation[key] === undefined
           ) {
-            defaultByVariation[key] = normalized.defaultByVariation[key];
+            defaultByVariation[key] = variationDefaults[key];
+          }
+          const combination = requestFieldVariationMap.get(key);
+          if (combination?.requiredFields?.[fieldLabel] && !requiredByVariation[key]) {
+            requiredByVariation[key] = true;
+          }
+          if (combination?.defaultValues?.[fieldLabel] !== undefined
+            && defaultByVariation[key] === undefined) {
+            defaultByVariation[key] = combination.defaultValues[fieldLabel];
           }
         });
         next[fieldLabel] = {
@@ -3208,7 +3262,7 @@ export default function PosApiAdmin() {
       });
       return next;
     });
-  }, [activeVariations, requestFieldDisplay.state, visibleRequestFieldItems]);
+  }, [requestFieldDisplay.state, variationColumns, visibleRequestFieldItems, requestFieldVariationMap]);
 
   useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
@@ -3255,6 +3309,23 @@ export default function PosApiAdmin() {
       return prev;
     });
   }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldDisplay.items]);
+
+  useEffect(() => {
+    if (selectedVariationKey && !variationColumns.some((entry) => entry.key === selectedVariationKey)) {
+      setSelectedVariationKey('');
+    }
+  }, [selectedVariationKey, variationColumns]);
+
+  useEffect(() => {
+    if (!selectedVariationKey) return;
+    const selections = buildSelectionsForVariation(selectedVariationKey);
+    setRequestFieldValues(selections);
+    syncRequestSampleFromSelections(selections);
+    setFormState((prev) => ({
+      ...prev,
+      requestEnvMap: buildRequestEnvMap(selections),
+    }));
+  }, [selectedVariationKey, requestFieldMeta, requestFieldDisplay.state, variationColumns, visibleRequestFieldItems]);
 
   const selectedReceiptTypes = receiptTypesEnabled && Array.isArray(formState.receiptTypes)
     ? formState.receiptTypes
@@ -5424,22 +5495,12 @@ export default function PosApiAdmin() {
       combinedRequestFields.push(normalized);
     });
 
-    const sanitizedRequestFieldVariations = (requestFieldVariations || [])
-      .filter((entry) => entry && entry.key)
-      .map((entry) => ({
-        key: entry.key,
-        label: entry.label || entry.key,
-        enabled: Boolean(entry.enabled),
-        requiredFields: normalizeFieldRequirementMap(entry.requiredFields),
-        defaultValues: normalizeFieldValueMap(entry.defaultValues),
-      }));
-
     const variationRequirementByKey = {};
     const variationDefaultsByKey = {};
 
     if (requestFieldDisplay.state === 'ok') {
-      activeVariations.forEach((variation) => {
-        const key = variation.key || variation.name;
+      variationColumns.forEach((variation) => {
+        const key = variation.key;
         if (!key) return;
         variationRequirementByKey[key] = {};
         variationDefaultsByKey[key] = {};
@@ -5459,8 +5520,8 @@ export default function PosApiAdmin() {
                 ? normalized.required
                 : false;
 
-        activeVariations.forEach((variation) => {
-          const key = variation.key || variation.name;
+        variationColumns.forEach((variation) => {
+          const key = variation.key;
           if (!key) return;
           const variationFieldSet = variationFieldSets.get(key);
           const showForVariation = !variationFieldSet || variationFieldSet.has(fieldLabel);
@@ -5483,6 +5544,27 @@ export default function PosApiAdmin() {
         });
       });
     }
+
+    const sanitizedRequestFieldVariations = (requestFieldVariations || [])
+      .filter((entry) => entry && entry.key)
+      .map((entry) => {
+        const variationKey = entry.key;
+        const metaRequired = variationRequirementByKey[variationKey] || {};
+        const metaDefaults = variationDefaultsByKey[variationKey] || {};
+        return {
+          key: variationKey,
+          label: entry.label || entry.key,
+          enabled: Boolean(entry.enabled),
+          requiredFields: {
+            ...normalizeFieldRequirementMap(entry.requiredFields),
+            ...metaRequired,
+          },
+          defaultValues: {
+            ...normalizeFieldValueMap(entry.defaultValues),
+            ...metaDefaults,
+          },
+        };
+      });
 
     const sanitizedVariations = (variations || []).map((variation, index) => {
       const variationKey = variation.key || variation.name || `variation-${index + 1}`;
@@ -5945,6 +6027,27 @@ export default function PosApiAdmin() {
     }
   }
 
+  function buildSelectionsForVariation(variationKey) {
+    if (!variationKey || requestFieldDisplay.state !== 'ok') return {};
+    const selections = {};
+    visibleRequestFieldItems.forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      const fieldPath = normalized.field;
+      if (!fieldPath) return;
+      const meta = requestFieldMeta[fieldPath] || {};
+      const defaultValue = meta.defaultByVariation?.[variationKey]
+        ?? normalized.defaultByVariation?.[variationKey];
+      if (defaultValue === undefined || defaultValue === '') return;
+      selections[fieldPath] = {
+        mode: 'literal',
+        literal: String(defaultValue),
+        envVar: '',
+        applyToBody: entry.source !== 'parameter',
+      };
+    });
+    return selections;
+  }
+
   function handleRequestFieldValueChange(fieldPath, updates) {
     if (!fieldPath) return;
     setRequestFieldValues((prev) => {
@@ -5984,8 +6087,8 @@ export default function PosApiAdmin() {
     setRequestFieldMeta((prev) => {
       const current = prev[fieldPath] || { requiredByVariation: {}, defaultByVariation: {} };
       const requiredByVariation = value
-        ? activeVariations.reduce((acc, variation) => {
-          const key = variation.key || variation.name;
+        ? variationColumns.reduce((acc, variation) => {
+          const key = variation.key;
           if (key) {
             acc[key] = true;
           }
@@ -7539,6 +7642,43 @@ export default function PosApiAdmin() {
             rows={6}
           />
         </label>
+        {exampleVariationChoices.length > 0 && (
+          <div style={styles.hintCard}>
+            <div style={styles.hintHeader}>
+              <h3 style={styles.hintTitle}>Example combinations</h3>
+              <span style={styles.hintCount}>{enabledRequestFieldVariations.length}</span>
+            </div>
+            <p style={styles.hintDescription}>
+              Enable example variations to add combination columns to the field matrix. Defaults and required flags can
+              be edited per combination and reused when testing requests.
+            </p>
+            <div style={styles.importParamGrid}>
+              {exampleVariationChoices.map((choice) => {
+                const existing = requestFieldVariationMap.get(choice.key);
+                const enabled = existing ? existing.enabled !== false : false;
+                return (
+                  <div key={`example-variation-${choice.key}`} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <label style={styles.checkboxLabel}>
+                      <input
+                        type="checkbox"
+                        checked={enabled}
+                        onChange={(e) => handleRequestVariationToggle(choice.key, e.target.checked)}
+                      />
+                      <span>{choice.label}</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={existing?.label || choice.label}
+                      onChange={(e) => handleRequestVariationLabelChange(choice.key, e.target.value)}
+                      style={{ ...styles.input, flex: 1 }}
+                      placeholder="Variation label"
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         <div style={styles.hintCard}>
           <div style={styles.hintHeader}>
             <h3 style={styles.hintTitle}>Variations</h3>
@@ -7720,12 +7860,17 @@ export default function PosApiAdmin() {
                     <span style={styles.requestFieldHeaderCell}>Field</span>
                     <span style={styles.requestFieldHeaderCell}>Description</span>
                     <span style={styles.requestFieldHeaderCell}>Common required</span>
-                    {activeVariations.map((variation) => (
+                    {variationColumns.map((variation) => (
                       <span
-                        key={`variation-head-${variation.key || variation.name}`}
-                        style={styles.requestFieldHeaderCell}
+                        key={`variation-head-${variation.key}`}
+                        style={{ ...styles.requestFieldHeaderCell, display: 'flex', gap: '0.35rem', alignItems: 'center' }}
                       >
-                        {variation.name || variation.label || variation.key}
+                        <span>{variation.label}</span>
+                        {variation.type === 'combination' && (
+                          <span style={{ ...styles.hintBadge, background: '#eef2ff', color: '#3730a3' }}>
+                            Combination
+                          </span>
+                        )}
                       </span>
                     ))}
                   </div>
@@ -7777,8 +7922,8 @@ export default function PosApiAdmin() {
                             <span>Required</span>
                           </label>
                         </div>
-                        {activeVariations.map((variation) => {
-                          const variationKey = variation.key || variation.name;
+                        {variationColumns.map((variation) => {
+                          const variationKey = variation.key;
                           const required = commonRequired
                             ? true
                             : meta.requiredByVariation?.[variationKey]
@@ -8251,6 +8396,29 @@ export default function PosApiAdmin() {
                 Loaded {Object.keys(docFieldDescriptions).length} field descriptions from documentation.
               </div>
             )}
+          </div>
+        )}
+
+        {variationColumns.length > 0 && (
+          <div style={styles.docSelection}>
+            <label style={{ ...styles.label, flex: 1 }}>
+              Select variation for testing
+              <select
+                value={selectedVariationKey}
+                onChange={(e) => setSelectedVariationKey(e.target.value)}
+                style={styles.input}
+              >
+                <option value="">Manual request data</option>
+                {variationColumns.map((variation) => (
+                  <option key={`test-variation-${variation.key}`} value={variation.key}>
+                    {variation.label} {variation.type === 'combination' ? '(combination)' : ''}
+                  </option>
+                ))}
+              </select>
+              <span style={styles.checkboxHint}>
+                Applying a variation builds the request JSON using its saved defaults.
+              </span>
+            </label>
           </div>
         )}
 
