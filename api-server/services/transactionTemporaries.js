@@ -302,6 +302,21 @@ async function updateTemporaryChainStatus(
   );
 }
 
+async function resetTemporaryChainToPending(conn, chainIds, { reviewerEmpId = null, notes = null } = {}) {
+  const normalizedIds = normalizeTemporaryIdList(chainIds);
+  if (!conn || normalizedIds.length === 0) return;
+  const reviewedAtColumn =
+    reviewerEmpId || notes !== null ? 'reviewed_at = NOW()' : 'reviewed_at = NULL';
+  const placeholders = normalizedIds.map(() => '?').join(', ');
+  await conn.query(
+    `UPDATE \`${TEMP_TABLE}\`
+     SET status = 'pending', reviewed_by = ?, ${reviewedAtColumn}, review_notes = ?,
+         promoted_record_id = NULL, plan_senior_empid = NULL
+     WHERE id IN (${placeholders})`,
+    [reviewerEmpId ?? null, notes ?? null, ...normalizedIds],
+  );
+}
+
 export async function sanitizeCleanedValuesForInsert(tableName, values, columns) {
   if (!tableName || !values) return { values: {}, warnings: [] };
   if (!isPlainObject(values)) return { values: {}, warnings: [] };
@@ -1168,18 +1183,10 @@ export async function promoteTemporarySubmission(
         ],
       );
       const forwardTemporaryId = forwardResult?.insertId || null;
-      await conn.query(
-        `UPDATE \`${TEMP_TABLE}\`
-         SET status = 'promoted', reviewed_by = ?, reviewed_at = NOW(), review_notes = ?, promoted_record_id = NULL
-         WHERE id = ?`,
-        [normalizedReviewer, reviewNotesValue ?? null, id],
-      );
       const forwardChainIds = buildChainIdsForUpdate(forwardMeta, id);
-      await updateTemporaryChainStatus(conn, forwardChainIds, {
-        status: 'promoted',
+      await resetTemporaryChainToPending(conn, forwardChainIds, {
         reviewerEmpId: normalizedReviewer,
         notes: reviewNotesValue ?? null,
-        promotedRecordId: null,
       });
       await logUserAction(
         {
@@ -1212,7 +1219,7 @@ export async function promoteTemporarySubmission(
           recipientEmpId: originRecipient,
           createdBy: normalizedReviewer,
           relatedId: id,
-          message: `Temporary submission #${id} approved and forwarded`,
+          message: `Temporary submission #${id} forwarded for additional review`,
           type: 'response',
         });
       }
@@ -1220,7 +1227,7 @@ export async function promoteTemporarySubmission(
       if (io) {
         const reviewPayload = {
           id,
-          status: 'promoted',
+          status: 'pending',
           warnings: sanitationWarnings,
           forwardedTo: forwardReviewerEmpId,
           forwardedTemporaryId: forwardTemporaryId,
