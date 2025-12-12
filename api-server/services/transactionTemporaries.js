@@ -1220,8 +1220,7 @@ export async function promoteTemporarySubmission(
         ],
       );
       const forwardTemporaryId = forwardResult?.insertId || null;
-      // Use updatedForwardMeta so chainIds include the root and parent temporaries
-      const forwardChainIds = buildChainIdsForUpdate(updatedForwardMeta, id);
+      const forwardChainIds = buildChainIdsForUpdate(forwardMeta, id);
       await updateTemporaryChainStatus(conn, forwardChainIds, {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
@@ -1229,13 +1228,6 @@ export async function promoteTemporarySubmission(
         clearReviewerAssignment: true,
         promotedRecordId: null,
       });
-      await conn.query(
-        `UPDATE \`${TEMP_TABLE}\`
-         SET status = 'promoted', reviewed_by = ?, reviewed_at = NOW(),
-             review_notes = ?, plan_senior_empid = NULL
-         WHERE id = ?`,
-        [normalizedReviewer, reviewNotesValue ?? null, id],
-      );
       await logUserAction(
         {
           emp_id: normalizedReviewer,
