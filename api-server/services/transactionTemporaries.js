@@ -256,21 +256,6 @@ function resolveForwardMeta(payload, fallbackCreator, currentId) {
   };
 }
 
-function buildChainIds(meta, extraIds = []) {
-  const ids = [];
-  const pushId = (value) => {
-    const normalized = normalizeTemporaryId(value);
-    if (normalized !== null) ids.push(normalized);
-  };
-  if (meta) {
-    normalizeTemporaryIdList(meta.chainIds).forEach(pushId);
-    pushId(meta.rootTemporaryId);
-    pushId(meta.parentTemporaryId);
-  }
-  extraIds.forEach(pushId);
-  return Array.from(new Set(ids));
-}
-
 function filterRowsByTransactionType(rows, fieldName, value) {
   const normalizedField = normalizeFieldName(fieldName);
   const normalizedValue = normalizeTransactionTypeValue(value);
@@ -871,7 +856,6 @@ export async function promoteTemporarySubmission(
     const columns = await listTableColumnsDetailed(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
-    const chainIdsForUpdate = buildChainIds(forwardMeta, [row.id]);
     const candidateSources = [];
     const pushCandidate = (source) => {
       if (!source) return;
@@ -1162,7 +1146,7 @@ export async function promoteTemporarySubmission(
       Object.entries(sanitizedValues).forEach(([key, value]) => {
         sanitizedPayloadValues[key] = value;
       });
-      const forwardChain = buildChainIds(forwardMeta, [row.id]);
+      const forwardChain = Array.from(new Set([...(forwardMeta.chainIds || []), row.id]));
       const updatedForwardMeta = {
         ...forwardMeta,
         originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
@@ -1200,7 +1184,7 @@ export async function promoteTemporarySubmission(
          WHERE id = ?`,
         [normalizedReviewer, reviewNotesValue ?? null, id],
       );
-      await updateTemporaryChainStatus(conn, chainIdsForUpdate, {
+      await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
         notes: reviewNotesValue ?? null,
@@ -1385,7 +1369,7 @@ export async function promoteTemporarySubmission(
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
-    await updateTemporaryChainStatus(conn, chainIdsForUpdate, {
+    await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
