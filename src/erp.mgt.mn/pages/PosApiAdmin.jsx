@@ -3359,9 +3359,7 @@ export default function PosApiAdmin() {
     }
     try {
       const mergedPayload = buildCombinationPayload(combinationBaseKey, combinationModifierKeys);
-      const prettyPayload = JSON.stringify(mergedPayload, null, 2);
-      setCombinationPayloadText(prettyPayload);
-      setFormState((prev) => ({ ...prev, requestSampleText: prettyPayload }));
+      setCombinationPayloadText(JSON.stringify(mergedPayload, null, 2));
       setCombinationError('');
     } catch (err) {
       setCombinationError(err.message || 'Failed to build combination payload.');
@@ -6541,13 +6539,18 @@ export default function PosApiAdmin() {
       return;
     }
 
-    let payloadForTest = payloadOverride;
-    if (!payloadForTest && (definition.method || '').toUpperCase() !== 'GET') {
-      payloadForTest = parseRequestSamplePayload();
+    let builtPayload = null;
+    try {
+      builtPayload = buildCombinationPayload();
+    } catch (err) {
+      builtPayload = null;
+      if (combinationError && !payloadOverride) {
+        setCombinationError(err.message || 'Unable to build test payload from modifiers.');
+      }
     }
 
     const confirmed = window.confirm(
-      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use the Request sample JSON.`,
+      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use the base sample and selected modifiers.`,
     );
     if (!confirmed) return;
 
@@ -6577,7 +6580,11 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
-          ...(payloadForTest ? { payloadOverride: payloadForTest } : {}),
+          ...(payloadOverride
+            ? { payloadOverride }
+            : builtPayload
+              ? { payloadOverride: builtPayload }
+              : {}),
         }),
       });
       if (!res.ok) {
