@@ -3311,7 +3311,7 @@ const TableManager = forwardRef(function TableManager({
         skipConfirm: true,
         silent: false,
         overrideValues: cleaned,
-        promoteAsTemporary: !canPostTransactions,
+        promoteAsTemporary: !canPostTransactions || hasAnySenior,
       });
       if (ok) {
         const [nextEntry, ...remainingQueue] = temporaryPromotionQueue;
@@ -4020,6 +4020,13 @@ const TableManager = forwardRef(function TableManager({
       try {
         let rows = await runFetch(params);
 
+        if (targetScope === 'review') {
+          rows = rows.filter((entry) => {
+            const status = entry?.status ? String(entry.status).trim().toLowerCase() : '';
+            return status === '' || status === 'pending';
+          });
+        }
+
         const shouldRetryWithoutStatus =
           targetScope === 'review' &&
           !options?.status &&
@@ -4277,6 +4284,34 @@ const TableManager = forwardRef(function TableManager({
           }
         }
         await refreshTemporarySummary();
+        setTemporaryList((prev) => {
+          if (!Array.isArray(prev) || prev.length === 0) return prev;
+          const targetId = String(id);
+          const next = [];
+          prev.forEach((entry) => {
+            const entryId = getTemporaryId(entry);
+            if (!entryId || String(entryId) !== targetId) {
+              next.push(entry);
+              return;
+            }
+            const updatedEntry = {
+              ...entry,
+              status: data?.status || 'promoted',
+            };
+            if (data?.reviewNotes || data?.review_notes) {
+              updatedEntry.reviewNotes = data.reviewNotes || data.review_notes;
+              updatedEntry.review_notes = data.review_notes || data.reviewNotes;
+            }
+            if (data?.reviewedAt || data?.reviewed_at) {
+              updatedEntry.reviewedAt = data.reviewedAt || data.reviewed_at;
+              updatedEntry.reviewed_at = data.reviewed_at || data.reviewedAt;
+            }
+            if (temporaryScope !== 'review') {
+              next.push(updatedEntry);
+            }
+          });
+          return next;
+        });
         await fetchTemporaryList('review');
         setLocalRefresh((r) => r + 1);
       }
