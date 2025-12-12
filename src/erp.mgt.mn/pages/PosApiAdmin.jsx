@@ -6072,7 +6072,7 @@ export default function PosApiAdmin() {
     setStatus(`Applied ${selected.label} to ${target} schema`);
   }
 
-  function syncRequestSampleFromSelections(nextSelections) {
+  function syncRequestSampleFromSelections(nextSelections, baseOverride) {
     let baseSample = {};
     try {
       baseSample = JSON.parse(formState.requestSampleText || '{}');
@@ -6094,6 +6094,7 @@ export default function PosApiAdmin() {
     } catch {
       // ignore formatting errors
     }
+    return updated;
   }
 
   function buildSelectionsForVariation(variationKey) {
