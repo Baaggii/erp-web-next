@@ -3965,6 +3965,7 @@ const TableManager = forwardRef(function TableManager({
         ? requestedScope
         : defaultTemporaryScope;
       if (!availableTemporaryScopes.includes(targetScope)) return;
+      const preserveScope = Boolean(options?.preserveScope);
       const params = new URLSearchParams();
       params.set('scope', targetScope);
       const transactionTypeField = formConfig?.transactionTypeField || '';
@@ -4043,12 +4044,16 @@ const TableManager = forwardRef(function TableManager({
             const target = rows[idx];
             nextRows = [target, ...rows.slice(0, idx), ...rows.slice(idx + 1)];
           }
-          setTemporaryFocusId(focusId);
-        } else {
+          if (!preserveScope || targetScope === temporaryScope) {
+            setTemporaryFocusId(focusId);
+          }
+        } else if (!preserveScope || targetScope === temporaryScope) {
           setTemporaryFocusId(null);
         }
-        setTemporaryScope(targetScope);
-        setTemporaryList(nextRows);
+        if (!preserveScope || targetScope === temporaryScope) {
+          setTemporaryScope(targetScope);
+          setTemporaryList(nextRows);
+        }
       } catch (err) {
         console.error('Failed to load temporaries', err);
         setTemporaryFocusId(null);
@@ -4066,6 +4071,29 @@ const TableManager = forwardRef(function TableManager({
       temporarySummary,
       formConfig?.transactionTypeField,
       typeFilter,
+    ],
+  );
+
+  const refreshTemporaryQueuesAfterDecision = useCallback(
+    async ({ focusId = null } = {}) => {
+      const originalScope = temporaryScope;
+      await refreshTemporarySummary();
+      await fetchTemporaryList('review', {
+        focusId: focusId || undefined,
+        preserveScope: originalScope !== 'review',
+      });
+      if (
+        originalScope !== 'review' &&
+        availableTemporaryScopes.includes(originalScope)
+      ) {
+        await fetchTemporaryList(originalScope, { preserveScope: false });
+      }
+    },
+    [
+      availableTemporaryScopes,
+      fetchTemporaryList,
+      refreshTemporarySummary,
+      temporaryScope,
     ],
   );
 
@@ -4276,8 +4304,13 @@ const TableManager = forwardRef(function TableManager({
             );
           }
         }
-        await refreshTemporarySummary();
-        await fetchTemporaryList('review');
+        setTemporaryList((prev) => {
+          if (!Array.isArray(prev) || prev.length === 0) return prev;
+          const targetId = String(id);
+          const filtered = prev.filter((entry) => getTemporaryId(entry) !== targetId);
+          return filtered.length === prev.length ? prev : filtered;
+        });
+        await refreshTemporaryQueuesAfterDecision({ focusId: id });
         setLocalRefresh((r) => r + 1);
       }
       return true;
@@ -4458,8 +4491,13 @@ const TableManager = forwardRef(function TableManager({
       );
       if (!res.ok) throw new Error('Failed to reject');
       addToast(t('temporary_rejected', 'Temporary rejected'), 'success');
-      await refreshTemporarySummary();
-      await fetchTemporaryList(temporaryScope);
+      setTemporaryList((prev) => {
+        if (!Array.isArray(prev) || prev.length === 0) return prev;
+        const targetId = String(id);
+        const filtered = prev.filter((entry) => getTemporaryId(entry) !== targetId);
+        return filtered.length === prev.length ? prev : filtered;
+      });
+      await refreshTemporaryQueuesAfterDecision({ focusId: id });
     } catch (err) {
       console.error(err);
       addToast(t('temporary_reject_failed', 'Failed to reject temporary'), 'error');
