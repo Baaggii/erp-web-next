@@ -107,6 +107,20 @@ function normalizeTemporaryIdList(value) {
   return Array.from(new Set(normalized));
 }
 
+function collectTemporaryChainIds(meta, currentId) {
+  const ids = new Set();
+  const normalizedCurrent = normalizeTemporaryId(currentId);
+  if (isPlainObject(meta)) {
+    normalizeTemporaryIdList(meta.chainIds).forEach((id) => ids.add(id));
+    const normalizedRoot = normalizeTemporaryId(meta.rootTemporaryId);
+    if (normalizedRoot) ids.add(normalizedRoot);
+    const normalizedParent = normalizeTemporaryId(meta.parentTemporaryId);
+    if (normalizedParent) ids.add(normalizedParent);
+  }
+  if (normalizedCurrent) ids.add(normalizedCurrent);
+  return Array.from(ids);
+}
+
 function normalizeScopePreference(value) {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -240,13 +254,15 @@ function extractTransactionTypeValue(row, fieldName) {
 
 function resolveForwardMeta(payload, fallbackCreator, currentId) {
   const meta = isPlainObject(payload?.forwardMeta) ? payload.forwardMeta : {};
-  const chainIds = normalizeTemporaryIdList(meta.chainIds);
   const normalizedCurrentId = normalizeTemporaryId(currentId);
-  if (normalizedCurrentId) chainIds.push(normalizedCurrentId);
-  const uniqueChainIds = Array.from(new Set(chainIds));
+  const uniqueChainIds = collectTemporaryChainIds(meta, normalizedCurrentId);
   const originCreator = normalizeEmpId(meta.originCreator) || normalizeEmpId(fallbackCreator);
   const rootTemporaryId =
-    normalizeTemporaryId(meta.rootTemporaryId) || normalizedCurrentId || meta.rootTemporaryId || null;
+    normalizeTemporaryId(meta.rootTemporaryId) ||
+    uniqueChainIds[0] ||
+    normalizedCurrentId ||
+    meta.rootTemporaryId ||
+    null;
   const parentTemporaryId = normalizeTemporaryId(meta.parentTemporaryId) || null;
   return {
     originCreator,
@@ -1146,7 +1162,7 @@ export async function promoteTemporarySubmission(
       Object.entries(sanitizedValues).forEach(([key, value]) => {
         sanitizedPayloadValues[key] = value;
       });
-      const forwardChain = Array.from(new Set([...(forwardMeta.chainIds || []), row.id]));
+      const forwardChain = collectTemporaryChainIds(forwardMeta, row.id);
       const updatedForwardMeta = {
         ...forwardMeta,
         originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
@@ -1184,7 +1200,7 @@ export async function promoteTemporarySubmission(
          WHERE id = ?`,
         [normalizedReviewer, reviewNotesValue ?? null, id],
       );
-      await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
+      await updateTemporaryChainStatus(conn, collectTemporaryChainIds(forwardMeta, id), {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
         notes: reviewNotesValue ?? null,
@@ -1369,7 +1385,7 @@ export async function promoteTemporarySubmission(
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
-    await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
+    await updateTemporaryChainStatus(conn, collectTemporaryChainIds(forwardMeta, id), {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
@@ -1500,7 +1516,7 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
        WHERE id = ?`,
       [normalizedReviewer, notes ?? null, id],
     );
-    await updateTemporaryChainStatus(conn, forwardMeta.chainIds, {
+    await updateTemporaryChainStatus(conn, collectTemporaryChainIds(forwardMeta, id), {
       status: 'rejected',
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
