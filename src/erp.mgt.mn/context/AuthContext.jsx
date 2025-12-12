@@ -1,5 +1,5 @@
 // src/erp.mgt.mn/context/AuthContext.jsx
-import React, { createContext, useState, useEffect, useContext, useMemo } from 'react';
+import React, { createContext, useState, useEffect, useContext, useMemo, useRef } from 'react';
 import { debugLog, trackSetState } from '../utils/debug.js';
 import { API_BASE } from '../utils/apiBase.js';
 import normalizeEmploymentSession from '../utils/normalizeEmploymentSession.js';
@@ -45,6 +45,7 @@ export default function AuthContextProvider({ children }) {
       return {};
     }
   });
+  const hasLoadedProfileRef = useRef(false);
 
   // Persist employment IDs across reloads
   useEffect(() => {
@@ -137,6 +138,8 @@ export default function AuthContextProvider({ children }) {
   // On mount, attempt to load the current profile (if a cookie is present)
   useEffect(() => {
     debugLog('AuthContext: load profile');
+    if (hasLoadedProfileRef.current) return;
+    hasLoadedProfileRef.current = true;
     async function loadProfile() {
       try {
         const res = await fetch(`${API_BASE}/auth/me`, {
