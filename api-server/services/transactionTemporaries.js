@@ -262,6 +262,10 @@ function buildChainIdsForUpdate(forwardMeta, currentId) {
   if (normalizedCurrent) {
     baseChain.push(normalizedCurrent);
   }
+  const normalizedParent = normalizeTemporaryId(forwardMeta?.parentTemporaryId);
+  if (normalizedParent) {
+    baseChain.push(normalizedParent);
+  }
   const normalizedRoot = normalizeTemporaryId(forwardMeta?.rootTemporaryId);
   if (normalizedRoot) {
     baseChain.push(normalizedRoot);
