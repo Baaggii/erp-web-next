@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import useGeneralConfig from './useGeneralConfig.js';
 import { API_BASE } from '../utils/apiBase.js';
 
@@ -46,7 +46,6 @@ function createInitialCounts() {
 
 export default function useTemporaryNotificationCounts(empid) {
   const [counts, setCounts] = useState(() => createInitialCounts());
-  const refreshStateRef = useRef(null);
   const cfg = useGeneralConfig();
   const intervalSeconds =
     Number(
@@ -128,44 +127,27 @@ export default function useTemporaryNotificationCounts(empid) {
   );
 
   const refresh = useCallback(async () => {
-    if (refreshStateRef.current?.promise) {
-      return refreshStateRef.current.promise;
-    }
-
-    const controller = new AbortController();
-    const promise = (async () => {
-      try {
-        const params = new URLSearchParams();
-        const cachedFilter = readCachedTemporaryFilter();
-        const hasCachedValue =
-          cachedFilter?.value !== undefined && cachedFilter?.value !== null && cachedFilter?.value !== '';
-        if (cachedFilter?.field && hasCachedValue) {
-          params.set('transactionTypeField', cachedFilter.field);
-          params.set('transactionTypeValue', cachedFilter.value);
-        }
-        const res = await fetch(`${API_BASE}/transaction_temporaries/summary${
-          params.size > 0 ? `?${params.toString()}` : ''
-        }`, {
-          credentials: 'include',
-          skipLoader: true,
-          signal: controller.signal,
-        });
-        if (!res.ok) throw new Error('Failed to load summary');
-        const data = await res.json().catch(() => ({}));
-        evaluateCounts(data);
-      } catch (err) {
-        if (err?.name !== 'AbortError') {
-          // Ignore errors but keep previous counts
-        }
-      } finally {
-        if (refreshStateRef.current?.controller === controller) {
-          refreshStateRef.current = null;
-        }
+    try {
+      const params = new URLSearchParams();
+      const cachedFilter = readCachedTemporaryFilter();
+      const hasCachedValue =
+        cachedFilter?.value !== undefined && cachedFilter?.value !== null && cachedFilter?.value !== '';
+      if (cachedFilter?.field && hasCachedValue) {
+        params.set('transactionTypeField', cachedFilter.field);
+        params.set('transactionTypeValue', cachedFilter.value);
       }
-    })();
-
-    refreshStateRef.current = { controller, promise };
-    return promise;
+      const res = await fetch(`${API_BASE}/transaction_temporaries/summary${
+        params.size > 0 ? `?${params.toString()}` : ''
+      }`, {
+        credentials: 'include',
+        skipLoader: true,
+      });
+      if (!res.ok) throw new Error('Failed to load summary');
+      const data = await res.json().catch(() => ({}));
+      evaluateCounts(data);
+    } catch {
+      // Ignore errors but keep previous counts
+    }
   }, [evaluateCounts]);
 
   useEffect(() => {
@@ -188,11 +170,6 @@ export default function useTemporaryNotificationCounts(empid) {
       cancelled = true;
       window.removeEventListener('transaction-temporary-refresh', handler);
       clearInterval(timer);
-      try {
-        refreshStateRef.current?.controller?.abort();
-      } catch {
-        // ignore abort errors
-      }
     };
   }, [intervalSeconds, refresh]);
 
@@ -232,7 +209,7 @@ export default function useTemporaryNotificationCounts(empid) {
   }, [markScopeSeen]);
 
   const fetchScopeEntries = useCallback(async (scope, options = {}) => {
-    const { limit = 5, status = 'pending', signal: externalSignal } = options || {};
+    const { limit = 5, status = 'pending' } = options || {};
     if (!SCOPES.includes(scope)) return [];
     const params = new URLSearchParams({ scope });
     if (status && typeof status === 'string') {
@@ -245,13 +222,10 @@ export default function useTemporaryNotificationCounts(empid) {
       params.set('transactionTypeField', cachedFilter.field);
       params.set('transactionTypeValue', cachedFilter.value);
     }
-    const controller = new AbortController();
-    const signal = externalSignal || controller.signal;
     try {
       const res = await fetch(`${API_BASE}/transaction_temporaries?${params.toString()}`, {
         credentials: 'include',
         skipLoader: true,
-        signal,
       });
       if (!res.ok) throw new Error('Failed');
       const data = await res.json().catch(() => ({}));
@@ -260,11 +234,8 @@ export default function useTemporaryNotificationCounts(empid) {
         return rows.slice(0, limit);
       }
       return rows;
-    } catch (err) {
-      if (err?.name === 'AbortError') return [];
+    } catch {
       return [];
-    } finally {
-      if (!externalSignal) controller.abort();
     }
   }, []);
 
