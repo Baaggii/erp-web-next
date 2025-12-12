@@ -4304,15 +4304,15 @@ const TableManager = forwardRef(function TableManager({
             );
           }
         }
-        setTemporaryList((prev) => {
-          if (!Array.isArray(prev) || prev.length === 0) return prev;
-          const targetId = String(id);
-          const filtered = prev.filter((entry) => getTemporaryId(entry) !== targetId);
-          return filtered.length === prev.length ? prev : filtered;
-        });
-        await refreshTemporaryQueuesAfterDecision({ focusId: id });
-        setLocalRefresh((r) => r + 1);
       }
+      setTemporaryList((prev) => {
+        if (!Array.isArray(prev) || prev.length === 0) return prev;
+        const targetId = String(id);
+        const filtered = prev.filter((entry) => getTemporaryId(entry) !== targetId);
+        return filtered.length === prev.length ? prev : filtered;
+      });
+      await refreshTemporaryQueuesAfterDecision({ focusId: id });
+      setLocalRefresh((r) => r + 1);
       return true;
     } catch (err) {
       console.error(err);
