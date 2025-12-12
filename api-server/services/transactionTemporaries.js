@@ -1219,7 +1219,7 @@ export async function promoteTemporarySubmission(
         ],
       );
       const forwardTemporaryId = forwardResult?.insertId || null;
-      const forwardChainIds = buildChainIdsForUpdate(forwardMeta, id);
+      const forwardChainIds = buildChainIdsForUpdate(updatedForwardMeta, id);
       await updateTemporaryChainStatus(conn, forwardChainIds, {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
