@@ -3333,6 +3333,15 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!selectedVariationKey) return;
+    const variationPayload = getVariationExamplePayload(selectedVariationKey);
+    if (variationPayload && typeof variationPayload === 'object') {
+      try {
+        const pretty = JSON.stringify(variationPayload, null, 2);
+        setFormState((prev) => ({ ...prev, requestSampleText: pretty }));
+      } catch {
+        // ignore formatting errors
+      }
+    }
     const selections = buildSelectionsForVariation(selectedVariationKey);
     setRequestFieldValues(selections);
     syncRequestSampleFromSelections(selections);
