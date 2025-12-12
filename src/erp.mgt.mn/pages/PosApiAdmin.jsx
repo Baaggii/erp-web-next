@@ -1313,22 +1313,6 @@ function parseExampleBody(body) {
   return { value: body };
 }
 
-function looksLikeSchemaObject(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  return (
-    Object.prototype.hasOwnProperty.call(value, 'type')
-    || Object.prototype.hasOwnProperty.call(value, 'properties')
-    || Object.prototype.hasOwnProperty.call(value, 'items')
-  );
-}
-
-function normalizeRequestExample(example, fallback = {}) {
-  const parsed = parseExamplePayload(example);
-  if (!parsed && parsed !== 0) return fallback;
-  if (looksLikeSchemaObject(parsed)) return fallback;
-  return parsed;
-}
-
 function flattenExampleFields(example, prefix = '') {
   const fields = [];
   if (Array.isArray(example)) {
@@ -1366,10 +1350,7 @@ function buildVariationsFromExamples(examples = []) {
         (example && typeof example.name === 'string' && example.name)
         || (example && typeof example.title === 'string' && example.title)
         || key;
-      const body = normalizeRequestExample(
-        parseExampleBody(example?.request?.body ?? example?.request ?? example?.body),
-        {},
-      );
+      const body = parseExampleBody(example?.request?.body ?? example?.request ?? example?.body);
       const fields = flattenExampleFields(body).map((entry) => ({
         field: entry.field,
         requiredCommon: false,
@@ -1467,19 +1448,15 @@ function mergeVariationsWithExamples(existing = [], examples = []) {
     const key = variation?.key || variation?.name || `variation-${index + 1}`;
     if (!key) return;
     const base = map.get(key) || {};
-    const requestExample = normalizeRequestExample(
-      variation.requestExample || base.requestExample,
-      normalizeRequestExample(base.requestExample, {}),
-    );
     map.set(key, {
       ...base,
       ...variation,
       key,
       name: variation.name || base.name || key,
-      requestExample,
+      requestExample: variation.requestExample || base.requestExample,
       requestExampleText:
         variation.requestExampleText
-        || (requestExample ? toPrettyJson(requestExample, '{}') : undefined),
+        || (base.requestExample ? toPrettyJson(base.requestExample, '{}') : undefined),
       requestFields: mergeRequestFieldHints(base.requestFields || [], variation.requestFields || []),
     });
   });
@@ -1771,10 +1748,7 @@ function createFormState(definition) {
         ),
       }))
       : [];
-    const requestExample = normalizeRequestExample(
-      variation.requestExample || variation.request?.body,
-      {},
-    );
+    const requestExample = variation.requestExample || variation.request?.body || {};
     return {
       key: variation.key || variation.name || `variation-${index + 1}`,
       name: variation.name || variation.key || `Variation ${index + 1}`,
@@ -1787,20 +1761,6 @@ function createFormState(definition) {
   const hasRequestSchema = hasObjectEntries(definition.requestBody?.schema);
   const requestSchema = hasRequestSchema ? definition.requestBody.schema : {};
   const requestSchemaFallback = '{}';
-
-  const requestSampleCandidate = (() => {
-    const candidates = [definition.requestSample, definition.requestBody?.example, definition.requestExample];
-    for (let i = 0; i < candidates.length; i += 1) {
-      const normalized = normalizeRequestExample(candidates[i]);
-      if (normalized && typeof normalized === 'object' && !Array.isArray(normalized)) {
-        if (Object.keys(normalized).length === 0) continue;
-      }
-      if (normalized !== undefined && normalized !== null && normalized !== '') {
-        return normalized;
-      }
-    }
-    return null;
-  })();
 
   const buildUrlFieldState = (key) => {
     const literalCandidate = definition[key];
@@ -1828,7 +1788,10 @@ function createFormState(definition) {
     parametersText: toPrettyJson(definition.parameters, '[]'),
     requestDescription: definition.requestBody?.description || '',
     requestSampleText: toPrettyJson(
-      requestSampleCandidate || BASE_COMPLEX_REQUEST_SCHEMA,
+      definition.requestSample
+        || definition.requestBody?.example
+        || definition.requestExample
+        || BASE_COMPLEX_REQUEST_SCHEMA,
       JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
     ),
     requestSampleNotes: definition.requestSampleNotes || '',
@@ -6156,7 +6119,7 @@ export default function PosApiAdmin() {
   }
 
   function mergeArrays(base, modifier, path) {
-    if (!Array.isArray(base)) return base;
+    if (!Array.isArray(base)) return Array.isArray(modifier) ? modifier : base;
     if (!Array.isArray(modifier) || modifier.length === 0) return base;
     if (path.endsWith('payments')) {
       const merged = base.map((entry) => ({ ...entry }));
@@ -6165,16 +6128,19 @@ export default function PosApiAdmin() {
         const targetIndex = merged.findIndex((item) => item?.type === payment.type);
         if (targetIndex >= 0) {
           merged[targetIndex] = mergePayloads(merged[targetIndex], payment, `${path}[${targetIndex}]`);
+        } else {
+          merged.push(payment);
         }
       });
       return merged;
     }
-    const merged = base.map((entry) => (entry && typeof entry === 'object' ? { ...entry } : entry));
+    const merged = base.map((entry) => entry);
     modifier.forEach((value, idx) => {
-      if (idx >= merged.length) return;
-      if (merged[idx] && typeof merged[idx] === 'object' && typeof value === 'object') {
+      if (idx < merged.length && merged[idx] && typeof merged[idx] === 'object' && typeof value === 'object') {
         merged[idx] = mergePayloads(merged[idx], value, `${path}[${idx}]`);
-      } else if (value !== undefined) {
+      } else if (idx >= merged.length) {
+        merged.push(value);
+      } else {
         merged[idx] = value;
       }
     });
@@ -6188,9 +6154,6 @@ export default function PosApiAdmin() {
     if (!modifier || typeof modifier !== 'object') return base;
     const source = base && typeof base === 'object' ? { ...base } : {};
     Object.entries(modifier).forEach(([key, value]) => {
-      if (base && typeof base === 'object' && !Object.prototype.hasOwnProperty.call(base, key)) {
-        return;
-      }
       const nextPath = path ? `${path}.${key}` : key;
       if (Array.isArray(value) || typeof value === 'object') {
         source[key] = mergePayloads(source[key], value, nextPath);
@@ -6229,14 +6192,11 @@ export default function PosApiAdmin() {
 
   function getVariationExamplePayload(key) {
     if (key === BASE_COMBINATION_KEY) {
-      return normalizeRequestExample(formState.requestSampleText || {}, {});
+      return parseExamplePayload(formState.requestSampleText || formState.requestSchemaText || {});
     }
     const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
     if (baseVariation) {
-      return normalizeRequestExample(
-        baseVariation.requestExampleText || baseVariation.requestExample || {},
-        {},
-      );
+      return parseExamplePayload(baseVariation.requestExampleText || baseVariation.requestExample || {});
     }
     const exampleEntry = exampleVariationMap.get(key);
     if (exampleEntry) {
@@ -6244,7 +6204,7 @@ export default function PosApiAdmin() {
         ?? exampleEntry.request?.body
         ?? exampleEntry.body
         ?? exampleEntry;
-      return normalizeRequestExample(payloadCandidate, {});
+      return parseExamplePayload(payloadCandidate);
     }
     return {};
   }
@@ -6581,14 +6541,12 @@ export default function PosApiAdmin() {
     }
 
     let builtPayload = null;
-    if (!payloadOverride) {
-      try {
-        builtPayload = buildCombinationPayload();
-      } catch (err) {
-        builtPayload = null;
-        if (combinationError && !payloadOverride) {
-          setCombinationError(err.message || 'Unable to build test payload from modifiers.');
-        }
+    try {
+      builtPayload = buildCombinationPayload();
+    } catch (err) {
+      builtPayload = null;
+      if (combinationError && !payloadOverride) {
+        setCombinationError(err.message || 'Unable to build test payload from modifiers.');
       }
     }
 
