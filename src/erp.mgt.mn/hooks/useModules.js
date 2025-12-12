@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useContext, useRef } from 'react';
+import { useEffect, useMemo, useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext.jsx';
 import { debugLog } from '../utils/debug.js';
 import useGeneralConfig from '../hooks/useGeneralConfig.js';
@@ -36,11 +36,9 @@ export function useModules() {
   const txnModules = useTxnModules();
   const txnSignature = useMemo(() => computeTxnSignature(txnModules), [txnModules]);
   const [modules, setModules] = useState(cache.data || []);
-  const pendingKeyRef = useRef(null);
 
-  async function fetchModules(signature = txnSignature, requestKey = '') {
+  async function fetchModules(signature = txnSignature) {
     try {
-      pendingKeyRef.current = requestKey;
       // Server returns modules already filtered by license and permission.
       const res = await fetch('/api/modules', { credentials: 'include' });
       let rows = res.ok ? await res.json() : [];
@@ -133,17 +131,12 @@ export function useModules() {
       cache.prefix = generalConfig?.general?.reportProcPrefix;
       cache.txnSignature = signature;
       setModules([]);
-    } finally {
-      if (pendingKeyRef.current === requestKey) {
-        pendingKeyRef.current = null;
-      }
     }
   }
 
   useEffect(() => {
     debugLog('useModules effect: initial fetch');
     const prefix = generalConfig?.general?.reportProcPrefix;
-    const requestKey = [branch ?? '', department ?? '', prefix ?? '', txnSignature ?? ''].join('|');
     if (
       !cache.data ||
       cache.branchId !== branch ||
@@ -151,9 +144,7 @@ export function useModules() {
       cache.prefix !== prefix ||
       cache.txnSignature !== txnSignature
     ) {
-      if (pendingKeyRef.current !== requestKey) {
-        fetchModules(txnSignature, requestKey);
-      }
+      fetchModules(txnSignature);
     } else {
       setModules(cache.data);
     }

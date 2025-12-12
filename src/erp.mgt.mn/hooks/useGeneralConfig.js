@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 const cache = { data: null };
 
@@ -12,7 +12,6 @@ export function updateCache(data) {
 
 export default function useGeneralConfig() {
   const [cfg, setCfg] = useState(cache.data);
-  const hasRequestedRef = useRef(false);
 
   useEffect(() => {
     if (cache.data !== null) {
@@ -20,8 +19,7 @@ export default function useGeneralConfig() {
       if (cache.data.general) {
         window.erpDebug = !!cache.data.general.debugLoggingEnabled;
       }
-    } else if (!hasRequestedRef.current) {
-      hasRequestedRef.current = true;
+    } else {
       fetch('/api/general_config', { credentials: 'include' })
         .then(res => (res.ok ? res.json() : {}))
         .then(data => {
