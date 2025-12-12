@@ -1370,6 +1370,140 @@ function buildVariationsFromExamples(examples = []) {
     .filter(Boolean);
 }
 
+function mergeExampleBodies(base = {}, override = {}) {
+  if (Array.isArray(base) || Array.isArray(override)) {
+    return Array.isArray(override) ? override : base;
+  }
+  if (!base || typeof base !== 'object') return override && typeof override === 'object' ? override : base;
+  if (!override || typeof override !== 'object') return base;
+  const result = { ...base };
+  Object.entries(override).forEach(([key, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value) && base[key] && typeof base[key] === 'object') {
+      result[key] = mergeExampleBodies(base[key], value);
+    } else {
+      result[key] = value;
+    }
+  });
+  return result;
+}
+
+function buildVariationFieldMetadata(components = [], combinationKey = '') {
+  const map = new Map();
+
+  components.forEach(({ variationKey, requestFields = [] }) => {
+    requestFields.forEach((entry) => {
+      const normalized = normalizeHintEntry(entry);
+      const field = normalized.field?.trim();
+      if (!field) return;
+      const current = map.get(field) || {
+        field,
+        description: normalized.description || '',
+        requiredCommon: Boolean(normalized.requiredCommon || normalized.required),
+        requiredByVariation: {},
+        defaultByVariation: {},
+      };
+
+      const requiredFlag =
+        normalized.requiredCommon
+        || normalized.required
+        || normalized.requiredByVariation?.[variationKey];
+      const defaultFlag = normalized.defaultByVariation?.[variationKey];
+      const defaultValue = normalized.defaultValue;
+
+      const requiredByVariation = { ...current.requiredByVariation };
+      const defaultByVariation = { ...current.defaultByVariation };
+
+      if (combinationKey && requiredFlag !== undefined) {
+        requiredByVariation[combinationKey] = Boolean(requiredFlag);
+      }
+      if (combinationKey) {
+        if (defaultFlag !== undefined) {
+          defaultByVariation[combinationKey] = defaultFlag;
+        } else if (defaultValue !== undefined) {
+          defaultByVariation[combinationKey] = defaultValue;
+        }
+      }
+
+      map.set(field, {
+        ...current,
+        description: current.description || normalized.description || '',
+        requiredCommon: current.requiredCommon || Boolean(normalized.requiredCommon || normalized.required),
+        requiredByVariation,
+        defaultByVariation,
+      });
+    });
+  });
+
+  return Array.from(map.values());
+}
+
+function expandVariationCombinations(variations = []) {
+  const receiptKeys = [];
+  const taxKeys = [];
+  const paymentKeys = [];
+  const normalizedMap = new Map();
+
+  variations.forEach((variation) => {
+    const key = variation?.key || variation?.name;
+    if (!key) return;
+    normalizedMap.set(key, variation);
+    const upper = key.toUpperCase();
+    if (upper.includes('RECEIPT') || VALID_RECEIPT_TYPES.has(upper)) {
+      receiptKeys.push(key);
+    }
+    if (VALID_TAX_TYPES.has(upper)) {
+      taxKeys.push(key);
+    }
+    if (VALID_PAYMENT_METHODS.has(upper)) {
+      paymentKeys.push(key);
+    }
+  });
+
+  if (receiptKeys.length === 0 || taxKeys.length === 0 || paymentKeys.length === 0) {
+    return variations;
+  }
+
+  const combinationKeys = new Set();
+  const combined = variations.slice();
+
+  receiptKeys.forEach((receiptKey) => {
+    taxKeys.forEach((taxKey) => {
+      paymentKeys.forEach((paymentKey) => {
+        const combinationKey = `${receiptKey}|${taxKey}|${paymentKey}`;
+        if (normalizedMap.has(combinationKey) || combinationKeys.has(combinationKey)) return;
+        const receiptVar = normalizedMap.get(receiptKey);
+        const taxVar = normalizedMap.get(taxKey);
+        const paymentVar = normalizedMap.get(paymentKey);
+        const components = [
+          { variationKey: receiptKey, requestFields: receiptVar?.requestFields },
+          { variationKey: taxKey, requestFields: taxVar?.requestFields },
+          { variationKey: paymentKey, requestFields: paymentVar?.requestFields },
+        ];
+        const requestFields = buildVariationFieldMetadata(components, combinationKey);
+        const requestExample = mergeExampleBodies(
+          mergeExampleBodies(receiptVar?.requestExample, taxVar?.requestExample),
+          paymentVar?.requestExample,
+        );
+        combined.push({
+          key: combinationKey,
+          name: combinationKey,
+          enabled:
+            (receiptVar?.enabled !== false)
+            && (taxVar?.enabled !== false)
+            && (paymentVar?.enabled !== false),
+          description: 'Composite variation generated from receipt, tax, and payment examples.',
+          requestExample,
+          requestExampleText: requestExample ? toPrettyJson(requestExample, '{}') : undefined,
+          requestFields,
+        });
+        combinationKeys.add(combinationKey);
+      });
+    });
+  });
+
+  return combined;
+}
+
 function mergeRequestFieldHints(existing = [], variationFields = []) {
   const map = new Map();
 
@@ -1457,7 +1591,8 @@ function mergeVariationsWithExamples(existing = [], examples = []) {
       requestFields: mergeRequestFieldHints(base.requestFields || [], variation.requestFields || []),
     });
   });
-  return Array.from(map.values());
+  const mergedList = Array.from(map.values());
+  return expandVariationCombinations(mergedList);
 }
 
 function extractResponseFieldMappings(definition) {
