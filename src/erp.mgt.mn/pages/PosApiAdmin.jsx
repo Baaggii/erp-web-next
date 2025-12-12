@@ -1370,6 +1370,146 @@ function buildVariationsFromExamples(examples = []) {
     .filter(Boolean);
 }
 
+function mergeExampleBodies(base, addition) {
+  if (Array.isArray(base) && Array.isArray(addition)) {
+    return addition.length > 0 ? addition : base;
+  }
+  if (base && typeof base === 'object' && !Array.isArray(base) && addition && typeof addition === 'object' && !Array.isArray(addition)) {
+    const result = { ...base };
+    Object.entries(addition).forEach(([key, value]) => {
+      if (value === undefined) return;
+      const existing = base[key];
+      if (
+        existing
+        && typeof existing === 'object'
+        && !Array.isArray(existing)
+        && value
+        && typeof value === 'object'
+        && !Array.isArray(value)
+      ) {
+        result[key] = mergeExampleBodies(existing, value);
+      } else {
+        result[key] = value;
+      }
+    });
+    return result;
+  }
+  return addition !== undefined ? addition : base;
+}
+
+function mergeVariationFieldsForKey(pieces, variationKey) {
+  const fieldMap = new Map();
+
+  pieces.forEach((piece, index) => {
+    const sourceKey = piece?.key || piece?.name || `variation-${index + 1}`;
+    (piece?.requestFields || []).forEach((field) => {
+      const normalized = normalizeHintEntry(field);
+      const fieldLabel = normalized.field?.trim();
+      if (!fieldLabel) return;
+      const current = fieldMap.get(fieldLabel) || {
+        field: fieldLabel,
+        description: normalized.description || '',
+        requiredCommon: Boolean(normalized.requiredCommon || normalized.required),
+        requiredByVariation: {},
+        defaultByVariation: {},
+      };
+      const requiredByVariation = { ...current.requiredByVariation };
+      const defaultByVariation = { ...current.defaultByVariation };
+      const requiredForSource = Boolean(
+        normalized.requiredCommon
+        || normalized.required
+        || normalized.requiredByVariation?.[sourceKey]
+        || normalized.requiredVariations?.[sourceKey],
+      );
+      const defaultForSource = normalized.defaultByVariation?.[sourceKey];
+      if (requiredForSource) {
+        requiredByVariation[variationKey] = true;
+      }
+      if (defaultForSource !== undefined) {
+        defaultByVariation[variationKey] = defaultForSource;
+      } else if (normalized.defaultValue !== undefined) {
+        defaultByVariation[variationKey] = normalized.defaultValue;
+      }
+      fieldMap.set(fieldLabel, {
+        ...current,
+        description: current.description || normalized.description || '',
+        requiredCommon: current.requiredCommon || Boolean(normalized.requiredCommon || normalized.required),
+        requiredByVariation,
+        defaultByVariation,
+      });
+    });
+  });
+
+  return Array.from(fieldMap.values());
+}
+
+function buildCombinationVariation(receiptVariation, taxVariation, paymentVariation) {
+  const pieces = [receiptVariation, taxVariation, paymentVariation].filter(Boolean);
+  const keyParts = pieces.map((piece) => piece?.key || piece?.name).filter(Boolean);
+  const key = keyParts.join('|') || 'variation-combination';
+  const name = keyParts.join(' | ') || 'Variation combination';
+  const description = pieces
+    .map((piece) => piece?.description)
+    .filter(Boolean)
+    .join(' / ');
+  const enabled = pieces.every((piece) => piece?.enabled !== false);
+  const requestExample = pieces.reduce((acc, piece) => mergeExampleBodies(acc, piece?.requestExample || {}), {});
+  const requestFields = mergeVariationFieldsForKey(pieces, key);
+  return {
+    key,
+    name,
+    description,
+    enabled,
+    requestExample,
+    requestFields,
+  };
+}
+
+function expandCombinationVariations(variations = []) {
+  const receiptVariations = [];
+  const taxVariations = [];
+  const paymentVariations = [];
+  const passthrough = [];
+
+  variations.forEach((variation, index) => {
+    const key = variation?.key || variation?.name || `variation-${index + 1}`;
+    if (VALID_RECEIPT_TYPES.has(key)) {
+      receiptVariations.push(variation);
+    } else if (VALID_TAX_TYPES.has(key)) {
+      taxVariations.push(variation);
+    } else if (VALID_PAYMENT_METHODS.has(key)) {
+      paymentVariations.push(variation);
+    } else {
+      passthrough.push(variation);
+    }
+  });
+
+  const combinations = [];
+  const receiptList = receiptVariations.length > 0 ? receiptVariations : [null];
+  const taxList = taxVariations.length > 0 ? taxVariations : [null];
+  const paymentList = paymentVariations.length > 0 ? paymentVariations : [null];
+
+  receiptList.forEach((receipt) => {
+    taxList.forEach((tax) => {
+      paymentList.forEach((payment) => {
+        const pieces = [receipt, tax, payment].filter(Boolean);
+        if (pieces.length === 0) return;
+        combinations.push(buildCombinationVariation(receipt, tax, payment));
+      });
+    });
+  });
+
+  if (combinations.length === 0) return variations;
+
+  const map = new Map();
+  [...passthrough, ...combinations].forEach((variation, index) => {
+    const key = variation?.key || variation?.name || `variation-${index + 1}`;
+    if (!key) return;
+    map.set(key, { ...variation, key });
+  });
+  return Array.from(map.values());
+}
+
 function mergeRequestFieldHints(existing = [], variationFields = []) {
   const map = new Map();
 
@@ -1457,7 +1597,7 @@ function mergeVariationsWithExamples(existing = [], examples = []) {
       requestFields: mergeRequestFieldHints(base.requestFields || [], variation.requestFields || []),
     });
   });
-  return Array.from(map.values());
+  return expandCombinationVariations(Array.from(map.values()));
 }
 
 function extractResponseFieldMappings(definition) {
