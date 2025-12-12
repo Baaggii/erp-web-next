@@ -1070,6 +1070,14 @@ export async function promoteTemporarySubmission(
       promoteAsTemporary === true &&
       forwardReviewerEmpId &&
       forwardReviewerEmpId !== normalizedReviewer;
+    const forwardChain = Array.from(new Set([...(forwardMeta.chainIds || []), row.id]));
+    const updatedForwardMeta = {
+      ...forwardMeta,
+      originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
+      rootTemporaryId: forwardMeta.rootTemporaryId || row.id,
+      parentTemporaryId: row.id,
+      chainIds: forwardChain,
+    };
     const trimmedNotes =
       typeof notes === 'string' && notes.trim() ? notes.trim() : '';
     const baseReviewNotes = trimmedNotes ? trimmedNotes : null;
@@ -1187,14 +1195,6 @@ export async function promoteTemporarySubmission(
       Object.entries(sanitizedValues).forEach(([key, value]) => {
         sanitizedPayloadValues[key] = value;
       });
-      const forwardChain = Array.from(new Set([...(forwardMeta.chainIds || []), row.id]));
-      const updatedForwardMeta = {
-        ...forwardMeta,
-        originCreator: forwardMeta.originCreator || normalizeEmpId(row.created_by),
-        rootTemporaryId: forwardMeta.rootTemporaryId || row.id,
-        parentTemporaryId: row.id,
-        chainIds: forwardChain,
-      };
       mergedPayload.cleanedValues = sanitizedPayloadValues;
       mergedPayload.forwardMeta = updatedForwardMeta;
       const [forwardResult] = await conn.query(
@@ -1254,7 +1254,7 @@ export async function promoteTemporarySubmission(
         message: `Temporary submission pending review for ${row.table_name}`,
         type: 'request',
       });
-      const originRecipient = forwardMeta.originCreator || row.created_by;
+      const originRecipient = updatedForwardMeta.originCreator || row.created_by;
       if (originRecipient) {
         await insertNotification(conn, {
           companyId: row.company_id,
@@ -1404,7 +1404,7 @@ export async function promoteTemporarySubmission(
        WHERE id = ?`,
       [normalizedReviewer, reviewNotesValue ?? null, promotedId, id],
     );
-    const chainIds = buildChainIdsForUpdate(forwardMeta, id);
+    const chainIds = buildChainIdsForUpdate(updatedForwardMeta, id);
     await updateTemporaryChainStatus(conn, chainIds, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
@@ -1427,7 +1427,7 @@ export async function promoteTemporarySubmission(
       },
       conn,
     );
-    const originRecipient = forwardMeta.originCreator;
+    const originRecipient = updatedForwardMeta.originCreator;
     await insertNotification(conn, {
       companyId: row.company_id,
       recipientEmpId: row.created_by,
