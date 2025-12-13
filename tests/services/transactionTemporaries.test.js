@@ -741,7 +741,7 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       if (sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`')) {
         return [[], []];
       }
-      if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
+      if (sql.startsWith('SELECT id, chain_id AS chainId') && sql.includes('WHERE id = ?')) {
         return [[chainRows[0]]];
       }
       if (sql.startsWith('SELECT id, chain_id AS chainId')) {
@@ -768,6 +768,7 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       [501, 502],
     );
     assert.equal(result.reviewHistory.length, 1);
+    assert.ok(!queries.some(({ sql }) => sql.includes('chain_uuid')));
     assert.ok(conn.released);
   } finally {
     db.pool.getConnection = originalGetConnection;

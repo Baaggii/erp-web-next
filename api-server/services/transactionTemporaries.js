@@ -1246,7 +1246,10 @@ export async function getTemporaryChainHistory(id) {
   try {
     await ensureTemporaryTable(conn);
     const [rows] = await conn.query(
-      `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? LIMIT 1`,
+      `SELECT id, chain_id AS chainId, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
+         FROM \`${TEMP_TABLE}\`
+        WHERE id = ?
+        LIMIT 1`,
       [normalizedId],
     );
     const row = rows[0];
