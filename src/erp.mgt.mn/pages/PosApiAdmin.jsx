@@ -6712,7 +6712,15 @@ export default function PosApiAdmin() {
 
   function parseJsonPayloadFromText(label, text, options = {}) {
     const trimmed = (text || '').trim();
-    if (!trimmed) return {};
+    if (!trimmed) {
+      const message = `${label} cannot be empty.`;
+      const setErrorState = options.setErrorState;
+      if (typeof setErrorState === 'function') {
+        setErrorState(message);
+      }
+      showToast(message, 'error');
+      throw new Error(message);
+    }
     try {
       return JSON.parse(text);
     } catch (err) {
