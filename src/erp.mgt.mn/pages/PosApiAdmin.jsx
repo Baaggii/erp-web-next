@@ -3429,13 +3429,12 @@ export default function PosApiAdmin() {
     const variationDefinition = activeVariations.find(
       (entry) => (entry.key || entry.name) === selectedVariationKey,
     );
-    const variationPayload = variationDefinition
-      ? toSamplePayload(variationDefinition.requestExample ?? (variationDefinition.requestExampleText || {}))
-      : getVariationExamplePayload(selectedVariationKey);
-    const prettyPayload = variationPayload && typeof variationPayload === 'object'
-      ? JSON.stringify(variationPayload, null, 2)
-      : '';
-    const formattedSample = prettyPayload || JSON.stringify({}, null, 2);
+    const variationPayload = sanitizeRequestExampleForSample(
+      variationDefinition?.requestExample
+        ?? variationDefinition?.requestExampleText
+        ?? getVariationExamplePayload(selectedVariationKey),
+    );
+    const formattedSample = JSON.stringify(variationPayload || {}, null, 2);
     setRequestSampleText(formattedSample);
     const selectionsFromSample = deriveRequestFieldSelections({
       requestSampleText: formattedSample,
@@ -3445,7 +3444,6 @@ export default function PosApiAdmin() {
     const variationSelections = buildSelectionsForVariation(selectedVariationKey);
     const mergedSelections = { ...selectionsFromSample, ...variationSelections };
     setRequestFieldValues(mergedSelections);
-    syncRequestSampleFromSelections(mergedSelections, formattedSample);
     setFormState((prev) => ({
       ...prev,
       requestEnvMap: buildRequestEnvMap(mergedSelections),
@@ -4831,10 +4829,12 @@ export default function PosApiAdmin() {
       nextRequestFieldValues = {};
     }
 
-    const resolvedSample = nextFormState.requestSampleText
-      || JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
-    setBaseRequestJson(resolvedSample);
-    setRequestSampleText(resolvedSample);
+    const resolvedSample = sanitizeRequestExampleForSample(
+      parseExamplePayload(nextFormState.requestSampleText || BASE_COMPLEX_REQUEST_SCHEMA),
+    );
+    const formattedSample = JSON.stringify(resolvedSample, null, 2);
+    setBaseRequestJson(formattedSample);
+    setRequestSampleText(formattedSample);
 
     setStatus('');
     resetTestState();
@@ -6184,8 +6184,9 @@ export default function PosApiAdmin() {
 
   function syncRequestSampleFromSelections(nextSelections, baseOverride) {
     let baseSample = {};
+    const baseText = baseOverride ?? baseRequestJson ?? requestSampleText ?? '{}';
     try {
-      baseSample = JSON.parse(baseOverride ?? requestSampleText ?? '{}');
+      baseSample = JSON.parse(baseText);
     } catch {
       baseSample = {};
     }
@@ -6654,8 +6655,9 @@ export default function PosApiAdmin() {
     setImportBaseUrl('');
     setImportBaseUrlEnvVar('');
     setImportBaseUrlMode('literal');
-    setBaseRequestJson(JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2));
-    setRequestSampleText(JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2));
+    const cleanBase = JSON.stringify(sanitizeRequestExampleForSample(BASE_COMPLEX_REQUEST_SCHEMA), null, 2);
+    setBaseRequestJson(cleanBase);
+    setRequestSampleText(cleanBase);
     setTestEnvironment('staging');
     setImportAuthEndpointId('');
     setUseCachedToken(true);
