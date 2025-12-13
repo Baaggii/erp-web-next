@@ -1421,6 +1421,15 @@ function toSamplePayload(raw) {
   return sanitizeRequestExampleForSample(parseExamplePayload(raw));
 }
 
+function cleanSampleText(text) {
+  if (!text) return {};
+  try {
+    return stripRequestDecorations(JSON.parse(text));
+  } catch {
+    return {};
+  }
+}
+
 function buildVariationsFromExamples(examples = []) {
   return examples
     .map((example, index) => {
@@ -3426,8 +3435,8 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!selectedVariationKey) return;
-    const variationPayload = resolveVariationExampleForTesting(selectedVariationKey)
-      || sanitizeRequestExampleForSample(toSamplePayload(baseRequestJson || {}));
+    const variationPayload = resolveVariationRequestExample(selectedVariationKey)
+      || cleanSampleText(baseRequestJson || '{}');
     const formattedSample = JSON.stringify(variationPayload || {}, null, 2);
     setRequestSampleText(formattedSample);
     const selectionsFromSample = deriveRequestFieldSelections({
@@ -6188,13 +6197,8 @@ export default function PosApiAdmin() {
   }
 
   function syncRequestSampleFromSelections(nextSelections, baseOverride) {
-    let baseSample = {};
     const baseText = baseOverride ?? baseRequestJson ?? '{}';
-    try {
-      baseSample = JSON.parse(baseText);
-    } catch {
-      baseSample = {};
-    }
+    const baseSample = cleanSampleText(baseText);
     const activeSelections = Object.entries(nextSelections || {}).reduce((acc, [path, entry]) => {
       if (entry?.applyToBody === false) return acc;
       acc[path] = entry;
@@ -6273,6 +6277,22 @@ export default function PosApiAdmin() {
       const nextPath = path ? `${path}.${key}` : key;
       if (Array.isArray(value) || typeof value === 'object') {
         source[key] = mergePayloads(source[key], value, nextPath);
+      } else {
+        source[key] = value;
+      }
+    });
+    return source;
+  }
+
+  function applyPayloadOverlay(base, modifier) {
+    const source = base && typeof base === 'object' ? deepClone(base) : {};
+    if (!modifier || typeof modifier !== 'object') return source;
+    Object.entries(modifier).forEach(([key, value]) => {
+      if (Array.isArray(value)) {
+        source[key] = deepClone(value);
+      } else if (value && typeof value === 'object') {
+        const existing = source[key] && typeof source[key] === 'object' ? source[key] : {};
+        source[key] = applyPayloadOverlay(existing, value);
       } else {
         source[key] = value;
       }
@@ -6362,21 +6382,25 @@ export default function PosApiAdmin() {
     return [];
   }
 
-  function resolveVariationExampleForTesting(key) {
+  function resolveVariationRequestExample(key) {
     if (!key) return null;
     const variation = activeVariations.find((entry) => (entry.key || entry.name) === key);
     if (variation) {
-      const rawExample = variation.requestExample ?? variation.requestExampleText;
-      const parsed = parseExamplePayload(rawExample);
-      if (parsed && typeof parsed === 'object') {
-        return sanitizeRequestExampleForSample(parsed);
-      }
+      return toSamplePayload(variation.requestExample ?? variation.requestExampleText ?? {});
     }
     const exampleEntry = exampleVariationMap.get(key);
     if (exampleEntry) {
-      const rawExample = exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body;
-      return sanitizeRequestExampleForSample(parseExamplePayload(rawExample));
+      return toSamplePayload(
+        exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body ?? exampleEntry,
+      );
     }
+    return null;
+  }
+
+  function resolveVariationExampleForTesting(key) {
+    if (!key) return null;
+    const variationExample = resolveVariationRequestExample(key);
+    if (variationExample) return sanitizeRequestExampleForSample(variationExample);
     return null;
   }
 
@@ -6384,15 +6408,18 @@ export default function PosApiAdmin() {
     if (!baseKey) {
       throw new Error('Select a base variation to build a combination.');
     }
-    const baseFromText = toSamplePayload(baseRequestJson || {});
-    let mergedPayload = { ...baseFromText };
-    if (baseKey && baseKey !== BASE_COMBINATION_KEY) {
-      const basePayload = getVariationExamplePayload(baseKey, true);
-      mergedPayload = mergePayloads(mergedPayload, basePayload);
+    const basePayload = cleanSampleText(baseRequestJson);
+    let mergedPayload = deepClone(basePayload || {});
+    if (baseKey !== BASE_COMBINATION_KEY) {
+      const baseOverlay = getVariationExamplePayload(baseKey, false, true);
+      if (baseOverlay && Object.keys(baseOverlay).length > 0) {
+        mergedPayload = applyPayloadOverlay(mergedPayload, baseOverlay);
+      }
     }
     modifierKeys.forEach((key) => {
       const modifierPayload = getVariationExamplePayload(key, false, true);
-      mergedPayload = mergePayloads(mergedPayload, modifierPayload);
+      if (!modifierPayload || Object.keys(modifierPayload).length === 0) return;
+      mergedPayload = applyPayloadOverlay(mergedPayload, modifierPayload);
     });
     return mergedPayload;
   }
@@ -6401,21 +6428,13 @@ export default function PosApiAdmin() {
     let payloadCandidate = {};
     let allowedFields = [];
     if (key === BASE_COMBINATION_KEY) {
-      payloadCandidate = toSamplePayload(baseRequestJson || {});
+      payloadCandidate = cleanSampleText(baseRequestJson);
     } else {
-      const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
-      if (baseVariation) {
-        payloadCandidate =
-          baseVariation.requestExample ?? toSamplePayload(baseVariation.requestExampleText || {});
-        allowedFields = getAllowedFieldsForVariation(key);
-      } else {
-        const exampleEntry = exampleVariationMap.get(key);
-        if (exampleEntry) {
-          payloadCandidate = toSamplePayload(
-            exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body ?? exampleEntry,
-          );
-        }
+      const variationExample = resolveVariationRequestExample(key);
+      if (variationExample) {
+        payloadCandidate = variationExample;
       }
+      allowedFields = getAllowedFieldsForVariation(key);
     }
     if (isModifier) {
       if (allowedFields.length === 0) {
