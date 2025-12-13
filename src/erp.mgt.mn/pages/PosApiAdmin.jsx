@@ -6408,14 +6408,11 @@ export default function PosApiAdmin() {
     if (!baseKey) {
       throw new Error('Select a base variation to build a combination.');
     }
-    const basePayload = cleanSampleText(baseRequestJson);
-    let mergedPayload = deepClone(basePayload || {});
-    if (baseKey !== BASE_COMBINATION_KEY) {
-      const baseOverlay = getVariationExamplePayload(baseKey, false, true);
-      if (baseOverlay && Object.keys(baseOverlay).length > 0) {
-        mergedPayload = applyPayloadOverlay(mergedPayload, baseOverlay);
-      }
-    }
+    const baseFromText = cleanSampleText(baseRequestJson);
+    const variationBase = baseKey && baseKey !== BASE_COMBINATION_KEY
+      ? resolveVariationRequestExample(baseKey)
+      : null;
+    let mergedPayload = deepClone(variationBase || baseFromText || {});
     modifierKeys.forEach((key) => {
       const modifierPayload = getVariationExamplePayload(key, false, true);
       if (!modifierPayload || Object.keys(modifierPayload).length === 0) return;
