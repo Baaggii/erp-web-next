@@ -9,6 +9,7 @@ import {
   resolveChainIdsForUpdate,
   promoteTemporarySubmission,
   getTemporaryChainHistory,
+  listTemporarySubmissions,
 } from '../../api-server/services/transactionTemporaries.js';
 
 function mockQuery(handler) {
@@ -27,6 +28,24 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       queries.push({ sql, params });
       if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
         return [[], []];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
+        return [[{ COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'pending_key' }]];
+      }
+      if (sql.includes('idx_temp_chain_pending')) {
+        return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
+        return [[{ INDEX_NAME: 'idx_temp_status_plan_senior' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+        return [[{ CONSTRAINT_NAME: 'chk_temp_pending_reviewer' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
+        return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
+      }
+      if (sql.includes("WHERE chain_uuid = ? AND status = 'pending' AND id <> ?")) {
+        return [[]];
       }
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return [[], []];
@@ -64,19 +83,25 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
 test('getTemporarySummary marks reviewers even without pending temporaries', async () => {
   const queries = [];
   const restore = mockQuery(async (sql) => {
-    queries.push(sql);
-    if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
-      return [[], []];
-    }
-    if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
-      return [[{ CONSTRAINT_NAME: 'missing' }]];
-    }
-    if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
-      return [[{ INDEX_NAME: 'idx_temp_status_plan_senior' }]];
-    }
-    if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
-      return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
-    }
+      queries.push(sql);
+      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
+        return [[], []];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
+        return [[{ COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'pending_key' }]];
+      }
+      if (sql.includes('idx_temp_chain_pending')) {
+        return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+        return [[{ CONSTRAINT_NAME: 'missing' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
+        return [[{ INDEX_NAME: 'idx_temp_status_plan_senior' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
+        return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
+      }
     if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) {
       return [[], []];
     }
@@ -226,6 +251,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   const temporaryRow = {
     id: 3,
     company_id: 1,
+    chain_uuid: 'chain-forward-1',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -253,7 +279,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
       connectionFactory: async () => conn,
       columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
       employmentSessionFetcher: async () => ({ senior_empid: 'EMP300' }),
-      chainStatusUpdater: async (_c, ids, payload) => chainUpdates.push({ ids, payload }),
+      chainStatusUpdater: async (_c, chainUuid, payload) => chainUpdates.push({ chainUuid, payload }),
       notificationInserter: async (_c, payload) => notifications.push(payload),
       activityLogger: async () => {},
     },
@@ -261,7 +287,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
 
   assert.equal(result.forwardedTo, 'EMP300');
   assert.ok(chainUpdates.length > 0);
-  assert.deepEqual(chainUpdates[0].ids.sort((a, b) => a - b), [1, 2, 3, 5]);
+  assert.equal(chainUpdates[0].chainUuid, 'chain-forward-1');
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
   assert.equal(chainUpdates[0].payload.status, 'promoted');
   assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
@@ -269,8 +295,8 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
   assert.ok(historyInsert);
-  assert.equal(historyInsert.params[1], 'forwarded');
-  assert.equal(historyInsert.params[3], 'EMP300');
+  assert.equal(historyInsert.params[2], 'forwarded');
+  assert.equal(historyInsert.params[4], 'EMP300');
   assert.ok(conn.released);
 });
 
@@ -278,6 +304,7 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   const temporaryRow = {
     id: 7,
     company_id: 1,
+    chain_uuid: 'chain-promote-1',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -305,7 +332,7 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
       connectionFactory: async () => conn,
       columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
       tableInserter: async () => ({ id: 909 }),
-      chainStatusUpdater: async (_c, ids, payload) => chainUpdates.push({ ids, payload }),
+      chainStatusUpdater: async (_c, chainUuid, payload) => chainUpdates.push({ chainUuid, payload }),
       notificationInserter: async (_c, payload) => notifications.push(payload),
       activityLogger: async () => {},
     },
@@ -313,16 +340,15 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
 
   assert.equal(result.promotedRecordId, '909');
   assert.ok(chainUpdates.length > 0);
-  assert.deepEqual(chainUpdates[0].ids.sort((a, b) => a - b), [6, 7, 8]);
+  assert.equal(chainUpdates[0].chainUuid, 'chain-promote-1');
   assert.equal(chainUpdates[0].payload.promotedRecordId, '909');
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
-  assert.ok(queries.some(({ sql }) => sql.includes('UPDATE `transaction_temporaries`')));
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
   assert.ok(historyInsert);
-  assert.equal(historyInsert.params[1], 'promoted');
-  assert.equal(historyInsert.params[4], '909');
+  assert.equal(historyInsert.params[2], 'promoted');
+  assert.equal(historyInsert.params[5], '909');
   assert.ok(conn.released);
 });
 
@@ -331,6 +357,7 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
   const temporaryRow = {
     id: 11,
     company_id: 1,
+    chain_uuid: 'chain-promote-2',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -355,6 +382,9 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
       if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
         return [[{ ...temporaryRow, status }]];
       }
+      if (sql.includes("WHERE chain_uuid = ? AND status = 'pending' AND id <> ?")) {
+        return [[]];
+      }
       if (sql.startsWith('SET @skip_triggers')) return [[], []];
       if (sql.startsWith('UPDATE `transaction_temporaries`')) {
         status = params[0] || status;
@@ -374,7 +404,6 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
     connectionFactory: async () => conn,
     columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
     tableInserter: async () => ({ id: 777 }),
-    chainIdResolver: async () => [11],
     notificationInserter: async () => {},
     activityLogger: async () => {},
   };
@@ -396,4 +425,245 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
   );
 
   assert.ok(queries.some(({ sql }) => sql.includes('FOR UPDATE')));
+});
+
+test('promoteTemporarySubmission blocks when another pending temporary exists in the chain', async () => {
+  const temporaryRow = {
+    id: 15,
+    company_id: 1,
+    chain_uuid: 'chain-conflict-1',
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP150',
+    plan_senior_empid: 'EMP200',
+    branch_id: null,
+    department_id: null,
+    status: 'pending',
+  };
+
+  const queries = [];
+  const conn = {
+    released: false,
+    async query(sql, params = []) {
+      queries.push({ sql, params });
+      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) return [[], []];
+      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return [[], []];
+      if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
+        return [[temporaryRow]];
+      }
+      if (sql.includes("WHERE chain_uuid = ? AND status = 'pending' AND id <> ?")) {
+        return [[{ id: 42 }]];
+      }
+      if (sql.startsWith('SET @skip_triggers')) return [[], []];
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+    release() {
+      this.released = true;
+    },
+  };
+
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    notificationInserter: async () => {},
+    activityLogger: async () => {},
+  };
+
+  await assert.rejects(
+    () =>
+      promoteTemporarySubmission(
+        15,
+        { reviewerEmpId: 'EMP200', cleanedValues: { amount: 99 } },
+        runtimeDeps,
+      ),
+    (err) => err && err.status === 409,
+  );
+
+  assert.ok(queries.some(({ sql }) => sql.includes('status = \'pending\'')));
+  assert.ok(conn.released);
+});
+
+test('listTemporarySubmissions returns pending review rows after chain forwards', async () => {
+  const now = new Date().toISOString();
+  const selectRows = [
+    {
+      id: 31,
+      company_id: 1,
+      table_name: 'transactions_test',
+      form_name: null,
+      config_name: null,
+      module_key: null,
+      payload_json: '{}',
+      cleaned_values_json: '{}',
+      raw_values_json: '{}',
+      created_by: 'EMP010',
+      plan_senior_empid: 'EMP999',
+      branch_id: null,
+      department_id: null,
+      status: 'promoted',
+      chain_uuid: 'chain-review-1',
+      review_notes: null,
+      reviewed_by: 'EMP999',
+      reviewed_at: now,
+      promoted_record_id: null,
+      created_at: now,
+      updated_at: new Date(Date.now() + 10_000).toISOString(),
+    },
+    {
+      id: 32,
+      company_id: 1,
+      table_name: 'transactions_test',
+      form_name: null,
+      config_name: null,
+      module_key: null,
+      payload_json: '{}',
+      cleaned_values_json: '{}',
+      raw_values_json: '{}',
+      created_by: 'EMP011',
+      plan_senior_empid: 'EMP999',
+      branch_id: null,
+      department_id: null,
+      status: 'pending',
+      chain_uuid: 'chain-review-1',
+      review_notes: null,
+      reviewed_by: null,
+      reviewed_at: null,
+      promoted_record_id: null,
+      created_at: now,
+      updated_at: now,
+    },
+  ];
+
+  const restore = mockQuery(async (sql) => {
+    if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) return [[], []];
+    if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'pending_key' }]];
+    }
+    if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+      return [[{ CONSTRAINT_NAME: 'chk_temp_pending_reviewer' }]];
+    }
+    if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
+      if (sql.includes('idx_temp_chain_pending')) {
+        return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
+      }
+      return [[{ INDEX_NAME: 'idx_temp_status_plan_senior' }]];
+    }
+    if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
+      return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
+    }
+    if (sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`')) {
+      return [[], []];
+    }
+    if (sql.startsWith('SELECT * FROM `transaction_temporaries`')) {
+      return [selectRows];
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  });
+
+  const results = await listTemporarySubmissions({
+    scope: 'review',
+    empId: 'EMP999',
+    companyId: 1,
+    status: 'any',
+  });
+
+  restore();
+
+  assert.equal(results.length, 1);
+  assert.equal(results[0].status, 'pending');
+  assert.equal(results[0].chainUuid, 'chain-review-1');
+});
+
+test('listTemporarySubmissions keeps pending rows when explicitly filtering pending', async () => {
+  const now = new Date().toISOString();
+  const selectRows = [
+    {
+      id: 41,
+      company_id: 1,
+      table_name: 'transactions_test',
+      form_name: null,
+      config_name: null,
+      module_key: null,
+      payload_json: '{}',
+      cleaned_values_json: '{}',
+      raw_values_json: '{}',
+      created_by: 'EMP020',
+      plan_senior_empid: 'EMP888',
+      branch_id: null,
+      department_id: null,
+      status: 'pending',
+      chain_uuid: 'chain-review-2',
+      review_notes: null,
+      reviewed_by: null,
+      reviewed_at: null,
+      promoted_record_id: null,
+      created_at: now,
+      updated_at: now,
+    },
+    {
+      id: 42,
+      company_id: 1,
+      table_name: 'transactions_test',
+      form_name: null,
+      config_name: null,
+      module_key: null,
+      payload_json: '{}',
+      cleaned_values_json: '{}',
+      raw_values_json: '{}',
+      created_by: 'EMP021',
+      plan_senior_empid: 'EMP888',
+      branch_id: null,
+      department_id: null,
+      status: 'promoted',
+      chain_uuid: 'chain-review-2',
+      review_notes: null,
+      reviewed_by: 'EMP888',
+      reviewed_at: now,
+      promoted_record_id: '999',
+      created_at: now,
+      updated_at: new Date(Date.now() + 20_000).toISOString(),
+    },
+  ];
+
+  const restore = mockQuery(async (sql) => {
+    if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) return [[], []];
+    if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
+      return [[{ COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'pending_key' }]];
+    }
+    if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+      return [[{ CONSTRAINT_NAME: 'chk_temp_pending_reviewer' }]];
+    }
+    if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
+      if (sql.includes('idx_temp_chain_pending')) {
+        return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
+      }
+      return [[{ INDEX_NAME: 'idx_temp_status_plan_senior' }]];
+    }
+    if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
+      return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
+    }
+    if (sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`')) {
+      return [[], []];
+    }
+    if (sql.startsWith('SELECT * FROM `transaction_temporaries`')) {
+      return [selectRows];
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  });
+
+  const results = await listTemporarySubmissions({
+    scope: 'review',
+    empId: 'EMP888',
+    companyId: 1,
+    status: 'pending',
+  });
+
+  restore();
+
+  assert.ok(results.some((row) => row.status === 'pending' && row.chainUuid === 'chain-review-2'));
 });
