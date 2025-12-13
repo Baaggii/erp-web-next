@@ -1337,6 +1337,29 @@ function flattenExampleFields(example, prefix = '') {
   return fields;
 }
 
+function sanitizeRequestExampleForSample(example) {
+  if (!example) return {};
+  const isSchemaLike =
+    typeof example === 'object'
+    && !Array.isArray(example)
+    && Object.prototype.hasOwnProperty.call(example, 'type')
+    && (Object.prototype.hasOwnProperty.call(example, 'properties')
+      || Object.prototype.hasOwnProperty.call(example, 'required'));
+  if (!isSchemaLike) return example;
+
+  if (example.example && typeof example.example === 'object') {
+    return example.example;
+  }
+  if (example.examples && typeof example.examples === 'object') {
+    const first = Object.values(example.examples)[0];
+    if (first && typeof first === 'object') {
+      if (first.value && typeof first.value === 'object') return first.value;
+      if (first.example && typeof first.example === 'object') return first.example;
+    }
+  }
+  return {};
+}
+
 function buildVariationsFromExamples(examples = []) {
   return examples
     .map((example, index) => {
@@ -1788,10 +1811,11 @@ function createFormState(definition) {
     parametersText: toPrettyJson(definition.parameters, '[]'),
     requestDescription: definition.requestBody?.description || '',
     requestSampleText: toPrettyJson(
-      definition.requestSample
-        || definition.requestBody?.example
-        || definition.requestExample
-        || BASE_COMPLEX_REQUEST_SCHEMA,
+      sanitizeRequestExampleForSample(
+        definition.requestSample
+          || definition.requestBody?.example
+          || definition.requestExample,
+      ) || BASE_COMPLEX_REQUEST_SCHEMA,
       JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
     ),
     requestSampleNotes: definition.requestSampleNotes || '',
