@@ -398,9 +398,8 @@ async function updateTemporaryChainStatus(
   },
 ) {
   const normalizedChain = normalizeTemporaryId(chainId);
-  const hasChain = chainId != null && chainId !== undefined && normalizedChain;
   const normalizedTemporaryId = normalizeTemporaryId(temporaryId);
-  if (!conn || (!hasChain && !normalizedTemporaryId)) return;
+  if (!conn || (!normalizedChain && !normalizedTemporaryId)) return;
   const columns = ['status = ?', 'reviewed_by = ?', 'reviewed_at = NOW()', 'review_notes = ?'];
   const params = [status ?? null, reviewerEmpId ?? null, notes ?? null];
   if (promotedRecordId !== undefined) {
@@ -410,14 +409,14 @@ async function updateTemporaryChainStatus(
   if (clearReviewerAssignment || (status && status !== 'pending')) {
     columns.push('plan_senior_empid = NULL');
   }
-  const whereClause = hasChain
+  const whereClause = normalizedChain
     ? pendingOnly
       ? 'chain_id = ? AND status = "pending"'
       : 'chain_id = ?'
     : pendingOnly
     ? 'id = ? AND status = "pending"'
     : 'id = ?';
-  params.push(hasChain ? normalizedChain : normalizedTemporaryId);
+  params.push(normalizedChain || normalizedTemporaryId);
   await conn.query(
     `UPDATE \`${TEMP_TABLE}\` SET ${columns.join(', ')} WHERE ${whereClause}`,
     params,
@@ -1906,7 +1905,7 @@ export async function promoteTemporarySubmission(
       notes: reviewNotesValue ?? null,
       promotedRecordId: promotedId,
       clearReviewerAssignment: true,
-      pendingOnly: false,
+      pendingOnly: true,
       temporaryId: id,
     });
     await recordTemporaryReviewHistory(conn, {
