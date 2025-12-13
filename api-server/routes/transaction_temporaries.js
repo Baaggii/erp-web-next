@@ -6,6 +6,7 @@ import {
   getTemporarySummary,
   promoteTemporarySubmission,
   rejectTemporarySubmission,
+  getTemporaryChainHistory,
   deleteTemporarySubmission,
 } from '../services/transactionTemporaries.js';
 
@@ -19,6 +20,15 @@ router.get('/summary', requireAuth, async (req, res, next) => {
       transactionTypeValue: req.query.transactionTypeValue || null,
     });
     res.json(summary);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/:id/chain', requireAuth, async (req, res, next) => {
+  try {
+    const chain = await getTemporaryChainHistory(req.params.id);
+    res.json({ chain });
   } catch (err) {
     next(err);
   }
