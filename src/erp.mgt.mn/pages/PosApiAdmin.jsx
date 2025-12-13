@@ -6638,17 +6638,22 @@ export default function PosApiAdmin() {
     }
 
     let builtPayload = null;
-    try {
-      builtPayload = buildCombinationPayload();
-    } catch (err) {
-      builtPayload = null;
-      if (combinationError && !payloadOverride) {
-        setCombinationError(err.message || 'Unable to build test payload from modifiers.');
+    if (!payloadOverride) {
+      try {
+        builtPayload = buildCombinationPayload();
+      } catch (err) {
+        builtPayload = null;
+        if (combinationError) {
+          setCombinationError(err.message || 'Unable to build test payload from modifiers.');
+        }
       }
     }
 
+    const confirmPayloadLabel = payloadOverride
+      ? 'the combination payload you provided'
+      : 'the base sample and selected modifiers';
     const confirmed = window.confirm(
-      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use the base sample and selected modifiers.`,
+      `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use ${confirmPayloadLabel}.`,
     );
     if (!confirmed) return;
 
@@ -6678,11 +6683,9 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
-          ...(payloadOverride
-            ? { payloadOverride }
-            : builtPayload
-              ? { payloadOverride: builtPayload }
-              : {}),
+          ...((payloadOverride || builtPayload)
+            ? { payloadOverride: payloadOverride || builtPayload }
+            : {}),
         }),
       });
       if (!res.ok) {
