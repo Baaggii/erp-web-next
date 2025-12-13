@@ -58,8 +58,16 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
 }
 
 test('getTemporarySummary marks reviewers even without pending temporaries', async () => {
+  const queries = [];
   const restore = mockQuery(async (sql) => {
+    queries.push(sql);
     if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
+      return [[], []];
+    }
+    if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+      return [[{ CONSTRAINT_NAME: 'missing' }]];
+    }
+    if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) {
       return [[], []];
     }
     if (sql.startsWith('SELECT * FROM `transaction_temporaries`')) {
@@ -108,6 +116,10 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     assert.equal(summary.createdPending, 0);
     assert.equal(summary.reviewPending, 0);
     assert.equal(summary.isReviewer, true);
+    assert.ok(
+      queries.some((sql) => sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')),
+    );
+    assert.ok(queries.some((sql) => sql.startsWith('ALTER TABLE `transaction_temporaries`')));
   } finally {
     restore();
   }

@@ -499,6 +499,34 @@ async function ensureTemporaryTable(conn = pool) {
         KEY idx_temp_creator (created_by)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
     );
+    try {
+      const [constraints] = await conn.query(
+        `SELECT CONSTRAINT_NAME
+           FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?
+            AND CONSTRAINT_NAME = 'chk_temp_pending_reviewer'
+          LIMIT 1`,
+        [TEMP_TABLE],
+      );
+      const hasConstraint =
+        Array.isArray(constraints) &&
+        constraints.some(
+          (row) =>
+            row &&
+            typeof row.CONSTRAINT_NAME === 'string' &&
+            row.CONSTRAINT_NAME.toLowerCase() === 'chk_temp_pending_reviewer',
+        );
+      if (!hasConstraint) {
+        await conn.query(
+          `ALTER TABLE \`${TEMP_TABLE}\`
+             ADD CONSTRAINT chk_temp_pending_reviewer
+             CHECK (status = 'pending' OR plan_senior_empid IS NULL)`,
+        );
+      }
+    } catch (constraintErr) {
+      console.error('Failed to ensure reviewer/status constraint', constraintErr);
+    }
   })()
     .catch((err) => {
       ensurePromise = null;
