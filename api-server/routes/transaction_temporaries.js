@@ -28,7 +28,11 @@ router.get('/summary', requireAuth, async (req, res, next) => {
 router.get('/:id/chain', requireAuth, async (req, res, next) => {
   try {
     const chain = await getTemporaryChainHistory(req.params.id);
-    res.json({ chain: chain.chain || chain, reviewHistory: chain.reviewHistory || [] });
+    res.json({
+      chainId: chain.chainId || null,
+      chain: chain.chain || chain,
+      reviewHistory: chain.reviewHistory || [],
+    });
   } catch (err) {
     next(err);
   }
