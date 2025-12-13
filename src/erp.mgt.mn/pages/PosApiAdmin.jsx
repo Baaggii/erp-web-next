@@ -6800,11 +6800,8 @@ export default function PosApiAdmin() {
       return;
     }
 
-    const payloadSource = requestedPayloadSource || testPayloadSource || 'sample';
-    const trimmedCombinationText = (combinationPayloadText || '').trim();
-    const selectedPayloadText = payloadSource === 'combination' ? combinationPayloadText : requestSampleText;
     const payloadTextForTest = payloadTextOverride ?? (typeof payloadOverride === 'string' ? payloadOverride : null)
-      ?? selectedPayloadText;
+      ?? requestSampleText;
     let payloadForTest = null;
 
     if (payloadSource === 'combination' && !trimmedCombinationText) {
@@ -6852,11 +6849,9 @@ export default function PosApiAdmin() {
     }
     const hasPayloadOverride = payloadForTest !== undefined && payloadForTest !== null;
 
-    const confirmPayloadLabel = payloadLabel
-      || (payloadSource === 'combination'
-        || (payloadTextOverride !== undefined && payloadTextOverride !== null)
-        ? 'the built combination JSON box'
-        : 'the request sample JSON box');
+    const confirmPayloadLabel = payloadTextOverride !== undefined && payloadTextOverride !== null
+      ? 'the built combination JSON box'
+      : 'the request sample JSON box';
     const confirmed = window.confirm(
       `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use ${confirmPayloadLabel}.`,
     );
