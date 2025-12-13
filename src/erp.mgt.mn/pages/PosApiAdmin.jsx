@@ -6753,10 +6753,14 @@ export default function PosApiAdmin() {
     try {
       setError('');
       setStatus('');
+      setTestState({ running: false, error: '', result: null });
       definition = buildDefinition();
       showToast(`Preparing to test ${definition.name || definition.id || 'endpoint'}.`, 'info');
     } catch (err) {
-      setError(err.message || 'Failed to prepare endpoint');
+      const message = err.message || 'Failed to prepare endpoint';
+      setError(message);
+      setTestState({ running: false, error: message, result: null });
+      showToast(message, 'error');
       return;
     }
 
