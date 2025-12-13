@@ -593,6 +593,7 @@ export async function createTemporarySubmission({
     : undefined;
 
   const conn = await pool.getConnection();
+  const shouldReleaseConnection = true;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
