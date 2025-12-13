@@ -3444,7 +3444,6 @@ export default function PosApiAdmin() {
     const variationSelections = buildSelectionsForVariation(selectedVariationKey);
     const mergedSelections = { ...selectionsFromSample, ...variationSelections };
     setRequestFieldValues(mergedSelections);
-    syncRequestSampleFromSelections(mergedSelections, formattedSample);
     setFormState((prev) => ({
       ...prev,
       requestEnvMap: buildRequestEnvMap(mergedSelections),
@@ -6185,8 +6184,9 @@ export default function PosApiAdmin() {
 
   function syncRequestSampleFromSelections(nextSelections, baseOverride) {
     let baseSample = {};
+    const baseText = baseOverride ?? baseRequestJson ?? requestSampleText ?? '{}';
     try {
-      baseSample = JSON.parse(baseOverride ?? requestSampleText ?? '{}');
+      baseSample = JSON.parse(baseText);
     } catch {
       baseSample = {};
     }
