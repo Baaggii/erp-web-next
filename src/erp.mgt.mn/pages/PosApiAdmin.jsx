@@ -3426,14 +3426,8 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!selectedVariationKey) return;
-    const variationDefinition = activeVariations.find(
-      (entry) => (entry.key || entry.name) === selectedVariationKey,
-    );
-    const variationPayload = sanitizeRequestExampleForSample(
-      variationDefinition?.requestExample
-        ?? variationDefinition?.requestExampleText
-        ?? getVariationExamplePayload(selectedVariationKey, true),
-    );
+    const variationPayload = resolveVariationExampleForTesting(selectedVariationKey)
+      || sanitizeRequestExampleForSample(toSamplePayload(baseRequestJson || {}));
     const formattedSample = JSON.stringify(variationPayload || {}, null, 2);
     setRequestSampleText(formattedSample);
     const selectionsFromSample = deriveRequestFieldSelections({
@@ -3448,7 +3442,14 @@ export default function PosApiAdmin() {
       ...prev,
       requestEnvMap: buildRequestEnvMap(mergedSelections),
     }));
-  }, [selectedVariationKey, activeVariations, requestFieldDisplay.items, formState.requestEnvMap]);
+  }, [
+    selectedVariationKey,
+    activeVariations,
+    requestFieldDisplay.items,
+    formState.requestEnvMap,
+    baseRequestJson,
+    exampleVariationMap,
+  ]);
 
   useEffect(() => {
     if (!combinationBaseKey) {
@@ -4835,6 +4836,10 @@ export default function PosApiAdmin() {
     const formattedSample = JSON.stringify(resolvedSample, null, 2);
     setBaseRequestJson(formattedSample);
     setRequestSampleText(formattedSample);
+    setCombinationBaseKey(BASE_COMBINATION_KEY);
+    setCombinationModifierKeys([]);
+    setCombinationPayloadText('');
+    setCombinationError(selectedVariationKey ? '' : 'Select a base variation to build a combination.');
 
     setStatus('');
     resetTestState();
@@ -6357,6 +6362,24 @@ export default function PosApiAdmin() {
     return [];
   }
 
+  function resolveVariationExampleForTesting(key) {
+    if (!key) return null;
+    const variation = activeVariations.find((entry) => (entry.key || entry.name) === key);
+    if (variation) {
+      const rawExample = variation.requestExample ?? variation.requestExampleText;
+      const parsed = parseExamplePayload(rawExample);
+      if (parsed && typeof parsed === 'object') {
+        return sanitizeRequestExampleForSample(parsed);
+      }
+    }
+    const exampleEntry = exampleVariationMap.get(key);
+    if (exampleEntry) {
+      const rawExample = exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body;
+      return sanitizeRequestExampleForSample(parseExamplePayload(rawExample));
+    }
+    return null;
+  }
+
   function buildCombinationPayload(baseKey = combinationBaseKey, modifierKeys = combinationModifierKeys) {
     if (!baseKey) {
       throw new Error('Select a base variation to build a combination.');
@@ -6395,14 +6418,10 @@ export default function PosApiAdmin() {
       }
     }
     if (isModifier) {
-      const fallbackFields = flattenExampleFields(payloadCandidate)
-        .map((entry) => (entry.defaultValue !== undefined ? entry.field : ''))
-        .filter(Boolean);
-      const effectiveFields = allowedFields.length ? allowedFields : fallbackFields;
-      if (effectiveFields.length === 0) {
+      if (allowedFields.length === 0) {
         return {};
       }
-      return pickPayloadFields(payloadCandidate, effectiveFields);
+      return pickPayloadFields(payloadCandidate, allowedFields);
     }
     if (skipFieldFilter || !allowedFields.length) {
       return payloadCandidate;
@@ -6662,6 +6681,10 @@ export default function PosApiAdmin() {
     const cleanBase = JSON.stringify(sanitizeRequestExampleForSample(BASE_COMPLEX_REQUEST_SCHEMA), null, 2);
     setBaseRequestJson(cleanBase);
     setRequestSampleText(cleanBase);
+    setCombinationBaseKey(BASE_COMBINATION_KEY);
+    setCombinationModifierKeys([]);
+    setCombinationPayloadText('');
+    setCombinationError('Select a base variation to build a combination.');
     setTestEnvironment('staging');
     setImportAuthEndpointId('');
     setUseCachedToken(true);

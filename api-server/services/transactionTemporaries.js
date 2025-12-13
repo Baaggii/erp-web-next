@@ -416,13 +416,6 @@ function groupTemporaryRowsByChain(rows) {
       lookup.set(key, row);
       return;
     }
-    const existingPending = existing.status === 'pending';
-    const nextPending = row.status === 'pending';
-    if (nextPending && !existingPending) {
-      lookup.set(key, row);
-      return;
-    }
-    if (!nextPending && existingPending) return;
     const existingDate = existing.updatedAt ? new Date(existing.updatedAt) : null;
     const nextDate = row.updatedAt ? new Date(row.updatedAt) : null;
     if (existingDate && nextDate && nextDate > existingDate) {
@@ -999,7 +992,6 @@ function mapTemporaryRow(row) {
     values: promotableValues,
     createdBy: row.created_by,
     chainUuid: row.chain_uuid,
-    chain_uuid: row.chain_uuid,
     planSeniorEmpId: row.plan_senior_empid,
     reviewerEmpId: row.plan_senior_empid,
     branchId: row.branch_id,
@@ -1147,8 +1139,7 @@ export async function listTemporarySubmissions({
     transactionTypeField,
     transactionTypeValue,
   );
-  const shouldSkipGrouping = normalizedStatus === 'pending';
-  const grouped = shouldSkipGrouping ? filtered : groupTemporaryRowsByChain(filtered);
+  const grouped = groupTemporaryRowsByChain(filtered);
   return enrichTemporaryMetadata(grouped, companyId);
 }
 
@@ -1196,7 +1187,6 @@ function formatChainHistoryRow(row) {
   return {
     id: row.id,
     chainUuid: row.chain_uuid || null,
-    chain_uuid: row.chain_uuid || null,
     status: row.status,
     planSeniorEmpId: row.plan_senior_empid || null,
     reviewedBy: row.reviewed_by || null,
@@ -1215,7 +1205,6 @@ function formatReviewHistoryRow(row) {
     id: row.id,
     temporaryId: row.temporary_id,
     chainUuid: row.chain_uuid || null,
-    chain_uuid: row.chain_uuid || null,
     action: row.action,
     reviewerEmpId: row.reviewer_empid || null,
     forwardedToEmpId: row.forwarded_to_empid || null,
@@ -1338,17 +1327,6 @@ export async function promoteTemporarySubmission(
           cleanedValues: safeJsonParse(row.cleaned_values_json, {}),
         }),
       );
-    const [otherPending] = await conn.query(
-      `SELECT id FROM \`${TEMP_TABLE}\`
-        WHERE chain_uuid = ? AND status = 'pending' AND id <> ?
-        LIMIT 1 FOR UPDATE`,
-      [chainUuid, row.id],
-    );
-    if (Array.isArray(otherPending) && otherPending.length > 0) {
-      const err = new Error('A pending temporary already exists for this transaction');
-      err.status = 409;
-      throw err;
-    }
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
     const updatedForwardMeta = expandForwardMeta(forwardMeta, {
       currentId: row.id,
