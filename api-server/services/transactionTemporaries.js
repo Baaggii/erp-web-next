@@ -2053,7 +2053,7 @@ export async function rejectTemporarySubmission(
       currentId: row.id,
       createdBy: row.created_by,
     });
-    const chainId = row.chain_id || row.id;
+    const chainId = normalizeTemporaryId(row.chain_id) || null;
     const chainUuid = row.chain_uuid || null;
     console.info('Temporary rejection chain update', {
       id,
