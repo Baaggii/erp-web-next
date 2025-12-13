@@ -1360,6 +1360,23 @@ function sanitizeRequestExampleForSample(example) {
   return {};
 }
 
+function parseExamplePayload(raw) {
+  if (!raw && raw !== 0) return {};
+  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function toSamplePayload(raw) {
+  return sanitizeRequestExampleForSample(parseExamplePayload(raw));
+}
+
 function buildVariationsFromExamples(examples = []) {
   return examples
     .map((example, index) => {
@@ -1772,12 +1789,14 @@ function createFormState(definition) {
       }))
       : [];
     const requestExample = variation.requestExample || variation.request?.body || {};
+    const requestExamplePayload = toSamplePayload(requestExample);
     return {
       key: variation.key || variation.name || `variation-${index + 1}`,
       name: variation.name || variation.key || `Variation ${index + 1}`,
       description: variation.description || '',
       enabled: variation.enabled !== false,
-      requestExampleText: variation.requestExampleText || toPrettyJson(requestExample, '{}'),
+      requestExample: requestExamplePayload,
+      requestExampleText: variation.requestExampleText || toPrettyJson(requestExamplePayload, '{}'),
       requestFields: fields,
     };
   });
@@ -3367,7 +3386,8 @@ export default function PosApiAdmin() {
       (entry) => (entry.key || entry.name) === selectedVariationKey,
     );
     const variationPayload = variationDefinition
-      ? parseExamplePayload(variationDefinition.requestExampleText || variationDefinition.requestExample || {})
+      ? variationDefinition.requestExample
+        ?? toSamplePayload(variationDefinition.requestExampleText || {})
       : getVariationExamplePayload(selectedVariationKey);
     let prettyPayload = '';
     if (variationPayload && typeof variationPayload === 'object') {
@@ -6282,19 +6302,6 @@ export default function PosApiAdmin() {
     return picked;
   }
 
-  function parseExamplePayload(raw) {
-    if (!raw && raw !== 0) return {};
-    if (typeof raw === 'object') return raw;
-    if (typeof raw === 'string') {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return {};
-      }
-    }
-    return {};
-  }
-
   function getAllowedFieldsForVariation(key) {
     const variationFieldSet = variationFieldSets.get(key);
     if (variationFieldSet && variationFieldSet.size > 0) {
@@ -6332,12 +6339,13 @@ export default function PosApiAdmin() {
     } else {
       const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
       if (baseVariation) {
-        payloadCandidate = parseExamplePayload(baseVariation.requestExampleText || baseVariation.requestExample || {});
+        payloadCandidate =
+          baseVariation.requestExample ?? toSamplePayload(baseVariation.requestExampleText || {});
         allowedFields = getAllowedFieldsForVariation(key);
       } else {
         const exampleEntry = exampleVariationMap.get(key);
         if (exampleEntry) {
-          payloadCandidate = parseExamplePayload(
+          payloadCandidate = toSamplePayload(
             exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body ?? exampleEntry,
           );
         }
