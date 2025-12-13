@@ -1119,12 +1119,9 @@ export async function listTemporarySubmissions({
     `SELECT t.*
        FROM \`${TEMP_TABLE}\` t
        JOIN (
-             SELECT chain_key, MAX(updated_at) AS max_updated_at
-               FROM (
-                     SELECT ${chainKey()} AS chain_key, updated_at
-                       FROM \`${TEMP_TABLE}\`
-                      ${where}
-                    ) grouped
+             SELECT ${chainKey()} AS chain_key, MAX(updated_at) AS max_updated_at
+               FROM \`${TEMP_TABLE}\`
+              ${where}
               GROUP BY chain_key
             ) latest
          ON ${chainKey('t')} = latest.chain_key
