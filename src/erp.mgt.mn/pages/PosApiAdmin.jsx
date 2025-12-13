@@ -3440,7 +3440,7 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!selectedVariationKey) return;
-    const variationPayload = resolveVariationExampleForTesting(selectedVariationKey)
+    const variationPayload = resolveVariationRequestExample(selectedVariationKey)
       || cleanSampleText(baseRequestJson || '{}');
     const formattedSample = JSON.stringify(variationPayload || {}, null, 2);
     requestSampleSyncRef.current = true;
@@ -6414,18 +6414,11 @@ export default function PosApiAdmin() {
     if (!baseKey) {
       throw new Error('Select a base variation to build a combination.');
     }
-    let mergedPayload;
-    if (baseKey === BASE_COMBINATION_KEY) {
-      mergedPayload = cleanSampleText(baseRequestJson);
-    } else {
-      const baseExample = resolveVariationExampleForTesting(baseKey)
-        || cleanSampleText(baseRequestJson)
-        || {};
-      mergedPayload = deepClone(baseExample);
-    }
-    if (!mergedPayload || typeof mergedPayload !== 'object') {
-      mergedPayload = {};
-    }
+    const baseFromText = cleanSampleText(baseRequestJson);
+    const variationBase = baseKey && baseKey !== BASE_COMBINATION_KEY
+      ? resolveVariationRequestExample(baseKey)
+      : null;
+    let mergedPayload = deepClone(variationBase || baseFromText || {});
     modifierKeys.forEach((key) => {
       const modifierPayload = getVariationExamplePayload(key, false, true);
       if (!modifierPayload || Object.keys(modifierPayload).length === 0) return;
