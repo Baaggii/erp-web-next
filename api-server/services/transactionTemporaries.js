@@ -574,7 +574,6 @@ async function ensureTemporaryTable(conn = pool) {
           `ALTER TABLE \`${TEMP_TABLE}\`
              ADD COLUMN chain_id BIGINT UNSIGNED DEFAULT NULL`,
         );
-        await conn.query(`UPDATE \`${TEMP_TABLE}\` SET chain_id = id WHERE chain_id IS NULL`);
       }
       if (!columnLookup.has('chain_uuid')) {
         await conn.query(
@@ -1361,15 +1360,6 @@ export async function promoteTemporarySubmission(
     const payloadJson = safeJsonParse(row.payload_json, {});
     const chainId = normalizeTemporaryId(row.chain_id) || null;
     const chainUuid = row.chain_uuid || null;
-    const [otherPending] = await conn.query(
-      `SELECT id FROM \`${TEMP_TABLE}\` WHERE chain_id = ? AND status = 'pending' AND id <> ? LIMIT 1 FOR UPDATE`,
-      [chainId, id],
-    );
-    if (Array.isArray(otherPending) && otherPending.length > 0) {
-      const err = new Error('A pending temporary already exists for this chain');
-      err.status = 409;
-      throw err;
-    }
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
     const updatedForwardMeta = expandForwardMeta(forwardMeta, {
       currentId: row.id,
@@ -1662,7 +1652,7 @@ export async function promoteTemporarySubmission(
     }
     const promotedId = insertedId ? String(insertedId) : null;
     if (shouldForwardTemporary) {
-      await chainStatusUpdater(conn, chainId, {
+      await chainStatusUpdater(conn, effectiveChainId, {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
         notes: reviewNotesValue ?? null,
@@ -1681,7 +1671,7 @@ export async function promoteTemporarySubmission(
       mergedPayload.cleanedValues = sanitizedPayloadValues;
       mergedPayload.forwardMeta = {
         ...updatedForwardMeta,
-        chainId,
+        chainId: effectiveChainId,
         ...(chainUuid ? { chainUuid } : {}),
       };
       const [forwardResult] = await conn.query(
@@ -1703,7 +1693,7 @@ export async function promoteTemporarySubmission(
           forwardReviewerEmpId,
           row.branch_id ?? null,
           row.department_id ?? null,
-          chainId,
+          effectiveChainId,
           chainUuid,
         ],
       );
@@ -1712,7 +1702,7 @@ export async function promoteTemporarySubmission(
         id,
         forwardMeta,
         updatedForwardMeta,
-        chainId,
+        effectiveChainId,
         chainUuid,
       });
       await recordTemporaryReviewHistory(conn, {
@@ -1721,7 +1711,7 @@ export async function promoteTemporarySubmission(
         reviewerEmpId: normalizedReviewer,
         forwardedToEmpId: forwardReviewerEmpId,
         notes: reviewNotesValue ?? null,
-        chainId,
+        chainId: effectiveChainId,
         chainUuid,
       });
       await activityLogger(
@@ -1896,10 +1886,10 @@ export async function promoteTemporarySubmission(
       id,
       forwardMeta,
       updatedForwardMeta,
-      chainId,
+      chainId: effectiveChainId,
       chainUuid,
     });
-    await chainStatusUpdater(conn, chainId, {
+    await chainStatusUpdater(conn, effectiveChainId, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
@@ -1914,7 +1904,7 @@ export async function promoteTemporarySubmission(
       reviewerEmpId: normalizedReviewer,
       promotedRecordId: promotedId,
       notes: reviewNotesValue ?? null,
-      chainId,
+      chainId: effectiveChainId,
       chainUuid,
     });
     await activityLogger(
@@ -2055,14 +2045,20 @@ export async function rejectTemporarySubmission(
     });
     const chainId = normalizeTemporaryId(row.chain_id) || null;
     const chainUuid = row.chain_uuid || null;
+    const resolvedChainId =
+      chainIdFromRow || normalizeTemporaryId(updatedForwardMeta.rootTemporaryId) || null;
+    const effectiveChainId = resolvedChainId || null;
+    if (effectiveChainId) {
+      updatedForwardMeta.rootTemporaryId = effectiveChainId;
+    }
     console.info('Temporary rejection chain update', {
       id,
       forwardMeta,
       updatedForwardMeta,
-      chainId,
+      chainId: effectiveChainId,
       chainUuid,
     });
-    await chainStatusUpdater(conn, chainId, {
+    await chainStatusUpdater(conn, effectiveChainId, {
       status: 'rejected',
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
@@ -2076,7 +2072,7 @@ export async function rejectTemporarySubmission(
       action: 'rejected',
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
-      chainId,
+      chainId: effectiveChainId,
       chainUuid,
     });
     await activityLogger(
