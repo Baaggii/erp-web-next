@@ -1118,11 +1118,11 @@ export async function listTemporarySubmissions({
   const [rows] = await pool.query(
     `SELECT t.*
        FROM \`${TEMP_TABLE}\` t
-       JOIN (
-             SELECT ${chainKey()} AS chain_key, MAX(updated_at) AS max_updated_at
-               FROM \`${TEMP_TABLE}\`
-              ${where}
-              GROUP BY chain_key
+      JOIN (
+            SELECT ${chainKey()} AS chain_key, MAX(updated_at) AS max_updated_at
+              FROM \`${TEMP_TABLE}\`
+             ${where}
+              GROUP BY ${chainKey()}
             ) latest
          ON ${chainKey('t')} = latest.chain_key
         AND t.updated_at = latest.max_updated_at
