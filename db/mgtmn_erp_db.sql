@@ -4765,6 +4765,7 @@ CREATE TABLE `transaction_temporaries` (
   `promoted_record_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT `chk_temp_pending_reviewer` CHECK (`status` = 'pending' OR `plan_senior_empid` IS NULL),
   `updated_by` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `deleted_at` timestamp NULL DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
