@@ -4759,6 +4759,8 @@ CREATE TABLE `transaction_temporaries` (
   `branch_id` bigint DEFAULT NULL,
   `department_id` bigint DEFAULT NULL,
   `status` enum('pending','promoted','rejected') COLLATE utf8mb4_unicode_ci NOT NULL DEFAULT 'pending',
+  `chain_uuid` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `pending_key` char(1) COLLATE utf8mb4_unicode_ci GENERATED ALWAYS AS (if((`status` = 'pending'),'1',NULL)) STORED,
   `review_notes` text COLLATE utf8mb4_unicode_ci,
   `reviewed_by` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `reviewed_at` datetime DEFAULT NULL,
@@ -4779,6 +4781,7 @@ CREATE TABLE `transaction_temporaries` (
 CREATE TABLE `transaction_temporary_review_history` (
   `id` bigint UNSIGNED NOT NULL,
   `temporary_id` bigint UNSIGNED NOT NULL,
+  `chain_uuid` char(36) COLLATE utf8mb4_unicode_ci NOT NULL,
   `action` enum('forwarded','promoted','rejected') COLLATE utf8mb4_unicode_ci NOT NULL,
   `reviewer_empid` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
   `forwarded_to_empid` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
@@ -5842,6 +5845,7 @@ ALTER TABLE `transaction_temporaries`
   ADD KEY `idx_temp_table` (`table_name`),
   ADD KEY `idx_temp_plan_senior` (`plan_senior_empid`),
   ADD KEY `idx_temp_status_plan_senior` (`status`,`plan_senior_empid`),
+  ADD UNIQUE KEY `idx_temp_chain_pending` (`chain_uuid`,`pending_key`),
   ADD KEY `idx_temp_creator` (`created_by`);
 
 --
