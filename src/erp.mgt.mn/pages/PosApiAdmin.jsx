@@ -3333,7 +3333,12 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     if (!selectedVariationKey) return;
-    const variationPayload = getVariationExamplePayload(selectedVariationKey);
+    const variationDefinition = activeVariations.find(
+      (entry) => (entry.key || entry.name) === selectedVariationKey,
+    );
+    const variationPayload = variationDefinition
+      ? parseExamplePayload(variationDefinition.requestExampleText || variationDefinition.requestExample || {})
+      : getVariationExamplePayload(selectedVariationKey);
     if (variationPayload && typeof variationPayload === 'object') {
       try {
         const pretty = JSON.stringify(variationPayload, null, 2);
@@ -5430,7 +5435,7 @@ export default function PosApiAdmin() {
     const requestSample = parseJsonInput(
       'Base request sample',
       formState.requestSampleText,
-      BASE_COMPLEX_REQUEST_SCHEMA,
+      {},
     );
     const responseSchema = parseJsonInput(
       'Response body schema',
