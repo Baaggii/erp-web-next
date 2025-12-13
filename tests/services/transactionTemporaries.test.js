@@ -43,9 +43,6 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
         return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
       }
-      if (sql.includes("WHERE chain_uuid = ? AND status = 'pending' AND id <> ?")) {
-        return [[]];
-      }
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return [[], []];
       }

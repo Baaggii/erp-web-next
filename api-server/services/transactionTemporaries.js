@@ -1327,17 +1327,6 @@ export async function promoteTemporarySubmission(
           cleanedValues: safeJsonParse(row.cleaned_values_json, {}),
         }),
       );
-    const [otherPending] = await conn.query(
-      `SELECT id FROM \`${TEMP_TABLE}\`
-        WHERE chain_uuid = ? AND status = 'pending' AND id <> ?
-        LIMIT 1 FOR UPDATE`,
-      [chainUuid, row.id],
-    );
-    if (Array.isArray(otherPending) && otherPending.length > 0) {
-      const err = new Error('A pending temporary already exists for this transaction');
-      err.status = 409;
-      throw err;
-    }
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
     const updatedForwardMeta = expandForwardMeta(forwardMeta, {
       currentId: row.id,
