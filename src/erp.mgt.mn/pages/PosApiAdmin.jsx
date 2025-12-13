@@ -3361,10 +3361,8 @@ export default function PosApiAdmin() {
       (entry) => (entry.key || entry.name) === selectedVariationKey,
     );
     const variationPayload = variationDefinition
-      ? sanitizeRequestExampleForSample(
-        parseExamplePayload(variationDefinition.requestExampleText || variationDefinition.requestExample || {}),
-      )
-      : sanitizeRequestExampleForSample(getVariationExamplePayload(selectedVariationKey));
+      ? parseExamplePayload(variationDefinition.requestExampleText || variationDefinition.requestExample || {})
+      : getVariationExamplePayload(selectedVariationKey);
     if (variationPayload && typeof variationPayload === 'object') {
       try {
         const pretty = JSON.stringify(variationPayload, null, 2);
@@ -6290,25 +6288,15 @@ export default function PosApiAdmin() {
     return [];
   }
 
-  function applyOverlayPayload(basePayload, modifierPayload) {
-    const working = deepClone(basePayload) || {};
-    const modifierFields = flattenExampleFields(modifierPayload || {});
-    modifierFields.forEach(({ field, defaultValue }) => {
-      if (!field) return;
-      setNestedValue(working, parsePathSegments(field), defaultValue);
-    });
-    return working;
-  }
-
   function buildCombinationPayload(baseKey = combinationBaseKey, modifierKeys = combinationModifierKeys) {
     if (!baseKey) {
       throw new Error('Select a base variation to build a combination.');
     }
     const basePayload = getVariationExamplePayload(baseKey, true);
-    let mergedPayload = deepClone(basePayload) || {};
+    let mergedPayload = { ...basePayload };
     modifierKeys.forEach((key) => {
       const modifierPayload = getVariationExamplePayload(key, false, true);
-      mergedPayload = applyOverlayPayload(mergedPayload, modifierPayload);
+      mergedPayload = mergePayloads(mergedPayload, modifierPayload);
     });
     return mergedPayload;
   }
@@ -6333,18 +6321,13 @@ export default function PosApiAdmin() {
       }
     }
     if (skipFieldFilter || (!isModifier && !allowedFields.length)) {
-      return sanitizeRequestExampleForSample(payloadCandidate);
-    }
-    if (isModifier) {
-      const trimmed = sanitizeRequestExampleForSample(payloadCandidate);
-      return allowedFields.length ? pickPayloadFields(trimmed, allowedFields) : {};
+      return payloadCandidate;
     }
     const fallbackFields = flattenExampleFields(payloadCandidate)
       .map((entry) => entry.field)
       .filter(Boolean);
     const effectiveFields = allowedFields.length ? allowedFields : fallbackFields;
-    const trimmed = sanitizeRequestExampleForSample(payloadCandidate);
-    return pickPayloadFields(trimmed, effectiveFields);
+    return pickPayloadFields(payloadCandidate, effectiveFields);
   }
 
   function handleRequestFieldValueChange(fieldPath, updates) {

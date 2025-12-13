@@ -298,6 +298,24 @@ export function buildChainIdsForUpdate(forwardMeta, currentId) {
   return Array.from(new Set(baseChain));
 }
 
+export async function resolveChainIdsForUpdate(conn, forwardMeta, currentId) {
+  const chainIds = buildChainIdsForUpdate(forwardMeta, currentId);
+  if (!conn || chainIds.length === 0) return [];
+  const placeholders = chainIds.map(() => '?').join(', ');
+  const [rows] = await conn.query(
+    `SELECT id FROM \`${TEMP_TABLE}\` WHERE id IN (${placeholders}) FOR UPDATE`,
+    chainIds,
+  );
+  const existing = new Set(
+    Array.isArray(rows)
+      ? rows
+          .map((row) => normalizeTemporaryId(row?.id))
+          .filter((id) => id !== null)
+      : [],
+  );
+  return chainIds.filter((id) => existing.has(id));
+}
+
 function filterRowsByTransactionType(rows, fieldName, value) {
   const normalizedField = normalizeFieldName(fieldName);
   const normalizedValue = normalizeTransactionTypeValue(value);
@@ -471,6 +489,8 @@ async function ensureTemporaryTable(conn = pool) {
         promoted_record_id VARCHAR(64) DEFAULT NULL,
         created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        CONSTRAINT chk_temp_pending_reviewer
+          CHECK (status = 'pending' OR plan_senior_empid IS NULL),
         PRIMARY KEY (id),
         KEY idx_temp_company (company_id),
         KEY idx_temp_status (status),
@@ -573,6 +593,7 @@ export async function createTemporarySubmission({
     : undefined;
 
   const conn = await pool.getConnection();
+  const shouldReleaseConnection = true;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
@@ -656,7 +677,9 @@ export async function createTemporarySubmission({
     }
     throw err;
   } finally {
-    conn.release();
+    if (shouldReleaseConnection) {
+      conn.release();
+    }
   }
 }
 
@@ -875,6 +898,57 @@ export async function getTemporarySummary(
   };
 }
 
+function formatChainHistoryRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    status: row.status,
+    planSeniorEmpId: row.plan_senior_empid || null,
+    reviewedBy: row.reviewed_by || null,
+    reviewedAt: row.reviewed_at || null,
+    reviewNotes: row.review_notes || null,
+    promotedRecordId: row.promoted_record_id || null,
+    createdBy: row.created_by || null,
+    createdAt: row.created_at || null,
+    updatedAt: row.updated_at || null,
+  };
+}
+
+export async function getTemporaryChainHistory(id) {
+  const normalizedId = normalizeTemporaryId(id);
+  if (!normalizedId) return [];
+  const conn = await pool.getConnection();
+  try {
+    await ensureTemporaryTable(conn);
+    const [rows] = await conn.query(
+      `SELECT * FROM \`${TEMP_TABLE}\` WHERE id = ? LIMIT 1`,
+      [normalizedId],
+    );
+    const row = rows[0];
+    if (!row) return [];
+    const payloadJson = safeJsonParse(row.payload_json, {});
+    const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
+    const updatedForwardMeta = expandForwardMeta(forwardMeta, {
+      currentId: row.id,
+      createdBy: row.created_by,
+    });
+    const chainIds = buildChainIdsForUpdate(updatedForwardMeta, row.id);
+    if (chainIds.length === 0) {
+      return [formatChainHistoryRow(row)];
+    }
+    const placeholders = chainIds.map(() => '?').join(', ');
+    const [chainRows] = await conn.query(
+      `SELECT id, status, plan_senior_empid, reviewed_by, reviewed_at, review_notes, promoted_record_id, created_by, created_at, updated_at
+       FROM \`${TEMP_TABLE}\` WHERE id IN (${placeholders}) ORDER BY id`,
+      chainIds,
+    );
+    const normalizedRows = Array.isArray(chainRows) && chainRows.length > 0 ? chainRows : [row];
+    return normalizedRows.map((item) => formatChainHistoryRow(item)).filter(Boolean);
+  } finally {
+    conn.release();
+  }
+}
+
 export async function promoteTemporarySubmission(
   id,
   {
@@ -884,6 +958,7 @@ export async function promoteTemporarySubmission(
     cleanedValues: cleanedOverride,
     promoteAsTemporary = false,
   },
+  runtimeDeps = {},
 ) {
   const normalizedReviewer = normalizeEmpId(reviewerEmpId);
   if (!normalizedReviewer) {
@@ -891,7 +966,21 @@ export async function promoteTemporarySubmission(
     err.status = 400;
     throw err;
   }
-  const conn = await pool.getConnection();
+  const {
+    connection: providedConnection = null,
+    connectionFactory = () => pool.getConnection(),
+    columnLister = listTableColumnsDetailed,
+    tableInserter = insertTableRow,
+    employmentSessionFetcher = getEmploymentSession,
+    chainStatusUpdater = updateTemporaryChainStatus,
+    chainIdResolver = resolveChainIdsForUpdate,
+    formConfigResolver = getFormConfig,
+    activityLogger = logUserAction,
+    notificationInserter = insertNotification,
+  } = runtimeDeps;
+
+  const conn = providedConnection || (await connectionFactory());
+  const shouldReleaseConnection = !providedConnection;
   let row = null;
   try {
     await ensureTemporaryTable(conn);
@@ -919,7 +1008,7 @@ export async function promoteTemporarySubmission(
       err.status = 409;
       throw err;
     }
-    const columns = await listTableColumnsDetailed(row.table_name);
+    const columns = await columnLister(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
     const updatedForwardMeta = expandForwardMeta(forwardMeta, {
@@ -994,7 +1083,7 @@ export async function promoteTemporarySubmission(
     let formCfg = null;
     if (formName) {
       try {
-        const { config } = await getFormConfig(
+        const { config } = await formConfigResolver(
           row.table_name,
           formName,
           row.company_id,
@@ -1065,7 +1154,7 @@ export async function promoteTemporarySubmission(
     let forwardReviewerEmpId = null;
     if (promoteAsTemporary === true) {
       try {
-        const reviewerSession = await getEmploymentSession(
+        const reviewerSession = await employmentSessionFetcher(
           normalizedReviewer,
           row.company_id,
           {
@@ -1134,7 +1223,7 @@ export async function promoteTemporarySubmission(
           skipSessionEnabled = true;
         }
         try {
-          const inserted = await insertTableRow(
+          const inserted = await tableInserter(
             row.table_name,
             sanitizedValues,
             undefined,
@@ -1159,7 +1248,7 @@ export async function promoteTemporarySubmission(
             skipSessionEnabled = true;
           }
           try {
-            const inserted = await insertTableRow(
+            const inserted = await tableInserter(
               row.table_name,
               recordForInsert,
               undefined,
@@ -1243,15 +1332,25 @@ export async function promoteTemporarySubmission(
       // Use the updated forward metadata so parent/root temporaries are included
       // when updating the chain status.
       const forwardMetaForUpdate = updatedForwardMeta;
-      const forwardChainIds = buildChainIdsForUpdate(forwardMetaForUpdate, id);
-      await updateTemporaryChainStatus(conn, forwardChainIds, {
+      const forwardChainIds = await chainIdResolver(
+        conn,
+        forwardMetaForUpdate,
+        id,
+      );
+      console.info('Temporary forward chain update', {
+        id,
+        forwardMeta,
+        updatedForwardMeta,
+        forwardChainIds,
+      });
+      await chainStatusUpdater(conn, forwardChainIds, {
         status: 'promoted',
         reviewerEmpId: normalizedReviewer,
         notes: reviewNotesValue ?? null,
         clearReviewerAssignment: true,
         promotedRecordId: null,
       });
-      await logUserAction(
+      await activityLogger(
         {
           emp_id: normalizedReviewer,
           table_name: row.table_name,
@@ -1267,7 +1366,7 @@ export async function promoteTemporarySubmission(
         },
         conn,
       );
-      await insertNotification(conn, {
+      await notificationInserter(conn, {
         companyId: row.company_id,
         recipientEmpId: forwardReviewerEmpId,
         createdBy: normalizedReviewer,
@@ -1277,7 +1376,7 @@ export async function promoteTemporarySubmission(
       });
       const originRecipient = updatedForwardMeta.originCreator || row.created_by;
       if (originRecipient) {
-        await insertNotification(conn, {
+        await notificationInserter(conn, {
           companyId: row.company_id,
           recipientEmpId: originRecipient,
           createdBy: normalizedReviewer,
@@ -1428,15 +1527,21 @@ export async function promoteTemporarySubmission(
     // Use the normalized forward metadata so every linked temporary is updated,
     // even when this review is the final permanent promotion in a forwarded chain.
     const promotionMetaForUpdate = updatedForwardMeta;
-    const chainIds = buildChainIdsForUpdate(promotionMetaForUpdate, id);
-    await updateTemporaryChainStatus(conn, chainIds, {
+    const chainIds = await chainIdResolver(conn, promotionMetaForUpdate, id);
+    console.info('Temporary promotion chain update', {
+      id,
+      forwardMeta,
+      updatedForwardMeta,
+      chainIds,
+    });
+    await chainStatusUpdater(conn, chainIds, {
       status: 'promoted',
       reviewerEmpId: normalizedReviewer,
       notes: reviewNotesValue ?? null,
       promotedRecordId: promotedId,
       clearReviewerAssignment: true,
     });
-    await logUserAction(
+    await activityLogger(
       {
         emp_id: normalizedReviewer,
         table_name: row.table_name,
@@ -1452,7 +1557,7 @@ export async function promoteTemporarySubmission(
       conn,
     );
     const originRecipient = updatedForwardMeta.originCreator;
-    await insertNotification(conn, {
+    await notificationInserter(conn, {
       companyId: row.company_id,
       recipientEmpId: row.created_by,
       createdBy: normalizedReviewer,
@@ -1461,7 +1566,7 @@ export async function promoteTemporarySubmission(
       type: 'response',
     });
     if (originRecipient && originRecipient !== row.created_by) {
-      await insertNotification(conn, {
+      await notificationInserter(conn, {
         companyId: row.company_id,
         recipientEmpId: originRecipient,
         createdBy: normalizedReviewer,
@@ -1470,7 +1575,7 @@ export async function promoteTemporarySubmission(
         type: 'response',
       });
     }
-    await insertNotification(conn, {
+    await notificationInserter(conn, {
       companyId: row.company_id,
       recipientEmpId: normalizedReviewer,
       createdBy: normalizedReviewer,
@@ -1519,14 +1624,28 @@ export async function promoteTemporarySubmission(
   }
 }
 
-export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }) {
+export async function rejectTemporarySubmission(
+  id,
+  { reviewerEmpId, notes, io },
+  runtimeDeps = {},
+) {
   const normalizedReviewer = normalizeEmpId(reviewerEmpId);
   if (!normalizedReviewer) {
     const err = new Error('reviewerEmpId required');
     err.status = 400;
     throw err;
   }
-  const conn = await pool.getConnection();
+  const {
+    connection: providedConnection = null,
+    connectionFactory = () => pool.getConnection(),
+    chainStatusUpdater = updateTemporaryChainStatus,
+    chainIdResolver = resolveChainIdsForUpdate,
+    activityLogger = logUserAction,
+    notificationInserter = insertNotification,
+  } = runtimeDeps;
+
+  const conn = providedConnection || (await connectionFactory());
+  const shouldReleaseConnection = !providedConnection;
   try {
     await ensureTemporaryTable(conn);
     await conn.query('BEGIN');
@@ -1565,15 +1684,21 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
        WHERE id = ?`,
       [normalizedReviewer, notes ?? null, id],
     );
-    const chainIds = buildChainIdsForUpdate(updatedForwardMeta, id);
-    await updateTemporaryChainStatus(conn, chainIds, {
+    const chainIds = await chainIdResolver(conn, updatedForwardMeta, id);
+    console.info('Temporary rejection chain update', {
+      id,
+      forwardMeta,
+      updatedForwardMeta,
+      chainIds,
+    });
+    await chainStatusUpdater(conn, chainIds, {
       status: 'rejected',
       reviewerEmpId: normalizedReviewer,
       notes: notes ?? null,
       promotedRecordId: null,
       clearReviewerAssignment: true,
     });
-    await logUserAction(
+    await activityLogger(
       {
         emp_id: normalizedReviewer,
         table_name: row.table_name,
@@ -1584,7 +1709,7 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
       },
       conn,
     );
-    await insertNotification(conn, {
+    await notificationInserter(conn, {
       companyId: row.company_id,
       recipientEmpId: row.created_by,
       createdBy: normalizedReviewer,
@@ -1594,7 +1719,7 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
     });
     const originRecipient = updatedForwardMeta.originCreator;
     if (originRecipient && originRecipient !== row.created_by) {
-      await insertNotification(conn, {
+      await notificationInserter(conn, {
         companyId: row.company_id,
         recipientEmpId: originRecipient,
         createdBy: normalizedReviewer,
@@ -1603,7 +1728,7 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
         type: 'response',
       });
     }
-    await insertNotification(conn, {
+    await notificationInserter(conn, {
       companyId: row.company_id,
       recipientEmpId: normalizedReviewer,
       createdBy: normalizedReviewer,
@@ -1635,7 +1760,9 @@ export async function rejectTemporarySubmission(id, { reviewerEmpId, notes, io }
     } catch {}
     throw err;
   } finally {
-    conn.release();
+    if (shouldReleaseConnection) {
+      conn.release();
+    }
   }
 }
 
