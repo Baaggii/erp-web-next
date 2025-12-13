@@ -6335,7 +6335,7 @@ export default function PosApiAdmin() {
     let payloadCandidate = {};
     let allowedFields = [];
     if (key === BASE_COMBINATION_KEY) {
-      payloadCandidate = toSamplePayload(baseRequestJson || {});
+      payloadCandidate = parseExamplePayload(baseRequestJson || formState.requestSchemaText || {});
     } else {
       const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
       if (baseVariation) {

@@ -22,6 +22,7 @@ import {
 import { getMerchantById } from './merchantService.js';
 
 const TEMP_TABLE = 'transaction_temporaries';
+const TEMP_REVIEW_HISTORY_TABLE = 'transaction_temporary_review_history';
 let ensurePromise = null;
 
 const RESERVED_TEMPORARY_COLUMNS = new Set(['rows']);
@@ -347,7 +348,7 @@ async function updateTemporaryChainStatus(
     columns.push('promoted_record_id = ?');
     params.push(promotedRecordId);
   }
-  if (clearReviewerAssignment) {
+  if (clearReviewerAssignment || (status && status !== 'pending')) {
     columns.push('plan_senior_empid = NULL');
   }
   params.push(...normalizedIds);
@@ -496,6 +497,7 @@ async function ensureTemporaryTable(conn = pool) {
         KEY idx_temp_status (status),
         KEY idx_temp_table (table_name),
         KEY idx_temp_plan_senior (plan_senior_empid),
+        KEY idx_temp_status_plan_senior (status, plan_senior_empid),
         KEY idx_temp_creator (created_by)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
     );
@@ -524,9 +526,70 @@ async function ensureTemporaryTable(conn = pool) {
              CHECK (status = 'pending' OR plan_senior_empid IS NULL)`,
         );
       }
+      const [indexes] = await conn.query(
+        `SELECT INDEX_NAME
+           FROM INFORMATION_SCHEMA.STATISTICS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = ?
+            AND INDEX_NAME = 'idx_temp_status_plan_senior'
+          LIMIT 1`,
+        [TEMP_TABLE],
+      );
+      const hasCompositeIndex =
+        Array.isArray(indexes) &&
+        indexes.some(
+          (row) =>
+            row &&
+            typeof row.INDEX_NAME === 'string' &&
+            row.INDEX_NAME.toLowerCase() === 'idx_temp_status_plan_senior',
+        );
+      if (!hasCompositeIndex) {
+        await conn.query(
+          `ALTER TABLE \`${TEMP_TABLE}\`
+             ADD INDEX idx_temp_status_plan_senior (status, plan_senior_empid)`,
+        );
+      }
+      const [triggers] = await conn.query(
+        `SELECT TRIGGER_NAME
+           FROM INFORMATION_SCHEMA.TRIGGERS
+          WHERE TRIGGER_SCHEMA = DATABASE()
+            AND TRIGGER_NAME = 'trg_temp_clear_reviewer'
+          LIMIT 1`,
+      );
+      const hasTrigger =
+        Array.isArray(triggers) &&
+        triggers.some(
+          (row) =>
+            row &&
+            typeof row.TRIGGER_NAME === 'string' &&
+            row.TRIGGER_NAME.toLowerCase() === 'trg_temp_clear_reviewer',
+        );
+      if (!hasTrigger) {
+        await conn.query(
+          `CREATE TRIGGER \`trg_temp_clear_reviewer\`
+             BEFORE UPDATE ON \`${TEMP_TABLE}\`
+             FOR EACH ROW
+             SET NEW.plan_senior_empid = IF(NEW.status = 'pending', NEW.plan_senior_empid, NULL)`,
+        );
+      }
     } catch (constraintErr) {
       console.error('Failed to ensure reviewer/status constraint', constraintErr);
     }
+    await conn.query(
+      `CREATE TABLE IF NOT EXISTS \`${TEMP_REVIEW_HISTORY_TABLE}\` (
+        id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+        temporary_id BIGINT UNSIGNED NOT NULL,
+        action ENUM('forwarded','promoted','rejected') NOT NULL,
+        reviewer_empid VARCHAR(64) NOT NULL,
+        forwarded_to_empid VARCHAR(64) DEFAULT NULL,
+        promoted_record_id VARCHAR(64) DEFAULT NULL,
+        notes TEXT DEFAULT NULL,
+        created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id),
+        KEY idx_temp_history_temp (temporary_id),
+        KEY idx_temp_history_action (action)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
+    );
   })()
     .catch((err) => {
       ensurePromise = null;
@@ -552,6 +615,26 @@ async function insertNotification(
       message ?? '',
       createdBy ?? null,
     ],
+  );
+}
+
+const REVIEW_ACTIONS = new Set(['forwarded', 'promoted', 'rejected']);
+
+async function recordTemporaryReviewHistory(
+  conn,
+  { temporaryId, action, reviewerEmpId, notes = null, forwardedToEmpId = null, promotedRecordId = null },
+) {
+  const normalizedId = normalizeTemporaryId(temporaryId);
+  const normalizedReviewer = normalizeEmpId(reviewerEmpId);
+  if (!conn || !normalizedId || !normalizedReviewer || !REVIEW_ACTIONS.has(action)) return;
+  await ensureTemporaryTable(conn);
+  const normalizedForward = normalizeEmpId(forwardedToEmpId);
+  const recordId = promotedRecordId ? String(promotedRecordId) : null;
+  await conn.query(
+    `INSERT INTO \`${TEMP_REVIEW_HISTORY_TABLE}\`
+     (temporary_id, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [normalizedId, action, normalizedReviewer, normalizedForward ?? null, recordId, notes ?? null],
   );
 }
 
@@ -942,6 +1025,20 @@ function formatChainHistoryRow(row) {
   };
 }
 
+function formatReviewHistoryRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    temporaryId: row.temporary_id,
+    action: row.action,
+    reviewerEmpId: row.reviewer_empid || null,
+    forwardedToEmpId: row.forwarded_to_empid || null,
+    promotedRecordId: row.promoted_record_id || null,
+    notes: row.notes || null,
+    createdAt: row.created_at || null,
+  };
+}
+
 export async function getTemporaryChainHistory(id) {
   const normalizedId = normalizeTemporaryId(id);
   if (!normalizedId) return [];
@@ -971,7 +1068,20 @@ export async function getTemporaryChainHistory(id) {
       chainIds,
     );
     const normalizedRows = Array.isArray(chainRows) && chainRows.length > 0 ? chainRows : [row];
-    return normalizedRows.map((item) => formatChainHistoryRow(item)).filter(Boolean);
+    const formattedChain = normalizedRows.map((item) => formatChainHistoryRow(item)).filter(Boolean);
+    const historyIds = chainIds.length > 0 ? chainIds : [row.id];
+    const historyPlaceholders = historyIds.map(() => '?').join(', ');
+    const [historyRows] = await conn.query(
+      `SELECT id, temporary_id, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes, created_at
+         FROM \`${TEMP_REVIEW_HISTORY_TABLE}\`
+        WHERE temporary_id IN (${historyPlaceholders})
+        ORDER BY created_at ASC, id ASC`,
+      historyIds,
+    );
+    const reviewHistory = Array.isArray(historyRows)
+      ? historyRows.map((item) => formatReviewHistoryRow(item)).filter(Boolean)
+      : [];
+    return { chain: formattedChain, reviewHistory };
   } finally {
     conn.release();
   }
@@ -1378,6 +1488,13 @@ export async function promoteTemporarySubmission(
         clearReviewerAssignment: true,
         promotedRecordId: null,
       });
+      await recordTemporaryReviewHistory(conn, {
+        temporaryId: id,
+        action: 'forwarded',
+        reviewerEmpId: normalizedReviewer,
+        forwardedToEmpId: forwardReviewerEmpId,
+        notes: reviewNotesValue ?? null,
+      });
       await activityLogger(
         {
           emp_id: normalizedReviewer,
@@ -1569,6 +1686,13 @@ export async function promoteTemporarySubmission(
       promotedRecordId: promotedId,
       clearReviewerAssignment: true,
     });
+    await recordTemporaryReviewHistory(conn, {
+      temporaryId: id,
+      action: 'promoted',
+      reviewerEmpId: normalizedReviewer,
+      promotedRecordId: promotedId,
+      notes: reviewNotesValue ?? null,
+    });
     await activityLogger(
       {
         emp_id: normalizedReviewer,
@@ -1725,6 +1849,12 @@ export async function rejectTemporarySubmission(
       notes: notes ?? null,
       promotedRecordId: null,
       clearReviewerAssignment: true,
+    });
+    await recordTemporaryReviewHistory(conn, {
+      temporaryId: id,
+      action: 'rejected',
+      reviewerEmpId: normalizedReviewer,
+      notes: notes ?? null,
     });
     await activityLogger(
       {

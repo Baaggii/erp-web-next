@@ -8,6 +8,7 @@ import {
   sanitizeCleanedValuesForInsert,
   resolveChainIdsForUpdate,
   promoteTemporarySubmission,
+  getTemporaryChainHistory,
 } from '../../api-server/services/transactionTemporaries.js';
 
 function mockQuery(handler) {
@@ -42,6 +43,9 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       if (sql.startsWith('INSERT INTO `transaction_temporaries`')) {
         return [[{ insertId: 202 }]];
       }
+      if (sql.startsWith('INSERT INTO `transaction_temporary_review_history`')) {
+        return [[{ insertId: 301 }]];
+      }
       if (sql.startsWith('UPDATE `transaction_temporaries`')) {
         return [[{ affectedRows: 1 }]];
       }
@@ -67,7 +71,16 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
       return [[{ CONSTRAINT_NAME: 'missing' }]];
     }
+    if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
+      return [[{ INDEX_NAME: 'idx_temp_status_plan_senior' }]];
+    }
+    if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
+      return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
+    }
     if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) {
+      return [[], []];
+    }
+    if (sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`')) {
       return [[], []];
     }
     if (sql.startsWith('SELECT * FROM `transaction_temporaries`')) {
@@ -120,6 +133,13 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
       queries.some((sql) => sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')),
     );
     assert.ok(queries.some((sql) => sql.startsWith('ALTER TABLE `transaction_temporaries`')));
+    assert.ok(queries.some((sql) => sql.includes('INFORMATION_SCHEMA.STATISTICS')));
+    assert.ok(queries.some((sql) => sql.includes('INFORMATION_SCHEMA.TRIGGERS')));
+    assert.ok(
+      queries.some((sql) =>
+        sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`'),
+      ),
+    );
   } finally {
     restore();
   }
@@ -245,6 +265,12 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
   assert.equal(chainUpdates[0].payload.status, 'promoted');
   assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
+  const historyInsert = queries.find(({ sql }) =>
+    sql.includes('INSERT INTO `transaction_temporary_review_history`'),
+  );
+  assert.ok(historyInsert);
+  assert.equal(historyInsert.params[1], 'forwarded');
+  assert.equal(historyInsert.params[3], 'EMP300');
   assert.ok(conn.released);
 });
 
@@ -291,5 +317,83 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   assert.equal(chainUpdates[0].payload.promotedRecordId, '909');
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
   assert.ok(queries.some(({ sql }) => sql.includes('UPDATE `transaction_temporaries`')));
+  const historyInsert = queries.find(({ sql }) =>
+    sql.includes('INSERT INTO `transaction_temporary_review_history`'),
+  );
+  assert.ok(historyInsert);
+  assert.equal(historyInsert.params[1], 'promoted');
+  assert.equal(historyInsert.params[4], '909');
   assert.ok(conn.released);
+});
+
+test('promoteTemporarySubmission prevents concurrent promotions and respects row locks', async () => {
+  let status = 'pending';
+  const temporaryRow = {
+    id: 11,
+    company_id: 1,
+    table_name: 'transactions_test',
+    form_name: null,
+    config_name: null,
+    module_key: null,
+    payload_json: '{}',
+    cleaned_values_json: '{}',
+    raw_values_json: '{}',
+    created_by: 'EMP150',
+    plan_senior_empid: 'EMP500',
+    branch_id: null,
+    department_id: null,
+    status,
+  };
+
+  const queries = [];
+  const conn = {
+    released: false,
+    async query(sql, params = []) {
+      queries.push({ sql, params });
+      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) return [[], []];
+      if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') return [[], []];
+      if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
+        return [[{ ...temporaryRow, status }]];
+      }
+      if (sql.startsWith('SET @skip_triggers')) return [[], []];
+      if (sql.startsWith('UPDATE `transaction_temporaries`')) {
+        status = params[0] || status;
+        return [[{ affectedRows: 1 }]];
+      }
+      if (sql.startsWith('INSERT INTO `transaction_temporary_review_history`')) {
+        return [[{ insertId: 999 }]];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+    release() {
+      this.released = true;
+    },
+  };
+
+  const runtimeDeps = {
+    connectionFactory: async () => conn,
+    columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
+    tableInserter: async () => ({ id: 777 }),
+    chainIdResolver: async () => [11],
+    notificationInserter: async () => {},
+    activityLogger: async () => {},
+  };
+
+  await promoteTemporarySubmission(
+    11,
+    { reviewerEmpId: 'EMP500', cleanedValues: { amount: 50 } },
+    runtimeDeps,
+  );
+
+  await assert.rejects(
+    () =>
+      promoteTemporarySubmission(
+        11,
+        { reviewerEmpId: 'EMP500', cleanedValues: { amount: 50 } },
+        runtimeDeps,
+      ),
+    (err) => err && err.status === 409,
+  );
+
+  assert.ok(queries.some(({ sql }) => sql.includes('FOR UPDATE')));
 });
