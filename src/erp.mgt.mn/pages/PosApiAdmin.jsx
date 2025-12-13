@@ -2712,6 +2712,7 @@ export default function PosApiAdmin() {
   const [combinationModifierKeys, setCombinationModifierKeys] = useState([]);
   const [combinationPayloadText, setCombinationPayloadText] = useState('');
   const [combinationError, setCombinationError] = useState('');
+  const [testPayloadSource, setTestPayloadSource] = useState('sample');
   const [tokenMeta, setTokenMeta] = useState({ lastFetchedAt: null, expiresAt: null });
   const [paymentDataDrafts, setPaymentDataDrafts] = useState({});
   const [paymentDataErrors, setPaymentDataErrors] = useState({});
@@ -2750,6 +2751,30 @@ export default function PosApiAdmin() {
   const builderSyncRef = useRef(false);
   const requestSampleSyncRef = useRef(false);
   const refreshInfoSyncLogsRef = useRef(() => Promise.resolve());
+
+  useEffect(() => {
+    const trimmedCombination = (combinationPayloadText || '').trim();
+    if (testPayloadSource === 'combination' && !trimmedCombination) {
+      setTestPayloadSource('sample');
+    }
+  }, [testPayloadSource, combinationPayloadText]);
+
+  function selectTestPayloadSource(source) {
+    if (source === 'combination' && !combinationPayloadText.trim()) {
+      setCombinationError('Build a combination payload before using it for tests.');
+      setTestPayloadSource('sample');
+      return;
+    }
+    setTestPayloadSource(source);
+  }
+
+  function getSelectedPayloadContext(payloadSourceOverride) {
+    const source = payloadSourceOverride || testPayloadSource || 'sample';
+    const label = source === 'combination' ? 'Built combination JSON box' : 'Request sample JSON box';
+    const text = source === 'combination' ? combinationPayloadText : requestSampleText;
+    const hasText = Boolean((text || '').trim());
+    return { source, label, text, hasText };
+  }
 
   function showToast(message, type = 'info') {
     if (typeof addToast === 'function') {
@@ -6685,6 +6710,7 @@ export default function PosApiAdmin() {
     setCombinationModifierKeys([]);
     setCombinationPayloadText('');
     setCombinationError('Select a base variation to build a combination.');
+    setTestPayloadSource('sample');
     setTestEnvironment('staging');
     setImportAuthEndpointId('');
     setUseCachedToken(true);
@@ -6694,25 +6720,21 @@ export default function PosApiAdmin() {
   }
 
   async function handleTestCombination() {
-    if (!combinationPayloadText.trim()) {
-      setCombinationError('Build a combination payload before testing.');
-      return;
-    }
-    await handleTest({
-      payloadTextOverride: combinationPayloadText,
-      payloadLabel: 'Combination payload',
-    });
-  }
-
-  function parseRequestSamplePayload() {
-    return parseJsonPayloadFromText('Request sample', requestSampleText, {
-      setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
-    });
+    const { text, label, source } = getSelectedPayloadContext();
+    await handleTest({ payloadTextOverride: text, payloadLabel: label, payloadSource: source });
   }
 
   function parseJsonPayloadFromText(label, text, options = {}) {
     const trimmed = (text || '').trim();
-    if (!trimmed) return {};
+    if (!trimmed) {
+      const message = `${label} cannot be empty.`;
+      const setErrorState = options.setErrorState;
+      if (typeof setErrorState === 'function') {
+        setErrorState(message);
+      }
+      showToast(message, 'error');
+      throw new Error(message);
+    }
     try {
       return JSON.parse(text);
     } catch (err) {
@@ -6727,15 +6749,19 @@ export default function PosApiAdmin() {
   }
 
   async function handleTest(options = {}) {
-    const { payloadOverride, payloadTextOverride, payloadLabel } = options || {};
+    const { payloadOverride, payloadTextOverride, payloadLabel, payloadSource: requestedPayloadSource } = options || {};
     let definition;
     try {
       setError('');
       setStatus('');
+      setTestState({ running: false, error: '', result: null });
       definition = buildDefinition();
       showToast(`Preparing to test ${definition.name || definition.id || 'endpoint'}.`, 'info');
     } catch (err) {
-      setError(err.message || 'Failed to prepare endpoint');
+      const message = err.message || 'Failed to prepare endpoint';
+      setError(message);
+      setTestState({ running: false, error: message, result: null });
+      showToast(message, 'error');
       return;
     }
 
@@ -6775,7 +6801,23 @@ export default function PosApiAdmin() {
       return;
     }
 
+    const payloadSource = requestedPayloadSource || testPayloadSource || 'sample';
+    const selectedPayloadContext = getSelectedPayloadContext(payloadSource);
+    const payloadTextForTest = payloadTextOverride
+      ?? (typeof payloadOverride === 'string' ? payloadOverride : null)
+      ?? selectedPayloadContext.text;
+    const payloadLabelForTest = payloadLabel || selectedPayloadContext.label;
     let payloadForTest = null;
+
+    if (!payloadTextForTest || !payloadTextForTest.trim()) {
+      const message = 'Add JSON to the selected test payload box before testing.';
+      if (payloadSource === 'combination') {
+        setCombinationError(message);
+      }
+      setTestState({ running: false, error: message, result: null });
+      showToast(message, 'error');
+      return;
+    }
     const parseOverrideText = (text, label) =>
       parseJsonPayloadFromText(label, text, {
         setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
@@ -6803,16 +6845,20 @@ export default function PosApiAdmin() {
       }
     } else {
       try {
-        payloadForTest = parseRequestSamplePayload();
+        payloadForTest = parseJsonPayloadFromText(payloadLabelForTest, payloadTextForTest, {
+          setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
+        });
       } catch {
         return;
       }
     }
     const hasPayloadOverride = payloadForTest !== undefined && payloadForTest !== null;
 
-    const confirmPayloadLabel = payloadOverride !== undefined && payloadOverride !== null
-      ? 'the combination payload you provided'
-      : 'the request sample payload';
+    const confirmPayloadLabel = payloadLabelForTest
+      || (payloadSource === 'combination'
+        || (payloadTextOverride !== undefined && payloadTextOverride !== null)
+        ? 'the built combination JSON box'
+        : 'the request sample JSON box');
     const confirmed = window.confirm(
       `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use ${confirmPayloadLabel}.`,
     );
@@ -6844,7 +6890,9 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
-          ...(hasPayloadOverride ? { payloadOverride: payloadForTest } : {}),
+          ...(hasPayloadOverride
+            ? { payloadOverride: payloadForTest, payloadOverrideText: payloadTextForTest?.trim() || '' }
+            : {}),
         }),
       });
       const responseText = await res.text();
@@ -6924,6 +6972,12 @@ export default function PosApiAdmin() {
       showToast(err.message || 'Failed to run test', 'error');
     }
   }
+
+  const {
+    label: selectedTestPayloadLabel,
+    text: selectedTestPayloadText,
+    hasText: hasSelectedPayloadText,
+  } = getSelectedPayloadContext();
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -8450,10 +8504,25 @@ export default function PosApiAdmin() {
               setCombinationPayloadText(e.target.value);
               setCombinationError('');
             }}
+            onClick={() => selectTestPayloadSource('combination')}
             style={{ ...styles.textarea, marginTop: '0.75rem' }}
             rows={8}
             placeholder="Built combination payload will appear here"
           />
+          <div style={styles.inlineActionRow}>
+            <label style={{ ...styles.multiSelectOption, margin: 0 }}>
+              <input
+                type="radio"
+                name="test-payload-source"
+                checked={testPayloadSource === 'combination'}
+                onChange={() => selectTestPayloadSource('combination')}
+              />
+              <span>Use this JSON for test runs</span>
+            </label>
+            <span style={styles.checkboxHint}>
+              Click the built combination box to switch the test payload to this JSON.
+            </span>
+          </div>
           {combinationError && <div style={styles.inputError}>{combinationError}</div>}
           <div style={styles.inlineActionRow}>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -8499,19 +8568,51 @@ export default function PosApiAdmin() {
             The Test endpoint button uses this payload. Selecting a variation loads its example here without changing the base
             request.
           </span>
+          <div style={styles.inlineActionRow}>
+            <label style={{ ...styles.multiSelectOption, margin: 0 }}>
+              <input
+                type="radio"
+                name="test-payload-source"
+                checked={testPayloadSource === 'sample'}
+                onChange={() => selectTestPayloadSource('sample')}
+              />
+              <span>Use this JSON for test runs</span>
+            </label>
+            <span style={styles.checkboxHint}>Click inside this box to set it as the test payload.</span>
+          </div>
           <textarea
             value={requestSampleText}
             onChange={(e) => setRequestSampleText(e.target.value)}
+            onClick={() => selectTestPayloadSource('sample')}
             style={styles.textarea}
             rows={8}
             placeholder="Request payload sent when testing the endpoint"
           />
         </label>
 
+        <div style={styles.selectedPayloadCard}>
+          <div style={styles.selectedPayloadHeader}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={styles.selectedPayloadTitle}>Selected test payload</span>
+              <span style={styles.selectedPayloadSource}>{selectedTestPayloadLabel}</span>
+            </div>
+            <span style={styles.selectedPayloadHint}>Click or tick a JSON box to switch.</span>
+          </div>
+          <pre style={styles.selectedPayloadPreview}>
+            {hasSelectedPayloadText
+              ? selectedTestPayloadText
+              : 'Add JSON to the selected box to run the test.'}
+          </pre>
+        </div>
+
         <div style={styles.actions}>
             <button
               type="button"
-              onClick={() => handleTest()}
+              onClick={() => handleTest({
+                payloadSource: testPayloadSource,
+                payloadTextOverride: selectedTestPayloadText,
+                payloadLabel: selectedTestPayloadLabel,
+              })}
               disabled={
                 loading ||
                 saving ||
@@ -10268,6 +10369,45 @@ const styles = {
     borderRadius: '6px',
     padding: '0.5rem 0.75rem',
     fontSize: '0.9rem',
+  },
+  selectedPayloadCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#f8fafc',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  selectedPayloadHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  selectedPayloadTitle: {
+    fontWeight: 700,
+    color: '#0f172a',
+  },
+  selectedPayloadSource: {
+    color: '#475569',
+    fontSize: '0.9rem',
+  },
+  selectedPayloadHint: {
+    color: '#0f172a',
+    fontSize: '0.9rem',
+  },
+  selectedPayloadPreview: {
+    background: '#0f172a',
+    color: '#e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem',
+    whiteSpace: 'pre-wrap',
+    overflowX: 'auto',
+    fontSize: '0.9rem',
+    lineHeight: 1.5,
+    minHeight: '120px',
   },
   codeBlock: {
     background: '#0f172a',
