@@ -1418,13 +1418,13 @@ function parseExamplePayload(raw) {
 }
 
 function toSamplePayload(raw) {
-  return sanitizeRequestExampleForSample(parseExamplePayload(raw));
+  return parseExamplePayload(raw);
 }
 
 function cleanSampleText(text) {
   if (!text) return {};
   try {
-    return stripRequestDecorations(JSON.parse(text));
+    return JSON.parse(text);
   } catch {
     return {};
   }
@@ -6406,7 +6406,7 @@ export default function PosApiAdmin() {
   function resolveVariationExampleForTesting(key) {
     if (!key) return null;
     const variationExample = resolveVariationRequestExample(key);
-    if (variationExample) return sanitizeRequestExampleForSample(variationExample);
+    if (variationExample) return variationExample;
     return null;
   }
 
@@ -6727,7 +6727,7 @@ export default function PosApiAdmin() {
     const text = (requestSampleText || '').trim();
     if (!text) return {};
     try {
-      return stripRequestDecorations(JSON.parse(text));
+      return JSON.parse(text);
     } catch (err) {
       const message = err?.message || 'Request sample must be valid JSON.';
       setTestState({ running: false, error: message, result: null });
@@ -6789,7 +6789,7 @@ export default function PosApiAdmin() {
     if (payloadOverride !== undefined && payloadOverride !== null) {
       if (typeof payloadOverride === 'string') {
         try {
-          payloadForTest = stripRequestDecorations(JSON.parse(payloadOverride));
+          payloadForTest = JSON.parse(payloadOverride);
         } catch (err) {
           const message = err?.message || 'Payload override must be valid JSON.';
           setCombinationError(message);
@@ -6798,7 +6798,7 @@ export default function PosApiAdmin() {
           return;
         }
       } else {
-        payloadForTest = stripRequestDecorations(payloadOverride);
+        payloadForTest = payloadOverride;
       }
     } else {
       try {
