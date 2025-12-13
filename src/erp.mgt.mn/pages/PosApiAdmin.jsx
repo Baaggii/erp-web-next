@@ -1418,13 +1418,13 @@ function parseExamplePayload(raw) {
 }
 
 function toSamplePayload(raw) {
-  return sanitizeRequestExampleForSample(parseExamplePayload(raw));
+  return parseExamplePayload(raw);
 }
 
 function cleanSampleText(text) {
   if (!text) return {};
   try {
-    return stripRequestDecorations(JSON.parse(text));
+    return JSON.parse(text);
   } catch {
     return {};
   }
@@ -3076,28 +3076,6 @@ export default function PosApiAdmin() {
       abortController.abort();
     };
   }, [formState.responseTables, tableFields, tableFieldLoading]);
-
-  const requestPreview = useMemo(() => {
-    const text = (requestSampleText || '').trim();
-    if (!text) return { state: 'empty', formatted: '', error: '' };
-    try {
-      const parsed = JSON.parse(text);
-      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '' };
-    } catch (err) {
-      return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
-    }
-  }, [requestSampleText]);
-
-  const responsePreview = useMemo(() => {
-    const text = (formState.responseSchemaText || '').trim();
-    if (!text) return { state: 'empty', formatted: '', error: '' };
-    try {
-      const parsed = JSON.parse(text);
-      return { state: 'ok', formatted: JSON.stringify(parsed, null, 2), error: '' };
-    } catch (err) {
-      return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
-    }
-  }, [formState.responseSchemaText]);
 
   const isTransactionUsage = formState.usage === 'transaction';
   const supportsItems = isTransactionUsage ? formState.supportsItems !== false : false;
@@ -6406,7 +6384,7 @@ export default function PosApiAdmin() {
   function resolveVariationExampleForTesting(key) {
     if (!key) return null;
     const variationExample = resolveVariationRequestExample(key);
-    if (variationExample) return sanitizeRequestExampleForSample(variationExample);
+    if (variationExample) return variationExample;
     return null;
   }
 
@@ -6720,24 +6698,36 @@ export default function PosApiAdmin() {
       setCombinationError('Build a combination payload before testing.');
       return;
     }
-    await handleTest({ payloadOverride: combinationPayloadText });
+    await handleTest({
+      payloadTextOverride: combinationPayloadText,
+      payloadLabel: 'Combination payload',
+    });
   }
 
   function parseRequestSamplePayload() {
-    const text = (requestSampleText || '').trim();
-    if (!text) return {};
+    return parseJsonPayloadFromText('Request sample', requestSampleText, {
+      setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
+    });
+  }
+
+  function parseJsonPayloadFromText(label, text, options = {}) {
+    const trimmed = (text || '').trim();
+    if (!trimmed) return {};
     try {
-      return stripRequestDecorations(JSON.parse(text));
+      return JSON.parse(trimmed);
     } catch (err) {
-      const message = err?.message || 'Request sample must be valid JSON.';
-      setTestState({ running: false, error: message, result: null });
+      const message = err?.message || `${label} must be valid JSON.`;
+      const setErrorState = options.setErrorState;
+      if (typeof setErrorState === 'function') {
+        setErrorState(message);
+      }
       showToast(message, 'error');
       throw err;
     }
   }
 
   async function handleTest(options = {}) {
-    const { payloadOverride } = options || {};
+    const { payloadOverride, payloadTextOverride, payloadLabel } = options || {};
     let definition;
     try {
       setError('');
@@ -6786,19 +6776,26 @@ export default function PosApiAdmin() {
     }
 
     let payloadForTest = null;
-    if (payloadOverride !== undefined && payloadOverride !== null) {
+    const parseOverrideText = (text, label) =>
+      parseJsonPayloadFromText(label, text, {
+        setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
+      });
+
+    if (payloadTextOverride !== undefined && payloadTextOverride !== null) {
+      try {
+        payloadForTest = parseOverrideText(payloadTextOverride, payloadLabel || 'Payload override');
+      } catch {
+        return;
+      }
+    } else if (payloadOverride !== undefined && payloadOverride !== null) {
       if (typeof payloadOverride === 'string') {
         try {
-          payloadForTest = stripRequestDecorations(JSON.parse(payloadOverride));
-        } catch (err) {
-          const message = err?.message || 'Payload override must be valid JSON.';
-          setCombinationError(message);
-          setTestState({ running: false, error: message, result: null });
-          showToast(message, 'error');
+          payloadForTest = parseOverrideText(payloadOverride, payloadLabel || 'Payload override');
+        } catch {
           return;
         }
       } else {
-        payloadForTest = stripRequestDecorations(payloadOverride);
+        payloadForTest = payloadOverride;
       }
     } else {
       try {
@@ -6846,43 +6843,80 @@ export default function PosApiAdmin() {
           ...(hasPayloadOverride ? { payloadOverride: payloadForTest } : {}),
         }),
       });
-      if (!res.ok) {
-        const text = await res.text();
-        let message = text;
-        let requestUrl = '';
-        try {
-          const parsed = JSON.parse(text);
-          if (parsed && typeof parsed === 'object') {
-            if (parsed.message) {
-              message = parsed.message;
-            }
-            if (parsed.request?.url) {
-              requestUrl = parsed.request.url;
-            }
-          }
-        } catch {
-          // ignore parse failure
-        }
-        const detailedMessage = requestUrl && !(message || '').includes(requestUrl)
-          ? `${message || 'Test request failed'} (Request URL: ${requestUrl})`
-          : message || 'Test request failed';
-        throw new Error(detailedMessage);
+      const responseText = await res.text();
+      let data = null;
+      try {
+        data = JSON.parse(responseText);
+      } catch {
+        // Response body isn't JSON; fall back to textual body below.
       }
-      const data = await res.json();
-      if (Array.isArray(data.envWarnings) && data.envWarnings.length) {
+
+      const buildResultPayload = (rawData = {}) => {
+        const responseSummary = {
+          ok: rawData?.response?.ok ?? res.ok,
+          status: rawData?.response?.status ?? res.status,
+          statusText: rawData?.response?.statusText ?? res.statusText,
+          bodyJson: rawData?.response?.bodyJson,
+          bodyText: rawData?.response?.bodyText ?? (!rawData.response ? responseText : ''),
+          headers: rawData?.response?.headers,
+        };
+
+        const inferredRequestUrl = rawData?.request?.url
+          || selectedTestUrl
+          || activeTestSelection.display
+          || endpointForTest.path;
+
+        const requestSummary = {
+          method: rawData?.request?.method || definition.method,
+          url: inferredRequestUrl,
+          ...(payloadForTest !== undefined ? { body: payloadForTest } : {}),
+          ...(rawData?.request || {}),
+        };
+
+        return { ...rawData, request: requestSummary, response: { ...rawData.response, ...responseSummary } };
+      };
+
+      if (!res.ok) {
+        const message = data?.message || responseText || 'Test request failed';
+        const detailedMessage = data?.request?.url && !(message || '').includes(data.request.url)
+          ? `${message} (Request URL: ${data.request.url})`
+          : message;
+        const resultPayload = buildResultPayload(data || {});
+        setTestState({ running: false, error: detailedMessage, result: resultPayload });
+        showToast(detailedMessage, 'error');
+        return;
+      }
+
+      const resultPayload = buildResultPayload(data || {});
+      if (Array.isArray(data?.envWarnings) && data.envWarnings.length) {
         setStatus(data.envWarnings.join(' '));
         showToast(data.envWarnings.join(' '), 'info');
       }
-      updateTokenMetaFromResult(data);
-      setTestState({ running: false, error: '', result: data });
-      const statusCode = data?.response?.status ?? res.status;
-      const statusText = data?.response?.statusText || res.statusText || '';
-      const success = data?.response?.ok !== undefined ? data.response.ok : res.ok;
-      showToast(`Test request URL: ${data?.request?.url || endpointForTest.path}`, 'info');
+      if (data) {
+        updateTokenMetaFromResult(data);
+      }
+      setTestState({ running: false, error: '', result: resultPayload });
+      const statusCode = resultPayload.response?.status ?? res.status;
+      const statusText = resultPayload.response?.statusText || res.statusText || '';
+      const success = resultPayload.response?.ok !== undefined ? resultPayload.response.ok : res.ok;
+      showToast(`Test request URL: ${resultPayload?.request?.url || endpointForTest.path}`, 'info');
       showToast(`Test response status: ${statusCode} ${statusText}`.trim(), success ? 'success' : 'error');
     } catch (err) {
       console.error(err);
-      setTestState({ running: false, error: err.message || 'Failed to run test', result: null });
+      const fallbackResult = {
+        request: {
+          method: definition?.method,
+          url: selectedTestUrl || activeTestSelection.display || definition?.path,
+          ...(payloadForTest !== undefined ? { body: payloadForTest } : {}),
+        },
+        response: {
+          ok: false,
+          status: null,
+          statusText: err.message || 'Failed to run test',
+          bodyText: '',
+        },
+      };
+      setTestState({ running: false, error: err.message || 'Failed to run test', result: fallbackResult });
       showToast(err.message || 'Failed to run test', 'error');
     }
   }
@@ -7673,96 +7707,7 @@ export default function PosApiAdmin() {
             placeholder="Explain how the base sample should be used or modified."
           />
         </label>
-        {((formState.method || '').toUpperCase() !== 'GET') || (formState.requestSchemaText || '').trim()
-          ? (
-            <label style={styles.labelFull}>
-              Request body schema (JSON)
-              <div style={styles.inlineActionRow}>
-                <button type="button" style={styles.smallButton} onClick={handleResetRequestSchema}>
-                  Reset to empty object
-                </button>
-                <span style={styles.inlineActionHint}>
-                  Clears the saved request body schema and removes receipt defaults.
-                </span>
-              </div>
-              <textarea
-                value={formState.requestSchemaText}
-                onChange={(e) => handleChange('requestSchemaText', e.target.value)}
-                style={styles.textarea}
-                rows={10}
-              />
-            </label>
-            )
-          : (
-            <div style={styles.sectionHelp}>
-              GET requests typically do not send a body; request schema is hidden until a payload is added.
-            </div>
-          )}
-        <label style={styles.labelFull}>
-          Response description
-          <input
-            type="text"
-            value={formState.responseDescription}
-            onChange={(e) => handleChange('responseDescription', e.target.value)}
-            style={styles.input}
-            placeholder="Receipt submission response"
-          />
-        </label>
-        <label style={styles.labelFull}>
-          Response body schema (JSON)
-          <textarea
-            value={formState.responseSchemaText}
-            onChange={(e) => handleChange('responseSchemaText', e.target.value)}
-            style={styles.textarea}
-            rows={10}
-          />
-        </label>
-        <label style={styles.labelFull}>
-          Examples (JSON array)
-          <textarea
-            value={formState.examplesText}
-            onChange={(e) => handleChange('examplesText', e.target.value)}
-            style={styles.textarea}
-            rows={6}
-          />
-        </label>
-        {exampleVariationChoices.length > 0 && (
-          <div style={styles.hintCard}>
-            <div style={styles.hintHeader}>
-              <h3 style={styles.hintTitle}>Example combinations</h3>
-              <span style={styles.hintCount}>{enabledRequestFieldVariations.length}</span>
-            </div>
-            <p style={styles.hintDescription}>
-              Enable example variations to surface them as modifiers in the combination builder. Defaults and required
-              flags can be edited per combination and reused when testing requests.
-            </p>
-            <div style={styles.importParamGrid}>
-              {exampleVariationChoices.map((choice) => {
-                const existing = requestFieldVariationMap.get(choice.key);
-                const enabled = existing ? existing.enabled !== false : false;
-                return (
-                  <div key={`example-variation-${choice.key}`} style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <label style={styles.checkboxLabel}>
-                      <input
-                        type="checkbox"
-                        checked={enabled}
-                        onChange={(e) => handleRequestVariationToggle(choice.key, e.target.checked)}
-                      />
-                      <span>{choice.label}</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={existing?.label || choice.label}
-                      onChange={(e) => handleRequestVariationLabelChange(choice.key, e.target.value)}
-                      style={{ ...styles.input, flex: 1 }}
-                      placeholder="Variation label"
-                    />
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+        
         <div style={styles.hintCard}>
           <div style={styles.hintHeader}>
             <h3 style={styles.hintTitle}>Variations</h3>
@@ -8370,43 +8315,6 @@ export default function PosApiAdmin() {
               </div>
             </div>
           </div>
-
-        <div style={styles.previewSection}>
-          <div style={styles.previewCard}>
-            <div style={styles.previewHeader}>
-              <h3 style={styles.previewTitle}>Request sample</h3>
-              {requestPreview.state === 'ok' && <span style={styles.previewTag}>JSON</span>}
-            </div>
-            {requestPreview.state === 'empty' && (
-              <p style={styles.previewEmpty}>Paste JSON above to see a preview.</p>
-            )}
-            {requestPreview.state === 'error' && (
-              <div style={styles.previewErrorBox}>
-                <strong>Invalid JSON:</strong> {requestPreview.error}
-              </div>
-            )}
-            {requestPreview.state === 'ok' && (
-              <pre style={styles.codeBlock}>{requestPreview.formatted}</pre>
-            )}
-          </div>
-          <div style={styles.previewCard}>
-            <div style={styles.previewHeader}>
-              <h3 style={styles.previewTitle}>Response sample</h3>
-              {responsePreview.state === 'ok' && <span style={styles.previewTag}>JSON</span>}
-            </div>
-            {responsePreview.state === 'empty' && (
-              <p style={styles.previewEmpty}>Paste JSON above to see a preview.</p>
-            )}
-            {responsePreview.state === 'error' && (
-              <div style={styles.previewErrorBox}>
-                <strong>Invalid JSON:</strong> {responsePreview.error}
-              </div>
-            )}
-            {responsePreview.state === 'ok' && (
-              <pre style={styles.codeBlock}>{responsePreview.formatted}</pre>
-            )}
-          </div>
-        </div>
 
         <div style={styles.docFetcher}>
           <label style={{ ...styles.label, flex: 1 }}>
