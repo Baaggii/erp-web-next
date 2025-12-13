@@ -1025,6 +1025,20 @@ function formatChainHistoryRow(row) {
   };
 }
 
+function formatReviewHistoryRow(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    temporaryId: row.temporary_id,
+    action: row.action,
+    reviewerEmpId: row.reviewer_empid || null,
+    forwardedToEmpId: row.forwarded_to_empid || null,
+    promotedRecordId: row.promoted_record_id || null,
+    notes: row.notes || null,
+    createdAt: row.created_at || null,
+  };
+}
+
 export async function getTemporaryChainHistory(id) {
   const normalizedId = normalizeTemporaryId(id);
   if (!normalizedId) return [];
@@ -1054,7 +1068,20 @@ export async function getTemporaryChainHistory(id) {
       chainIds,
     );
     const normalizedRows = Array.isArray(chainRows) && chainRows.length > 0 ? chainRows : [row];
-    return normalizedRows.map((item) => formatChainHistoryRow(item)).filter(Boolean);
+    const formattedChain = normalizedRows.map((item) => formatChainHistoryRow(item)).filter(Boolean);
+    const historyIds = chainIds.length > 0 ? chainIds : [row.id];
+    const historyPlaceholders = historyIds.map(() => '?').join(', ');
+    const [historyRows] = await conn.query(
+      `SELECT id, temporary_id, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes, created_at
+         FROM \`${TEMP_REVIEW_HISTORY_TABLE}\`
+        WHERE temporary_id IN (${historyPlaceholders})
+        ORDER BY created_at ASC, id ASC`,
+      historyIds,
+    );
+    const reviewHistory = Array.isArray(historyRows)
+      ? historyRows.map((item) => formatReviewHistoryRow(item)).filter(Boolean)
+      : [];
+    return { chain: formattedChain, reviewHistory };
   } finally {
     conn.release();
   }

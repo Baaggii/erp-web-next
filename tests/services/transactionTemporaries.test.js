@@ -8,6 +8,7 @@ import {
   sanitizeCleanedValuesForInsert,
   resolveChainIdsForUpdate,
   promoteTemporarySubmission,
+  getTemporaryChainHistory,
 } from '../../api-server/services/transactionTemporaries.js';
 
 function mockQuery(handler) {
