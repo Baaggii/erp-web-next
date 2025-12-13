@@ -1337,6 +1337,50 @@ function flattenExampleFields(example, prefix = '') {
   return fields;
 }
 
+function stripRequestDecorations(value, parentIsSchema = false) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => stripRequestDecorations(entry, parentIsSchema));
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string') {
+      return value
+        .replace(/<\/?details[^>]*>/gi, '')
+        .replace(/<\/?summary[^>]*>/gi, '')
+        .trim();
+    }
+    return value;
+  }
+
+  const isSchemaLike =
+    parentIsSchema
+    || Object.prototype.hasOwnProperty.call(value, 'properties')
+    || Object.prototype.hasOwnProperty.call(value, 'required')
+    || Object.prototype.hasOwnProperty.call(value, 'type');
+
+  const keysToOmit = new Set([
+    'description',
+    'properties',
+    'required',
+    'additionalProperties',
+    'example',
+    'examples',
+    'title',
+    'type',
+    'format',
+    'schema',
+    'notes',
+  ]);
+
+  return Object.entries(value).reduce((acc, [key, val]) => {
+    if (keysToOmit.has(key)) {
+      if (isSchemaLike) return acc;
+      if (key === 'description' || key === 'notes') return acc;
+    }
+    acc[key] = stripRequestDecorations(val, isSchemaLike);
+    return acc;
+  }, {});
+}
+
 function sanitizeRequestExampleForSample(example) {
   if (!example) return {};
   const isSchemaLike =
@@ -1345,16 +1389,16 @@ function sanitizeRequestExampleForSample(example) {
     && Object.prototype.hasOwnProperty.call(example, 'type')
     && (Object.prototype.hasOwnProperty.call(example, 'properties')
       || Object.prototype.hasOwnProperty.call(example, 'required'));
-  if (!isSchemaLike) return example;
+  if (!isSchemaLike) return stripRequestDecorations(example);
 
   if (example.example && typeof example.example === 'object') {
-    return example.example;
+    return stripRequestDecorations(example.example);
   }
   if (example.examples && typeof example.examples === 'object') {
     const first = Object.values(example.examples)[0];
     if (first && typeof first === 'object') {
-      if (first.value && typeof first.value === 'object') return first.value;
-      if (first.example && typeof first.example === 'object') return first.example;
+      if (first.value && typeof first.value === 'object') return stripRequestDecorations(first.value);
+      if (first.example && typeof first.example === 'object') return stripRequestDecorations(first.example);
     }
   }
   return {};
@@ -3386,33 +3430,27 @@ export default function PosApiAdmin() {
       (entry) => (entry.key || entry.name) === selectedVariationKey,
     );
     const variationPayload = variationDefinition
-      ? variationDefinition.requestExample
-        ?? toSamplePayload(variationDefinition.requestExampleText || {})
+      ? toSamplePayload(variationDefinition.requestExample ?? (variationDefinition.requestExampleText || {}))
       : getVariationExamplePayload(selectedVariationKey);
-    let prettyPayload = '';
-    if (variationPayload && typeof variationPayload === 'object') {
-      try {
-        prettyPayload = JSON.stringify(variationPayload, null, 2);
-        setRequestSampleText(prettyPayload);
-      } catch {
-        // ignore formatting errors
-      }
-    }
-    const sampleTextForDefaults = prettyPayload || requestSampleText;
+    const prettyPayload = variationPayload && typeof variationPayload === 'object'
+      ? JSON.stringify(variationPayload, null, 2)
+      : '';
+    const formattedSample = prettyPayload || JSON.stringify({}, null, 2);
+    setRequestSampleText(formattedSample);
     const selectionsFromSample = deriveRequestFieldSelections({
-      requestSampleText: sampleTextForDefaults,
+      requestSampleText: formattedSample,
       requestEnvMap: formState.requestEnvMap,
       displayItems: requestFieldDisplay.items,
     });
     const variationSelections = buildSelectionsForVariation(selectedVariationKey);
     const mergedSelections = { ...selectionsFromSample, ...variationSelections };
     setRequestFieldValues(mergedSelections);
-    syncRequestSampleFromSelections(mergedSelections, sampleTextForDefaults);
+    syncRequestSampleFromSelections(mergedSelections, formattedSample);
     setFormState((prev) => ({
       ...prev,
       requestEnvMap: buildRequestEnvMap(mergedSelections),
     }));
-  }, [selectedVariationKey, requestFieldMeta, requestFieldDisplay.state, variationColumns, visibleRequestFieldItems, requestSampleText, formState.requestEnvMap]);
+  }, [selectedVariationKey, activeVariations, requestFieldDisplay.items, formState.requestEnvMap]);
 
   useEffect(() => {
     if (!combinationBaseKey) {
@@ -6335,7 +6373,7 @@ export default function PosApiAdmin() {
     let payloadCandidate = {};
     let allowedFields = [];
     if (key === BASE_COMBINATION_KEY) {
-      payloadCandidate = parseExamplePayload(baseRequestJson || formState.requestSchemaText || {});
+      payloadCandidate = toSamplePayload(baseRequestJson || {});
     } else {
       const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
       if (baseVariation) {
@@ -6353,9 +6391,12 @@ export default function PosApiAdmin() {
     }
     if (isModifier) {
       const fallbackFields = flattenExampleFields(payloadCandidate)
-        .map((entry) => entry.field)
+        .map((entry) => (entry.defaultValue !== undefined ? entry.field : ''))
         .filter(Boolean);
       const effectiveFields = allowedFields.length ? allowedFields : fallbackFields;
+      if (effectiveFields.length === 0) {
+        return {};
+      }
       return pickPayloadFields(payloadCandidate, effectiveFields);
     }
     if (skipFieldFilter || !allowedFields.length) {
@@ -6635,7 +6676,7 @@ export default function PosApiAdmin() {
     const text = (requestSampleText || '').trim();
     if (!text) return {};
     try {
-      return JSON.parse(text);
+      return stripRequestDecorations(JSON.parse(text));
     } catch (err) {
       const message = err?.message || 'Request sample must be valid JSON.';
       setTestState({ running: false, error: message, result: null });
