@@ -4773,6 +4773,23 @@ CREATE TABLE `transaction_temporaries` (
 -- --------------------------------------------------------
 
 --
+-- Table structure for table `transaction_temporary_review_history`
+--
+
+CREATE TABLE `transaction_temporary_review_history` (
+  `id` bigint UNSIGNED NOT NULL,
+  `temporary_id` bigint UNSIGNED NOT NULL,
+  `action` enum('forwarded','promoted','rejected') COLLATE utf8mb4_unicode_ci NOT NULL,
+  `reviewer_empid` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `forwarded_to_empid` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `promoted_record_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `notes` text COLLATE utf8mb4_unicode_ci,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Table structure for table `transaction_vat_summary`
 --
 
@@ -5824,7 +5841,23 @@ ALTER TABLE `transaction_temporaries`
   ADD KEY `idx_temp_status` (`status`),
   ADD KEY `idx_temp_table` (`table_name`),
   ADD KEY `idx_temp_plan_senior` (`plan_senior_empid`),
+  ADD KEY `idx_temp_status_plan_senior` (`status`,`plan_senior_empid`),
   ADD KEY `idx_temp_creator` (`created_by`);
+
+--
+-- Indexes for table `transaction_temporary_review_history`
+--
+ALTER TABLE `transaction_temporary_review_history`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_temp_history_temp` (`temporary_id`),
+  ADD KEY `idx_temp_history_action` (`action`);
+
+--
+-- Triggers `transaction_temporaries`
+--
+DELIMITER $$
+CREATE TRIGGER `trg_temp_clear_reviewer` BEFORE UPDATE ON `transaction_temporaries` FOR EACH ROW SET NEW.plan_senior_empid = IF(NEW.status = 'pending', NEW.plan_senior_empid, NULL)$$
+DELIMITER ;
 
 --
 -- Indexes for table `transaction_vat_summary`
