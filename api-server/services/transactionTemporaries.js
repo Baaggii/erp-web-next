@@ -534,7 +534,6 @@ async function ensureTemporaryTable(conn = pool) {
         department_id BIGINT DEFAULT NULL,
         status ENUM('pending','promoted','rejected') NOT NULL DEFAULT 'pending',
         chain_id BIGINT UNSIGNED DEFAULT NULL,
-        chain_uuid CHAR(36) NOT NULL DEFAULT (UUID()),
         is_pending TINYINT(1) AS (IF(status = 'pending', 1, NULL)) STORED,
         review_notes TEXT DEFAULT NULL,
         reviewed_by VARCHAR(64) DEFAULT NULL,
@@ -692,7 +691,6 @@ async function ensureTemporaryTable(conn = pool) {
         id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
         temporary_id BIGINT UNSIGNED NOT NULL,
         chain_id BIGINT UNSIGNED NOT NULL,
-        chain_uuid CHAR(36) DEFAULT NULL,
         action ENUM('forwarded','promoted','rejected') NOT NULL,
         reviewer_empid VARCHAR(64) NOT NULL,
         forwarded_to_empid VARCHAR(64) DEFAULT NULL,
@@ -745,7 +743,6 @@ async function recordTemporaryReviewHistory(
     forwardedToEmpId = null,
     promotedRecordId = null,
     chainId = null,
-    chainUuid = null,
   },
 ) {
   const normalizedId = normalizeTemporaryId(temporaryId);
@@ -757,12 +754,11 @@ async function recordTemporaryReviewHistory(
   const recordId = promotedRecordId ? String(promotedRecordId) : null;
   await conn.query(
     `INSERT INTO \`${TEMP_REVIEW_HISTORY_TABLE}\`
-     (temporary_id, chain_id, chain_uuid, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     (temporary_id, chain_id, action, reviewer_empid, forwarded_to_empid, promoted_record_id, notes)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
     [
       normalizedId,
       normalizedChainId,
-      chainUuid || null,
       action,
       normalizedReviewer,
       normalizedForward ?? null,
@@ -1006,7 +1002,6 @@ function mapTemporaryRow(row) {
     cleanedValues,
     values: promotableValues,
     createdBy: row.created_by,
-    chainUuid: row.chain_uuid,
     planSeniorEmpId: row.plan_senior_empid,
     reviewerEmpId: row.plan_senior_empid,
     branchId: row.branch_id,
