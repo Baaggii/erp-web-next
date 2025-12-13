@@ -6720,24 +6720,36 @@ export default function PosApiAdmin() {
       setCombinationError('Build a combination payload before testing.');
       return;
     }
-    await handleTest({ payloadOverride: combinationPayloadText });
+    await handleTest({
+      payloadTextOverride: combinationPayloadText,
+      payloadLabel: 'Combination payload',
+    });
   }
 
   function parseRequestSamplePayload() {
-    const text = (requestSampleText || '').trim();
-    if (!text) return {};
+    return parseJsonPayloadFromText('Request sample', requestSampleText, {
+      setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
+    });
+  }
+
+  function parseJsonPayloadFromText(label, text, options = {}) {
+    const trimmed = (text || '').trim();
+    if (!trimmed) return {};
     try {
       return JSON.parse(text);
     } catch (err) {
-      const message = err?.message || 'Request sample must be valid JSON.';
-      setTestState({ running: false, error: message, result: null });
+      const message = err?.message || `${label} must be valid JSON.`;
+      const setErrorState = options.setErrorState;
+      if (typeof setErrorState === 'function') {
+        setErrorState(message);
+      }
       showToast(message, 'error');
       throw err;
     }
   }
 
   async function handleTest(options = {}) {
-    const { payloadOverride } = options || {};
+    const { payloadOverride, payloadTextOverride, payloadLabel } = options || {};
     let definition;
     try {
       setError('');
@@ -6786,7 +6798,18 @@ export default function PosApiAdmin() {
     }
 
     let payloadForTest = null;
-    if (payloadOverride !== undefined && payloadOverride !== null) {
+    const parseOverrideText = (text, label) =>
+      parseJsonPayloadFromText(label, text, {
+        setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
+      });
+
+    if (payloadTextOverride !== undefined && payloadTextOverride !== null) {
+      try {
+        payloadForTest = parseOverrideText(payloadTextOverride, payloadLabel || 'Payload override');
+      } catch {
+        return;
+      }
+    } else if (payloadOverride !== undefined && payloadOverride !== null) {
       if (typeof payloadOverride === 'string') {
         try {
           payloadForTest = JSON.parse(payloadOverride);
