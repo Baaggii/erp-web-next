@@ -6738,7 +6738,7 @@ export default function PosApiAdmin() {
     if (payloadOverride !== undefined && payloadOverride !== null) {
       if (typeof payloadOverride === 'string') {
         try {
-          payloadForTest = JSON.parse(payloadOverride);
+          payloadForTest = stripRequestDecorations(JSON.parse(payloadOverride));
         } catch (err) {
           const message = err?.message || 'Payload override must be valid JSON.';
           setCombinationError(message);
@@ -6747,7 +6747,7 @@ export default function PosApiAdmin() {
           return;
         }
       } else {
-        payloadForTest = payloadOverride;
+        payloadForTest = stripRequestDecorations(payloadOverride);
       }
     } else {
       try {
