@@ -3432,7 +3432,7 @@ export default function PosApiAdmin() {
     const variationPayload = sanitizeRequestExampleForSample(
       variationDefinition?.requestExample
         ?? variationDefinition?.requestExampleText
-        ?? getVariationExamplePayload(selectedVariationKey),
+        ?? getVariationExamplePayload(selectedVariationKey, true),
     );
     const formattedSample = JSON.stringify(variationPayload || {}, null, 2);
     setRequestSampleText(formattedSample);
@@ -6184,7 +6184,7 @@ export default function PosApiAdmin() {
 
   function syncRequestSampleFromSelections(nextSelections, baseOverride) {
     let baseSample = {};
-    const baseText = baseOverride ?? baseRequestJson ?? requestSampleText ?? '{}';
+    const baseText = baseOverride ?? baseRequestJson ?? '{}';
     try {
       baseSample = JSON.parse(baseText);
     } catch {
@@ -6361,8 +6361,12 @@ export default function PosApiAdmin() {
     if (!baseKey) {
       throw new Error('Select a base variation to build a combination.');
     }
-    const basePayload = getVariationExamplePayload(baseKey, true);
-    let mergedPayload = { ...basePayload };
+    const baseFromText = toSamplePayload(baseRequestJson || {});
+    let mergedPayload = { ...baseFromText };
+    if (baseKey && baseKey !== BASE_COMBINATION_KEY) {
+      const basePayload = getVariationExamplePayload(baseKey, true);
+      mergedPayload = mergePayloads(mergedPayload, basePayload);
+    }
     modifierKeys.forEach((key) => {
       const modifierPayload = getVariationExamplePayload(key, false, true);
       mergedPayload = mergePayloads(mergedPayload, modifierPayload);
@@ -6758,6 +6762,7 @@ export default function PosApiAdmin() {
         return;
       }
     }
+    const hasPayloadOverride = payloadForTest !== undefined && payloadForTest !== null;
 
     const confirmPayloadLabel = payloadOverride !== undefined && payloadOverride !== null
       ? 'the combination payload you provided'
@@ -6793,7 +6798,7 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
-          ...(payloadForTest ? { payloadOverride: payloadForTest } : {}),
+          ...(hasPayloadOverride ? { payloadOverride: payloadForTest } : {}),
         }),
       });
       if (!res.ok) {
@@ -7537,55 +7542,6 @@ export default function PosApiAdmin() {
               )}
             </span>
           </label>
-          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
-            <input
-              type="checkbox"
-              checked={Boolean(formState.supportsMultipleReceipts)}
-              onChange={(e) => handleChange('supportsMultipleReceipts', e.target.checked)}
-              disabled={formState.usage !== 'transaction'}
-            />
-            <span>
-              Supports multiple receipt groups
-              {formState.usage !== 'transaction' && (
-                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
-              )}
-            </span>
-          </label>
-          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
-            <input
-              type="checkbox"
-              checked={Boolean(formState.supportsMultiplePayments)}
-              onChange={(e) => handleChange('supportsMultiplePayments', e.target.checked)}
-              disabled={formState.usage !== 'transaction'}
-            />
-            <span>
-              Supports multiple payment methods
-              {formState.usage !== 'transaction' && (
-                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
-              )}
-            </span>
-          </label>
-          <label style={{ ...styles.checkboxLabel, marginTop: '1.9rem' }}>
-            <input
-              type="checkbox"
-              checked={Boolean(formState.supportsItems)}
-              onChange={(e) => handleChange('supportsItems', e.target.checked)}
-              disabled={formState.usage !== 'transaction'}
-            />
-            <span>
-              Includes receipt items
-              {formState.usage !== 'transaction' && (
-                <span style={styles.checkboxHint}> (transaction endpoints only)</span>
-              )}
-            </span>
-          </label>
-          <div style={styles.label}>
-            <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>POSAPI type</div>
-            <div style={styles.toggleStateHelper}>
-              POSAPI type and request variations are derived from the enabled base request and modifiers.
-              Use variations to toggle receipt, tax, and payment behaviour instead of hard-coded switches.
-            </div>
-          </div>
           <label style={styles.label}>
             Path
             <input
