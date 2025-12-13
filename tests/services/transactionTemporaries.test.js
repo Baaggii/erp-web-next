@@ -28,6 +28,21 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
       if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
         return [[], []];
       }
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
+        return [[{ COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'pending_key' }]];
+      }
+      if (sql.includes('idx_temp_chain_pending')) {
+        return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
+        return [[{ INDEX_NAME: 'idx_temp_status_plan_senior' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+        return [[{ CONSTRAINT_NAME: 'chk_temp_pending_reviewer' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
+        return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
+      }
       if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
         return [[], []];
       }
@@ -64,19 +79,25 @@ function createStubConnection({ temporaryRow, chainIds = [] } = {}) {
 test('getTemporarySummary marks reviewers even without pending temporaries', async () => {
   const queries = [];
   const restore = mockQuery(async (sql) => {
-    queries.push(sql);
-    if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
-      return [[], []];
-    }
-    if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
-      return [[{ CONSTRAINT_NAME: 'missing' }]];
-    }
-    if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
-      return [[{ INDEX_NAME: 'idx_temp_status_plan_senior' }]];
-    }
-    if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
-      return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
-    }
+      queries.push(sql);
+      if (sql.startsWith('CREATE TABLE IF NOT EXISTS')) {
+        return [[], []];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.COLUMNS')) {
+        return [[{ COLUMN_NAME: 'chain_uuid' }, { COLUMN_NAME: 'pending_key' }]];
+      }
+      if (sql.includes('idx_temp_chain_pending')) {
+        return [[{ INDEX_NAME: 'idx_temp_chain_pending' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.TABLE_CONSTRAINTS')) {
+        return [[{ CONSTRAINT_NAME: 'missing' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.STATISTICS')) {
+        return [[{ INDEX_NAME: 'idx_temp_status_plan_senior' }]];
+      }
+      if (sql.includes('INFORMATION_SCHEMA.TRIGGERS')) {
+        return [[{ TRIGGER_NAME: 'trg_temp_clear_reviewer' }]];
+      }
     if (sql.startsWith('ALTER TABLE `transaction_temporaries`')) {
       return [[], []];
     }
@@ -226,6 +247,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
   const temporaryRow = {
     id: 3,
     company_id: 1,
+    chain_uuid: 'chain-forward-1',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -253,7 +275,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
       connectionFactory: async () => conn,
       columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
       employmentSessionFetcher: async () => ({ senior_empid: 'EMP300' }),
-      chainStatusUpdater: async (_c, ids, payload) => chainUpdates.push({ ids, payload }),
+      chainStatusUpdater: async (_c, chainUuid, payload) => chainUpdates.push({ chainUuid, payload }),
       notificationInserter: async (_c, payload) => notifications.push(payload),
       activityLogger: async () => {},
     },
@@ -261,7 +283,7 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
 
   assert.equal(result.forwardedTo, 'EMP300');
   assert.ok(chainUpdates.length > 0);
-  assert.deepEqual(chainUpdates[0].ids.sort((a, b) => a - b), [1, 2, 3, 5]);
+  assert.equal(chainUpdates[0].chainUuid, 'chain-forward-1');
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
   assert.equal(chainUpdates[0].payload.status, 'promoted');
   assert.ok(queries.some(({ sql }) => sql.includes('INSERT INTO `transaction_temporaries`')));
@@ -269,8 +291,8 @@ test('promoteTemporarySubmission forwards chain with normalized metadata and cle
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
   assert.ok(historyInsert);
-  assert.equal(historyInsert.params[1], 'forwarded');
-  assert.equal(historyInsert.params[3], 'EMP300');
+  assert.equal(historyInsert.params[2], 'forwarded');
+  assert.equal(historyInsert.params[4], 'EMP300');
   assert.ok(conn.released);
 });
 
@@ -278,6 +300,7 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
   const temporaryRow = {
     id: 7,
     company_id: 1,
+    chain_uuid: 'chain-promote-1',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -305,7 +328,7 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
       connectionFactory: async () => conn,
       columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
       tableInserter: async () => ({ id: 909 }),
-      chainStatusUpdater: async (_c, ids, payload) => chainUpdates.push({ ids, payload }),
+      chainStatusUpdater: async (_c, chainUuid, payload) => chainUpdates.push({ chainUuid, payload }),
       notificationInserter: async (_c, payload) => notifications.push(payload),
       activityLogger: async () => {},
     },
@@ -313,16 +336,15 @@ test('promoteTemporarySubmission promotes chain and records promotedRecordId', a
 
   assert.equal(result.promotedRecordId, '909');
   assert.ok(chainUpdates.length > 0);
-  assert.deepEqual(chainUpdates[0].ids.sort((a, b) => a - b), [6, 7, 8]);
+  assert.equal(chainUpdates[0].chainUuid, 'chain-promote-1');
   assert.equal(chainUpdates[0].payload.promotedRecordId, '909');
   assert.equal(chainUpdates[0].payload.clearReviewerAssignment, true);
-  assert.ok(queries.some(({ sql }) => sql.includes('UPDATE `transaction_temporaries`')));
   const historyInsert = queries.find(({ sql }) =>
     sql.includes('INSERT INTO `transaction_temporary_review_history`'),
   );
   assert.ok(historyInsert);
-  assert.equal(historyInsert.params[1], 'promoted');
-  assert.equal(historyInsert.params[4], '909');
+  assert.equal(historyInsert.params[2], 'promoted');
+  assert.equal(historyInsert.params[5], '909');
   assert.ok(conn.released);
 });
 
@@ -331,6 +353,7 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
   const temporaryRow = {
     id: 11,
     company_id: 1,
+    chain_uuid: 'chain-promote-2',
     table_name: 'transactions_test',
     form_name: null,
     config_name: null,
@@ -374,7 +397,6 @@ test('promoteTemporarySubmission prevents concurrent promotions and respects row
     connectionFactory: async () => conn,
     columnLister: async () => [{ name: 'amount', type: 'int', maxLength: null }],
     tableInserter: async () => ({ id: 777 }),
-    chainIdResolver: async () => [11],
     notificationInserter: async () => {},
     activityLogger: async () => {},
   };

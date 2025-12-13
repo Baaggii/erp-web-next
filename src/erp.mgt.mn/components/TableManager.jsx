@@ -4151,6 +4151,7 @@ const TableManager = forwardRef(function TableManager({
         setTemporaryChainModalData({
           chain,
           reviewHistory,
+          chainUuid: data.chainUuid || chain[0]?.chainUuid || null,
           entryId: id,
           formLabel: entry?.formLabel || entry?.formName || '',
         });
