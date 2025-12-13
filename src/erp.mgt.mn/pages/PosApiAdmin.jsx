@@ -6699,7 +6699,7 @@ export default function PosApiAdmin() {
       return;
     }
     await handleTest({
-      payloadTextOverride: combinationPayloadText,
+      payloadOverride: combinationPayloadText,
       payloadLabel: 'Combination payload',
     });
   }
@@ -6735,7 +6735,7 @@ export default function PosApiAdmin() {
   }
 
   async function handleTest(options = {}) {
-    const { payloadOverride, payloadTextOverride, payloadLabel } = options || {};
+    const { payloadOverride, payloadLabel } = options || {};
     let definition;
     try {
       setError('');
@@ -6783,29 +6783,25 @@ export default function PosApiAdmin() {
       return;
     }
 
-    const payloadTextForTest = payloadTextOverride ?? (typeof payloadOverride === 'string' ? payloadOverride : null)
-      ?? requestSampleText;
+    const payloadTextForTest = payloadOverride !== undefined && payloadOverride !== null
+      ? (typeof payloadOverride === 'string'
+        ? payloadOverride
+        : JSON.stringify(payloadOverride, null, 2))
+      : requestSampleText;
     let payloadForTest = null;
     const parseOverrideText = (text, label) =>
       parseJsonPayloadFromText(label, text, {
         setErrorState: (message) => setTestState({ running: false, error: message, result: null }),
       });
 
-    if (payloadTextOverride !== undefined && payloadTextOverride !== null) {
-      try {
-        payloadForTest = parseOverrideText(payloadTextOverride, payloadLabel || 'Payload override');
-      } catch {
-        return;
-      }
-    } else if (payloadOverride !== undefined && payloadOverride !== null) {
+    if (payloadOverride !== undefined && payloadOverride !== null) {
       if (typeof payloadOverride === 'string') {
         try {
-          payloadForTest = JSON.parse(payloadOverride);
+          payloadForTest = parseOverrideText(payloadOverride, payloadLabel || 'Payload override');
         } catch (err) {
-          const message = err?.message || 'Payload override must be valid JSON.';
-          setCombinationError(message);
-          setTestState({ running: false, error: message, result: null });
-          showToast(message, 'error');
+          if (payloadLabel === 'Combination payload') {
+            setCombinationError(err?.message || 'Invalid combination payload.');
+          }
           return;
         }
       } else {
@@ -6818,9 +6814,9 @@ export default function PosApiAdmin() {
         return;
       }
     }
-    const hasPayloadOverride = payloadForTest !== undefined && payloadForTest !== null;
+    const hasPayloadOverride = payloadOverride !== undefined && payloadOverride !== null;
 
-    const confirmPayloadLabel = payloadTextOverride !== undefined && payloadTextOverride !== null
+    const confirmPayloadLabel = hasPayloadOverride
       ? 'the built combination JSON box'
       : 'the request sample JSON box';
     const confirmed = window.confirm(
