@@ -6753,10 +6753,14 @@ export default function PosApiAdmin() {
     try {
       setError('');
       setStatus('');
+      setTestState({ running: false, error: '', result: null });
       definition = buildDefinition();
       showToast(`Preparing to test ${definition.name || definition.id || 'endpoint'}.`, 'info');
     } catch (err) {
-      setError(err.message || 'Failed to prepare endpoint');
+      const message = err.message || 'Failed to prepare endpoint';
+      setError(message);
+      setTestState({ running: false, error: message, result: null });
+      showToast(message, 'error');
       return;
     }
 
@@ -6961,6 +6965,14 @@ export default function PosApiAdmin() {
       showToast(err.message || 'Failed to run test', 'error');
     }
   }
+
+  const selectedTestPayloadLabel = testPayloadSource === 'combination'
+    ? 'Built combination JSON box'
+    : 'Request sample JSON box';
+  const selectedTestPayloadText = testPayloadSource === 'combination'
+    ? combinationPayloadText
+    : requestSampleText;
+  const hasSelectedPayloadText = Boolean((selectedTestPayloadText || '').trim());
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -8573,10 +8585,29 @@ export default function PosApiAdmin() {
           />
         </label>
 
+        <div style={styles.selectedPayloadCard}>
+          <div style={styles.selectedPayloadHeader}>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={styles.selectedPayloadTitle}>Selected test payload</span>
+              <span style={styles.selectedPayloadSource}>{selectedTestPayloadLabel}</span>
+            </div>
+            <span style={styles.selectedPayloadHint}>Click or tick a JSON box to switch.</span>
+          </div>
+          <pre style={styles.selectedPayloadPreview}>
+            {hasSelectedPayloadText
+              ? selectedTestPayloadText
+              : 'Add JSON to the selected box to run the test.'}
+          </pre>
+        </div>
+
         <div style={styles.actions}>
             <button
               type="button"
-              onClick={() => handleTest({ payloadSource: testPayloadSource })}
+              onClick={() => handleTest({
+                payloadSource: testPayloadSource,
+                payloadTextOverride: selectedTestPayloadText,
+                payloadLabel: selectedTestPayloadLabel,
+              })}
               disabled={
                 loading ||
                 saving ||
@@ -10333,6 +10364,45 @@ const styles = {
     borderRadius: '6px',
     padding: '0.5rem 0.75rem',
     fontSize: '0.9rem',
+  },
+  selectedPayloadCard: {
+    border: '1px solid #e2e8f0',
+    borderRadius: '10px',
+    padding: '1rem',
+    background: '#f8fafc',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.5rem',
+  },
+  selectedPayloadHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: '0.5rem',
+    flexWrap: 'wrap',
+  },
+  selectedPayloadTitle: {
+    fontWeight: 700,
+    color: '#0f172a',
+  },
+  selectedPayloadSource: {
+    color: '#475569',
+    fontSize: '0.9rem',
+  },
+  selectedPayloadHint: {
+    color: '#0f172a',
+    fontSize: '0.9rem',
+  },
+  selectedPayloadPreview: {
+    background: '#0f172a',
+    color: '#e2e8f0',
+    borderRadius: '8px',
+    padding: '0.75rem',
+    whiteSpace: 'pre-wrap',
+    overflowX: 'auto',
+    fontSize: '0.9rem',
+    lineHeight: 1.5,
+    minHeight: '120px',
   },
   codeBlock: {
     background: '#0f172a',

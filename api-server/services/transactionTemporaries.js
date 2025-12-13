@@ -398,9 +398,8 @@ async function updateTemporaryChainStatus(
   },
 ) {
   const normalizedChain = normalizeTemporaryId(chainId);
-  const hasChain = chainId != null && chainId !== undefined && normalizedChain;
   const normalizedTemporaryId = normalizeTemporaryId(temporaryId);
-  if (!conn || (!hasChain && !normalizedTemporaryId)) return;
+  if (!conn || (!normalizedChain && !normalizedTemporaryId)) return;
   const columns = ['status = ?', 'reviewed_by = ?', 'reviewed_at = NOW()', 'review_notes = ?'];
   const params = [status ?? null, reviewerEmpId ?? null, notes ?? null];
   if (promotedRecordId !== undefined) {
@@ -410,14 +409,14 @@ async function updateTemporaryChainStatus(
   if (clearReviewerAssignment || (status && status !== 'pending')) {
     columns.push('plan_senior_empid = NULL');
   }
-  const whereClause = hasChain
+  const whereClause = normalizedChain
     ? pendingOnly
       ? 'chain_id = ? AND status = "pending"'
       : 'chain_id = ?'
     : pendingOnly
     ? 'id = ? AND status = "pending"'
     : 'id = ?';
-  params.push(hasChain ? normalizedChain : normalizedTemporaryId);
+  params.push(normalizedChain || normalizedTemporaryId);
   await conn.query(
     `UPDATE \`${TEMP_TABLE}\` SET ${columns.join(', ')} WHERE ${whereClause}`,
     params,
@@ -1359,29 +1358,16 @@ export async function promoteTemporarySubmission(
     }
     const columns = await columnLister(row.table_name);
     const payloadJson = safeJsonParse(row.payload_json, {});
-    const chainIdFromRow = normalizeTemporaryId(row.chain_id) || null;
+    const chainId = normalizeTemporaryId(row.chain_id) || null;
     const chainUuid = row.chain_uuid || null;
     const forwardMeta = resolveForwardMeta(payloadJson, row.created_by, row.id);
     const updatedForwardMeta = expandForwardMeta(forwardMeta, {
       currentId: row.id,
       createdBy: row.created_by,
     });
-    const resolvedChainId =
-      chainIdFromRow || normalizeTemporaryId(updatedForwardMeta.rootTemporaryId) || null;
-    const effectiveChainId = resolvedChainId || null;
-    if (effectiveChainId) {
-      updatedForwardMeta.rootTemporaryId = effectiveChainId;
-    }
-    if (effectiveChainId) {
-      const [otherPending] = await conn.query(
-        `SELECT id FROM \`${TEMP_TABLE}\` WHERE chain_id = ? AND status = 'pending' AND id <> ? LIMIT 1 FOR UPDATE`,
-        [effectiveChainId, id],
-      );
-      if (Array.isArray(otherPending) && otherPending.length > 0) {
-        const err = new Error('A pending temporary already exists for this chain');
-        err.status = 409;
-        throw err;
-      }
+    const resolvedChainId = normalizeTemporaryId(chainId) || normalizeTemporaryId(updatedForwardMeta.rootTemporaryId);
+    if (resolvedChainId) {
+      updatedForwardMeta.rootTemporaryId = resolvedChainId;
     }
     const candidateSources = [];
     const pushCandidate = (source) => {
@@ -1909,7 +1895,7 @@ export async function promoteTemporarySubmission(
       notes: reviewNotesValue ?? null,
       promotedRecordId: promotedId,
       clearReviewerAssignment: true,
-      pendingOnly: false,
+      pendingOnly: true,
       temporaryId: id,
     });
     await recordTemporaryReviewHistory(conn, {
@@ -2057,7 +2043,7 @@ export async function rejectTemporarySubmission(
       currentId: row.id,
       createdBy: row.created_by,
     });
-    const chainIdFromRow = normalizeTemporaryId(row.chain_id) || null;
+    const chainId = normalizeTemporaryId(row.chain_id) || null;
     const chainUuid = row.chain_uuid || null;
     const resolvedChainId =
       chainIdFromRow || normalizeTemporaryId(updatedForwardMeta.rootTemporaryId) || null;
