@@ -114,7 +114,7 @@ test('getTemporarySummary marks reviewers even without pending temporaries', asy
     if (sql.startsWith('CREATE TABLE IF NOT EXISTS `transaction_temporary_review_history`')) {
       return [[], []];
     }
-    if (sql.startsWith('SELECT t.*')) {
+    if (sql.startsWith('SELECT filtered.*')) {
       const now = new Date().toISOString();
       if (sql.includes('plan_senior_empid = ?')) {
         return [
@@ -318,20 +318,19 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
     if (sql.startsWith('UPDATE `transaction_temporaries` SET chain_id = id WHERE chain_id IS NULL')) {
       return [[], []];
     }
-    if (sql.startsWith('SELECT t.*')) {
+    if (sql.startsWith('SELECT filtered.*')) {
+      const statusParam = params[0];
       if (sql.includes('plan_senior_empid = ?')) {
-        const statusParam = params[0];
         const reviewer = params[params.length - 1];
-        const pendingRows = temporaries.filter(
-          (row) => row.plan_senior_empid === reviewer && row.status === statusParam,
-        );
-        return [pendingRows];
-      }
-      const creator = params[params.length - 1];
-      const grouped = new Map();
-      temporaries
-        .filter((row) => row.created_by === creator)
-        .forEach((row) => {
+        const pendingRows = temporaries.filter((row) => {
+          const matchesReviewer = row.plan_senior_empid === reviewer;
+          if (!matchesReviewer) return false;
+          if (!statusParam || statusParam === 'any') return true;
+          if (statusParam === 'processed') return row.status !== 'pending';
+          return row.status === statusParam;
+        });
+        const grouped = new Map();
+        pendingRows.forEach((row) => {
           const key = row.chain_id || row.id;
           const existing = grouped.get(key);
           const existingDate = existing ? new Date(existing.updated_at) : null;
@@ -340,6 +339,20 @@ test('listTemporarySubmissions filters before grouping by chain', async () => {
             grouped.set(key, row);
           }
         });
+        return [Array.from(grouped.values())];
+      }
+      const creator = params[params.length - 1];
+      const filteredRows = temporaries.filter((row) => row.created_by === creator);
+      const grouped = new Map();
+      filteredRows.forEach((row) => {
+        const key = row.chain_id || row.id;
+        const existing = grouped.get(key);
+        const existingDate = existing ? new Date(existing.updated_at) : null;
+        const nextDate = new Date(row.updated_at);
+        if (!existing || nextDate > existingDate) {
+          grouped.set(key, row);
+        }
+      });
       return [Array.from(grouped.values())];
     }
     throw new Error(`Unexpected SQL: ${sql}`);
@@ -741,7 +754,7 @@ test('getTemporaryChainHistory returns chainId and history rows', async () => {
       if (sql.startsWith('SELECT * FROM `transaction_temporaries` WHERE id = ?')) {
         return [[chainRows[0]]];
       }
-      if (sql.startsWith('SELECT id, chain_id, chain_uuid, status')) {
+      if (sql.startsWith('SELECT id, chain_id AS chainId')) {
         return [chainRows];
       }
       if (sql.startsWith('SELECT id, temporary_id, chain_id')) {
