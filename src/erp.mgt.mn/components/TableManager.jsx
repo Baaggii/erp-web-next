@@ -4148,10 +4148,11 @@ const TableManager = forwardRef(function TableManager({
         const reviewHistory = Array.isArray(data.reviewHistory)
           ? data.reviewHistory
           : [];
+        const chainId = data.chainId || chain[0]?.chainId || null;
         setTemporaryChainModalData({
           chain,
           reviewHistory,
-          chainUuid: data.chainUuid || chain[0]?.chainUuid || null,
+          chainId,
           entryId: id,
           formLabel: entry?.formLabel || entry?.formName || '',
         });
