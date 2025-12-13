@@ -1360,6 +1360,23 @@ function sanitizeRequestExampleForSample(example) {
   return {};
 }
 
+function parseExamplePayload(raw) {
+  if (!raw && raw !== 0) return {};
+  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+function toSamplePayload(raw) {
+  return sanitizeRequestExampleForSample(parseExamplePayload(raw));
+}
+
 function buildVariationsFromExamples(examples = []) {
   return examples
     .map((example, index) => {
@@ -1772,12 +1789,14 @@ function createFormState(definition) {
       }))
       : [];
     const requestExample = variation.requestExample || variation.request?.body || {};
+    const requestExamplePayload = toSamplePayload(requestExample);
     return {
       key: variation.key || variation.name || `variation-${index + 1}`,
       name: variation.name || variation.key || `Variation ${index + 1}`,
       description: variation.description || '',
       enabled: variation.enabled !== false,
-      requestExampleText: variation.requestExampleText || toPrettyJson(requestExample, '{}'),
+      requestExample: requestExamplePayload,
+      requestExampleText: variation.requestExampleText || toPrettyJson(requestExamplePayload, '{}'),
       requestFields: fields,
     };
   });
@@ -2594,6 +2613,12 @@ export default function PosApiAdmin() {
   const [endpoints, setEndpoints] = useState([]);
   const [selectedId, setSelectedId] = useState('');
   const [formState, setFormState] = useState({ ...EMPTY_ENDPOINT });
+  const [baseRequestJson, setBaseRequestJson] = useState(
+    JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
+  );
+  const [requestSampleText, setRequestSampleText] = useState(
+    JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2),
+  );
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [fetchingDoc, setFetchingDoc] = useState(false);
@@ -2999,7 +3024,7 @@ export default function PosApiAdmin() {
   }, [formState.responseTables, tableFields, tableFieldLoading]);
 
   const requestPreview = useMemo(() => {
-    const text = (formState.requestSampleText || '').trim();
+    const text = (requestSampleText || '').trim();
     if (!text) return { state: 'empty', formatted: '', error: '' };
     try {
       const parsed = JSON.parse(text);
@@ -3007,7 +3032,7 @@ export default function PosApiAdmin() {
     } catch (err) {
       return { state: 'error', formatted: '', error: err.message || 'Invalid JSON' };
     }
-  }, [formState.requestSampleText]);
+  }, [requestSampleText]);
 
   const responsePreview = useMemo(() => {
     const text = (formState.responseSchemaText || '').trim();
@@ -3305,7 +3330,7 @@ export default function PosApiAdmin() {
 
   useEffect(() => {
     const derivedSelections = deriveRequestFieldSelections({
-      requestSampleText: formState.requestSampleText,
+      requestSampleText,
       requestEnvMap: formState.requestEnvMap,
       displayItems: requestFieldDisplay.items,
     });
@@ -3347,7 +3372,7 @@ export default function PosApiAdmin() {
 
       return prev;
     });
-  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldDisplay.items]);
+  }, [formState.requestSchemaText, formState.requestEnvMap, requestFieldDisplay.items, requestSampleText]);
 
   useEffect(() => {
     if (selectedVariationKey && !variationColumns.some((entry) => entry.key === selectedVariationKey)) {
@@ -3361,24 +3386,33 @@ export default function PosApiAdmin() {
       (entry) => (entry.key || entry.name) === selectedVariationKey,
     );
     const variationPayload = variationDefinition
-      ? parseExamplePayload(variationDefinition.requestExampleText || variationDefinition.requestExample || {})
+      ? variationDefinition.requestExample
+        ?? toSamplePayload(variationDefinition.requestExampleText || {})
       : getVariationExamplePayload(selectedVariationKey);
+    let prettyPayload = '';
     if (variationPayload && typeof variationPayload === 'object') {
       try {
-        const pretty = JSON.stringify(variationPayload, null, 2);
-        setFormState((prev) => ({ ...prev, requestSampleText: pretty }));
+        prettyPayload = JSON.stringify(variationPayload, null, 2);
+        setRequestSampleText(prettyPayload);
       } catch {
         // ignore formatting errors
       }
     }
-    const selections = buildSelectionsForVariation(selectedVariationKey);
-    setRequestFieldValues(selections);
-    syncRequestSampleFromSelections(selections);
+    const sampleTextForDefaults = prettyPayload || requestSampleText;
+    const selectionsFromSample = deriveRequestFieldSelections({
+      requestSampleText: sampleTextForDefaults,
+      requestEnvMap: formState.requestEnvMap,
+      displayItems: requestFieldDisplay.items,
+    });
+    const variationSelections = buildSelectionsForVariation(selectedVariationKey);
+    const mergedSelections = { ...selectionsFromSample, ...variationSelections };
+    setRequestFieldValues(mergedSelections);
+    syncRequestSampleFromSelections(mergedSelections, sampleTextForDefaults);
     setFormState((prev) => ({
       ...prev,
-      requestEnvMap: buildRequestEnvMap(selections),
+      requestEnvMap: buildRequestEnvMap(mergedSelections),
     }));
-  }, [selectedVariationKey, requestFieldMeta, requestFieldDisplay.state, variationColumns, visibleRequestFieldItems]);
+  }, [selectedVariationKey, requestFieldMeta, requestFieldDisplay.state, variationColumns, visibleRequestFieldItems, requestSampleText, formState.requestEnvMap]);
 
   useEffect(() => {
     if (!combinationBaseKey) {
@@ -3649,7 +3683,7 @@ export default function PosApiAdmin() {
       builderSyncRef.current = false;
       return;
     }
-    const text = (formState.requestSampleText || '').trim();
+    const text = (baseRequestJson || '').trim();
     if (!text) {
       setRequestBuilder(null);
       setRequestBuilderError('');
@@ -3663,7 +3697,7 @@ export default function PosApiAdmin() {
       setRequestBuilder(null);
       setRequestBuilderError(err.message || 'Invalid JSON');
     }
-  }, [formState.requestSampleText, isTransactionUsage]);
+  }, [baseRequestJson, isTransactionUsage]);
 
   useEffect(() => {
     const payments = Array.isArray(requestBuilder?.payments) ? requestBuilder.payments : [];
@@ -3701,9 +3735,13 @@ export default function PosApiAdmin() {
         return prev;
       }
       builderSyncRef.current = true;
+      try {
+        setBaseRequestJson(JSON.stringify(next, null, 2));
+      } catch {
+        // ignore formatting errors
+      }
       setFormState((prevState) => ({
         ...prevState,
-        requestSampleText: JSON.stringify(next, null, 2),
         posApiType: next.type || prevState.posApiType,
       }));
       return next;
@@ -4755,6 +4793,11 @@ export default function PosApiAdmin() {
       nextRequestFieldValues = {};
     }
 
+    const resolvedSample = nextFormState.requestSampleText
+      || JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2);
+    setBaseRequestJson(resolvedSample);
+    setRequestSampleText(resolvedSample);
+
     setStatus('');
     resetTestState();
     setDocExamples([]);
@@ -5458,7 +5501,7 @@ export default function PosApiAdmin() {
     );
     const requestSample = parseJsonInput(
       'Base request sample',
-      formState.requestSampleText,
+      baseRequestJson,
       {},
     );
     const responseSchema = parseJsonInput(
@@ -6104,7 +6147,7 @@ export default function PosApiAdmin() {
   function syncRequestSampleFromSelections(nextSelections, baseOverride) {
     let baseSample = {};
     try {
-      baseSample = JSON.parse(formState.requestSampleText || '{}');
+      baseSample = JSON.parse(baseOverride ?? requestSampleText ?? '{}');
     } catch {
       baseSample = {};
     }
@@ -6119,7 +6162,7 @@ export default function PosApiAdmin() {
     });
     try {
       const formatted = JSON.stringify(updated, null, 2);
-      setFormState((prev) => ({ ...prev, requestSampleText: formatted }));
+      setRequestSampleText(formatted);
     } catch {
       // ignore formatting errors
     }
@@ -6259,19 +6302,6 @@ export default function PosApiAdmin() {
     return picked;
   }
 
-  function parseExamplePayload(raw) {
-    if (!raw && raw !== 0) return {};
-    if (typeof raw === 'object') return raw;
-    if (typeof raw === 'string') {
-      try {
-        return JSON.parse(raw);
-      } catch {
-        return {};
-      }
-    }
-    return {};
-  }
-
   function getAllowedFieldsForVariation(key) {
     const variationFieldSet = variationFieldSets.get(key);
     if (variationFieldSet && variationFieldSet.size > 0) {
@@ -6305,29 +6335,33 @@ export default function PosApiAdmin() {
     let payloadCandidate = {};
     let allowedFields = [];
     if (key === BASE_COMBINATION_KEY) {
-      payloadCandidate = parseExamplePayload(formState.requestSampleText || formState.requestSchemaText || {});
+      payloadCandidate = toSamplePayload(baseRequestJson || {});
     } else {
       const baseVariation = activeVariations.find((entry) => (entry.key || entry.name) === key);
       if (baseVariation) {
-        payloadCandidate = parseExamplePayload(baseVariation.requestExampleText || baseVariation.requestExample || {});
+        payloadCandidate =
+          baseVariation.requestExample ?? toSamplePayload(baseVariation.requestExampleText || {});
         allowedFields = getAllowedFieldsForVariation(key);
       } else {
         const exampleEntry = exampleVariationMap.get(key);
         if (exampleEntry) {
-          payloadCandidate = parseExamplePayload(
+          payloadCandidate = toSamplePayload(
             exampleEntry.requestExample ?? exampleEntry.request?.body ?? exampleEntry.body ?? exampleEntry,
           );
         }
       }
     }
-    if (skipFieldFilter || (!isModifier && !allowedFields.length)) {
+    if (isModifier) {
+      const fallbackFields = flattenExampleFields(payloadCandidate)
+        .map((entry) => entry.field)
+        .filter(Boolean);
+      const effectiveFields = allowedFields.length ? allowedFields : fallbackFields;
+      return pickPayloadFields(payloadCandidate, effectiveFields);
+    }
+    if (skipFieldFilter || !allowedFields.length) {
       return payloadCandidate;
     }
-    const fallbackFields = flattenExampleFields(payloadCandidate)
-      .map((entry) => entry.field)
-      .filter(Boolean);
-    const effectiveFields = allowedFields.length ? allowedFields : fallbackFields;
-    return pickPayloadFields(payloadCandidate, effectiveFields);
+    return pickPayloadFields(payloadCandidate, allowedFields);
   }
 
   function handleRequestFieldValueChange(fieldPath, updates) {
@@ -6579,6 +6613,8 @@ export default function PosApiAdmin() {
     setImportBaseUrl('');
     setImportBaseUrlEnvVar('');
     setImportBaseUrlMode('literal');
+    setBaseRequestJson(JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2));
+    setRequestSampleText(JSON.stringify(BASE_COMPLEX_REQUEST_SCHEMA, null, 2));
     setTestEnvironment('staging');
     setImportAuthEndpointId('');
     setUseCachedToken(true);
@@ -6592,16 +6628,11 @@ export default function PosApiAdmin() {
       setCombinationError('Build a combination payload before testing.');
       return;
     }
-    try {
-      const parsed = JSON.parse(combinationPayloadText);
-      await handleTest(parsed);
-    } catch (err) {
-      setCombinationError(err.message || 'Combination payload must be valid JSON.');
-    }
+    await handleTest({ payloadOverride: combinationPayloadText });
   }
 
   function parseRequestSamplePayload() {
-    const text = (formState.requestSampleText || '').trim();
+    const text = (requestSampleText || '').trim();
     if (!text) return {};
     try {
       return JSON.parse(text);
@@ -6613,7 +6644,8 @@ export default function PosApiAdmin() {
     }
   }
 
-  async function handleTest(payloadOverride) {
+  async function handleTest(options = {}) {
+    const { payloadOverride } = options || {};
     let definition;
     try {
       setError('');
@@ -6661,21 +6693,32 @@ export default function PosApiAdmin() {
       return;
     }
 
-    let builtPayload = null;
-    if (!payloadOverride) {
-      try {
-        builtPayload = buildCombinationPayload();
-      } catch (err) {
-        builtPayload = null;
-        if (combinationError) {
-          setCombinationError(err.message || 'Unable to build test payload from modifiers.');
+    let payloadForTest = null;
+    if (payloadOverride !== undefined && payloadOverride !== null) {
+      if (typeof payloadOverride === 'string') {
+        try {
+          payloadForTest = JSON.parse(payloadOverride);
+        } catch (err) {
+          const message = err?.message || 'Payload override must be valid JSON.';
+          setCombinationError(message);
+          setTestState({ running: false, error: message, result: null });
+          showToast(message, 'error');
+          return;
         }
+      } else {
+        payloadForTest = payloadOverride;
+      }
+    } else {
+      try {
+        payloadForTest = parseRequestSamplePayload();
+      } catch {
+        return;
       }
     }
 
-    const confirmPayloadLabel = payloadOverride
+    const confirmPayloadLabel = payloadOverride !== undefined && payloadOverride !== null
       ? 'the combination payload you provided'
-      : 'the base sample and selected modifiers';
+      : 'the request sample payload';
     const confirmed = window.confirm(
       `Run a test request against ${selectedTestUrl || activeTestSelection.display || 'the configured server'}? This will use ${confirmPayloadLabel}.`,
     );
@@ -6707,9 +6750,7 @@ export default function PosApiAdmin() {
           environment: testEnvironment,
           authEndpointId: formState.authEndpointId || '',
           useCachedToken: effectiveUseCachedToken,
-          ...((payloadOverride || builtPayload)
-            ? { payloadOverride: payloadOverride || builtPayload }
-            : {}),
+          ...(payloadForTest ? { payloadOverride: payloadForTest } : {}),
         }),
       });
       if (!res.ok) {
@@ -7572,8 +7613,8 @@ export default function PosApiAdmin() {
             This is the canonical request payload used as the base for modifiers and tests. Keep it valid JSON only.
           </span>
           <textarea
-            value={formState.requestSampleText}
-            onChange={(e) => handleChange('requestSampleText', e.target.value)}
+            value={baseRequestJson}
+            onChange={(e) => setBaseRequestJson(e.target.value)}
             style={styles.textarea}
             rows={10}
           />
@@ -8495,6 +8536,21 @@ export default function PosApiAdmin() {
             </label>
           </div>
         )}
+
+        <label style={styles.labelFull}>
+          Request sample for testing (JSON)
+          <span style={styles.fieldHelp}>
+            The Test endpoint button uses this payload. Selecting a variation loads its example here without changing the base
+            request.
+          </span>
+          <textarea
+            value={requestSampleText}
+            onChange={(e) => setRequestSampleText(e.target.value)}
+            style={styles.textarea}
+            rows={8}
+            placeholder="Request payload sent when testing the endpoint"
+          />
+        </label>
 
         <div style={styles.actions}>
             <button
