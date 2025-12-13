@@ -6800,11 +6800,8 @@ export default function PosApiAdmin() {
       return;
     }
 
-    const payloadSource = requestedPayloadSource || 'sample';
-    const trimmedCombinationText = (combinationPayloadText || '').trim();
-    const selectedPayloadText = payloadSource === 'combination' ? combinationPayloadText : requestSampleText;
     const payloadTextForTest = payloadTextOverride ?? (typeof payloadOverride === 'string' ? payloadOverride : null)
-      ?? selectedPayloadText;
+      ?? requestSampleText;
     let payloadForTest = null;
 
     if (payloadSource === 'combination' && !trimmedCombinationText) {
@@ -6852,8 +6849,7 @@ export default function PosApiAdmin() {
     }
     const hasPayloadOverride = payloadForTest !== undefined && payloadForTest !== null;
 
-    const confirmPayloadLabel = payloadSource === 'combination'
-      || (payloadTextOverride !== undefined && payloadTextOverride !== null)
+    const confirmPayloadLabel = payloadTextOverride !== undefined && payloadTextOverride !== null
       ? 'the built combination JSON box'
       : 'the request sample JSON box';
     const confirmed = window.confirm(
